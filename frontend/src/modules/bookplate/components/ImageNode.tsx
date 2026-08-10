@@ -12,6 +12,7 @@ export interface ImageNodeProps {
   id: string;
   initialX?: number;
   initialY?: number;
+  title?: string;
   imageUrl?: string | null;
   /** Agent 模式中间步骤（工具调用 / 思考状态） */
   agentSteps?: AgentStep[];
@@ -49,6 +50,7 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
   id,
   initialX,
   initialY,
+  title,
   imageUrl,
   agentSteps,
   agentName,
@@ -117,7 +119,7 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
       id={id}
       initialX={initialX}
       initialY={initialY}
-      title="藏书票图像"
+      title={title || "藏书票图像"}
       onRemove={() => onRemove?.(id)}
       onPositionChange={onPositionChange}
       onSizeChange={onSizeChange}

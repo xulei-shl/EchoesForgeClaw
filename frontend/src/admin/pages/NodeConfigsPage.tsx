@@ -163,6 +163,7 @@ export const NodeConfigsPage: React.FC = () => {
 
     setSaving(true);
     setFormError('');
+    setGroupOpen(false); // 关闭分组建议下拉，避免其遮挡/拦截保存按钮
     try {
       // 模式互斥：提交前只保留所选模式的字段，另一组置空
       const payload = {
@@ -182,6 +183,8 @@ export const NodeConfigsPage: React.FC = () => {
         showToast('节点配置已创建', { type: 'success' });
       }
       resetForm();
+      // 保存成功后清除分组筛选：改组的配置若被当前筛选排除会“消失”，看起来像保存未生效
+      setGroupFilter('');
       load();
     } catch (err: any) {
       setFormError(err?.message || '保存失败，请重试');
@@ -446,7 +449,7 @@ export const NodeConfigsPage: React.FC = () => {
                   })
                 }
                 options={configurableTemplates.map((t) => ({
-                  label: `${CATEGORY_LABELS[t.category]} · ${t.name}（${t.description}）`,
+                  label: `${CATEGORY_LABELS[t.category]} · ${t.name}${t.description ? `（${t.description}）` : ''}`,
                   value: t.type,
                 }))}
               />
@@ -465,7 +468,7 @@ export const NodeConfigsPage: React.FC = () => {
                   className="flex h-10 w-full rounded-md border border-dashed border-paper-grid bg-transparent px-3 py-2 text-sm text-ink focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
                 />
                 {groupOpen && groupSuggestions.length > 0 && (
-                  <div className="absolute z-20 mt-1 w-full rounded-md border border-paper-grid bg-paper shadow-lg overflow-hidden">
+                  <div className="absolute z-20 mt-1 w-full max-h-40 overflow-y-auto rounded-md border border-paper-grid bg-paper shadow-lg">
                     {groupSuggestions.map((g) => (
                       <button
                         key={g}

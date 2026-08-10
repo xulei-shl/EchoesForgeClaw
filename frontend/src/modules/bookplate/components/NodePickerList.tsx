@@ -91,7 +91,7 @@ const NodePickerListInner: React.FC<NodePickerListProps> = ({ items, onPick, pen
   };
 
   return (
-    <div className="py-1">
+    <div className="p-1.5 space-y-1">
       {groups.length === 0 && (
         <p className="px-3 py-4 text-xs text-ink-faint font-sans text-center">暂无可添加的节点</p>
       )}
@@ -103,54 +103,62 @@ const NodePickerListInner: React.FC<NodePickerListProps> = ({ items, onPick, pen
             type="button"
             onClick={() => toggleGroup(group.key)}
             title={isCollapsed ? '展开分组' : '折叠分组'}
-            className="w-full flex items-center gap-1 px-3 pt-2 pb-1 text-left group hover:bg-paper-grid/30 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+            className="w-full flex items-center px-1.5 py-1.5 text-left group hover:bg-paper-grid/40 active:bg-paper-grid/60 transition-colors focus-visible:outline-none rounded-md"
           >
-            {isCollapsed ? (
-              <ChevronRight size={11} strokeWidth={2} className="text-ink-faint shrink-0 transition-transform" />
-            ) : (
-              <ChevronDown size={11} strokeWidth={2} className="text-ink-faint shrink-0 transition-transform" />
-            )}
-            <span className="flex-1 min-w-0 truncate text-[10px] uppercase tracking-wider text-ink-faint font-sans">
+            <div className="flex items-center justify-center w-4 h-4 shrink-0 text-ink-faint group-hover:text-ink-light transition-colors">
+              {isCollapsed ? (
+                <ChevronRight size={14} strokeWidth={2} />
+              ) : (
+                <ChevronDown size={14} strokeWidth={2} />
+              )}
+            </div>
+            <span className="ml-1.5 flex-1 min-w-0 truncate text-[11px] font-medium text-ink-light tracking-wide">
               {group.title}
             </span>
-            <span className="ml-auto text-[10px] text-ink-faint/70 font-sans tabular-nums">
+            <span className="ml-2 text-[10px] text-ink-faint font-sans tabular-nums">
               {group.items.length}
             </span>
           </button>
-          {!isCollapsed && group.items.map((item) => (
-            <button
-              key={item.key}
-              disabled={!!pendingChildId}
-              onClick={(e) => {
-                e.stopPropagation();
-                onPick(item);
-              }}
-              className="w-full flex items-start gap-2.5 px-3 py-2 text-left hover:bg-accent-surface/60 active:scale-[0.99] transition-colors disabled:opacity-50"
-            >
-              <span
-                className={`mt-0.5 w-1.5 h-1.5 rounded-full shrink-0 ${
-                  item.mode === 'agent'
-                    ? 'bg-accent'
-                    : item.fallback
-                      ? 'bg-ink-faint/50'
-                      : 'bg-[#5B8A5B]'
-                }`}
-              />
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-sans text-ink font-medium truncate">
-                  {item.label}
-                  {item.fallback && (
-                    <span className="ml-1.5 text-[10px] text-ink-faint border border-dashed border-paper-grid rounded-pill px-1.5 py-px align-middle">
-                      默认配置
+          {!isCollapsed && (
+            <div className="pt-0.5 pb-1 space-y-0.5">
+              {group.items.map((item) => (
+                <button
+                  key={item.key}
+                  disabled={!!pendingChildId}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onPick(item);
+                  }}
+                  className="w-full flex items-start px-2 py-2 text-left hover:bg-accent-surface/60 active:scale-[0.96] transition-all disabled:opacity-50 rounded-lg group/item"
+                >
+                  <div className="flex items-center justify-center w-4 h-4 shrink-0 mt-[1px]">
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ring-2 ring-transparent group-hover/item:ring-current/10 transition-all duration-200 group-hover/item:scale-125 ${
+                        item.mode === 'agent'
+                          ? 'bg-accent text-accent'
+                          : item.fallback
+                            ? 'bg-ink-faint/50 text-ink-faint'
+                            : 'bg-[#5B8A5B] text-[#5B8A5B]'
+                      }`}
+                    />
+                  </div>
+                  <span className="ml-2 min-w-0 flex-1">
+                    <span className="block text-sm font-sans text-ink font-medium truncate group-hover/item:text-accent transition-colors">
+                      {item.label}
+                      {item.fallback && (
+                        <span className="ml-1.5 text-[10px] text-ink-faint border border-dashed border-paper-grid rounded-full px-1.5 py-px align-middle">
+                          默认配置
+                        </span>
+                      )}
                     </span>
-                  )}
-                </span>
-                <span className="block text-[11px] text-ink-faint font-sans truncate">
-                  {item.agentName ? `Agent · ${item.agentName}` : item.description}
-                </span>
-              </span>
-            </button>
-          ))}
+                    <span className="block text-xs text-ink-light/80 font-sans truncate mt-0.5">
+                      {item.agentName ? `Agent · ${item.agentName}` : item.description}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         );
       })}

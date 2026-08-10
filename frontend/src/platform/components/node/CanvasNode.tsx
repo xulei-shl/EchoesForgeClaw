@@ -300,9 +300,9 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
         </div>
       )}
 
-      {/* 边框外侧底部插槽（「+ 添加子节点」按钮） */}
+      {/* 边框外侧右侧插槽（「+ 添加子节点」按钮） */}
       {footer && (
-        <div className="absolute -bottom-9 left-1/2 -translate-x-1/2 z-30">
+        <div className="absolute top-1/2 -right-10 -translate-y-1/2 z-30">
           {footer}
         </div>
       )}

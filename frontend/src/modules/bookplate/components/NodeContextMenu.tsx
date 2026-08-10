@@ -60,25 +60,25 @@ const NodeContextMenu: React.FC<NodeContextMenuProps> = ({
   return (
     <div
       ref={ref}
-      className="fixed z-[100] w-72 bg-paper border border-paper-grid rounded-lg shadow-xl overflow-hidden"
+      className="fixed z-[100] w-72 bg-paper border border-paper-grid rounded-xl shadow-xl overflow-hidden"
       style={{ left, top }}
       onContextMenu={(e) => e.preventDefault()}
     >
-      <div className="px-3 py-2 border-b border-dashed border-paper-grid bg-paper-grid/10">
-        <p className="text-xs font-serif text-ink-light truncate" title={title}>{title}</p>
+      <div className="px-3 py-2.5 border-b border-dashed border-paper-grid bg-paper-grid/10">
+        <p className="text-xs font-medium font-sans text-ink-light truncate" title={title}>{title}</p>
       </div>
       <div className="max-h-[264px] overflow-y-auto">
         <NodePickerList items={items} onPick={onPick} />
       </div>
-      <div className="border-t border-dashed border-paper-grid p-1">
+      <div className="border-t border-dashed border-paper-grid p-1.5">
         <button
           onClick={(e) => {
             e.stopPropagation();
             onDelete();
           }}
-          className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-left text-sm font-sans text-error hover:bg-error/10 active:scale-[0.99] transition-colors"
+          className="w-full flex items-center gap-2 px-2 py-2 rounded-md text-left text-sm font-sans text-error hover:bg-error/10 active:scale-[0.96] transition-all"
         >
-          <Trash2 size={14} strokeWidth={1.5} />
+          <Trash2 size={15} strokeWidth={2} />
           删除节点（含子节点）
         </button>
       </div>

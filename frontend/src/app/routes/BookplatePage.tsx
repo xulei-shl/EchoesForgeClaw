@@ -17,7 +17,7 @@ import { AddNodeButton, type NodePickerItem } from '../../modules/bookplate/comp
 import NodeContextMenu from '../../modules/bookplate/components/NodeContextMenu';
 import EmptyCanvasHint from '../../modules/bookplate/components/EmptyCanvasHint';
 import { NODE_SIZES, getBookInfoPosition, getBranchNodePosition, computeAutoLayout, computeFitViewport } from '../../modules/bookplate/nodeLayout';
-import { NODE_TEMPLATES, NODE_TEMPLATE_MAP } from '../../modules/bookplate/nodeTypes';
+import { NODE_TEMPLATES, getNodeTitle } from '../../modules/bookplate/nodeTypes';
 import {
   ISBN_FETCH_TIMEOUT_MS,
   PROMPT_SSE_IDLE_TIMEOUT_MS,
@@ -92,12 +92,28 @@ const BookplatePage: React.FC = () => {
 
   // 节点注册表：模板 + 已配置节点变体（驱动「+」菜单与 per-node 执行模式）
   const [registry, setRegistry] = useState<NodeRegistry>({ templates: [], configs: [] });
-  useEffect(() => {
+  const refreshRegistry = useCallback(() => {
     api
       .get<NodeRegistry, NodeRegistry>('/modules/bookplate/node-registry')
       .then(setRegistry)
       .catch((e) => console.error('获取节点注册表失败:', e));
   }, []);
+  useEffect(() => {
+    refreshRegistry();
+  }, [refreshRegistry]);
+  // 节点配置可能在管理页（其他 tab）被修改（分组/名称/启用/排序）：切回本 tab 时刷新注册表，
+  // 让「+」菜单与节点分组标签保持最新，无需手动刷新页面
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refreshRegistry();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
+  }, [refreshRegistry]);
   const registryConfigs = registry.configs;
   const registryConfigsRef = useRef<RegistryNodeConfig[]>(registryConfigs);
   registryConfigsRef.current = registryConfigs;
@@ -1538,6 +1554,7 @@ const BookplatePage: React.FC = () => {
                   id={node.id}
                   initialX={node.x}
                   initialY={node.y}
+                  title={getNodeTitle(node)}
                   data={node.data}
                   isGenerating={!!node.data.isGenerating}
                   error={node.data.error ?? null}
@@ -1560,6 +1577,7 @@ const BookplatePage: React.FC = () => {
                   id={node.id}
                   initialX={node.x}
                   initialY={node.y}
+                  title={getNodeTitle(node)}
                   analysis={node.data.analysis}
                   agentSteps={node.data.agentSteps}
                   agentName={config?.mode === 'agent' ? (config.agent_name ?? undefined) : undefined}
@@ -1583,6 +1601,7 @@ const BookplatePage: React.FC = () => {
                   id={node.id}
                   initialX={node.x}
                   initialY={node.y}
+                  title={getNodeTitle(node)}
                   content={node.data.content}
                   agentSteps={node.data.agentSteps}
                   agentName={config?.mode === 'agent' ? (config.agent_name ?? undefined) : undefined}
@@ -1607,6 +1626,7 @@ const BookplatePage: React.FC = () => {
                   id={node.id}
                   initialX={node.x}
                   initialY={node.y}
+                  title={getNodeTitle(node)}
                   imageUrl={node.data.imageUrl}
                   agentSteps={node.data.agentSteps}
                   agentName={config?.mode === 'agent' ? (config.agent_name ?? undefined) : undefined}
@@ -1647,7 +1667,7 @@ const BookplatePage: React.FC = () => {
               <NodeContextMenu
                 x={ctxMenu.x}
                 y={ctxMenu.y}
-                title={node.configName ?? NODE_TEMPLATE_MAP[node.type]?.name ?? node.type}
+                title={getNodeTitle(node)}
                 items={pickerItems}
                 onPick={(item) => {
                   setCtxMenu(null);

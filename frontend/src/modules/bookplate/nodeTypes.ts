@@ -30,7 +30,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'image_analysis',
     name: '图片分析',
-    description: '多模态模型分析封面 / 参考图，输出艺术风格与主题色分析',
+    description: '',
     category: 'analysis',
     configurable: true,
     defaultSize: NODE_DEFAULT_SIZES.image_analysis,
@@ -38,7 +38,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'prompt_generation',
     name: '提示词生成',
-    description: '基于图书元数据与图片分析流式生成图像提示词',
+    description: '',
     category: 'generate',
     configurable: true,
     defaultSize: NODE_DEFAULT_SIZES.prompt_generation,
@@ -46,7 +46,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'image_generation',
     name: '图像生成',
-    description: '根据提示词生成藏书票图片',
+    description: '',
     category: 'output',
     configurable: true,
     defaultSize: NODE_DEFAULT_SIZES.image_generation,
@@ -64,3 +64,10 @@ export const CATEGORY_LABELS: Record<NodeTemplateDef['category'], string> = {
   generate: '生成',
   output: '输出',
 };
+
+/**
+ * 获取节点显示标题：优先使用用户配置的变体名称，否则回退到模板名称，最后 fallback 为类型标识
+ */
+export function getNodeTitle(node: { type: CanvasNodeType; configName?: string }): string {
+  return node.configName ?? NODE_TEMPLATE_MAP[node.type]?.name ?? node.type;
+}

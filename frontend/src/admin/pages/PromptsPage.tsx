@@ -206,23 +206,21 @@ export const PromptsPage: React.FC = () => {
         }
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1.5 sm:col-span-2">
-              <FieldLabel required>模板名称</FieldLabel>
-              <Input
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="如：藏书票提示词生成"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <FieldLabel>节点模板类型</FieldLabel>
-              <Select
-                value={form.node_type}
-                onChange={(val) => setForm({ ...form, node_type: val })}
-                options={NODE_TYPE_OPTIONS}
-              />
-            </div>
+          <div className="space-y-1.5">
+            <FieldLabel required>模板名称</FieldLabel>
+            <Input
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              placeholder="如：藏书票提示词生成"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>节点模板类型</FieldLabel>
+            <Select
+              value={form.node_type}
+              onChange={(val) => setForm({ ...form, node_type: val })}
+              options={NODE_TYPE_OPTIONS}
+            />
           </div>
           <div className="space-y-1.5">
             <FieldLabel required>模板内容（system prompt）</FieldLabel>

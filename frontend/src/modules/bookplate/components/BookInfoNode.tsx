@@ -32,6 +32,7 @@ export interface BookInfoNodeProps {
   id: string;
   initialX?: number;
   initialY?: number;
+  title?: string;
   data: BookMetadata;
   /** 豆瓣 API 请求进行中 */
   isGenerating?: boolean;
@@ -55,6 +56,7 @@ const BookInfoNodeInner: React.FC<BookInfoNodeProps> = ({
   id,
   initialX,
   initialY,
+  title,
   data,
   isGenerating = false,
   error = null,
@@ -104,7 +106,7 @@ const BookInfoNodeInner: React.FC<BookInfoNodeProps> = ({
       id={id}
       initialX={initialX}
       initialY={initialY}
-      title="图书元数据"
+      title={title || "图书元数据"}
       onRemove={() => onRemove?.(id)}
       onPositionChange={onPositionChange}
       onSizeChange={onSizeChange}
@@ -254,13 +256,13 @@ const BookInfoNodeInner: React.FC<BookInfoNodeProps> = ({
               {description && (
                 <div className="border-t border-dashed border-paper-grid pt-3 flex-1 min-h-0 overflow-y-auto pr-1">
                   <details className="group" open>
-                    <summary className="list-none [&::-webkit-details-marker]:hidden text-sm text-ink-faint cursor-pointer hover:text-ink transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded w-max select-none shrink-0 mb-1">
+                    <summary className="list-none [&::-webkit-details-marker]:hidden text-sm text-ink-light cursor-pointer hover:text-ink transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded w-max select-none shrink-0 mb-1">
                       <span className="inline-flex items-center gap-1">
                         内容摘要
                         <svg className="w-3.5 h-3.5 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
                       </span>
                     </summary>
-                    <div className="mt-2 text-[13px] leading-relaxed text-ink-light font-sans" style={{ textWrap: 'pretty' }}>
+                    <div className="mt-2 text-sm leading-relaxed text-ink font-sans" style={{ textWrap: 'pretty' }}>
                       {description.split('\n').map((line, i) => (
                         <p key={i} className="mb-1 last:mb-0">{line}</p>
                       ))}

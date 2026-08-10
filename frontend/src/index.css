@@ -256,11 +256,38 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
-/* ========== Streamdown 代码块换行 ========== */
-[data-streamdown="code-block"],
+/* ========== Streamdown 代码块覆盖：消除冗余边框与层级 ========== */
+[data-streamdown="code-block"] {
+  /* 外层容器：使用统一细边框和透明/统一背景，与节点卡片融合 */
+  border: 1px solid var(--color-paper-grid) !important;
+  background-color: transparent !important;
+  border-radius: var(--radius-md) !important;
+  overflow: hidden !important; /* 确保内容不溢出圆角 */
+  box-shadow: none !important;
+  margin-top: 8px !important;
+  margin-bottom: 8px !important;
+}
+
+[data-streamdown="code-block"] > div:first-child {
+  /* 头部区域（语言类型及复制按钮）：弱化分隔线 */
+  background-color: var(--color-paper-grid) !important;
+  border-bottom: 1px solid var(--color-paper-grid) !important;
+  padding: 6px 12px !important;
+}
+
 [data-streamdown="code-block"] > code,
-[data-streamdown="code-block"] pre {
+[data-streamdown="code-block"] pre,
+[data-streamdown="code-block"] .shiki {
+  /* 内部代码区：去除所有自带的边框、圆角、背景色，让它和外层完全无缝融合 */
+  border: none !important;
+  border-radius: 0 !important;
+  background-color: transparent !important;
+  margin: 0 !important;
+  padding: 12px !important;
+  box-shadow: none !important;
   white-space: pre-wrap !important;
   word-wrap: break-word !important;
-  word-break: break-all !important;
+  word-break: normal !important;
+  font-family: var(--font-mono) !important;
+  font-variant-numeric: tabular-nums !important;
 }

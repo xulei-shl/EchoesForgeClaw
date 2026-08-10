@@ -16,6 +16,8 @@ import { AgentActivity } from '../../../platform/components/agent/AgentActivity'
 import { Tooltip } from '../../../platform/components/ui/Tooltip';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
 import type { AgentStep } from '../../../platform/types';
+import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
+import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
 
 // 上传参考图体积上限（与后端 MAX_UPLOAD_IMAGE_BYTES 保持一致）
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
@@ -26,6 +28,7 @@ export interface ImageAnalysisNodeProps {
   id: string;
   initialX?: number;
   initialY?: number;
+  title?: string;
   analysis?: string;
   /** Agent 模式中间步骤（工具调用 / 思考状态） */
   agentSteps?: AgentStep[];
@@ -51,6 +54,7 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
   id,
   initialX,
   initialY,
+  title,
   analysis,
   agentSteps,
   agentName,
@@ -66,7 +70,6 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
   group,
 }) => {
   const { showToast } = useFeedback();
-  const [analysisOpen, setAnalysisOpen] = useState(true);
   // 本次会话上传的参考图（base64 data URL，仅存内存）
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [uploadedName, setUploadedName] = useState('');
@@ -115,13 +118,13 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
     return (
       <>
         {(error || analysis || (!error && !analysis)) && onRun && (
-          <Tooltip content={error ? '重试' : analysis ? '再次分析 · 新建节点' : '运行分析'}>
+          <Tooltip content={error ? '重试' : analysis ? '重新生成' : '运行分析'}>
             <button
               onClick={() => onRun?.(id)}
               disabled={isGenerating}
               className={actionBtn + (error ? ' text-error hover:text-error hover:bg-error/10' : '')}
             >
-              {error ? <RefreshCw size={16} strokeWidth={1.5} /> : <Play size={16} strokeWidth={1.5} />}
+              {error || analysis ? <RefreshCw size={16} strokeWidth={1.5} /> : <Play size={16} strokeWidth={1.5} />}
             </button>
           </Tooltip>
         )}
@@ -134,7 +137,7 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
       id={id}
       initialX={initialX}
       initialY={initialY}
-      title="图片分析"
+      title={title || "图片分析"}
       onRemove={() => onRemove?.(id)}
       onPositionChange={onPositionChange}
       onSizeChange={onSizeChange}
@@ -177,19 +180,18 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
             </div>
           ) : analysis ? (
             <div className="flex-1 min-h-0 flex flex-col">
-              <button
-                onClick={() => setAnalysisOpen((v) => !v)}
-                className="shrink-0 w-full flex items-center gap-1.5 px-2 py-1.5 text-left text-xs text-ink-light hover:text-ink hover:bg-paper-grid/30 transition-colors rounded-md"
-              >
-                {analysisOpen ? <ChevronDown size={14} strokeWidth={1.5} /> : <ChevronRight size={14} strokeWidth={1.5} />}
-                <ImageIcon size={13} strokeWidth={1.5} className="text-accent" />
-                <span className="font-serif">分析结果</span>
-              </button>
-              {analysisOpen && (
-                <pre className="flex-1 min-h-0 overflow-y-auto px-3 py-2 text-[11px] leading-relaxed text-ink-light font-mono whitespace-pre-wrap border border-dashed border-paper-grid rounded-md bg-paper-grid/10">
-                  {analysis}
-                </pre>
-              )}
+              <div className="w-full min-w-0 flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+                <div className="w-full min-w-0 font-sans text-[12px] leading-relaxed">
+                  <Streamdown
+                    plugins={{ cjk, code }}
+                    isAnimating={isGenerating}
+                    caret="block"
+                    linkSafety={{ enabled: false }}
+                  >
+                    {normalizeMarkdown(analysis)}
+                  </Streamdown>
+                </div>
+              </div>
             </div>
           ) : (
             /* 待运行态：提示 + 上传参考图 */

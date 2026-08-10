@@ -32,7 +32,7 @@ export const Navbar: React.FC = () => {
             </Link>
             <div className="hidden md:flex ml-10 space-x-1">
               <NavLink to="/" end className={getNavLinkClass}>首页</NavLink>
-              <NavLink to="/bookplate" className={getNavLinkClass}>藏书票</NavLink>
+              <NavLink to="/bookplate" className={getNavLinkClass}>画板</NavLink>
               {user && (
                 <>
                   <NavLink to="/history" className={getNavLinkClass}>历史</NavLink>

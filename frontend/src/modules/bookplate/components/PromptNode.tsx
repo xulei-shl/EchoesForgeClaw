@@ -13,6 +13,7 @@ export interface PromptNodeProps {
   id: string;
   initialX?: number;
   initialY?: number;
+  title?: string;
   content: string;
   /** Agent 模式中间步骤（工具调用 / 思考状态） */
   agentSteps?: AgentStep[];
@@ -39,6 +40,7 @@ const PromptNodeInner: React.FC<PromptNodeProps> = ({
   id,
   initialX,
   initialY,
+  title,
   content,
   agentSteps,
   agentName,
@@ -146,7 +148,7 @@ const PromptNodeInner: React.FC<PromptNodeProps> = ({
       id={id}
       initialX={initialX}
       initialY={initialY}
-      title="图像提示词"
+      title={title || "图像提示词"}
       onRemove={() => onRemove?.(id)}
       onPositionChange={onPositionChange}
       onSizeChange={onSizeChange}
