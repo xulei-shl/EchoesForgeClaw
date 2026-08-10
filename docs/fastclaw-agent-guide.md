@@ -40,7 +40,8 @@
 | 接口 | 说明 |
 |------|------|
 | `POST {base_url}/api/chat/stream` | FastClaw 富事件 SSE 流。请求体 `{agentId, sessionId, message, imageUrls?, params?}`，鉴权 `Authorization: Bearer fcak_...`，`X-Fastclaw-End-User` 携带应用用户标识（会话/记忆/用量按用户隔离） |
-| `GET {base_url}/v1/agents` | 列出该 API Key 可访问的 Agent（供 admin 配置页「拉取」按钮使用） |
+| `GET {base_url}/api/agents` | **（推荐）** 列出该 API Key 可访问的 Agent 并返回**真实名字**（`AgentRecord.name`）；admin 配置页「拉取」优先调用 |
+| `GET {base_url}/v1/agents` | 上游标准接口：按 API Key 作用域列出 Agent（admin/user 列所属账号，agent 类型列 ACL）。**注意其 `name` 字段与 `id` 相同**（FastClaw 固有限制），仅作「拉取」的兼容回退 |
 
 ### 2.2 Agent 事件归一化（`backend/app/services/fastclaw_service.py`）
 
@@ -75,6 +76,7 @@ FastClaw 原始事件 → 统一 dict 事件流，SSE 端点再映射为 bookpla
 |------|------|
 | 新表 `fastclaw_agent_configs` | `id / name / base_url / api_key / agent_id / is_active / created_at / updated_at` |
 | `stage_configs.agent_config_id` | 外键 → `fastclaw_agent_configs.id`，命名约束 `fk_stage_configs_agent_config_id`，可空 |
+| `fastclaw_agent_configs.agent_name`（本次新迁移） | FastClaw agent 的**真实名字**（如 `Xulei`，对应 AgentRecord.name）：拉取选择时随保存落库；存量配置由 admin 列表接口懒解析回填（并发 + 短超时 + TTL 缓存，失败不影响列表）。画布节点 / 阶段配置优先展示它而非不可读的 `agt_xxx` |
 
 > **SQLite 注意**：对已有表添加带外键的列必须用 batch 模式（copy-and-move），迁移已按此实现，且**必须命名外键约束**否则 batch 模式报错。升级/降级循环已验证（`upgrade head` → `downgrade -1` → `upgrade head`）。
 
@@ -93,13 +95,13 @@ alembic upgrade head
 
 | 文件 | 说明 |
 |------|------|
-| `app/models/fastclaw_agent_config.py` | 新模型。**api_key 明文存库**，任何接口只回 `has_api_key` 布尔标记，永不回传 key |
+| `app/models/fastclaw_agent_config.py` | 新模型。**api_key 明文存库**，任何接口只回 `has_api_key` 布尔标记，永不回传 key；含 `agent_name`（FastClaw 真实名字，回填用） |
 | `app/models/stage_config.py` | 增加 `agent_config_id` 列与 `agent_config` relationship |
 | `app/schemas/admin.py` | `FastClawAgentConfigCreate/Update/Out` + `StageConfig` 相关 schema 增加 `agent_config_id` |
 | `app/api/admin/fastclaw_agents.py` | **新增**：`/api/admin/fastclaw-agents` CRUD（仅 admin）。删除时自动将引用它的阶段配置 `agent_config_id` 置空，避免悬空外键 |
 | `app/api/admin/stage_configs.py` | 创建/更新阶段配置时**校验模式互斥**：`agent_config_id` 与 `llm_config_id`/`prompt_id` 只能选择一组 |
 | `app/services/fastclaw_service.py` | **新增**：`FastClawAgentService.run_agent`（SSE 代理 + 归一化）、`list_agents`（`/v1/agents`）、`extract_image_url` |
-| `app/modules/bookplate/router.py` | 新增 `_resolve_agent_config` / `_agent_session_key` / `_sse_from_agent_event` / `_agent_prompt_message` / `_agent_image_message`；`generate-prompt` 与 `generate-image` 增加 Agent 模式分支；新增 `/fastclaw-probe` 与 `/effective-config` 接口 |
+| `app/modules/bookplate/router.py` | 新增 `_resolve_agent_config` / `_agent_session_key` / `_sse_from_agent_event` / `_agent_prompt_message`；`generate-prompt` 与 `generate-image` 增加 Agent 模式分支；新增 `/fastclaw-probe` 与 `/effective-config` 接口 |
 | `app/services/image_service.py` | 新增 `save_remote_image`（下载远端图片落盘） |
 
 ### 4.2 新增接口
@@ -108,7 +110,7 @@ alembic upgrade head
 |------|------|------|------|
 | GET/POST | `/api/admin/fastclaw-agents` | admin | Agent 配置列表 / 新建 |
 | PATCH/DELETE | `/api/admin/fastclaw-agents/{id}` | admin | 修改（api_key 留空=保留原 Key）/ 删除（解除引用） |
-| GET | `/api/modules/bookplate/fastclaw-probe` | **仅 admin** | 用调用者传入的 base_url+api_key 探测 `/v1/agents`，供 admin 页「拉取」按钮使用 |
+| GET | `/api/modules/bookplate/fastclaw-probe` | **仅 admin** | 用调用者传入的 base_url+api_key 探测 FastClaw：优先 `GET /api/agents`（返回真实名字），失败/为空时回退 `GET /v1/agents`（name=id），供 admin 页「拉取」按钮使用。**编辑场景**：api_key 留空（前端拿不到已保存的 Key）时可传 `config_id`，服务端用库中保存的 base_url/api_key 探测 |
 | GET | `/api/modules/bookplate/effective-config` | 登录用户 | 返回各阶段生效模式 `{stage2: {mode, agent_name}, ...}`，前端据此决定调用方式与中间步骤展示 |
 
 > **安全说明**：`/fastclaw-probe` 会以调用者提供的参数向任意地址发起服务端请求（SSRF 面），因此强制 admin 权限；普通用户调用返回 403。已用 E2E 验证。
@@ -124,7 +126,7 @@ alembic upgrade head
 
 | 文件 | 说明 |
 |------|------|
-| `src/platform/types/index.ts` | 新增 `FastClawAgentConfig(Payload)`、`StageConfig.agent_config_id`、`BookplateEffectiveConfig`、`AgentStep`；`GenerationStageResults.stage2/stage3` 增加 `agent_steps` |
+| `src/platform/types/index.ts` | 新增 `FastClawAgentConfig(Payload)`、`StageConfig.agent_config_id`、`BookplateEffectiveConfig`、`AgentStep`；`FastClawAgentConfig.agent_name`、`StageConfig.agent_config_agent_name`（真实名字展示）；`GenerationStageResults.stage2/stage3` 增加 `agent_steps` |
 | `src/platform/services/admin.ts` | FastClaw Agent CRUD API |
 | `src/admin/pages/FastClawAgentsPage.tsx` | **新增**：Agent 配置页（增删改 + 启用开关 + 「拉取」自动获取 agent_id） |
 | `src/admin/AdminLayout.tsx` | 新增「Agent 配置」导航项 |
@@ -189,9 +191,11 @@ alembic upgrade head
 |------|---------|
 | 阶段已绑 Agent 但画布仍走 LLM | `/effective-config` 返回的 `mode`；检查 Agent 配置 `is_active` / api_key 是否为空 / base_url 可达 |
 | 「拉取」提示没有可访问的 Agent，但 curl `GET /v1/agents` 能列出 | 探测接口**不带** `X-Fastclaw-End-User` 头（该头会让 FastClaw 切到懒创建的 app-user 空间，其下无任何 Agent，列表必空）；确认 Key 类型与归属：admin/user 类型列出所属账号的 Agent，agent 类型仅列出 ACL 绑定的 Agent |
+| 「拉取」只显示 `agt_xxx` 这样的 id，看不到可读名字 | 上游 `GET /v1/agents` 的 `name` 字段与 `id` 相同是 FastClaw 固有限制；探测接口已改为优先调 dashboard `GET /api/agents` 获取真实名字（`AgentRecord.name`，如 admin 账号下创建的 Agent）。若仍只见 id，说明该 FastClaw 版本无 `/api/agents`，已自动回退 |
 | 前端报「FastClaw /api/chat/stream 返回 HTTP xxx」 | 检查 base_url 路径、`fcak_...` Key 权限、Agent 是否存在 |
 | 提示词文本重复 | 正常不会发生；若复现，检查 `run_agent` 的 saw_delta 去重逻辑是否被改动 |
 | 阶段 3 无图片 | Agent 回复中无 markdown 图片 / 无裸图片 URL；`extract_image_url` 只认 `![..](url)` 与 `http(s)://...png|jpg|webp|gif`；确认 FastClaw 侧 image_gen 工具可用 |
+| 阶段 2 报「API error 500: ... port 8000 is not allowed / count_token_failed」 | 旧实现把本机图片 URL（`localhost:8000` 的 `/cover` 代理地址）传给 Agent，模型服务商（如 AgnesAI）要**回源下载图片**做 token 计数，其 SSRF 防护拒绝本机/内网端口，且云端模型本就访问不到你的 localhost。**现行为**：各阶段提示词**全部配置驱动，代码无硬编码**——用户消息只传数据（元数据 + 封面分析结果 / 纯提示词 / 图片），指令来自系统提示（LLM 模式，`/admin/stage-configs` 绑定的提示词模板）或 FastClaw Agent 侧配置（Agent 模式，在 FastClaw 管理后台配置）。封面分析（stage2.cover）按 `/admin/stage-configs` 配置执行——绑定 Agent 走 Agent（图片以 base64 data URL 内联），绑定模型走 LLM API，未绑定/封面不可得/分析失败则跳过。若仍复现，确认本模块代码已更新并重启后端 |
 | 删除 Agent 配置后阶段变空 | 预期行为：引用它的阶段配置 `agent_config_id` 自动置空，回退 LLM/环境变量/Mock |
 | 图片 URL 下载失败 | FastClaw 返回的 URL 是否公网可达（后端需能直连）；确认不是内网地址 |
 

@@ -11,6 +11,7 @@
 /* Streamdown markdown 渲染器的样式扫描 */
 @source "../node_modules/streamdown/dist/*.js";
 @source "../node_modules/@streamdown/cjk/dist/*.js";
+@source "../node_modules/@streamdown/code/dist/*.js";
 
 /* ========== 设计 Token（CSS 自定义属性） ========== */
 @theme {
@@ -253,4 +254,13 @@ h1, h2, h3, h4, h5, h6 {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ========== Streamdown 代码块换行 ========== */
+[data-streamdown="code-block"],
+[data-streamdown="code-block"] > code,
+[data-streamdown="code-block"] pre {
+  white-space: pre-wrap !important;
+  word-wrap: break-word !important;
+  word-break: break-all !important;
 }

@@ -10,6 +10,7 @@ export interface CanvasActionBarProps {
   /** 最近生成图片的收藏 / 公开状态 */
   isFavorited?: boolean;
   isPublic?: boolean;
+  isMockImage?: boolean;
   onClear: () => void;
   onExport: () => void;
   onFavorite?: () => void;
@@ -30,6 +31,7 @@ export const CanvasActionBar: React.FC<CanvasActionBarProps> = ({
   hasImage,
   isFavorited = false,
   isPublic = false,
+  isMockImage = false,
   onClear,
   onExport,
   onFavorite,
@@ -116,8 +118,8 @@ export const CanvasActionBar: React.FC<CanvasActionBarProps> = ({
         </Tooltip>
         <Tooltip content={isFavorited ? '取消收藏' : '收藏（作用于选中节点）'}>
           <button
-            className={btnClass(!hasImage)}
-            disabled={!hasImage || !onFavorite}
+            className={btnClass(!hasImage || isMockImage)}
+            disabled={!hasImage || !onFavorite || isMockImage}
             onClick={onFavorite}
           >
             <Heart
@@ -129,8 +131,8 @@ export const CanvasActionBar: React.FC<CanvasActionBarProps> = ({
         </Tooltip>
         <Tooltip content={isPublic ? '从画廊撤下' : '公开到画廊（作用于选中节点）'}>
           <button
-            className={btnClass(!hasImage)}
-            disabled={!hasImage || !onPublic}
+            className={btnClass(!hasImage || isMockImage)}
+            disabled={!hasImage || !onPublic || isMockImage}
             onClick={onPublic}
           >
             <Globe size={18} strokeWidth={1.5} className={isPublic ? 'text-accent' : ''} />

@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
@@ -11,6 +13,7 @@ from app.schemas.admin import (
     FastClawAgentConfigUpdate,
     FastClawAgentConfigOut,
 )
+from app.services.fastclaw_service import fastclaw_agent_service
 
 router = APIRouter(prefix="/admin/fastclaw-agents", tags=["admin-fastclaw-agents"])
 
@@ -20,6 +23,7 @@ def _to_out(cfg: FastClawAgentConfig) -> FastClawAgentConfigOut:
     return FastClawAgentConfigOut(
         id=cfg.id,
         name=cfg.name,
+        agent_name=cfg.agent_name,
         base_url=cfg.base_url,
         agent_id=cfg.agent_id,
         is_active=cfg.is_active,
@@ -30,15 +34,34 @@ def _to_out(cfg: FastClawAgentConfig) -> FastClawAgentConfigOut:
 
 
 @router.get("", response_model=List[FastClawAgentConfigOut])
-def list_fastclaw_agents(
+async def list_fastclaw_agents(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_admin_user),
 ):
-    """FastClaw Agent 配置列表。"""
-    return [
-        _to_out(c)
-        for c in db.query(FastClawAgentConfig).order_by(FastClawAgentConfig.id.asc()).all()
-    ]
+    """FastClaw Agent 配置列表。
+
+    存量配置缺 agent_name（FastClaw 真实名字）时懒解析回填：用库中保存的
+    base_url/api_key 向 FastClaw 解析并写回（并发 + 短超时 + TTL 缓存），
+    失败不影响列表返回（best-effort）。
+    """
+    configs = db.query(FastClawAgentConfig).order_by(FastClawAgentConfig.id.asc()).all()
+    pending = [c for c in configs if c.agent_id and not c.agent_name]
+    if pending:
+        results = await asyncio.gather(
+            *(
+                fastclaw_agent_service.resolve_agent_name(c.base_url, c.api_key, c.agent_id)
+                for c in pending
+            ),
+            return_exceptions=True,
+        )
+        changed = False
+        for c, name in zip(pending, results):
+            if isinstance(name, str) and name:
+                c.agent_name = name
+                changed = True
+        if changed:
+            db.commit()
+    return [_to_out(c) for c in configs]
 
 
 @router.post("", response_model=FastClawAgentConfigOut)

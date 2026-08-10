@@ -2,8 +2,9 @@ import asyncio
 import json
 import logging
 import re
+import time
 from dataclasses import dataclass
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 import httpx
 
@@ -12,6 +13,12 @@ logger = logging.getLogger(__name__)
 # FastClaw /api/chat/stream 请求超时（秒）。agent 思考/工具执行可能很久，
 # 连接阶段给 15s，读阶段不设上限（由调用方按空闲超时自行中止）。
 CONNECT_TIMEOUT = 15.0
+
+# agent_id → FastClaw 真实名字的进程内 TTL 缓存（key: (base_url, api_key, agent_id)）。
+# 用于给存量配置回填可读名字：成功缓存 5 分钟，失败（FastClaw 不可达）30 秒内不重试。
+_AGENT_NAME_CACHE: Dict[Tuple[str, str, str], Tuple[Optional[str], float]] = {}
+_AGENT_NAME_CACHE_TTL = 300.0
+_AGENT_NAME_FAIL_TTL = 30.0
 
 
 class FastClawAgentError(Exception):
@@ -129,21 +136,93 @@ class FastClawAgentService:
         base_url: str,
         api_key: str,
         end_user: str = "",
+        timeout: float = CONNECT_TIMEOUT,
     ) -> List[Dict[str, Any]]:
-        """列出该 API Key 可访问的 FastClaw agent（供 admin 页面拉取候选）。"""
-        url = base_url.rstrip("/") + "/v1/agents"
+        """列出该 API Key 可访问的 FastClaw agent（供 admin 页面拉取候选）。
+
+        优先调 FastClaw dashboard 接口 `GET /api/agents`——它返回 agent 的真实
+        名字（AgentRecord.name）；上游 `GET /v1/agents` 的 name 字段与 id 相同
+        （buildAgentList 硬编码 `"name": ag.Name()`），对人不可读。
+
+        兼容性回退：/api/agents 不存在（旧版本）、报错或返回空列表时回退到
+        /v1/agents（此时 name=id）。两者都**不能**带 X-Fastclaw-End-User 头，
+        否则 FastClaw 会切到无 Agent 的 app-user 空间导致列表为空。
+        """
+        base = base_url.rstrip("/")
         headers = {"Authorization": f"Bearer {api_key}", "Accept": "application/json"}
         if end_user:
             headers["X-Fastclaw-End-User"] = end_user
-        try:
-            async with httpx.AsyncClient(timeout=CONNECT_TIMEOUT) as client:
-                resp = await client.get(url, headers=headers)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            # 1) dashboard 接口：带真实名字。仅当返回 200 且列表非空才采用，
+            #    空列表不信任（agent 类型 Key 的「所属账号」可能没有 agent，
+            #    但 /v1/agents 仍能按 ACL 列出绑定的 agent）。
+            try:
+                resp = await client.get(base + "/api/agents", headers=headers)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    agents = data.get("agents") if isinstance(data, dict) else None
+                    if agents:
+                        return [
+                            {
+                                "id": a.get("id", "") if isinstance(a, dict) else "",
+                                "name": (a.get("name") or a.get("id") or "") if isinstance(a, dict) else "",
+                                # 该接口的 model 仅来自 agent 级配置（通常为空），
+                                # 与 /v1/agents 的全量解析结果口径不同；前端暂不使用
+                                "model": a.get("model", "") if isinstance(a, dict) else "",
+                            }
+                            for a in agents
+                        ]
+            except (httpx.HTTPError, ValueError):
+                pass  # 网络/JSON 解析失败走回退分支
+            # 2) 上游接口回退：name 与 id 相同
+            try:
+                resp = await client.get(base + "/v1/agents", headers=headers)
+            except httpx.HTTPError as exc:
+                raise FastClawAgentError(f"连接 FastClaw 失败: {exc}") from exc
             if resp.status_code != 200:
                 raise FastClawAgentError(f"FastClaw /v1/agents 返回 HTTP {resp.status_code}")
             data = resp.json()
             return data.get("agents", []) if isinstance(data, dict) else []
-        except httpx.HTTPError as exc:
-            raise FastClawAgentError(f"连接 FastClaw 失败: {exc}") from exc
+
+    async def resolve_agent_name(
+        self,
+        base_url: str,
+        api_key: str,
+        agent_id: str,
+        timeout: float = 3.0,
+    ) -> Optional[str]:
+        """解析 agent_id 对应的 FastClaw 真实名字（AgentRecord.name，如 "Xulei"）。
+
+        带进程内 TTL 缓存（成功 5 分钟 / 失败 30 秒）；FastClaw 不可达或未找到时
+        返回 None 且短时间内不重试，用于给存量配置回填可读名字（best-effort，不抛错）。
+        """
+        if not agent_id:
+            return None
+        key = (base_url.rstrip("/"), api_key, agent_id)
+        now = time.monotonic()
+        cached = _AGENT_NAME_CACHE.get(key)
+        if cached and cached[1] > now:
+            return cached[0]
+        name: Optional[str] = None
+        try:
+            agents = await self.list_agents(
+                base_url=base_url, api_key=api_key, timeout=timeout
+            )
+            for a in agents:
+                if isinstance(a, dict) and a.get("id") == agent_id:
+                    candidate = a.get("name")
+                    # 仅接受与 id 不同的可读名字：/v1/agents 回退路径 name==id，
+                    # 此时视为未解析（返回 None），避免把 agt_xxx 当名字持久化
+                    if isinstance(candidate, str) and candidate and candidate != agent_id:
+                        name = candidate
+                    break
+        except Exception:
+            name = None
+        _AGENT_NAME_CACHE[key] = (
+            name,
+            now + (_AGENT_NAME_CACHE_TTL if name else _AGENT_NAME_FAIL_TTL),
+        )
+        return name
 
 
 async def _iter_sse(lines):

@@ -1349,6 +1349,7 @@ const BookplatePage: React.FC = () => {
                   }
                   isGenerating={node.data.isGenerating}
                   error={node.data.error}
+                  isMock={node.data.isMock}
                   isFavorited={!!favoritedState[node.id]}
                   isPublic={!!publishedState[node.id]}
                   isSelected={node.id === activeImage?.id}
@@ -1375,6 +1376,7 @@ const BookplatePage: React.FC = () => {
           hasImage={!!activeImage?.data?.imageUrl}
           isFavorited={activeImage ? !!favoritedState[activeImage.id] : false}
           isPublic={activeImage ? !!publishedState[activeImage.id] : false}
+          isMockImage={activeImage ? !!activeImage.data?.isMock : false}
           onClear={handleClear}
           onExport={handleExport}
           onFavorite={handleBarFavorite}

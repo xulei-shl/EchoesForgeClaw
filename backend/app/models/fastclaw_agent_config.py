@@ -16,6 +16,9 @@ class FastClawAgentConfig(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
+    # FastClaw agent 的真实名字（AgentRecord.name，如 "Xulei"），由「拉取」选择或
+    # admin 列表懒解析回填；供画布节点 / 阶段配置等界面展示可读名字（agent_id 不可读）
+    agent_name = Column(String, default="", nullable=False)
     base_url = Column(String, default="", nullable=False)
     api_key = Column(String, default="", nullable=False)
     agent_id = Column(String, default="", nullable=False)

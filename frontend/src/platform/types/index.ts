@@ -124,6 +124,8 @@ export interface PromptTemplatePayload {
 export interface FastClawAgentConfig {
   id: number;
   name: string;
+  /** FastClaw agent 真实名字（如 "Xulei"），拉取选择/懒解析回填后可用 */
+  agent_name?: string;
   base_url: string;
   agent_id: string;
   is_active: boolean;
@@ -134,6 +136,7 @@ export interface FastClawAgentConfig {
 
 export interface FastClawAgentConfigPayload {
   name: string;
+  agent_name?: string;
   base_url?: string;
   api_key?: string;
   agent_id?: string;
@@ -150,6 +153,8 @@ export interface StageConfig {
   llm_config_name: string | null;
   prompt_name: string | null;
   agent_config_name: string | null;
+  /** 绑定 agent 的 FastClaw 真实名字（如 "Xulei"） */
+  agent_config_agent_name?: string | null;
   created_at: string;
 }
 

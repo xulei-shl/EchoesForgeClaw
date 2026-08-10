@@ -19,9 +19,9 @@ export interface ImageNodeProps {
   agentName?: string;
   isGenerating: boolean;
   error?: string | null;
-  /** 当前节点图片是否已收藏 / 已公开 */
   isFavorited?: boolean;
   isPublic?: boolean;
+  isMock?: boolean;
   onRemove?: (id: string) => void;
   onRetry?: (id: string) => void;
   /** 收藏切换，resolve 为新的收藏状态；失败时 reject */
@@ -50,6 +50,7 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
   error,
   isFavorited = false,
   isPublic = false,
+  isMock = false,
   isSelected = false,
   recordDeleted = false,
   onSelect,
@@ -132,7 +133,7 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
           <Tooltip content={isFavorited ? '取消收藏' : '收藏'}>
             <button
               onClick={() => runToggle(onToggleFavorite, (active) => (active ? '已收藏' : '已取消收藏'))}
-              disabled={!imageUrl || isGenerating || !onToggleFavorite}
+              disabled={!imageUrl || isGenerating || !onToggleFavorite || isMock}
               className={actionBtn}
             >
               <Heart
@@ -144,8 +145,8 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
           </Tooltip>
           <Tooltip content={isPublic ? '从画廊撤下' : '公开到画廊'}>
             <button
-              onClick={() => runToggle(onTogglePublic, (active) => (active ? '已公开到画廊' : '已从画廊撤下'))}
-              disabled={!imageUrl || isGenerating || !onTogglePublic}
+              onClick={() => runToggle(onTogglePublic, (active) => (active ? '已公开' : '已撤下'))}
+              disabled={!imageUrl || isGenerating || !onTogglePublic || isMock}
               className={actionBtn}
             >
               <Globe size={16} strokeWidth={1.5} className={isPublic ? 'text-accent' : ''} />

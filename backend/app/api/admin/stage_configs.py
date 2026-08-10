@@ -41,6 +41,7 @@ def _to_out(sc: StageConfig) -> StageConfigOut:
         llm_config_name=sc.llm_config.name if sc.llm_config else None,
         prompt_name=sc.prompt.name if sc.prompt else None,
         agent_config_name=sc.agent_config.name if sc.agent_config else None,
+        agent_config_agent_name=sc.agent_config.agent_name if sc.agent_config else None,
         created_at=sc.created_at,
         updated_at=sc.updated_at,
     )

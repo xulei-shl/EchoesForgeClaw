@@ -116,7 +116,6 @@ class LLMService:
                     {
                         "role": "user",
                         "content": [
-                            {"type": "text", "text": "请分析这张图书封面图片。"},
                             {"type": "image_url", "image_url": {"url": data_url}},
                         ],
                     },
@@ -164,14 +163,16 @@ class LLMService:
         )
         base_url = config.base_url if config and config.base_url else None
 
-        prompt = "基于以下图书元数据和封面分析，生成一段生动的图像生成提示词：\n"
+        # 用户消息只携带数据（图书元数据 + 封面分析结果），不含任何指令；
+        # 图像提示词生成的指令来自阶段配置绑定的系统提示词模板。
+        parts = []
         for k, v in metadata.items():
             if k in ("cover_image", "cover_image_local", "coverUrl"):
                 continue
-            prompt += f"{k}: {v}\n"
+            parts.append(f"{k}: {v}")
         if cover_analysis:
-            prompt += f"\n封面分析结果：\n{cover_analysis}\n"
-        prompt += "\n请结合元数据和封面分析生成图像提示词。"
+            parts.append(f"封面分析结果：\n{cover_analysis}")
+        prompt = "\n".join(parts) if parts else ""
 
         # 显式超时并关闭 SDK 自带重试：超时后直接失败，不自动重试
         client = AsyncOpenAI(

@@ -1,6 +1,6 @@
 import React, { memo, useState, useRef, useEffect } from 'react';
 import { Sparkles, Pencil, Check, X, RefreshCw, ChevronDown, ChevronRight, ImageIcon, Upload, AlertTriangle } from 'lucide-react';
-import { Streamdown, cjk } from '../../../platform/utils/markdown';
+import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
 import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { BeamGlow } from '../../../platform/components/node/BeamGlow';
@@ -255,13 +255,7 @@ const PromptNodeInner: React.FC<PromptNodeProps> = ({
       actionBar={renderActionBar()}
     >
       <div className="relative h-full flex flex-col flex-1 min-h-0">
-        {/* Agent 模式中间步骤（可折叠） */}
-        <AgentActivity
-          steps={agentSteps}
-          agentName={agentName}
-          running={isGenerating && !!agentName}
-        />
-        {/* 第一步：封面图像分析（可折叠） */}
+        {/* 第一步：封面图像分析（可折叠）——先于 Agent 步骤展示，与实际执行顺序一致 */}
         {coverAnalysis && (
           <div className="shrink-0 min-h-0 border-b border-dashed border-paper-grid pb-2 mb-2">
             <button
@@ -279,6 +273,12 @@ const PromptNodeInner: React.FC<PromptNodeProps> = ({
             )}
           </div>
         )}
+        {/* 第二步：Agent 模式中间步骤（可折叠）——封面分析完成后才进行 */}
+        <AgentActivity
+          steps={agentSteps}
+          agentName={agentName}
+          running={isGenerating && !!agentName}
+        />
         <div className="relative z-10 flex flex-col h-full flex-1 min-h-0">
           {isEditing ? (
             <div className="flex flex-col flex-1 min-h-0 gap-2">
@@ -356,10 +356,9 @@ const PromptNodeInner: React.FC<PromptNodeProps> = ({
                   </div>
                 )}
                 <Streamdown
-                  plugins={{ cjk }}
+                  plugins={{ cjk, code }}
                   isAnimating={isGenerating}
                   caret="block"
-                  controls={false}
                   linkSafety={{ enabled: false }}
                 >
                   {normalizeMarkdown(content) || (!error ? '等待生成...' : '')}

@@ -111,6 +111,8 @@ class PromptTemplateOut(BaseModel):
 
 class FastClawAgentConfigBase(BaseModel):
     name: str
+    # FastClaw agent 的真实名字（如 "Xulei"），拉取选择时随请求带上，供界面展示
+    agent_name: str = ""
     base_url: str = ""
     agent_id: str = ""
     is_active: bool = True
@@ -122,6 +124,7 @@ class FastClawAgentConfigCreate(FastClawAgentConfigBase):
 
 class FastClawAgentConfigUpdate(BaseModel):
     name: Optional[str] = None
+    agent_name: Optional[str] = None
     base_url: Optional[str] = None
     api_key: Optional[str] = None  # 留空/None 表示不修改
     agent_id: Optional[str] = None
@@ -131,6 +134,7 @@ class FastClawAgentConfigUpdate(BaseModel):
 class FastClawAgentConfigOut(BaseModel):
     id: int
     name: str
+    agent_name: str = ""
     base_url: str
     agent_id: str
     is_active: bool
@@ -172,6 +176,8 @@ class StageConfigOut(BaseModel):
     llm_config_name: Optional[str] = None
     prompt_name: Optional[str] = None
     agent_config_name: Optional[str] = None
+    # 绑定 agent 的 FastClaw 真实名字（如 "Xulei"），供列表展示可读名字
+    agent_config_agent_name: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

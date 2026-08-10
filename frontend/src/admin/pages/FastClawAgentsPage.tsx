@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Bot,
   KeyRound,
@@ -27,6 +27,8 @@ interface FormState {
   base_url: string;
   api_key: string;
   agent_id: string;
+  /** FastClaw agent 真实名字（拉取选择时记录，随保存落库） */
+  agent_name: string;
   is_active: boolean;
 }
 
@@ -35,8 +37,16 @@ const EMPTY_FORM: FormState = {
   base_url: '',
   api_key: '',
   agent_id: '',
+  agent_name: '',
   is_active: true,
 };
+
+/** 「拉取」返回的 FastClaw agent（id 必填；name 为真实名字，无名字时与 id 相同） */
+interface PulledAgent {
+  id: string;
+  name: string;
+  model: string;
+}
 
 export const FastClawAgentsPage: React.FC = () => {
   const [items, setItems] = useState<FastClawAgentConfig[]>([]);
@@ -49,6 +59,11 @@ export const FastClawAgentsPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const [pullingAgents, setPullingAgents] = useState(false);
+  /** 拉取结果列表；非空时表单弹窗切换为「选择 Agent」单选列表 */
+  const [pullAgents, setPullAgents] = useState<PulledAgent[] | null>(null);
+  const [pickedAgentId, setPickedAgentId] = useState('');
+  /** 拉取列表的搜索关键词（匹配名字 / ID / 模型） */
+  const [pullSearch, setPullSearch] = useState('');
   const { dialog, showToast } = useFeedback();
 
   const load = useCallback(async () => {
@@ -73,6 +88,9 @@ export const FastClawAgentsPage: React.FC = () => {
     setFormError('');
     setEditing(null);
     setShowCreate(false);
+    setPullAgents(null);
+    setPickedAgentId('');
+    setPullSearch('');
   };
 
   const openCreate = () => {
@@ -88,23 +106,39 @@ export const FastClawAgentsPage: React.FC = () => {
       base_url: c.base_url,
       api_key: '',
       agent_id: c.agent_id,
+      agent_name: c.agent_name || '',
       is_active: c.is_active,
     });
     setFormError('');
   };
 
-  /** 拉取该 Key 可访问的 FastClaw agent 列表（GET /v1/agents），方便填入 agent_id */
+  /** 拉取该 Key 可访问的 FastClaw agent 列表（优先 /api/agents 拿真实名字），弹出列表供手动选择 */
   const handlePullAgents = async () => {
-    if (!form.base_url.trim() || !form.api_key.trim()) {
-      setFormError('请先填写 Base URL 与 API Key');
+    // 新建：需填 Base URL + API Key；编辑：api_key 留空（前端拿不到已保存的 Key）时
+    // 传 config_id，由服务端用库中保存的 Key 探测；显式输入的 Base URL/Key 优先
+    const params: Record<string, string | number> = {};
+    if (form.base_url.trim()) {
+      params.base_url = form.base_url.trim();
+    } else if (editing?.base_url) {
+      params.base_url = editing.base_url;
+    } else {
+      setFormError('请先填写 Base URL');
+      return;
+    }
+    if (form.api_key.trim()) {
+      params.api_key = form.api_key.trim();
+    } else if (editing?.has_api_key) {
+      // 编辑且原配置已有 Key：Key 留空时用库中已保存的 Key
+      params.config_id = editing.id;
+    } else {
+      // 新建，或编辑的配置原本没有 Key：必须填写
+      setFormError('请先填写 API Key');
       return;
     }
     setPullingAgents(true);
     setFormError('');
     try {
-      const data: any = await api.get('/modules/bookplate/fastclaw-probe', {
-        params: { base_url: form.base_url.trim(), api_key: form.api_key.trim() },
-      });
+      const data: any = await api.get('/modules/bookplate/fastclaw-probe', { params });
       const agents = Array.isArray(data?.agents) ? data.agents : [];
       if (agents.length === 0) {
         showToast(
@@ -113,12 +147,16 @@ export const FastClawAgentsPage: React.FC = () => {
         );
         return;
       }
-      // 自动填入第一个 agent；全部罗列在提示中
-      setForm({ ...form, agent_id: agents[0].id || '' });
-      showToast(
-        `已从 FastClaw 拉取 ${agents.length} 个 Agent（${agents.map((a: any) => a.id).join(', ')}）`,
-        { type: 'success' }
+      // 弹出单选列表，由管理员手动点选要绑定的 Agent（不再自动填入第一个）
+      setPullAgents(
+        agents.map((a: any) => ({
+          id: a.id || '',
+          name: (a.name && a.name !== a.id ? a.name : a.id) || '',
+          model: a.model || '',
+        }))
       );
+      setPickedAgentId('');
+      setPullSearch('');
     } catch (e: any) {
       setFormError(e?.message || '拉取失败，请检查 Base URL 与 API Key');
     } finally {
@@ -126,15 +164,37 @@ export const FastClawAgentsPage: React.FC = () => {
     }
   };
 
+  /** 拉取列表按关键词过滤后的结果（名字 / ID / 模型，不区分大小写） */
+  const filteredPullAgents = useMemo(() => {
+    if (!pullAgents) return [];
+    const q = pullSearch.trim().toLowerCase();
+    if (!q) return pullAgents;
+    return pullAgents.filter(
+      (a) =>
+        a.name.toLowerCase().includes(q) ||
+        a.id.toLowerCase().includes(q) ||
+        a.model.toLowerCase().includes(q)
+    );
+  }, [pullAgents, pullSearch]);
+
+  /** 确认选择：把选中的 Agent id + 真实名字写入表单并关闭列表 */
+  const handleApplyPicked = () => {
+    if (!pickedAgentId) return;
+    const picked = pullAgents?.find((a) => a.id === pickedAgentId);
+    setForm({ ...form, agent_id: pickedAgentId, agent_name: picked?.name || '' });
+    showToast(`已选择 Agent：${picked?.name || pickedAgentId}`, { type: 'success' });
+    setPullAgents(null);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) return setFormError('请输入配置名称');
-    if (!form.agent_id.trim()) return setFormError('请输入 Agent ID（可点击「拉取」自动获取）');
+    if (!form.agent_id.trim()) return setFormError('请输入 Agent ID（可点击「拉取」从列表中选择）');
 
     setSaving(true);
     setFormError('');
     try {
-      const base = { name: form.name.trim(), base_url: form.base_url.trim(), agent_id: form.agent_id.trim(), is_active: form.is_active };
+      const base = { name: form.name.trim(), agent_name: form.agent_name.trim(), base_url: form.base_url.trim(), agent_id: form.agent_id.trim(), is_active: form.is_active };
       if (editing) {
         const payload: Record<string, any> = { ...base };
         if (form.api_key) payload.api_key = form.api_key.trim();
@@ -198,14 +258,93 @@ export const FastClawAgentsPage: React.FC = () => {
       {/* 新建/编辑表单弹窗 */}
       <Dialog
         open={showCreate || !!editing}
-        onClose={resetForm}
+        // 选择列表打开时，遮罩/Esc 只收起列表，不关闭整个表单（避免误触清空已填的 Base URL/Key）
+        onClose={pullAgents ? () => setPullAgents(null) : resetForm}
         title={
           <div className="flex items-center gap-2">
             <Bot size={18} strokeWidth={1.5} className="text-accent" />
-            {editing ? `编辑配置：${editing.name}` : '新建 Agent 配置'}
+            {pullAgents
+              ? '选择要绑定的 Agent'
+              : editing
+                ? `编辑配置：${editing.name}`
+                : '新建 Agent 配置'}
           </div>
         }
       >
+        {pullAgents ? (
+          /* 拉取结果单选列表：手动点选后「确定」才写入 agent_id */
+          <div className="space-y-3">
+            <p className="text-xs text-ink-light font-sans">
+              共拉取到 {pullAgents.length} 个 Agent
+              {pullSearch.trim() ? `，匹配 ${filteredPullAgents.length} 个` : ''}
+              ，选择要绑定到本配置的 Agent：
+            </p>
+            <div className="relative">
+              <Search
+                size={14}
+                strokeWidth={1.5}
+                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-faint pointer-events-none"
+              />
+              <Input
+                value={pullSearch}
+                onChange={(e) => setPullSearch(e.target.value)}
+                placeholder="搜索名字 / ID / 模型"
+                className="pl-8"
+                autoFocus
+              />
+            </div>
+            <div className="max-h-[280px] overflow-y-auto space-y-2 pr-1">
+              {filteredPullAgents.length === 0 ? (
+                <p className="text-center text-sm text-ink-faint font-sans py-6">没有匹配的 Agent</p>
+              ) : (
+                filteredPullAgents.map((a) => {
+                  const active = pickedAgentId === a.id;
+                  return (
+                    <button
+                      key={a.id}
+                      type="button"
+                      onClick={() => setPickedAgentId(a.id)}
+                      className={`w-full flex items-start gap-3 rounded-md border p-3 text-left transition-all active:scale-[0.99] ${
+                        active
+                          ? 'border-accent/60 bg-accent-surface ring-1 ring-accent/40'
+                          : 'border-paper-grid hover:border-paper-grid/70 hover:bg-paper-grid/20'
+                      }`}
+                    >
+                      <span
+                        className={`mt-0.5 w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors ${
+                          active ? 'border-accent' : 'border-paper-grid'
+                        }`}
+                      >
+                        {active && <span className="w-1.5 h-1.5 rounded-full bg-accent" />}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-sans text-sm font-medium text-ink truncate">{a.name}</span>
+                        <span className="block text-xs text-ink-faint font-mono truncate mt-0.5">
+                          {a.id}
+                          {a.model ? ` · ${a.model}` : ''}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+            <div className="flex justify-end gap-3 pt-3 border-t border-dashed border-paper-grid">
+              <Button type="button" variant="ghost" size="sm" onClick={() => setPullAgents(null)}>
+                取消
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                // 未选择，或选中项被搜索过滤掉时禁用（避免应用不可见的选中项）
+                disabled={!pickedAgentId || !filteredPullAgents.some((a) => a.id === pickedAgentId)}
+                onClick={handleApplyPicked}
+              >
+                确定
+              </Button>
+            </div>
+          </div>
+        ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 gap-4">
             <div className="space-y-1.5">
@@ -245,7 +384,7 @@ export const FastClawAgentsPage: React.FC = () => {
               <div className="flex gap-2">
                 <Input
                   value={form.agent_id}
-                  onChange={(e) => setForm({ ...form, agent_id: e.target.value })}
+                  onChange={(e) => setForm({ ...form, agent_id: e.target.value, agent_name: '' })}
                   placeholder="agt_..."
                   className="flex-1"
                 />
@@ -264,8 +403,11 @@ export const FastClawAgentsPage: React.FC = () => {
               </div>
               <p className="text-xs text-ink-faint font-sans flex items-center gap-1">
                 <Link2 size={11} strokeWidth={1.5} />
-                填写 Base URL 与 Key 后点击「拉取」自动获取
+                点击「拉取」从弹出列表中选择要绑定的 Agent；编辑时 Key 留空则使用已保存的 Key
               </p>
+              {form.agent_name && (
+                <p className="text-xs text-ink-light font-sans">已识别 Agent：{form.agent_name}</p>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2.5 pt-2">
@@ -282,6 +424,7 @@ export const FastClawAgentsPage: React.FC = () => {
             </Button>
           </div>
         </form>
+        )}
       </Dialog>
 
       {/* 加载态 */}
@@ -326,7 +469,7 @@ export const FastClawAgentsPage: React.FC = () => {
                       </Badge>
                     </div>
                     <div className="mt-1.5 flex items-center gap-3 flex-wrap text-xs text-ink-faint font-mono">
-                      <span>agent_id: {c.agent_id || '—'}</span>
+                      <span title={c.agent_id}>agent: {c.agent_name || c.agent_id || '—'}</span>
                       <span className="max-w-[260px] truncate" title={c.base_url}>
                         base_url: {c.base_url || '—'}
                       </span>

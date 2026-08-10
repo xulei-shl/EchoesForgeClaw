@@ -16,7 +16,7 @@ BookForge 是一个基于"无限画布"工作流的智能藏书票生成系统�
   * **后端**: 将豆瓣 API 爬虫脚本封装为异步 `httpx` 客户端，暴露 `GET /api/modules/bookplate/isbn/{isbn}` 接口。前端实现基于 ISBN 查询并在画布上生成 **Stage 1 (图书元数据)** 节点。
 * **Phase 3 (AI 分析与流式提示词)**：
   * **后端**: 接入 `openai` 与 `sse-starlette`，实现大语言模型流式代理接口 (`POST /api/modules/bookplate/generate-prompt`)。支持在无 `OPENAI_API_KEY` 时自动采用 Mock 打字机流。
-  * **前端**: 引入 `react-markdown` 配合 SSE 实现了流式文本渲染；实现了基于 SVG 的节点连线动效 (`NodeEdge.tsx`)；复刻了 `thinking-orbs` 与 `border-beam` 等高级视觉动效。
+  * **前端**: 引入 `Streamdown` (及 `@streamdown/cjk`, `@streamdown/code` 插件) 配合 SSE 实现了流式文本与代码渲染；实现了基于 SVG 的节点连线动效 (`NodeEdge.tsx`)；复刻了 `thinking-orbs` 与 `border-beam` 等高级视觉动效。
 * **Phase 4 (图像生成与画布最终展示)**：
   * **后端**: 新增 `image_service.py`（OpenAI 兼容图像 API，`images.generate` + b64 落盘）；暴露 `POST /api/modules/bookplate/generate-image`；挂载 `/static` 静态目录提供生成的图片；无 `OPENAI_IMAGE_API_KEY` 时生成**纸面文具风 Mock 藏书票 SVG** 占位图。
   * **前端**: 新增 **Stage 3 节点** `ImageNode.tsx`（图片展示 / 重试 / 收藏 / 删除）；`PromptNode` 增加"生成藏书票"按钮；新增右侧画布操作栏 `CanvasActionBar.tsx`（清空 / 收藏 / 公开 / 导出）；连线锚点改用 `ResizeObserver` 实测节点尺寸（`CanvasNode` 的 `onSizeChange`）。

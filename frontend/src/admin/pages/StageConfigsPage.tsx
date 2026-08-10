@@ -269,10 +269,14 @@ export const StageConfigsPage: React.FC = () => {
                   onChange={(val) => setForm({ ...form, agent_config_id: val === '' ? '' : Number(val) })}
                   options={[
                     { label: '请选择 Agent', value: '' },
-                    ...fastclawAgents.filter(a => a.is_active).map(a => ({
-                      label: `${a.name}（${a.agent_id || '未填 Agent ID'}）`,
-                      value: String(a.id),
-                    }))
+                    ...fastclawAgents.filter(a => a.is_active).map(a => {
+                      // 优先展示 FastClaw 真实名字（如 Xulei），与配置名不同时并列展示
+                      const real = a.agent_name || '';
+                      return {
+                        label: real && real !== a.name ? `${real}（${a.name}）` : a.name,
+                        value: String(a.id),
+                      };
+                    })
                   ]}
                 />
                 {fastclawAgents.filter((a) => a.is_active).length === 0 && (
@@ -379,7 +383,9 @@ export const StageConfigsPage: React.FC = () => {
                         <span className="inline-flex items-center gap-1.5 text-accent">
                           <Bot size={14} strokeWidth={1.5} />
                           <span className="text-ink-faint text-xs">Agent 模式</span>
-                          {sc.agent_config_name ?? <span className="text-ink-faint">未命名 Agent</span>}
+                          {sc.agent_config_agent_name ?? sc.agent_config_name ?? (
+                            <span className="text-ink-faint">未命名 Agent</span>
+                          )}
                         </span>
                       </div>
                     ) : (
