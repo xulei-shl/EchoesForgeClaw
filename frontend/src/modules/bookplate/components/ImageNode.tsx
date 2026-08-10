@@ -95,11 +95,12 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
   const displayError = error || (isMockImage ? 'API 配置缺失，当前为演示占位图' : null);
 
   const actionBtn =
-    'flex items-center justify-center w-7 h-7 rounded-full ' +
+    'relative flex items-center justify-center w-7 h-7 rounded-full ' +
     'text-ink-light hover:text-ink hover:bg-paper-grid/40 ' +
-    'active:scale-[0.96] transition-colors transition-transform ' +
+    'active:scale-[0.96] transition-colors transition-transform duration-150 ease-out ' +
     'disabled:opacity-40 disabled:cursor-not-allowed ' +
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent';
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ' +
+    'after:content-[\'\'] after:absolute after:-inset-1.5';
 
   return (
     <CanvasNode
@@ -113,7 +114,7 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
       onDrag={onDrag}
       resizable
       defaultSize={{ width: 420, height: 540 }}
-      className={`transition-[box-shadow,border-color,opacity] duration-200 ${isLoading ? 'border-transparent' : ''} ${isSelected ? 'ring-2 ring-accent/70 shadow-md' : ''}`}
+      className={`transition-[opacity,transform,box-shadow,border-color] duration-150 ease-out ${isLoading ? 'border-transparent' : ''} ${isSelected ? 'ring-2 ring-accent/70 shadow-md' : ''}`}
       glowOverlay={isLoading ? <BeamGlow /> : undefined}
       showLeftAnchor={true}
       onClick={() => onSelect?.(id)}
@@ -207,7 +208,7 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
                   {/* 悬浮错误提示 */}
                   <div className="absolute inset-x-0 bottom-4 z-10 flex justify-center px-4 pointer-events-none">
                     <div className="bg-paper/95 backdrop-blur-sm shadow-md border border-error/20 rounded-lg p-3 flex items-start gap-2.5 max-w-[95%] pointer-events-auto">
-                      <AlertTriangle size={14} strokeWidth={2} className="text-error shrink-0 mt-0.5" />
+                      <AlertTriangle size={14} strokeWidth={1.5} className="text-error shrink-0 mt-0.5" />
                       <div className="flex-1 min-w-0 font-sans" id={`error-desc-${id}`}>
                         <p className="text-[12px] text-error/90 leading-relaxed break-words">{displayError}</p>
                       </div>
@@ -219,7 +220,7 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
               {/* 全屏提示图标 */}
               {!displayError && (
                 <div className="absolute right-3 bottom-3 p-1.5 rounded bg-black/40 backdrop-blur-sm text-white/90 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-sm flex items-center justify-center">
-                  <Maximize2 size={16} strokeWidth={2} />
+                  <Maximize2 size={16} strokeWidth={1.5} />
                 </div>
               )}
             </div>
@@ -227,7 +228,7 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
             /* 错误态：与 PromptNode 错误横幅同款视觉 */
             <div className="flex-1 flex flex-col gap-3 min-h-[160px]">
               <div className="p-3 rounded-md border border-error/20 bg-error/5 flex items-start gap-2.5">
-                <AlertTriangle size={14} strokeWidth={2} className="text-error shrink-0 mt-0.5" />
+                <AlertTriangle size={14} strokeWidth={1.5} className="text-error shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0 font-sans">
                   <p className="text-[12px] text-error/90 leading-relaxed break-words">{displayError}</p>
                 </div>

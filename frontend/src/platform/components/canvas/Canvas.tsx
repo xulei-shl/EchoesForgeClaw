@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import { CanvasContext } from './CanvasContext';
 
 interface CanvasProps {
@@ -11,6 +11,32 @@ interface CanvasProps {
 export const Canvas: React.FC<CanvasProps> = ({ children, scale, position, onPositionChange }) => {
   const isDragging = useRef(false);
   const lastMousePos = useRef({ x: 0, y: 0 });
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const dragPos = useRef({ x: position.x, y: position.y });
+  const rafId = useRef<number | null>(null);
+
+  // Maintain the latest callback
+  const onPositionChangeRef = useRef(onPositionChange);
+  useEffect(() => {
+    onPositionChangeRef.current = onPositionChange;
+  }, [onPositionChange]);
+
+  const applyTransform = useCallback(() => {
+    rafId.current = null;
+    const { x, y } = dragPos.current;
+    if (wrapperRef.current) {
+      wrapperRef.current.style.backgroundPosition = `${x}px ${y}px`;
+    }
+    if (containerRef.current) {
+      containerRef.current.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${scale})`;
+    }
+  }, [scale]);
+
+  useEffect(() => {
+    dragPos.current = { x: position.x, y: position.y };
+    applyTransform();
+  }, [position.x, position.y, applyTransform]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
@@ -23,25 +49,35 @@ export const Canvas: React.FC<CanvasProps> = ({ children, scale, position, onPos
     if (!isDragging.current) return;
     const deltaX = e.clientX - lastMousePos.current.x;
     const deltaY = e.clientY - lastMousePos.current.y;
-    onPositionChange({ x: position.x + deltaX, y: position.y + deltaY });
+    
+    dragPos.current.x += deltaX;
+    dragPos.current.y += deltaY;
     lastMousePos.current = { x: e.clientX, y: e.clientY };
+
+    if (rafId.current === null) {
+      rafId.current = requestAnimationFrame(applyTransform);
+    }
   };
 
-  const handleMouseUp = () => {
-    isDragging.current = false;
-  };
+  const handleMouseUp = useCallback(() => {
+    if (isDragging.current) {
+      isDragging.current = false;
+      onPositionChangeRef.current({ x: dragPos.current.x, y: dragPos.current.y });
+    }
+  }, []);
 
   useEffect(() => {
-    const onMouseUpGlobal = () => {
-      isDragging.current = false;
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mouseup', handleMouseUp);
+      if (rafId.current !== null) cancelAnimationFrame(rafId.current);
     };
-    window.addEventListener('mouseup', onMouseUpGlobal);
-    return () => window.removeEventListener('mouseup', onMouseUpGlobal);
-  }, []);
+  }, [handleMouseUp]);
 
   return (
     <CanvasContext.Provider value={{ scale }}>
       <div
+        ref={wrapperRef}
         className="w-full h-[calc(100vh-64px)] overflow-hidden bg-paper relative flex-1 cursor-grab active:cursor-grabbing"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
@@ -54,8 +90,9 @@ export const Canvas: React.FC<CanvasProps> = ({ children, scale, position, onPos
         }}
       >
         <div
+          ref={containerRef}
           style={{
-            transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
+            transform: `translate3d(${position.x}px, ${position.y}px, 0) scale(${scale})`,
             transformOrigin: '0 0',
             position: 'absolute',
             top: 0,
@@ -63,6 +100,7 @@ export const Canvas: React.FC<CanvasProps> = ({ children, scale, position, onPos
             width: '100%',
             height: '100%',
             pointerEvents: 'none',
+            willChange: 'transform',
           }}
         >
           {children}
