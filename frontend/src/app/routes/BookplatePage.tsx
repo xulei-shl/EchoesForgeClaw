@@ -661,10 +661,13 @@ const BookplatePage: React.FC = () => {
               updateNodeData(nodeId, {
                 imageUrl: url,
                 isGenerating: false,
-                error: payload?.mock ? 'API 配置缺失，当前为演示占位图' : null
+                error: payload?.mock ? 'API 配置缺失，当前为演示占位图' : null,
+                isMock: payload?.mock
               });
               setSelectedImageId(nodeId);
-              void autoSaveGeneration(nodeId, url).catch(() => undefined);
+              if (!payload?.mock) {
+                void autoSaveGeneration(nodeId, url).catch(() => undefined);
+              }
             }
             return;
           }
@@ -716,12 +719,15 @@ const BookplatePage: React.FC = () => {
       updateNodeData(nodeId, {
         imageUrl: res.image_url,
         isGenerating: false,
-        error: res.mock ? 'API 配置缺失，当前为演示占位图' : null
+        error: res.mock ? 'API 配置缺失，当前为演示占位图' : null,
+        isMock: res.mock
       });
       // 新图生成成功：自动选中，使全局操作栏作用于本节点
       setSelectedImageId(nodeId);
       // 成功即自动保存一条历史记录（失败不保存），重试会新建而非覆盖
-      await autoSaveGeneration(nodeId, res.image_url).catch(() => undefined);
+      if (!res.mock) {
+        await autoSaveGeneration(nodeId, res.image_url).catch(() => undefined);
+      }
     } catch (error: any) {
       if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') return;
       console.error('Failed to generate image:', error);
@@ -768,11 +774,11 @@ const BookplatePage: React.FC = () => {
   };
 
   /** 图片节点重试：已有图片 → 分支新建兄弟 ImageNode（同挂父 PromptNode）；
-   *  错误态（无图）→ 复用原节点重新生成修复，避免留下空错误节点。 */
+   *  错误态（无图或占位图）→ 复用原节点重新生成修复，避免留下空错误节点。 */
   const handleRetryImageBranch = (node: NodeData) => {
     const prompt = node.data?.prompt;
     if (!prompt) return;
-    if (!node.data?.imageUrl) {
+    if (!node.data?.imageUrl || node.data?.isMock) {
       runImageGeneration(node.id, prompt);
       return;
     }
@@ -903,6 +909,11 @@ const BookplatePage: React.FC = () => {
     const existing = generationIds.current[imageNodeId];
     if (existing) return existing;
 
+    const imageNode = nodesRef.current.find((n) => n.id === imageNodeId);
+    if (imageNode?.data?.isMock) {
+      throw new Error('占位图片不能保存到历史记录');
+    }
+
     const stageResults = buildStageResults(imageNodeId) ?? {};
     const imageUrl = stageResults.stage3?.image_url || '';
     const gen = await generationsService.create({
@@ -940,6 +951,9 @@ const BookplatePage: React.FC = () => {
       // 收藏成功即已重新建立记录，弱提示消失
       clearStaleFlag(imageNodeId);
       return next;
+    } catch (err: any) {
+      console.warn('收藏失败:', err.message);
+      return !!favoritedRef.current[imageNodeId];
     } finally {
       busyFav.current.delete(imageNodeId);
     }
@@ -959,6 +973,9 @@ const BookplatePage: React.FC = () => {
       // 公开成功即已重新建立记录，弱提示消失
       clearStaleFlag(imageNodeId);
       return next;
+    } catch (err: any) {
+      console.warn('公开失败:', err.message);
+      return !!publishedRef.current[imageNodeId];
     } finally {
       busyPub.current.delete(imageNodeId);
     }
