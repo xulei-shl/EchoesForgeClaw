@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>MATCHA & CREAM - 配色美学志</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 0;
+            background-color: #FFFDF0;
+        }
+        
+        *, *::before, *::after {
+            box-sizing: border-box;
+        }
+        
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Times New Roman', serif;
+            background-color: #FFFDF0;
+            color: #2E4326;
+            -webkit-print-color-adjust: exact;
+        }
+
+        /* 杂志风布局容器 */
+        .magazine-container {
+            width: 210mm;
+            min-height: 297mm;
+            padding: 20mm 15mm;
+            position: relative;
+            background-color: #FFFDF0;
+        }
+
+        /* 顶部精致高定边框线 */
+        .top-accent-bar {
+            width: 100%;
+            height: 4px;
+            background-color: #74A662;
+            margin-bottom: 12mm;
+        }
+
+        /* 杂志大刊头 */
+        .magazine-header {
+            border-bottom: 2px solid #2E4326;
+            padding-bottom: 8mm;
+            margin-bottom: 12mm;
+        }
+        
+        .issue-info {
+            font-size: 9pt;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            color: #74A662;
+            margin-bottom: 4mm;
+            font-weight: 600;
+        }
+
+        .main-title {
+            font-size: 38pt;
+            font-family: 'Times New Roman', serif;
+            font-weight: 700;
+            line-height: 1.0;
+            margin: 0;
+            letter-spacing: -1px;
+            color: #2E4326;
+        }
+        
+        .sub-title {
+            font-size: 13pt;
+            margin: 3mm 0 0 0;
+            letter-spacing: 5px;
+            color: #74A662;
+            font-weight: 300;
+        }
+
+        /* 黄金分割两栏式排版 */
+        .layout-grid {
+            display: table;
+            width: 100%;
+            table-layout: fixed;
+        }
+
+        .left-col {
+            display: table-cell;
+            width: 62%;
+            vertical-align: top;
+            padding-right: 10mm;
+        }
+
+        .right-col {
+            display: table-cell;
+            width: 38%;
+            vertical-align: top;
+            background-color: #F4EFE6;
+            padding: 8mm;
+            border-radius: 4px;
+        }
+
+        /* 导语部分 (Editorial Letter) */
+        .editorial-hero {
+            position: relative;
+            margin-bottom: 8mm;
+        }
+
+        .editorial-hero img, .visual-placeholder {
+            width: 100%;
+            height: 65mm;
+            background-color: #DCE9D8;
+            border-radius: 2px;
+            margin-bottom: 4mm;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .visual-placeholder::after {
+            content: "MATCHA NOUVEAU";
+            position: absolute;
+            bottom: 6mm;
+            left: 6mm;
+            font-family: 'Times New Roman', serif;
+            font-size: 24pt;
+            font-style: italic;
+            color: #2E4326;
+            opacity: 0.35;
+        }
+
+        .drop-cap::first-letter {
+            font-family: 'Times New Roman', serif;
+            font-size: 38pt;
+            float: left;
+            line-height: 0.9;
+            padding-right: 4px;
+            padding-top: 2px;
+            color: #74A662;
+            font-weight: bold;
+        }
+
+        .editorial-text {
+            font-size: 10pt;
+            line-height: 1.7;
+            text-align: justify;
+            margin: 0 0 6mm 0;
+        }
+
+        /* 色块展示区 */
+        .color-palette-spec {
+            margin-top: 6mm;
+        }
+
+        .section-tag {
+            font-size: 9pt;
+            letter-spacing: 2px;
+            color: #74A662;
+            border-left: 3px solid #74A662;
+            padding-left: 6px;
+            margin-bottom: 6mm;
+            text-transform: uppercase;
+            font-weight: bold;
+        }
+
+        .color-row {
+            display: table;
+            width: 100%;
+            margin-bottom: 4mm;
+        }
+
+        .color-block-cell {
+            display: table-cell;
+            width: 45mm;
+            height: 16mm;
+            border-radius: 4px;
+            vertical-align: middle;
+            box-shadow: inset 0 0 0 1px rgba(0,0,0,0.03);
+        }
+
+        .color-info-cell {
+            display: table-cell;
+            vertical-align: middle;
+            padding-left: 5mm;
+        }
+
+        .color-name {
+            font-size: 10.5pt;
+            font-weight: 600;
+            color: #2E4326;
+            margin-bottom: 1mm;
+        }
+
+        .color-hex {
+            font-family: monospace;
+            font-size: 9pt;
+            color: #74A662;
+        }
+
+        /* 右侧侧边栏：设计法则与演练 */
+        .sidebar-title {
+            font-family: 'Times New Roman', serif;
+            font-size: 14pt;
+            font-style: italic;
+            border-bottom: 1px solid #2E4326;
+            padding-bottom: 2mm;
+            margin-top: 0;
+            margin-bottom: 5mm;
+        }
+
+        .rule-box {
+            margin-bottom: 6mm;
+        }
+
+        .rule-num {
+            font-family: 'Times New Roman', serif;
+            font-size: 16pt;
+            color: #E28743;
+            font-weight: bold;
+            margin-bottom: 1mm;
+        }
+
+        .rule-title {
+            font-size: 10pt;
+            font-weight: 600;
+            margin-bottom: 2mm;
+        }
+
+        .rule-desc {
+            font-size: 9pt;
+            line-height: 1.6;
+            color: #4A5F42;
+            text-align: justify;
+            margin: 0;
+        }
+
+        /* 呼应的高级感CTA转化组件卡片 */
+        .cta-card {
+            background-color: #74A662;
+            color: #FFFDF0;
+            padding: 5mm;
+            border-radius: 4px;
+            text-align: center;
+            margin-top: 8mm;
+        }
+
+        .cta-card h4 {
+            margin: 0 0 2mm 0;
+            font-size: 11pt;
+            letter-spacing: 1px;
+        }
+
+        .cta-btn {
+            display: inline-block;
+            background-color: #E28743;
+            color: #FFFDF0;
+            padding: 2mm 5mm;
+            border-radius: 2px;
+            font-size: 9pt;
+            font-weight: bold;
+            text-decoration: none;
+            margin-top: 2mm;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        /* 页脚设计 */
+        .magazine-footer {
+            position: absolute;
+            bottom: 15mm;
+            left: 15mm;
+            right: 15mm;
+            border-top: 1px solid #E5DFD3;
+            padding-top: 4mm;
+            display: table;
+            width: calc(100% - 30mm);
+        }
+
+        .footer-cell {
+            display: table-cell;
+            font-size: 8pt;
+            color: #8A9A86;
+        }
+        
+        .text-right {
+            text-align: right;
+        }
+    </style>
+</head>
+<body>
+
+<div class="magazine-container">
+    <div class="top-accent-bar"></div>
+    
+    <!-- 杂志大刊头 -->
+    <header class="magazine-header">
+        <div class="issue-info">DESIGN & AESTHETICS // VOL. 04</div>
+        <h1 class="main-title">MATCHA LAATÉ</h1>
+        <div class="sub-title">暖调抹茶拿铁配色美学志</div>
+    </header>
+
+    <!-- 黄金分割网格布局 -->
+    <div class="layout-grid">
+        
+        <!-- 左侧主栏 -->
+        <div class="left-col">
+            <div class="editorial-hero">
+                <div class="visual-placeholder"></div>
+            </div>
+            
+            <p class="editorial-text drop-cap">
+                抹茶绿（Matcha Green）是一种自带呼吸感与东方修禅意境的色彩。当它脱离常规的冷调工业感，与温暖的浅色系（如暖奶油白、醇厚燕麦色）相遇时，便能够营造出一种兼具高级质感与情绪疗愈功能的“高品质生活方式”视觉风格。
+            </p>
+            <p class="editorial-text">
+                本案摒弃了传统网页非黑即白的生硬教条，转而投向极具包容度的暖调自然色。通过精准的色彩面积留白与文字灰度控制，为数字化屏幕注入如同实体高端时尚杂志般的隽永纸质美感与纯净的呼吸感。
+            </p>
+
+            <!-- 核心色谱解析 -->
+            <div class="color-palette-spec">
+                <div class="section-tag">Color Spectrum / 色谱规范</div>
+                
+                <!-- 主色 -->
+                <div class="color-row">
+                    <div class="color-block-cell" style="background-color: #74A662;"></div>
+                    <div class="color-info-cell">
+                        <div class="color-name">静谧抹茶绿 (Primary)</div>
+                        <div class="color-hex">#74A662</div>
+                    </div>
+                </div>
+
+                <!-- 辅助深色 -->
+                <div class="color-row">
+                    <div class="color-block-cell" style="background-color: #2E4326;"></div>
+                    <div class="color-info-cell">
+                        <div class="color-name">浓郁宇治绿 (Dark Text)</div>
+                        <div class="color-hex">#2E4326</div>
+                    </div>
+                </div>
+
+                <!-- 浅背景色 -->
+                <div class="color-row">
+                    <div class="color-block-cell" style="background-color: #FFFDF0; border: 1px solid #E5DFD3;"></div>
+                    <div class="color-info-cell">
+                        <div class="color-name">温暖奶油白 (Main BG)</div>
+                        <div class="color-hex">#FFFDF0</div>
+                    </div>
+                </div>
+
+                <!-- 次背景色 -->
+                <div class="color-row">
+                    <div class="color-block-cell" style="background-color: #F4EFE6;"></div>
+                    <div class="color-info-cell">
+                        <div class="color-name">醇香燕麦色 (Secondary BG)</div>
+                        <div class="color-hex">#F4EFE6</div>
+                    </div>
+                </div>
+
+                <!-- 提神高亮色 -->
+                <div class="color-row">
+                    <div class="color-block-cell" style="background-color: #E28743;"></div>
+                    <div class="color-info-cell">
+                        <div class="color-name">落日焦糖橘 (Highlight)</div>
+                        <div class="color-hex">#E28743</div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+        
+        <!-- 右侧侧边栏 -->
+        <div class="right-col">
+            <h3 class="sidebar-title">Layout Principles</h3>
+            
+            <div class="rule-box">
+                <div class="rule-num">60%</div>
+                <div class="rule-title">温暖底色与松弛感</div>
+                <p class="rule-desc">大面积使用温暖奶油白（#FFFDF0）作为主基调，搭配燕麦色进行区块解构，使页面整体观感温润柔和，完美告别强蓝光带来的视觉疲劳。</p>
+            </div>
+
+            <div class="rule-box">
+                <div class="rule-num">30%</div>
+                <div class="rule-title">生态文本与图形</div>
+                <p class="rule-desc">使用低明度的浓郁宇治绿（#2E4326）代替死板的纯黑作为印刷体级别正文。抹茶绿（#74A662）则专注于核心骨架与线框。</p>
+            </div>
+
+            <div class="rule-box">
+                <div class="rule-num">10%</div>
+                <div class="rule-title">落日焦糖点睛笔</div>
+                <p class="rule-desc">在整体舒缓的绿意与暖白之中，局部点缀高饱和度的焦糖橘（#E28743），赋予核心交互按钮极强的视觉凝聚力。</p>
+            </div>
+
+            <!-- CTA组件示例 -->
+            <div class="cta-card">
+                <h4>应用此套美学方案</h4>
+                <p style="font-size: 8.5pt; margin: 0 0 3mm 0; opacity: 0.9; line-height: 1.5;">为您的独立品牌或博客注入源自自然的呼吸感。</p>
+                <a href="#" class="cta-btn">复制色号</a>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- 页脚 -->
+    <footer class="magazine-footer">
+        <div class="footer-cell">THE PALETTE JOURNAL © 2026 CODESIGN LAB.</div>
+        <div class="footer-cell text-right">PAGE 01 // MATCHA STUDIO</div>
+    </footer>
+</div>
+
+</body>
+</html>

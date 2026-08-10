@@ -1,0 +1,21 @@
+{
+  "name": "BookForge",
+  "short_name": "BookForge",
+  "description": "书海回响素材工坊 — 藏书票生成系统",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F8F6F1",
+  "theme_color": "#863bff",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "any",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

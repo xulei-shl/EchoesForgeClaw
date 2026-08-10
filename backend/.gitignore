@@ -1,0 +1,6 @@
+# 运行时生成的文件：生成的藏书票图片 / 豆瓣封面本地缓存
+static/
+
+# 本地服务日志
+uvicorn.out.log
+uvicorn.err.log

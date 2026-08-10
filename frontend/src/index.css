@@ -1,0 +1,256 @@
+/* ========== 字体引入（须置于所有规则之前） ========== */
+/* MiSans - 正文/UI */
+@import url('https://font.sec.miui.com/font/css?family=MiSans:400,500,600,700&display=swap');
+/* 霞鹜文楷 - 装饰性标题 */
+@import url('https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css');
+/* JetBrains Mono - 等宽 */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+
+@import "tailwindcss";
+
+/* Streamdown markdown 渲染器的样式扫描 */
+@source "../node_modules/streamdown/dist/*.js";
+@source "../node_modules/@streamdown/cjk/dist/*.js";
+
+/* ========== 设计 Token（CSS 自定义属性） ========== */
+@theme {
+  /* 色彩系统 (Matcha Laaté OKLCH) */
+  --color-paper: oklch(0.985 0.016 104); /* Main BG */
+  --color-paper-grid: oklch(0.945 0.016 90); /* Secondary BG */
+  --color-paper-hole: oklch(0.900 0.016 90);
+  --color-ink: oklch(0.330 0.055 142); /* Dark Text */
+  --color-ink-light: oklch(0.450 0.055 142);
+  --color-ink-faint: oklch(0.600 0.055 142);
+  --color-accent: oklch(0.640 0.115 142); /* Primary */
+  --color-accent-hover: oklch(0.550 0.115 142);
+  --color-accent-surface: oklch(0.940 0.050 142);
+  --color-node-bg: oklch(0.990 0.010 104);
+  --color-success: oklch(0.640 0.115 142);
+  --color-error: oklch(0.600 0.150 25);
+  --color-warning: oklch(0.665 0.155 58); /* Highlight */
+  --color-beam-glow: oklch(0.665 0.155 58);
+
+  /* 字体栈 */
+  --font-sans: "MiSans", "PingFang SC", "Noto Sans SC", sans-serif;
+  --font-serif: "LXGW WenKai", "Noto Serif SC", "PingFang SC", serif;
+  --font-mono: "JetBrains Mono", "Noto Sans Mono", monospace;
+
+  /* 圆角阶梯 */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-pill: 9999px;
+}
+
+/* ========== shadcn 设计令牌（映射到纸面主题，供 markdown 等组件使用） ========== */
+:root {
+  --background: oklch(0.985 0.016 104);
+  --foreground: oklch(0.330 0.055 142);
+  --card: oklch(0.990 0.010 104);
+  --card-foreground: oklch(0.330 0.055 142);
+  --muted: oklch(0.945 0.016 90);
+  --muted-foreground: oklch(0.450 0.055 142);
+  --border: oklch(0.945 0.016 90);
+  --input: oklch(0.945 0.016 90);
+  --primary: oklch(0.640 0.115 142);
+  --primary-foreground: oklch(0.985 0.016 104);
+  --sidebar: oklch(0.990 0.010 104);
+  --sidebar-foreground: oklch(0.330 0.055 142);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+}
+
+/* ========== 全局基础样式 ========== */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  /* 全局触控优化 */
+  touch-action: manipulation;
+  /* 平滑滚动 */
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.75;
+  color: var(--color-ink);
+  background-color: var(--color-paper);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ========== CJK 排版规则 ========== */
+/* CJK 正文行高 1.75 */
+p, li, td, th {
+  line-height: 1.75;
+  text-wrap: pretty;
+}
+
+/* 标题使用 balance 换行 */
+h1, h2, h3, h4, h5, h6 {
+  text-wrap: balance;
+}
+
+/* 数据表格数字等宽 */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ========== 方格纸背景 ========== */
+.grid-paper {
+  background-image:
+    linear-gradient(var(--color-paper-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--color-paper-grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+  background-color: var(--color-paper);
+}
+
+/* ========== 活页打孔效果 ========== */
+.paper-holes {
+  position: relative;
+}
+
+.paper-holes::before {
+  content: '';
+  position: absolute;
+  left: 16px;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+  /* 用 repeating-radial-gradient 模拟打孔 */
+  background-image: radial-gradient(
+    circle 6px at center,
+    var(--color-paper-hole) 5px,
+    transparent 6px
+  );
+  background-size: 12px 48px;
+  background-repeat: repeat-y;
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* ========== 虚线边框工具类 ========== */
+.border-dashed-grid {
+  border: 1px dashed var(--color-paper-grid);
+}
+
+/* ========== 焦点样式 ========== */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* ========== 滚动条美化（Webkit） ========== */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--color-paper-grid);
+  border-radius: var(--radius-pill);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-ink-faint);
+}
+
+/* ========== 选中文本样式 ========== */
+::selection {
+  background-color: var(--color-accent-surface);
+  color: var(--color-ink);
+}
+
+/* ========== 对话框动画 ========== */
+@keyframes dialog-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes dialog-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.dialog-backdrop {
+  animation: dialog-backdrop-in 0.18s ease-out both;
+}
+
+.dialog-panel {
+  animation: dialog-panel-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* ========== 节点拖拽中 ========== */
+.node-dragging {
+  /* GPU 合成：仅 transform 走合成层 */
+  will-change: transform;
+  /* 拖拽中的卡片置顶 */
+  z-index: 30;
+  /* 位置更新全部由命令式 transform 驱动，禁用 CSS 过渡避免滞后 */
+  transition: none !important;
+  cursor: grabbing;
+  box-shadow: 0 14px 34px rgba(43, 41, 38, 0.18);
+}
+
+/* ========== 边框光束动画（参考 beam.jakubantalik.com） ========== */
+@keyframes beam-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ========== 轻提示动画 ========== */
+.toast-in {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@starting-style {
+  .toast-in {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* ========== 无障碍与设备适配 ========== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
