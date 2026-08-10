@@ -27,7 +27,7 @@ export const Tooltip: React.FC<TooltipProps> = ({ content, children }) => {
 
   return (
     <>
-      {React.cloneElement(children as React.ReactElement, {
+      {React.cloneElement(children as React.ReactElement<any>, {
         ref: triggerRef,
         onMouseEnter: (e: any) => {
           handleMouseEnter();

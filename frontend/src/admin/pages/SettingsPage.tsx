@@ -12,7 +12,6 @@ import { adminService } from '../../platform/services/admin';
 import type { AppSetting } from '../../platform/types';
 import { Button } from '../../platform/components/ui/Button';
 import { Input } from '../../platform/components/ui/Input';
-import { Badge } from '../../platform/components/ui/Badge';
 import { Card } from '../../platform/components/ui/Card';
 import { FieldLabel, PageHeader } from '../components/AdminBits';
 import { useFeedback } from '../../platform/components/ui/FeedbackProvider';

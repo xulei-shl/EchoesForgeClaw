@@ -658,7 +658,11 @@ const BookplatePage: React.FC = () => {
             }
             const url = payload?.image_url;
             if (url) {
-              updateNodeData(nodeId, { imageUrl: url, isGenerating: false });
+              updateNodeData(nodeId, {
+                imageUrl: url,
+                isGenerating: false,
+                error: payload?.mock ? 'API 配置缺失，当前为演示占位图' : null
+              });
               setSelectedImageId(nodeId);
               void autoSaveGeneration(nodeId, url).catch(() => undefined);
             }
@@ -709,7 +713,11 @@ const BookplatePage: React.FC = () => {
           signal: controller.signal,
         }
       );
-      updateNodeData(nodeId, { imageUrl: res.image_url, isGenerating: false });
+      updateNodeData(nodeId, {
+        imageUrl: res.image_url,
+        isGenerating: false,
+        error: res.mock ? 'API 配置缺失，当前为演示占位图' : null
+      });
       // 新图生成成功：自动选中，使全局操作栏作用于本节点
       setSelectedImageId(nodeId);
       // 成功即自动保存一条历史记录（失败不保存），重试会新建而非覆盖

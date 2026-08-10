@@ -89,7 +89,10 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
     }
   };
 
-const isLoading = isGenerating && !imageUrl;
+  const isLoading = isGenerating && !imageUrl;
+  // 兼容已存在的节点：检查 error 或 imageUrl 是否包含 mock_bookplate
+  const isMockImage = !!error || (typeof imageUrl === 'string' && imageUrl.includes('mock_bookplate'));
+  const displayError = error || (isMockImage ? 'API 配置缺失，当前为演示占位图' : null);
 
   const actionBtn =
     'flex items-center justify-center w-7 h-7 rounded-full ' +
@@ -120,7 +123,7 @@ const isLoading = isGenerating && !imageUrl;
             <button
               onClick={() => onRetry?.(id)}
               disabled={isGenerating}
-              className={actionBtn + (error ? ' text-error hover:text-error hover:bg-error/10' : '')}
+              className={actionBtn + (displayError ? ' text-error hover:text-error hover:bg-error/10' : '')}
             >
               <RefreshCw size={16} strokeWidth={1.5} />
             </button>
@@ -175,35 +178,58 @@ const isLoading = isGenerating && !imageUrl;
               <span className="text-sm font-serif text-accent">正在绘制藏书票...</span>
             </div>
           ) : imageUrl ? (
-            <div className="relative group border border-dashed border-paper-grid rounded-lg p-1 bg-paper shadow-sm">
-              <PhotoProvider
-                maskOpacity={0.8}
-                bannerVisible={false}
-              >
-                <PhotoView src={imageUrl}>
-                  <Tooltip content="点击全屏查看">
-                    <img
-                      src={imageUrl}
-                      alt="生成的藏书票"
-                      className="w-full rounded-sm cursor-pointer group-hover:opacity-95 active:scale-[0.99] transition-transform transition-opacity outline outline-1 outline-[oklch(0_0_0/0.1)] outline-offset-[-1px]"
-                      loading="lazy"
-                    />
-                  </Tooltip>
-                </PhotoView>
-              </PhotoProvider>
+            <div className={`relative group border border-dashed rounded-lg p-1 shadow-sm ${displayError ? 'border-error/30 bg-error/5' : 'border-paper-grid bg-paper'}`}>
+              {!displayError ? (
+                <PhotoProvider
+                  maskOpacity={0.8}
+                  bannerVisible={false}
+                >
+                  <PhotoView src={imageUrl}>
+                    <Tooltip content="点击全屏查看">
+                      <img
+                        src={imageUrl}
+                        alt="生成的藏书票"
+                        className="w-full rounded-sm cursor-pointer group-hover:opacity-95 active:scale-[0.99] transition-transform transition-opacity outline outline-1 outline-[oklch(0_0_0/0.1)] outline-offset-[-1px]"
+                        loading="lazy"
+                      />
+                    </Tooltip>
+                  </PhotoView>
+                </PhotoProvider>
+              ) : (
+                <>
+                  <img
+                    src={imageUrl}
+                    alt="生成失败：占位图"
+                    aria-describedby={`error-desc-${id}`}
+                    className="w-full rounded-sm outline outline-1 outline-error/20 outline-offset-[-1px] opacity-80"
+                    loading="lazy"
+                  />
+                  {/* 悬浮错误提示 */}
+                  <div className="absolute inset-x-0 bottom-4 z-10 flex justify-center px-4 pointer-events-none">
+                    <div className="bg-paper/95 backdrop-blur-sm shadow-md border border-error/20 rounded-lg p-3 flex items-start gap-2.5 max-w-[95%] pointer-events-auto">
+                      <AlertTriangle size={14} strokeWidth={2} className="text-error shrink-0 mt-0.5" />
+                      <div className="flex-1 min-w-0 font-sans" id={`error-desc-${id}`}>
+                        <p className="text-[12px] text-error/90 leading-relaxed break-words">{displayError}</p>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
               
               {/* 全屏提示图标 */}
-              <div className="absolute right-3 bottom-3 p-1.5 rounded bg-black/40 backdrop-blur-sm text-white/90 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-sm flex items-center justify-center">
-                <Maximize2 size={16} strokeWidth={2} />
-              </div>
+              {!displayError && (
+                <div className="absolute right-3 bottom-3 p-1.5 rounded bg-black/40 backdrop-blur-sm text-white/90 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-sm flex items-center justify-center">
+                  <Maximize2 size={16} strokeWidth={2} />
+                </div>
+              )}
             </div>
-          ) : error ? (
+          ) : displayError ? (
             /* 错误态：与 PromptNode 错误横幅同款视觉 */
             <div className="flex-1 flex flex-col gap-3 min-h-[160px]">
               <div className="p-3 rounded-md border border-error/20 bg-error/5 flex items-start gap-2.5">
                 <AlertTriangle size={14} strokeWidth={2} className="text-error shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0 font-sans">
-                  <p className="text-[12px] text-error/90 leading-relaxed break-words">{error}</p>
+                  <p className="text-[12px] text-error/90 leading-relaxed break-words">{displayError}</p>
                 </div>
               </div>
             </div>

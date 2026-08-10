@@ -14,7 +14,6 @@ import type { FastClawAgentConfig, LLMConfig, PromptTemplate, StageConfig } from
 import { Button } from '../../platform/components/ui/Button';
 import { Dialog } from '../../platform/components/ui/Dialog';
 import { Select } from '../../platform/components/ui/Select';
-import { Badge } from '../../platform/components/ui/Badge';
 import { Card } from '../../platform/components/ui/Card';
 import { FieldLabel, PageHeader } from '../components/AdminBits';
 import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
