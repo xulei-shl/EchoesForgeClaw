@@ -24,9 +24,15 @@ from .douban_client import (
 from app.core.database import get_db
 from app.core.deps import get_current_active_user, get_current_admin_user
 from app.models.user import User
-from app.models.stage_config import StageConfig
+from app.models.node_config import NodeConfig
 from app.models.app_setting import AppSetting
 from app.models.fastclaw_agent_config import FastClawAgentConfig
+from app.modules.bookplate.node_types import (
+    NODE_TEMPLATES,
+    NODE_IMAGE_ANALYSIS,
+    NODE_PROMPT,
+    NODE_IMAGE,
+)
 from app.services.llm_service import (
     llm_service,
     TextModelConfig,
@@ -46,16 +52,11 @@ router = APIRouter(prefix="/api/modules/bookplate", tags=["bookplate"])
 
 logger = logging.getLogger(__name__)
 
-# bookplate 模块的语义阶段标识
-STAGE_TEXT = "stage2"       # 文本提示词生成（合并元数据+封面分析）
-STAGE_COVER = "stage2.cover"  # 封面图多模态分析
-STAGE_IMAGE = "stage3"      # 图片生成
-
 # 豆瓣封面本地缓存目录: backend/static/covers（复用 main.py 的 /static 挂载，无需额外配置）
 COVERS_DIR = Path(__file__).resolve().parents[3] / "static" / "covers"
 COVERS_PREFIX = "/static/covers"
 
-# 编辑模式上传参考图的体积上限（字节）。8MB 足以覆盖普通参考图，
+# 上传图片的体积上限（字节）。8MB 足以覆盖普通参考图，
 # 防止超大 base64 请求体拖垮分析与网络传输。
 MAX_UPLOAD_IMAGE_BYTES = 8 * 1024 * 1024
 
@@ -216,20 +217,37 @@ async def _fetch_cover_bytes(
         return None
 
 
-class PromptRequest(BaseModel):
-    metadata: Dict[str, Any] = {}
-    # 编辑模式「重新生成」：上传参考图的 base64 data URL（data:image/...;base64,...）。
-    # 提供时优先于豆瓣封面执行 Stage 2 封面分析，随后与图书元数据合并生成提示词。
+class AnalyzeImageRequest(BaseModel):
+    """图片分析节点请求：上传参考图（base64 data URL）或豆瓣封面 URL 二选一。"""
+
     image: Optional[str] = None
+    cover_url: Optional[str] = None
+    # 节点配置 id（可选）：未绑定/未启用/类型不匹配时回退环境变量
+    config_id: Optional[int] = None
+    # 画布节点 id：Agent 模式下用作 FastClaw 会话 key 的一部分（同节点重试共享上下文）
+    node_id: Optional[str] = None
+
+
+class PromptRequest(BaseModel):
+    """提示词生成节点请求：图书元数据 + 可选的上游图片分析文本。"""
+
+    metadata: Dict[str, Any] = {}
+    analysis: Optional[str] = None
+    # 节点配置 id（可选）：未绑定/未启用/类型不匹配时回退环境变量
+    config_id: Optional[int] = None
     # 画布节点 id：Agent 模式下用作 FastClaw 会话 key 的一部分（同节点重试共享上下文）
     node_id: Optional[str] = None
 
 
 class ImageGenRequest(BaseModel):
+    """图像生成节点请求。"""
+
     prompt: str
     size: Optional[str] = None
     ratio: Optional[str] = None
     image: Optional[List[str]] = None
+    # 节点配置 id（可选）：未绑定/未启用/类型不匹配时回退环境变量
+    config_id: Optional[int] = None
     # 画布节点 id：Agent 模式下用作 FastClaw 会话 key 的一部分
     node_id: Optional[str] = None
 
@@ -237,7 +255,7 @@ class ImageGenRequest(BaseModel):
 def _decode_uploaded_image(data_url: str) -> Optional[bytes]:
     """解析前端上传图片的 base64 data URL，返回原始图片字节。
 
-    非法 base64 / 非图片魔数 / 超过体积上限时返回 None，由调用方跳过分析、
+    非法 base64 / 非图片魔数 / 超过体积上限时返回 None，由调用方跳过分析，
     仅基于图书元数据生成提示词，不阻断整个流程。
     """
     try:
@@ -254,80 +272,79 @@ def _decode_uploaded_image(data_url: str) -> Optional[bytes]:
     return image_bytes
 
 
-def _resolve_text_config(db: Session) -> Optional[TextModelConfig]:
-    """解析 bookplate stage2 的文本模型运行时配置（未绑定则回退环境变量）。"""
-    sc = (
-        db.query(StageConfig)
-        .filter(StageConfig.module == "bookplate", StageConfig.stage == STAGE_TEXT)
-        .first()
-    )
-    if not sc or not sc.llm_config or not sc.llm_config.api_key or not sc.llm_config.is_active:
+# ---------------------------------------------------------------------------
+# 节点配置 → 运行时配置解析（按节点实例的 config_id 解析，而非全局阶段）
+# ---------------------------------------------------------------------------
+
+
+def _resolve_node_config(
+    db: Session, config_id: Optional[int], node_type: str
+) -> Optional[NodeConfig]:
+    """按 config_id 解析指定节点模板类型的配置；未传/不存在/类型不符/未启用时返回 None。"""
+    if config_id is None:
         return None
-    system_prompt = sc.prompt.content if sc.prompt and sc.prompt.is_active else ""
+    nc = db.query(NodeConfig).filter(NodeConfig.id == config_id).first()
+    if not nc or nc.node_type != node_type or not nc.is_active:
+        return None
+    return nc
+
+
+def _text_config_from(nc: Optional[NodeConfig]) -> Optional[TextModelConfig]:
+    """从节点配置解析文本模型运行时配置（未绑定则 None，由调用方回退环境变量）。"""
+    if not nc or not nc.llm_config or not nc.llm_config.api_key or not nc.llm_config.is_active:
+        return None
+    system_prompt = nc.prompt.content if nc.prompt and nc.prompt.is_active else ""
     return TextModelConfig(
-        api_key=sc.llm_config.api_key,
-        base_url=sc.llm_config.base_url or "",
-        model_name=sc.llm_config.model_name or "gpt-3.5-turbo",
+        api_key=nc.llm_config.api_key,
+        base_url=nc.llm_config.base_url or "",
+        model_name=nc.llm_config.model_name or "gpt-3.5-turbo",
         system_prompt=system_prompt,
     )
 
 
-def _resolve_cover_config(db: Session) -> Optional[VisionModelConfig]:
-    """解析 bookplate stage2.cover 的封面多模态模型运行时配置（未绑定则 None）。"""
-    sc = (
-        db.query(StageConfig)
-        .filter(StageConfig.module == "bookplate", StageConfig.stage == STAGE_COVER)
-        .first()
-    )
-    if not sc or not sc.llm_config or not sc.llm_config.api_key or not sc.llm_config.is_active:
+def _vision_config_from(nc: Optional[NodeConfig]) -> Optional[VisionModelConfig]:
+    """从节点配置解析多模态模型运行时配置（未绑定则 None）。"""
+    if not nc or not nc.llm_config or not nc.llm_config.api_key or not nc.llm_config.is_active:
         return None
-    system_prompt = sc.prompt.content if sc.prompt and sc.prompt.is_active else ""
+    system_prompt = nc.prompt.content if nc.prompt and nc.prompt.is_active else ""
     return VisionModelConfig(
-        api_key=sc.llm_config.api_key,
-        base_url=sc.llm_config.base_url or "",
-        model_name=sc.llm_config.model_name or "gpt-4o-mini",
+        api_key=nc.llm_config.api_key,
+        base_url=nc.llm_config.base_url or "",
+        model_name=nc.llm_config.model_name or "gpt-4o-mini",
         system_prompt=system_prompt,
     )
 
 
-def _resolve_image_config(db: Session) -> Optional[ImageModelConfig]:
-    """解析 bookplate stage3 的图片模型运行时配置（未绑定则回退环境变量）。
+def _image_config_from(nc: Optional[NodeConfig]) -> Optional[ImageModelConfig]:
+    """从节点配置解析图片模型运行时配置（未绑定则 None）。
 
     仅返回模型三要素（api_key / base_url / model_name），其余图像参数
     （size / ratio / response_format / image）由请求体按次传入。
     """
-    sc = (
-        db.query(StageConfig)
-        .filter(StageConfig.module == "bookplate", StageConfig.stage == STAGE_IMAGE)
-        .first()
-    )
-    if not sc or not sc.llm_config or not sc.llm_config.api_key or not sc.llm_config.is_active:
+    if not nc or not nc.llm_config or not nc.llm_config.api_key or not nc.llm_config.is_active:
         return None
     return ImageModelConfig(
-        api_key=sc.llm_config.api_key,
-        base_url=sc.llm_config.base_url or "",
-        model_name=sc.llm_config.model_name or "",
+        api_key=nc.llm_config.api_key,
+        base_url=nc.llm_config.base_url or "",
+        model_name=nc.llm_config.model_name or "",
     )
 
 
-def _resolve_agent_config(db: Session, stage: str, user_id: int) -> Optional[FastClawRuntimeConfig]:
-    """解析指定阶段的 FastClaw Agent 运行时配置（未绑定/未启用/无 Key 则 None）。"""
-    sc = (
-        db.query(StageConfig)
-        .filter(StageConfig.module == "bookplate", StageConfig.stage == stage)
-        .first()
-    )
+def _agent_config_from(
+    nc: Optional[NodeConfig], user_id: int
+) -> Optional[FastClawRuntimeConfig]:
+    """从节点配置解析 FastClaw Agent 运行时配置（未绑定/未启用/无 Key 则 None）。"""
     if (
-        not sc
-        or not sc.agent_config
-        or not sc.agent_config.is_active
-        or not sc.agent_config.api_key
+        not nc
+        or not nc.agent_config
+        or not nc.agent_config.is_active
+        or not nc.agent_config.api_key
     ):
         return None
     return FastClawRuntimeConfig(
-        base_url=sc.agent_config.base_url or "",
-        api_key=sc.agent_config.api_key,
-        agent_id=sc.agent_config.agent_id or "",
+        base_url=nc.agent_config.base_url or "",
+        api_key=nc.agent_config.api_key,
+        agent_id=nc.agent_config.agent_id or "",
         end_user=f"bookplate-{user_id}",
     )
 
@@ -338,11 +355,13 @@ def _agent_session_key(user_id: int, node_id: Optional[str]) -> str:
 
 
 def _sse_from_agent_event(evt: Dict[str, Any]) -> Optional[Dict[str, str]]:
-    """把归一化的 agent 事件映射为 bookplate SSE 事件（中间步骤透传给前端展示）。"""
+    """把归一化的 agent 事件映射为 SSE 事件（中间步骤透传给前端展示）。
+
+    content/content_delta 统一映射为 prompt 事件：run_agent 已对「流式增量 + 末尾完整文本」
+    去重，能到达这里的 content 说明本轮未流式（非流式 provider），直接作为完整文本透传。
+    """
     etype = evt.get("type", "")
     data = evt.get("data", {}) or {}
-    # content 与 content_delta 都映射为 prompt 事件：run_agent 已对「流式增量 + 末尾完整文本」
-    # 去重，能到达这里的 content 说明本轮未流式（非流式 provider），直接作为完整提示词透传
     if etype in ("content_delta", "content"):
         return {"event": "prompt", "data": data.get("delta", "")}
     if etype == "tool_call":
@@ -364,10 +383,10 @@ def _sse_from_agent_event(evt: Dict[str, Any]) -> Optional[Dict[str, str]]:
     return None
 
 
-def _agent_prompt_message(metadata: Dict[str, Any], cover_analysis: str = "") -> str:
-    """把图书元数据 + 可选封面分析文本组装为 Agent 模式的用户消息。
+def _agent_prompt_message(metadata: Dict[str, Any], analysis: str = "") -> str:
+    """把图书元数据 + 可选图片分析文本组装为 Agent 模式的用户消息。
 
-    Agent 只接收文本（元数据 + stage2.cover 的分析结果），不传图片——模型服务商
+    Agent 只接收文本（元数据 + 图片分析结果），不传图片——模型服务商
     需回源下载图片，本机/内网 URL 会被其 SSRF 防护拒绝（报 port not allowed）。
     """
     lines = []
@@ -377,49 +396,9 @@ def _agent_prompt_message(metadata: Dict[str, Any], cover_analysis: str = "") ->
         lines.append(f"{k}: {v}")
     meta_text = "\n".join(lines) if lines else str(metadata)
     message = meta_text
-    if cover_analysis:
-        message += "\n\n封面图分析结果：\n" + cover_analysis
+    if analysis:
+        message += "\n\n图片分析结果：\n" + analysis
     return message
-
-
-async def _run_cover_analysis_agent(
-    agent_config: FastClawRuntimeConfig,
-    image_data_url: str,
-    session_key: str,
-    should_stop: Optional[Callable[[], Awaitable[bool]]] = None,
-    timeout: float = 120.0,
-) -> str:
-    """用 Agent 模式执行封面分析（stage2.cover 配置为 Agent 时）。
-
-    图片以 base64 data URL 内联传给 FastClaw，用户消息为空（仅携带图片数据）；
-    封面分析的指令由 FastClaw Agent 侧配置的系统提示词负责。调用失败 / 客户端
-    断开 / 超时返回空串，不阻断后续生成。
-    """
-    text_parts: List[str] = []
-    loop = asyncio.get_running_loop()
-    deadline = loop.time() + timeout
-    try:
-        async for evt in fastclaw_agent_service.run_agent(
-            agent_config,
-            "",  # 用户消息为空，仅通过 images 参数传递图片数据
-            session_key=session_key,
-            images=[image_data_url],
-            params={"module": "bookplate", "stage": STAGE_COVER},
-        ):
-            if should_stop is not None and await should_stop():
-                break
-            if loop.time() > deadline:
-                logger.warning("封面分析 Agent 超时（%.0fs），截断", timeout)
-                break
-            etype = evt.get("type", "")
-            data = evt.get("data", {}) or {}
-            if etype in ("content_delta", "content"):
-                text_parts.append(data.get("delta", ""))
-    except Exception as exc:
-        logger.warning("封面分析 Agent 调用失败: %s", exc)
-        return ""
-    return "".join(text_parts).strip()
-
 
 
 def _douban_client_config(db: Session) -> ClientConfig:
@@ -546,34 +525,117 @@ async def probe_fastclaw_agents(
     return {"agents": agents}
 
 
-@router.get("/effective-config")
-async def get_effective_config(
+@router.get("/node-registry")
+async def get_node_registry(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    """返回 bookplate 各阶段的生效模式（agent / llm），供前端决定画布节点的调用方式与展示。
+    """返回画板可用节点列表：内置节点模板 + 各模板的已启用配置（节点变体）。
 
-    模式判定：阶段绑定了可用（is_active + 已配 Key）的 FastClaw Agent 即为 agent 模式；
-    否则为 llm 模式（含未绑定回退环境变量）。
+    画板「+」菜单据此渲染：基础节点（不可配置模板）直接可用；
+    可配置模板的每条启用配置作为一个节点变体；无配置时由前端提供「默认配置」项（回退环境变量）。
     """
-    scs = db.query(StageConfig).filter(StageConfig.module == "bookplate").all()
-    mode_map = {"stage2": "llm", "stage2.cover": "llm", "stage3": "llm"}
-    agent_names: Dict[str, Optional[str]] = {}
-    for sc in scs:
-        if (
-            sc.agent_config
-            and sc.agent_config.is_active
-            and sc.agent_config.api_key
-            and sc.stage in mode_map
-        ):
-            mode_map[sc.stage] = "agent"
-            # 优先展示 FastClaw agent 真实名字（如 Xulei），未回填时退回配置名
-            agent_names[sc.stage] = sc.agent_config.agent_name or sc.agent_config.name
-    return {
-        "stage2": {"mode": mode_map.get("stage2", "llm"), "agent_name": agent_names.get("stage2")},
-        "stage2.cover": {"mode": mode_map.get("stage2.cover", "llm"), "agent_name": agent_names.get("stage2.cover")},
-        "stage3": {"mode": mode_map.get("stage3", "llm"), "agent_name": agent_names.get("stage3")},
-    }
+    configs = db.query(NodeConfig).order_by(NodeConfig.id.asc()).all()
+    items = []
+    for nc in configs:
+        if not nc.is_active or nc.node_type not in {t["type"] for t in NODE_TEMPLATES}:
+            continue
+        mode = "agent" if _agent_config_from(nc, current_user.id) else "llm"
+        items.append(
+            {
+                "id": nc.id,
+                "node_type": nc.node_type,
+                "name": nc.name,
+                "group": nc.group,
+                "group_order": nc.group_order,
+                "mode": mode,
+                "agent_name": (
+                    nc.agent_config.agent_name or nc.agent_config.name
+                    if nc.agent_config
+                    else None
+                ),
+                "llm_config_name": nc.llm_config.name if nc.llm_config else None,
+                "is_active": nc.is_active,
+            }
+        )
+    return {"templates": NODE_TEMPLATES, "configs": items}
+
+
+@router.post("/analyze-image")
+async def analyze_image(
+    request: Request,
+    payload: AnalyzeImageRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """图片分析节点：多模态分析图片，SSE 返回分析文本（LLM 模式）或 agent 中间步骤 + 分析文本。
+
+    执行模式由该节点的节点配置决定（agent_config 非空 => Agent 模式；否则看 LLM 配置；
+    未绑定任何配置时回退环境变量 / Mock）。图片来源：上传 base64（优先）> 豆瓣封面 URL。
+    """
+    nc = _resolve_node_config(db, payload.config_id, NODE_IMAGE_ANALYSIS)
+    agent_config = _agent_config_from(nc, current_user.id)
+    vision_config = _vision_config_from(nc)
+
+    if await request.is_disconnected():
+        raise HTTPException(status_code=499, detail="客户端已断开连接")
+
+    # 图片来源：上传 base64 data URL > 豆瓣封面 URL
+    image_bytes: Optional[bytes] = None
+    if payload.image:
+        image_bytes = _decode_uploaded_image(payload.image)
+    elif payload.cover_url:
+        proxy = _douban_client_config(db).proxy
+        image_bytes = await _fetch_cover_bytes(
+            payload.cover_url, proxy, is_disconnected=request.is_disconnected
+        )
+    if not image_bytes:
+        raise HTTPException(status_code=400, detail="未提供可分析的图片（上传或封面 URL 均无效）")
+
+    ext = _detect_image_ext(image_bytes[:12]) or "jpg"
+    data_url = f"data:image/{ext};base64," + base64.b64encode(image_bytes).decode("ascii")
+
+    if agent_config:
+        session_key = _agent_session_key(current_user.id, payload.node_id)
+
+        async def agent_generator():
+            text_parts: List[str] = []
+            try:
+                async for evt in fastclaw_agent_service.run_agent(
+                    agent_config,
+                    "",
+                    session_key=session_key,
+                    images=[data_url],
+                    params={"module": "bookplate", "node_type": NODE_IMAGE_ANALYSIS},
+                ):
+                    if await request.is_disconnected():
+                        break
+                    sse = _sse_from_agent_event(evt)
+                    if not sse:
+                        continue
+                    if sse["event"] == "prompt":
+                        text_parts.append(sse["data"])
+                        continue
+                    yield sse
+                text = "".join(text_parts).strip()
+                if text and not await request.is_disconnected():
+                    yield {"event": "analysis", "data": text}
+            except FastClawAgentError as exc:
+                if not await request.is_disconnected():
+                    yield {"event": "error", "data": str(exc)}
+
+        return EventSourceResponse(agent_generator())
+
+    async def llm_generator():
+        try:
+            analysis = await llm_service.analyze_cover(image_bytes, vision_config)
+            if analysis and not await request.is_disconnected():
+                yield {"event": "analysis", "data": analysis}
+        except LLMGenerationError as exc:
+            if not await request.is_disconnected():
+                yield {"event": "error", "data": str(exc)}
+
+    return EventSourceResponse(llm_generator())
 
 
 @router.post("/generate-prompt")
@@ -583,85 +645,34 @@ async def generate_prompt(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    """第二阶段：封面图多模态分析（可跳过）+ 基于元数据与封面分析流式生成提示词。
+    """提示词生成节点：基于图书元数据 + 上游图片分析文本流式生成提示词。
 
-    **每个阶段的执行模式（LLM API / FastClaw Agent）完全由 `/admin/stage-configs`
-    的阶段绑定决定，代码不写死：**
-    - stage2.cover（封面分析）：绑定 Agent 走 Agent，绑定模型走 LLM API；
-      封面不可得 / 未绑定任何配置 / 分析失败时跳过，仅基于元数据生成提示词。
-    - stage2（提示词生成）：绑定 Agent 时把「元数据 + 封面分析文本」交给 Agent
-      流式生成（**不传图片**——模型服务商需回源下载图片，本机/内网 URL 会被其
-      SSRF 防护拒绝，报 "port xxxx is not allowed"）；否则走 LLM API 流式生成。
-    - 封面分析为同步一次性调用，完成后才开启 SSE 流式返回最终提示词。
-    - 客户端在开流前的分析阶段断开（删除节点 / 超时放弃 / 关闭页面）时，
-      跳过抓取与视觉分析，直接返回，不做无谓的 LLM / Agent 调用。
+    **执行模式（LLM API / FastClaw Agent）完全由该节点的节点配置决定，代码不写死：**
+    - 绑定 Agent：把「元数据 + 图片分析文本」交给 Agent 流式生成（**不传图片**——
+      模型服务商需回源下载图片，本机/内网 URL 会被其 SSRF 防护拒绝，报 "port not allowed"）；
+    - 绑定模型：走 LLM API 流式生成；
+    - 未绑定配置：回退环境变量 / Mock。
+    客户端在开流前断开（删除节点 / 超时放弃 / 关闭页面）时直接返回，不做无谓调用。
     """
     metadata = payload.metadata or {}
-    session_key = _agent_session_key(current_user.id, payload.node_id)
-    # 各阶段执行模式由阶段配置决定（agent_config 非空 => Agent 模式；否则看 LLM 配置）
-    agent_config = _resolve_agent_config(db, STAGE_TEXT, current_user.id)          # stage2
-    text_config = _resolve_text_config(db)                                        # stage2 (LLM)
-    cover_agent_config = _resolve_agent_config(db, STAGE_COVER, current_user.id)  # stage2.cover
-    cover_config = _resolve_cover_config(db)                                      # stage2.cover (LLM)
+    analysis = payload.analysis or ""
+    nc = _resolve_node_config(db, payload.config_id, NODE_PROMPT)
+    agent_config = _agent_config_from(nc, current_user.id)
+    text_config = _text_config_from(nc)
 
-    # ---- 封面分析（stage2.cover）：按该阶段配置决定走 Agent 还是 LLM API ----
-    # 分析前先查断开，避免为已离开的客户端做昂贵的封面下载/分析
-    if await request.is_disconnected():
-        raise HTTPException(status_code=499, detail="客户端已断开连接")
-    cover_analysis = ""
-    cover_session_key = _agent_session_key(current_user.id, f"{payload.node_id or 'anon'}-cover")
-    uploaded = _decode_uploaded_image(payload.image) if payload.image else None
-    if uploaded and (cover_agent_config or cover_config):
-        if cover_agent_config:
-            cover_analysis = await _run_cover_analysis_agent(
-                cover_agent_config,
-                payload.image,
-                cover_session_key,
-                should_stop=request.is_disconnected,
-            )
-        else:
-            cover_analysis = await llm_service.analyze_cover(uploaded, cover_config)
-    elif not payload.image:
-        # 仅当未提供上传图时才回退豆瓣封面分析：上传图非法/超限时不静默改用封面，
-        # 以免生成的提示词基于错误的图片（此时分析留空，仅按元数据生成）
-        cover_url = metadata.get("cover_image")
-        if cover_url and (cover_agent_config or cover_config):
-            proxy = _douban_client_config(db).proxy
-            cover_bytes = await _fetch_cover_bytes(
-                cover_url, proxy, is_disconnected=request.is_disconnected
-            )
-            if cover_bytes:
-                if cover_agent_config:
-                    ext = _detect_image_ext(cover_bytes[:12]) or "jpg"
-                    data_url = (
-                        f"data:image/{ext};base64,"
-                        + base64.b64encode(cover_bytes).decode("ascii")
-                    )
-                    cover_analysis = await _run_cover_analysis_agent(
-                        cover_agent_config,
-                        data_url,
-                        cover_session_key,
-                        should_stop=request.is_disconnected,
-                    )
-                else:
-                    cover_analysis = await llm_service.analyze_cover(cover_bytes, cover_config)
-
-    # 开流前检查：分析阶段客户端已断开则放弃，不发起生成调用
     if await request.is_disconnected():
         raise HTTPException(status_code=499, detail="客户端已断开连接")
 
-    # ---- 提示词生成（stage2）：按该阶段配置决定走 Agent 还是 LLM API ----
     if agent_config:
+        session_key = _agent_session_key(current_user.id, payload.node_id)
+
         async def agent_event_generator():
-            # 与 LLM 模式一致：先透传封面分析结果（非流式），再流式输出提示词
-            if cover_analysis:
-                yield {"event": "analysis", "data": cover_analysis}
             try:
                 async for evt in fastclaw_agent_service.run_agent(
                     agent_config,
-                    _agent_prompt_message(metadata, cover_analysis),
+                    _agent_prompt_message(metadata, analysis),
                     session_key=session_key,
-                    params={"module": "bookplate", "stage": STAGE_TEXT},
+                    params={"module": "bookplate", "node_type": NODE_PROMPT},
                 ):
                     if await request.is_disconnected():
                         break
@@ -675,13 +686,9 @@ async def generate_prompt(
         return EventSourceResponse(agent_event_generator())
 
     async def event_generator():
-        # Phase 1: 发送封面分析结果（非流式；无分析结果时不发空事件，与 Agent 模式一致）
-        if cover_analysis:
-            yield {"event": "analysis", "data": cover_analysis}
-        # Phase 2: 流式生成提示词
         try:
             async for chunk in llm_service.generate_prompt_stream(
-                metadata, text_config, cover_analysis
+                metadata, text_config, analysis
             ):
                 if await request.is_disconnected():
                     break
@@ -702,13 +709,11 @@ async def generate_bookplate_image(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    """根据提示词生成藏书票图片（无 API Key 时返回 Mock 占位图）。
+    """图像生成节点：根据提示词生成藏书票图片（无 API Key 时返回 Mock 占位图）。
 
-    请求体可携带 size / ratio / image（图生图参考图）等图像参数，按次覆盖
-    StageConfig 中的模型三要素；未传则保持 None，由底层按需构建请求。
-
-    Agent 模式（阶段绑定 FastClaw Agent）：调用 Agent 的图像生成工具，实时透传
-    中间步骤事件，最终以 image_url 事件返回本地化图片地址（SSE 流）。
+    执行模式由该节点的节点配置决定：绑定 FastClaw Agent 时走 SSE 流式
+    （中间步骤 + 最终 image_url 事件）；否则走 LLM 图像 API（请求体可携带
+    size / ratio / image 等参数按次覆盖模型三要素之外的图像参数）。
 
     客户端断开（前端超时放弃 / 删除节点 / 关闭页面）时，在调用图像 API 前直接放弃，
     并透传 is_disconnected 回调让底层在落盘前再检查一次，省掉昂贵的图像 API 调用。
@@ -717,8 +722,10 @@ async def generate_bookplate_image(
     if not prompt:
         raise HTTPException(status_code=400, detail="prompt 不能为空")
 
+    nc = _resolve_node_config(db, payload.config_id, NODE_IMAGE)
+    agent_config = _agent_config_from(nc, current_user.id)
+
     # Agent 模式：SSE 流式透传中间步骤 + 最终 image_url 事件
-    agent_config = _resolve_agent_config(db, STAGE_IMAGE, current_user.id)
     if agent_config:
         session_key = _agent_session_key(current_user.id, payload.node_id)
 
@@ -730,7 +737,7 @@ async def generate_bookplate_image(
                     agent_config,
                     prompt,
                     session_key=session_key,
-                    params={"module": "bookplate", "stage": STAGE_IMAGE, "prompt": prompt},
+                    params={"module": "bookplate", "node_type": NODE_IMAGE, "prompt": prompt},
                 ):
                     if await request.is_disconnected():
                         break
@@ -768,7 +775,7 @@ async def generate_bookplate_image(
     # 客户端已断开：不发起图像 API 调用，直接放弃本次生成
     if await request.is_disconnected():
         raise HTTPException(status_code=499, detail="客户端已断开连接")
-    image_config = _resolve_image_config(db) or ImageModelConfig()
+    image_config = _image_config_from(nc) or ImageModelConfig()
     # 请求体参数按次覆盖（仅当提供了才覆盖，未提供则保留 None）
     image_config.size = payload.size or image_config.size
     image_config.ratio = payload.ratio or image_config.ratio

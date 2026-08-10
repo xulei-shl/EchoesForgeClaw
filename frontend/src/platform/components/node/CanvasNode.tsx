@@ -13,6 +13,10 @@ export interface CanvasNodeProps {
   className?: string;
   /** 卡片边框外侧右下角的操作按钮（icon 按钮），随卡片拖动 */
   actionBar?: React.ReactNode;
+  /** 卡片边框外侧底部的插槽（如「+ 添加子节点」按钮），随卡片拖动 */
+  footer?: React.ReactNode;
+  /** 所属自定义分组（有分组时在标题旁展示小标签） */
+  groupBadge?: string;
   /** 允许拖拽右下角手柄调整卡片尺寸 */
   resizable?: boolean;
   /** 默认（同时也是最小）尺寸；开启 resizable 时必填 */
@@ -29,6 +33,8 @@ export interface CanvasNodeProps {
   showRightAnchor?: boolean;
   /** 根节点点击回调（选中态等） */
   onClick?: (e: React.MouseEvent<HTMLDivElement>) => void;
+  /** 根节点右键菜单回调（父级需 preventDefault 以抑制浏览器菜单） */
+  onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
 }
 
 export const CanvasNode: React.FC<CanvasNodeProps> = ({
@@ -49,6 +55,9 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
   showLeftAnchor,
   showRightAnchor,
   onClick,
+  onContextMenu,
+  footer,
+  groupBadge,
 }) => {
   const rootRef = useRef<HTMLDivElement>(null);
   const { scale } = useCanvas();
@@ -136,6 +145,8 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
   };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    // 仅响应主键（左键）：右键/中键留给画布菜单等交互，避免误触发拖拽
+    if (e.button !== 0) return;
     const target = e.target as HTMLElement;
     // 命中右下角调整尺寸手柄 → 进入 resize 模式
     if (resizeHandleRef.current?.contains(target)) {
@@ -227,6 +238,7 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
       onClick={onClick}
+      onContextMenu={onContextMenu}
       onLostPointerCapture={() => {
         // 浏览器中途回收指针捕获（如切换标签页）时结束拖拽并提交当前位置，避免卡在拖拽态
         if (resizingRef.current) {
@@ -254,9 +266,17 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
         className="relative z-10 node-drag-handle h-8 bg-paper border-b border-dashed border-paper-grid flex items-center justify-between px-3 cursor-grab active:cursor-grabbing rounded-t-md select-none"
         style={{ touchAction: 'none' }}
       >
-        <div className="flex gap-1.5 items-center">
-          <div className="w-2 h-2 rounded-full bg-paper-hole" />
-          <span className="font-serif text-sm text-ink-light font-medium">{title || 'Node'}</span>
+        <div className="flex gap-1.5 items-center min-w-0">
+          <div className="w-2 h-2 rounded-full bg-paper-hole shrink-0" />
+          <span className="font-serif text-sm text-ink-light font-medium truncate">{title || 'Node'}</span>
+          {groupBadge && (
+            <span
+              title={groupBadge}
+              className="shrink-0 max-w-[100px] truncate text-[10px] text-ink-faint border border-dashed border-paper-grid rounded-pill px-1.5 py-px font-mono"
+            >
+              {groupBadge}
+            </span>
+          )}
         </div>
         {onRemove && (
           <button
@@ -277,6 +297,13 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
       {actionBar && (
         <div className="absolute -bottom-8 right-0 flex items-center gap-0.5 z-20">
           {actionBar}
+        </div>
+      )}
+
+      {/* 边框外侧底部插槽（「+ 添加子节点」按钮） */}
+      {footer && (
+        <div className="absolute -bottom-9 left-1/2 -translate-x-1/2 z-30">
+          {footer}
         </div>
       )}
 

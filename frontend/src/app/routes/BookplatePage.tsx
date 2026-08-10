@@ -9,10 +9,15 @@ import { Navbar } from '../../platform/components/layout/Navbar';
 import { Canvas } from '../../platform/components/canvas/Canvas';
 import { IsbnInput } from '../../modules/bookplate/components/IsbnInput';
 import { BookInfoNode } from '../../modules/bookplate/components/BookInfoNode';
+import { ImageAnalysisNode } from '../../modules/bookplate/components/ImageAnalysisNode';
 import { PromptNode } from '../../modules/bookplate/components/PromptNode';
 import { ImageNode } from '../../modules/bookplate/components/ImageNode';
 import { CanvasActionBar } from '../../modules/bookplate/components/CanvasActionBar';
+import { AddNodeButton, type NodePickerItem } from '../../modules/bookplate/components/AddNodeButton';
+import NodeContextMenu from '../../modules/bookplate/components/NodeContextMenu';
+import EmptyCanvasHint from '../../modules/bookplate/components/EmptyCanvasHint';
 import { NODE_SIZES, getBookInfoPosition, getBranchNodePosition, computeAutoLayout, computeFitViewport } from '../../modules/bookplate/nodeLayout';
+import { NODE_TEMPLATES, NODE_TEMPLATE_MAP } from '../../modules/bookplate/nodeTypes';
 import {
   ISBN_FETCH_TIMEOUT_MS,
   PROMPT_SSE_IDLE_TIMEOUT_MS,
@@ -23,13 +28,17 @@ import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
 import { postSSEStream } from '../../platform/services/sse';
 import api from '../../platform/services/api';
 import generationsService from '../../platform/services/generations';
-import type { BookplateEffectiveConfig, GenerationStageResults } from '../../platform/types';
+import type { CanvasNodeType, GenerationStageResults, NodeRegistry, RegistryNodeConfig } from '../../platform/types';
 
-type NodeType = 'bookInfo' | 'prompt' | 'image';
+type NodeType = CanvasNodeType;
 
 interface NodeData {
   id: string;
   type: NodeType;
+  /** 绑定的节点配置 id（节点变体）；未绑定则使用默认配置（环境变量） */
+  configId?: number;
+  /** 节点变体名称（标题展示用） */
+  configName?: string;
   x: number;
   y: number;
   data: any;
@@ -81,14 +90,17 @@ const BookplatePage: React.FC = () => {
   const nodeSizesRef = useRef(nodeSizes);
   nodeSizesRef.current = nodeSizes;
 
-  // bookplate 各阶段生效模式（agent / llm）：决定节点调用方式与中间步骤展示
-  const [effectiveConfig, setEffectiveConfig] = useState<BookplateEffectiveConfig | null>(null);
+  // 节点注册表：模板 + 已配置节点变体（驱动「+」菜单与 per-node 执行模式）
+  const [registry, setRegistry] = useState<NodeRegistry>({ templates: [], configs: [] });
   useEffect(() => {
     api
-      .get<BookplateEffectiveConfig, BookplateEffectiveConfig>('/modules/bookplate/effective-config')
-      .then(setEffectiveConfig)
-      .catch((e) => console.error('获取阶段生效配置失败:', e));
+      .get<NodeRegistry, NodeRegistry>('/modules/bookplate/node-registry')
+      .then(setRegistry)
+      .catch((e) => console.error('获取节点注册表失败:', e));
   }, []);
+  const registryConfigs = registry.configs;
+  const registryConfigsRef = useRef<RegistryNodeConfig[]>(registryConfigs);
+  registryConfigsRef.current = registryConfigs;
 
   // 全局操作栏（收藏/公开/导出）的作用目标：点击 ImageNode 选中；未选中时回退到最近生成的图片节点
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
@@ -97,13 +109,22 @@ const BookplatePage: React.FC = () => {
   // 用户对其收藏/公开（重新生成记录）后移除
   const [staleRecordIds, setStaleRecordIds] = useState<Set<string>>(new Set());
 
+  // 视口 refs：自动聚焦与可见性判断读取当前最新值（稳定回调闭包不会过期）
+  const scaleRef = useRef(scale);
+  scaleRef.current = scale;
+  const positionRef = useRef(position);
+  positionRef.current = position;
+
+  // 节点右键菜单状态（视口坐标 + 目标节点）
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
+
   // 操作栏作用目标：优先选中且已有图片的 ImageNode，否则回退到最近生成的图片节点
   const selectedImageNode =
     selectedImageId &&
-    nodes.some((n) => n.id === selectedImageId && n.type === 'image' && n.data?.imageUrl)
+    nodes.some((n) => n.id === selectedImageId && n.type === 'image_generation' && n.data?.imageUrl)
       ? nodes.find((n) => n.id === selectedImageId)
       : undefined;
-  const activeImage = selectedImageNode ?? nodes.filter((n) => n.type === 'image' && n.data?.imageUrl).pop();
+  const activeImage = selectedImageNode ?? nodes.filter((n) => n.type === 'image_generation' && n.data?.imageUrl).pop();
 
   // 收藏/公开状态的实时快照：稳定回调（memo 优化）在闭包中读取时始终拿到最新值
   const favoritedRef = useRef(favoritedState);
@@ -199,6 +220,8 @@ const BookplatePage: React.FC = () => {
 
   // 记录进行中的 SSE 请求，节点被删除时中止
   const streamControllers = useRef<Map<string, AbortController>>(new Map());
+  // 图片分析节点本次会话上传的参考图（base64 data URL，仅存内存，重试复用）
+  const analysisUploads = useRef<Map<string, string>>(new Map());
 
   const handleSizeChange = useCallback((id: string, width: number, height: number) => {
     setNodeSizes((prev) => {
@@ -223,16 +246,38 @@ const BookplatePage: React.FC = () => {
       (n) => n.type === type && edgesRef.current.some((e) => e.source === parentId && e.target === n.id)
     );
 
-  /** 某 prompt 节点是否已有子 ImageNode（编辑/重新生成是否触发分支的前置条件） */
-  const promptHasChildImage = (promptId: string): boolean =>
+  /** 某节点是否已有指定类型的直接子节点 */
+  const hasChildOfType = (nodeId: string, type: NodeType): boolean =>
     edgesRef.current.some(
-      (e) => e.source === promptId && nodesRef.current.find((n) => n.id === e.target)?.type === 'image'
+      (e) => e.source === nodeId && nodesRef.current.find((n) => n.id === e.target)?.type === type
     );
+
+  /** 沿入边向上 BFS，找到最近的指定类型祖先节点（输入数据来源） */
+  const findUpstream = (nodeId: string, type: NodeType): NodeData | undefined => {
+    const visited = new Set<string>();
+    let frontier = [nodeId];
+    while (frontier.length > 0) {
+      const next: string[] = [];
+      for (const nid of frontier) {
+        if (visited.has(nid)) continue;
+        visited.add(nid);
+        for (const edge of edgesRef.current) {
+          if (edge.target !== nid) continue;
+          const parent = nodesRef.current.find((n) => n.id === edge.source);
+          if (!parent) continue;
+          if (parent.type === type) return parent;
+          next.push(parent.id);
+        }
+      }
+      frontier = next;
+    }
+    return undefined;
+  };
 
   /**
    * 第一阶段：点击「生成」后立即在画布上放置组件框（边框光束表示运行中），
    * 豆瓣 API 返回后再回填元数据；失败则在组件框内展示错误并支持重试。
-   * @param nodeId 传入则复用已有组件框（重试），否则新建组件框
+   * @param nodeId 传入则复用已有组件框（空态节点内联查询/重试），否则新建组件框
    */
   const fetchBookInfo = async (isbn: string, nodeId?: string) => {
     const id = nodeId ?? `node-${Date.now()}-${isbn}`;
@@ -244,13 +289,12 @@ const BookplatePage: React.FC = () => {
       // 立即创建组件框，进入等待态（边框光束）
       const { x, y } = getBookInfoPosition();
       recordHistory();
-      setNodes((prev) => [
-        ...prev,
-        { id, type: 'bookInfo', x, y, data: { isbn, isGenerating: true, error: null } },
-      ]);
+      const newNode: NodeData = { id, type: 'book_info', x, y, data: { isbn, isGenerating: true, error: null } };
+      setNodes((prev) => [...prev, newNode]);
+      focusOnNode(newNode);
     } else {
-      // 重试：复用已有组件框，重新进入等待态
-      updateNodeData(id, { isGenerating: true, error: null });
+      // 空态/重试：复用已有组件框，重新进入等待态
+      updateNodeData(id, { isbn, isGenerating: true, error: null });
     }
 
     const controller = new AbortController();
@@ -316,6 +360,7 @@ const BookplatePage: React.FC = () => {
       streamControllers.current.get(nid)?.abort();
       streamControllers.current.delete(nid);
       delete generationIds.current[nid];
+      analysisUploads.current.delete(nid);
     });
     setFavoritedState((prev) => {
       const next = { ...prev };
@@ -487,10 +532,7 @@ const BookplatePage: React.FC = () => {
     }
   }, []);
 
-  // ---------- 第二阶段：流式生成提示词（POST + fetch 解析 SSE） ----------
-  /** 对指定提示词节点发起流式生成（新建、失败重试、编辑重新生成复用同一实现）。
-   *  options.image 为编辑模式上传的参考图（base64 data URL），携带时后端优先
-   *  对其执行 Stage 2 封面分析，再与图书元数据合并生成提示词。 */
+  // ---------- SSE 执行（按节点类型分发） ----------
   /** 把 agent 中间步骤事件（tool_call / tool_result / status）追加到节点数据 */
   const appendAgentStep = (nodeId: string, step: any) => {
     setNodes((prev) =>
@@ -515,20 +557,81 @@ const BookplatePage: React.FC = () => {
     }
   };
 
-  const runPromptGeneration = (
-    sourceNode: NodeData,
-    promptNodeId: string,
-    options?: { image?: string }
-  ) => {
-    // 重试防抖：该节点已有进行中的流时直接忽略（防止快速连点开启并发流导致内容重复）
-    if (streamControllers.current.has(promptNodeId)) return;
+  /** 图片分析节点：SSE 流式执行（LLM 一次性返回 analysis 事件；Agent 透传中间步骤 + 最终 analysis） */
+  const runImageAnalysis = (node: NodeData, opts: { image?: string; coverUrl?: string }) => {
+    if (streamControllers.current.has(node.id)) return;
     const controller = new AbortController();
-    streamControllers.current.set(promptNodeId, controller);
+    streamControllers.current.set(node.id, controller);
+    updateNodeData(node.id, { isGenerating: true, error: null, agentSteps: [], analysis: undefined });
+
+    let timedOut = false;
+    let idleTimer: number | null = null;
+    const armIdleTimeout = () => {
+      if (idleTimer !== null) window.clearTimeout(idleTimer);
+      idleTimer = window.setTimeout(() => {
+        timedOut = true;
+        idleTimer = null;
+        controller.abort();
+      }, PROMPT_SSE_IDLE_TIMEOUT_MS);
+    };
+    armIdleTimeout();
+
+    postSSEStream({
+      url: '/api/modules/bookplate/analyze-image',
+      body: {
+        image: opts.image,
+        cover_url: opts.coverUrl,
+        config_id: node.configId ?? null,
+        node_id: node.id,
+      },
+      signal: controller.signal,
+      onMessage: (event, data) => {
+        armIdleTimeout(); // 收到数据，重置空闲计时
+        if (
+          event === 'agent_tool_call' ||
+          event === 'agent_tool_result' ||
+          event === 'agent_status'
+        ) {
+          handleAgentSseMessage(node.id, event, data);
+          return;
+        }
+        if (event === 'analysis') {
+          updateNodeData(node.id, { analysis: data, isGenerating: false, error: null });
+          return;
+        }
+        if (event === 'error') {
+          updateNodeData(node.id, { isGenerating: false, error: data });
+          return;
+        }
+      },
+    })
+      .then(() => {
+        updateNodeData(node.id, { isGenerating: false });
+      })
+      .catch((err) => {
+        if (!timedOut && err?.name === 'AbortError') return; // 节点被删除 / 画布清空
+        console.error('SSE stream error:', err);
+        updateNodeData(node.id, {
+          isGenerating: false,
+          error: timedOut ? '图片分析超时，请重试' : '图片分析失败，请重试',
+        });
+      })
+      .finally(() => {
+        if (idleTimer !== null) window.clearTimeout(idleTimer);
+        streamControllers.current.delete(node.id);
+      });
+  };
+
+  /** 提示词生成节点：基于上游数据流式生成（LLM 流式 / Agent 透传中间步骤） */
+  const runPromptGeneration = (node: NodeData, inputs: { metadata: any; analysis: string }) => {
+    // 重试防抖：该节点已有进行中的流时直接忽略（防止快速连点开启并发流导致内容重复）
+    if (streamControllers.current.has(node.id)) return;
+    const controller = new AbortController();
+    streamControllers.current.set(node.id, controller);
+    updateNodeData(node.id, { content: '', isGenerating: true, error: null, agentSteps: [] });
 
     // 前端兜底超时：真正的「空闲超时」——每次收到数据都会重新计时，
     // 超过 PROMPT_SSE_IDLE_TIMEOUT_MS 没有任何数据则判定超时并中止
-    // （后端封面分析最坏约 75s 无数据，之后提示词流每次数据都会刷新计时；
-    // 用户删除节点时的 abort 除外。与后端 60s 流式读超时的关系见 timeouts.ts）
     let timedOut = false;
     let idleTimer: number | null = null;
     const armIdleTimeout = () => {
@@ -544,9 +647,10 @@ const BookplatePage: React.FC = () => {
     postSSEStream({
       url: '/api/modules/bookplate/generate-prompt',
       body: {
-        metadata: sourceNode.data,
-        node_id: promptNodeId,
-        ...(options?.image ? { image: options.image } : {}),
+        metadata: inputs.metadata,
+        analysis: inputs.analysis,
+        config_id: node.configId ?? null,
+        node_id: node.id,
       },
       signal: controller.signal,
       onMessage: (event, data) => {
@@ -557,15 +661,12 @@ const BookplatePage: React.FC = () => {
           event === 'agent_tool_result' ||
           event === 'agent_status'
         ) {
-          handleAgentSseMessage(promptNodeId, event, data);
+          handleAgentSseMessage(node.id, event, data);
           return;
         }
         setNodes((prev) =>
           prev.map((n) => {
-            if (n.id !== promptNodeId) return n;
-            if (event === 'analysis') {
-              return { ...n, data: { ...n.data, coverAnalysis: data } };
-            }
+            if (n.id !== node.id) return n;
             if (event === 'error') {
               // 后端流式生成失败：切换为错误态（复用错误横幅 + 重试），不注入文本到内容
               return { ...n, data: { ...n.data, isGenerating: false, error: data } };
@@ -576,52 +677,25 @@ const BookplatePage: React.FC = () => {
       },
     })
       .then(() => {
-        updateNodeData(promptNodeId, { isGenerating: false });
+        updateNodeData(node.id, { isGenerating: false });
       })
       .catch((err) => {
         if (!timedOut && err?.name === 'AbortError') return; // 节点被删除 / 画布清空
         console.error('SSE stream error:', err);
-        updateNodeData(promptNodeId, {
+        updateNodeData(node.id, {
           isGenerating: false,
           error: timedOut ? '提示词生成超时，请重试' : '提示词生成失败',
         });
       })
       .finally(() => {
         if (idleTimer !== null) window.clearTimeout(idleTimer);
-        streamControllers.current.delete(promptNodeId);
+        streamControllers.current.delete(node.id);
       });
   };
 
-  const handleGeneratePrompt = (sourceNode: NodeData) => {
-    const promptNodeId = genNodeId('prompt');
-    // 兄弟级联布局：同一 bookInfo 下已有 prompt 时向下错开，避免重叠
-    const siblings = sourceNode.type === 'bookInfo' ? getChildrenOfType(sourceNode.id, 'prompt') : [];
-    const { x: newX, y: newY } = getBranchNodePosition(
-      sourceNode, siblings, nodeSizesRef.current, 'prompt'
-    );
-
-    recordHistory();
-    setNodes((prev) => [
-      ...prev,
-      {
-        id: promptNodeId,
-        type: 'prompt',
-        x: newX,
-        y: newY,
-        data: { content: '', isGenerating: true, branchSerial: siblings.length },
-      },
-    ]);
-    setEdges((prev) => [
-      ...prev,
-      { id: `edge-${sourceNode.id}-${promptNodeId}`, source: sourceNode.id, target: promptNodeId },
-    ]);
-
-    runPromptGeneration(sourceNode, promptNodeId);
-  };
-
-  // ---------- 第三阶段：生成藏书票图片 ----------
+  // ---------- 图像生成 ----------
   /** Agent 模式图片生成：SSE 流式透传中间步骤，最终 image_url 事件落图 */
-  const runImageGenerationAgent = async (nodeId: string, prompt: string, controller: AbortController) => {
+  const runImageGenerationAgent = async (nodeId: string, prompt: string, controller: AbortController, configId?: number) => {
     let timedOut = false;
     let idleTimer: number | null = null;
     const armIdleTimeout = () => {
@@ -637,7 +711,7 @@ const BookplatePage: React.FC = () => {
     try {
       await postSSEStream({
         url: '/api/modules/bookplate/generate-image',
-        body: { prompt, node_id: nodeId },
+        body: { prompt, config_id: configId ?? null, node_id: nodeId },
         signal: controller.signal,
         onMessage: (event, data) => {
           armIdleTimeout(); // 收到数据，重置空闲计时
@@ -662,7 +736,7 @@ const BookplatePage: React.FC = () => {
                 imageUrl: url,
                 isGenerating: false,
                 error: payload?.mock ? 'API 配置缺失，当前为演示占位图' : null,
-                isMock: payload?.mock
+                isMock: payload?.mock,
               });
               setSelectedImageId(nodeId);
               if (!payload?.mock) {
@@ -689,162 +763,319 @@ const BookplatePage: React.FC = () => {
     }
   };
 
-  const runImageGeneration = async (nodeId: string, prompt: string) => {
+  const runImageGeneration = async (node: NodeData, prompt: string) => {
     // 重试防抖：该节点已有进行中的生成时直接忽略（防止快速连点开启并发请求，
-    // 导致孤儿流 + 历史记录重复保存，与 runPromptGeneration 同款守卫）
-    if (streamControllers.current.has(nodeId)) return;
-    updateNodeData(nodeId, { isGenerating: true, imageUrl: null, error: null, agentSteps: [] });
+    // 导致孤儿流 + 历史记录重复保存）
+    if (streamControllers.current.has(node.id)) return;
+    updateNodeData(node.id, { isGenerating: true, imageUrl: null, error: null, agentSteps: [] });
     // 重新生成后，旧的保存快照/收藏状态失效
-    delete generationIds.current[nodeId];
-    setFavoritedState((prev) => ({ ...prev, [nodeId]: false }));
-    setPublishedState((prev) => ({ ...prev, [nodeId]: false }));
+    delete generationIds.current[node.id];
+    setFavoritedState((prev) => ({ ...prev, [node.id]: false }));
+    setPublishedState((prev) => ({ ...prev, [node.id]: false }));
     const controller = new AbortController();
-    streamControllers.current.set(nodeId, controller);
+    streamControllers.current.set(node.id, controller);
 
     try {
-      // Agent 模式：SSE 流式（中间步骤 + 最终 image_url 事件）
-      if (effectiveConfig?.stage3?.mode === 'agent') {
-        await runImageGenerationAgent(nodeId, prompt, controller);
+      // 执行模式由该节点绑定的配置决定（agent 走 SSE 流式，否则走 LLM 图像 API）
+      const cfg =
+        node.configId != null
+          ? registryConfigsRef.current.find((c) => c.id === node.configId)
+          : undefined;
+      if (cfg?.mode === 'agent') {
+        await runImageGenerationAgent(node.id, prompt, controller, node.configId);
         return;
       }
       // 图片生成耗时较长（可达 30-120s+），超时须覆盖后端最坏耗时（见 timeouts.ts）
       const res: any = await api.post(
         '/modules/bookplate/generate-image',
-        { prompt, node_id: nodeId },
+        { prompt, config_id: node.configId ?? null, node_id: node.id },
         {
           timeout: IMAGE_GENERATION_TIMEOUT_MS,
           signal: controller.signal,
         }
       );
-      updateNodeData(nodeId, {
+      updateNodeData(node.id, {
         imageUrl: res.image_url,
         isGenerating: false,
         error: res.mock ? 'API 配置缺失，当前为演示占位图' : null,
-        isMock: res.mock
+        isMock: res.mock,
       });
       // 新图生成成功：自动选中，使全局操作栏作用于本节点
-      setSelectedImageId(nodeId);
+      setSelectedImageId(node.id);
       // 成功即自动保存一条历史记录（失败不保存），重试会新建而非覆盖
       if (!res.mock) {
-        await autoSaveGeneration(nodeId, res.image_url).catch(() => undefined);
+        await autoSaveGeneration(node.id, res.image_url).catch(() => undefined);
       }
     } catch (error: any) {
       if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') return;
       console.error('Failed to generate image:', error);
       // 超时与普通失败分开提示（拦截器保留 isTimeout 标记）；后端 502 detail 兜底展示
-      updateNodeData(nodeId, {
+      updateNodeData(node.id, {
         isGenerating: false,
         error: error?.isTimeout
           ? '图片生成超时，请重试'
           : error?.detail || '图片生成失败，请重试',
       });
     } finally {
-      streamControllers.current.delete(nodeId);
+      streamControllers.current.delete(node.id);
     }
   };
 
-  const handleGenerateImage = (sourceNode: NodeData) => {
-    const prompt = sourceNode.data?.content?.trim();
-    if (!prompt) return;
+  // ---------- 通用节点创建与执行分发 ----------
+  /** 新节点的初始数据（按模板类型） */
+  const seedDataFor = (type: NodeType): any => {
+    switch (type) {
+      case 'book_info':
+        return { isbn: '', isGenerating: false, error: null };
+      case 'image_analysis':
+        return { analysis: undefined, isGenerating: false, error: null, agentSteps: [] };
+      case 'prompt_generation':
+        return { content: '', isGenerating: false, error: null, agentSteps: [] };
+      case 'image_generation':
+        return { prompt: '', imageUrl: null, isGenerating: false, error: null, agentSteps: [] };
+    }
+  };
 
-    const imageNodeId = genNodeId('image');
-    // 兄弟级联布局：同一 prompt 下已有 image 时向下错开，避免重叠
-    const siblings = getChildrenOfType(sourceNode.id, 'image');
-    const { x: newX, y: newY } = getBranchNodePosition(
-      sourceNode, siblings, nodeSizesRef.current, 'image'
+  /** 节点执行分发：按类型收集上游输入并自动执行（输入不足时进入待运行态） */
+  const runNode = (node: NodeData) => {
+    switch (node.type) {
+      case 'book_info':
+        return; // 需用户输入 ISBN
+      case 'image_analysis': {
+        const book = findUpstream(node.id, 'book_info');
+        // 注意：必须传豆瓣原始 URL（cover_image），而非本地代理 URL（cover_image_local）——
+        // 后端仅接受 doubanio.com 域名做封面抓取/分析
+        const coverUrl =
+          book?.data?.cover_image || book?.data?.coverUrl || book?.data?.cover_image_local;
+        const uploaded = analysisUploads.current.get(node.id);
+        if (!coverUrl && !uploaded) return; // 无图可分析 → 待运行态
+        runImageAnalysis(node, { image: uploaded, coverUrl: coverUrl || undefined });
+        return;
+      }
+      case 'prompt_generation': {
+        const book = findUpstream(node.id, 'book_info');
+        const analysisNode = findUpstream(node.id, 'image_analysis');
+        const analysis =
+          typeof analysisNode?.data?.analysis === 'string' ? analysisNode.data.analysis : '';
+        if (!book?.data?.isbn && !analysis) return; // 无上游输入 → 待运行态
+        runPromptGeneration(node, { metadata: book?.data ?? {}, analysis });
+        return;
+      }
+      case 'image_generation': {
+        const promptNode = findUpstream(node.id, 'prompt_generation');
+        const prompt =
+          typeof promptNode?.data?.content === 'string' ? promptNode.data.content.trim() : '';
+        if (!prompt) return; // 上游提示词未就绪 → 待运行态
+        runImageGeneration(node, prompt);
+        return;
+      }
+    }
+  };
+
+  /**
+   * 节点添加核心入口：在父节点下新建一个节点并连线（picker 新建与分支复制共用）。
+   * 统一处理：兄弟位置排布（branchSerial 自动附加，供连线色调/布局使用）、记历史、
+   * 同步 refs/state、可选沿用上传参考图、可选创建后立即执行、自动聚焦。
+   */
+  const addChildNode = (
+    parent: NodeData,
+    opts: {
+      type: NodeType;
+      /** 新节点初始数据（branchSerial 会自动附加） */
+      data: Record<string, any>;
+      configId?: number;
+      configName?: string;
+      /** 创建后立即执行（picker 新建传 runNode 自动分发；分支按需传入） */
+      run?: (newNode: NodeData) => void;
+      /** 沿用指定旧节点的上传参考图（内存快照），图片分析分支用 */
+      copyUploadFrom?: string;
+    }
+  ) => {
+    const siblings = getChildrenOfType(parent.id, opts.type);
+    const newId = genNodeId(opts.type);
+    const { x, y } = getBranchNodePosition(parent, siblings, nodeSizesRef.current, opts.type);
+    const newNode: NodeData = {
+      id: newId,
+      type: opts.type,
+      configId: opts.configId,
+      configName: opts.configName,
+      x,
+      y,
+      data: { ...opts.data, branchSerial: siblings.length },
+    };
+    if (opts.copyUploadFrom) {
+      const uploaded = analysisUploads.current.get(opts.copyUploadFrom);
+      if (uploaded) analysisUploads.current.set(newId, uploaded);
+    }
+    const newEdge: EdgeData = { id: `edge-${parent.id}-${newId}`, source: parent.id, target: newId };
+
+    recordHistory();
+    // 先同步写入 refs，让「自动执行」立即能读到新连线/节点
+    nodesRef.current = [...nodesRef.current, newNode];
+    edgesRef.current = [...edgesRef.current, newEdge];
+    setNodes((prev) => [...prev, newNode]);
+    setEdges((prev) => [...prev, newEdge]);
+
+    opts.run?.(newNode); // 输入就绪即自动执行（dify 风格）
+    focusOnNode(newNode); // 自动聚焦：新节点不可见时平移到视口内
+  };
+
+  /** 稳定回调：按节点 id 创建子节点（供 AddNodeButton / 右键菜单使用） */
+  const handlePickChildFor = useCallback((nodeId: string, item: NodePickerItem) => {
+    const node = nodesRef.current.find((n) => n.id === nodeId);
+    if (!node) return;
+    addChildNode(node, {
+      type: item.nodeType,
+      data: seedDataFor(item.nodeType),
+      configId: item.configId,
+      configName: item.configId ? item.label : undefined,
+      run: runNode, // 输入就绪即自动执行（dify 风格）
+    });
+  }, []);
+
+  /** 「+」菜单可选项：基础模板 + 各配置变体（无配置的模板提供「默认配置」项） */
+  const pickerItems = useMemo<NodePickerItem[]>(() => {
+    const items: NodePickerItem[] = [];
+    for (const t of NODE_TEMPLATES) {
+      if (!t.configurable) {
+        items.push({ key: t.type, nodeType: t.type, label: t.name, description: t.description });
+        continue;
+      }
+      const configs = registryConfigs.filter((c) => c.node_type === t.type);
+      if (configs.length === 0) {
+        items.push({
+          key: `${t.type}-default`,
+          nodeType: t.type,
+          label: t.name,
+          description: t.description,
+          fallback: true,
+          mode: 'llm',
+        });
+      } else {
+        for (const c of configs) {
+          items.push({
+            key: `${t.type}-${c.id}`,
+            nodeType: t.type,
+            label: c.name,
+            description: c.agent_name
+              ? `Agent · ${c.agent_name}`
+              : c.llm_config_name
+                ? `模型 · ${c.llm_config_name}`
+                : t.description,
+            configId: c.id,
+            group: c.group ?? undefined,
+            groupOrder: c.group_order ?? 0,
+            mode: c.mode,
+            agentName: c.agent_name ?? null,
+          });
+        }
+      }
+    }
+    return items;
+  }, [registryConfigs]);
+
+  /** 节点的绑定配置（用于展示 agent 名 / 决定执行模式） */
+  const configOf = (node: NodeData): RegistryNodeConfig | undefined =>
+    node.configId != null
+      ? registryConfigs.find((c) => c.id === node.configId)
+      : undefined;
+
+  /** 已尝试过自动执行的节点 id：防止输入就绪检查在每次状态变化时重复触发 */
+  const autoRunTried = useRef<Set<string>>(new Set());
+
+  // 输入就绪自动执行（dify 行为）：节点创建时输入未就绪会进入待运行态，
+  // 上游数据到达后（如图书元数据返回、分析完成、提示词生成完）自动补跑。
+  useEffect(() => {
+    for (const node of nodesRef.current) {
+      if (autoRunTried.current.has(node.id)) continue;
+      if (node.data?.isGenerating || node.data?.error) continue;
+
+      let idle = false;
+      let ready = false;
+      if (node.type === 'image_analysis') {
+        idle = !node.data?.analysis;
+        const book = findUpstream(node.id, 'book_info');
+        const uploaded = analysisUploads.current.get(node.id);
+        ready = !!(uploaded || book?.data?.cover_image || book?.data?.coverUrl);
+      } else if (node.type === 'prompt_generation') {
+        idle = !node.data?.content;
+        const book = findUpstream(node.id, 'book_info');
+        const analysisNode = findUpstream(node.id, 'image_analysis');
+        ready = !!(book?.data?.isbn ||
+          (typeof analysisNode?.data?.analysis === 'string' && analysisNode.data.analysis));
+      } else if (node.type === 'image_generation') {
+        idle = !node.data?.imageUrl;
+        const promptNode = findUpstream(node.id, 'prompt_generation');
+        ready = !!(
+          typeof promptNode?.data?.content === 'string' &&
+          promptNode.data.content.trim() &&
+          !promptNode.data.isGenerating
+        );
+      }
+
+      if (!idle) {
+        autoRunTried.current.add(node.id); // 已有结果，无需补跑
+        continue;
+      }
+      if (ready) {
+        autoRunTried.current.add(node.id);
+        runNode(node);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes, edges]);
+
+  // ---------- 自动聚焦新节点 ----------
+  /** 判断节点是否（部分）落在当前视口内（画布坐标换算，含少量边距） */
+  const isNodeVisible = (node: NodeData): boolean => {
+    const size = nodeSizesRef.current[node.id] ?? DEFAULT_SIZES[node.type];
+    const s = scaleRef.current;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight - 64;
+    const viewLeft = -positionRef.current.x / s;
+    const viewTop = -positionRef.current.y / s;
+    const margin = 48 / s;
+    return (
+      node.x + size.width > viewLeft + margin &&
+      node.x < viewLeft + vw / s - margin &&
+      node.y + size.height > viewTop + margin &&
+      node.y < viewTop + vh / s - margin
     );
-
-    recordHistory();
-    setNodes((prev) => [
-      ...prev,
-      {
-        id: imageNodeId,
-        type: 'image',
-        x: newX,
-        y: newY,
-        data: { prompt, imageUrl: null, isGenerating: true, branchSerial: siblings.length },
-      },
-    ]);
-    setEdges((prev) => [
-      ...prev,
-      { id: `edge-${sourceNode.id}-${imageNodeId}`, source: sourceNode.id, target: imageNodeId },
-    ]);
-
-    runImageGeneration(imageNodeId, prompt);
   };
 
-  /** 图片节点重试：已有图片 → 分支新建兄弟 ImageNode（同挂父 PromptNode）；
-   *  错误态（无图或占位图）→ 复用原节点重新生成修复，避免留下空错误节点。 */
-  const handleRetryImageBranch = (node: NodeData) => {
-    const prompt = node.data?.prompt;
-    if (!prompt) return;
-    if (!node.data?.imageUrl || node.data?.isMock) {
-      runImageGeneration(node.id, prompt);
-      return;
-    }
-    // 有图：分支新建 ImageNode，连接到同一个父 PromptNode
-    const promptEdge = edgesRef.current.find((e) => e.target === node.id);
-    const parent = promptEdge ? nodesRef.current.find((n) => n.id === promptEdge.source) : undefined;
-    const siblings = parent ? getChildrenOfType(parent.id, 'image') : [];
-    const newId = genNodeId('image');
-    const { x, y } = getBranchNodePosition(parent ?? node, siblings, nodeSizesRef.current, 'image');
-
-    recordHistory();
-    setNodes((prev) => [
-      ...prev,
-      { id: newId, type: 'image', x, y, data: { prompt, imageUrl: null, isGenerating: true, branchSerial: siblings.length } },
-    ]);
-    if (parent) {
-      setEdges((prev) => [
-        ...prev,
-        { id: `edge-${parent.id}-${newId}`, source: parent.id, target: newId },
-      ]);
-    }
-    runImageGeneration(newId, prompt);
+  /** 新节点创建后平移/缩放视口使其可见（已在视口内则不打扰） */
+  const focusOnNode = (node: NodeData) => {
+    if (isNodeVisible(node)) return;
+    const size = nodeSizesRef.current[node.id] ?? DEFAULT_SIZES[node.type];
+    const fit = computeFitViewport(
+      { minX: node.x, minY: node.y, maxX: node.x + size.width, maxY: node.y + size.height },
+      window.innerWidth,
+      window.innerHeight - 64
+    );
+    setScale(fit.scale);
+    setPosition(fit.position);
   };
 
-  /** 编辑/重新生成分支：新建一个 PromptNode，共享父 BookInfoNode（或旧节点的直接父级）。
-   *  opts.image 携带时新节点清空内容进入生成态，走 Stage2 封面分析 + 流式生成。
-   *  opts.regenerate 为 true 时新节点也进入生成态（无参考图，仅基于图书元数据重新生成）。 */
-  const branchPromptNode = (oldNode: NodeData, opts: { content?: string; image?: string; regenerate?: boolean }) => {
-    const parentEdge = edgesRef.current.find((e) => e.target === oldNode.id);
-    const parent = parentEdge ? nodesRef.current.find((n) => n.id === parentEdge.source) : undefined;
-    const siblings = parent ? getChildrenOfType(parent.id, 'prompt') : [];
-    const newId = genNodeId('prompt');
-    const { x, y } = getBranchNodePosition(parent ?? oldNode, siblings, nodeSizesRef.current, 'prompt');
-    const enteringGenerating = !!(opts.image || opts.regenerate);
-    const data: any = enteringGenerating
-      ? { content: '', coverAnalysis: undefined, isGenerating: true, error: null, branchSerial: siblings.length }
-      : { content: opts.content ?? '', coverAnalysis: oldNode.data?.coverAnalysis, branchSerial: siblings.length };
-
-    recordHistory();
-    setNodes((prev) => [...prev, { id: newId, type: 'prompt', x, y, data }]);
-    if (parent) {
-      setEdges((prev) => [
-        ...prev,
-        { id: `edge-${parent.id}-${newId}`, source: parent.id, target: newId },
-      ]);
-    }
-    if (opts.image) {
-      runPromptGeneration(parent ?? ({ data: {} } as NodeData), newId, { image: opts.image });
-    } else if (opts.regenerate) {
-      runPromptGeneration(parent ?? ({ data: {} } as NodeData), newId);
-    }
-  };
+  // ---------- 节点右键菜单 ----------
+  /** 右键节点打开上下文菜单（抑制浏览器默认菜单） */
+  const handleNodeContextMenu = useCallback((e: React.MouseEvent, nodeId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!nodesRef.current.some((n) => n.id === nodeId)) return;
+    setCtxMenu({ x: e.clientX, y: e.clientY, nodeId });
+  }, []);
+  const closeContextMenu = useCallback(() => setCtxMenu(null), []);
 
   // ---------- 收藏 / 公开（保存到历史并关联） ----------
   /** 由图片节点沿连线回溯组装三阶段结果（含 Agent 中间步骤，持久化到历史记录） */
   const buildStageResults = (imageNodeId: string): GenerationStageResults | null => {
     // 读 refs 快照：稳定回调可能持有旧闭包，但这里始终拿到最新节点/连线
-    const nodes = nodesRef.current;
-    const edges = edgesRef.current;
-    const imageNode = nodes.find((n) => n.id === imageNodeId);
+    const imageNode = nodesRef.current.find((n) => n.id === imageNodeId);
     if (!imageNode) return null;
 
-    const promptEdge = edges.find((e) => e.target === imageNodeId);
-    const promptNode = promptEdge ? nodes.find((n) => n.id === promptEdge.source) : undefined;
-    const bookEdge = promptNode ? edges.find((e) => e.target === promptNode.id) : undefined;
-    const bookNode = bookEdge ? nodes.find((n) => n.id === bookEdge.source) : undefined;
+    const promptNode = findUpstream(imageNodeId, 'prompt_generation');
+    const analysisNode = findUpstream(imageNodeId, 'image_analysis');
+    const bookNode = findUpstream(imageNodeId, 'book_info');
 
     // Agent 中间步骤随记录持久化：历史/收藏/画廊页与刷新后仍可见
     const promptSteps = Array.isArray(promptNode?.data?.agentSteps) ? promptNode.data.agentSteps : [];
@@ -860,6 +1091,10 @@ const BookplatePage: React.FC = () => {
       stage2: promptNode
         ? {
             prompt: typeof promptNode.data?.content === 'string' ? promptNode.data.content : '',
+            analysis:
+              typeof analysisNode?.data?.analysis === 'string'
+                ? analysisNode.data.analysis
+                : undefined,
             agent_steps: promptSteps.length > 0 ? promptSteps : undefined,
           }
         : undefined,
@@ -871,12 +1106,7 @@ const BookplatePage: React.FC = () => {
     };
   };
 
-  /** 生成成功后自动保存到历史记录（每次成功新建一条，失败不保存）。
-   *
-   *  时序说明：buildStageResults 读取 nodesRef（渲染后刷新）。Agent 模式的
-   *  agent_steps 在 image_url 事件之前的各 SSE 帧逐个写入（帧间已重渲染），
-   *  故此处能取到完整步骤；imageUrl 为最终帧显式传入，不依赖节点状态。
-   *  若未来把保存时机前移（如每步都落库），需改为从 ref 读取步骤。 */
+  /** 生成成功后自动保存到历史记录（每次成功新建一条，失败不保存）。 */
   const autoSaveGeneration = async (imageNodeId: string, imageUrl: string): Promise<number | null> => {
     const stageResults = buildStageResults(imageNodeId);
     if (!stageResults) return null;
@@ -983,16 +1213,14 @@ const BookplatePage: React.FC = () => {
 
   // ---------- 稳定回调（配合节点组件 memo）：避免内联箭头导致未变化节点重渲染 ----------
   // 按节点 id 从实时快照（nodesRef）取节点，保证稳定闭包也能拿到最新节点。
-  // 不变量：下方被引用的处理函数（handleGeneratePrompt / fetchBookInfo / runImageGeneration /
-  // toggleFavoriteForImage 等）只能读取 refs / 模块函数 / 稳定 setter，否则稳定闭包会读到过期状态。
+  // 不变量：下方被引用的处理函数只能读取 refs / 模块函数 / 稳定 setter。
   const handleRemove = useCallback((id: string) => handleRemoveNode(id), []);
   const handleRetryBookFor = useCallback((id: string) => {
     const node = nodesRef.current.find((n) => n.id === id);
     if (node) handleRetryBook(node);
   }, []);
-  const handleNextFor = useCallback((id: string) => {
-    const node = nodesRef.current.find((n) => n.id === id);
-    if (node) handleGeneratePrompt(node);
+  const handleFetchBookFor = useCallback((id: string, isbn: string) => {
+    fetchBookInfo(isbn, id);
   }, []);
   const handleDownloadBookData = useCallback((id: string) => {
     const node = nodesRef.current.find((n) => n.id === id);
@@ -1013,15 +1241,11 @@ const BookplatePage: React.FC = () => {
     a.remove();
     URL.revokeObjectURL(url);
   }, []);
-  const handleGenerateImageFor = useCallback((id: string) => {
-    const node = nodesRef.current.find((n) => n.id === id);
-    if (node) handleGenerateImage(node);
-  }, []);
-  /** 保存编辑文本：若该 prompt 节点已有子 ImageNode，则分支新建节点保留旧分支；否则原地保存 */
+  /** 保存编辑文本：若该提示词节点已有子图像节点，则分支新建节点保留旧分支；否则原地保存 */
   const handleEditContent = useCallback((id: string, content: string) => {
     const promptNode = nodesRef.current.find((n) => n.id === id);
-    if (!promptNode || promptNode.type !== 'prompt') return;
-    if (!promptHasChildImage(id)) {
+    if (!promptNode || promptNode.type !== 'prompt_generation') return;
+    if (!hasChildOfType(id, 'image_generation')) {
       recordHistory();
       updateNodeData(id, { content });
       return;
@@ -1029,81 +1253,36 @@ const BookplatePage: React.FC = () => {
     // 内容未变化时无需分支（避免误操作产生空分支节点）
     const oldContent = typeof promptNode.data?.content === 'string' ? promptNode.data.content : '';
     if (content === oldContent) return;
-    // 有子图：新建 prompt 节点（共享父 BookInfoNode），旧节点及旧分支原样保留
+    // 有子图：新建 prompt 节点（共享父节点），旧节点及旧分支原样保留
     branchPromptNode(promptNode, { content });
+  }, []);
+  /** 提示词节点重试/重新生成：从上游重新收集输入并流式生成 */
+  const handleRetryPromptFor = useCallback((id: string) => {
+    const node = nodesRef.current.find((n) => n.id === id);
+    if (node && node.type === 'prompt_generation') runNode(node);
+  }, []);
+  /** 图片分析节点执行/重试：image 为本次上传的参考图（持久化到内存供重试复用）。
+   *  已有正确结果时「再次分析」新建兄弟节点保留旧分支（与图像节点行为一致）；失败/空态原地执行。 */
+  const handleRunAnalysisFor = useCallback((id: string, image?: string) => {
+    if (image) analysisUploads.current.set(id, image);
+    const node = nodesRef.current.find((n) => n.id === id);
+    if (!node || node.type !== 'image_analysis') return;
+    // 已有正确分析结果：分支新建兄弟节点保留旧结果；错误/空态：原地执行修复
+    if (node.data?.analysis && !node.data?.error) {
+      branchAnalysisNode(node);
+      return;
+    }
+    runNode(node);
   }, []);
   const handleRetryImageFor = useCallback((id: string) => {
     const node = nodesRef.current.find((n) => n.id === id);
-    if (node) handleRetryImageBranch(node);
-  }, []);
-  /** 提示词节点重试：已有正确结果（content 非空、无错误）且已有子 ImageNode → 分支新建 PromptNode 重新生成，
-   *  保留旧分支；否则复用当前节点原地重新生成。image 为上次「重新生成」上传的参考图，重试时一并携带。 */
-  const handleRetryPromptFor = useCallback((id: string, image?: string) => {
-    const promptNode = nodesRef.current.find((n) => n.id === id);
-    if (!promptNode || promptNode.type !== 'prompt') return;
-    const bookEdge = edgesRef.current.find((e) => e.target === id);
-    const bookNode = bookEdge ? nodesRef.current.find((n) => n.id === bookEdge.source) : undefined;
-    if (!bookNode && !image) return; // 既无图书节点也无参考图时无可生成
-    const hasChildImage = promptHasChildImage(id);
-    // 已有正确结果且非生成态，且有子 ImageNode：分支新建节点，旧节点及旧分支原样保留
-    if (
-      promptNode.data?.content &&
-      !promptNode.data?.error &&
-      !promptNode.data?.isGenerating &&
-      hasChildImage
-    ) {
-      branchPromptNode(promptNode, image ? { image } : { regenerate: true });
+    if (!node || node.type !== 'image_generation') return;
+    // 已有正常图片：分支新建兄弟节点保留旧结果；错误/空态：原地重新生成修复
+    if (node.data?.imageUrl && !node.data?.isMock) {
+      branchImageNode(node);
       return;
     }
-    // 失败/空态/无子节点：重置当前节点状态（含清空旧 Agent 步骤），复用同一节点原地重新生成
-    recordHistory();
-    updateNodeData(id, {
-      content: '',
-      coverAnalysis: undefined,
-      isGenerating: true,
-      error: null,
-      agentSteps: [],
-    });
-    runPromptGeneration(bookNode ?? ({ data: {} } as NodeData), id, { image: image || undefined });
-  }, []);
-
-  /** 编辑模式「重新生成」：上传参考图 → Stage 2 封面分析 → 与图书元数据合并流式生成提示词。
-   *  已有子 ImageNode 时分支新建 prompt 节点并流式生成（保留旧分支）；否则原地重新生成。
-   *  图书节点缺失时以空元数据兜底（仅基于参考图分析生成）。 */
-  const handleRegeneratePromptFor = useCallback((id: string, image?: string) => {
-    const promptNode = nodesRef.current.find((n) => n.id === id);
-    if (!promptNode) return;
-    if (!promptHasChildImage(id)) {
-      recordHistory();
-      updateNodeData(id, {
-        content: '',
-        coverAnalysis: undefined,
-        isGenerating: true,
-        error: null,
-        agentSteps: [],
-      });
-      const bookEdge = edgesRef.current.find((e) => e.target === id);
-      const bookNode = bookEdge ? nodesRef.current.find((n) => n.id === bookEdge.source) : undefined;
-      runPromptGeneration(bookNode ?? ({ data: {} } as NodeData), id, { image: image || undefined });
-      return;
-    }
-    // 有子图：分支新建 prompt 节点，共享父 BookInfoNode，携带参考图流式生成
-    if (image) {
-      branchPromptNode(promptNode, { image });
-    } else {
-      // 理论不可达（重新生成必有参考图），兜底原地重新生成
-      recordHistory();
-      updateNodeData(id, {
-        content: '',
-        coverAnalysis: undefined,
-        isGenerating: true,
-        error: null,
-        agentSteps: [],
-      });
-      const bookEdge = edgesRef.current.find((e) => e.target === id);
-      const bookNode = bookEdge ? nodesRef.current.find((n) => n.id === bookEdge.source) : undefined;
-      runPromptGeneration(bookNode ?? ({ data: {} } as NodeData), id);
-    }
+    runNode(node);
   }, []);
   const handleToggleFavoriteFor = useCallback((id: string) => toggleFavoriteForImage(id), []);
   const handleTogglePublicFor = useCallback((id: string) => togglePublicForImage(id), []);
@@ -1112,7 +1291,7 @@ const BookplatePage: React.FC = () => {
    *  避免删除节点时按钮点击冒泡产生「幽灵选中」。 */
   const handleSelectImage = useCallback((id: string) => {
     const node = nodesRef.current.find((n) => n.id === id);
-    if (node?.type === 'image' && node.data?.imageUrl) setSelectedImageId(id);
+    if (node?.type === 'image_generation' && node.data?.imageUrl) setSelectedImageId(id);
   }, []);
 
   /** 侧边操作栏：作用于选中的图片节点（未选中时回退最近生成） */
@@ -1136,6 +1315,62 @@ const BookplatePage: React.FC = () => {
     } catch (e: any) {
       showToast(e?.message || '公开失败，请重试', { type: 'error', position: 'top-right' });
     }
+  };
+
+  /**
+   * 分支助手：在共享父级下新建一个兄弟节点（继承类型与配置变体），旧节点与旧分支原样保留。
+   * 仅负责定位父节点，实际创建统一委托给 addChildNode；无父节点则放弃（各类型节点必有父）。
+   * 差异通过 options 表达：
+   *  - 提示词：传入新内容，创建后不执行（内容已就绪）
+   *  - 图像：沿用原 prompt 立即重新生成（run 回调）
+   *  - 图片分析：沿用上传参考图 + runNode 自动执行（copyUpload）
+   */
+  const branchNode = (
+    oldNode: NodeData,
+    opts: {
+      /** 新节点的初始数据（branchSerial 会自动附加） */
+      data: Record<string, any>;
+      /** 创建后立即执行（缺省不执行，如提示词分支内容已就绪） */
+      run?: (newNode: NodeData) => void;
+      /** 沿用原节点的上传参考图（内存快照），图片分析分支用 */
+      copyUpload?: boolean;
+    }
+  ) => {
+    const parentEdge = edgesRef.current.find((e) => e.target === oldNode.id);
+    const parent = parentEdge ? nodesRef.current.find((n) => n.id === parentEdge.source) : undefined;
+    if (!parent) return; // 无父节点：分支节点将无法找到上游输入，直接放弃
+    addChildNode(parent, {
+      type: oldNode.type,
+      data: opts.data,
+      configId: oldNode.configId,
+      configName: oldNode.configName,
+      copyUploadFrom: opts.copyUpload ? oldNode.id : undefined,
+      run: opts.run,
+    });
+  };
+
+  /** 提示词节点分支：新建共享父级的兄弟提示词节点（内容由调用方传入，创建后不执行） */
+  const branchPromptNode = (oldNode: NodeData, opts: { content?: string }) => {
+    branchNode(oldNode, { data: { content: opts.content ?? '', agentSteps: [] } });
+  };
+
+  /** 图片节点分支：已有正常图片时「重试」新建兄弟图像节点（沿用原 prompt 立即重新生成） */
+  const branchImageNode = (node: NodeData) => {
+    const prompt = typeof node.data?.prompt === 'string' ? node.data.prompt : '';
+    if (!prompt) return;
+    branchNode(node, {
+      data: { prompt, imageUrl: null, isGenerating: true, agentSteps: [] },
+      run: (newNode) => runImageGeneration(newNode, prompt),
+    });
+  };
+
+  /** 图片分析节点分支：已有正确结果时「再次分析」新建兄弟分析节点，沿用上传参考图并自动执行 */
+  const branchAnalysisNode = (oldNode: NodeData) => {
+    branchNode(oldNode, {
+      copyUpload: true,
+      data: { analysis: undefined, isGenerating: false, error: null, agentSteps: [] },
+      run: (newNode) => runNode(newNode),
+    });
   };
 
   // ---------- 画布侧操作栏 ----------
@@ -1242,6 +1477,15 @@ const BookplatePage: React.FC = () => {
     return info;
   }, [edges, nodes]);
 
+  /** 节点底部「+」按钮（每类节点统一入口） */
+  const renderFooter = (node: NodeData) => (
+    <AddNodeButton
+      items={pickerItems}
+      onPick={(item) => handlePickChildFor(node.id, item)}
+      pendingChildId={null}
+    />
+  );
+
   return (
     <div className="flex flex-col h-screen overflow-hidden">
       <Navbar />
@@ -1287,7 +1531,7 @@ const BookplatePage: React.FC = () => {
           })}
 
           {nodes.map((node) => {
-            if (node.type === 'bookInfo') {
+            if (node.type === 'book_info') {
               return (
                 <BookInfoNode
                   key={node.id}
@@ -1299,14 +1543,40 @@ const BookplatePage: React.FC = () => {
                   error={node.data.error ?? null}
                   onRemove={handleRemove}
                   onRetry={handleRetryBookFor}
+                  onFetch={handleFetchBookFor}
                   onDownload={handleDownloadBookData}
                   onPositionChange={handlePositionChange}
                   onSizeChange={handleSizeChange}
                   onDrag={handleNodeDrag}
-                  onNext={handleNextFor}
+                  onContextMenu={(e) => handleNodeContextMenu(e, node.id)}
+                  footer={renderFooter(node)}
                 />
               );
-            } else if (node.type === 'prompt') {
+            } else if (node.type === 'image_analysis') {
+              const config = configOf(node);
+              return (
+                <ImageAnalysisNode
+                  key={node.id}
+                  id={node.id}
+                  initialX={node.x}
+                  initialY={node.y}
+                  analysis={node.data.analysis}
+                  agentSteps={node.data.agentSteps}
+                  agentName={config?.mode === 'agent' ? (config.agent_name ?? undefined) : undefined}
+                  group={config?.group?.trim() || undefined}
+                  isGenerating={!!node.data.isGenerating}
+                  error={node.data.error ?? null}
+                  onRemove={handleRemove}
+                  onRun={handleRunAnalysisFor}
+                  onPositionChange={handlePositionChange}
+                  onSizeChange={handleSizeChange}
+                  onDrag={handleNodeDrag}
+                  onContextMenu={(e) => handleNodeContextMenu(e, node.id)}
+                  footer={renderFooter(node)}
+                />
+              );
+            } else if (node.type === 'prompt_generation') {
+              const config = configOf(node);
               return (
                 <PromptNode
                   key={node.id}
@@ -1314,26 +1584,23 @@ const BookplatePage: React.FC = () => {
                   initialX={node.x}
                   initialY={node.y}
                   content={node.data.content}
-                  coverAnalysis={node.data.coverAnalysis}
                   agentSteps={node.data.agentSteps}
-                  agentName={
-                    effectiveConfig?.stage2?.mode === 'agent'
-                      ? (effectiveConfig.stage2.agent_name ?? undefined)
-                      : undefined
-                  }
-                  isGenerating={node.data.isGenerating}
+                  agentName={config?.mode === 'agent' ? (config.agent_name ?? undefined) : undefined}
+                  group={config?.group?.trim() || undefined}
+                  isGenerating={!!node.data.isGenerating}
                   error={node.data.error ?? null}
                   onRemove={handleRemove}
                   onRetry={handleRetryPromptFor}
+                  onEditContent={handleEditContent}
                   onPositionChange={handlePositionChange}
                   onSizeChange={handleSizeChange}
                   onDrag={handleNodeDrag}
-                  onGenerateImage={handleGenerateImageFor}
-                  onEditContent={handleEditContent}
-                  onRegenerate={handleRegeneratePromptFor}
+                  onContextMenu={(e) => handleNodeContextMenu(e, node.id)}
+                  footer={renderFooter(node)}
                 />
               );
-            } else if (node.type === 'image') {
+            } else if (node.type === 'image_generation') {
+              const config = configOf(node);
               return (
                 <ImageNode
                   key={node.id}
@@ -1342,12 +1609,9 @@ const BookplatePage: React.FC = () => {
                   initialY={node.y}
                   imageUrl={node.data.imageUrl}
                   agentSteps={node.data.agentSteps}
-                  agentName={
-                    effectiveConfig?.stage3?.mode === 'agent'
-                      ? (effectiveConfig.stage3.agent_name ?? undefined)
-                      : undefined
-                  }
-                  isGenerating={node.data.isGenerating}
+                  agentName={config?.mode === 'agent' ? (config.agent_name ?? undefined) : undefined}
+                  group={config?.group?.trim() || undefined}
+                  isGenerating={!!node.data.isGenerating}
                   error={node.data.error}
                   isMock={node.data.isMock}
                   isFavorited={!!favoritedState[node.id]}
@@ -1362,12 +1626,41 @@ const BookplatePage: React.FC = () => {
                   onPositionChange={handlePositionChange}
                   onSizeChange={handleSizeChange}
                   onDrag={handleNodeDrag}
+                  onContextMenu={(e) => handleNodeContextMenu(e, node.id)}
+                  footer={renderFooter(node)}
                 />
               );
             }
             return null;
           })}
         </Canvas>
+
+        {/* 空画布引导提示 */}
+        {nodes.length === 0 && !isLoading && <EmptyCanvasHint />}
+
+        {/* 节点右键菜单 */}
+        {ctxMenu &&
+          (() => {
+            const node = nodes.find((n) => n.id === ctxMenu.nodeId);
+            if (!node) return null;
+            return (
+              <NodeContextMenu
+                x={ctxMenu.x}
+                y={ctxMenu.y}
+                title={node.configName ?? NODE_TEMPLATE_MAP[node.type]?.name ?? node.type}
+                items={pickerItems}
+                onPick={(item) => {
+                  setCtxMenu(null);
+                  handlePickChildFor(node.id, item);
+                }}
+                onDelete={() => {
+                  setCtxMenu(null);
+                  handleRemoveNode(node.id);
+                }}
+                onClose={closeContextMenu}
+              />
+            );
+          })()}
 
         <IsbnInput onSubmit={handleIsbnSubmit} isLoading={isLoading} disabled={nodes.length > 0} />
 
@@ -1391,7 +1684,6 @@ const BookplatePage: React.FC = () => {
           onFocus={handleFocus}
         />
       </main>
-
     </div>
   );
 };

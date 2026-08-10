@@ -1,0 +1,163 @@
+import React, { useState } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
+import { CATEGORY_LABELS, NODE_TEMPLATES } from '../nodeTypes';
+import type { CanvasNodeType } from '../../../platform/types';
+
+/** 「+」菜单 / 右键菜单中的一个可选项 */
+export interface NodePickerItem {
+  key: string;
+  nodeType: CanvasNodeType;
+  label: string;
+  description: string;
+  /** 绑定的节点配置 id（未绑定则为 undefined，使用默认配置/环境变量） */
+  configId?: number;
+  /** 可选自定义分组：有值则自成一组展示；空则归入模板分组 */
+  group?: string;
+  /** 自定义分组排序序号（0 表示未排序，按首见顺序回退） */
+  groupOrder?: number;
+  mode?: 'llm' | 'agent';
+  agentName?: string | null;
+  /** 该模板类型下无任何配置，将回退默认配置 */
+  fallback?: boolean;
+}
+
+interface NodePickerListProps {
+  items: NodePickerItem[];
+  onPick: (item: NodePickerItem) => void;
+  /** 添加进行中的子节点 id（选中后短暂禁用，防止重复点击） */
+  pendingChildId?: string | null;
+}
+
+interface PickerGroup {
+  /** 分组 key（自定义分组用 group 名，模板分组用模板类型） */
+  key: string;
+  /** 分组标题 */
+  title: string;
+  /** 自定义分组排序序号（模板分组不使用） */
+  order?: number;
+  items: NodePickerItem[];
+}
+
+/** 分组优先：有自定义分组的项按 group 分组（按 group_order 排序，未排序按首见顺序），
+ *  无分组的项按模板分组（保持 NODE_TEMPLATES 顺序） */
+function groupItems(items: NodePickerItem[]): PickerGroup[] {
+  const groups: PickerGroup[] = [];
+  const groupMap = new Map<string, PickerGroup>();
+  const ungrouped: NodePickerItem[] = [];
+
+  for (const item of items) {
+    const g = item.group?.trim();
+    if (g) {
+      let grp = groupMap.get(g);
+      if (!grp) {
+        grp = { key: `group:${g}`, title: g, order: item.groupOrder ?? 0, items: [] };
+        groupMap.set(g, grp);
+        groups.push(grp);
+      }
+      grp.items.push(item);
+    } else {
+      ungrouped.push(item);
+    }
+  }
+
+  // 自定义组排序：group_order 升序（0 的排最后、保持首见顺序）；同组首个 item 的 groupOrder 为准
+  groups.sort((a, b) => {
+    const ao = a.order || Number.MAX_SAFE_INTEGER;
+    const bo = b.order || Number.MAX_SAFE_INTEGER;
+    return ao - bo;
+  });
+
+  // 无分组的项按模板分组追加到末尾（保持 NODE_TEMPLATES 顺序）
+  for (const t of NODE_TEMPLATES) {
+    const list = ungrouped.filter((i) => i.nodeType === t.type);
+    if (list.length > 0) {
+      groups.push({ key: `template:${t.type}`, title: `${CATEGORY_LABELS[t.category]} · ${t.name}`, items: list });
+    }
+  }
+  return groups;
+}
+
+const NodePickerListInner: React.FC<NodePickerListProps> = ({ items, onPick, pendingChildId }) => {
+  const groups = groupItems(items);
+  // 折叠的分组 key 集合（默认全部展开）
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const toggleGroup = (key: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  return (
+    <div className="py-1">
+      {groups.length === 0 && (
+        <p className="px-3 py-4 text-xs text-ink-faint font-sans text-center">暂无可添加的节点</p>
+      )}
+      {groups.map((group) => {
+        const isCollapsed = collapsed.has(group.key);
+        return (
+        <div key={group.key}>
+          <button
+            type="button"
+            onClick={() => toggleGroup(group.key)}
+            title={isCollapsed ? '展开分组' : '折叠分组'}
+            className="w-full flex items-center gap-1 px-3 pt-2 pb-1 text-left group hover:bg-paper-grid/30 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+          >
+            {isCollapsed ? (
+              <ChevronRight size={11} strokeWidth={2} className="text-ink-faint shrink-0 transition-transform" />
+            ) : (
+              <ChevronDown size={11} strokeWidth={2} className="text-ink-faint shrink-0 transition-transform" />
+            )}
+            <span className="flex-1 min-w-0 truncate text-[10px] uppercase tracking-wider text-ink-faint font-sans">
+              {group.title}
+            </span>
+            <span className="ml-auto text-[10px] text-ink-faint/70 font-sans tabular-nums">
+              {group.items.length}
+            </span>
+          </button>
+          {!isCollapsed && group.items.map((item) => (
+            <button
+              key={item.key}
+              disabled={!!pendingChildId}
+              onClick={(e) => {
+                e.stopPropagation();
+                onPick(item);
+              }}
+              className="w-full flex items-start gap-2.5 px-3 py-2 text-left hover:bg-accent-surface/60 active:scale-[0.99] transition-colors disabled:opacity-50"
+            >
+              <span
+                className={`mt-0.5 w-1.5 h-1.5 rounded-full shrink-0 ${
+                  item.mode === 'agent'
+                    ? 'bg-accent'
+                    : item.fallback
+                      ? 'bg-ink-faint/50'
+                      : 'bg-[#5B8A5B]'
+                }`}
+              />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-sans text-ink font-medium truncate">
+                  {item.label}
+                  {item.fallback && (
+                    <span className="ml-1.5 text-[10px] text-ink-faint border border-dashed border-paper-grid rounded-pill px-1.5 py-px align-middle">
+                      默认配置
+                    </span>
+                  )}
+                </span>
+                <span className="block text-[11px] text-ink-faint font-sans truncate">
+                  {item.agentName ? `Agent · ${item.agentName}` : item.description}
+                </span>
+              </span>
+            </button>
+          ))}
+        </div>
+        );
+      })}
+    </div>
+  );
+};
+
+export const NodePickerList = React.memo(NodePickerListInner);
+NodePickerList.displayName = 'NodePickerList';
+export default NodePickerList;

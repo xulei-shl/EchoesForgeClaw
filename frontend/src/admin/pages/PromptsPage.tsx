@@ -20,24 +20,26 @@ import { Textarea } from '../../platform/components/ui/Textarea';
 import { FieldLabel, PageHeader } from '../components/AdminBits';
 import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
 
-const STAGE_LABEL: Record<string, string> = {
-  'stage2': 'Stage 2 · 提示词生成',
-  'stage2.cover': 'Stage 2 · 封面分析',
-  'stage3': 'Stage 3 · 图片生成',
-};
+const NODE_TYPE_OPTIONS: { label: string; value: string }[] = [
+  { label: '提示词生成', value: 'prompt_generation' },
+  { label: '图片分析', value: 'image_analysis' },
+  { label: '图像生成', value: 'image_generation' },
+];
+
+const NODE_TYPE_LABEL: Record<string, string> = Object.fromEntries(
+  NODE_TYPE_OPTIONS.map((o) => [o.value, o.label])
+);
 
 interface FormState {
   name: string;
-  module: string;
-  stage: string;
+  node_type: string;
   content: string;
   is_active: boolean;
 }
 
 const EMPTY_FORM: FormState = {
   name: '',
-  module: 'bookplate',
-  stage: 'stage2',
+  node_type: 'prompt_generation',
   content: '',
   is_active: true,
 };
@@ -47,8 +49,7 @@ export const PromptsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const [moduleFilter, setModuleFilter] = useState('');
-  const [stageFilter, setStageFilter] = useState('');
+  const [nodeTypeFilter, setNodeTypeFilter] = useState('');
 
   const [editing, setEditing] = useState<PromptTemplate | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -61,9 +62,8 @@ export const PromptsPage: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      const params: { module?: string; stage?: string } = {};
-      if (moduleFilter) params.module = moduleFilter;
-      if (stageFilter) params.stage = stageFilter;
+      const params: { node_type?: string } = {};
+      if (nodeTypeFilter) params.node_type = nodeTypeFilter;
       const res = await adminService.listPrompts(params);
       setItems(res);
     } catch (e: any) {
@@ -71,7 +71,7 @@ export const PromptsPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [moduleFilter, stageFilter]);
+  }, [nodeTypeFilter]);
 
   useEffect(() => {
     load();
@@ -94,8 +94,7 @@ export const PromptsPage: React.FC = () => {
     setEditing(p);
     setForm({
       name: p.name,
-      module: p.module,
-      stage: p.stage,
+      node_type: p.node_type,
       content: p.content,
       is_active: p.is_active,
     });
@@ -112,8 +111,7 @@ export const PromptsPage: React.FC = () => {
     try {
       const payload = {
         name: form.name.trim(),
-        module: form.module.trim() || 'bookplate',
-        stage: form.stage.trim(),
+        node_type: form.node_type,
         content: form.content,
         is_active: form.is_active,
       };
@@ -146,7 +144,7 @@ export const PromptsPage: React.FC = () => {
   const handleDelete = async (p: PromptTemplate) => {
     const ok = await dialog.confirm({
       title: '删除提示词模板',
-      message: `确定删除提示词模板「${p.name}」吗？引用它的阶段配置将解除绑定。`,
+      message: `确定删除提示词模板「${p.name}」吗？引用它的节点配置将解除绑定。`,
       confirmText: '删除',
       danger: true,
     });
@@ -164,7 +162,7 @@ export const PromptsPage: React.FC = () => {
     <div>
       <PageHeader
         title="提示词管理"
-        subtitle="各模块各阶段使用的系统提示词模板（作为 LLM 的 system prompt）"
+        subtitle="各节点模板类型使用的系统提示词模板（作为 LLM 的 system prompt）"
         actions={
           !showCreate && !editing && (
             <Button size="sm" onClick={openCreate}>
@@ -177,29 +175,18 @@ export const PromptsPage: React.FC = () => {
 
       {/* 筛选栏 */}
       <div className="flex items-center gap-3 mb-4">
-        <Input
-          value={moduleFilter}
-          onChange={(e) => setModuleFilter(e.target.value)}
-          placeholder="按模块筛选，如 bookplate"
-          className="max-w-[200px] h-9 text-sm"
-        />
         <Select
-          value={stageFilter}
-          onChange={(val) => setStageFilter(val)}
-          className="w-40"
+          value={nodeTypeFilter}
+          onChange={(val) => setNodeTypeFilter(val)}
+          className="w-44"
           options={[
-            { label: '全部阶段', value: '' },
-            { label: 'Stage 2 提示词', value: 'stage2' },
-            { label: 'Stage 2 封面分析', value: 'stage2.cover' },
-            { label: 'Stage 3 图片', value: 'stage3' },
+            { label: '全部节点类型', value: '' },
+            ...NODE_TYPE_OPTIONS,
           ]}
         />
-        {(moduleFilter || stageFilter) && (
+        {nodeTypeFilter && (
           <button
-            onClick={() => {
-              setModuleFilter('');
-              setStageFilter('');
-            }}
+            onClick={() => setNodeTypeFilter('')}
             className="text-sm text-accent hover:text-accent-hover font-sans active:scale-95 transition"
           >
             清除筛选
@@ -229,23 +216,11 @@ export const PromptsPage: React.FC = () => {
               />
             </div>
             <div className="space-y-1.5">
-              <FieldLabel>模块</FieldLabel>
-              <Input
-                value={form.module}
-                onChange={(e) => setForm({ ...form, module: e.target.value })}
-                placeholder="bookplate"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <FieldLabel>阶段</FieldLabel>
+              <FieldLabel>节点模板类型</FieldLabel>
               <Select
-                value={form.stage}
-                onChange={(val) => setForm({ ...form, stage: val })}
-                options={[
-                  { label: 'stage2 · 提示词生成', value: 'stage2' },
-                  { label: 'stage2.cover · 封面分析', value: 'stage2.cover' },
-                  { label: 'stage3 · 图片生成', value: 'stage3' },
-                ]}
+                value={form.node_type}
+                onChange={(val) => setForm({ ...form, node_type: val })}
+                options={NODE_TYPE_OPTIONS}
               />
             </div>
           </div>
@@ -309,7 +284,7 @@ export const PromptsPage: React.FC = () => {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-serif text-base font-semibold text-ink">{p.name}</span>
                       <span className="text-xs text-ink-light border border-dashed border-paper-grid rounded-pill px-2 py-px font-mono">
-                        {p.module} / {STAGE_LABEL[p.stage] ?? p.stage}
+                        {NODE_TYPE_LABEL[p.node_type] ?? p.node_type}
                       </span>
                       <Badge variant={p.is_active ? 'success' : 'default'} showDot>
                         {p.is_active ? '启用' : '停用'}
@@ -342,7 +317,6 @@ export const PromptsPage: React.FC = () => {
           )}
         </div>
       )}
-
     </div>
   );
 };

@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useState } from 'react';
-import { ArrowRight, BookOpen, Download, ExternalLink, Loader2, RefreshCw, AlertTriangle } from 'lucide-react';
+import { BookOpen, Download, ExternalLink, Loader2, RefreshCw, AlertTriangle, Search } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { BeamGlow } from '../../../platform/components/node/BeamGlow';
 import { Tooltip } from '../../../platform/components/ui/Tooltip';
@@ -39,11 +39,16 @@ export interface BookInfoNodeProps {
   error?: string | null;
   onRemove?: (id: string) => void;
   onRetry?: (id: string) => void;
-  onNext?: (id: string) => void;
+  /** 空态节点内联输入 ISBN 后提交 */
+  onFetch?: (id: string, isbn: string) => void;
   onDownload?: (id: string) => void;
   onPositionChange?: (id: string, x: number, y: number) => void;
   onSizeChange?: (id: string, width: number, height: number) => void;
   onDrag?: (id: string, x: number, y: number) => void;
+  /** 卡片底部「+」插槽 */
+  footer?: React.ReactNode;
+  /** 根节点右键菜单回调 */
+  onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
 }
 
 const BookInfoNodeInner: React.FC<BookInfoNodeProps> = ({
@@ -55,14 +60,18 @@ const BookInfoNodeInner: React.FC<BookInfoNodeProps> = ({
   error = null,
   onRemove,
   onRetry,
-  onNext,
+  onFetch,
   onDownload,
   onPositionChange,
   onSizeChange,
   onDrag,
+  footer,
+  onContextMenu,
 }) => {
   // 封面加载失败时显示占位图（豆瓣限流/缓存缺失时避免破图）
   const [coverFailed, setCoverFailed] = useState(false);
+  // 空态内联 ISBN 输入
+  const [isbnInput, setIsbnInput] = useState('');
   const coverUrl = data.cover_image_local || data.cover_image || data.coverUrl;
   const publishDate = data.pub_year || data.publishDate;
   const description = data.summary || data.description;
@@ -76,8 +85,6 @@ const BookInfoNodeInner: React.FC<BookInfoNodeProps> = ({
     if (isGenerating) setCoverFailed(false);
   }, [isGenerating]);
 
-
-
   const actionBtn =
     'flex items-center justify-center w-7 h-7 rounded-full ' +
     'text-ink-light hover:text-ink hover:bg-paper-grid/40 ' +
@@ -85,21 +92,30 @@ const BookInfoNodeInner: React.FC<BookInfoNodeProps> = ({
     'disabled:opacity-40 disabled:cursor-not-allowed ' +
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent';
 
+  const handleIsbnSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const isbn = isbnInput.trim();
+    if (!isbn || isGenerating) return;
+    onFetch?.(id, isbn);
+  };
+
   return (
-    <CanvasNode 
-      id={id} 
-      initialX={initialX} 
-      initialY={initialY} 
-      title={`图书元数据`}
+    <CanvasNode
+      id={id}
+      initialX={initialX}
+      initialY={initialY}
+      title="图书元数据"
       onRemove={() => onRemove?.(id)}
       onPositionChange={onPositionChange}
       onSizeChange={onSizeChange}
       onDrag={onDrag}
+      onContextMenu={onContextMenu}
       resizable
       defaultSize={{ width: 440, height: 540 }}
       className={`transition-[box-shadow,border-color,opacity] duration-200 ${isGenerating && !error ? 'border-transparent' : ''}`}
       glowOverlay={isGenerating && !error ? <BeamGlow /> : undefined}
       showRightAnchor={true}
+      footer={footer}
       actionBar={
         <>
           {error && (
@@ -113,7 +129,7 @@ const BookInfoNodeInner: React.FC<BookInfoNodeProps> = ({
               </button>
             </Tooltip>
           )}
-          {!error && onDownload && (
+          {!error && data.isbn && onDownload && (
             <Tooltip content="下载元数据">
               <button
                 onClick={() => onDownload?.(id)}
@@ -132,17 +148,6 @@ const BookInfoNodeInner: React.FC<BookInfoNodeProps> = ({
                 className={actionBtn}
               >
                 <ExternalLink size={16} strokeWidth={1.5} />
-              </button>
-            </Tooltip>
-          )}
-          {!error && onNext && (
-            <Tooltip content="生成图像提示词">
-              <button
-                onClick={() => onNext?.(id)}
-                disabled={isGenerating}
-                className={actionBtn}
-              >
-                <ArrowRight size={16} strokeWidth={1.5} />
               </button>
             </Tooltip>
           )}
@@ -177,6 +182,31 @@ const BookInfoNodeInner: React.FC<BookInfoNodeProps> = ({
                   <p className="text-[12px] text-error/90 leading-relaxed break-words">{error}</p>
                 </div>
               </div>
+            </div>
+          ) : !data.isbn ? (
+            /* 空态：内联输入 ISBN 发起查询 */
+            <div className="flex-1 flex flex-col items-center justify-center gap-4 min-h-[200px]">
+              <div className="w-14 h-14 rounded-full border border-dashed border-paper-grid bg-paper-grid/20 flex items-center justify-center text-ink-faint">
+                <BookOpen size={26} strokeWidth={1.5} />
+              </div>
+              <p className="text-sm font-serif text-ink-light">输入 ISBN 获取图书元数据</p>
+              <form onSubmit={handleIsbnSubmit} className="w-full max-w-[300px] flex gap-2">
+                <input
+                  value={isbnInput}
+                  onChange={(e) => setIsbnInput(e.target.value)}
+                  placeholder="如 9787020002207"
+                  inputMode="numeric"
+                  className="flex-1 h-10 min-w-0 rounded-md border border-dashed border-paper-grid bg-transparent px-3 py-2 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors font-mono"
+                />
+                <button
+                  type="submit"
+                  disabled={!isbnInput.trim() || isGenerating}
+                  className="flex items-center justify-center w-10 h-10 rounded-md bg-accent text-paper hover:bg-accent-hover active:scale-95 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="查询"
+                >
+                  <Search size={15} strokeWidth={2} />
+                </button>
+              </form>
             </div>
           ) : (
             <>

@@ -37,6 +37,8 @@ export interface GenerationStageResults {
   };
   stage2?: {
     prompt?: string;
+    /** 上游图片分析节点的分析文本 */
+    analysis?: string;
     /** Agent 模式中间步骤（持久化，刷新/历史页仍可见） */
     agent_steps?: AgentStep[];
   };
@@ -106,8 +108,8 @@ export interface PromptTemplate {
   /** 系统种子身份标识（仅启动写入使用，用户模板为空，只读） */
   key?: string | null;
   name: string;
-  module: string;
-  stage: string;
+  /** 所属节点模板类型（prompt_generation / image_analysis 等） */
+  node_type: string;
   content: string;
   is_active: boolean;
   created_at: string;
@@ -115,8 +117,7 @@ export interface PromptTemplate {
 
 export interface PromptTemplatePayload {
   name: string;
-  module: string;
-  stage: string;
+  node_type: string;
   content: string;
   is_active?: boolean;
 }
@@ -143,10 +144,37 @@ export interface FastClawAgentConfigPayload {
   is_active?: boolean;
 }
 
-export interface StageConfig {
+/* ===================================================================== */
+/* 节点画板（Phase 6 重构）                                              */
+/* ===================================================================== */
+
+/** 节点模板类型（bookplate 模块） */
+export type CanvasNodeType =
+  | 'book_info'
+  | 'image_analysis'
+  | 'prompt_generation'
+  | 'image_generation';
+
+/** 节点模板（代码内置的节点类型定义） */
+export interface NodeTemplate {
+  type: CanvasNodeType;
+  name: string;
+  description: string;
+  /** 模板类别：input（输入）/ analysis（分析）/ generate（生成）/ output（输出） */
+  category: 'input' | 'analysis' | 'generate' | 'output';
+  /** 是否需要 llm/agent 配置（false 为基础节点，画板直接可用） */
+  configurable: boolean;
+}
+
+/** 节点配置（节点模板的一个具体可执行实例 = 画板「+」菜单中的节点变体） */
+export interface NodeConfig {
   id: number;
-  module: string;
-  stage: string;
+  node_type: CanvasNodeType;
+  name: string;
+  /** 可选自定义分组（画板「+」菜单分组展示）；空值按模板类型分组 */
+  group?: string | null;
+  /** 自定义分组排序序号（同组共享；0 表示未排序，按首见顺序回退） */
+  group_order?: number;
   llm_config_id: number | null;
   prompt_id: number | null;
   agent_config_id: number | null;
@@ -155,27 +183,39 @@ export interface StageConfig {
   agent_config_name: string | null;
   /** 绑定 agent 的 FastClaw 真实名字（如 "Xulei"） */
   agent_config_agent_name?: string | null;
+  is_active: boolean;
   created_at: string;
 }
 
-export interface StageConfigPayload {
-  module: string;
-  stage: string;
+export interface NodeConfigPayload {
+  node_type: CanvasNodeType;
+  name: string;
+  group?: string | null;
   llm_config_id: number | null;
   prompt_id: number | null;
   agent_config_id: number | null;
+  is_active?: boolean;
 }
 
-/** bookplate 各阶段生效模式（前端据此决定画布节点调用方式与展示） */
-export interface StageEffectiveMode {
+/** 节点注册表（画板「+」菜单数据源） */
+export interface NodeRegistry {
+  templates: NodeTemplate[];
+  /** 启用的节点配置变体（含生效模式与可读名） */
+  configs: RegistryNodeConfig[];
+}
+
+export interface RegistryNodeConfig {
+  id: number;
+  node_type: CanvasNodeType;
+  name: string;
+  /** 可选自定义分组（画板「+」菜单分组展示） */
+  group?: string | null;
+  /** 自定义分组排序序号 */
+  group_order?: number;
   mode: 'llm' | 'agent';
   agent_name?: string | null;
-}
-
-export interface BookplateEffectiveConfig {
-  stage2: StageEffectiveMode;
-  'stage2.cover': StageEffectiveMode;
-  stage3: StageEffectiveMode;
+  llm_config_name?: string | null;
+  is_active: boolean;
 }
 
 export interface AppSetting {

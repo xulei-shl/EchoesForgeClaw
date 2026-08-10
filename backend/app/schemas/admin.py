@@ -1,6 +1,6 @@
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime
-from typing import Optional, Literal
+from typing import List, Optional, Literal
 
 
 # ---------------------------------------------------------------------------
@@ -72,8 +72,7 @@ class LLMConfigTestOut(BaseModel):
 
 class PromptTemplateBase(BaseModel):
     name: str
-    module: str = "bookplate"
-    stage: str = "stage2"
+    node_type: str = "prompt_generation"
     content: str = ""
     is_active: bool = True
 
@@ -84,8 +83,7 @@ class PromptTemplateCreate(PromptTemplateBase):
 
 class PromptTemplateUpdate(BaseModel):
     name: Optional[str] = None
-    module: Optional[str] = None
-    stage: Optional[str] = None
+    node_type: Optional[str] = None
     content: Optional[str] = None
     is_active: Optional[bool] = None
 
@@ -95,8 +93,7 @@ class PromptTemplateOut(BaseModel):
     # 系统种子身份标识（仅启动写入时使用，创建/编辑接口不涉及，只读回传）
     key: Optional[str] = None
     name: str
-    module: str
-    stage: str
+    node_type: str
     content: str
     is_active: bool
     created_at: datetime
@@ -146,30 +143,37 @@ class FastClawAgentConfigOut(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# StageConfig（阶段绑定）
+# NodeConfig（节点配置：节点模板的一个具体实例）
 # ---------------------------------------------------------------------------
 
-class StageConfigCreate(BaseModel):
-    module: str = "bookplate"
-    stage: str
+class NodeConfigCreate(BaseModel):
+    node_type: str
+    name: str
+    # 可选自定义分组（画板「+」菜单分组展示）；空串/None 则按模板类型分组
+    group: Optional[str] = None
     # 模式互斥：agent_config_id 与 llm_config_id / prompt_id 只能选择一组
     llm_config_id: Optional[int] = None
     prompt_id: Optional[int] = None
     agent_config_id: Optional[int] = None
+    is_active: bool = True
 
 
-class StageConfigUpdate(BaseModel):
-    module: Optional[str] = None
-    stage: Optional[str] = None
+class NodeConfigUpdate(BaseModel):
+    node_type: Optional[str] = None
+    name: Optional[str] = None
+    group: Optional[str] = None
     llm_config_id: Optional[int] = None
     prompt_id: Optional[int] = None
     agent_config_id: Optional[int] = None
+    is_active: Optional[bool] = None
 
 
-class StageConfigOut(BaseModel):
+class NodeConfigOut(BaseModel):
     id: int
-    module: str
-    stage: str
+    node_type: str
+    name: str
+    group: Optional[str] = None
+    group_order: int = 0
     llm_config_id: Optional[int] = None
     prompt_id: Optional[int] = None
     agent_config_id: Optional[int] = None
@@ -178,14 +182,26 @@ class StageConfigOut(BaseModel):
     agent_config_name: Optional[str] = None
     # 绑定 agent 的 FastClaw 真实名字（如 "Xulei"），供列表展示可读名字
     agent_config_agent_name: Optional[str] = None
+    is_active: bool = True
     created_at: datetime
     updated_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+
+class NodeConfigGroupOrderItem(BaseModel):
+    """单个自定义分组的排序请求（同组配置共享同一序号）。"""
+
+    group: str
+    order: int
+
+
+class NodeConfigReorderPayload(BaseModel):
+    """批量更新自定义分组排序：传入完整分组顺序列表，后端按 group 批量写入。"""
+
+    groups: List[NodeConfigGroupOrderItem]
 
 
 # ---------------------------------------------------------------------------
-# AppSetting（通用键值设置）
+# AppSetting（系统设置）
 # ---------------------------------------------------------------------------
 
 class AppSettingCreate(BaseModel):

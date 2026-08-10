@@ -27,7 +27,7 @@ class FastClawAgentError(Exception):
 
 @dataclass
 class FastClawRuntimeConfig:
-    """一次 Agent 调用所需的运行时配置（由 StageConfig 解析而来）。"""
+    """一次 Agent 调用所需的运行时配置（由 NodeConfig 解析而来）。"""
 
     base_url: str = ""
     api_key: str = ""

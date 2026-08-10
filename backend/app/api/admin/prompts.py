@@ -17,17 +17,14 @@ router = APIRouter(prefix="/admin/prompts", tags=["admin-prompts"])
 
 @router.get("", response_model=List[PromptTemplateOut])
 def list_prompts(
-    module: Optional[str] = None,
-    stage: Optional[str] = None,
+    node_type: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_admin_user),
 ):
-    """提示词模板列表（可按 module / stage 过滤）。"""
+    """提示词模板列表（可按 node_type 过滤）。"""
     query = db.query(PromptTemplate)
-    if module:
-        query = query.filter(PromptTemplate.module == module)
-    if stage:
-        query = query.filter(PromptTemplate.stage == stage)
+    if node_type:
+        query = query.filter(PromptTemplate.node_type == node_type)
     return query.order_by(PromptTemplate.id.desc()).all()
 
 
@@ -70,14 +67,14 @@ def delete_prompt(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_admin_user),
 ):
-    """删除提示词模板（引用它的阶段配置解除绑定）。"""
+    """删除提示词模板（引用它的节点配置解除绑定）。"""
     item = db.query(PromptTemplate).filter(PromptTemplate.id == prompt_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="提示词模板不存在")
-    from app.models.stage_config import StageConfig
+    from app.models.node_config import NodeConfig
 
-    for sc in db.query(StageConfig).filter(StageConfig.prompt_id == item.id).all():
-        sc.prompt_id = None
+    for nc in db.query(NodeConfig).filter(NodeConfig.prompt_id == item.id).all():
+        nc.prompt_id = None
     db.delete(item)
     db.commit()
     return {"message": "提示词模板已删除"}

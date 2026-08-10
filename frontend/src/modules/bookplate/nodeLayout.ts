@@ -1,17 +1,18 @@
 /**
  * Bookplate 模块节点布局工具
  *
- * 集中管理各节点类型的默认尺寸和坐标计算，
+ * 集中管理各节点模板类型的默认尺寸和坐标计算，
  * 确保与各节点组件的 defaultSize 保持一致。
  */
 
-type NodeType = 'bookInfo' | 'prompt' | 'image';
+export type NodeType = 'book_info' | 'image_analysis' | 'prompt_generation' | 'image_generation';
 
-/** 各节点类型的默认尺寸（必须与组件 defaultSize 一致） */
+/** 各节点模板类型的默认尺寸（必须与组件 defaultSize 一致） */
 export const NODE_SIZES: Record<NodeType, { width: number; height: number }> = {
-  bookInfo: { width: 440, height: 540 },
-  prompt:   { width: 420, height: 500 },
-  image:    { width: 420, height: 540 },
+  book_info:        { width: 440, height: 540 },
+  image_analysis:   { width: 420, height: 460 },
+  prompt_generation:{ width: 420, height: 500 },
+  image_generation: { width: 420, height: 540 },
 };
 
 /** 节点间水平间距（px） */

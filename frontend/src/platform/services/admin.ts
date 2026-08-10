@@ -7,10 +7,10 @@ import type {
   LLMConfig,
   LLMConfigPayload,
   LLMKind,
+  NodeConfig,
+  NodeConfigPayload,
   PromptTemplate,
   PromptTemplatePayload,
-  StageConfig,
-  StageConfigPayload,
   User,
   UserPayload,
 } from '../types';
@@ -65,7 +65,7 @@ export const adminService = {
 
   /* ---------------- 提示词模板 ---------------- */
 
-  listPrompts: (params?: { module?: string; stage?: string }): Promise<PromptTemplate[]> =>
+  listPrompts: (params?: { node_type?: string }): Promise<PromptTemplate[]> =>
     api.get<PromptTemplate[], PromptTemplate[]>('/admin/prompts', { params }),
   createPrompt: (payload: PromptTemplatePayload): Promise<PromptTemplate> =>
     api.post<PromptTemplate, PromptTemplate>('/admin/prompts', payload),
@@ -74,16 +74,19 @@ export const adminService = {
   deletePrompt: (id: number): Promise<{ message: string }> =>
     api.delete(`/admin/prompts/${id}`),
 
-  /* ---------------- 阶段绑定 ---------------- */
+  /* ---------------- 节点配置（节点管理） ---------------- */
 
-  listStageConfigs: (params?: { module?: string }): Promise<StageConfig[]> =>
-    api.get<StageConfig[], StageConfig[]>('/admin/stage-configs', { params }),
-  upsertStageConfig: (payload: StageConfigPayload): Promise<StageConfig> =>
-    api.post<StageConfig, StageConfig>('/admin/stage-configs', payload),
-  updateStageConfig: (id: number, payload: Partial<StageConfigPayload>): Promise<StageConfig> =>
-    api.patch<StageConfig, StageConfig>(`/admin/stage-configs/${id}`, payload),
-  deleteStageConfig: (id: number): Promise<{ message: string }> =>
-    api.delete(`/admin/stage-configs/${id}`),
+  listNodeConfigs: (params?: { node_type?: string }): Promise<NodeConfig[]> =>
+    api.get<NodeConfig[], NodeConfig[]>('/admin/node-configs', { params }),
+  createNodeConfig: (payload: NodeConfigPayload): Promise<NodeConfig> =>
+    api.post<NodeConfig, NodeConfig>('/admin/node-configs', payload),
+  updateNodeConfig: (id: number, payload: Partial<NodeConfigPayload>): Promise<NodeConfig> =>
+    api.patch<NodeConfig, NodeConfig>(`/admin/node-configs/${id}`, payload),
+  deleteNodeConfig: (id: number): Promise<{ message: string }> =>
+    api.delete(`/admin/node-configs/${id}`),
+  /** 批量更新自定义分组排序（同组配置共享序号） */
+  reorderNodeGroups: (groups: { group: string; order: number }[]): Promise<{ message: string }> =>
+    api.post<{ message: string }, { message: string }>('/admin/node-configs/reorder-groups', { groups }),
 
   /* ---------------- 系统设置 ---------------- */
 

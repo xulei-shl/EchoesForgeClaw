@@ -37,6 +37,12 @@ export interface ImageNodeProps {
   onPositionChange?: (id: string, x: number, y: number) => void;
   onSizeChange?: (id: string, width: number, height: number) => void;
   onDrag?: (id: string, x: number, y: number) => void;
+  /** 卡片底部「+」插槽 */
+  footer?: React.ReactNode;
+  /** 根节点右键菜单回调 */
+  onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
+  /** 所属自定义分组（配置了分组时在标题旁展示小标签） */
+  group?: string;
 }
 
 const ImageNodeInner: React.FC<ImageNodeProps> = ({
@@ -61,6 +67,9 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
   onPositionChange,
   onSizeChange,
   onDrag,
+  footer,
+  onContextMenu,
+  group,
 }) => {
   const [notice, setNotice] = useState<string | null>(null);
   const noticeTimer = useRef<number | null>(null);
@@ -113,12 +122,15 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
       onPositionChange={onPositionChange}
       onSizeChange={onSizeChange}
       onDrag={onDrag}
+      onContextMenu={onContextMenu}
       resizable
       defaultSize={{ width: 420, height: 540 }}
       className={`transition-[opacity,transform,box-shadow,border-color] duration-150 ease-out ${isLoading ? 'border-transparent' : ''} ${isSelected ? 'ring-2 ring-accent/70 shadow-md' : ''}`}
       glowOverlay={isLoading ? <BeamGlow /> : undefined}
       showLeftAnchor={true}
       onClick={() => onSelect?.(id)}
+      footer={footer}
+      groupBadge={group}
       actionBar={
         <>
           <Tooltip content="重试">

@@ -25,9 +25,9 @@ STATIC_PREFIX = "/static/generated"
 
 @dataclass
 class ImageModelConfig:
-    """一次图片生成所需的运行时配置（由 StageConfig 解析而来）。
+    """一次图片生成所需的运行时配置（由 NodeConfig 解析而来）。
 
-    所有字段均无硬编码默认值，由调用方（StageConfig / 请求体）提供。
+    所有字段均无硬编码默认值，由调用方（NodeConfig / 请求体）提供。
     size 示例 "1K"、"2K"、"1024x1024"；ratio 示例 "1:1"、"16:9"；
     image 为图生图参考图 URL 列表（传入即走图生图）。
     """
@@ -79,7 +79,7 @@ class ImageService:
     ) -> Dict[str, Any]:
         """生成藏书票图片。
 
-        配置优先级：运行时 config（StageConfig）> 环境变量（回退）。
+        配置优先级：运行时 config（NodeConfig）> 环境变量（回退）。
         无 API Key 时返回 Mock 占位图；否则调用 OpenAI 兼容图像 API。
         图像参数（model / size / ratio / image）均来自 config，无硬编码默认值。
 

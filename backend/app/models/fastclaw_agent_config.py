@@ -9,7 +9,7 @@ class FastClawAgentConfig(Base):
     - base_url: FastClaw 服务地址（如 http://127.0.0.1:8787）
     - api_key: 明文存储于数据库，对外响应一律只返回 has_api_key 布尔标记
     - agent_id: FastClaw 中可调用的 agent 标识（agt_...）
-    - 同一 (module, stage) 通过 StageConfig.agent_config_id 绑定，与「提示词+大模型」模式互斥
+    - 同一节点模板通过 NodeConfig.agent_config_id 绑定，与「提示词+大模型」模式互斥
     """
 
     __tablename__ = "fastclaw_agent_configs"

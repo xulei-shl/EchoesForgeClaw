@@ -41,7 +41,7 @@ DEFAULT_COVER_SYSTEM_PROMPT = _load_default_prompt("藏书票封面图分析.md"
 
 @dataclass
 class TextModelConfig:
-    """一次调用所需的文本模型运行时配置（由 StageConfig 解析而来）。"""
+    """一次调用所需的文本模型运行时配置（由 NodeConfig 解析而来）。"""
 
     api_key: str = ""
     base_url: str = ""
@@ -76,7 +76,7 @@ class LLMService:
     """大模型调用代理。
 
     支持两种配置来源（优先级从高到低）：
-    1. 管理后台 StageConfig 解析出的 TextModelConfig / VisionModelConfig
+    1. 管理后台 NodeConfig 解析出的 TextModelConfig / VisionModelConfig
     2. 环境变量 OPENAI_API_KEY（无 Key 时启用 Mock 响应）
     """
 

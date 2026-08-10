@@ -23,7 +23,7 @@ from app.api.favorites import router as favorites_router
 from app.api.public import router as public_router
 from app.api.admin.llm_configs import router as admin_llm_configs_router
 from app.api.admin.prompts import router as admin_prompts_router
-from app.api.admin.stage_configs import router as admin_stage_configs_router
+from app.api.admin.node_configs import router as admin_node_configs_router
 from app.api.admin.settings import router as admin_settings_router
 from app.api.admin.fastclaw_agents import router as admin_fastclaw_agents_router
 from app.modules.bookplate.router import router as bookplate_router
@@ -70,9 +70,9 @@ async def lifespan(app: FastAPI):
                 db.add(AppSetting(key=key, value=value, description=description))
 
         # ---- 默认提示词模板（按固定 key 判重，name 可编辑不影响种子身份） ----
-        DEFAULT_PROMPT_KEY = "bookplate.stage2.default"
-        COVER_PROMPT_KEY = "bookplate.stage2.cover.default"
-        # stage2 默认提示词实为「藏书票图像提示词生成」的 system prompt，名字与用途保持一致
+        DEFAULT_PROMPT_KEY = "bookplate.prompt_generation.default"
+        COVER_PROMPT_KEY = "bookplate.image_analysis.default"
+        # prompt_generation 默认提示词实为「藏书票图像提示词生成」的 system prompt，名字与用途保持一致
         DEFAULT_PROMPT_NAME = "藏书票图像生成默认提示词"
         COVER_PROMPT_NAME = "封面分析默认提示词"
 
@@ -81,16 +81,14 @@ async def lifespan(app: FastAPI):
             PromptTemplate(
                 key=DEFAULT_PROMPT_KEY,
                 name=DEFAULT_PROMPT_NAME,
-                module="bookplate",
-                stage="stage2",
+                node_type="prompt_generation",
                 content=DEFAULT_SYSTEM_PROMPT,
                 is_active=True,
             ),
             PromptTemplate(
                 key=COVER_PROMPT_KEY,
                 name=COVER_PROMPT_NAME,
-                module="bookplate",
-                stage="stage2.cover",
+                node_type="image_analysis",
                 content=DEFAULT_COVER_SYSTEM_PROMPT,
                 is_active=True,
             ),
@@ -135,7 +133,7 @@ app.include_router(public_router)
 app.include_router(bookplate_router)
 app.include_router(admin_llm_configs_router, prefix="/api", tags=["admin"])
 app.include_router(admin_prompts_router, prefix="/api", tags=["admin"])
-app.include_router(admin_stage_configs_router, prefix="/api", tags=["admin"])
+app.include_router(admin_node_configs_router, prefix="/api", tags=["admin"])
 app.include_router(admin_settings_router, prefix="/api", tags=["admin"])
 app.include_router(admin_fastclaw_agents_router, prefix="/api", tags=["admin"])
 

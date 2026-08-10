@@ -110,11 +110,11 @@ def delete_fastclaw_agent(
     cfg = db.query(FastClawAgentConfig).filter(FastClawAgentConfig.id == config_id).first()
     if not cfg:
         raise HTTPException(status_code=404, detail="FastClaw Agent 配置不存在")
-    # 解除 StageConfig 引用（置空），避免悬空外键
-    from app.models.stage_config import StageConfig
+    # 解除 NodeConfig 引用（置空），避免悬空外键
+    from app.models.node_config import NodeConfig
 
-    for sc in db.query(StageConfig).filter(StageConfig.agent_config_id == cfg.id).all():
-        sc.agent_config_id = None
+    for nc in db.query(NodeConfig).filter(NodeConfig.agent_config_id == cfg.id).all():
+        nc.agent_config_id = None
     db.delete(cfg)
     db.commit()
     return {"message": "FastClaw Agent 配置已删除"}
