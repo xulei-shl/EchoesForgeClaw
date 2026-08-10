@@ -7,12 +7,12 @@ interface TooltipProps {
   children: React.ReactNode;
 }
 
-export const Tooltip: React.FC<TooltipProps> = ({ content, children }) => {
+export const Tooltip: React.FC<TooltipProps & Record<string, any>> = ({ content, children, ...rest }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [coords, setCoords] = useState({ x: 0, y: 0 });
   const triggerRef = useRef<HTMLElement>(null);
 
-  if (!content) return <>{children}</>;
+  if (!content) return <>{React.cloneElement(children as React.ReactElement<any>, rest)}</>;
 
   const handleMouseEnter = () => {
     if (triggerRef.current) {
@@ -28,6 +28,7 @@ export const Tooltip: React.FC<TooltipProps> = ({ content, children }) => {
   return (
     <>
       {React.cloneElement(children as React.ReactElement<any>, {
+        ...rest,
         ref: triggerRef,
         onMouseEnter: (e: any) => {
           handleMouseEnter();
