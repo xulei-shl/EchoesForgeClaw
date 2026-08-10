@@ -188,6 +188,7 @@ alembic upgrade head
 | 现象 | 排查方向 |
 |------|---------|
 | 阶段已绑 Agent 但画布仍走 LLM | `/effective-config` 返回的 `mode`；检查 Agent 配置 `is_active` / api_key 是否为空 / base_url 可达 |
+| 「拉取」提示没有可访问的 Agent，但 curl `GET /v1/agents` 能列出 | 探测接口**不带** `X-Fastclaw-End-User` 头（该头会让 FastClaw 切到懒创建的 app-user 空间，其下无任何 Agent，列表必空）；确认 Key 类型与归属：admin/user 类型列出所属账号的 Agent，agent 类型仅列出 ACL 绑定的 Agent |
 | 前端报「FastClaw /api/chat/stream 返回 HTTP xxx」 | 检查 base_url 路径、`fcak_...` Key 权限、Agent 是否存在 |
 | 提示词文本重复 | 正常不会发生；若复现，检查 `run_agent` 的 saw_delta 去重逻辑是否被改动 |
 | 阶段 3 无图片 | Agent 回复中无 markdown 图片 / 无裸图片 URL；`extract_image_url` 只认 `![..](url)` 与 `http(s)://...png|jpg|webp|gif`；确认 FastClaw 侧 image_gen 工具可用 |

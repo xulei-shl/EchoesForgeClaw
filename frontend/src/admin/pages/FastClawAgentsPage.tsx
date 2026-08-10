@@ -107,7 +107,10 @@ export const FastClawAgentsPage: React.FC = () => {
       });
       const agents = Array.isArray(data?.agents) ? data.agents : [];
       if (agents.length === 0) {
-        showToast('该 Key 下没有可访问的 Agent', { type: 'error' });
+        showToast(
+          '该 Key 下没有可访问的 Agent：请确认 Key 为 admin/user 类型且 Agent 属于该账号；agent 类型 Key 需先在 FastClaw 中绑定 Agent',
+          { type: 'error' }
+        );
         return;
       }
       // 自动填入第一个 agent；全部罗列在提示中

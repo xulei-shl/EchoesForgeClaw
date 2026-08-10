@@ -495,12 +495,17 @@ async def probe_fastclaw_agents(
     该接口会以调用者提供的 base_url/api_key 向任意地址发起服务端请求，
     存在 SSRF 面，因此仅允许 admin 调用。api_key 经 query 参数传递，
     仅用于服务端立即探测，不落库不回传。
+
+    注意：探测**不能**带 X-Fastclaw-End-User 头（end_user 留空）。FastClaw
+    对带该头的 api_key 请求会 SwitchToAppUser 切到懒创建的 app-user 空间，
+    其 UserSpace 没有任何 Agent，/v1/agents 必然返回空列表——无论 Key 是
+    admin/user/agent 类型。列表现只由 API Key 自身作用域决定：
+    admin/user 列所属账号的 Agent，agent 类型只列 ACL 绑定的 Agent。
     """
     try:
         agents = await fastclaw_agent_service.list_agents(
             base_url=base_url,
             api_key=api_key,
-            end_user=f"bookplate-{current_user.id}",
         )
     except FastClawAgentError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
