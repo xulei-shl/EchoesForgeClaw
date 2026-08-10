@@ -1,8 +1,5 @@
 import React, { memo, useRef, useState } from 'react';
 import {
-  ChevronDown,
-  ChevronRight,
-  ImageIcon,
   Play,
   RefreshCw,
   ScanSearch,
@@ -199,7 +196,7 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
               <div className="flex items-start gap-2 px-2 py-2.5 rounded-md border border-dashed border-paper-grid bg-paper-grid/10">
                 <ScanSearch size={14} strokeWidth={1.5} className="text-accent shrink-0 mt-0.5" />
                 <p className="text-[12px] text-ink-light font-sans leading-relaxed">
-                  可分析上游图书节点的封面，或上传参考图手动分析艺术风格与主题色
+                  可分析上游图书封面或「图片上传」节点的图片，或上传参考图手动分析艺术风格与主题色
                 </p>
               </div>
               <input

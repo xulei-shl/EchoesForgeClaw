@@ -153,7 +153,11 @@ export type CanvasNodeType =
   | 'book_info'
   | 'image_analysis'
   | 'prompt_generation'
-  | 'image_generation';
+  | 'image_generation'
+  /** 文本节点：手动编辑 Markdown 文本（无需配置） */
+  | 'text'
+  /** 图片上传节点：手动上传一张图片（无需配置） */
+  | 'image_upload';
 
 /** 节点模板（代码内置的节点类型定义） */
 export interface NodeTemplate {

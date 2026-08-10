@@ -31,6 +31,12 @@ export interface ImageNodeProps {
   onTogglePublic?: (id: string) => Promise<boolean>;
   /** 是否为全局操作栏当前作用目标（选中态高亮） */
   isSelected?: boolean;
+  /** 上游「图片上传」节点参考图（data URL，展示缩略图用） */
+  referenceImageUrl?: string | null;
+  /** 参考图状态提示文案（如「已使用参考图 · 图生图」「参考图已传入 Agent」「等待上传参考图」） */
+  referenceNote?: string | null;
+  /** 是否处于「等待上传参考图」状态（待运行态，样式区分） */
+  referenceWaiting?: boolean;
   /** 历史记录已被删除（收藏/公开会重新生成记录）时的弱提示 */
   recordDeleted?: boolean;
   /** 点击节点选中（作为全局操作栏的作用目标） */
@@ -60,6 +66,9 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
   isPublic = false,
   isMock = false,
   isSelected = false,
+  referenceImageUrl,
+  referenceNote,
+  referenceWaiting = false,
   recordDeleted = false,
   onSelect,
   onRemove,
@@ -256,6 +265,31 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
           )}
 
 
+
+          {referenceNote && (
+            <div className="flex items-center justify-end gap-1.5 text-xs font-sans">
+              {referenceImageUrl && (
+                <img
+                  src={referenceImageUrl}
+                  alt="参考图"
+                  className="w-4 h-4 rounded-sm object-cover border border-paper-grid shrink-0"
+                  loading="lazy"
+                />
+              )}
+              <span
+                className={`inline-flex items-center gap-1.5 ${
+                  referenceWaiting ? 'text-ink-faint' : 'text-ink-light'
+                }`}
+              >
+                <span
+                  className={`inline-block w-1.5 h-1.5 rounded-full ${
+                    referenceWaiting ? 'bg-amber-500/70' : 'bg-accent/70'
+                  }`}
+                />
+                {referenceNote}
+              </span>
+            </div>
+          )}
 
           {recordDeleted && imageUrl && !isGenerating && (
             <div className="flex items-center gap-1.5 text-right text-xs text-ink-faint font-sans">

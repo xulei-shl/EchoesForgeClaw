@@ -13,6 +13,7 @@ export const Canvas: React.FC<CanvasProps> = ({ children, scale, position, onPos
   const lastMousePos = useRef({ x: 0, y: 0 });
   const wrapperRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const bgRef = useRef<HTMLDivElement>(null);
   const dragPos = useRef({ x: position.x, y: position.y });
   const rafId = useRef<number | null>(null);
 
@@ -25,8 +26,11 @@ export const Canvas: React.FC<CanvasProps> = ({ children, scale, position, onPos
   const applyTransform = useCallback(() => {
     rafId.current = null;
     const { x, y } = dragPos.current;
-    if (wrapperRef.current) {
-      wrapperRef.current.style.backgroundPosition = `${x}px ${y}px`;
+    if (bgRef.current) {
+      const gridSize = 24 * scale;
+      const tx = x % gridSize;
+      const ty = y % gridSize;
+      bgRef.current.style.transform = `translate3d(${tx}px, ${ty}px, 0)`;
     }
     if (containerRef.current) {
       containerRef.current.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${scale})`;
@@ -39,9 +43,12 @@ export const Canvas: React.FC<CanvasProps> = ({ children, scale, position, onPos
   }, [position.x, position.y, applyTransform]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) {
+    if (e.target === e.currentTarget || e.target === bgRef.current) {
       isDragging.current = true;
       lastMousePos.current = { x: e.clientX, y: e.clientY };
+      if (wrapperRef.current) {
+        wrapperRef.current.classList.add('is-dragging');
+      }
     }
   };
 
@@ -62,6 +69,9 @@ export const Canvas: React.FC<CanvasProps> = ({ children, scale, position, onPos
   const handleMouseUp = useCallback(() => {
     if (isDragging.current) {
       isDragging.current = false;
+      if (wrapperRef.current) {
+        wrapperRef.current.classList.remove('is-dragging');
+      }
       onPositionChangeRef.current({ x: dragPos.current.x, y: dragPos.current.y });
     }
   }, []);
@@ -83,12 +93,21 @@ export const Canvas: React.FC<CanvasProps> = ({ children, scale, position, onPos
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
-        style={{
-          backgroundImage: `linear-gradient(var(--color-paper-grid) 1px, transparent 1px), linear-gradient(90deg, var(--color-paper-grid) 1px, transparent 1px)`,
-          backgroundSize: `${24 * scale}px ${24 * scale}px`,
-          backgroundPosition: `${position.x}px ${position.y}px`,
-        }}
       >
+        <div
+          ref={bgRef}
+          style={{
+            position: 'absolute',
+            top: -100,
+            left: -100,
+            right: -100,
+            bottom: -100,
+            backgroundImage: `linear-gradient(var(--color-paper-grid) 1px, transparent 1px), linear-gradient(90deg, var(--color-paper-grid) 1px, transparent 1px)`,
+            backgroundSize: `${24 * scale}px ${24 * scale}px`,
+            pointerEvents: 'none',
+            willChange: 'transform',
+          }}
+        />
         <div
           ref={containerRef}
           style={{
@@ -106,6 +125,19 @@ export const Canvas: React.FC<CanvasProps> = ({ children, scale, position, onPos
           {children}
         </div>
       </div>
+      <style>{`
+        .is-dragging * {
+          pointer-events: none !important;
+        }
+        @keyframes flow {
+          to {
+            stroke-dashoffset: -10;
+          }
+        }
+        .animate-flow {
+          animation: flow 1s linear infinite;
+        }
+      `}</style>
     </CanvasContext.Provider>
   );
 };

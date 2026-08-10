@@ -6,6 +6,8 @@ export const NODE_DEFAULT_SIZES: Record<CanvasNodeType, { width: number; height:
   image_analysis: { width: 420, height: 460 },
   prompt_generation: { width: 420, height: 500 },
   image_generation: { width: 420, height: 540 },
+  text: { width: 420, height: 400 },
+  image_upload: { width: 420, height: 420 },
 };
 
 export interface NodeTemplateDef {
@@ -50,6 +52,22 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     category: 'output',
     configurable: true,
     defaultSize: NODE_DEFAULT_SIZES.image_generation,
+  },
+  {
+    type: 'text',
+    name: '文本',
+    description: '手动输入 / 编辑 Markdown 文本，作为工作流中的笔记或说明',
+    category: 'input',
+    configurable: false,
+    defaultSize: NODE_DEFAULT_SIZES.text,
+  },
+  {
+    type: 'image_upload',
+    name: '图片上传',
+    description: '手动上传一张图片到画布，作为工作流中的参考素材',
+    category: 'input',
+    configurable: false,
+    defaultSize: NODE_DEFAULT_SIZES.image_upload,
   },
 ];
 

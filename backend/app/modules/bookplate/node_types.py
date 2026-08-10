@@ -9,6 +9,8 @@ NODE_BOOK_INFO = "book_info"
 NODE_IMAGE_ANALYSIS = "image_analysis"
 NODE_PROMPT = "prompt_generation"
 NODE_IMAGE = "image_generation"
+NODE_TEXT = "text"
+NODE_IMAGE_UPLOAD = "image_upload"
 
 NODE_TEMPLATES = [
     {
@@ -38,6 +40,20 @@ NODE_TEMPLATES = [
         "description": "根据提示词生成藏书票图片",
         "category": "output",
         "configurable": True,
+    },
+    {
+        "type": NODE_TEXT,
+        "name": "文本",
+        "description": "手动输入 / 编辑 Markdown 文本，作为工作流中的笔记或说明",
+        "category": "input",
+        "configurable": False,
+    },
+    {
+        "type": NODE_IMAGE_UPLOAD,
+        "name": "图片上传",
+        "description": "手动上传一张图片到画布，作为工作流中的参考素材",
+        "category": "input",
+        "configurable": False,
     },
 ]
 

@@ -233,6 +233,8 @@ class PromptRequest(BaseModel):
 
     metadata: Dict[str, Any] = {}
     analysis: Optional[str] = None
+    # 上游「文本」节点内容（可选）：随元数据一起注入提示词上下文
+    text: Optional[str] = None
     # 节点配置 id（可选）：未绑定/未启用/类型不匹配时回退环境变量
     config_id: Optional[int] = None
     # 画布节点 id：Agent 模式下用作 FastClaw 会话 key 的一部分（同节点重试共享上下文）
@@ -383,10 +385,12 @@ def _sse_from_agent_event(evt: Dict[str, Any]) -> Optional[Dict[str, str]]:
     return None
 
 
-def _agent_prompt_message(metadata: Dict[str, Any], analysis: str = "") -> str:
-    """把图书元数据 + 可选图片分析文本组装为 Agent 模式的用户消息。
+def _agent_prompt_message(
+    metadata: Dict[str, Any], analysis: str = "", text: str = ""
+) -> str:
+    """把图书元数据 + 可选图片分析文本 + 可选文本节点内容组装为 Agent 模式的用户消息。
 
-    Agent 只接收文本（元数据 + 图片分析结果），不传图片——模型服务商
+    Agent 只接收文本（元数据 + 图片分析结果 + 文本节点内容），不传图片——模型服务商
     需回源下载图片，本机/内网 URL 会被其 SSRF 防护拒绝（报 port not allowed）。
     """
     lines = []
@@ -398,6 +402,8 @@ def _agent_prompt_message(metadata: Dict[str, Any], analysis: str = "") -> str:
     message = meta_text
     if analysis:
         message += "\n\n图片分析结果：\n" + analysis
+    if text:
+        message += "\n\n文本节点内容：\n" + text
     return message
 
 
@@ -656,6 +662,7 @@ async def generate_prompt(
     """
     metadata = payload.metadata or {}
     analysis = payload.analysis or ""
+    text = payload.text or ""
     nc = _resolve_node_config(db, payload.config_id, NODE_PROMPT)
     agent_config = _agent_config_from(nc, current_user.id)
     text_config = _text_config_from(nc)
@@ -670,7 +677,7 @@ async def generate_prompt(
             try:
                 async for evt in fastclaw_agent_service.run_agent(
                     agent_config,
-                    _agent_prompt_message(metadata, analysis),
+                    _agent_prompt_message(metadata, analysis, text),
                     session_key=session_key,
                     params={"module": "bookplate", "node_type": NODE_PROMPT},
                 ):
@@ -688,7 +695,7 @@ async def generate_prompt(
     async def event_generator():
         try:
             async for chunk in llm_service.generate_prompt_stream(
-                metadata, text_config, analysis
+                metadata, text_config, analysis, text
             ):
                 if await request.is_disconnected():
                     break
@@ -737,6 +744,8 @@ async def generate_bookplate_image(
                     agent_config,
                     prompt,
                     session_key=session_key,
+                    # 上游「图片上传」节点的参考图（data URL）随提示词一并传给 Agent
+                    images=payload.image or None,
                     params={"module": "bookplate", "node_type": NODE_IMAGE, "prompt": prompt},
                 ):
                     if await request.is_disconnected():

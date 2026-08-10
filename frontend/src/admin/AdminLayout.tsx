@@ -15,8 +15,8 @@ const NAV_ITEMS = [
   { to: '/admin/users', label: '用户管理', icon: Users },
   { to: '/admin/llm-configs', label: '模型配置', icon: Cpu },
   { to: '/admin/prompts', label: '提示词管理', icon: FileText },
-  { to: '/admin/node-configs', label: '节点管理', icon: GitBranch },
   { to: '/admin/fastclaw-agents', label: 'Agent 配置', icon: Bot },
+  { to: '/admin/node-configs', label: '节点管理', icon: GitBranch },
   { to: '/admin/settings', label: '系统设置', icon: Settings },
 ];
 

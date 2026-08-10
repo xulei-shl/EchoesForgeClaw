@@ -134,6 +134,7 @@ class LLMService:
         metadata: dict,
         config: Optional[TextModelConfig] = None,
         cover_analysis: str = "",
+        text: str = "",
     ) -> AsyncGenerator[str, None]:
         api_key = (config.api_key if config else "") or self.env_api_key
         if not api_key:
@@ -146,6 +147,9 @@ class LLMService:
                 await asyncio.sleep(0.3)
             if cover_analysis:
                 yield f"\n封面分析结果：\n{cover_analysis}\n"
+                await asyncio.sleep(0.5)
+            if text:
+                yield f"\n文本节点内容：\n{text}\n"
                 await asyncio.sleep(0.5)
             yield "\n为您生成以下提示词片段：\n"
             await asyncio.sleep(0.5)
@@ -163,7 +167,7 @@ class LLMService:
         )
         base_url = config.base_url if config and config.base_url else None
 
-        # 用户消息只携带数据（图书元数据 + 封面分析结果），不含任何指令；
+        # 用户消息只携带数据（图书元数据 + 封面分析结果 + 文本节点内容），不含任何指令；
         # 图像提示词生成的指令来自阶段配置绑定的系统提示词模板。
         parts = []
         for k, v in metadata.items():
@@ -172,6 +176,8 @@ class LLMService:
             parts.append(f"{k}: {v}")
         if cover_analysis:
             parts.append(f"封面分析结果：\n{cover_analysis}")
+        if text:
+            parts.append(f"文本节点内容：\n{text}")
         prompt = "\n".join(parts) if parts else ""
 
         # 显式超时并关闭 SDK 自带重试：超时后直接失败，不自动重试

@@ -148,16 +148,7 @@ const NodeEdge = forwardRef<NodeEdgeHandle, NodeEdgeProps>(function NodeEdge(
         strokeWidth="2"
         strokeDasharray="5,5"
         className="animate-flow"
-        style={{ animation: 'flow 1s linear infinite' }}
       />
-
-      <style>{`
-        @keyframes flow {
-          to {
-            stroke-dashoffset: -10;
-          }
-        }
-      `}</style>
     </svg>
   );
 });

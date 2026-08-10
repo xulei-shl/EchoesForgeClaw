@@ -12,6 +12,8 @@ import { BookInfoNode } from '../../modules/bookplate/components/BookInfoNode';
 import { ImageAnalysisNode } from '../../modules/bookplate/components/ImageAnalysisNode';
 import { PromptNode } from '../../modules/bookplate/components/PromptNode';
 import { ImageNode } from '../../modules/bookplate/components/ImageNode';
+import { TextNode } from '../../modules/bookplate/components/TextNode';
+import { ImageUploadNode } from '../../modules/bookplate/components/ImageUploadNode';
 import { CanvasActionBar } from '../../modules/bookplate/components/CanvasActionBar';
 import { AddNodeButton, type NodePickerItem } from '../../modules/bookplate/components/AddNodeButton';
 import NodeContextMenu from '../../modules/bookplate/components/NodeContextMenu';
@@ -639,7 +641,10 @@ const BookplatePage: React.FC = () => {
   };
 
   /** 提示词生成节点：基于上游数据流式生成（LLM 流式 / Agent 透传中间步骤） */
-  const runPromptGeneration = (node: NodeData, inputs: { metadata: any; analysis: string }) => {
+  const runPromptGeneration = (
+    node: NodeData,
+    inputs: { metadata: any; analysis: string; text?: string }
+  ) => {
     // 重试防抖：该节点已有进行中的流时直接忽略（防止快速连点开启并发流导致内容重复）
     if (streamControllers.current.has(node.id)) return;
     const controller = new AbortController();
@@ -665,6 +670,7 @@ const BookplatePage: React.FC = () => {
       body: {
         metadata: inputs.metadata,
         analysis: inputs.analysis,
+        text: inputs.text ?? '',
         config_id: node.configId ?? null,
         node_id: node.id,
       },
@@ -711,7 +717,13 @@ const BookplatePage: React.FC = () => {
 
   // ---------- 图像生成 ----------
   /** Agent 模式图片生成：SSE 流式透传中间步骤，最终 image_url 事件落图 */
-  const runImageGenerationAgent = async (nodeId: string, prompt: string, controller: AbortController, configId?: number) => {
+  const runImageGenerationAgent = async (
+    nodeId: string,
+    prompt: string,
+    controller: AbortController,
+    configId?: number,
+    image?: string
+  ) => {
     let timedOut = false;
     let idleTimer: number | null = null;
     const armIdleTimeout = () => {
@@ -727,7 +739,7 @@ const BookplatePage: React.FC = () => {
     try {
       await postSSEStream({
         url: '/api/modules/bookplate/generate-image',
-        body: { prompt, config_id: configId ?? null, node_id: nodeId },
+        body: { prompt, image: image ? [image] : undefined, config_id: configId ?? null, node_id: nodeId },
         signal: controller.signal,
         onMessage: (event, data) => {
           armIdleTimeout(); // 收到数据，重置空闲计时
@@ -779,11 +791,12 @@ const BookplatePage: React.FC = () => {
     }
   };
 
-  const runImageGeneration = async (node: NodeData, prompt: string) => {
+  const runImageGeneration = async (node: NodeData, prompt: string, image?: string) => {
     // 重试防抖：该节点已有进行中的生成时直接忽略（防止快速连点开启并发请求，
     // 导致孤儿流 + 历史记录重复保存）
     if (streamControllers.current.has(node.id)) return;
-    updateNodeData(node.id, { isGenerating: true, imageUrl: null, error: null, agentSteps: [] });
+    // 记录本次实际使用的提示词：供分支重试（branchImageNode）与历史记录 stage3.prompt 使用
+    updateNodeData(node.id, { prompt, isGenerating: true, imageUrl: null, error: null, agentSteps: [] });
     // 重新生成后，旧的保存快照/收藏状态失效
     delete generationIds.current[node.id];
     setFavoritedState((prev) => ({ ...prev, [node.id]: false }));
@@ -798,13 +811,13 @@ const BookplatePage: React.FC = () => {
           ? registryConfigsRef.current.find((c) => c.id === node.configId)
           : undefined;
       if (cfg?.mode === 'agent') {
-        await runImageGenerationAgent(node.id, prompt, controller, node.configId);
+        await runImageGenerationAgent(node.id, prompt, controller, node.configId, image);
         return;
       }
       // 图片生成耗时较长（可达 30-120s+），超时须覆盖后端最坏耗时（见 timeouts.ts）
       const res: any = await api.post(
         '/modules/bookplate/generate-image',
-        { prompt, config_id: node.configId ?? null, node_id: node.id },
+        { prompt, image: image ? [image] : undefined, config_id: node.configId ?? null, node_id: node.id },
         {
           timeout: IMAGE_GENERATION_TIMEOUT_MS,
           signal: controller.signal,
@@ -849,6 +862,10 @@ const BookplatePage: React.FC = () => {
         return { content: '', isGenerating: false, error: null, agentSteps: [] };
       case 'image_generation':
         return { prompt: '', imageUrl: null, isGenerating: false, error: null, agentSteps: [] };
+      case 'text':
+        return { content: '', error: null };
+      case 'image_upload':
+        return { imageUrl: null, imageName: '', error: null };
     }
   };
 
@@ -863,9 +880,18 @@ const BookplatePage: React.FC = () => {
         // 后端仅接受 doubanio.com 域名做封面抓取/分析
         const coverUrl =
           book?.data?.cover_image || book?.data?.coverUrl || book?.data?.cover_image_local;
+        // 上游「图片上传」节点作为图片来源（data URL，后端按 base64 解码分析）
+        const uploadNode = findUpstream(node.id, 'image_upload');
+        const uploadUrl =
+          typeof uploadNode?.data?.imageUrl === 'string' ? uploadNode.data.imageUrl : undefined;
         const uploaded = analysisUploads.current.get(node.id);
-        if (!coverUrl && !uploaded) return; // 无图可分析 → 待运行态
-        runImageAnalysis(node, { image: uploaded, coverUrl: coverUrl || undefined });
+        // 图片来源优先级：节点内直接上传的参考图 > 上游图片上传节点 > 图书封面。
+        // 显式连接了「图片上传」节点时以该节点为准：尚未上传图片则保持待运行态，
+        // 不自动回退图书封面（上传后经输入就绪检查自动补跑）
+        const image = uploaded || uploadUrl;
+        if (!image && (uploadNode || !coverUrl)) return; // 无有效图片来源 → 待运行态
+        // 后端同样优先解析 image 字段，cover_url 仅作兜底
+        runImageAnalysis(node, { image, coverUrl: coverUrl || undefined });
         return;
       }
       case 'prompt_generation': {
@@ -873,8 +899,12 @@ const BookplatePage: React.FC = () => {
         const analysisNode = findUpstream(node.id, 'image_analysis');
         const analysis =
           typeof analysisNode?.data?.analysis === 'string' ? analysisNode.data.analysis : '';
-        if (!book?.data?.isbn && !analysis) return; // 无上游输入 → 待运行态
-        runPromptGeneration(node, { metadata: book?.data ?? {}, analysis });
+        // 上游「文本」节点内容默认随图书元数据一起传入（作为补充上下文）
+        const textNode = findUpstream(node.id, 'text');
+        const text =
+          typeof textNode?.data?.content === 'string' ? textNode.data.content.trim() : '';
+        if (!book?.data?.isbn && !analysis && !text) return; // 无上游输入 → 待运行态
+        runPromptGeneration(node, { metadata: book?.data ?? {}, analysis, text });
         return;
       }
       case 'image_generation': {
@@ -882,9 +912,18 @@ const BookplatePage: React.FC = () => {
         const prompt =
           typeof promptNode?.data?.content === 'string' ? promptNode.data.content.trim() : '';
         if (!prompt) return; // 上游提示词未就绪 → 待运行态
-        runImageGeneration(node, prompt);
+        // 上游「图片上传」节点的图片作为图生图参考图（data URL，后端直接透传给图像 API），
+        // 与提示词一并传入。显式连接了该节点但尚未上传时保持待运行态，不自动降级为纯文生图
+        const uploadNode = findUpstream(node.id, 'image_upload');
+        const image =
+          typeof uploadNode?.data?.imageUrl === 'string' ? uploadNode.data.imageUrl : undefined;
+        if (uploadNode && !image) return; // 图片上传节点未就绪 → 待运行态
+        runImageGeneration(node, prompt, image);
         return;
       }
+      case 'text':
+      case 'image_upload':
+        return; // 用户手动输入 / 上传，无需自动执行
     }
   };
 
@@ -1011,14 +1050,22 @@ const BookplatePage: React.FC = () => {
       if (node.type === 'image_analysis') {
         idle = !node.data?.analysis;
         const book = findUpstream(node.id, 'book_info');
+        const uploadNode = findUpstream(node.id, 'image_upload');
         const uploaded = analysisUploads.current.get(node.id);
-        ready = !!(uploaded || book?.data?.cover_image || book?.data?.coverUrl);
+        // 与 runNode 一致：显式连接了「图片上传」节点时，尚未上传则不回退图书封面
+        const imageReady = !!(uploaded || uploadNode?.data?.imageUrl);
+        const coverReady = !uploadNode && (!!book?.data?.cover_image || !!book?.data?.coverUrl);
+        ready = imageReady || coverReady;
       } else if (node.type === 'prompt_generation') {
         idle = !node.data?.content;
         const book = findUpstream(node.id, 'book_info');
         const analysisNode = findUpstream(node.id, 'image_analysis');
-        ready = !!(book?.data?.isbn ||
-          (typeof analysisNode?.data?.analysis === 'string' && analysisNode.data.analysis));
+        const textNode = findUpstream(node.id, 'text');
+        ready = !!(
+          book?.data?.isbn ||
+          (typeof analysisNode?.data?.analysis === 'string' && analysisNode.data.analysis) ||
+          (typeof textNode?.data?.content === 'string' && textNode.data.content.trim())
+        );
       } else if (node.type === 'image_generation') {
         idle = !node.data?.imageUrl;
         const promptNode = findUpstream(node.id, 'prompt_generation');
@@ -1027,6 +1074,9 @@ const BookplatePage: React.FC = () => {
           promptNode.data.content.trim() &&
           !promptNode.data.isGenerating
         );
+        // 与 runNode 一致：显式连接了「图片上传」节点时，需已上传参考图才就绪
+        const uploadNode = findUpstream(node.id, 'image_upload');
+        if (uploadNode && typeof uploadNode.data?.imageUrl !== 'string') ready = false;
       }
 
       if (!idle) {
@@ -1302,6 +1352,38 @@ const BookplatePage: React.FC = () => {
   }, []);
   const handleToggleFavoriteFor = useCallback((id: string) => toggleFavoriteForImage(id), []);
   const handleTogglePublicFor = useCallback((id: string) => togglePublicForImage(id), []);
+  /** 文本节点保存编辑内容（无需分支，原地保存；内容未变化不记历史） */
+  const handleEditTextFor = useCallback((id: string, content: string) => {
+    const node = nodesRef.current.find((n) => n.id === id);
+    if (!node || node.type !== 'text') return;
+    const oldContent = typeof node.data?.content === 'string' ? node.data.content : '';
+    if (content === oldContent) return;
+    recordHistory();
+    updateNodeData(id, { content });
+  }, []);
+  /** 图片上传节点上传 / 替换 / 移除图片（imageUrl 为 null 表示移除；未变化不记历史） */
+  const handleImageChangeFor = useCallback((id: string, imageUrl: string | null, imageName: string) => {
+    const node = nodesRef.current.find((n) => n.id === id);
+    if (!node || node.type !== 'image_upload') return;
+
+    const descIds = collectDescendantIds(id);
+    const hasDownstream = descIds.length > 1;
+
+    // 移除图片（删除整个节点及其下级）
+    if (imageUrl === null) {
+      handleRemoveNode(id);
+      return;
+    } else if (node.data?.imageUrl && hasDownstream) {
+      // 已有图片且有下级节点，拦截替换
+      return;
+    }
+
+    const curUrl = node.data?.imageUrl ?? null;
+    const curName = node.data?.imageName ?? '';
+    if (curUrl === imageUrl && curName === imageName) return;
+    recordHistory();
+    updateNodeData(id, { imageUrl, imageName });
+  }, []);
 
   /** 点击图片节点选中（作为全局操作栏的作用目标）；仅已有图片的节点可选中，
    *  避免删除节点时按钮点击冒泡产生「幽灵选中」。 */
@@ -1376,7 +1458,13 @@ const BookplatePage: React.FC = () => {
     if (!prompt) return;
     branchNode(node, {
       data: { prompt, imageUrl: null, isGenerating: true, agentSteps: [] },
-      run: (newNode) => runImageGeneration(newNode, prompt),
+      run: (newNode) => {
+        // 沿用同一上游链的「图片上传」参考图（分支节点共享父级上游）
+        const uploadNode = findUpstream(newNode.id, 'image_upload');
+        const image =
+          typeof uploadNode?.data?.imageUrl === 'string' ? uploadNode.data.imageUrl : undefined;
+        runImageGeneration(newNode, prompt, image);
+      },
     });
   };
 
@@ -1620,6 +1708,19 @@ const BookplatePage: React.FC = () => {
               );
             } else if (node.type === 'image_generation') {
               const config = configOf(node);
+              // 参考图状态：上游「图片上传」节点的图片作为图生图参考。
+              // LLM 模式直接进 extra_body.image（必然使用）；Agent 模式经 imageUrls 传给 FastClaw
+              // （物化到 workspace 供视觉模型/图像工具使用，是否实际采用取决于 Agent 行为）。
+              const uploadNode = findUpstream(node.id, 'image_upload');
+              const refImage =
+                typeof uploadNode?.data?.imageUrl === 'string' ? uploadNode.data.imageUrl : undefined;
+              const referenceNote = uploadNode
+                ? refImage
+                  ? config?.mode === 'agent'
+                    ? '参考图已传入 Agent'
+                    : '已使用参考图 · 图生图'
+                  : '等待上传参考图（上传后自动生成）'
+                : undefined;
               return (
                 <ImageNode
                   key={node.id}
@@ -1631,6 +1732,9 @@ const BookplatePage: React.FC = () => {
                   agentSteps={node.data.agentSteps}
                   agentName={config?.mode === 'agent' ? (config.agent_name ?? undefined) : undefined}
                   group={config?.group?.trim() || undefined}
+                  referenceImageUrl={refImage ?? null}
+                  referenceNote={referenceNote}
+                  referenceWaiting={!!uploadNode && !refImage}
                   isGenerating={!!node.data.isGenerating}
                   error={node.data.error}
                   isMock={node.data.isMock}
@@ -1643,6 +1747,45 @@ const BookplatePage: React.FC = () => {
                   onRetry={handleRetryImageFor}
                   onToggleFavorite={handleToggleFavoriteFor}
                   onTogglePublic={handleTogglePublicFor}
+                  onPositionChange={handlePositionChange}
+                  onSizeChange={handleSizeChange}
+                  onDrag={handleNodeDrag}
+                  onContextMenu={(e) => handleNodeContextMenu(e, node.id)}
+                  footer={renderFooter(node)}
+                />
+              );
+            } else if (node.type === 'text') {
+              return (
+                <TextNode
+                  key={node.id}
+                  id={node.id}
+                  initialX={node.x}
+                  initialY={node.y}
+                  title={getNodeTitle(node)}
+                  content={node.data.content ?? ''}
+                  onRemove={handleRemove}
+                  onEditContent={handleEditTextFor}
+                  onPositionChange={handlePositionChange}
+                  onSizeChange={handleSizeChange}
+                  onDrag={handleNodeDrag}
+                  onContextMenu={(e) => handleNodeContextMenu(e, node.id)}
+                  footer={renderFooter(node)}
+                />
+              );
+            } else if (node.type === 'image_upload') {
+              const hasDownstream = edges.some((e) => e.source === node.id);
+              return (
+                <ImageUploadNode
+                  key={node.id}
+                  id={node.id}
+                  initialX={node.x}
+                  initialY={node.y}
+                  title={getNodeTitle(node)}
+                  imageUrl={node.data.imageUrl ?? null}
+                  imageName={node.data.imageName ?? ''}
+                  hasDownstream={hasDownstream}
+                  onRemove={handleRemove}
+                  onImageChange={handleImageChangeFor}
                   onPositionChange={handlePositionChange}
                   onSizeChange={handleSizeChange}
                   onDrag={handleNodeDrag}

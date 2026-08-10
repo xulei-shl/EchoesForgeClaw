@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
-import { CATEGORY_LABELS, NODE_TEMPLATES } from '../nodeTypes';
+import { ChevronDown, ChevronRight, Search } from 'lucide-react';
+import { CATEGORY_LABELS, NODE_TEMPLATES, NODE_TEMPLATE_MAP } from '../nodeTypes';
 import type { CanvasNodeType } from '../../../platform/types';
 
 /** 「+」菜单 / 右键菜单中的一个可选项 */
@@ -39,7 +39,8 @@ interface PickerGroup {
 }
 
 /** 分组优先：有自定义分组的项按 group 分组（按 group_order 排序，未排序按首见顺序），
- *  无分组的项按模板分组（保持 NODE_TEMPLATES 顺序） */
+ *  无需配置的基础节点（图书元数据 / 文本 / 图片上传）合并为一个默认分组（可折叠），
+ *  其余无分组的可配置项按模板分组追加到末尾（保持 NODE_TEMPLATES 顺序） */
 function groupItems(items: NodePickerItem[]): PickerGroup[] {
   const groups: PickerGroup[] = [];
   const groupMap = new Map<string, PickerGroup>();
@@ -67,8 +68,15 @@ function groupItems(items: NodePickerItem[]): PickerGroup[] {
     return ao - bo;
   });
 
-  // 无分组的项按模板分组追加到末尾（保持 NODE_TEMPLATES 顺序）
-  for (const t of NODE_TEMPLATES) {
+  // 无需配置的基础节点合并为一个「基础节点」分组（复用分组头部的折叠交互）
+  const baseList = ungrouped.filter((i) => !NODE_TEMPLATE_MAP[i.nodeType]?.configurable);
+  if (baseList.length > 0) {
+    groups.unshift({ key: 'base-nodes', title: '基础节点', items: baseList });
+  }
+
+  // 其余可配置模板的无分组项按模板分组追加到末尾（保持 NODE_TEMPLATES 顺序）；
+  // 基础节点已并入上方分组，这里只遍历可配置模板避免重复分组
+  for (const t of NODE_TEMPLATES.filter((t) => t.configurable)) {
     const list = ungrouped.filter((i) => i.nodeType === t.type);
     if (list.length > 0) {
       groups.push({ key: `template:${t.type}`, title: `${CATEGORY_LABELS[t.category]} · ${t.name}`, items: list });
@@ -78,7 +86,21 @@ function groupItems(items: NodePickerItem[]): PickerGroup[] {
 }
 
 const NodePickerListInner: React.FC<NodePickerListProps> = ({ items, onPick, pendingChildId }) => {
-  const groups = groupItems(items);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredItems = React.useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return items;
+    return items.filter(
+      (item) =>
+        item.label.toLowerCase().includes(query) ||
+        item.description?.toLowerCase().includes(query) ||
+        item.agentName?.toLowerCase().includes(query)
+    );
+  }, [items, searchQuery]);
+
+  const groups = React.useMemo(() => groupItems(filteredItems), [filteredItems]);
+
   // 折叠的分组 key 集合（默认全部展开）
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const toggleGroup = (key: string) => {
@@ -91,12 +113,29 @@ const NodePickerListInner: React.FC<NodePickerListProps> = ({ items, onPick, pen
   };
 
   return (
-    <div className="p-1.5 space-y-1">
-      {groups.length === 0 && (
-        <p className="px-3 py-4 text-xs text-ink-faint font-sans text-center">暂无可添加的节点</p>
-      )}
-      {groups.map((group) => {
-        const isCollapsed = collapsed.has(group.key);
+    <div className="flex flex-col">
+      <div className="px-2 pt-2 pb-1">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-faint pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="搜索节点..."
+            className="w-full pl-8 pr-3 py-1.5 bg-paper-grid/40 border border-transparent focus:border-accent/50 focus:bg-paper-grid/60 rounded-md text-xs text-ink outline-none transition-colors placeholder:text-ink-faint"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          />
+        </div>
+      </div>
+      <div className="p-1.5 space-y-1">
+        {groups.length === 0 && (
+          <p className="px-3 py-6 text-xs text-ink-faint font-sans text-center">
+            {searchQuery.trim() ? '未找到相关节点' : '暂无可添加的节点'}
+          </p>
+        )}
+        {groups.map((group) => {
+          const isCollapsed = searchQuery.trim() ? false : collapsed.has(group.key);
         return (
         <div key={group.key}>
           <button
@@ -162,6 +201,7 @@ const NodePickerListInner: React.FC<NodePickerListProps> = ({ items, onPick, pen
         </div>
         );
       })}
+      </div>
     </div>
   );
 };

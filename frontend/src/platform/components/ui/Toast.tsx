@@ -1,7 +1,7 @@
 import React from 'react';
-import { CircleAlert, CircleCheck, Info } from 'lucide-react';
+import { AlertTriangle, CircleAlert, CircleCheck, Info } from 'lucide-react';
 
-export type ToastType = 'info' | 'success' | 'error';
+export type ToastType = 'info' | 'success' | 'error' | 'warning';
 export type ToastPosition = 'bottom-center' | 'top-right';
 
 interface ToastProps {
@@ -14,12 +14,14 @@ const TOAST_ICON: Record<ToastType, React.ReactNode> = {
   info: <Info size={15} strokeWidth={1.75} />,
   success: <CircleCheck size={15} strokeWidth={1.75} />,
   error: <CircleAlert size={15} strokeWidth={1.75} />,
+  warning: <AlertTriangle size={15} strokeWidth={1.75} />,
 };
 
 const TOAST_COLOR: Record<ToastType, string> = {
   info: 'text-accent',
   success: 'text-success',
   error: 'text-error',
+  warning: 'text-warning',
 };
 
 /**

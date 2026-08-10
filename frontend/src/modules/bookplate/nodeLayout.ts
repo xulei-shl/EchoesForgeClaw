@@ -5,7 +5,13 @@
  * 确保与各节点组件的 defaultSize 保持一致。
  */
 
-export type NodeType = 'book_info' | 'image_analysis' | 'prompt_generation' | 'image_generation';
+export type NodeType =
+  | 'book_info'
+  | 'image_analysis'
+  | 'prompt_generation'
+  | 'image_generation'
+  | 'text'
+  | 'image_upload';
 
 /** 各节点模板类型的默认尺寸（必须与组件 defaultSize 一致） */
 export const NODE_SIZES: Record<NodeType, { width: number; height: number }> = {
@@ -13,6 +19,8 @@ export const NODE_SIZES: Record<NodeType, { width: number; height: number }> = {
   image_analysis:   { width: 420, height: 460 },
   prompt_generation:{ width: 420, height: 500 },
   image_generation: { width: 420, height: 540 },
+  text:             { width: 420, height: 400 },
+  image_upload:     { width: 420, height: 420 },
 };
 
 /** 节点间水平间距（px） */
