@@ -6,6 +6,7 @@ import type {
   FastClawAgentConfigPayload,
   LLMConfig,
   LLMConfigPayload,
+  LLMKind,
   PromptTemplate,
   PromptTemplatePayload,
   StageConfig,
@@ -36,6 +37,20 @@ export const adminService = {
     api.patch<LLMConfig, LLMConfig>(`/admin/llm-configs/${id}`, payload),
   deleteLlmConfig: (id: number): Promise<{ message: string }> =>
     api.delete(`/admin/llm-configs/${id}`),
+  /** 连通性测试：传 id 用库中保存的 Key，不传则用请求体里的三要素（新建前验证） */
+  testLlmConfig: (payload: {
+    id?: number;
+    kind?: LLMKind;
+    api_key?: string;
+    base_url?: string;
+    model_name?: string;
+  }): Promise<{ ok: boolean; message: string }> =>
+    api.post<{ ok: boolean; message: string }, { ok: boolean; message: string }>(
+      '/admin/llm-configs/test',
+      payload,
+      // 测试需要真实调用远端，放宽默认 10s 超时
+      { timeout: 60000 }
+    ),
 
   /* ---------------- FastClaw Agent 配置 ---------------- */
 

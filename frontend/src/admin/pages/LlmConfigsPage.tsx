@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  CircleAlert,
+  CircleCheck,
   Cpu,
   KeyRound,
   Loader2,
@@ -7,6 +9,7 @@ import {
   Plus,
   RefreshCw,
   Trash2,
+  Zap,
 } from 'lucide-react';
 import { adminService } from '../../platform/services/admin';
 import type { LLMConfig, LLMKind } from '../../platform/types';
@@ -56,6 +59,11 @@ export const LlmConfigsPage: React.FC = () => {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
+  // 连通性测试：testingId = 列表卡片测试中；testingForm / testResult = 弹窗内测试
+  const [testingId, setTestingId] = useState<number | null>(null);
+  const [testingForm, setTestingForm] = useState(false);
+  const [testResult, setTestResult] = useState('');
+  const [testOk, setTestOk] = useState<boolean | null>(null);
   const { dialog, showToast } = useFeedback();
 
   const load = useCallback(async () => {
@@ -80,6 +88,8 @@ export const LlmConfigsPage: React.FC = () => {
     setFormError('');
     setEditing(null);
     setShowCreate(false);
+    setTestResult('');
+    setTestOk(null);
   };
 
   const openCreate = () => {
@@ -99,6 +109,53 @@ export const LlmConfigsPage: React.FC = () => {
       is_active: c.is_active,
     });
     setFormError('');
+    setTestResult('');
+    setTestOk(null);
+  };
+
+  /** 列表卡片测试：用已保存的配置（含库中 Key）验证连通性 */
+  const handleTestConfig = async (c: LLMConfig) => {
+    setTestingId(c.id);
+    try {
+      const res = await adminService.testLlmConfig({ id: c.id });
+      showToast(res.message, { type: 'success' });
+    } catch (e: any) {
+      showToast(e?.message || '测试失败，请检查配置', { type: 'error' });
+    } finally {
+      setTestingId(null);
+    }
+  };
+
+  /** 弹窗内测试：用当前表单值验证（编辑时 Key 留空则回退使用已保存的 Key） */
+  const handleTestForm = async () => {
+    if (!form.model_name.trim()) {
+      setFormError('请先填写模型名称再测试');
+      return;
+    }
+    if (!form.api_key.trim() && !editing?.has_api_key) {
+      setFormError('请先填写 API Key 再测试');
+      return;
+    }
+    setTestingForm(true);
+    setFormError('');
+    setTestResult('');
+    setTestOk(null);
+    try {
+      const res = await adminService.testLlmConfig({
+        id: editing?.id,
+        kind: form.kind,
+        api_key: form.api_key.trim() || undefined,
+        base_url: form.base_url.trim(),
+        model_name: form.model_name.trim(),
+      });
+      setTestOk(true);
+      setTestResult(res.message);
+    } catch (err: any) {
+      setTestOk(false);
+      setTestResult(err?.message || '测试失败，请检查配置');
+    } finally {
+      setTestingForm(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -229,7 +286,6 @@ export const LlmConfigsPage: React.FC = () => {
               <Input
                 value={form.model_name}
                 onChange={(e) => setForm({ ...form, model_name: e.target.value })}
-                placeholder="如 gpt-4o-mini / dall-e-3"
               />
             </div>
             <div className="space-y-1.5">
@@ -237,7 +293,7 @@ export const LlmConfigsPage: React.FC = () => {
               <Input
                 value={form.base_url}
                 onChange={(e) => setForm({ ...form, base_url: e.target.value })}
-                placeholder="留空使用官方地址；第三方兼容服务填接口地址"
+                placeholder="如：https://api.openai.com/v1"
               />
             </div>
             <div className="space-y-1.5">
@@ -262,13 +318,38 @@ export const LlmConfigsPage: React.FC = () => {
             <span className="text-sm font-sans text-ink-light">{form.is_active ? '启用' : '停用'}</span>
           </div>
           {formError && <p className="text-sm text-error font-sans">{formError}</p>}
-          <div className="flex justify-end gap-3 pt-4 border-t border-dashed border-paper-grid">
-            <Button type="button" variant="ghost" size="sm" onClick={resetForm}>
-              取消
+          {testResult && (
+            <p
+              className={`text-sm font-sans flex items-start gap-1.5 ${testOk ? 'text-success' : 'text-error'}`}
+            >
+              {testOk ? (
+                <CircleCheck size={14} strokeWidth={2} className="shrink-0 mt-0.5" />
+              ) : (
+                <CircleAlert size={14} strokeWidth={2} className="shrink-0 mt-0.5" />
+              )}
+              <span className="break-words leading-snug">{testResult}</span>
+            </p>
+          )}
+          <div className="flex items-center justify-between pt-4 border-t border-dashed border-paper-grid">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              isLoading={testingForm}
+              onClick={handleTestForm}
+              title="用当前表单值测试连通性（编辑时 Key 留空则使用已保存的 Key）"
+            >
+              <Zap size={14} strokeWidth={1.5} className="mr-1" />
+              测试连接
             </Button>
-            <Button type="submit" size="sm" isLoading={saving}>
-              保存
-            </Button>
+            <div className="flex gap-3">
+              <Button type="button" variant="ghost" size="sm" onClick={resetForm}>
+                取消
+              </Button>
+              <Button type="submit" size="sm" isLoading={saving}>
+                保存
+              </Button>
+            </div>
           </div>
         </form>
       </Dialog>
@@ -327,6 +408,18 @@ export const LlmConfigsPage: React.FC = () => {
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <Toggle checked={c.is_active} onChange={(v) => handleToggleActive(c, v)} label={c.is_active ? '停用' : '启用'} />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      isLoading={testingId === c.id}
+                      onClick={() => handleTestConfig(c)}
+                      title="测试连通性（使用已保存的 API Key）"
+                      className="shrink-0"
+                    >
+                      <Zap size={14} strokeWidth={1.5} className="mr-1 shrink-0" />
+                      <span className="whitespace-nowrap">测试</span>
+                    </Button>
                     <button
                       onClick={() => openEdit(c)}
                       title="编辑"

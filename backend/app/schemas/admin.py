@@ -45,6 +45,27 @@ class LLMConfigOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class LLMConfigTestPayload(BaseModel):
+    """模型配置连通性测试请求。
+
+    - 传 id：以已保存配置为基底，请求中提供的字段覆盖之（api_key 留空时使用库中保存的 Key）。
+    - 不传 id（新建前测试）：需提供 base_url / api_key / model_name。
+    """
+
+    id: Optional[int] = None
+    kind: Optional[LLMKind] = None
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+    model_name: Optional[str] = None
+
+
+class LLMConfigTestOut(BaseModel):
+    """连通性测试结果（成功时 ok=true + 可读描述；失败以 502 携带原因返回）。"""
+
+    ok: bool = True
+    message: str
+
+
 # ---------------------------------------------------------------------------
 # PromptTemplate（提示词模板）
 # ---------------------------------------------------------------------------

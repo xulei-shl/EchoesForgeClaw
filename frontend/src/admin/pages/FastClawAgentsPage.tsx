@@ -253,9 +253,10 @@ export const FastClawAgentsPage: React.FC = () => {
                   isLoading={pullingAgents}
                   onClick={handlePullAgents}
                   title="使用当前 Base URL + API Key 拉取可访问的 Agent 列表"
+                  className="shrink-0"
                 >
-                  <Search size={14} strokeWidth={1.5} className="mr-1" />
-                  拉取
+                  <Search size={14} strokeWidth={1.5} className="mr-1 shrink-0" />
+                  <span className="whitespace-nowrap">拉取</span>
                 </Button>
               </div>
               <p className="text-xs text-ink-faint font-sans flex items-center gap-1">
