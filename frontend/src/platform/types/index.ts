@@ -187,7 +187,7 @@ export interface ChatMessage {
 
 /** AI 对话节点的上下文加载设置（节点内可开关） */
 export interface ChatNodeSettings {
-  /** 加载根节点图书元数据作为上下文 */
+  /** 加载连线上游图书元数据作为上下文（无连通时取画布根节点） */
   includeBook: boolean;
   /** 加载紧随的上一级节点内容作为上下文 */
   includeUpstream: boolean;
@@ -195,7 +195,7 @@ export interface ChatNodeSettings {
 
 /** 可执行节点（图片分析 / 提示词生成 / 图像生成）的运行设置（节点内可开关） */
 export interface NodeRunSettings {
-  /** 包含根节点图书元数据：未直接连线时，经「上下文配置」注入画布根节点元数据 */
+  /** 包含图书元数据：未直接连线时，优先注入连线上游图书元数据，无连通时注入画布根节点 */
   includeBook: boolean;
   /** 输入就绪时自动运行；关闭则点击「运行」按钮手动执行 */
   autoRun: boolean;

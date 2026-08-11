@@ -455,7 +455,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                   <div className="min-w-0">
                     <p className="text-xs font-sans text-ink">加载图书元数据</p>
                     <p className="text-[10px] text-ink-faint font-sans mt-0.5 leading-snug">
-                      根节点（图书元数据）的元数据
+                      连线上游的图书元数据（无连线时取画布根节点）
                     </p>
                   </div>
                   <Toggle

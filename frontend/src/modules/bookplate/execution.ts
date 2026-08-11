@@ -1,6 +1,7 @@
 import type { CanvasNodeType, NodePortType, NodeRunSettings } from '../../platform/types';
 import {
   bookMetadataText,
+  findConnectedBookInfoUpstream,
   findRootBookInfo,
   matchPortType,
   nodeOutputText,
@@ -35,13 +36,14 @@ function markdownSections(sections: { label: string; values: string[] }[]): stri
 /**
  * 节点运行输入（执行引擎 runNode 与自动运行检查共用）：
  * - 输入 = 所有直接连线的上级节点输出（画线连上即输入，1 级，不向上追溯）；
- * - 图书元数据：直接连线的 book_info 优先；未连线时按「包含图书元数据」开关注入画布根节点；
+ * - 图书元数据：直接连线的 book_info 优先；未直接连线时按「包含图书元数据」开关注入——
+ *   沿连线向上追溯实际连通的 book_info，无连通时才回退画布根节点；
  * - 各类型输出经 nodeOutputText 按类型提取并合并（支持多个同类上级）。
  */
 export interface RunInputs {
   /** 直接上级节点列表 */
   parents: NodeData[];
-  /** 图书元数据节点（直接 book_info 或 includeBook 注入的根节点） */
+  /** 图书元数据节点（直接 book_info；或 includeBook 时优先连线上游、无连通才回退根节点） */
   book?: NodeData;
   /** 图书元数据文本（过滤图片字段） */
   metadataText: string;
@@ -68,10 +70,14 @@ export function resolveNodeRunInputs(
 ): RunInputs {
   const parents = resolveDirectParents(node.id, nodes, edges);
   const settings: NodeRunSettings = node.data?.settings ?? DEFAULT_RUN_SETTINGS;
-  // 图书元数据：直接连线的 book_info 优先；未连线时按「包含图书元数据」开关注入画布根节点
+  // 图书元数据：直接连线的 book_info 优先；未直接连线时按「包含图书元数据」开关注入——
+  // 先沿连线向上追溯实际连通的 book_info（画布可存在多个互不连通的图书元数据节点，
+  // 不能写死取根节点），无连通者才回退画布根节点
   const book =
     parents.find((p) => p.type === 'book_info') ??
-    (settings.includeBook ? findRootBookInfo(nodes, edges) : undefined);
+    (settings.includeBook
+      ? findConnectedBookInfoUpstream(node.id, nodes, edges) ?? findRootBookInfo(nodes, edges)
+      : undefined);
   const metadataText = bookMetadataText(book?.data);
   const analysisValues = parents
     .filter((p) => p.type === 'image_analysis')

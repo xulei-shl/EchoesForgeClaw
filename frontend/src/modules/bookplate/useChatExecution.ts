@@ -25,7 +25,7 @@ export interface ChatExecution {
 export function useChatExecution(ctx: ChatExecutionContext): ChatExecution {
   const { streamControllers } = ctx;
 
-  /** 收集对话上下文：根节点图书元数据 + 直接父节点输出（受节点设置控制）。
+  /** 收集对话上下文：连线上游图书元数据（无连通时回退画布根节点）+ 直接父节点输出（受节点设置控制）。
    *  按内容主体去重：直接父节点恰为图书元数据时，includeBook 与 includeUpstream
    *  两条路径会注入同一份元数据（仅标题不同），逐块去重后只保留一份。 */
   const buildChatContext = (node: NodeData): string => {
