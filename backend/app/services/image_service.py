@@ -84,8 +84,8 @@ class ImageService:
         图像参数（model / size / ratio / image）均来自 config，无硬编码默认值。
 
         底层 API 请求区别：
-        - 文生图（无 image）：顶层层传入 return_base64: true
-        - 图生图（有 image）：extra_body 内传入 response_format + image
+        - 文生图（无 image）：extra_body 内传入 return_base64: true
+        - 图生图（有 image）：extra_body 内传入 image（response_format 不传，避免 litellm 拦截）
 
         返回: {"image_url": "/static/generated/xxx.png", "mock": bool}
 
@@ -126,7 +126,6 @@ class ImageService:
             # 文生图 vs 图生图：extra_body 参数不同
             extra_body: Dict[str, Any] = {}
             if ref_images:
-                extra_body["response_format"] = "b64_json"
                 extra_body["image"] = ref_images
             else:
                 extra_body["return_base64"] = True

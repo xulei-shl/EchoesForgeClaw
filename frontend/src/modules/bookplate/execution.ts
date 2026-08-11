@@ -17,6 +17,22 @@ export type PortTypesLookup = (
 export const DEFAULT_RUN_SETTINGS: NodeRunSettings = { includeBook: false, autoRun: false };
 
 /**
+ * 用 Markdown 结构拼接输入：每类来源用 `## 标题` 标注，块间用 `---` 分隔线隔离。
+ * 单块不加标题，纯文本直接返回，避免冗余。
+ */
+function markdownSections(sections: { label: string; values: string[] }[]): string {
+  return sections
+    .map(({ label, values }) => {
+      const blocks = values.filter((v) => v.trim());
+      if (blocks.length === 0) return '';
+      if (blocks.length === 1) return `## ${label}\n\n${blocks[0]}`;
+      return `## ${label}\n\n${blocks.join('\n\n---\n\n')}`;
+    })
+    .filter((s) => s.trim())
+    .join('\n\n---\n\n');
+}
+
+/**
  * 节点运行输入（执行引擎 runNode 与自动运行检查共用）：
  * - 输入 = 所有直接连线的上级节点输出（画线连上即输入，1 级，不向上追溯）；
  * - 图书元数据：直接连线的 book_info 优先；未连线时按「包含图书元数据」开关注入画布根节点；
@@ -57,25 +73,25 @@ export function resolveNodeRunInputs(
     parents.find((p) => p.type === 'book_info') ??
     (settings.includeBook ? findRootBookInfo(nodes, edges) : undefined);
   const metadataText = bookMetadataText(book?.data);
-  const analysis = parents
+  const analysisValues = parents
     .filter((p) => p.type === 'image_analysis')
-    .map((p) => nodeOutputText(p))
-    .filter((t) => t.trim())
-    .join('\n\n');
-  const text = parents
+    .map((p) => nodeOutputText(p));
+  const textValues = parents
     .filter((p) => p.type === 'text' || p.type === 'chat')
-    .map((p) => nodeOutputText(p))
-    .filter((t) => t.trim())
-    .join('\n\n');
+    .map((p) => nodeOutputText(p));
   const promptNodes = parents.filter((p) => p.type === 'prompt_generation');
-  const prompt = promptNodes
-    .map((p) => nodeOutputText(p))
-    .filter((t) => t.trim())
-    .join('\n\n');
+  const promptValues = promptNodes.map((p) => nodeOutputText(p));
+  const analysis = markdownSections([{ label: '图片分析', values: analysisValues }]);
+  const text = markdownSections([{ label: '文本上下文', values: textValues }]);
+  const prompt = markdownSections([{ label: '提示词', values: promptValues }]);
   const uploadNode = parents.find((p) => p.type === 'image_upload');
   const refImage =
     typeof uploadNode?.data?.imageUrl === 'string' ? uploadNode.data.imageUrl : undefined;
-  const imagePrompt = [prompt || metadataText, text].filter((t) => t.trim()).join('\n\n');
+  const promptSource = promptValues.some((v) => v.trim()) ? promptValues : [metadataText];
+  const imagePrompt = markdownSections([
+    { label: '提示词', values: promptSource },
+    { label: '文本上下文', values: textValues },
+  ]);
   return {
     parents,
     book,
