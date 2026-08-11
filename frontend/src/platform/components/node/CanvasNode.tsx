@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useCanvas } from '../canvas/CanvasContext';
+import { AlertCircle } from 'lucide-react';
 
 /** 拖拽激活阈值（px），防止点击头部时轻微抖动误触发 */
 const DRAG_THRESHOLD = 3;
@@ -317,12 +318,15 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
             </span>
           )}
           {mismatchBadge && (
-            <span
+            <div
               title={mismatchBadge}
-              className="shrink-0 max-w-[140px] truncate text-[10px] text-error border border-error/30 bg-error/5 rounded-pill px-1.5 py-px font-mono"
+              className="shrink-0 flex items-center gap-1 max-w-[140px] px-1.5 py-[2px] rounded-full bg-error/10 border border-error/20 text-error shadow-sm overflow-hidden"
             >
-              {mismatchBadge}
-            </span>
+              <AlertCircle size={10} strokeWidth={2} className="shrink-0" />
+              <span className="truncate text-[10px] font-medium leading-none mt-[0.5px]">
+                {mismatchBadge}
+              </span>
+            </div>
           )}
         </div>
         {onRemove && (

@@ -1,5 +1,5 @@
 import React, { memo, useState, useRef, useEffect } from 'react';
-import { Pencil, Check, X, RefreshCw, AlertTriangle, Play } from 'lucide-react';
+import { Pencil, Check, X, RefreshCw, AlertTriangle, Play, Sparkles } from 'lucide-react';
 import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
 import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
@@ -7,6 +7,7 @@ import { BeamGlow } from '../../../platform/components/node/BeamGlow';
 import { Textarea } from '../../../platform/components/ui/Textarea';
 import { AgentActivity } from '../../../platform/components/agent/AgentActivity';
 import { Tooltip } from '../../../platform/components/ui/Tooltip';
+import { NodeRunPlaceholder } from '../../../platform/components/node/NodeRunPlaceholder';
 import type { AgentStep, NodeRunSettings } from '../../../platform/types';
 import { NODE_COLORS } from '../nodeTypes';
 import { NodeSettingsPopover } from './NodeSettingsPopover';
@@ -239,6 +240,17 @@ const PromptNodeInner: React.FC<PromptNodeProps> = ({
               </div>
               <span className="text-sm font-serif text-accent">构思提示词中...</span>
             </div>
+          ) : (!content && !error) ? (
+            <NodeRunPlaceholder
+              icon={
+                <div className="w-10 h-10 rounded-full bg-paper shadow-sm border border-paper-grid flex items-center justify-center overflow-hidden">
+                  <div className="absolute inset-0 bg-ink-faint/5 animate-pulse" />
+                  <Sparkles size={16} strokeWidth={1.5} className="opacity-50" />
+                </div>
+              }
+              text="连线上游节点后点击 ▶ 运行"
+              subtext="支持文本 / 图片分析 / 图书元数据"
+            />
           ) : (
             /* 流式 Markdown：Streamdown（内置 GFM + CJK 插件 + 流式光标） */
             <div className="w-full min-w-0 flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
@@ -257,7 +269,7 @@ const PromptNodeInner: React.FC<PromptNodeProps> = ({
                   caret="block"
                   linkSafety={{ enabled: false }}
                 >
-                  {normalizeMarkdown(content) || (!error ? '连线上游节点（文本 / 图片分析 / 图书元数据）后点击 ▶ 运行' : '')}
+                  {normalizeMarkdown(content)}
                 </Streamdown>
               </div>
             </div>

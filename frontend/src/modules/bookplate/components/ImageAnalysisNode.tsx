@@ -15,6 +15,7 @@ import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
 import type { AgentStep, NodeRunSettings } from '../../../platform/types';
 import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
 import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
+import { NodeRunPlaceholder } from '../../../platform/components/node/NodeRunPlaceholder';
 import { NODE_COLORS } from '../nodeTypes';
 import { NodeSettingsPopover } from './NodeSettingsPopover';
 
@@ -216,13 +217,16 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
             </div>
           ) : (
             /* 待运行态：提示 + 上传参考图 */
-            <div className="flex-1 flex flex-col gap-3 min-h-[160px]">
-              <div className="flex items-start gap-2 px-2 py-2.5 rounded-md border border-dashed border-paper-grid bg-paper-grid/10">
-                <ScanSearch size={14} strokeWidth={1.5} className="text-accent shrink-0 mt-0.5" />
-                <p className="text-[12px] text-ink-light font-sans leading-relaxed">
-                  分析上游图书封面或「图片上传」节点的图片（画线连上即输入），点击 ▶ 运行；或上传参考图手动分析
-                </p>
-              </div>
+            <NodeRunPlaceholder
+              icon={
+                <div className="w-10 h-10 rounded-full bg-paper shadow-sm border border-paper-grid flex items-center justify-center overflow-hidden">
+                  <div className="absolute inset-0 bg-ink-faint/5 animate-pulse" />
+                  <ScanSearch size={16} strokeWidth={1.5} className="opacity-50" />
+                </div>
+              }
+              text="连接上游图像并点击 ▶ 运行"
+              subtext="或在下方直接上传参考图手动分析"
+            >
               <input
                 ref={fileInputRef}
                 type="file"
@@ -231,7 +235,7 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
                 onChange={handlePickImage}
               />
               {uploadedImage ? (
-                <div className="flex items-center gap-3 p-2.5 rounded-md border border-paper-grid bg-paper-grid/10 transition-colors">
+                <div className="w-full flex items-center gap-3 p-2.5 rounded-md border border-paper-grid bg-paper-grid/10 transition-colors">
                   <div className="relative shrink-0">
                     <img
                       src={uploadedImage}
@@ -250,7 +254,7 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
                     </button>
                   </div>
                   <div className="flex-1 min-w-0 flex flex-col justify-center gap-1.5">
-                    <p className="text-[11px] text-ink font-medium font-sans truncate" title={uploadedName}>{uploadedName}</p>
+                    <p className="text-[11px] text-ink font-medium font-sans truncate text-left" title={uploadedName}>{uploadedName}</p>
                     <button
                       onClick={handleAnalyzeUploaded}
                       disabled={isGenerating}
@@ -265,13 +269,13 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   disabled={isGenerating}
-                  className="group w-full flex flex-col items-center justify-center gap-1.5 py-4 rounded-md border border-dashed border-paper-grid bg-paper-grid/5 text-ink-faint hover:text-accent hover:border-accent/40 hover:bg-accent/5 active:scale-[0.98] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40"
+                  className="group w-[80%] mx-auto mt-1 flex items-center justify-center gap-2 py-2.5 rounded-md border border-dashed border-paper-grid bg-paper-grid/30 text-ink-faint hover:text-accent hover:border-accent/40 hover:bg-accent/5 active:scale-[0.98] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40"
                 >
-                  <Upload size={16} strokeWidth={1.5} className="group-hover:-translate-y-0.5 transition-transform duration-300" />
-                  <span className="text-[11px] font-sans">上传参考图 · 分析艺术风格与主题色</span>
+                  <Upload size={14} strokeWidth={1.5} className="group-hover:-translate-y-0.5 transition-transform duration-300" />
+                  <span className="text-[12px] font-sans">选择参考图</span>
                 </button>
               )}
-            </div>
+            </NodeRunPlaceholder>
           )}
         </div>
       </div>
