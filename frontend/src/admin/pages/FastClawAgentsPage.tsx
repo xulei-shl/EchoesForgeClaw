@@ -244,7 +244,7 @@ export const FastClawAgentsPage: React.FC = () => {
     <div>
       <PageHeader
         title="Agent 配置"
-        subtitle="FastClaw Agent 接入参数（Base URL + API Key + Agent ID）；在「阶段配置」中按阶段选择启用"
+        subtitle="FastClaw Agent 接入参数（Base URL + API Key + Agent ID）"
         actions={
           !showCreate && !editing && (
             <Button size="sm" onClick={openCreate}>
