@@ -31,6 +31,7 @@ export interface NodeViewHelpers {
   handleRemove: (id: string) => void;
   handleRetryBookFor: (id: string) => void;
   handleFetchBookFor: (id: string, isbn: string) => void;
+  handleForceRefreshBookFor: (id: string) => void;
   handleDownloadBookData: (id: string) => void;
   handleRunAnalysisFor: (id: string, image?: string) => void;
   handleRetryPromptFor: (id: string) => void;
@@ -95,6 +96,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           error={node.data.error ?? null}
           onRetry={h.handleRetryBookFor}
           onFetch={h.handleFetchBookFor}
+          onForceRefresh={h.handleForceRefreshBookFor}
           onDownload={h.handleDownloadBookData}
         />
       );

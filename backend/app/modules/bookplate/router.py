@@ -9,9 +9,10 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 from urllib.parse import urlparse, quote
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .douban_client import (
@@ -21,12 +22,13 @@ from .douban_client import (
     AsyncRateLimiter,
     COVER_REFERERS,
 )
-from app.core.database import get_db
+from app.core.database import get_db, SessionLocal
 from app.core.deps import get_current_active_user, get_current_admin_user
 from app.models.user import User
 from app.models.node_config import NodeConfig
 from app.models.app_setting import AppSetting
 from app.models.fastclaw_agent_config import FastClawAgentConfig
+from app.models.book_cache import BookCache
 from app.modules.bookplate.node_types import (
     NODE_TEMPLATES,
     NODE_IMAGE_ANALYSIS,
@@ -72,6 +74,79 @@ _IMAGE_MAGIC_PREFIXES = (
 # 封面下载默认限流器：/cover 独立调用、画廊多图并发加载时共用，控制整体请求节奏。
 # 固定取保守值 qps=0.5（与系统设置默认一致）；/isbn 内则按 douban.qps 设置构建共享限流器。
 _cover_default_limiter = AsyncRateLimiter(max_concurrent=2, qps=0.5)
+
+# BookCache 行 → 与 map_book_payload 输出一致的历史字段白名单（不落库的运行时字段除外）
+_BOOK_CACHE_FIELDS = (
+    "title",
+    "subtitle",
+    "original_title",
+    "author",
+    "translator",
+    "publisher",
+    "producer",
+    "pub_year",
+    "pages",
+    "price",
+    "binding",
+    "series",
+    "series_link",
+    "rating",
+    "rating_count",
+    "cover_image",
+    "cover_image_local",
+    "summary",
+    "author_intro",
+    "catalog",
+    "url",
+)
+
+
+def _row_to_book(row: BookCache) -> Dict[str, Any]:
+    """把 BookCache 行还原为与豆瓣客户端一致的扁平元数据 dict."""
+    return {k: getattr(row, k) for k in _BOOK_CACHE_FIELDS}
+
+
+def _apply_book_to_row(row: BookCache, book: Dict[str, Any]) -> BookCache:
+    """把豆瓣元数据写入 BookCache 行（仅覆盖白名单字段，保留 isbn/时间戳由 ORM 维护）."""
+    for k in _BOOK_CACHE_FIELDS:
+        val = book.get(k)
+        if val is None or val == "":
+            # 数值字段用零值兜底，避免 SQLAlchemy 拒绝空字符串
+            val = 0.0 if k == "rating" else (0 if k == "rating_count" else "")
+        setattr(row, k, val)
+    return row
+
+
+async def _background_cover_task(
+    isbn: str,
+    cover_image: str,
+    proxy: str,
+) -> None:
+    """后台任务：下载豆瓣封面到本地缓存并回写 book_cache.cover_image_local.
+
+    在 FastAPI BackgroundTasks 中运行，使用独立数据库会话（请求结束时
+    请求级 session 已关闭）。下载失败或非 doubanio.com 域名时静默跳过，
+    不阻塞检索响应；下次命中该 ISBN 时会再次尝试补图。
+    """
+    local = await _download_douban_cover(cover_image, proxy=proxy)
+    if not local:
+        return
+    db = SessionLocal()
+    try:
+        row = db.query(BookCache).filter(BookCache.isbn == isbn).first()
+        if row and row.cover_image_local != local:
+            row.cover_image_local = local
+            db.commit()
+    finally:
+        db.close()
+
+
+def _local_cover_missing(row: BookCache) -> bool:
+    """cover_image_local 记录的本地文件是否已失效（不存在即视为缺失）."""
+    if not row.cover_image_local:
+        return True
+    filename = row.cover_image_local.split("/")[-1]
+    return not (COVERS_DIR / filename).is_file()
 
 
 def _cached_cover_url(url: str) -> Optional[str]:
@@ -489,27 +564,78 @@ async def proxy_cover(
 async def get_book_by_isbn(
     isbn: str,
     request: Request,
+    background_tasks: BackgroundTasks,
+    force: bool = False,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    # 客户端已断开（删除节点 / 清空画布 / 关闭页面）：不发起豆瓣抓取，直接放弃。
-    # 豆瓣为免费只读接口，预检查覆盖「尚未开始抓取」的窗口即可，不值得为中途取消改造抓取循环。
+    """按 ISBN 获取图书元数据，内置 book_cache 持久化缓存。
+
+    - 非 force：先查 book_cache，命中直接读库返回（减少豆瓣 API 请求与限流/反爬风险）。
+      缓存封面缺失时，后台任务补图并回写 cover_image_local，同时用代理 URL 兜底展示。
+    - 未命中或 force：调用豆瓣 API，成功后写库（isbn 唯一约束 + IntegrityError 兜底，
+      避免并发检索重复写入；force 覆盖更新同一条），封面经后台任务异步下载补图。
+
+    客户端已断开（删除节点 / 清空画布 / 关闭页面）时不发起豆瓣抓取，直接放弃。
+    豆瓣为免费只读接口，预检查覆盖「尚未开始抓取」的窗口即可，不值得为中途取消改造抓取循环。
+    """
     if await request.is_disconnected():
         raise HTTPException(status_code=499, detail="客户端已断开连接")
     client_config = _douban_client_config(db)
+    proxy = client_config.proxy
+
+    # 非强制更新：先查库，命中即返回缓存
+    if not force:
+        row = db.query(BookCache).filter(BookCache.isbn == isbn).first()
+        if row:
+            book = _row_to_book(row)
+            book["isbn"] = isbn
+            if book.get("cover_image") and _local_cover_missing(row):
+                # 本地封面缺失：先用代理 URL 兜底展示，同时后台补图回写静态路径
+                book["cover_image_local"] = (
+                    str(request.url_for("proxy_cover")) + "?url=" + quote(book["cover_image"])
+                )
+                background_tasks.add_task(
+                    _background_cover_task, isbn, book["cover_image"], proxy
+                )
+            return book
+
+    # 未命中缓存或强制更新：调用豆瓣 API
     async with DoubanIsbnClient(client_config) as client:
         book = await client.fetch(isbn)
         if not book:
             raise HTTPException(status_code=404, detail="Book not found")
-        if book.get("cover_image"):
-            # cover_image 保持豆瓣 API 返回的原始 URL（供 JSON 下载 / 归档使用）；
-            # cover_image_local 为前端可展示的 URL（代理 → 本地缓存）。封面不在此处同步下载：
-            # 元数据必须立即返回，封面由前端通过公开的 /cover 在展示时按需下载并缓存
-            # （内置限流、重试与魔数校验），下载失败则由前端降级为占位图
-            book["cover_image_local"] = (
-                str(request.url_for("proxy_cover")) + "?url=" + quote(book["cover_image"])
-            )
-        return book
+
+    # 写库：force 覆盖更新；否则以唯一 isbn 查重插入（并发时 IntegrityError 兜底）。
+    # cover_image_local 保持空，由后台任务下载成功后回写静态路径。
+    existing = db.query(BookCache).filter(BookCache.isbn == isbn).first()
+    if existing:
+        _apply_book_to_row(existing, book)
+        row = existing
+        db.commit()
+    else:
+        row = BookCache(isbn=isbn)
+        _apply_book_to_row(row, book)
+        db.add(row)
+        try:
+            db.commit()
+        except IntegrityError:
+            # 并发写入同一 isbn：放弃本次插入，采用已存在的行
+            db.rollback()
+            row = db.query(BookCache).filter(BookCache.isbn == isbn).first()
+            if row is None:
+                raise HTTPException(status_code=500, detail="Failed to cache book info")
+
+    # 返回给前端：cover_image_local 用代理 URL 以立即展示封面（豆瓣图带防盗链不可直连）
+    if book.get("cover_image"):
+        book["cover_image_local"] = (
+            str(request.url_for("proxy_cover")) + "?url=" + quote(book["cover_image"])
+        )
+        background_tasks.add_task(
+            _background_cover_task, isbn, book["cover_image"], proxy
+        )
+    book["isbn"] = isbn
+    return book
 
 
 @router.get("/fastclaw-probe")

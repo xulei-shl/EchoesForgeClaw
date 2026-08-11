@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useState } from 'react';
-import { BookOpen, ExternalLink, Loader2, AlertTriangle, Search } from 'lucide-react';
+import { BookOpen, ExternalLink, Loader2, AlertTriangle, Search, RefreshCw } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { BeamGlow } from '../../../platform/components/node/BeamGlow';
@@ -44,6 +44,8 @@ export interface BookInfoNodeProps {
   /** 空态节点内联输入 ISBN 后提交 */
   onFetch?: (id: string, isbn: string) => void;
   onDownload?: (id: string) => void;
+  /** 强制重新从豆瓣 API 获取数据并覆盖缓存 */
+  onForceRefresh?: (id: string) => void;
   onPositionChange?: (id: string, x: number, y: number) => void;
   onSizeChange?: (id: string, width: number, height: number) => void;
   onDrag?: (id: string, x: number, y: number) => void;
@@ -65,6 +67,7 @@ const BookInfoNodeInner: React.FC<BookInfoNodeProps> = ({
   onRetry,
   onFetch,
   onDownload,
+  onForceRefresh,
   onPositionChange,
   onSizeChange,
   onDrag,
@@ -127,6 +130,14 @@ const BookInfoNodeInner: React.FC<BookInfoNodeProps> = ({
               onClick={() => onDownload?.(id)}
               disabled={isGenerating}
               tooltip="下载元数据"
+            />
+          )}
+          {!error && data.isbn && onForceRefresh && (
+            <NodeActionBar.Custom
+              icon={<RefreshCw size={16} strokeWidth={1.5} />}
+              tooltip="强制更新（重新从豆瓣获取并覆盖缓存）"
+              onClick={() => onForceRefresh?.(id)}
+              disabled={isGenerating}
             />
           )}
           {!error && data.url && (

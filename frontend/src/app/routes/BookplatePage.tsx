@@ -364,8 +364,10 @@ const BookplatePage: React.FC = () => {
   /**
    * 第一阶段：点击「生成」后立即在画布上放置组件框（边框光束表示运行中），
    * 豆瓣 API 返回后再回填元数据；失败则在组件框内展示错误并支持重试。
+   *
+   * @param opts.force 强制从豆瓣 API 重新获取并覆盖缓存
    */
-  const fetchBookInfo = async (isbn: string, nodeId?: string) => {
+  const fetchBookInfo = async (isbn: string, nodeId?: string, opts?: { force?: boolean }) => {
     const id = nodeId ?? `node-${Date.now()}-${isbn}`;
     if (bookInfoInflight.has(id)) return;
     bookInfoInflight.add(id);
@@ -385,7 +387,10 @@ const BookplatePage: React.FC = () => {
     streamControllers.current.set(id, controller);
 
     try {
+      const params: Record<string, any> = {};
+      if (opts?.force) params.force = true;
       const response: any = await api.get(`/modules/bookplate/isbn/${isbn}`, {
+        params,
         timeout: ISBN_FETCH_TIMEOUT_MS,
         signal: controller.signal,
       });
@@ -896,6 +901,12 @@ const BookplatePage: React.FC = () => {
   const handleFetchBookFor = useCallback((id: string, isbn: string) => {
     fetchBookInfo(isbn, id);
   }, []);
+  const handleForceRefreshBookFor = useCallback((id: string) => {
+    const node = nodesRef.current.find((n) => n.id === id);
+    const isbn = node?.data?.isbn;
+    if (!isbn) return;
+    fetchBookInfo(isbn, id, { force: true });
+  }, []);
   const handleDownloadBookData = useCallback((id: string) => {
     const node = nodesRef.current.find((n) => n.id === id);
     if (!node || !node.data) return;
@@ -1259,6 +1270,7 @@ const BookplatePage: React.FC = () => {
     handleRemove,
     handleRetryBookFor,
     handleFetchBookFor,
+    handleForceRefreshBookFor,
     handleDownloadBookData,
     handleRunAnalysisFor,
     handleRetryPromptFor,

@@ -9,3 +9,4 @@ from app.models.prompt_template import PromptTemplate
 from app.models.node_config import NodeConfig
 from app.models.app_setting import AppSetting
 from app.models.fastclaw_agent_config import FastClawAgentConfig
+from app.models.book_cache import BookCache
