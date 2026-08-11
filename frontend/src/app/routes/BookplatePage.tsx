@@ -1241,9 +1241,9 @@ const BookplatePage: React.FC = () => {
       }
       case 'image_generation': {
         const inputs = resolveNodeInputs(node, nodesRef.current, edgesRef.current, inputSlotsRef.current);
-        const promptNode = inputs.prompt;
-        const prompt =
-          typeof promptNode?.data?.content === 'string' ? promptNode.data.content.trim() : '';
+        // 提示词来源：上游「提示词生成」节点（data.content）或根「图书元数据」节点
+        // （bookMetadataText 过滤图片字段后的元数据文本），统一经 nodeOutputText 提取。
+        const prompt = nodeOutputText(inputs.prompt).trim();
         if (!prompt) return; // 上游提示词未就绪 → 待运行态
         // 上游「图片上传」节点的图片作为图生图参考图（data URL，后端直接透传给图像 API），
         // 与提示词一并传入。显式连接了该节点但尚未上传时保持待运行态，不自动降级为纯文生图
@@ -1407,12 +1407,8 @@ const BookplatePage: React.FC = () => {
       } else if (node.type === 'image_generation') {
         idle = !node.data?.imageUrl;
         const inputs = resolveNodeInputs(node, nodesRef.current, edgesRef.current, inputSlotsRef.current);
-        const promptNode = inputs.prompt;
-        ready = !!(
-          typeof promptNode?.data?.content === 'string' &&
-          promptNode.data.content.trim() &&
-          !promptNode.data.isGenerating
-        );
+        const prompt = nodeOutputText(inputs.prompt).trim();
+        ready = !!(prompt && !inputs.prompt?.data?.isGenerating);
         // 与 runNode 一致：显式连接了「图片上传」节点时，需已上传参考图才就绪
         const uploadNode = inputs.image;
         if (uploadNode && typeof uploadNode.data?.imageUrl !== 'string') ready = false;

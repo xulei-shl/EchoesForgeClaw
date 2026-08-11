@@ -54,7 +54,7 @@ NODE_TEMPLATES = [
         "category": "output",
         "configurable": True,
         "input_slots": [
-            {"slot": "prompt", "from": [NODE_PROMPT]},
+            {"slot": "prompt", "from": [NODE_PROMPT, NODE_BOOK_INFO]},
             {"slot": "image", "from": [NODE_IMAGE_UPLOAD]},
         ],
     },
