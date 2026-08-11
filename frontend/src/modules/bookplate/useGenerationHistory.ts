@@ -2,7 +2,7 @@ import { useCallback, type RefObject } from 'react';
 import generationsService from '../../platform/services/generations';
 import { flushSnapshot } from '../../platform/stores/useCanvasState';
 import type { GenerationStageResults } from '../../platform/types';
-import { findRootBookInfo, resolveDirectParents } from './nodeTypes';
+import { findConnectedBookInfoUpstream, findRootBookInfo, resolveDirectParents } from './nodeTypes';
 import type { EdgeData, NodeData } from './graphTypes';
 
 /** 历史记录组装依赖（由画布注入） */
@@ -28,8 +28,15 @@ export function useGenerationHistory(ctx: GenerationHistoryContext): GenerationH
       if (!imageNode) return null;
 
       const parents = resolveDirectParents(imageNodeId, ctx.nodesRef.current, ctx.edgesRef.current);
-      // 根图书元数据（上下文配置注入的来源，与是否直接连线无关）；提示词/分析为直接上级
-      const bookNode = findRootBookInfo(ctx.nodesRef.current, ctx.edgesRef.current);
+      // 图书元数据：优先沿入边向上追溯真正参与生成的 book_info（画布可存在多个互不连通的
+      // 图书元数据节点，不能写死取根节点）；无连通 book_info 时回退画布根节点（保持
+      // 「包含图书元数据」注入语义）。提示词/分析为直接上级。
+      const bookNode =
+        findConnectedBookInfoUpstream(
+          imageNodeId,
+          ctx.nodesRef.current,
+          ctx.edgesRef.current
+        ) ?? findRootBookInfo(ctx.nodesRef.current, ctx.edgesRef.current);
       const promptNode = parents.find((p) => p.type === 'prompt_generation');
       const analysisNode = parents.find((p) => p.type === 'image_analysis');
 

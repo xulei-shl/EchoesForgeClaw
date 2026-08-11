@@ -193,7 +193,7 @@ export function resolveDirectParents<T extends GraphNode>(
 
 /**
  * 画布根图书元数据节点：优先取无入边的 book_info（根），否则取画布中第一个。
- * 供「包含图书元数据」上下文配置注入使用（与是否直接连线无关）。
+ * 仅作「无连通 book_info」时的兜底（如「包含图书元数据」开关注入）。
  */
 export function findRootBookInfo<T extends GraphNode>(
   nodes: T[],
@@ -203,6 +203,30 @@ export function findRootBookInfo<T extends GraphNode>(
   if (books.length === 0) return undefined;
   const hasIncoming = new Set(edges.map((e) => e.target));
   return books.find((b) => !hasIncoming.has(b.id)) ?? books[0];
+}
+
+/**
+ * 沿入边向上追溯与某节点「实际连通」的图书元数据节点（BFS，取最近连通者）。
+ * 画布允许存在多个互不连通的 book_info 节点（历史记录/画廊须记录真正参与生成的元数据，
+ * 而非写死画布根节点）。book_info 无输入端口、恒为源头，故追溯自然终止。
+ */
+export function findConnectedBookInfoUpstream<T extends GraphNode>(
+  nodeId: string,
+  nodes: T[],
+  edges: GraphEdge[]
+): T | undefined {
+  const visited = new Set<string>([nodeId]);
+  const queue: string[] = [nodeId];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    for (const p of resolveDirectParents(current, nodes, edges)) {
+      if (visited.has(p.id)) continue;
+      visited.add(p.id);
+      if (p.type === 'book_info') return p;
+      queue.push(p.id);
+    }
+  }
+  return undefined;
 }
 
 /** 排除图片/封面等无法作为文本上下文展示的字段（isbn 保留，与后端 _agent_prompt_message 一致） */
