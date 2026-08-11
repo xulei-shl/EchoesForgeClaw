@@ -1,5 +1,5 @@
 import React, { memo, useState, useRef, useEffect } from 'react';
-import { Pencil, Check, X, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Pencil, Check, X, RefreshCw, AlertTriangle, Play } from 'lucide-react';
 import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
 import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
@@ -7,8 +7,9 @@ import { BeamGlow } from '../../../platform/components/node/BeamGlow';
 import { Textarea } from '../../../platform/components/ui/Textarea';
 import { AgentActivity } from '../../../platform/components/agent/AgentActivity';
 import { Tooltip } from '../../../platform/components/ui/Tooltip';
-import type { AgentStep } from '../../../platform/types';
+import type { AgentStep, NodeRunSettings } from '../../../platform/types';
 import { NODE_COLORS } from '../nodeTypes';
+import { NodeSettingsPopover } from './NodeSettingsPopover';
 
 export interface PromptNodeProps {
   id: string;
@@ -35,6 +36,15 @@ export interface PromptNodeProps {
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
   /** 所属自定义分组（配置了分组时在标题旁展示小标签） */
   group?: string;
+  /** 手动运行（待运行态点击「运行」触发） */
+  onRun?: (id: string) => void;
+  /** 运行设置（包含图书元数据 / 自动运行） */
+  settings?: NodeRunSettings;
+  onUpdateSettings?: (id: string, settings: NodeRunSettings) => void;
+  /** 画布是否已有图书元数据节点 */
+  hasBookInfo?: boolean;
+  /** 标题旁的类型不匹配提示 */
+  mismatchBadge?: string | null;
 }
 
 const PromptNodeInner: React.FC<PromptNodeProps> = ({
@@ -56,6 +66,11 @@ const PromptNodeInner: React.FC<PromptNodeProps> = ({
   footer,
   onContextMenu,
   group,
+  onRun,
+  settings,
+  onUpdateSettings,
+  hasBookInfo,
+  mismatchBadge,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(content);
@@ -119,7 +134,29 @@ const PromptNodeInner: React.FC<PromptNodeProps> = ({
       );
     }
 
-    if (!content && !error) return undefined;
+    // 待运行态（无内容、无错误）：提供手动「运行」按钮 + 运行设置
+    if (!content && !error) {
+      return (
+        <>
+          {onRun && (
+            <Tooltip content="运行">
+              <button onClick={() => onRun?.(id)} disabled={isGenerating} className={actionBtn}>
+                <Play size={16} strokeWidth={1.5} />
+              </button>
+            </Tooltip>
+          )}
+          {onUpdateSettings && settings && (
+            <NodeSettingsPopover
+              settings={settings}
+              onChange={(s) => onUpdateSettings?.(id, s)}
+              disabled={isGenerating}
+              hasBookInfo={hasBookInfo}
+              className={actionBtn}
+            />
+          )}
+        </>
+      );
+    }
 
     return (
       <>
@@ -139,6 +176,15 @@ const PromptNodeInner: React.FC<PromptNodeProps> = ({
               <Pencil size={16} strokeWidth={1.5} />
             </button>
           </Tooltip>
+        )}
+        {onUpdateSettings && settings && (
+          <NodeSettingsPopover
+            settings={settings}
+            onChange={(s) => onUpdateSettings?.(id, s)}
+            disabled={isGenerating}
+            hasBookInfo={hasBookInfo}
+            className={actionBtn}
+          />
         )}
       </>
     );
@@ -164,6 +210,7 @@ const PromptNodeInner: React.FC<PromptNodeProps> = ({
       showRightAnchor={true}
       footer={footer}
       groupBadge={group}
+      mismatchBadge={mismatchBadge}
       actionBar={renderActionBar()}
     >
       <div className="relative h-full flex flex-col flex-1 min-h-0">
@@ -210,7 +257,7 @@ const PromptNodeInner: React.FC<PromptNodeProps> = ({
                   caret="block"
                   linkSafety={{ enabled: false }}
                 >
-                  {normalizeMarkdown(content) || (!error ? '等待上游数据，点击「+」添加节点或运行' : '')}
+                  {normalizeMarkdown(content) || (!error ? '连线上游节点（文本 / 图片分析 / 图书元数据）后点击 ▶ 运行' : '')}
                 </Streamdown>
               </div>
             </div>

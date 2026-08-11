@@ -162,17 +162,11 @@ export type CanvasNodeType =
   | 'chat';
 
 /**
- * 节点输入槽位名称（声明式接线契约）：
- * metadata（图书元数据）/ text（文本）/ analysis（图片分析）/ prompt（提示词）/ image（图片）
+ * 节点端口类型（输入/输出）：text / image 为当前实际使用的类型，
+ * document / audio / video 为未来节点预留，any 表示任意类型（如 AI 对话的任意上级内容）。
+ * 类型契约由后端 node_types.py 模板声明（唯一权威），经 node-registry 下发前端做连线校验。
  */
-export type InputSlotName = 'metadata' | 'text' | 'analysis' | 'prompt' | 'image';
-
-/** 输入槽位声明：哪些上游节点类型 → 提供什么输入（由后端 node_types.py 定义，经 node-registry 下发） */
-export interface InputSlot {
-  slot: InputSlotName;
-  /** 可接受的上游节点类型（沿入边向上 BFS，取最近的匹配祖先） */
-  from: CanvasNodeType[];
-}
+export type NodePortType = 'text' | 'image' | 'document' | 'audio' | 'video' | 'any';
 
 /** AI 对话节点的一条消息 */
 export interface ChatMessage {
@@ -199,6 +193,14 @@ export interface ChatNodeSettings {
   includeUpstream: boolean;
 }
 
+/** 可执行节点（图片分析 / 提示词生成 / 图像生成）的运行设置（节点内可开关） */
+export interface NodeRunSettings {
+  /** 包含根节点图书元数据：未直接连线时，经「上下文配置」注入画布根节点元数据 */
+  includeBook: boolean;
+  /** 输入就绪时自动运行；关闭则点击「运行」按钮手动执行 */
+  autoRun: boolean;
+}
+
 /** 节点模板（后端 node_types.py 定义，经 node-registry 下发） */
 export interface NodeTemplate {
   type: CanvasNodeType;
@@ -208,8 +210,10 @@ export interface NodeTemplate {
   category: 'input' | 'analysis' | 'generate' | 'output';
   /** 是否需要 llm/agent 配置（false 为基础节点，画板直接可用） */
   configurable: boolean;
-  /** 声明式输入槽位（后端唯一权威，执行引擎据此收集上游） */
-  input_slots?: InputSlot[];
+  /** 输出类型：该模板产出什么（连线类型匹配校验用） */
+  output_type?: NodePortType;
+  /** 接受的输入类型列表：连线类型匹配校验用（空 = 不接受上游输入） */
+  input_types?: NodePortType[];
 }
 
 /** 节点配置（节点模板的一个具体可执行实例 = 画板「+」菜单中的节点变体） */

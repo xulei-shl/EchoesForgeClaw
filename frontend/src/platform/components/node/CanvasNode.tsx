@@ -19,6 +19,8 @@ export interface CanvasNodeProps {
   footer?: React.ReactNode;
   /** 所属自定义分组（有分组时在标题旁展示小标签） */
   groupBadge?: string;
+  /** 标题旁的类型不匹配提示（红色徽标，如「类型不匹配 ×2」）；null/undefined 不展示 */
+  mismatchBadge?: string | null;
   /** 左上角类型指示圆点颜色 (推荐使用 OKLCH) */
   dotColor?: string;
   /** 允许拖拽右下角手柄调整卡片尺寸 */
@@ -62,6 +64,7 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
   onContextMenu,
   footer,
   groupBadge,
+  mismatchBadge,
   dotColor,
 }) => {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -291,6 +294,14 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
               className="shrink-0 max-w-[100px] truncate text-[10px] text-ink-faint border border-dashed border-paper-grid rounded-pill px-1.5 py-px font-mono"
             >
               {groupBadge}
+            </span>
+          )}
+          {mismatchBadge && (
+            <span
+              title={mismatchBadge}
+              className="shrink-0 max-w-[140px] truncate text-[10px] text-error border border-error/30 bg-error/5 rounded-pill px-1.5 py-px font-mono"
+            >
+              {mismatchBadge}
             </span>
           )}
         </div>

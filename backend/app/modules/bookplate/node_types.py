@@ -20,6 +20,7 @@ NODE_TEMPLATES = [
         "description": "通过豆瓣 API 获取 ISBN 对应的图书元数据",
         "category": "input",
         "configurable": False,
+        "output_type": "text",
     },
     {
         "type": NODE_IMAGE_ANALYSIS,
@@ -27,12 +28,10 @@ NODE_TEMPLATES = [
         "description": "多模态模型分析封面 / 参考图，输出艺术风格与主题色分析",
         "category": "analysis",
         "configurable": True,
-        # 输入槽位声明（唯一权威）：哪些上游节点类型 → 提供什么输入；
-        # 前端经 node-registry 获取后驱动执行引擎（resolveNodeInputs）
-        "input_slots": [
-            {"slot": "metadata", "from": [NODE_BOOK_INFO]},
-            {"slot": "image", "from": [NODE_IMAGE_UPLOAD]},
-        ],
+        # 端口类型（唯一权威）：输出类型 + 接受的输入类型列表，经 node-registry 下发前端做连线校验。
+        # 输入收集以「直接连线」为准（画线连上即输入），类型仅用于不匹配提示。
+        "output_type": "text",
+        "input_types": ["image", "text"],
     },
     {
         "type": NODE_PROMPT,
@@ -40,12 +39,8 @@ NODE_TEMPLATES = [
         "description": "基于图书元数据与图片分析流式生成图像提示词",
         "category": "generate",
         "configurable": True,
-        "input_slots": [
-            {"slot": "metadata", "from": [NODE_BOOK_INFO]},
-            {"slot": "analysis", "from": [NODE_IMAGE_ANALYSIS]},
-            # AI 对话节点的回复同样作为补充文本上下文
-            {"slot": "text", "from": [NODE_TEXT, NODE_CHAT]},
-        ],
+        "output_type": "text",
+        "input_types": ["text"],
     },
     {
         "type": NODE_IMAGE,
@@ -53,10 +48,8 @@ NODE_TEMPLATES = [
         "description": "根据提示词生成藏书票图片",
         "category": "output",
         "configurable": True,
-        "input_slots": [
-            {"slot": "prompt", "from": [NODE_PROMPT, NODE_BOOK_INFO]},
-            {"slot": "image", "from": [NODE_IMAGE_UPLOAD]},
-        ],
+        "output_type": "image",
+        "input_types": ["text", "image"],
     },
     {
         "type": NODE_TEXT,
@@ -64,6 +57,7 @@ NODE_TEMPLATES = [
         "description": "手动输入 / 编辑 Markdown 文本，作为工作流中的笔记或说明",
         "category": "input",
         "configurable": False,
+        "output_type": "text",
     },
     {
         "type": NODE_IMAGE_UPLOAD,
@@ -71,6 +65,7 @@ NODE_TEMPLATES = [
         "description": "手动上传一张图片到画布，作为工作流中的参考素材",
         "category": "input",
         "configurable": False,
+        "output_type": "image",
     },
     {
         "type": NODE_CHAT,
@@ -78,10 +73,8 @@ NODE_TEMPLATES = [
         "description": "多轮对话 AI 助手，可绑定大模型或 FastClaw Agent，输出最后一轮回复",
         "category": "generate",
         "configurable": True,
-        # 图书元数据作为可选上下文；「紧随的上一级节点内容」为通用直接父节点机制（前端逻辑）
-        "input_slots": [
-            {"slot": "metadata", "from": [NODE_BOOK_INFO]},
-        ],
+        "output_type": "text",
+        "input_types": ["text"],
     },
 ]
 

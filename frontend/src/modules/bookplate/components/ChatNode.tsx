@@ -58,6 +58,8 @@ export interface ChatNodeProps {
   group?: string;
   /** 是否有下级节点关联 */
   hasDownstream?: boolean;
+  /** 标题旁的类型不匹配提示 */
+  mismatchBadge?: string | null;
 }
 
 const ChatNodeInner: React.FC<ChatNodeProps> = ({
@@ -83,6 +85,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
   onContextMenu,
   group,
   hasDownstream,
+  mismatchBadge,
 }) => {
   const [draft, setDraft] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -352,6 +355,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
       showRightAnchor={true}
       footer={footer}
       groupBadge={group}
+      mismatchBadge={mismatchBadge}
       actionBar={renderActionBar()}
     >
       <style dangerouslySetInnerHTML={{ __html: STYLE_INJECTIONS }} />

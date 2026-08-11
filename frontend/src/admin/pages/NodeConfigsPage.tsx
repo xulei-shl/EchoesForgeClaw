@@ -29,7 +29,7 @@ import { Toggle } from '../../platform/components/ui/Toggle';
 import { Badge } from '../../platform/components/ui/Badge';
 import { FieldLabel, PageHeader } from '../components/AdminBits';
 import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
-import { NODE_TEMPLATES, CATEGORY_LABELS } from '../../modules/bookplate/nodeTypes';
+import { NODE_TEMPLATES, NODE_PORT_TYPES, PORT_TYPE_LABELS, CATEGORY_LABELS } from '../../modules/bookplate/nodeTypes';
 
 /** 模型类型短标签（下拉选项展示） */
 const KIND_SHORT_LABEL: Record<string, string> = {
@@ -38,6 +38,14 @@ const KIND_SHORT_LABEL: Record<string, string> = {
   image: '图像',
   video: '视频',
   audio: '音频',
+};
+
+/** 模板端口类型的只读摘要（如「输入：文本/图片 · 输出：图片」；由后端 node_types.py 模板声明） */
+const portSummary = (type: string): string => {
+  const pt = NODE_PORT_TYPES[type as keyof typeof NODE_PORT_TYPES];
+  if (!pt) return '';
+  const inputs = pt.inputs.length > 0 ? pt.inputs.map((t) => PORT_TYPE_LABELS[t]).join('/') : '无';
+  return `输入：${inputs} · 输出：${PORT_TYPE_LABELS[pt.output]}`;
 };
 
 interface FormState {
@@ -456,6 +464,11 @@ export const NodeConfigsPage: React.FC = () => {
                   title: t.description,
                 }))}
               />
+              {form.node_type && (
+                <p className="text-xs text-ink-faint font-sans">
+                  端口（模板声明，只读）：{portSummary(form.node_type)}
+                </p>
+              )}
             </div>
             <div className="space-y-1.5 sm:col-span-2">
               <FieldLabel>分组（可选）</FieldLabel>
@@ -727,6 +740,14 @@ export const NodeConfigsPage: React.FC = () => {
                             {!nc.group?.trim() && (
                               <span className="text-xs text-ink-light border border-dashed border-paper-grid rounded-pill px-2 py-px font-mono">
                                 {NODE_TYPE_LABEL[nc.node_type] ?? nc.node_type}
+                              </span>
+                            )}
+                            {portSummary(nc.node_type) && (
+                              <span
+                                title={portSummary(nc.node_type)}
+                                className="text-[10px] text-ink-faint border border-dashed border-paper-grid/70 rounded-pill px-1.5 py-px font-mono"
+                              >
+                                {portSummary(nc.node_type)}
                               </span>
                             )}
                             <Badge variant={nc.is_active ? 'success' : 'default'} showDot>

@@ -12,10 +12,11 @@ import { BeamGlow } from '../../../platform/components/node/BeamGlow';
 import { AgentActivity } from '../../../platform/components/agent/AgentActivity';
 import { Tooltip } from '../../../platform/components/ui/Tooltip';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
-import type { AgentStep } from '../../../platform/types';
+import type { AgentStep, NodeRunSettings } from '../../../platform/types';
 import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
 import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
 import { NODE_COLORS } from '../nodeTypes';
+import { NodeSettingsPopover } from './NodeSettingsPopover';
 
 // 上传参考图体积上限（与后端 MAX_UPLOAD_IMAGE_BYTES 保持一致）
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
@@ -46,6 +47,13 @@ export interface ImageAnalysisNodeProps {
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
   /** 所属自定义分组（配置了分组时在标题旁展示小标签） */
   group?: string;
+  /** 运行设置（包含图书元数据 / 自动运行） */
+  settings?: NodeRunSettings;
+  onUpdateSettings?: (id: string, settings: NodeRunSettings) => void;
+  /** 画布是否已有图书元数据节点 */
+  hasBookInfo?: boolean;
+  /** 标题旁的类型不匹配提示 */
+  mismatchBadge?: string | null;
 }
 
 const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
@@ -66,6 +74,10 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
   footer,
   onContextMenu,
   group,
+  settings,
+  onUpdateSettings,
+  hasBookInfo,
+  mismatchBadge,
 }) => {
   const { showToast } = useFeedback();
   // 本次会话上传的参考图（base64 data URL，仅存内存）
@@ -126,6 +138,15 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
             </button>
           </Tooltip>
         )}
+        {onUpdateSettings && settings && (
+          <NodeSettingsPopover
+            settings={settings}
+            onChange={(s) => onUpdateSettings?.(id, s)}
+            disabled={isGenerating}
+            hasBookInfo={hasBookInfo}
+            className={actionBtn}
+          />
+        )}
       </>
     );
   };
@@ -150,6 +171,7 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
       showRightAnchor={true}
       footer={footer}
       groupBadge={group}
+      mismatchBadge={mismatchBadge}
       actionBar={renderActionBar()}
     >
       <div className="relative h-full flex flex-col flex-1 min-h-0">
@@ -198,7 +220,7 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
               <div className="flex items-start gap-2 px-2 py-2.5 rounded-md border border-dashed border-paper-grid bg-paper-grid/10">
                 <ScanSearch size={14} strokeWidth={1.5} className="text-accent shrink-0 mt-0.5" />
                 <p className="text-[12px] text-ink-light font-sans leading-relaxed">
-                  可分析上游图书封面或「图片上传」节点的图片，或上传参考图手动分析艺术风格与主题色
+                  分析上游图书封面或「图片上传」节点的图片（画线连上即输入），点击 ▶ 运行；或上传参考图手动分析
                 </p>
               </div>
               <input

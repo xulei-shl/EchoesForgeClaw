@@ -1,6 +1,6 @@
-import type { CanvasNodeType, InputSlot, InputSlotName, NodeTemplate } from '../../platform/types';
+import type { CanvasNodeType, NodePortType } from '../../platform/types';
 
-export type { InputSlot, InputSlotName } from '../../platform/types';
+export type { NodePortType } from '../../platform/types';
 
 /** 节点模板的默认尺寸（画布布局用，与各节点组件 defaultSize 一致） */
 export const NODE_DEFAULT_SIZES: Record<CanvasNodeType, { width: number; height: number }> = {
@@ -34,8 +34,9 @@ export interface NodeTemplateDef {
 }
 
 /**
- * 节点模板元数据（展示层；输入槽位 inputSlots 已下沉后端 node_types.py，
- * 经 node-registry 下发，执行引擎用 buildInputSlotsMap 转换后驱动，这里不再声明）
+ * 节点模板元数据（展示层）。输入/输出端口类型（output_type / input_types）
+ * 由后端 node_types.py 模板声明（唯一权威），经 node-registry 下发，
+ * 前端以 NODE_PORT_TYPES 静态镜像兜底并做连线类型匹配校验。
  */
 export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
@@ -108,6 +109,52 @@ export const CATEGORY_LABELS: Record<NodeTemplateDef['category'], string> = {
   output: '输出',
 };
 
+/* ===================================================================== */
+/* 端口类型（输入/输出）声明与连线匹配                                    */
+/* ===================================================================== */
+
+/** 端口类型中文标签 */
+export const PORT_TYPE_LABELS: Record<NodePortType, string> = {
+  text: '文本',
+  image: '图片',
+  document: '文档',
+  audio: '音频',
+  video: '视频',
+  any: '任意',
+};
+
+/**
+ * 节点输入/输出端口类型（前端静态镜像，与后端 node_types.py 声明保持一致；
+ * 注册表到达后用后端权威值覆盖）。output = 该节点产出什么；inputs = 接受哪些类型的上级输入。
+ */
+export const NODE_PORT_TYPES: Record<CanvasNodeType, { output: NodePortType; inputs: NodePortType[] }> = {
+  book_info: { output: 'text', inputs: [] },
+  text: { output: 'text', inputs: [] },
+  image_upload: { output: 'image', inputs: [] },
+  image_analysis: { output: 'text', inputs: ['image', 'text'] },
+  prompt_generation: { output: 'text', inputs: ['text'] },
+  image_generation: { output: 'image', inputs: ['text', 'image'] },
+  chat: { output: 'text', inputs: ['text'] },
+};
+
+/** 连线端口匹配结果：match（匹配）/ mismatch（不匹配，红色标注）/ unknown（类型未知，不判定） */
+export type PortMatch = 'match' | 'mismatch' | 'unknown';
+
+/**
+ * 判断「源节点输出类型」是否能被「目标节点输入类型列表」接受：
+ * - any 匹配任意；目标输入列表为空 = 不接受任何上游输入；
+ * - 任一侧类型未知（如注册表未加载）返回 unknown，不判为不匹配，避免误报。
+ */
+export function matchPortType(
+  source: NodePortType | undefined,
+  targetTypes: NodePortType[] | undefined
+): PortMatch {
+  if (!source || !targetTypes) return 'unknown';
+  if (targetTypes.length === 0) return 'mismatch';
+  if (source === 'any' || targetTypes.includes('any')) return 'match';
+  return targetTypes.includes(source) ? 'match' : 'mismatch';
+}
+
 /**
  * 获取节点显示标题：优先使用用户配置的变体名称，否则回退到模板名称，最后 fallback 为类型标识
  */
@@ -116,7 +163,7 @@ export function getNodeTitle(node: { type: CanvasNodeType; configName?: string }
 }
 
 /* ===================================================================== */
-/* 声明式输入收集（执行引擎与节点组件共用）                              */
+/* 输入收集（连线即输入：只取直接上级，1 级，不向上追溯）               */
 /* ===================================================================== */
 
 /** 图的最小形状（BookplatePage 的 NodeData/EdgeData 结构兼容） */
@@ -131,20 +178,31 @@ export interface GraphEdge {
   target: string;
 }
 
-export type InputSlotsMap = Record<CanvasNodeType, InputSlot[]>;
+/**
+ * 某节点的直接上级节点（沿入边过滤，仅 1 级）：画线连上即输入（所见即所得）。
+ * 不再像旧版那样沿整条祖先链向上 BFS 追溯。泛型保持调用方节点类型（NodeData / GraphNode）。
+ */
+export function resolveDirectParents<T extends GraphNode>(
+  nodeId: string,
+  nodes: T[],
+  edges: GraphEdge[]
+): T[] {
+  const sourceIds = new Set(edges.filter((e) => e.target === nodeId).map((e) => e.source));
+  return nodes.filter((n) => sourceIds.has(n.id));
+}
 
 /**
- * 把后端 node-registry 下发的模板声明（snake_case input_slots）转换为
- * 执行引擎查找用的「节点类型 → 输入槽位数组」映射。无声明/空声明 = 无上游输入。
+ * 画布根图书元数据节点：优先取无入边的 book_info（根），否则取画布中第一个。
+ * 供「包含图书元数据」上下文配置注入使用（与是否直接连线无关）。
  */
-export function buildInputSlotsMap(templates: NodeTemplate[]): InputSlotsMap {
-  const map = {} as InputSlotsMap;
-  for (const t of templates) {
-    if (t.input_slots && t.input_slots.length > 0) {
-      map[t.type] = t.input_slots;
-    }
-  }
-  return map;
+export function findRootBookInfo<T extends GraphNode>(
+  nodes: T[],
+  edges: GraphEdge[]
+): T | undefined {
+  const books = nodes.filter((n) => n.type === 'book_info');
+  if (books.length === 0) return undefined;
+  const hasIncoming = new Set(edges.map((e) => e.target));
+  return books.find((b) => !hasIncoming.has(b.id)) ?? books[0];
 }
 
 /** 排除图片/封面等无法作为文本上下文展示的字段（isbn 保留，与后端 _agent_prompt_message 一致） */
@@ -197,55 +255,4 @@ export function nodeOutputText(node: GraphNode | undefined): string {
   }
 }
 
-/**
- * 沿入边向上 BFS，找到最近的、类型属于 types 中任意一种的祖先节点。
- * 语义与旧版 findUpstream(nodeId, type) 一致，只是支持多种候选类型。
- */
-function findUpstreamAny(
-  nodeId: string,
-  types: CanvasNodeType[],
-  nodes: GraphNode[],
-  edges: GraphEdge[]
-): GraphNode | undefined {
-  const typeSet = new Set(types);
-  const nodeById = new Map(nodes.map((n) => [n.id, n]));
-  const visited = new Set<string>();
-  let frontier = [nodeId];
-  while (frontier.length > 0) {
-    const next: string[] = [];
-    for (const nid of frontier) {
-      if (visited.has(nid)) continue;
-      visited.add(nid);
-      for (const edge of edges) {
-        if (edge.target !== nid) continue;
-        const parent = nodeById.get(edge.source);
-        if (!parent) continue;
-        if (typeSet.has(parent.type)) return parent;
-        next.push(parent.id);
-      }
-    }
-    frontier = next;
-  }
-  return undefined;
-}
 
-export type ResolvedNodeInputs = Partial<Record<InputSlotName, GraphNode>>;
-
-/**
- * 按 inputSlots 声明收集上游输入来源节点（声明由后端下发，经 buildInputSlotsMap 转换）。
- * 不提取内容，由调用方按类型提取（nodeOutputText / 直接读 data）。无匹配上游的槽位为 undefined。
- */
-export function resolveNodeInputs(
-  node: GraphNode,
-  nodes: GraphNode[],
-  edges: GraphEdge[],
-  inputSlots: InputSlotsMap
-): ResolvedNodeInputs {
-  const slots = inputSlots[node.type];
-  const result: ResolvedNodeInputs = {};
-  if (!slots) return result;
-  for (const slot of slots) {
-    result[slot.slot] = findUpstreamAny(node.id, slot.from, nodes, edges);
-  }
-  return result;
-}

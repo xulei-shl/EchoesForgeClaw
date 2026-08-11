@@ -1,13 +1,14 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
-import { Globe, Heart, RefreshCw, Trash2, AlertTriangle, Maximize2 } from 'lucide-react';
+import { Globe, Heart, RefreshCw, Trash2, AlertTriangle, Maximize2, Play } from 'lucide-react';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { BeamGlow } from '../../../platform/components/node/BeamGlow';
 import { AgentActivity } from '../../../platform/components/agent/AgentActivity';
 import { Tooltip } from '../../../platform/components/ui/Tooltip';
-import type { AgentStep } from '../../../platform/types';
+import type { AgentStep, NodeRunSettings } from '../../../platform/types';
 import { NODE_COLORS } from '../nodeTypes';
+import { NodeSettingsPopover } from './NodeSettingsPopover';
 
 export interface ImageNodeProps {
   id: string;
@@ -51,6 +52,15 @@ export interface ImageNodeProps {
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
   /** 所属自定义分组（配置了分组时在标题旁展示小标签） */
   group?: string;
+  /** 手动运行（待运行态点击「运行」触发） */
+  onRun?: (id: string) => void;
+  /** 运行设置（包含图书元数据 / 自动运行） */
+  settings?: NodeRunSettings;
+  onUpdateSettings?: (id: string, settings: NodeRunSettings) => void;
+  /** 画布是否已有图书元数据节点 */
+  hasBookInfo?: boolean;
+  /** 标题旁的类型不匹配提示 */
+  mismatchBadge?: string | null;
 }
 
 const ImageNodeInner: React.FC<ImageNodeProps> = ({
@@ -82,6 +92,11 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
   footer,
   onContextMenu,
   group,
+  onRun,
+  settings,
+  onUpdateSettings,
+  hasBookInfo,
+  mismatchBadge,
 }) => {
   const [notice, setNotice] = useState<string | null>(null);
   const noticeTimer = useRef<number | null>(null);
@@ -115,6 +130,8 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
   // 兼容已存在的节点：检查 error 或 imageUrl 是否包含 mock_bookplate
   const isMockImage = !!error || (typeof imageUrl === 'string' && imageUrl.includes('mock_bookplate'));
   const displayError = error || (isMockImage ? 'API 配置缺失，当前为演示占位图' : null);
+  // 待运行态：无图片、无错误、未生成 → 提供「运行」按钮
+  const isIdle = !imageUrl && !displayError && !isGenerating;
 
   const actionBtn =
     'relative flex items-center justify-center w-7 h-7 rounded-full ' +
@@ -144,17 +161,39 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
       onClick={() => onSelect?.(id)}
       footer={footer}
       groupBadge={group}
+      mismatchBadge={mismatchBadge}
       actionBar={
         <>
-          <Tooltip content="重试">
-            <button
-              onClick={() => onRetry?.(id)}
+          {isIdle && onRun ? (
+            <Tooltip content="运行">
+              <button
+                onClick={() => onRun?.(id)}
+                disabled={isGenerating}
+                className={actionBtn}
+              >
+                <Play size={16} strokeWidth={1.5} />
+              </button>
+            </Tooltip>
+          ) : (
+            <Tooltip content={displayError ? '重试' : '重新生成'}>
+              <button
+                onClick={() => onRetry?.(id)}
+                disabled={isGenerating}
+                className={actionBtn + (displayError ? ' text-error hover:text-error hover:bg-error/10' : '')}
+              >
+                <RefreshCw size={16} strokeWidth={1.5} />
+              </button>
+            </Tooltip>
+          )}
+          {onUpdateSettings && settings && (
+            <NodeSettingsPopover
+              settings={settings}
+              onChange={(s) => onUpdateSettings?.(id, s)}
               disabled={isGenerating}
-              className={actionBtn + (displayError ? ' text-error hover:text-error hover:bg-error/10' : '')}
-            >
-              <RefreshCw size={16} strokeWidth={1.5} />
-            </button>
-          </Tooltip>
+              hasBookInfo={hasBookInfo}
+              className={actionBtn}
+            />
+          )}
           <Tooltip content={isFavorited ? '取消收藏' : '收藏'}>
             <button
               onClick={() => runToggle(onToggleFavorite, (active) => (active ? '已收藏' : '已取消收藏'))}
@@ -326,7 +365,7 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
                 
                 <div className="flex flex-col gap-1.5 items-center">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-ink-light font-medium">等待生成藏书票</span>
+                    <span className="text-sm text-ink-light font-medium">点击 ▶ 运行生成藏书票</span>
                     <div className="flex gap-1">
                       <div className="w-1 h-1 rounded-full bg-ink-faint/50 animate-bounce" style={{ animationDelay: '0ms' }} />
                       <div className="w-1 h-1 rounded-full bg-ink-faint/50 animate-bounce" style={{ animationDelay: '150ms' }} />

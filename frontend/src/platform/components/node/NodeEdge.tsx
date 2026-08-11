@@ -21,6 +21,8 @@ interface NodeEdgeProps {
   branchCount?: number;
   /** 连线色调序号：优先用目标节点的稳定 branchSerial（删除/重排不换色），缺省回退到位置序号 */
   tintIndex?: number;
+  /** 端口类型不匹配：false 时整条连线以错误色渲染（红色标注） */
+  compatible?: boolean;
 }
 
 /** 分支连线端点色调：序号 0 保持主 accent（与单边视觉一致），后续分支取柔和对比色 */
@@ -50,6 +52,7 @@ const NodeEdge = forwardRef<NodeEdgeHandle, NodeEdgeProps>(function NodeEdge(
     branchIndex = 0,
     branchCount = 1,
     tintIndex,
+    compatible = true,
   },
   ref
 ) {
@@ -123,31 +126,33 @@ const NodeEdge = forwardRef<NodeEdgeHandle, NodeEdgeProps>(function NodeEdge(
       ref={svgRef}
       className="absolute top-0 left-0 pointer-events-none z-0"
     >
-      <defs>
-        <linearGradient id={`grad-${id}`} x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="var(--color-paper-grid, #E4E1DA)" />
-          <stop
-            offset="100%"
-            stopColor={BRANCH_TINTS[(tintIndex ?? branchIndex) % BRANCH_TINTS.length]}
-          />
-        </linearGradient>
-      </defs>
+      {compatible ? (
+        <defs>
+          <linearGradient id={`grad-${id}`} x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="var(--color-paper-grid, #E4E1DA)" />
+            <stop
+              offset="100%"
+              stopColor={BRANCH_TINTS[(tintIndex ?? branchIndex) % BRANCH_TINTS.length]}
+            />
+          </linearGradient>
+        </defs>
+      ) : undefined}
       {/* Base line */}
       <path
         ref={basePathRef}
         fill="none"
-        stroke="var(--color-paper-grid, #E4E1DA)"
+        stroke={compatible ? 'var(--color-paper-grid, #E4E1DA)' : 'var(--color-error, #C0392B)'}
         strokeWidth="2"
-        strokeDasharray="5,5"
+        strokeDasharray={compatible ? '5,5' : '2,6'}
       />
       {/* Animated flowing line */}
       <path
         ref={flowPathRef}
         fill="none"
-        stroke={`url(#grad-${id})`}
+        stroke={compatible ? `url(#grad-${id})` : 'var(--color-error, #C0392B)'}
         strokeWidth="2"
-        strokeDasharray="5,5"
-        className="animate-flow"
+        strokeDasharray={compatible ? '5,5' : '2,6'}
+        className={compatible ? 'animate-flow' : undefined}
       />
     </svg>
   );
