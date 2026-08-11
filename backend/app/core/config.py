@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     OPENAI_IMAGE_BASE_URL: str = ""
     OPENAI_IMAGE_MODEL: str = ""
 
+    ADMIN_USERNAME: str = "admin"
+    ADMIN_PASSWORD: str = "admin123"
+
     class Config:
         env_file = ".env"
 

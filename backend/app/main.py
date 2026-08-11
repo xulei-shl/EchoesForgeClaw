@@ -12,6 +12,7 @@ logging.basicConfig(
 )
 logging.getLogger("app.services.llm_service").setLevel(logging.INFO)
 from app.core.database import SessionLocal
+from app.core.config import settings
 # 导入 models 包以注册全部表（User / Generation / Favorite / PublicShare）
 from app import models  # noqa: F401
 from app.models.user import User
@@ -46,27 +47,21 @@ DEFAULT_SETTINGS = {
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 启动时执行数据库迁移与种子数据初始化（阻塞型操作，放到线程中执行，
-    # 避免在运行中的事件循环里直接调用导致死锁/卡死）
     await asyncio.to_thread(_startup_init)
-
     yield
-    # 关闭时的清理操作
 
 
 def _startup_init():
-    # 启动时执行数据库迁移（Alembic）：全新库自动建表，老库执行增量迁移
     alembic_cfg = Config(str(Path(__file__).resolve().parent.parent / "alembic.ini"))
     command.upgrade(alembic_cfg, "head")
 
-    # 自动创建默认管理员账号 admin/admin123
     db = SessionLocal()
     try:
-        admin_user = db.query(User).filter(User.username == "admin").first()
+        admin_user = db.query(User).filter(User.username == settings.ADMIN_USERNAME).first()
         if not admin_user:
             new_admin = User(
-                username="admin",
-                password_hash=get_password_hash("admin123"),
+                username=settings.ADMIN_USERNAME,
+                password_hash=get_password_hash(settings.ADMIN_PASSWORD),
                 role="admin",
                 is_active=True
             )
@@ -122,10 +117,13 @@ STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-# CORS 配置，允许 localhost:5173
+# CORS 配置
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[
+        "http://localhost:5180",
+        "http://localhost:5173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
