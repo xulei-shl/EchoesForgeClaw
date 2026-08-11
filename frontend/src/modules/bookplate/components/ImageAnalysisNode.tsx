@@ -10,7 +10,7 @@ import {
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { BeamGlow } from '../../../platform/components/node/BeamGlow';
 import { AgentActivity } from '../../../platform/components/agent/AgentActivity';
-import { Tooltip } from '../../../platform/components/ui/Tooltip';
+import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
 import type { AgentStep, NodeRunSettings } from '../../../platform/types';
 import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
@@ -55,6 +55,8 @@ export interface ImageAnalysisNodeProps {
   hasBookInfo?: boolean;
   /** 标题旁的类型不匹配提示 */
   mismatchBadge?: string | null;
+  /** 是否有下级关联节点 */
+  hasDownstream?: boolean;
 }
 
 const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
@@ -79,6 +81,7 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
   onUpdateSettings,
   hasBookInfo,
   mismatchBadge,
+  hasDownstream,
 }) => {
   const { showToast } = useFeedback();
   // 本次会话上传的参考图（base64 data URL，仅存内存）
@@ -117,38 +120,29 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
     setUploadedName('');
   };
 
-  const actionBtn =
-    'flex items-center justify-center w-7 h-7 rounded-full ' +
-    'text-ink-light hover:text-ink hover:bg-paper-grid/40 ' +
-    'active:scale-[0.96] transition-colors transition-transform ' +
-    'disabled:opacity-40 disabled:cursor-not-allowed ' +
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent';
-
   const renderActionBar = () => {
     if (isGenerating) return undefined;
     return (
-      <>
+      <NodeActionBar>
         {(error || analysis || (!error && !analysis)) && onRun && (
-          <Tooltip content={error ? '重试' : analysis ? '重新生成' : '运行分析'}>
-            <button
-              onClick={() => onRun?.(id)}
-              disabled={isGenerating}
-              className={actionBtn + (error ? ' text-error hover:text-error hover:bg-error/10' : '')}
-            >
-              {error || analysis ? <RefreshCw size={16} strokeWidth={1.5} /> : <Play size={16} strokeWidth={1.5} />}
-            </button>
-          </Tooltip>
+          <NodeActionBar.Retry
+            onClick={() => onRun?.(id)}
+            hasDownstream={hasDownstream}
+            error={!!error}
+            icon={error || analysis ? <RefreshCw size={16} strokeWidth={1.5} /> : <Play size={16} strokeWidth={1.5} />}
+            tooltip={error ? '重试' : analysis ? '重新生成' : '运行分析'}
+            downstreamTooltip="有下级节点，不可运行"
+          />
         )}
         {onUpdateSettings && settings && (
           <NodeSettingsPopover
             settings={settings}
             onChange={(s) => onUpdateSettings?.(id, s)}
-            disabled={isGenerating}
+            disabled={hasDownstream}
             hasBookInfo={hasBookInfo}
-            className={actionBtn}
           />
         )}
-      </>
+      </NodeActionBar>
     );
   };
 
@@ -173,6 +167,7 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
       footer={footer}
       groupBadge={group}
       mismatchBadge={mismatchBadge}
+      disableRemove={hasDownstream}
       actionBar={renderActionBar()}
     >
       <div className="relative h-full flex flex-col flex-1 min-h-0">
@@ -257,8 +252,9 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
                     <p className="text-[11px] text-ink font-medium font-sans truncate text-left" title={uploadedName}>{uploadedName}</p>
                     <button
                       onClick={handleAnalyzeUploaded}
-                      disabled={isGenerating}
-                      className="self-start inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-sans text-accent border border-dashed border-accent/40 hover:bg-accent/10 active:scale-95 transition"
+                      disabled={isGenerating || hasDownstream}
+                      title={hasDownstream ? '有下级节点，不可分析' : undefined}
+                      className="self-start inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-sans text-accent border border-dashed border-accent/40 hover:bg-accent/10 active:scale-95 transition disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Play size={11} strokeWidth={2} />
                       开始分析
@@ -268,8 +264,9 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
               ) : (
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={isGenerating}
-                  className="group w-[80%] mx-auto mt-1 flex items-center justify-center gap-2 py-2.5 rounded-md border border-dashed border-paper-grid bg-paper-grid/30 text-ink-faint hover:text-accent hover:border-accent/40 hover:bg-accent/5 active:scale-[0.98] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40"
+                  disabled={isGenerating || hasDownstream}
+                  title={hasDownstream ? '有下级节点，不可上传' : undefined}
+                  className="group w-[80%] mx-auto mt-1 flex items-center justify-center gap-2 py-2.5 rounded-md border border-dashed border-paper-grid bg-paper-grid/30 text-ink-faint hover:text-accent hover:border-accent/40 hover:bg-accent/5 active:scale-[0.98] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Upload size={14} strokeWidth={1.5} className="group-hover:-translate-y-0.5 transition-transform duration-300" />
                   <span className="text-[12px] font-sans">选择参考图</span>

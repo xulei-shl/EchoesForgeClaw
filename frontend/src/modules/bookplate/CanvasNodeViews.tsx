@@ -100,6 +100,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       );
     case 'image_analysis': {
       const config = h.configOf(node);
+      const hasDownstream = h.edges.some((e) => e.source === node.id);
       return (
         <ImageAnalysisNode
           {...common}
@@ -108,6 +109,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           agentName={config?.mode === 'agent' ? (config.agent_name ?? undefined) : undefined}
           group={config?.group?.trim() || undefined}
           mismatchBadge={mismatchBadge}
+          hasDownstream={hasDownstream}
           isGenerating={!!node.data.isGenerating}
           error={node.data.error ?? null}
           onRun={h.handleRunAnalysisFor}
@@ -119,6 +121,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
     }
     case 'prompt_generation': {
       const config = h.configOf(node);
+      const hasDownstream = h.edges.some((e) => e.source === node.id);
       return (
         <PromptNode
           {...common}
@@ -127,6 +130,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           agentName={config?.mode === 'agent' ? (config.agent_name ?? undefined) : undefined}
           group={config?.group?.trim() || undefined}
           mismatchBadge={mismatchBadge}
+          hasDownstream={hasDownstream}
           isGenerating={!!node.data.isGenerating}
           error={node.data.error ?? null}
           onRetry={h.handleRetryPromptFor}
@@ -184,14 +188,17 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
         />
       );
     }
-    case 'text':
+    case 'text': {
+      const hasDownstream = h.edges.some((e) => e.source === node.id);
       return (
         <TextNode
           {...common}
           content={node.data.content ?? ''}
+          hasDownstream={hasDownstream}
           onEditContent={h.handleEditTextFor}
         />
       );
+    }
     case 'image_upload': {
       const hasDownstream = h.edges.some((e) => e.source === node.id);
       return (

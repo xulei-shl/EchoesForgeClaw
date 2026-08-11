@@ -1,10 +1,10 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
-import { Check, Pencil, X } from 'lucide-react';
+import { Pencil } from 'lucide-react';
 import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
 import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
+import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { Textarea } from '../../../platform/components/ui/Textarea';
-import { Tooltip } from '../../../platform/components/ui/Tooltip';
 import { NODE_COLORS } from '../nodeTypes';
 
 export interface TextNodeProps {
@@ -24,6 +24,8 @@ export interface TextNodeProps {
   footer?: React.ReactNode;
   /** 根节点右键菜单回调 */
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
+  /** 是否有下级关联节点 */
+  hasDownstream?: boolean;
 }
 
 const TextNodeInner: React.FC<TextNodeProps> = ({
@@ -39,6 +41,7 @@ const TextNodeInner: React.FC<TextNodeProps> = ({
   onDrag,
   footer,
   onContextMenu,
+  hasDownstream,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // 空内容（新建节点）时直接进入编辑态，方便即输即存
@@ -77,36 +80,19 @@ const TextNodeInner: React.FC<TextNodeProps> = ({
     }
   };
 
-  const actionBtn =
-    'flex items-center justify-center w-7 h-7 rounded-full ' +
-    'text-ink-light hover:text-ink hover:bg-paper-grid/40 ' +
-    'active:scale-[0.97] transition ' +
-    'disabled:opacity-40 disabled:cursor-not-allowed ' +
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent';
-
   const renderActionBar = () => {
     if (isEditing) {
       return (
-        <>
-          <Tooltip content="保存 (Ctrl+Enter)">
-            <button onClick={handleSave} className={actionBtn}>
-              <Check size={16} strokeWidth={1.5} />
-            </button>
-          </Tooltip>
-          <Tooltip content="取消 (Esc)">
-            <button onClick={handleCancel} className={actionBtn}>
-              <X size={16} strokeWidth={1.5} />
-            </button>
-          </Tooltip>
-        </>
+        <NodeActionBar>
+          <NodeActionBar.Save onClick={handleSave} />
+          <NodeActionBar.Cancel onClick={handleCancel} />
+        </NodeActionBar>
       );
     }
     return (
-      <Tooltip content="编辑">
-        <button onClick={() => setIsEditing(true)} className={actionBtn}>
-          <Pencil size={16} strokeWidth={1.5} />
-        </button>
-      </Tooltip>
+      <NodeActionBar>
+        <NodeActionBar.Edit onClick={() => setIsEditing(true)} hasDownstream={hasDownstream} />
+      </NodeActionBar>
     );
   };
 
@@ -127,6 +113,7 @@ const TextNodeInner: React.FC<TextNodeProps> = ({
       showLeftAnchor={true}
       showRightAnchor={true}
       footer={footer}
+      disableRemove={hasDownstream}
       actionBar={renderActionBar()}
     >
       <div className="relative h-full flex flex-col flex-1 min-h-0">
@@ -160,7 +147,9 @@ const TextNodeInner: React.FC<TextNodeProps> = ({
                 <p className="text-xs text-ink-faint font-sans">暂无内容</p>
                 <button
                   onClick={() => setIsEditing(true)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-sans text-accent border border-dashed border-accent/40 hover:bg-accent/10 active:scale-95 transition"
+                  disabled={hasDownstream}
+                  title={hasDownstream ? "有下级节点，不可编辑" : undefined}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-sans text-accent border border-dashed border-accent/40 hover:bg-accent/10 active:scale-95 transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Pencil size={11} strokeWidth={2} />
                   点击编辑

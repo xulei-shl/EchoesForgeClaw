@@ -42,6 +42,8 @@ export interface CanvasNodeProps {
   onClick?: (e: React.MouseEvent<HTMLDivElement>) => void;
   /** 根节点右键菜单回调（父级需 preventDefault 以抑制浏览器菜单） */
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
+  /** 禁用删除按钮 */
+  disableRemove?: boolean;
 }
 
 export const CanvasNode: React.FC<CanvasNodeProps> = ({
@@ -67,6 +69,7 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
   groupBadge,
   mismatchBadge,
   dotColor,
+  disableRemove,
 }) => {
   const rootRef = useRef<HTMLDivElement>(null);
   const { scale, onAnchorPointerDown } = useCanvas();
@@ -331,8 +334,14 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
         </div>
         {onRemove && (
           <button
-            onClick={(e) => { e.stopPropagation(); onRemove(); }}
-            className="text-ink-light hover:text-error transition-colors p-1"
+            onClick={(e) => {
+              if (disableRemove) return;
+              e.stopPropagation();
+              onRemove();
+            }}
+            disabled={disableRemove}
+            title={disableRemove ? '有下级节点关联，不可删除' : '删除'}
+            className={`p-1 transition-colors ${disableRemove ? 'text-ink-faint/40 cursor-not-allowed' : 'text-ink-light hover:text-error'}`}
           >
             ✕
           </button>

@@ -1,12 +1,12 @@
 import React, { memo, useState, useRef, useEffect } from 'react';
-import { Pencil, Check, X, RefreshCw, AlertTriangle, Play, Sparkles } from 'lucide-react';
+import { AlertTriangle, Sparkles } from 'lucide-react';
 import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
 import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { BeamGlow } from '../../../platform/components/node/BeamGlow';
 import { Textarea } from '../../../platform/components/ui/Textarea';
 import { AgentActivity } from '../../../platform/components/agent/AgentActivity';
-import { Tooltip } from '../../../platform/components/ui/Tooltip';
+import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { NodeRunPlaceholder } from '../../../platform/components/node/NodeRunPlaceholder';
 import type { AgentStep, NodeRunSettings } from '../../../platform/types';
 import { NODE_COLORS } from '../nodeTypes';
@@ -46,6 +46,8 @@ export interface PromptNodeProps {
   hasBookInfo?: boolean;
   /** 标题旁的类型不匹配提示 */
   mismatchBadge?: string | null;
+  /** 是否有下级关联节点 */
+  hasDownstream?: boolean;
 }
 
 const PromptNodeInner: React.FC<PromptNodeProps> = ({
@@ -72,6 +74,7 @@ const PromptNodeInner: React.FC<PromptNodeProps> = ({
   onUpdateSettings,
   hasBookInfo,
   mismatchBadge,
+  hasDownstream,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(content);
@@ -108,86 +111,58 @@ const PromptNodeInner: React.FC<PromptNodeProps> = ({
     }
   };
 
-  const actionBtn =
-    'flex items-center justify-center w-7 h-7 rounded-full ' +
-    'text-ink-light hover:text-ink hover:bg-paper-grid/40 ' +
-    'active:scale-[0.97] transition ' +
-    'disabled:opacity-40 disabled:cursor-not-allowed ' +
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent';
-
   const renderActionBar = () => {
     if (isGenerating) return undefined;
 
     if (isEditing) {
       return (
-        <>
-          <Tooltip content="保存 (Ctrl+Enter)">
-            <button onClick={handleSave} className={actionBtn}>
-              <Check size={16} strokeWidth={1.5} />
-            </button>
-          </Tooltip>
-          <Tooltip content="取消 (Esc)">
-            <button onClick={handleCancel} className={actionBtn}>
-              <X size={16} strokeWidth={1.5} />
-            </button>
-          </Tooltip>
-        </>
+        <NodeActionBar>
+          <NodeActionBar.Save onClick={handleSave} disabled={hasDownstream} />
+          <NodeActionBar.Cancel onClick={handleCancel} />
+        </NodeActionBar>
       );
     }
 
     // 待运行态（无内容、无错误）：提供手动「运行」按钮 + 运行设置
     if (!content && !error) {
       return (
-        <>
+        <NodeActionBar>
           {onRun && (
-            <Tooltip content="运行">
-              <button onClick={() => onRun?.(id)} disabled={isGenerating} className={actionBtn}>
-                <Play size={16} strokeWidth={1.5} />
-              </button>
-            </Tooltip>
+            <NodeActionBar.Run onClick={() => onRun?.(id)} hasDownstream={hasDownstream} />
           )}
           {onUpdateSettings && settings && (
             <NodeSettingsPopover
               settings={settings}
               onChange={(s) => onUpdateSettings?.(id, s)}
-              disabled={isGenerating}
+              disabled={hasDownstream}
               hasBookInfo={hasBookInfo}
-              className={actionBtn}
             />
           )}
-        </>
+        </NodeActionBar>
       );
     }
 
     return (
-      <>
+      <NodeActionBar>
         {(error || content) && onRetry && (
-          <Tooltip content={error ? '重试' : '重新生成'}>
-            <button
-              onClick={() => onRetry?.(id)}
-              className={actionBtn + (error ? ' text-error hover:text-error hover:bg-error/10' : '')}
-            >
-              <RefreshCw size={16} strokeWidth={1.5} />
-            </button>
-          </Tooltip>
+          <NodeActionBar.Retry
+            onClick={() => onRetry?.(id)}
+            hasDownstream={hasDownstream}
+            error={!!error}
+          />
         )}
         {content && onEditContent && (
-          <Tooltip content="编辑">
-            <button onClick={() => setIsEditing(true)} className={actionBtn}>
-              <Pencil size={16} strokeWidth={1.5} />
-            </button>
-          </Tooltip>
+          <NodeActionBar.Edit onClick={() => setIsEditing(true)} hasDownstream={hasDownstream} />
         )}
         {onUpdateSettings && settings && (
           <NodeSettingsPopover
             settings={settings}
             onChange={(s) => onUpdateSettings?.(id, s)}
-            disabled={isGenerating}
+            disabled={isGenerating || hasDownstream}
             hasBookInfo={hasBookInfo}
-            className={actionBtn}
           />
         )}
-      </>
+      </NodeActionBar>
     );
   };
 
@@ -212,6 +187,7 @@ const PromptNodeInner: React.FC<PromptNodeProps> = ({
       footer={footer}
       groupBadge={group}
       mismatchBadge={mismatchBadge}
+      disableRemove={hasDownstream}
       actionBar={renderActionBar()}
     >
       <div className="relative h-full flex flex-col flex-1 min-h-0">

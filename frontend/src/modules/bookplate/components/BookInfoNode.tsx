@@ -1,8 +1,8 @@
 import React, { memo, useEffect, useState } from 'react';
-import { BookOpen, Download, ExternalLink, Loader2, RefreshCw, AlertTriangle, Search } from 'lucide-react';
+import { BookOpen, ExternalLink, Loader2, AlertTriangle, Search } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
+import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { BeamGlow } from '../../../platform/components/node/BeamGlow';
-import { Tooltip } from '../../../platform/components/ui/Tooltip';
 import { NODE_COLORS } from '../nodeTypes';
 
 interface BookMetadata {
@@ -88,13 +88,6 @@ const BookInfoNodeInner: React.FC<BookInfoNodeProps> = ({
     if (isGenerating) setCoverFailed(false);
   }, [isGenerating]);
 
-  const actionBtn =
-    'flex items-center justify-center w-7 h-7 rounded-full ' +
-    'text-ink-light hover:text-ink hover:bg-paper-grid/40 ' +
-    'active:scale-[0.96] transition-colors transition-transform ' +
-    'disabled:opacity-40 disabled:cursor-not-allowed ' +
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent';
-
   const handleIsbnSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const isbn = isbnInput.trim();
@@ -121,41 +114,30 @@ const BookInfoNodeInner: React.FC<BookInfoNodeProps> = ({
       showRightAnchor={true}
       footer={footer}
       actionBar={
-        <>
+        <NodeActionBar>
           {error && (
-            <Tooltip content="重试">
-              <button
-                onClick={() => onRetry?.(id)}
-                disabled={isGenerating}
-                className={actionBtn + ' text-error hover:text-error hover:bg-error/10'}
-              >
-                <RefreshCw size={16} strokeWidth={1.5} />
-              </button>
-            </Tooltip>
+            <NodeActionBar.Retry
+              onClick={() => onRetry?.(id)}
+              disabled={isGenerating}
+              error={true}
+            />
           )}
           {!error && data.isbn && onDownload && (
-            <Tooltip content="下载元数据">
-              <button
-                onClick={() => onDownload?.(id)}
-                disabled={isGenerating}
-                className={actionBtn}
-              >
-                <Download size={16} strokeWidth={1.5} />
-              </button>
-            </Tooltip>
+            <NodeActionBar.Download
+              onClick={() => onDownload?.(id)}
+              disabled={isGenerating}
+              tooltip="下载元数据"
+            />
           )}
           {!error && data.url && (
-            <Tooltip content="在豆瓣中查看">
-              <button
-                onClick={() => window.open(data.url, '_blank', 'noopener,noreferrer')}
-                disabled={isGenerating}
-                className={actionBtn}
-              >
-                <ExternalLink size={16} strokeWidth={1.5} />
-              </button>
-            </Tooltip>
+            <NodeActionBar.Custom
+              icon={<ExternalLink size={16} strokeWidth={1.5} />}
+              tooltip="在豆瓣中查看"
+              onClick={() => window.open(data.url, '_blank', 'noopener,noreferrer')}
+              disabled={isGenerating}
+            />
           )}
-        </>
+        </NodeActionBar>
       }
     >
       <div className="h-full flex flex-col flex-1 min-h-0">

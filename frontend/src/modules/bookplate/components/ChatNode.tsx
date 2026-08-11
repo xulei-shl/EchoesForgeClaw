@@ -1,12 +1,12 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, Eraser, Link2, MessageSquare, Send, Settings2, Copy, Check, Loader2, Download, Square, RefreshCw, ChevronUp, ChevronDown, Lock } from 'lucide-react';
+import { AlertTriangle, Eraser, Link2, MessageSquare, Send, Copy, Check, Loader2, Square, RefreshCw, ChevronUp, ChevronDown, Lock } from 'lucide-react';
 import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
 import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
+import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { AgentActivity } from '../../../platform/components/agent/AgentActivity';
 import { Toggle } from '../../../platform/components/ui/Toggle';
-import { Tooltip } from '../../../platform/components/ui/Tooltip';
 import type { ChatMessage, ChatNodeSettings } from '../../../platform/types';
 import { NODE_COLORS } from '../nodeTypes';
 
@@ -217,42 +217,27 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
     }
   };
 
-  const actionBtn =
-    'flex items-center justify-center w-7 h-7 rounded-full ' +
-    'text-ink-light hover:text-ink hover:bg-paper-grid/40 ' +
-    'active:scale-[0.97] transition ' +
-    'disabled:opacity-40 disabled:cursor-not-allowed ' +
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent';
-
   const renderActionBar = () => {
     return (
-      <>
+      <NodeActionBar>
         {messages.length > 0 && (
-          <Tooltip content="导出对话为 Markdown">
-            <button onClick={handleDownload} disabled={isGenerating} className={actionBtn}>
-              <Download size={16} strokeWidth={1.5} />
-            </button>
-          </Tooltip>
+          <NodeActionBar.Download onClick={handleDownload} disabled={isGenerating} />
         )}
-        <Tooltip content={messages.length > 0 ? "上下文设置 (已锁定)" : "上下文设置"}>
-          <button ref={settingsBtnRef} onClick={toggleSettings} disabled={isGenerating} className={actionBtn + (messages.length > 0 ? ' opacity-60' : '')}>
-            <Settings2 size={16} strokeWidth={1.5} />
-          </button>
-        </Tooltip>
+        <NodeActionBar.SettingsTrigger
+          ref={settingsBtnRef}
+          onClick={toggleSettings}
+          disabled={isGenerating}
+          active={messages.length > 0}
+          tooltip={messages.length > 0 ? "上下文设置 (已锁定)" : "上下文设置"}
+        />
         {messages.length > 0 && (
-          <Tooltip content={hasDownstream ? "已连接下级节点，无法清空" : "清空对话"}>
-            <div className="inline-flex">
-              <button
-                onClick={() => onClearChat?.(id)}
-                disabled={isGenerating || hasDownstream}
-                className={actionBtn + (hasDownstream ? '' : ' hover:text-error hover:bg-error/10')}
-              >
-                <Eraser size={16} strokeWidth={1.5} />
-              </button>
-            </div>
-          </Tooltip>
+          <NodeActionBar.Eraser
+            onClick={() => onClearChat?.(id)}
+            disabled={isGenerating || hasDownstream}
+            hasDownstream={hasDownstream}
+          />
         )}
-      </>
+      </NodeActionBar>
     );
   };
 

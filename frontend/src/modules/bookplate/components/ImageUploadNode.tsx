@@ -3,6 +3,7 @@ import { ImagePlus, RefreshCw, Trash2, Upload } from 'lucide-react';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
+import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { Tooltip } from '../../../platform/components/ui/Tooltip';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
 import { NODE_COLORS } from '../nodeTypes';
@@ -142,13 +143,6 @@ const ImageUploadNodeInner: React.FC<ImageUploadNodeProps> = ({
     if (file) void handleFile(file);
   };
 
-  const actionBtn =
-    'flex items-center justify-center w-7 h-7 rounded-full ' +
-    'text-ink-light hover:text-ink hover:bg-paper-grid/40 ' +
-    'active:scale-[0.96] transition-colors transition-transform ' +
-    'disabled:opacity-40 disabled:cursor-not-allowed ' +
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent';
-
   return (
     <CanvasNode
       id={id}
@@ -167,32 +161,28 @@ const ImageUploadNodeInner: React.FC<ImageUploadNodeProps> = ({
       showRightAnchor={true}
       footer={footer}
       actionBar={
-        <>
-          <Tooltip content={imageUrl ? (hasDownstream ? '已有下级节点，无法替换' : '替换图片') : '上传图片'}>
-            <button
-              onClick={() => {
-                if (imageUrl && hasDownstream) {
-                  showToast('该图片已有下级节点，无法替换。请先删除下级节点。', { type: 'warning' });
-                  return;
-                }
-                fileInputRef.current?.click();
-              }}
-              className={actionBtn + (imageUrl && hasDownstream ? ' opacity-50 cursor-not-allowed' : '')}
-            >
-              <RefreshCw size={16} strokeWidth={1.5} />
-            </button>
-          </Tooltip>
+        <NodeActionBar>
+          <NodeActionBar.Custom
+            icon={<RefreshCw size={16} strokeWidth={1.5} />}
+            tooltip={imageUrl ? (hasDownstream ? '已有下级节点，无法替换' : '替换图片') : '上传图片'}
+            onClick={() => {
+              if (imageUrl && hasDownstream) {
+                showToast('该图片已有下级节点，无法替换。请先删除下级节点。', { type: 'warning' });
+                return;
+              }
+              fileInputRef.current?.click();
+            }}
+            disabled={!!(imageUrl && hasDownstream)}
+          />
           {imageUrl && (
-            <Tooltip content="移除图片">
-              <button
-                onClick={() => onImageChange?.(id, null, '')}
-                className={actionBtn + ' text-ink-faint hover:text-error'}
-              >
-                <Trash2 size={16} strokeWidth={1.5} />
-              </button>
-            </Tooltip>
+            <NodeActionBar.Custom
+              icon={<Trash2 size={16} strokeWidth={1.5} />}
+              tooltip="移除图片"
+              onClick={() => onImageChange?.(id, null, '')}
+              className="text-ink-faint hover:text-error"
+            />
           )}
-        </>
+        </NodeActionBar>
       }
     >
       <input

@@ -1,11 +1,12 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
-import { Globe, Heart, RefreshCw, Trash2, AlertTriangle, Maximize2, Play } from 'lucide-react';
+import { Globe, Heart, RefreshCw, Trash2, AlertTriangle, Maximize2 } from 'lucide-react';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
+import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
+import { Tooltip } from '../../../platform/components/ui/Tooltip';
 import { BeamGlow } from '../../../platform/components/node/BeamGlow';
 import { AgentActivity } from '../../../platform/components/agent/AgentActivity';
-import { Tooltip } from '../../../platform/components/ui/Tooltip';
 import { NodeRunPlaceholder } from '../../../platform/components/node/NodeRunPlaceholder';
 import type { AgentStep, NodeRunSettings } from '../../../platform/types';
 import { NODE_COLORS } from '../nodeTypes';
@@ -134,14 +135,6 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
   // 待运行态：无图片、无错误、未生成 → 提供「运行」按钮
   const isIdle = !imageUrl && !displayError && !isGenerating;
 
-  const actionBtn =
-    'relative flex items-center justify-center w-7 h-7 rounded-full ' +
-    'text-ink-light hover:text-ink hover:bg-paper-grid/40 ' +
-    'active:scale-[0.96] transition-colors transition-transform duration-150 ease-out ' +
-    'disabled:opacity-40 disabled:cursor-not-allowed ' +
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ' +
-    'after:content-[\'\'] after:absolute after:-inset-1.5';
-
   return (
     <CanvasNode
       id={id}
@@ -164,27 +157,18 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
       groupBadge={group}
       mismatchBadge={mismatchBadge}
       actionBar={
-        <>
+        <NodeActionBar>
           {isIdle && onRun ? (
-            <Tooltip content="运行">
-              <button
-                onClick={() => onRun?.(id)}
-                disabled={isGenerating}
-                className={actionBtn}
-              >
-                <Play size={16} strokeWidth={1.5} />
-              </button>
-            </Tooltip>
+            <NodeActionBar.Run
+              onClick={() => onRun?.(id)}
+              disabled={isGenerating}
+            />
           ) : (
-            <Tooltip content={displayError ? '重试' : '重新生成'}>
-              <button
-                onClick={() => onRetry?.(id)}
-                disabled={isGenerating}
-                className={actionBtn + (displayError ? ' text-error hover:text-error hover:bg-error/10' : '')}
-              >
-                <RefreshCw size={16} strokeWidth={1.5} />
-              </button>
-            </Tooltip>
+            <NodeActionBar.Retry
+              onClick={() => onRetry?.(id)}
+              disabled={isGenerating}
+              error={!!displayError}
+            />
           )}
           {onUpdateSettings && settings && (
             <NodeSettingsPopover
@@ -192,40 +176,27 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
               onChange={(s) => onUpdateSettings?.(id, s)}
               disabled={isGenerating}
               hasBookInfo={hasBookInfo}
-              className={actionBtn}
             />
           )}
-          <Tooltip content={isFavorited ? '取消收藏' : '收藏'}>
-            <button
-              onClick={() => runToggle(onToggleFavorite, (active) => (active ? '已收藏' : '已取消收藏'))}
-              disabled={!imageUrl || isGenerating || !onToggleFavorite || isMock}
-              className={actionBtn}
-            >
-              <Heart
-                size={16}
-                strokeWidth={1.5}
-                className={isFavorited ? 'fill-accent text-accent' : ''}
-              />
-            </button>
-          </Tooltip>
-          <Tooltip content={isPublic ? '从画廊撤下' : '公开到画廊'}>
-            <button
-              onClick={() => runToggle(onTogglePublic, (active) => (active ? '已公开' : '已撤下'))}
-              disabled={!imageUrl || isGenerating || !onTogglePublic || isMock}
-              className={actionBtn}
-            >
-              <Globe size={16} strokeWidth={1.5} className={isPublic ? 'text-accent' : ''} />
-            </button>
-          </Tooltip>
-          <Tooltip content="删除">
-            <button
-              onClick={() => onRemove?.(id)}
-              className={`${actionBtn} text-ink-faint hover:text-error`}
-            >
-              <Trash2 size={16} strokeWidth={1.5} />
-            </button>
-          </Tooltip>
-        </>
+          <NodeActionBar.Custom
+            icon={<Heart size={16} strokeWidth={1.5} className={isFavorited ? 'fill-accent text-accent' : ''} />}
+            tooltip={isFavorited ? '取消收藏' : '收藏'}
+            onClick={() => runToggle(onToggleFavorite, (active) => (active ? '已收藏' : '已取消收藏'))}
+            disabled={!imageUrl || isGenerating || !onToggleFavorite || isMock}
+          />
+          <NodeActionBar.Custom
+            icon={<Globe size={16} strokeWidth={1.5} className={isPublic ? 'text-accent' : ''} />}
+            tooltip={isPublic ? '从画廊撤下' : '公开到画廊'}
+            onClick={() => runToggle(onTogglePublic, (active) => (active ? '已公开' : '已撤下'))}
+            disabled={!imageUrl || isGenerating || !onTogglePublic || isMock}
+          />
+          <NodeActionBar.Custom
+            icon={<Trash2 size={16} strokeWidth={1.5} />}
+            tooltip="删除"
+            onClick={() => onRemove?.(id)}
+            className="text-ink-faint hover:text-error"
+          />
+        </NodeActionBar>
       }
     >
       <div className="relative h-full flex flex-col flex-1 min-h-0">

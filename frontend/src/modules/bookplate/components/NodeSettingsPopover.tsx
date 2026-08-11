@@ -1,8 +1,7 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Settings2 } from 'lucide-react';
 import { Toggle } from '../../../platform/components/ui/Toggle';
-import { Tooltip } from '../../../platform/components/ui/Tooltip';
+import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import type { NodeRunSettings } from '../../../platform/types';
 
 const POPOVER_STYLE = `
@@ -72,11 +71,13 @@ const NodeSettingsPopoverInner: React.FC<NodeSettingsPopoverProps> = ({
 
   return (
     <>
-      <Tooltip content="运行设置">
-        <button ref={btnRef} onClick={toggleOpen} disabled={disabled} className={className}>
-          <Settings2 size={16} strokeWidth={1.5} />
-        </button>
-      </Tooltip>
+      <NodeActionBar.SettingsTrigger
+        ref={btnRef}
+        onClick={toggleOpen}
+        disabled={disabled}
+        className={className}
+        tooltip="运行设置"
+      />
       {open && typeof document !== 'undefined' && createPortal(
         <div ref={popupRef} className="fixed z-[9999]" style={{ right: coords.x, bottom: coords.y }}>
           <style dangerouslySetInnerHTML={{ __html: POPOVER_STYLE }} />
