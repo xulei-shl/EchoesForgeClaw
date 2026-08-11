@@ -9,6 +9,7 @@ interface CanvasProps {
   onPositionChange: (position: { x: number; y: number }) => void;
   /** 节点输出锚点按下（手动拖线连线起点），经 context 透传给各节点 */
   onAnchorPointerDown?: (nodeId: string, e: ReactPointerEvent) => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
 export const Canvas: React.FC<CanvasProps> = ({
@@ -17,6 +18,7 @@ export const Canvas: React.FC<CanvasProps> = ({
   position,
   onPositionChange,
   onAnchorPointerDown,
+  onContextMenu,
 }) => {
   const isDragging = useRef(false);
   const lastMousePos = useRef({ x: 0, y: 0 });
@@ -102,6 +104,7 @@ export const Canvas: React.FC<CanvasProps> = ({
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onContextMenu={onContextMenu}
       >
         <div
           ref={bgRef}

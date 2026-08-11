@@ -14,6 +14,7 @@ import { Canvas } from '../../platform/components/canvas/Canvas';
 import { IsbnInput } from '../../modules/bookplate/components/IsbnInput';
 import { CanvasActionBar } from '../../modules/bookplate/components/CanvasActionBar';
 import { AddNodeButton, type NodePickerItem } from '../../modules/bookplate/components/AddNodeButton';
+import { NodePickerList } from '../../modules/bookplate/components/NodePickerList';
 import NodeContextMenu from '../../modules/bookplate/components/NodeContextMenu';
 import EmptyCanvasHint from '../../modules/bookplate/components/EmptyCanvasHint';
 import {
@@ -251,18 +252,9 @@ const BookplatePage: React.FC = () => {
   // 注意：streamControllers / analysisUploads / nodesRef / edgesRef 为模块级单例（见 useCanvasState），
   // 不随组件卸载销毁——切页后进行中的生成流继续在后台运行，完成结果直接写入模块级 store 与
   // sessionStorage；返回画布时由下方挂载自愈识别「仍有活动流的节点」而保持不动。
+  // 登出 / 切换账号时的流中止由 authStore.applySessionUser 统一兜底：本组件会随路由守卫在
+  // 同一 commit 卸载，组件内 effect 无法可靠触发。
   const edgeRefs = useRef<Map<string, NodeEdgeHandle>>(new Map());
-
-  // 用户切换（登出 / 换账号）时中止上一用户的全部进行中流：后台流若放任其完成，会以新用户的
-  // 登录态保存历史记录并回写新用户的画布，造成跨用户污染。同用户切页往返不中止（首次挂载跳过）。
-  const prevUserId = useRef(user?.id);
-  useEffect(() => {
-    if (prevUserId.current === user?.id) return;
-    prevUserId.current = user?.id;
-    streamControllers.current.forEach((controller) => controller.abort());
-    streamControllers.current.clear();
-    analysisUploads.current.clear();
-  }, [user?.id]);
 
   /** 更新节点 data（浅合并 patch） */
   const updateNodeData = (id: string, patch: Record<string, any>) => {
@@ -694,7 +686,6 @@ const BookplatePage: React.FC = () => {
   // 切页往返路径的流仍在后台运行（模块级 streamControllers 存活），故以 hasActiveStream 判断：
   // 仍有活动流的节点是「正在正常生成」，保持不动；无活动流的节点才是残留，安全复位——
   // 开启「自动运行」的节点交由下方 autoRun 检查重新执行；其余节点置失败提示由用户重试。
-  // 用户切换时（上方 abort effect 先清空流表）对另一用户的快照同样生效。
   useEffect(() => {
     setNodes((prev) =>
       prev.map((n) => selfHealNode(n, streamControllers.current.has(n.id), true))
@@ -775,6 +766,64 @@ const BookplatePage: React.FC = () => {
     setScale(fit.scale);
     setPosition(fit.position);
   };
+
+  // ---------- 画布独立节点菜单 ----------
+  const [standaloneMenu, setStandaloneMenu] = useState<{ x: number; y: number; canvasX: number; canvasY: number } | null>(null);
+
+  const handleCanvasContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setStandaloneMenu({ 
+      x: e.clientX, 
+      y: e.clientY, 
+      canvasX: (e.clientX - positionRef.current.x) / scaleRef.current, 
+      canvasY: (e.clientY - positionRef.current.y) / scaleRef.current 
+    });
+    setCtxMenu(null);
+  }, []);
+
+  useEffect(() => {
+    if (!standaloneMenu) return;
+    const onDocPointerDown = (e: PointerEvent) => {
+      const el = e.target as HTMLElement;
+      if (el.closest('[data-standalone-menu]')) return;
+      setStandaloneMenu(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setStandaloneMenu(null);
+    };
+    document.addEventListener('pointerdown', onDocPointerDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDocPointerDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [standaloneMenu]);
+
+  const handleAddStandaloneNode = useCallback((item: NodePickerItem, canvasX: number, canvasY: number) => {
+    const newId = genNodeId(item.nodeType);
+    const newNode: NodeData = {
+      id: newId,
+      type: item.nodeType,
+      configId: item.configId,
+      configName: item.configId ? item.label : undefined,
+      x: canvasX,
+      y: canvasY,
+      data: seedDataFor(item.nodeType),
+    };
+    
+    recordHistory();
+    nodesRef.current = [...nodesRef.current, newNode];
+    setNodes((prev) => [...prev, newNode]);
+
+    const run = () => {
+      const settings: NodeRunSettings = newNode.data?.settings ?? DEFAULT_RUN_SETTINGS;
+      if (settings.autoRun) runNode(newNode);
+    };
+    run();
+    
+    focusOnNode(newNode);
+    setStandaloneMenu(null);
+  }, [recordHistory, setNodes, runNode]);
 
   // ---------- 节点右键菜单 ----------
   const handleNodeContextMenu = useCallback((e: React.MouseEvent, nodeId: string) => {
@@ -1243,6 +1292,7 @@ const BookplatePage: React.FC = () => {
           position={position}
           onPositionChange={setPosition}
           onAnchorPointerDown={onAnchorPointerDown}
+          onContextMenu={handleCanvasContextMenu}
         >
           {edges.map((edge) => {
             const source = nodes.find((n) => n.id === edge.source);
@@ -1296,6 +1346,29 @@ const BookplatePage: React.FC = () => {
 
         {/* 空画布引导提示 */}
         {nodes.length === 0 && !isLoading && <EmptyCanvasHint />}
+
+        {/* 画布空白处右键菜单（添加独立节点） */}
+        {standaloneMenu && (
+          <div
+            data-standalone-menu
+            className="fixed z-[9999]"
+            style={{ left: standaloneMenu.x, top: standaloneMenu.y }}
+          >
+            <div className="absolute left-0 top-0 w-72">
+              <div className="bg-paper border border-paper-grid rounded-xl shadow-xl overflow-hidden">
+                <div className="px-3 py-2.5 border-b border-dashed border-paper-grid bg-paper-grid/10">
+                  <p className="text-xs font-sans font-medium text-ink-light">添加独立节点</p>
+                </div>
+                <div className="max-h-[60vh] overflow-y-auto">
+                  <NodePickerList 
+                    items={pickerItems} 
+                    onPick={(item) => handleAddStandaloneNode(item, standaloneMenu.canvasX, standaloneMenu.canvasY)} 
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* 节点右键菜单 */}
         {ctxMenu &&
