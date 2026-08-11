@@ -8,7 +8,7 @@ interface Step {
 }
 
 const STEPS: Step[] = [
-  { icon: Plus, label: '添加起始节点', desc: '右键或在下方手动创建' },
+  { icon: Plus, label: '生成图书元数据', desc: '在底部输入框输入触发' },
   { icon: Wand2, label: '选择处理方式', desc: '点击「+」扩展工作流' },
   { icon: Sparkles, label: '多模态生成', desc: '获取你的创作素材' },
 ];
@@ -22,7 +22,7 @@ const EmptyCanvasHint: React.FC = () => {
             搭建多模态工作流
           </h2>
           <p className="text-sm text-ink-light font-sans leading-relaxed text-pretty max-w-md">
-            在下方或右键画布添加第一个节点，将不同模态的处理能力自由组合，生成所需的创作素材。
+            在底部输入框输入内容，生成「图书元数据」作为起始节点，将不同模态的处理能力自由组合，生成所需的创作素材。
           </p>
         </div>
 
