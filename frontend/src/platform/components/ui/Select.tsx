@@ -2,10 +2,12 @@ import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
+import { Tooltip } from './Tooltip';
 
 export interface SelectOption {
   label: string;
   value: string;
+  title?: string;
 }
 
 export interface SelectProps {
@@ -66,23 +68,32 @@ export const Select: React.FC<SelectProps> = ({
             className="absolute top-full mt-1 left-0 w-full bg-paper border border-dashed border-paper-grid rounded-md shadow-md z-50 overflow-hidden max-h-60 overflow-y-auto"
           >
             {options.length > 0 ? (
-              options.map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => {
-                    onChange(opt.value);
-                    setIsOpen(false);
-                  }}
-                  className={clsx(
-                    "flex w-full text-left hover:bg-paper-grid/50 transition-colors",
-                    size === 'sm' ? "px-2.5 py-1.5 text-xs" : "px-3 py-2 text-sm",
-                    value === opt.value ? 'text-accent font-medium' : 'text-ink'
-                  )}
-                >
-                  {opt.label}
-                </button>
-              ))
+              options.map((opt) => {
+                const btn = (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => {
+                      onChange(opt.value);
+                      setIsOpen(false);
+                    }}
+                    className={clsx(
+                      "flex w-full text-left hover:bg-paper-grid/50 transition-colors",
+                      size === 'sm' ? "px-2.5 py-1.5 text-xs" : "px-3 py-2 text-sm",
+                      value === opt.value ? 'text-accent font-medium' : 'text-ink'
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                );
+                return opt.title ? (
+                  <Tooltip key={opt.value} content={opt.title}>
+                    {btn}
+                  </Tooltip>
+                ) : (
+                  btn
+                );
+              })
             ) : (
               <div className="px-3 py-2 text-sm text-ink-faint text-center">暂无数据</div>
             )}

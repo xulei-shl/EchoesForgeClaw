@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowRight, BookOpen, ImageIcon, Plus, ScanSearch, Wand2 } from 'lucide-react';
+import { ArrowRight, Plus, Sparkles, Wand2 } from 'lucide-react';
 
 interface Step {
   icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
@@ -8,37 +8,35 @@ interface Step {
 }
 
 const STEPS: Step[] = [
-  { icon: BookOpen, label: '输入 ISBN', desc: '获取图书元数据' },
-  { icon: Plus, label: '点击「+」', desc: '添加下一级节点' },
-  { icon: ScanSearch, label: '分析图片', desc: '封面艺术风格分析' },
-  { icon: Wand2, label: '生成提示词', desc: '基于元数据与分析' },
-  { icon: ImageIcon, label: '生成图像', desc: '得到藏书票' },
+  { icon: Plus, label: '添加起始节点', desc: '右键或在下方手动创建' },
+  { icon: Wand2, label: '选择处理方式', desc: '点击「+」扩展工作流' },
+  { icon: Sparkles, label: '多模态生成', desc: '获取你的创作素材' },
 ];
 
 const EmptyCanvasHint: React.FC = () => {
   return (
     <div className="absolute inset-0 z-[5] flex items-center justify-center pointer-events-none">
       <div className="flex flex-col items-center gap-6 max-w-xl px-8">
-        <div className="flex flex-col items-center gap-2.5 text-center">
-          <h2 className="font-serif text-2xl font-semibold text-ink/90">开始创作藏书票</h2>
-          <p className="text-sm text-ink-light font-sans leading-relaxed">
-            在下方输入 ISBN 创建第一个「图书元数据」节点，
-            <br className="hidden sm:block" />
-            之后在任意节点下方点击「+」搭建你的工作流
+        <div className="flex flex-col items-center gap-3 text-center">
+          <h2 className="font-serif text-2xl font-semibold text-ink/90 text-balance antialiased">
+            搭建多模态工作流
+          </h2>
+          <p className="text-sm text-ink-light font-sans leading-relaxed text-pretty max-w-md">
+            在下方或右键画布添加第一个节点，将不同模态的处理能力自由组合，生成所需的创作素材。
           </p>
         </div>
 
         {/* 工作流步骤 */}
-        <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-center">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-center mt-2">
           {STEPS.map((step, i) => (
             <React.Fragment key={step.label}>
               {i > 0 && (
                 <ArrowRight size={14} strokeWidth={1.5} className="text-ink-faint/60 hidden sm:block" />
               )}
-              <div className="flex items-center gap-2 px-3 py-2 rounded-md border border-dashed border-paper-grid bg-paper/70 shadow-sm">
-                <step.icon size={15} strokeWidth={1.5} className="text-accent" />
-                <div className="flex flex-col">
-                  <span className="text-xs font-serif text-ink font-medium leading-tight">{step.label}</span>
+              <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg border border-dashed border-paper-grid bg-paper/70 shadow-sm">
+                <step.icon size={16} strokeWidth={1.5} className="text-accent shrink-0" />
+                <div className="flex flex-col text-left">
+                  <span className="text-xs font-serif text-ink font-medium leading-tight mb-0.5">{step.label}</span>
                   <span className="text-[10px] text-ink-faint font-sans leading-tight">{step.desc}</span>
                 </div>
               </div>
@@ -47,8 +45,8 @@ const EmptyCanvasHint: React.FC = () => {
         </div>
 
         {/* 分支提示 */}
-        <p className="text-[11px] text-ink-faint font-sans">
-          右键节点可快速添加子节点或删除整条分支
+        <p className="text-[11px] text-ink-faint font-sans mt-4">
+          提示：右键已有节点可快速添加子节点或删除分支
         </p>
       </div>
     </div>

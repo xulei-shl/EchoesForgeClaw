@@ -5,6 +5,7 @@ import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { Textarea } from '../../../platform/components/ui/Textarea';
 import { Tooltip } from '../../../platform/components/ui/Tooltip';
+import { NODE_COLORS } from '../nodeTypes';
 
 export interface TextNodeProps {
   id: string;
@@ -115,6 +116,7 @@ const TextNodeInner: React.FC<TextNodeProps> = ({
       initialX={initialX}
       initialY={initialY}
       title={title || '文本'}
+      dotColor={NODE_COLORS.text}
       onRemove={() => onRemove?.(id)}
       onPositionChange={onPositionChange}
       onSizeChange={onSizeChange}

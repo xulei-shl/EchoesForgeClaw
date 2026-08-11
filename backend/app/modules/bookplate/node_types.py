@@ -11,6 +11,7 @@ NODE_PROMPT = "prompt_generation"
 NODE_IMAGE = "image_generation"
 NODE_TEXT = "text"
 NODE_IMAGE_UPLOAD = "image_upload"
+NODE_CHAT = "chat"
 
 NODE_TEMPLATES = [
     {
@@ -26,6 +27,12 @@ NODE_TEMPLATES = [
         "description": "多模态模型分析封面 / 参考图，输出艺术风格与主题色分析",
         "category": "analysis",
         "configurable": True,
+        # 输入槽位声明（唯一权威）：哪些上游节点类型 → 提供什么输入；
+        # 前端经 node-registry 获取后驱动执行引擎（resolveNodeInputs）
+        "input_slots": [
+            {"slot": "metadata", "from": [NODE_BOOK_INFO]},
+            {"slot": "image", "from": [NODE_IMAGE_UPLOAD]},
+        ],
     },
     {
         "type": NODE_PROMPT,
@@ -33,6 +40,12 @@ NODE_TEMPLATES = [
         "description": "基于图书元数据与图片分析流式生成图像提示词",
         "category": "generate",
         "configurable": True,
+        "input_slots": [
+            {"slot": "metadata", "from": [NODE_BOOK_INFO]},
+            {"slot": "analysis", "from": [NODE_IMAGE_ANALYSIS]},
+            # AI 对话节点的回复同样作为补充文本上下文
+            {"slot": "text", "from": [NODE_TEXT, NODE_CHAT]},
+        ],
     },
     {
         "type": NODE_IMAGE,
@@ -40,6 +53,10 @@ NODE_TEMPLATES = [
         "description": "根据提示词生成藏书票图片",
         "category": "output",
         "configurable": True,
+        "input_slots": [
+            {"slot": "prompt", "from": [NODE_PROMPT]},
+            {"slot": "image", "from": [NODE_IMAGE_UPLOAD]},
+        ],
     },
     {
         "type": NODE_TEXT,
@@ -54,6 +71,17 @@ NODE_TEMPLATES = [
         "description": "手动上传一张图片到画布，作为工作流中的参考素材",
         "category": "input",
         "configurable": False,
+    },
+    {
+        "type": NODE_CHAT,
+        "name": "AI 对话",
+        "description": "多轮对话 AI 助手，可绑定大模型或 FastClaw Agent，输出最后一轮回复",
+        "category": "generate",
+        "configurable": True,
+        # 图书元数据作为可选上下文；「紧随的上一级节点内容」为通用直接父节点机制（前端逻辑）
+        "input_slots": [
+            {"slot": "metadata", "from": [NODE_BOOK_INFO]},
+        ],
     },
 ]
 

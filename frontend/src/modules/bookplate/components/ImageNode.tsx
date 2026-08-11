@@ -7,6 +7,7 @@ import { BeamGlow } from '../../../platform/components/node/BeamGlow';
 import { AgentActivity } from '../../../platform/components/agent/AgentActivity';
 import { Tooltip } from '../../../platform/components/ui/Tooltip';
 import type { AgentStep } from '../../../platform/types';
+import { NODE_COLORS } from '../nodeTypes';
 
 export interface ImageNodeProps {
   id: string;
@@ -129,6 +130,7 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
       initialX={initialX}
       initialY={initialY}
       title={title || "藏书票图像"}
+      dotColor={NODE_COLORS.image_generation}
       onRemove={() => onRemove?.(id)}
       onPositionChange={onPositionChange}
       onSizeChange={onSizeChange}

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Bot,
   Boxes,
@@ -383,6 +384,7 @@ export const NodeConfigsPage: React.FC = () => {
       <Dialog
         open={showCreate || !!editing}
         onClose={resetForm}
+        panelClassName="max-w-xl"
         title={
           <div className="flex items-center gap-2">
             <Boxes size={18} strokeWidth={1.5} className="text-accent" />
@@ -390,13 +392,13 @@ export const NodeConfigsPage: React.FC = () => {
           </div>
         }
       >
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-6">
           {/* 模式互斥选择：提示词+大模型 / Agent */}
           <div className="grid grid-cols-2 gap-3">
             <button
               type="button"
               onClick={() => setForm({ ...form, mode: 'llm', agent_config_id: '' })}
-              className={`rounded-md border p-3 text-left transition-all active:scale-[0.98] ${
+              className={`rounded-md border p-3 text-left transition-all active:scale-[0.96] ${
                 form.mode === 'llm'
                   ? 'border-accent/60 bg-accent-surface ring-1 ring-accent/40'
                   : 'border-paper-grid hover:border-paper-grid/70 hover:bg-paper-grid/20'
@@ -411,7 +413,7 @@ export const NodeConfigsPage: React.FC = () => {
             <button
               type="button"
               onClick={() => setForm({ ...form, mode: 'agent', llm_config_id: '', prompt_id: '' })}
-              className={`rounded-md border p-3 text-left transition-all active:scale-[0.98] ${
+              className={`rounded-md border p-3 text-left transition-all active:scale-[0.96] ${
                 form.mode === 'agent'
                   ? 'border-accent/60 bg-accent-surface ring-1 ring-accent/40'
                   : 'border-paper-grid hover:border-paper-grid/70 hover:bg-paper-grid/20'
@@ -425,7 +427,7 @@ export const NodeConfigsPage: React.FC = () => {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             <div className="space-y-1.5">
               <FieldLabel required>节点名称</FieldLabel>
               <input
@@ -449,12 +451,13 @@ export const NodeConfigsPage: React.FC = () => {
                   })
                 }
                 options={configurableTemplates.map((t) => ({
-                  label: `${CATEGORY_LABELS[t.category]} · ${t.name}${t.description ? `（${t.description}）` : ''}`,
+                  label: `${CATEGORY_LABELS[t.category]} · ${t.name}`,
                   value: t.type,
+                  title: t.description,
                 }))}
               />
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 sm:col-span-2">
               <FieldLabel>分组（可选）</FieldLabel>
               <div ref={groupRef} className="relative">
                 <input
@@ -490,7 +493,7 @@ export const NodeConfigsPage: React.FC = () => {
               </p>
             </div>
             {form.mode === 'agent' ? (
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 sm:col-span-2">
                 <FieldLabel>FastClaw Agent</FieldLabel>
                 <Select
                   value={String(form.agent_config_id || '')}
@@ -507,11 +510,21 @@ export const NodeConfigsPage: React.FC = () => {
                     }),
                   ]}
                 />
-                {fastclawAgents.filter((a) => a.is_active).length === 0 && (
-                  <p className="text-xs text-ink-faint font-sans">
-                    暂无启用的 Agent 配置，可先在「Agent 配置」中创建
-                  </p>
-                )}
+                <AnimatePresence initial={false}>
+                  {fastclawAgents.filter((a) => a.is_active).length === 0 && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="overflow-hidden"
+                    >
+                      <p className="text-xs text-ink-faint font-sans pt-1.5">
+                        暂无启用的 Agent 配置，可先在「Agent 配置」中创建
+                      </p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             ) : (
               <>
@@ -528,11 +541,21 @@ export const NodeConfigsPage: React.FC = () => {
                       })),
                     ]}
                   />
-                  {llmConfigs.length === 0 && (
-                    <p className="text-xs text-ink-faint font-sans">
-                      暂无模型配置，可先在「模型配置」中创建
-                    </p>
-                  )}
+                  <AnimatePresence initial={false}>
+                    {llmConfigs.length === 0 && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden"
+                      >
+                        <p className="text-xs text-ink-faint font-sans pt-1.5">
+                          暂无模型配置，可先在「模型配置」中创建
+                        </p>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
                 <div className="space-y-1.5">
                   <FieldLabel>提示词模板</FieldLabel>
@@ -547,21 +570,31 @@ export const NodeConfigsPage: React.FC = () => {
                       })),
                     ]}
                   />
-                  {availablePrompts.length === 0 && (
-                    <p className="text-xs text-ink-faint font-sans">
-                      当前模板类型暂无提示词模板，将使用内置默认提示词；可先在「提示词管理」中创建
-                    </p>
-                  )}
+                  <AnimatePresence initial={false}>
+                    {availablePrompts.length === 0 && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden"
+                      >
+                        <p className="text-xs text-ink-faint font-sans pt-1.5">
+                          当前模板类型暂无提示词模板，将使用内置默认提示词；可先在「提示词管理」中创建
+                        </p>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               </>
             )}
-            <div className="flex items-center gap-2.5 pt-2">
+            <div className="flex items-center gap-2.5 sm:col-span-2 pt-1">
               <Toggle checked={form.is_active} onChange={(v) => setForm({ ...form, is_active: v })} label="启用状态" />
               <span className="text-sm font-sans text-ink-light">{form.is_active ? '启用' : '停用'}</span>
             </div>
           </div>
           {formError && <p className="text-sm text-error font-sans">{formError}</p>}
-          <div className="flex justify-end gap-3 pt-4 border-t border-dashed border-paper-grid">
+          <div className="flex justify-end gap-3 pt-5 border-t border-dashed border-paper-grid">
             <Button type="button" variant="ghost" size="sm" onClick={resetForm}>
               取消
             </Button>

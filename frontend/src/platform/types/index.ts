@@ -157,9 +157,49 @@ export type CanvasNodeType =
   /** 文本节点：手动编辑 Markdown 文本（无需配置） */
   | 'text'
   /** 图片上传节点：手动上传一张图片（无需配置） */
-  | 'image_upload';
+  | 'image_upload'
+  /** AI 对话节点：多轮对话 AI 助手（可配置绑定 LLM / Agent） */
+  | 'chat';
 
-/** 节点模板（代码内置的节点类型定义） */
+/**
+ * 节点输入槽位名称（声明式接线契约）：
+ * metadata（图书元数据）/ text（文本）/ analysis（图片分析）/ prompt（提示词）/ image（图片）
+ */
+export type InputSlotName = 'metadata' | 'text' | 'analysis' | 'prompt' | 'image';
+
+/** 输入槽位声明：哪些上游节点类型 → 提供什么输入（由后端 node_types.py 定义，经 node-registry 下发） */
+export interface InputSlot {
+  slot: InputSlotName;
+  /** 可接受的上游节点类型（沿入边向上 BFS，取最近的匹配祖先） */
+  from: CanvasNodeType[];
+}
+
+/** AI 对话节点的一条消息 */
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  /** 是否正在流式输出（展示打字光标） */
+  streaming?: boolean;
+  /**
+   * 首条 user 消息携带的上下文（图书元数据 + 上级节点内容），UI 不展示；
+   * 发送时经 toWireChatMessages 展开进 content，随每轮完整历史重发（LLM 模式多轮可见）。
+   */
+  context?: string;
+  /** 该轮回复被用户主动停止（保留已流出的部分，展示「重试」入口） */
+  interrupted?: boolean;
+  /** Agent 模式中间步骤（工具调用 / 思考状态），附加在 assistant 消息上 */
+  agentSteps?: AgentStep[];
+}
+
+/** AI 对话节点的上下文加载设置（节点内可开关） */
+export interface ChatNodeSettings {
+  /** 加载根节点图书元数据作为上下文 */
+  includeBook: boolean;
+  /** 加载紧随的上一级节点内容作为上下文 */
+  includeUpstream: boolean;
+}
+
+/** 节点模板（后端 node_types.py 定义，经 node-registry 下发） */
 export interface NodeTemplate {
   type: CanvasNodeType;
   name: string;
@@ -168,6 +208,8 @@ export interface NodeTemplate {
   category: 'input' | 'analysis' | 'generate' | 'output';
   /** 是否需要 llm/agent 配置（false 为基础节点，画板直接可用） */
   configurable: boolean;
+  /** 声明式输入槽位（后端唯一权威，执行引擎据此收集上游） */
+  input_slots?: InputSlot[];
 }
 
 /** 节点配置（节点模板的一个具体可执行实例 = 画板「+」菜单中的节点变体） */

@@ -11,6 +11,7 @@ import { IsbnInput } from '../../modules/bookplate/components/IsbnInput';
 import { BookInfoNode } from '../../modules/bookplate/components/BookInfoNode';
 import { ImageAnalysisNode } from '../../modules/bookplate/components/ImageAnalysisNode';
 import { PromptNode } from '../../modules/bookplate/components/PromptNode';
+import { ChatNode } from '../../modules/bookplate/components/ChatNode';
 import { ImageNode } from '../../modules/bookplate/components/ImageNode';
 import { TextNode } from '../../modules/bookplate/components/TextNode';
 import { ImageUploadNode } from '../../modules/bookplate/components/ImageUploadNode';
@@ -19,7 +20,14 @@ import { AddNodeButton, type NodePickerItem } from '../../modules/bookplate/comp
 import NodeContextMenu from '../../modules/bookplate/components/NodeContextMenu';
 import EmptyCanvasHint from '../../modules/bookplate/components/EmptyCanvasHint';
 import { NODE_SIZES, getBookInfoPosition, getBranchNodePosition, computeAutoLayout, computeFitViewport } from '../../modules/bookplate/nodeLayout';
-import { NODE_TEMPLATES, getNodeTitle } from '../../modules/bookplate/nodeTypes';
+import {
+  NODE_TEMPLATES,
+  getNodeTitle,
+  resolveNodeInputs,
+  nodeOutputText,
+  bookMetadataText,
+  buildInputSlotsMap,
+} from '../../modules/bookplate/nodeTypes';
 import {
   ISBN_FETCH_TIMEOUT_MS,
   PROMPT_SSE_IDLE_TIMEOUT_MS,
@@ -30,7 +38,14 @@ import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
 import { postSSEStream } from '../../platform/services/sse';
 import api from '../../platform/services/api';
 import generationsService from '../../platform/services/generations';
-import type { CanvasNodeType, GenerationStageResults, NodeRegistry, RegistryNodeConfig } from '../../platform/types';
+import type {
+  CanvasNodeType,
+  ChatMessage,
+  ChatNodeSettings,
+  GenerationStageResults,
+  NodeRegistry,
+  RegistryNodeConfig,
+} from '../../platform/types';
 
 type NodeType = CanvasNodeType;
 
@@ -73,6 +88,13 @@ const DEFAULT_SIZES: Record<NodeType, NodeSize> = NODE_SIZES;
 
 // 进行中的豆瓣查询节点 id，防止快速连点/重试时并发响应互相覆盖
 const bookInfoInflight = new Set<string>();
+
+/** 发送给后端的消息历史：把首条 user 消息上隐藏的 context 元数据展开到 content（UI 展示保持精简）。
+ *  上下文由此随每轮完整历史重发（LLM 模式），模型在多轮中始终可见，不会在第二轮丢失。 */
+const toWireChatMessages = (msgs: ChatMessage[]): ChatMessage[] =>
+  msgs.map((m) =>
+    m.context ? { ...m, content: `${m.context}\n\n${m.content}`, context: undefined } : m
+  );
 
 const BookplatePage: React.FC = () => {
   const { user } = useAuth();
@@ -119,6 +141,28 @@ const BookplatePage: React.FC = () => {
   const registryConfigs = registry.configs;
   const registryConfigsRef = useRef<RegistryNodeConfig[]>(registryConfigs);
   registryConfigsRef.current = registryConfigs;
+
+  // 输入槽位声明（后端 node_types.py 唯一权威，经 node-registry 下发）：
+  // 驱动 runNode / auto-run 的上游输入收集；ref 镜像供稳定回调读取最新值
+  const inputSlotsMap = useMemo(() => buildInputSlotsMap(registry.templates), [registry.templates]);
+  const inputSlotsRef = useRef(inputSlotsMap);
+  inputSlotsRef.current = inputSlotsMap;
+
+  // 一致性检查：可配置模板必须从后端拿到 input_slots 声明（前端已无静态兜底），
+  // 缺失时该类型节点会静默保持待运行态，此处提示声明漂移（每类型每次会话仅警告一次）
+  const warnedMissingSlots = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (registry.templates.length === 0) return;
+    for (const t of NODE_TEMPLATES) {
+      if (!t.configurable) continue;
+      const hasSlots =
+        (registry.templates.find((bt) => bt.type === t.type)?.input_slots?.length ?? 0) > 0;
+      if (!hasSlots && !warnedMissingSlots.current.has(t.type)) {
+        warnedMissingSlots.current.add(t.type);
+        console.warn(`[节点接线] 模板「${t.type}」未收到后端 input_slots 声明，该类型节点将保持待运行态`);
+      }
+    }
+  }, [registry.templates]);
 
   // 全局操作栏（收藏/公开/导出）的作用目标：点击 ImageNode 选中；未选中时回退到最近生成的图片节点
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
@@ -556,8 +600,27 @@ const BookplatePage: React.FC = () => {
     setNodes((prev) =>
       prev.map((n) => {
         if (n.id !== nodeId) return n;
+        
+        let newMessages = n.data?.messages;
+        if (n.type === 'chat' && Array.isArray(newMessages) && newMessages.length > 0) {
+          const msgs = [...newMessages];
+          const lastMsg = msgs[msgs.length - 1];
+          if (lastMsg.role === 'assistant') {
+            const msgSteps = Array.isArray(lastMsg.agentSteps) ? lastMsg.agentSteps : [];
+            msgs[msgs.length - 1] = { ...lastMsg, agentSteps: [...msgSteps, step] };
+            newMessages = msgs;
+          }
+        }
+        
         const steps = Array.isArray(n.data?.agentSteps) ? n.data.agentSteps : [];
-        return { ...n, data: { ...n.data, agentSteps: [...steps, step] } };
+        return { 
+          ...n, 
+          data: { 
+            ...n.data, 
+            agentSteps: [...steps, step],
+            ...(newMessages ? { messages: newMessages } : {})
+          } 
+        };
       })
     );
   };
@@ -715,6 +778,263 @@ const BookplatePage: React.FC = () => {
       });
   };
 
+  // ---------- AI 对话（多轮） ----------
+  /** 收集对话上下文：根节点图书元数据 + 直接父节点输出（受节点设置控制）。
+   *  按内容主体去重：直接父节点恰为图书元数据时，includeBook 与 includeUpstream
+   *  两条路径会注入同一份元数据（仅标题不同），逐块去重后只保留一份。 */
+  const buildChatContext = (node: NodeData): string => {
+    const settings: ChatNodeSettings = node.data?.settings ?? {
+      includeBook: true,
+      includeUpstream: true,
+    };
+    const blocks: { title: string; body: string }[] = [];
+    if (settings.includeBook) {
+      const book = findUpstream(node.id, 'book_info');
+      const metaText = bookMetadataText(book?.data);
+      if (metaText.trim()) blocks.push({ title: '图书元数据', body: metaText });
+    }
+    if (settings.includeUpstream) {
+      // 「紧随的上一级节点内容」= 全部直接父节点的输出文本（支持 AI 对话节点链式串联）
+      const parents = nodesRef.current.filter((n) =>
+        edgesRef.current.some((e) => e.target === node.id && e.source === n.id)
+      );
+      for (const p of parents) {
+        const text = nodeOutputText(p).trim();
+        if (text) blocks.push({ title: '上级节点内容', body: text });
+      }
+    }
+    const seen = new Set<string>();
+    const parts: string[] = [];
+    for (const b of blocks) {
+      if (seen.has(b.body)) continue;
+      seen.add(b.body);
+      parts.push(`【${b.title}】\n${b.body}`);
+    }
+    return parts.join('\n\n');
+  };
+
+  /** AI 对话节点核心发送逻辑：把指定历史 + 用户消息发送到后端，SSE 流式接收助手回复。
+   *  供新消息（runChatTurn）与重试（retryChatTurn）复用，保证两次请求负载完全一致。 */
+  const executeChatTurn = (
+    node: NodeData,
+    opts: {
+      /** 发送该轮之前的消息历史（不包含本轮 userMsg 与失败的 assistant 消息） */
+      history: ChatMessage[];
+      /** 本轮用户消息（可能携带隐藏的 context 字段） */
+      userMsg: ChatMessage;
+      /** Agent 模式发送的 message 字段（上下文已拼入） */
+      userText: string;
+      /** LLM 模式发送的完整消息数组（context 已展开进 content） */
+      wireMessages: ChatMessage[];
+    }
+  ) => {
+    // 重试防抖：该节点已有进行中的流时直接忽略
+    if (streamControllers.current.has(node.id)) return;
+    const pendingMsg: ChatMessage = { role: 'assistant', content: '', streaming: true };
+    // 乐观更新：追加 user 消息 + assistant 流式占位
+    setNodes((prev) =>
+      prev.map((n) =>
+        n.id === node.id
+          ? {
+              ...n,
+              data: {
+                ...n.data,
+                messages: [...opts.history, opts.userMsg, pendingMsg],
+                isGenerating: true,
+                error: null,
+                agentSteps: [],
+              },
+            }
+          : n
+      )
+    );
+
+    const controller = new AbortController();
+    streamControllers.current.set(node.id, controller);
+
+    let timedOut = false;
+    let idleTimer: number | null = null;
+    const armIdleTimeout = () => {
+      if (idleTimer !== null) window.clearTimeout(idleTimer);
+      idleTimer = window.setTimeout(() => {
+        timedOut = true;
+        idleTimer = null;
+        controller.abort();
+      }, PROMPT_SSE_IDLE_TIMEOUT_MS);
+    };
+    armIdleTimeout();
+
+    postSSEStream({
+      url: '/api/modules/bookplate/chat',
+      body: {
+        // LLM 模式：context 经 toWireChatMessages 展开进首条 user 消息 content（历史持久、多轮延续）；
+        // Agent 模式：上下文直接拼进下方 message 字段（FastClaw 以 session key 服务端维护历史）
+        messages: opts.wireMessages,
+        message: opts.userText,
+        config_id: node.configId ?? null,
+        node_id: node.id,
+        epoch: node.data?.epoch ?? 0,
+      },
+      signal: controller.signal,
+      onMessage: (event, data) => {
+        armIdleTimeout(); // 收到数据，重置空闲计时
+        // Agent 模式中间步骤（工具调用 / 思考状态）单独处理，不注入回复文本
+        if (
+          event === 'agent_tool_call' ||
+          event === 'agent_tool_result' ||
+          event === 'agent_status'
+        ) {
+          handleAgentSseMessage(node.id, event, data);
+          return;
+        }
+        if (event === 'message') {
+          // 追加增量到最后一条 assistant 消息（流式打字机）
+          setNodes((prev) =>
+            prev.map((n) => {
+              if (n.id !== node.id) return n;
+              const msgs = Array.isArray(n.data.messages) ? [...n.data.messages] : [];
+              const last = msgs[msgs.length - 1];
+              if (!last || last.role !== 'assistant') return n;
+              msgs[msgs.length - 1] = { ...last, content: last.content + data };
+              return { ...n, data: { ...n.data, messages: msgs } };
+            })
+          );
+          return;
+        }
+        if (event === 'error') {
+          // 失败：移除空的流式占位，保留已流出的部分，切换到错误态（错误横幅带重试）
+          setNodes((prev) =>
+            prev.map((n) => {
+              if (n.id !== node.id) return n;
+              const msgs = Array.isArray(n.data.messages) ? [...n.data.messages] : [];
+              const last = msgs[msgs.length - 1];
+              if (last && last.role === 'assistant' && !last.content) msgs.pop();
+              return { ...n, data: { ...n.data, messages: msgs, isGenerating: false, error: data } };
+            })
+          );
+          return;
+        }
+      },
+    })
+      .then(() => {
+        // 正常结束：封口流式消息；节点输出 = 最后一轮助手回复（供下一级节点作为输入）。
+        // 若期间发生过 error（部分回复），不把残缺内容写入 output，避免污染下游输入
+        setNodes((prev) =>
+          prev.map((n) => {
+            if (n.id !== node.id) return n;
+            const msgs = Array.isArray(n.data.messages) ? [...n.data.messages] : [];
+            const last = msgs[msgs.length - 1];
+            const output = n.data.error
+              ? (n.data.output ?? '')
+              : last && last.role === 'assistant'
+                ? last.content
+                : (n.data.output ?? '');
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                isGenerating: false,
+                messages: msgs.map((m) => (m.streaming ? { ...m, streaming: false } : m)),
+                output,
+              },
+            };
+          })
+        );
+      })
+      .catch((err) => {
+        // 用户主动停止：中止流并保留已流出的部分（标记中断态，消息下方出现重试入口）；
+        // 其余中断（节点删除 / 画布清空 / 撤销回退）静默忽略，避免写回已移除节点
+        const userInterrupted = !!(controller as any).userInterrupted;
+        if (!timedOut && err?.name === 'AbortError' && !userInterrupted) return;
+        console.error('SSE chat error:', err);
+        setNodes((prev) =>
+          prev.map((n) => {
+            if (n.id !== node.id) return n;
+            const msgs = Array.isArray(n.data.messages) ? [...n.data.messages] : [];
+            const last = msgs[msgs.length - 1];
+            if (last && last.role === 'assistant') {
+              if (userInterrupted) {
+                // 停止生成：保留已流出的部分，标记中断态（展示「重试」），不写入输出
+                msgs[msgs.length - 1] = { ...last, streaming: false, interrupted: true };
+              } else if (!last.content) {
+                msgs.pop(); // 失败且无任何输出：移除空占位
+              }
+            }
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                messages: msgs,
+                isGenerating: false,
+                error: userInterrupted
+                  ? null
+                  : timedOut
+                    ? '对话超时，请重试'
+                    : '对话失败，请重试',
+              },
+            };
+          })
+        );
+      })
+      .finally(() => {
+        if (idleTimer !== null) window.clearTimeout(idleTimer);
+        streamControllers.current.delete(node.id);
+      });
+  };
+
+  /** AI 对话节点：发送一条用户消息（多轮），SSE 流式返回助手回复。
+   *  includeContext=false 时本回合不注入上下文（发送栏 🔗 开关控制）。 */
+  const runChatTurn = (node: NodeData, text: string) => {
+    const existing: ChatMessage[] = Array.isArray(node.data?.messages)
+      ? node.data.messages
+      : [];
+    // 上下文仅在首次注入一次并持久在首条 user 消息的隐藏 context 字段上（UI 不展示）：
+    // LLM 模式每轮随完整历史重发、模型始终可见；再次注入会造成重复。
+    // Agent 模式以 session key 服务端维护，同理避免重复。
+    // 是否注入由「上下文设置」决定（buildChatContext 内读取 includeBook / includeUpstream）。
+    const alreadyHasContext = existing.some((m) => m.role === 'user' && !!m.context);
+    const context = !alreadyHasContext ? buildChatContext(node) : '';
+    const userText = (context ? context + '\n\n' : '') + text;
+
+    const userMsg: ChatMessage = {
+      role: 'user',
+      content: text,
+      ...(context ? { context } : {}),
+    };
+    executeChatTurn(node, {
+      history: existing,
+      userMsg,
+      userText,
+      wireMessages: toWireChatMessages([...existing, userMsg]),
+    });
+  };
+
+  /** AI 对话节点：重试最后一轮（失败 / 中断后重新调用 API）。
+   *  丢弃该轮失败的 assistant 消息，复用原 user 消息（含隐藏 context，Agent 模式 message 重建一致），
+   *  与首次发送完全相同的负载重新请求。
+   *  已知限制：LLM 模式为精确重试（客户端重建完整历史）；Agent 模式复用同一 FastClaw 会话
+   *  （epoch 不变），被中断的一轮可能已部分写入服务端历史，重试会追加新一轮（近似重试）。 */
+  const retryChatTurn = (node: NodeData) => {
+    if (streamControllers.current.has(node.id)) return;
+    const msgs: ChatMessage[] = Array.isArray(node.data?.messages) ? node.data.messages : [];
+    let userIdx = -1;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].role === 'user') {
+        userIdx = i;
+        break;
+      }
+    }
+    if (userIdx === -1) return; // 没有可重试的轮次
+    const history = msgs.slice(0, userIdx);
+    const userMsg = msgs[userIdx];
+    executeChatTurn(node, {
+      history,
+      userMsg,
+      userText: userMsg.context ? `${userMsg.context}\n\n${userMsg.content}` : userMsg.content,
+      wireMessages: toWireChatMessages([...history, userMsg]),
+    });
+  };
+
   // ---------- 图像生成 ----------
   /** Agent 模式图片生成：SSE 流式透传中间步骤，最终 image_url 事件落图 */
   const runImageGenerationAgent = async (
@@ -866,6 +1186,17 @@ const BookplatePage: React.FC = () => {
         return { content: '', error: null };
       case 'image_upload':
         return { imageUrl: null, imageName: '', error: null };
+      case 'chat':
+        return {
+          messages: [],
+          output: '',
+          isGenerating: false,
+          error: null,
+          agentSteps: [],
+          settings: { includeBook: true, includeUpstream: true },
+          // 对话纪元：清空对话时递增，Agent 模式下用于重置 FastClaw 服务端会话
+          epoch: 0,
+        };
     }
   };
 
@@ -875,13 +1206,15 @@ const BookplatePage: React.FC = () => {
       case 'book_info':
         return; // 需用户输入 ISBN
       case 'image_analysis': {
-        const book = findUpstream(node.id, 'book_info');
+        // 输入来源由模板声明驱动（resolveNodeInputs），此处保留节点内上传优先等既有行为
+        const inputs = resolveNodeInputs(node, nodesRef.current, edgesRef.current, inputSlotsRef.current);
+        const book = inputs.metadata;
         // 注意：必须传豆瓣原始 URL（cover_image），而非本地代理 URL（cover_image_local）——
         // 后端仅接受 doubanio.com 域名做封面抓取/分析
         const coverUrl =
           book?.data?.cover_image || book?.data?.coverUrl || book?.data?.cover_image_local;
         // 上游「图片上传」节点作为图片来源（data URL，后端按 base64 解码分析）
-        const uploadNode = findUpstream(node.id, 'image_upload');
+        const uploadNode = inputs.image;
         const uploadUrl =
           typeof uploadNode?.data?.imageUrl === 'string' ? uploadNode.data.imageUrl : undefined;
         const uploaded = analysisUploads.current.get(node.id);
@@ -895,32 +1228,34 @@ const BookplatePage: React.FC = () => {
         return;
       }
       case 'prompt_generation': {
-        const book = findUpstream(node.id, 'book_info');
-        const analysisNode = findUpstream(node.id, 'image_analysis');
+        const inputs = resolveNodeInputs(node, nodesRef.current, edgesRef.current, inputSlotsRef.current);
+        const book = inputs.metadata;
+        const analysisNode = inputs.analysis;
         const analysis =
           typeof analysisNode?.data?.analysis === 'string' ? analysisNode.data.analysis : '';
-        // 上游「文本」节点内容默认随图书元数据一起传入（作为补充上下文）
-        const textNode = findUpstream(node.id, 'text');
-        const text =
-          typeof textNode?.data?.content === 'string' ? textNode.data.content.trim() : '';
+        // 文本上下文：上游「文本」节点或「AI 对话」节点的输出（来源由模板声明决定）
+        const text = nodeOutputText(inputs.text).trim();
         if (!book?.data?.isbn && !analysis && !text) return; // 无上游输入 → 待运行态
         runPromptGeneration(node, { metadata: book?.data ?? {}, analysis, text });
         return;
       }
       case 'image_generation': {
-        const promptNode = findUpstream(node.id, 'prompt_generation');
+        const inputs = resolveNodeInputs(node, nodesRef.current, edgesRef.current, inputSlotsRef.current);
+        const promptNode = inputs.prompt;
         const prompt =
           typeof promptNode?.data?.content === 'string' ? promptNode.data.content.trim() : '';
         if (!prompt) return; // 上游提示词未就绪 → 待运行态
         // 上游「图片上传」节点的图片作为图生图参考图（data URL，后端直接透传给图像 API），
         // 与提示词一并传入。显式连接了该节点但尚未上传时保持待运行态，不自动降级为纯文生图
-        const uploadNode = findUpstream(node.id, 'image_upload');
+        const uploadNode = inputs.image;
         const image =
           typeof uploadNode?.data?.imageUrl === 'string' ? uploadNode.data.imageUrl : undefined;
         if (uploadNode && !image) return; // 图片上传节点未就绪 → 待运行态
         runImageGeneration(node, prompt, image);
         return;
       }
+      case 'chat':
+        return; // 需用户输入消息（多轮对话由用户驱动）
       case 'text':
       case 'image_upload':
         return; // 用户手动输入 / 上传，无需自动执行
@@ -1049,34 +1384,41 @@ const BookplatePage: React.FC = () => {
       let ready = false;
       if (node.type === 'image_analysis') {
         idle = !node.data?.analysis;
-        const book = findUpstream(node.id, 'book_info');
-        const uploadNode = findUpstream(node.id, 'image_upload');
+        // 与 runNode 一致（输入来源由模板声明驱动）
+        const inputs = resolveNodeInputs(node, nodesRef.current, edgesRef.current, inputSlotsRef.current);
+        const book = inputs.metadata;
+        const uploadNode = inputs.image;
         const uploaded = analysisUploads.current.get(node.id);
-        // 与 runNode 一致：显式连接了「图片上传」节点时，尚未上传则不回退图书封面
+        // 显式连接了「图片上传」节点时，尚未上传则不回退图书封面
         const imageReady = !!(uploaded || uploadNode?.data?.imageUrl);
         const coverReady = !uploadNode && (!!book?.data?.cover_image || !!book?.data?.coverUrl);
         ready = imageReady || coverReady;
       } else if (node.type === 'prompt_generation') {
         idle = !node.data?.content;
-        const book = findUpstream(node.id, 'book_info');
-        const analysisNode = findUpstream(node.id, 'image_analysis');
-        const textNode = findUpstream(node.id, 'text');
+        const inputs = resolveNodeInputs(node, nodesRef.current, edgesRef.current, inputSlotsRef.current);
+        const book = inputs.metadata;
+        const analysisNode = inputs.analysis;
+        const text = nodeOutputText(inputs.text).trim();
         ready = !!(
           book?.data?.isbn ||
           (typeof analysisNode?.data?.analysis === 'string' && analysisNode.data.analysis) ||
-          (typeof textNode?.data?.content === 'string' && textNode.data.content.trim())
+          text
         );
       } else if (node.type === 'image_generation') {
         idle = !node.data?.imageUrl;
-        const promptNode = findUpstream(node.id, 'prompt_generation');
+        const inputs = resolveNodeInputs(node, nodesRef.current, edgesRef.current, inputSlotsRef.current);
+        const promptNode = inputs.prompt;
         ready = !!(
           typeof promptNode?.data?.content === 'string' &&
           promptNode.data.content.trim() &&
           !promptNode.data.isGenerating
         );
         // 与 runNode 一致：显式连接了「图片上传」节点时，需已上传参考图才就绪
-        const uploadNode = findUpstream(node.id, 'image_upload');
+        const uploadNode = inputs.image;
         if (uploadNode && typeof uploadNode.data?.imageUrl !== 'string') ready = false;
+      } else if (node.type === 'chat') {
+        idle = false; // 需用户输入，不自动执行
+        ready = false;
       }
 
       if (!idle) {
@@ -1089,7 +1431,7 @@ const BookplatePage: React.FC = () => {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes, edges]);
+  }, [nodes, edges, inputSlotsMap]);
 
   // ---------- 自动聚焦新节点 ----------
   /** 判断节点是否（部分）落在当前视口内（画布坐标换算，含少量边距） */
@@ -1360,6 +1702,50 @@ const BookplatePage: React.FC = () => {
     if (content === oldContent) return;
     recordHistory();
     updateNodeData(id, { content });
+  }, []);
+  /** AI 对话节点：发送一条用户消息（多轮对话）；includeContext 控制本回合是否加载上下文 */
+  const handleSendChatFor = useCallback((id: string, text: string) => {
+    const node = nodesRef.current.find((n) => n.id === id);
+    if (node && node.type === 'chat') runChatTurn(node, text);
+  }, []);
+  /** AI 对话节点：更新上下文加载设置（未变化不记历史） */
+  const handleUpdateChatSettingsFor = useCallback((id: string, settings: ChatNodeSettings) => {
+    const node = nodesRef.current.find((n) => n.id === id);
+    if (!node || node.type !== 'chat') return;
+    const old = node.data?.settings ?? { includeBook: true, includeUpstream: true };
+    if (JSON.stringify(old) === JSON.stringify(settings)) return;
+    recordHistory();
+    updateNodeData(id, { settings });
+  }, []);
+  /** AI 对话节点：清空对话（递增会话纪元，Agent 模式下重置 FastClaw 服务端会话；下次发送时重新注入上下文） */
+  const handleClearChatFor = useCallback((id: string) => {
+    const node = nodesRef.current.find((n) => n.id === id);
+    if (!node || node.type !== 'chat') return;
+    const hasMessages = Array.isArray(node.data?.messages) && node.data.messages.length > 0;
+    if (!hasMessages) return;
+    recordHistory();
+    updateNodeData(id, {
+      messages: [],
+      output: '',
+      agentSteps: [],
+      // 一并清除错误态：否则清空后错误横幅残留，其重试按钮因无用户消息而空转
+      error: null,
+      epoch: (node.data?.epoch ?? 0) + 1,
+    });
+  }, []);
+  /** AI 对话节点：停止当前生成（中止 SSE 流）。
+   *  在 controller 上打用户中断标记：catch 据此保留已流出的部分并标记中断态（而非静默忽略），
+   *  保证节点退出生成态、出现「重试」入口。 */
+  const handleStopChatFor = useCallback((id: string) => {
+    const controller = streamControllers.current.get(id);
+    if (!controller) return;
+    (controller as any).userInterrupted = true;
+    controller.abort();
+  }, []);
+  /** AI 对话节点：重试最后一轮（失败 / 中断后重新调用 API，负载与首次一致） */
+  const handleRetryChatFor = useCallback((id: string) => {
+    const node = nodesRef.current.find((n) => n.id === id);
+    if (node && node.type === 'chat') retryChatTurn(node);
   }, []);
   /** 图片上传节点上传 / 替换 / 移除图片（imageUrl 为 null 表示移除；未变化不记历史） */
   const handleImageChangeFor = useCallback((id: string, imageUrl: string | null, imageName: string) => {
@@ -1786,6 +2172,37 @@ const BookplatePage: React.FC = () => {
                   hasDownstream={hasDownstream}
                   onRemove={handleRemove}
                   onImageChange={handleImageChangeFor}
+                  onPositionChange={handlePositionChange}
+                  onSizeChange={handleSizeChange}
+                  onDrag={handleNodeDrag}
+                  onContextMenu={(e) => handleNodeContextMenu(e, node.id)}
+                  footer={renderFooter(node)}
+                />
+              );
+            } else if (node.type === 'chat') {
+              const hasDownstream = edges.some((e) => e.source === node.id);
+              const config = configOf(node);
+              return (
+                <ChatNode
+                  key={node.id}
+                  id={node.id}
+                  initialX={node.x}
+                  initialY={node.y}
+                  title={getNodeTitle(node)}
+                  messages={node.data.messages}
+                  hasDownstream={hasDownstream}
+
+                  agentName={config?.mode === 'agent' ? (config.agent_name ?? undefined) : undefined}
+                  group={config?.group?.trim() || undefined}
+                  isGenerating={!!node.data.isGenerating}
+                  error={node.data.error ?? null}
+                  settings={node.data.settings ?? { includeBook: true, includeUpstream: true }}
+                  onRemove={handleRemove}
+                  onSend={handleSendChatFor}
+                  onUpdateSettings={handleUpdateChatSettingsFor}
+                  onClearChat={handleClearChatFor}
+                  onStop={handleStopChatFor}
+                  onRetry={handleRetryChatFor}
                   onPositionChange={handlePositionChange}
                   onSizeChange={handleSizeChange}
                   onDrag={handleNodeDrag}

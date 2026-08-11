@@ -15,6 +15,7 @@ import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
 import type { AgentStep } from '../../../platform/types';
 import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
 import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
+import { NODE_COLORS } from '../nodeTypes';
 
 // 上传参考图体积上限（与后端 MAX_UPLOAD_IMAGE_BYTES 保持一致）
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
@@ -135,6 +136,7 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
       initialX={initialX}
       initialY={initialY}
       title={title || "图片分析"}
+      dotColor={NODE_COLORS.image_analysis}
       onRemove={() => onRemove?.(id)}
       onPositionChange={onPositionChange}
       onSizeChange={onSizeChange}

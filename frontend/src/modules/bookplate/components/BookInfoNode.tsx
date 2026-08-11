@@ -3,6 +3,7 @@ import { BookOpen, Download, ExternalLink, Loader2, RefreshCw, AlertTriangle, Se
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { BeamGlow } from '../../../platform/components/node/BeamGlow';
 import { Tooltip } from '../../../platform/components/ui/Tooltip';
+import { NODE_COLORS } from '../nodeTypes';
 
 interface BookMetadata {
   isbn: string;
@@ -107,6 +108,7 @@ const BookInfoNodeInner: React.FC<BookInfoNodeProps> = ({
       initialX={initialX}
       initialY={initialY}
       title={title || "图书元数据"}
+      dotColor={NODE_COLORS.book_info}
       onRemove={() => onRemove?.(id)}
       onPositionChange={onPositionChange}
       onSizeChange={onSizeChange}

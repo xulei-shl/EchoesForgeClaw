@@ -32,6 +32,7 @@ from app.modules.bookplate.node_types import (
     NODE_IMAGE_ANALYSIS,
     NODE_PROMPT,
     NODE_IMAGE,
+    NODE_CHAT,
 )
 from app.services.llm_service import (
     llm_service,
@@ -254,6 +255,23 @@ class ImageGenRequest(BaseModel):
     node_id: Optional[str] = None
 
 
+class ChatRequest(BaseModel):
+    """AI 对话节点请求：多轮对话。
+
+    - messages: OpenAI 格式完整消息历史（LLM 模式，含本轮 user 消息；不含 system）
+    - message: 本轮用户消息文本（Agent 模式；FastClaw 以 session key 服务端维护多轮历史）
+    """
+
+    messages: List[Dict[str, Any]] = []
+    message: str = ""
+    # 节点配置 id（可选）：未绑定/未启用/类型不匹配时回退环境变量
+    config_id: Optional[int] = None
+    # 画布节点 id：Agent 模式下用作 FastClaw 会话 key 的一部分（同节点多轮共享上下文）
+    node_id: Optional[str] = None
+    # 对话纪元：清空对话后递增，让 FastClaw 服务端会话随之重置（多轮语义正确性）
+    epoch: int = 0
+
+
 def _decode_uploaded_image(data_url: str) -> Optional[bytes]:
     """解析前端上传图片的 base64 data URL，返回原始图片字节。
 
@@ -351,21 +369,30 @@ def _agent_config_from(
     )
 
 
-def _agent_session_key(user_id: int, node_id: Optional[str]) -> str:
-    """构造确定性的 FastClaw 会话 key：同一用户同一节点重试共享上下文。"""
-    return f"bookplate-{user_id}-{node_id or 'anon'}"
+def _agent_session_key(
+    user_id: int, node_id: Optional[str], epoch: int = 0
+) -> str:
+    """构造确定性的 FastClaw 会话 key：同一用户同一节点重试共享上下文。
+
+    epoch 为对话纪元：AI 对话节点清空对话时递增，使 FastClaw 服务端会话
+    （历史轮次）一并重置，保证「清空后首轮重新注入上下文」真正生效。
+    """
+    return f"bookplate-{user_id}-{node_id or 'anon'}-{epoch}"
 
 
-def _sse_from_agent_event(evt: Dict[str, Any]) -> Optional[Dict[str, str]]:
+def _sse_from_agent_event(
+    evt: Dict[str, Any], content_event: str = "prompt"
+) -> Optional[Dict[str, str]]:
     """把归一化的 agent 事件映射为 SSE 事件（中间步骤透传给前端展示）。
 
-    content/content_delta 统一映射为 prompt 事件：run_agent 已对「流式增量 + 末尾完整文本」
-    去重，能到达这里的 content 说明本轮未流式（非流式 provider），直接作为完整文本透传。
+    content/content_delta 统一映射为 content_event（默认 prompt；AI 对话节点传
+    "message"）：run_agent 已对「流式增量 + 末尾完整文本」去重，能到达这里的
+    content 说明本轮未流式（非流式 provider），直接作为完整文本透传。
     """
     etype = evt.get("type", "")
     data = evt.get("data", {}) or {}
     if etype in ("content_delta", "content"):
-        return {"event": "prompt", "data": data.get("delta", "")}
+        return {"event": content_event, "data": data.get("delta", "")}
     if etype == "tool_call":
         return {
             "event": "agent_tool_call",
@@ -707,6 +734,65 @@ async def generate_prompt(
                 yield {"event": "error", "data": str(exc)}
 
     return EventSourceResponse(event_generator())
+
+
+@router.post("/chat")
+async def chat(
+    request: Request,
+    payload: ChatRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """AI 对话节点：多轮对话，SSE 流式返回助手回复。
+
+    执行模式由该节点的节点配置决定：
+    - 绑定 Agent：以 node_id 派生确定性会话 key，交给 FastClaw 服务端维护多轮历史，
+      流式透传 content_delta（映射为 message 事件）+ 中间步骤（工具调用/状态）；
+    - 绑定模型：多轮流式调用 LLM（messages 数组，system 提示词来自绑定的提示词模板）；
+    - 未绑定配置：回退环境变量 / Mock。
+    """
+    nc = _resolve_node_config(db, payload.config_id, NODE_CHAT)
+    agent_config = _agent_config_from(nc, current_user.id)
+    text_config = _text_config_from(nc)
+
+    if await request.is_disconnected():
+        raise HTTPException(status_code=499, detail="客户端已断开连接")
+
+    if agent_config:
+        session_key = _agent_session_key(current_user.id, payload.node_id, payload.epoch)
+
+        async def agent_chat_generator():
+            try:
+                async for evt in fastclaw_agent_service.run_agent(
+                    agent_config,
+                    payload.message or "",
+                    session_key=session_key,
+                    params={"module": "bookplate", "node_type": NODE_CHAT},
+                ):
+                    if await request.is_disconnected():
+                        break
+                    sse = _sse_from_agent_event(evt, content_event="message")
+                    if sse:
+                        yield sse
+            except FastClawAgentError as exc:
+                if not await request.is_disconnected():
+                    yield {"event": "error", "data": str(exc)}
+
+        return EventSourceResponse(agent_chat_generator())
+
+    async def llm_chat_generator():
+        try:
+            async for chunk in llm_service.chat_stream(
+                payload.messages or [], text_config
+            ):
+                if await request.is_disconnected():
+                    break
+                yield {"event": "message", "data": chunk}
+        except LLMGenerationError as exc:
+            if not await request.is_disconnected():
+                yield {"event": "error", "data": str(exc)}
+
+    return EventSourceResponse(llm_chat_generator())
 
 
 @router.post("/generate-image")

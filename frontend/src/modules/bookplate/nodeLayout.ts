@@ -11,7 +11,8 @@ export type NodeType =
   | 'prompt_generation'
   | 'image_generation'
   | 'text'
-  | 'image_upload';
+  | 'image_upload'
+  | 'chat';
 
 /** 各节点模板类型的默认尺寸（必须与组件 defaultSize 一致） */
 export const NODE_SIZES: Record<NodeType, { width: number; height: number }> = {
@@ -21,6 +22,7 @@ export const NODE_SIZES: Record<NodeType, { width: number; height: number }> = {
   image_generation: { width: 420, height: 540 },
   text:             { width: 420, height: 400 },
   image_upload:     { width: 420, height: 420 },
+  chat:             { width: 420, height: 560 },
 };
 
 /** 节点间水平间距（px） */

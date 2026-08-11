@@ -5,6 +5,7 @@ import 'react-photo-view/dist/react-photo-view.css';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { Tooltip } from '../../../platform/components/ui/Tooltip';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
+import { NODE_COLORS } from '../nodeTypes';
 
 // 允许上传的位图格式（与图片分析节点 / 后端魔数校验一致）
 const RASTER_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
@@ -154,6 +155,7 @@ const ImageUploadNodeInner: React.FC<ImageUploadNodeProps> = ({
       initialX={initialX}
       initialY={initialY}
       title={title || '图片上传'}
+      dotColor={NODE_COLORS.image_upload}
       onRemove={() => onRemove?.(id)}
       onPositionChange={onPositionChange}
       onSizeChange={onSizeChange}

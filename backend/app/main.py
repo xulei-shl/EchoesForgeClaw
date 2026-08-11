@@ -30,6 +30,7 @@ from app.modules.bookplate.router import router as bookplate_router
 from app.models.app_setting import AppSetting
 from app.models.prompt_template import PromptTemplate
 from app.services.llm_service import DEFAULT_SYSTEM_PROMPT, DEFAULT_COVER_SYSTEM_PROMPT
+import asyncio
 import contextlib
 
 # 默认系统设置（首次启动时写入）
@@ -45,10 +46,19 @@ DEFAULT_SETTINGS = {
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
+    # 启动时执行数据库迁移与种子数据初始化（阻塞型操作，放到线程中执行，
+    # 避免在运行中的事件循环里直接调用导致死锁/卡死）
+    await asyncio.to_thread(_startup_init)
+
+    yield
+    # 关闭时的清理操作
+
+
+def _startup_init():
     # 启动时执行数据库迁移（Alembic）：全新库自动建表，老库执行增量迁移
     alembic_cfg = Config(str(Path(__file__).resolve().parent.parent / "alembic.ini"))
     command.upgrade(alembic_cfg, "head")
-    
+
     # 自动创建默认管理员账号 admin/admin123
     db = SessionLocal()
     try:
@@ -104,9 +114,6 @@ async def lifespan(app: FastAPI):
         db.commit()
     finally:
         db.close()
-    
-    yield
-    # 关闭时的清理操作
 
 app = FastAPI(title="BookForge API", lifespan=lifespan)
 

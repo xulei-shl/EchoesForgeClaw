@@ -4,6 +4,8 @@ import { useCanvas } from '../canvas/CanvasContext';
 /** 拖拽激活阈值（px），防止点击头部时轻微抖动误触发 */
 const DRAG_THRESHOLD = 3;
 
+let globalZIndex = 10;
+
 export interface CanvasNodeProps {
   id: string;
   initialX?: number;
@@ -17,6 +19,8 @@ export interface CanvasNodeProps {
   footer?: React.ReactNode;
   /** 所属自定义分组（有分组时在标题旁展示小标签） */
   groupBadge?: string;
+  /** 左上角类型指示圆点颜色 (推荐使用 OKLCH) */
+  dotColor?: string;
   /** 允许拖拽右下角手柄调整卡片尺寸 */
   resizable?: boolean;
   /** 默认（同时也是最小）尺寸；开启 resizable 时必填 */
@@ -58,9 +62,16 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
   onContextMenu,
   footer,
   groupBadge,
+  dotColor,
 }) => {
   const rootRef = useRef<HTMLDivElement>(null);
   const { scale } = useCanvas();
+
+  const [zIndex, setZIndex] = useState(() => globalZIndex++);
+
+  const bringToFront = useCallback(() => {
+    setZIndex(globalZIndex++);
+  }, []);
 
   const [position, setPosition] = useState({ x: initialX, y: initialY });
   // 拖拽中的实时位置：命令式更新，不触发 React 渲染
@@ -227,12 +238,14 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
       id={id}
       className={`absolute bg-node-bg border-dashed-grid border rounded-md shadow-sm flex flex-col pointer-events-auto ${className}`}
       style={{
+        zIndex,
         width: size ? `${size.w}px` : undefined,
         height: size ? `${size.h}px` : undefined,
         minWidth: size ? `${defaultSize!.width}px` : '200px',
         minHeight: size ? `${defaultSize!.height}px` : undefined,
         transform: `translate3d(${shownPos.x}px, ${shownPos.y}px, 0)`,
       }}
+      onPointerDownCapture={bringToFront}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -267,7 +280,10 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
         style={{ touchAction: 'none' }}
       >
         <div className="flex gap-1.5 items-center min-w-0">
-          <div className="w-2 h-2 rounded-full bg-paper-hole shrink-0" />
+          <div 
+            className={`w-2 h-2 rounded-full shrink-0 -translate-y-[0.5px] ${!dotColor ? 'bg-paper-hole' : ''}`} 
+            style={dotColor ? { backgroundColor: dotColor } : undefined}
+          />
           <span className="font-serif text-sm text-ink-light font-medium truncate">{title || 'Node'}</span>
           {groupBadge && (
             <span

@@ -204,4 +204,75 @@ class LLMService:
             raise LLMGenerationError(f"提示词生成失败: {e}") from e
 
 
+    async def chat_stream(
+        self,
+        messages: list,
+        config: Optional[TextModelConfig] = None,
+    ) -> AsyncGenerator[str, None]:
+        """多轮对话流式生成（AI 对话节点用）。
+
+        messages 为 OpenAI 格式的消息数组（不含 system，由 config 的提示词模板注入）；
+        每个元素形如 {"role": "user" | "assistant", "content": str}。
+        无 API Key 时启用 Mock 流式回复，便于无配置环境下演示节点链路。
+        """
+        api_key = (config.api_key if config else "") or self.env_api_key
+        if not api_key:
+            last_user = ""
+            for m in reversed(messages or []):
+                if isinstance(m, dict) and m.get("role") == "user":
+                    last_user = str(m.get("content", ""))
+                    break
+            yield "【Mock 对话】\n"
+            await asyncio.sleep(0.4)
+            yield (
+                "当前未配置 LLM API Key / Agent，以下为演示回复。\n\n"
+                "你刚才说：\n\n"
+                f"> {last_user[:200]}\n\n"
+                "在管理后台「节点管理」为 AI 对话节点绑定模型（+提示词）或 FastClaw Agent 后，"
+                "即可获得真实的多轮对话回复。\n"
+            )
+            return
+
+        model_name = (config.model_name if config and config.model_name else "") or "gpt-3.5-turbo"
+        system_prompt = (
+            config.system_prompt if config and config.system_prompt else ""
+        ).strip()
+        base_url = config.base_url if config and config.base_url else None
+
+        # system 提示词（即节点绑定的提示词模板，充当助手人设）注入到消息开头；
+        # 未绑定提示词模板时不注入，保持通用助手行为
+        full_messages: list = []
+        if system_prompt:
+            full_messages.append({"role": "system", "content": system_prompt})
+        full_messages.extend(messages or [])
+        if not any(
+            isinstance(m, dict) and m.get("role") == "user" for m in full_messages
+        ):
+            raise LLMGenerationError("AI 对话缺少用户消息")
+
+        # 显式超时并关闭 SDK 自带重试：超时后直接失败，不自动重试
+        client = AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=LLM_REQUEST_TIMEOUT,
+            max_retries=0,
+        )
+        try:
+            stream = await client.chat.completions.create(
+                model=model_name,
+                messages=full_messages,
+                stream=True,
+            )
+            async for chunk in stream:
+                if (
+                    chunk.choices
+                    and chunk.choices[0].delta
+                    and chunk.choices[0].delta.content is not None
+                ):
+                    yield chunk.choices[0].delta.content
+        except Exception as e:
+            logger.error("AI 对话失败: %s", e)
+            raise LLMGenerationError(f"AI 对话失败: {e}") from e
+
+
 llm_service = LLMService()

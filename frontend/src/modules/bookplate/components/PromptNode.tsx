@@ -8,6 +8,7 @@ import { Textarea } from '../../../platform/components/ui/Textarea';
 import { AgentActivity } from '../../../platform/components/agent/AgentActivity';
 import { Tooltip } from '../../../platform/components/ui/Tooltip';
 import type { AgentStep } from '../../../platform/types';
+import { NODE_COLORS } from '../nodeTypes';
 
 export interface PromptNodeProps {
   id: string;
@@ -149,6 +150,7 @@ const PromptNodeInner: React.FC<PromptNodeProps> = ({
       initialX={initialX}
       initialY={initialY}
       title={title || "图像提示词"}
+      dotColor={NODE_COLORS.prompt_generation}
       onRemove={() => onRemove?.(id)}
       onPositionChange={onPositionChange}
       onSizeChange={onSizeChange}
