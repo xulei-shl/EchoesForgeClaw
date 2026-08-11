@@ -27,6 +27,7 @@ import {
 import {
   DEFAULT_SIZES,
   bookInfoInflight,
+  selfHealNode,
   type EdgeData,
   type NodeData,
   type NodeSize,
@@ -250,6 +251,20 @@ const BookplatePage: React.FC = () => {
   nodesRef.current = nodes;
   const edgesRef = useRef(edges);
   edgesRef.current = edges;
+
+  // 卸载（SPA 切页）时中止全部进行中的流：后台流不会随组件卸载自动停止，若放任其完成，
+  // 会在组件已卸载的情况下保存出无法关联到节点的孤儿历史记录（节点状态回写也会丢失）。
+  // 中止后后端经 request.is_disconnected() 停止工作（图像 API 调用前放弃），不会产生残留；
+  // 返回画布时由下方挂载自愈复位节点——autoRun 节点自动重新执行，手动节点提示重试。
+  // 注：整页刷新时浏览器直接销毁页面上下文（fetch 随之终止），无需依赖本 cleanup，此处仅覆盖
+  // SPA 切页的组件卸载路径。ref 恒不被重新赋值，先取出 map 再在 cleanup 中使用（避免 cleanup 内直接读 ref.current）。
+  useEffect(() => {
+    const controllers = streamControllers.current;
+    return () => {
+      controllers.forEach((controller) => controller.abort());
+      controllers.clear();
+    };
+  }, []);
 
   /** 更新节点 data（浅合并 patch） */
   const updateNodeData = (id: string, patch: Record<string, any>) => {
@@ -667,6 +682,15 @@ const BookplatePage: React.FC = () => {
     node.configId != null
       ? registryConfigs.find((c) => c.id === node.configId)
       : undefined;
+
+  // ---------- 自愈：挂载时复位中断残留的「生成中」节点 ----------
+  // 画布状态持久化在 sessionStorage，可能残留上次会话的生成中标记（刷新 / 崩溃 / 页面直关等
+  // 未走卸载清理的路径；切页路径的旧流已由上方卸载清理中止，不会产生孤儿记录）。
+  // 本次挂载的 streamControllers 为全新 ref，任何标记 isGenerating 的节点都不可能存在活动流，
+  // 可安全复位：开启「自动运行」的节点交由下方 autoRun 检查重新执行；其余节点置失败提示由用户重试。
+  useEffect(() => {
+    setNodes((prev) => prev.map((n) => selfHealNode(n, false, true)));
+  }, [setNodes]);
 
   // ---------- 自动运行（默认关闭，节点运行设置中开启「自动运行」后生效） ----------
   const autoRunTried = useRef<Set<string>>(new Set());

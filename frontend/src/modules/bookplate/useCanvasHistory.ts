@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
-import { HISTORY_LIMIT, type EdgeData, type HistorySnapshot, type NodeData } from './graphTypes';
+import { HISTORY_LIMIT, selfHealNode, type EdgeData, type HistorySnapshot, type NodeData } from './graphTypes';
 
 /** 撤销/重做依赖（由画布注入：refs + 稳定 setter） */
 export interface CanvasHistoryContext {
@@ -63,12 +63,9 @@ export function useCanvasHistory(ctx: CanvasHistoryContext): CanvasHistory {
     // 2. 选中节点若已不在恢复后的画布中则清除
     ctx.setSelectedImageId((prev) => (prev && !restoredMap.has(prev) ? null : prev));
     // 3. 自愈：恢复后标记为生成中但无活动流的节点（清空/中断场景），复位为失败态，避免永久加载
+    //    （resumeAutoRun=false：用户主动回退，不自动重跑，一律置错误提示）
     ctx.setNodes((prev) =>
-      prev.map((n) =>
-        n.data?.isGenerating && !ctx.streamControllers.current.has(n.id)
-          ? { ...n, data: { ...n.data, isGenerating: false, error: n.data?.error ?? '生成已中断，请重试' } }
-          : n
-      )
+      prev.map((n) => selfHealNode(n, ctx.streamControllers.current.has(n.id), false))
     );
     // 4. 撤销删除/清空后节点集变大：被删节点已清除的收藏/公开状态需从服务端重新同步；
     //    同时清空「记录已删除」弱提示标记，让同步重新校验（快照恢复的映射可能又有效）
