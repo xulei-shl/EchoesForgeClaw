@@ -246,7 +246,7 @@ const BookplatePage: React.FC = () => {
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
-  }, [user?.id, invalidateGenerationLink]);
+  }, [user?.id, invalidateGenerationLink, generationIds]);
 
   // ---------- 共享 refs（拖拽 / 执行 / 历史共用） ----------
   // 注意：streamControllers / analysisUploads / nodesRef / edgesRef 为模块级单例（见 useCanvasState），

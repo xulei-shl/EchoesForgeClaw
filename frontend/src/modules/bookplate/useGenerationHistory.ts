@@ -1,5 +1,6 @@
 import { useCallback, type RefObject } from 'react';
 import generationsService from '../../platform/services/generations';
+import { flushSnapshot } from '../../platform/stores/useCanvasState';
 import type { GenerationStageResults } from '../../platform/types';
 import { findRootBookInfo, resolveDirectParents } from './nodeTypes';
 import type { EdgeData, NodeData } from './graphTypes';
@@ -95,6 +96,7 @@ export function useGenerationHistory(ctx: GenerationHistoryContext): GenerationH
           status: 'completed',
         });
         ctx.generationIds.current[imageNodeId] = gen.id;
+        flushSnapshot(); // 映射写入后立即落盘：后台完成 / 刷新后不丢映射，避免 ensureGeneration 重复建记录
         return gen.id;
       } catch (e) {
         console.error('自动保存历史记录失败:', e);
@@ -124,6 +126,7 @@ export function useGenerationHistory(ctx: GenerationHistoryContext): GenerationH
         status: 'completed',
       });
       ctx.generationIds.current[imageNodeId] = gen.id;
+      flushSnapshot(); // 同上：确保刷新后映射仍在，收藏/公开不会重复建记录
       return gen.id;
     },
     [buildStageResults]
