@@ -35,6 +35,10 @@ export function useManualConnection(ctx: ManualConnectionContext): ManualConnect
   const [connecting, setConnecting] = useState<string | null>(null);
   const ghostRef = useRef<ConnectionGhostHandle | null>(null);
   const sourceIdRef = useRef<string | null>(null);
+  // 指针移动 rAF 合并：pointermove 可能以远超显示刷新率触发（高回报率鼠标），
+  // 只取每帧最新坐标重绘一次幽灵线（与 CanvasNode/NodeEdge 的 rAF 模式一致）
+  const moveRafRef = useRef<number | null>(null);
+  const lastMoveRef = useRef<{ clientX: number; clientY: number }>({ clientX: 0, clientY: 0 });
 
   /** 新增 source→target 是否会在现有图中成环（target 沿出边可达 source） */
   const wouldCreateCycle = useCallback(
@@ -119,24 +123,38 @@ export function useManualConnection(ctx: ManualConnectionContext): ManualConnect
     [hitTargetId, edgesRef, setEdges, recordHistory, showToast, wouldCreateCycle]
   );
 
+  /** 每帧最多执行一次：读取最新坐标做落点检测 + 类型匹配 + 幽灵线重绘 */
+  const paintOncePerFrame = useCallback(() => {
+    moveRafRef.current = null;
+    const { clientX, clientY } = lastMoveRef.current;
+    const sourceId = sourceIdRef.current;
+    // 实时类型匹配着色：悬停到有效落点才判定，未悬停 / 悬停到源节点自身保持未判定色
+    let compatible: boolean | undefined;
+    if (sourceId) {
+      const targetId = hitTargetId(clientX, clientY);
+      if (targetId && targetId !== sourceId) compatible = isCompatible(sourceId, targetId);
+    }
+    ghostRef.current?.setEnd(clientX, clientY, compatible);
+  }, [hitTargetId, isCompatible]);
+
   const handlePointerMove = useCallback(
     (e: PointerEvent) => {
-      const sourceId = sourceIdRef.current;
-      // 实时类型匹配着色：悬停到有效落点才判定，未悬停 / 悬停到源节点自身保持未判定色
-      let compatible: boolean | undefined;
-      if (sourceId) {
-        const targetId = hitTargetId(e.clientX, e.clientY);
-        if (targetId && targetId !== sourceId) compatible = isCompatible(sourceId, targetId);
+      lastMoveRef.current = { clientX: e.clientX, clientY: e.clientY };
+      if (moveRafRef.current === null) {
+        moveRafRef.current = requestAnimationFrame(paintOncePerFrame);
       }
-      ghostRef.current?.setEnd(e.clientX, e.clientY, compatible);
     },
-    [hitTargetId, isCompatible]
+    [paintOncePerFrame]
   );
 
   // 统一的拖线清理（由各事件处理器在结束时调用）。
   // 各 handler 相互引用构成循环依赖，故经 ref 持有：仅在事件回调中调用，不参与 React 依赖分析。
   const teardownRef = useRef<() => void>(() => {});
   teardownRef.current = () => {
+    if (moveRafRef.current !== null) {
+      cancelAnimationFrame(moveRafRef.current);
+      moveRafRef.current = null;
+    }
     window.removeEventListener('pointermove', handlePointerMove);
     window.removeEventListener('pointerup', handlePointerUp);
     window.removeEventListener('pointercancel', handlePointerCancel);
@@ -183,9 +201,10 @@ export function useManualConnection(ctx: ManualConnectionContext): ManualConnect
     [handlePointerMove, handlePointerUp, handlePointerCancel, handleKeyDown]
   );
 
-  // 卸载清理：移除监听并复位
+  // 卸载清理：移除监听、取消未执行的 rAF 并复位
   useEffect(() => {
     return () => {
+      if (moveRafRef.current !== null) cancelAnimationFrame(moveRafRef.current);
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
       window.removeEventListener('pointercancel', handlePointerCancel);
