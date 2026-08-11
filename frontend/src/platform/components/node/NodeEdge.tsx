@@ -126,33 +126,35 @@ const NodeEdge = forwardRef<NodeEdgeHandle, NodeEdgeProps>(function NodeEdge(
       ref={svgRef}
       className="absolute top-0 left-0 pointer-events-none z-0"
     >
-      {compatible ? (
-        <defs>
-          <linearGradient id={`grad-${id}`} x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="var(--color-paper-grid, #E4E1DA)" />
-            <stop
-              offset="100%"
-              stopColor={BRANCH_TINTS[(tintIndex ?? branchIndex) % BRANCH_TINTS.length]}
-            />
-          </linearGradient>
-        </defs>
-      ) : undefined}
+      <defs>
+        <linearGradient id={`grad-${id}`} x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="var(--color-paper-grid, #E4E1DA)" />
+          <stop
+            offset="100%"
+            stopColor={
+              compatible
+                ? BRANCH_TINTS[(tintIndex ?? branchIndex) % BRANCH_TINTS.length]
+                : 'var(--color-error, #C0392B)'
+            }
+          />
+        </linearGradient>
+      </defs>
       {/* Base line */}
       <path
         ref={basePathRef}
         fill="none"
-        stroke={compatible ? 'var(--color-paper-grid, #E4E1DA)' : 'var(--color-error, #C0392B)'}
+        stroke="var(--color-paper-grid, #E4E1DA)"
         strokeWidth="2"
-        strokeDasharray={compatible ? '5,5' : '2,6'}
+        strokeDasharray="5,5"
       />
       {/* Animated flowing line */}
       <path
         ref={flowPathRef}
         fill="none"
-        stroke={compatible ? `url(#grad-${id})` : 'var(--color-error, #C0392B)'}
+        stroke={`url(#grad-${id})`}
         strokeWidth="2"
-        strokeDasharray={compatible ? '5,5' : '2,6'}
-        className={compatible ? 'animate-flow' : undefined}
+        strokeDasharray="5,5"
+        className="animate-flow"
       />
     </svg>
   );

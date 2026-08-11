@@ -21,6 +21,7 @@ interface ConnectionGhostProps {
 const ConnectionGhost = forwardRef<ConnectionGhostHandle, ConnectionGhostProps>(
   function ConnectionGhost({ sourceId }, ref) {
     const pathRef = useRef<SVGPathElement>(null);
+    const flowPathRef = useRef<SVGPathElement>(null);
     const startRef = useRef({ x: 0, y: 0 });
     const endRef = useRef({ x: 0, y: 0 });
 
@@ -39,22 +40,28 @@ const ConnectionGhost = forwardRef<ConnectionGhostHandle, ConnectionGhostProps>(
 
     const paint = (compatible?: boolean) => {
       const path = pathRef.current;
+      const flowPath = flowPathRef.current;
       if (!path) return;
       const { x: sx, y: sy } = startRef.current;
       const { x: ex, y: ey } = endRef.current;
       const dx = Math.abs(ex - sx);
       const cp = Math.max(dx / 2, 40);
-      path.setAttribute('d', `M ${sx} ${sy} C ${sx + cp} ${sy}, ${ex - cp} ${ey}, ${ex} ${ey}`);
-      // 匹配主色 / 不匹配红色 / 未悬停目标用弱化的中性色
-      path.setAttribute(
-        'stroke',
-        compatible === false
-          ? 'var(--color-error, #C0392B)'
-          : compatible === true
-            ? 'var(--color-accent, #A0622B)'
-            : 'var(--color-paper-grid, #E4E1DA)'
-      );
-      path.setAttribute('stroke-width', compatible === undefined ? '1.5' : '2.5');
+      const d = `M ${sx} ${sy} C ${sx + cp} ${sy}, ${ex - cp} ${ey}, ${ex} ${ey}`;
+      
+      path.setAttribute('d', d);
+      
+      if (flowPath) {
+        flowPath.setAttribute('d', d);
+        if (compatible === undefined) {
+          flowPath.style.display = 'none';
+        } else {
+          flowPath.style.display = 'block';
+          flowPath.setAttribute(
+            'stroke',
+            compatible ? 'url(#ghost-grad-compat)' : 'url(#ghost-grad-err)'
+          );
+        }
+      }
     };
 
     useImperativeHandle(ref, () => ({
@@ -66,6 +73,16 @@ const ConnectionGhost = forwardRef<ConnectionGhostHandle, ConnectionGhostProps>(
 
     return (
       <svg className="fixed inset-0 pointer-events-none" style={{ zIndex: 9999 }}>
+        <defs>
+          <linearGradient id="ghost-grad-compat" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="var(--color-paper-grid, #E4E1DA)" />
+            <stop offset="100%" stopColor="var(--color-accent, #A0622B)" />
+          </linearGradient>
+          <linearGradient id="ghost-grad-err" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="var(--color-paper-grid, #E4E1DA)" />
+            <stop offset="100%" stopColor="var(--color-error, #C0392B)" />
+          </linearGradient>
+        </defs>
         <path
           ref={pathRef}
           fill="none"
@@ -73,6 +90,14 @@ const ConnectionGhost = forwardRef<ConnectionGhostHandle, ConnectionGhostProps>(
           strokeWidth="1.5"
           strokeDasharray="5,5"
           opacity="0.9"
+        />
+        <path
+          ref={flowPathRef}
+          fill="none"
+          strokeWidth="2.5"
+          strokeDasharray="5,5"
+          className="animate-flow"
+          style={{ display: 'none' }}
         />
       </svg>
     );
