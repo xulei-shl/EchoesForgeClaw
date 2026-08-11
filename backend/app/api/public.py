@@ -30,22 +30,17 @@ def share_generation(
 
 @router.get("", response_model=GenerationPage)
 def list_public_shares(
-    module: Optional[str] = None,
     keyword: Optional[str] = None,
     skip: int = 0,
     limit: int = 20,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    """公开画廊：所有用户公开的生成记录（可按 module / keyword 过滤，分页返回）。"""
+    """公开画廊：所有用户公开的生成记录（可按 keyword 搜索，分页返回）。"""
     query = db.query(PublicShare)
-    needs_join = module or keyword
-    if needs_join:
+    if keyword:
         query = query.join(Generation, PublicShare.generation_id == Generation.id)
-        if module:
-            query = query.filter(Generation.module == module)
-        if keyword:
-            query = query.filter(Generation.name.ilike(f"%{keyword}%"))
+        query = query.filter(Generation.name.ilike(f"%{keyword}%"))
     total = query.count()
     page_limit = min(limit, 100)
     shares = (

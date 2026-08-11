@@ -5,7 +5,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Navbar } from '../../platform/components/layout/Navbar';
 import { GenerationCard } from '../../platform/components/gallery/GenerationCard';
 import { GenerationDetailPanel } from '../../platform/components/gallery/GenerationDetailPanel';
-import { Select } from '../../platform/components/ui/Select';
 import { generationsService } from '../../platform/services/generations';
 import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
 import { useAuth } from '../../platform/stores/authStore';
@@ -18,11 +17,6 @@ import type { GalleryMode, Generation } from '../../platform/types';
 
 /** 每页条数（后端 limit 上限为 100） */
 const PAGE_SIZE = 20;
-
-const MODULE_OPTIONS: { value: string; label: string }[] = [
-  { value: '', label: '全部模块' },
-  { value: 'bookplate', label: '藏书票' },
-];
 
 const MODE_CONFIG: Record<GalleryMode, { title: string }> = {
   history: { title: '历史记录' },
@@ -71,7 +65,6 @@ export const GenerationListPage: React.FC<GenerationListPageProps> = ({ mode }) 
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [moduleFilter, setModuleFilter] = useState('');
   const [keyword, setKeyword] = useState('');
   const [debouncedKeyword, setDebouncedKeyword] = useState('');
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -82,14 +75,13 @@ export const GenerationListPage: React.FC<GenerationListPageProps> = ({ mode }) 
 
   const fetchPage = useCallback(
     async (skip: number, limit: number) => {
-      const params: { skip: number; limit: number; module?: string; keyword?: string } = { skip, limit };
-      if (moduleFilter) params.module = moduleFilter;
+      const params: { skip: number; limit: number; keyword?: string } = { skip, limit };
       if (debouncedKeyword) params.keyword = debouncedKeyword;
       if (mode === 'history') return generationsService.listMine(params);
       if (mode === 'favorites') return generationsService.listFavorites(params);
       return generationsService.listPublic(params);
     },
-    [mode, moduleFilter, debouncedKeyword]
+    [mode, debouncedKeyword]
   );
 
   /** 首屏加载 / 重试 */
@@ -351,14 +343,7 @@ export const GenerationListPage: React.FC<GenerationListPageProps> = ({ mode }) 
                   </button>
                 )}
               </div>
-                <Select
-                  value={moduleFilter}
-                  onChange={(val) => setModuleFilter(val)}
-                  options={MODULE_OPTIONS}
-                  size="sm"
-                  className="min-w-[96px]"
-                />
-              {!loading && !error && (
+                {!loading && !error && (
                 <span className="text-xs text-ink-faint font-sans tabular-nums">
                   共 {total} 条
                 </span>

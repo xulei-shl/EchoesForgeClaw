@@ -11,8 +11,6 @@ export interface CreateGenerationPayload {
 export interface ListGenerationsParams {
   skip?: number;
   limit?: number;
-  /** 历史记录可按 module 过滤 */
-  module?: string;
   /** 按题名关键词检索 */
   keyword?: string;
 }
