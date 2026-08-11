@@ -195,14 +195,41 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
           running={isGenerating && !!agentName}
         />
         <div className="relative z-10 flex flex-col gap-3 flex-1 min-h-0">
+          <style>{`
+            @keyframes scan-vertical {
+              0% { top: 0; opacity: 0; }
+              10% { opacity: 1; }
+              90% { opacity: 1; }
+              100% { top: calc(100% - 2px); opacity: 0; }
+            }
+          `}</style>
           {isLoading ? (
-            <div className="flex flex-col items-center justify-center gap-4 min-h-[220px]">
-              <div className="flex gap-2">
-                <div className="w-3 h-3 rounded-full bg-accent animate-bounce" style={{ animationDelay: '0ms' }} />
-                <div className="w-3 h-3 rounded-full bg-accent animate-bounce" style={{ animationDelay: '150ms' }} />
-                <div className="w-3 h-3 rounded-full bg-accent animate-bounce" style={{ animationDelay: '300ms' }} />
+            <div className="relative flex flex-col items-center justify-center gap-4 flex-1 min-h-[220px] rounded-lg border border-accent/20 bg-accent/5 overflow-hidden shadow-inner">
+              {referenceImageUrl && (
+                <>
+                  <div className="absolute inset-0 bg-cover bg-center opacity-20 scale-110 blur-xl transition-all duration-500" style={{ backgroundImage: `url(${referenceImageUrl})` }} />
+                  <div className="absolute inset-0 bg-paper/40 backdrop-blur-[2px]" />
+                </>
+              )}
+              <div className="relative z-10 flex flex-col items-center gap-4 w-full p-4">
+                {referenceImageUrl && (
+                   <div className="relative w-16 h-16 rounded-lg shadow-md border border-accent/30 overflow-hidden bg-paper/80 backdrop-blur-sm shrink-0">
+                     <img src={referenceImageUrl} className="w-full h-full object-cover opacity-90" alt="参考图" />
+                     <div className="absolute inset-0 bg-accent/10 animate-pulse" />
+                     <div className="absolute left-0 right-0 h-[2px] bg-accent/60 shadow-[0_0_8px_rgba(var(--color-accent),0.8)]" style={{ animation: 'scan-vertical 2s ease-in-out infinite' }} />
+                   </div>
+                )}
+                <div className="flex flex-col items-center gap-2.5">
+                  <div className="flex gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded-full bg-accent animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <div className="w-2.5 h-2.5 rounded-full bg-accent animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <div className="w-2.5 h-2.5 rounded-full bg-accent animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </div>
+                  <span className="text-sm font-serif text-accent tracking-wide drop-shadow-sm text-center">
+                    {referenceImageUrl ? '正在基于参考图生成...' : '正在绘制藏书票...'}
+                  </span>
+                </div>
               </div>
-              <span className="text-sm font-serif text-accent">正在绘制藏书票...</span>
             </div>
           ) : imageUrl ? (
             <div className={`relative group border border-dashed rounded-lg p-1 shadow-sm ${displayError ? 'border-error/30 bg-error/5' : 'border-paper-grid bg-paper'}`}>
@@ -261,35 +288,56 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
               </div>
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center gap-3 min-h-[160px] text-center">
-              <span className="text-sm text-ink-faint font-sans">等待生成藏书票图片</span>
+            <div className="relative flex flex-col items-center justify-center gap-3 flex-1 min-h-[160px] text-center rounded-lg border border-dashed border-paper-grid bg-paper-grid/30 overflow-hidden transition-colors">
+              {referenceImageUrl && (
+                <>
+                  <div className="absolute inset-0 bg-cover bg-center opacity-10 scale-110 blur-xl grayscale" style={{ backgroundImage: `url(${referenceImageUrl})` }} />
+                  <div className="absolute inset-0 bg-paper/60 backdrop-blur-sm" />
+                </>
+              )}
+              <div className="relative z-10 flex flex-col items-center gap-3 p-4">
+                {referenceImageUrl ? (
+                   <div className="relative w-12 h-12 rounded-md shadow-sm border border-paper-grid overflow-hidden bg-paper opacity-80">
+                     <img src={referenceImageUrl} className="w-full h-full object-cover grayscale opacity-70" alt="参考图" />
+                     {referenceWaiting && (
+                        <div className="absolute inset-0 bg-paper/50 backdrop-blur-[1px] flex items-center justify-center">
+                          <div className="w-4 h-4 border-2 border-ink-faint/70 border-t-transparent rounded-full animate-spin" />
+                        </div>
+                     )}
+                   </div>
+                ) : (
+                   <div className="w-10 h-10 rounded-full bg-paper shadow-sm border border-paper-grid flex items-center justify-center text-ink-faint/60">
+                     <RefreshCw size={16} strokeWidth={1.5} className="opacity-50" />
+                   </div>
+                )}
+                
+                <div className="flex flex-col gap-1.5 items-center">
+                  <span className="text-sm text-ink-light font-medium">等待生成藏书票</span>
+                  {referenceNote && (
+                    <span className="text-[11px] text-ink-faint bg-paper-grid/50 px-2 py-0.5 rounded-full border border-paper-grid/50 shadow-sm">
+                      {referenceNote}
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
-
-
-          {referenceNote && (
-            <div className="flex items-center justify-end gap-1.5 text-xs font-sans">
-              {referenceImageUrl && (
-                <img
-                  src={referenceImageUrl}
-                  alt="参考图"
-                  className="w-4 h-4 rounded-sm object-cover border border-paper-grid shrink-0"
-                  loading="lazy"
-                />
-              )}
-              <span
-                className={`inline-flex items-center gap-1.5 ${
-                  referenceWaiting ? 'text-ink-faint' : 'text-ink-light'
-                }`}
-              >
-                <span
-                  className={`inline-block w-1.5 h-1.5 rounded-full ${
-                    referenceWaiting ? 'bg-amber-500/70' : 'bg-accent/70'
-                  }`}
-                />
+          {referenceNote && imageUrl && !isLoading && !displayError && (
+            <div className="flex items-center justify-end gap-1.5 text-[11px] font-sans pt-1 shrink-0">
+              <span className="text-ink-faint">
                 {referenceNote}
               </span>
+              {referenceImageUrl && (
+                <div className="w-4 h-4 rounded-[3px] border border-paper-grid overflow-hidden shrink-0 shadow-sm">
+                  <img
+                    src={referenceImageUrl}
+                    alt="参考图"
+                    className="w-full h-full object-cover grayscale-[0.3]"
+                    loading="lazy"
+                  />
+                </div>
+              )}
             </div>
           )}
 
