@@ -212,11 +212,21 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
                 </>
               )}
               <div className="relative z-10 flex flex-col items-center gap-4 w-full p-4">
-                {referenceImageUrl && (
+                {referenceImageUrl ? (
                    <div className="relative w-16 h-16 rounded-lg shadow-md border border-accent/30 overflow-hidden bg-paper/80 backdrop-blur-sm shrink-0">
                      <img src={referenceImageUrl} className="w-full h-full object-cover opacity-90" alt="参考图" />
                      <div className="absolute inset-0 bg-accent/10 animate-pulse" />
                      <div className="absolute left-0 right-0 h-[2px] bg-accent/60 shadow-[0_0_8px_rgba(var(--color-accent),0.8)]" style={{ animation: 'scan-vertical 2s ease-in-out infinite' }} />
+                   </div>
+                ) : (
+                   <div className="relative w-16 h-16 rounded-lg shadow-sm border border-accent/20 overflow-hidden bg-accent/10 shrink-0 flex items-center justify-center">
+                     <div className="absolute inset-0 bg-gradient-to-tr from-accent/0 via-accent/10 to-accent/0 animate-[pulse_2s_ease-in-out_infinite]" />
+                     <div className="absolute left-0 right-0 h-[2px] bg-accent/40 shadow-[0_0_8px_rgba(var(--color-accent),0.5)]" style={{ animation: 'scan-vertical 2s ease-in-out infinite' }} />
+                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-accent/60 relative z-10">
+                       <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                       <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                       <polyline points="21 15 16 10 5 21"></polyline>
+                     </svg>
                    </div>
                 )}
                 <div className="flex flex-col items-center gap-2.5">
