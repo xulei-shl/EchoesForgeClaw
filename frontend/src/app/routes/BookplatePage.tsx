@@ -2,6 +2,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   useCanvasState,
   getCanvasEventKey,
+  streamControllers,
+  analysisUploads,
+  nodesRef,
+  edgesRef,
   type CanvasDeleteEvent,
 } from '../../platform/stores/useCanvasState';
 import { useAuth } from '../../platform/stores/authStore';
@@ -243,28 +247,22 @@ const BookplatePage: React.FC = () => {
     return () => window.removeEventListener('storage', onStorage);
   }, [user?.id, invalidateGenerationLink]);
 
-  // ---------- 共享 refs（拖拽 / 执行 / 历史共用，避免闭包过期） ----------
-  const streamControllers = useRef<Map<string, AbortController>>(new Map());
-  const analysisUploads = useRef<Map<string, string>>(new Map());
+  // ---------- 共享 refs（拖拽 / 执行 / 历史共用） ----------
+  // 注意：streamControllers / analysisUploads / nodesRef / edgesRef 为模块级单例（见 useCanvasState），
+  // 不随组件卸载销毁——切页后进行中的生成流继续在后台运行，完成结果直接写入模块级 store 与
+  // sessionStorage；返回画布时由下方挂载自愈识别「仍有活动流的节点」而保持不动。
   const edgeRefs = useRef<Map<string, NodeEdgeHandle>>(new Map());
-  const nodesRef = useRef(nodes);
-  nodesRef.current = nodes;
-  const edgesRef = useRef(edges);
-  edgesRef.current = edges;
 
-  // 卸载（SPA 切页）时中止全部进行中的流：后台流不会随组件卸载自动停止，若放任其完成，
-  // 会在组件已卸载的情况下保存出无法关联到节点的孤儿历史记录（节点状态回写也会丢失）。
-  // 中止后后端经 request.is_disconnected() 停止工作（图像 API 调用前放弃），不会产生残留；
-  // 返回画布时由下方挂载自愈复位节点——autoRun 节点自动重新执行，手动节点提示重试。
-  // 注：整页刷新时浏览器直接销毁页面上下文（fetch 随之终止），无需依赖本 cleanup，此处仅覆盖
-  // SPA 切页的组件卸载路径。ref 恒不被重新赋值，先取出 map 再在 cleanup 中使用（避免 cleanup 内直接读 ref.current）。
+  // 用户切换（登出 / 换账号）时中止上一用户的全部进行中流：后台流若放任其完成，会以新用户的
+  // 登录态保存历史记录并回写新用户的画布，造成跨用户污染。同用户切页往返不中止（首次挂载跳过）。
+  const prevUserId = useRef(user?.id);
   useEffect(() => {
-    const controllers = streamControllers.current;
-    return () => {
-      controllers.forEach((controller) => controller.abort());
-      controllers.clear();
-    };
-  }, []);
+    if (prevUserId.current === user?.id) return;
+    prevUserId.current = user?.id;
+    streamControllers.current.forEach((controller) => controller.abort());
+    streamControllers.current.clear();
+    analysisUploads.current.clear();
+  }, [user?.id]);
 
   /** 更新节点 data（浅合并 patch） */
   const updateNodeData = (id: string, patch: Record<string, any>) => {
@@ -475,6 +473,14 @@ const BookplatePage: React.FC = () => {
     setSelectedImageId((prev) => (prev && idSet.has(prev) ? null : prev));
   };
 
+  const handleRemoveEdge = useCallback(
+    (edgeId: string) => {
+      recordHistory();
+      setEdges((prev) => prev.filter((e) => e.id !== edgeId));
+    },
+    [recordHistory, setEdges]
+  );
+
   const handleRemoveNode = (id: string) => {
     const ids = collectDescendantIds(id);
     if (ids.length > 1) {
@@ -683,14 +689,17 @@ const BookplatePage: React.FC = () => {
       ? registryConfigs.find((c) => c.id === node.configId)
       : undefined;
 
-  // ---------- 自愈：挂载时复位中断残留的「生成中」节点 ----------
-  // 画布状态持久化在 sessionStorage，可能残留上次会话的生成中标记（刷新 / 崩溃 / 页面直关等
-  // 未走卸载清理的路径；切页路径的旧流已由上方卸载清理中止，不会产生孤儿记录）。
-  // 本次挂载的 streamControllers 为全新 ref，任何标记 isGenerating 的节点都不可能存在活动流，
-  // 可安全复位：开启「自动运行」的节点交由下方 autoRun 检查重新执行；其余节点置失败提示由用户重试。
+  // ---------- 自愈：挂载 / 用户切换时复位「残留的生成中」节点 ----------
+  // 画布状态持久化在 sessionStorage，整页刷新 / 崩溃 / 页面直关等路径会残留上次会话的生成中标记。
+  // 切页往返路径的流仍在后台运行（模块级 streamControllers 存活），故以 hasActiveStream 判断：
+  // 仍有活动流的节点是「正在正常生成」，保持不动；无活动流的节点才是残留，安全复位——
+  // 开启「自动运行」的节点交由下方 autoRun 检查重新执行；其余节点置失败提示由用户重试。
+  // 用户切换时（上方 abort effect 先清空流表）对另一用户的快照同样生效。
   useEffect(() => {
-    setNodes((prev) => prev.map((n) => selfHealNode(n, false, true)));
-  }, [setNodes]);
+    setNodes((prev) =>
+      prev.map((n) => selfHealNode(n, streamControllers.current.has(n.id), true))
+    );
+  }, [setNodes, user?.id]);
 
   // ---------- 自动运行（默认关闭，节点运行设置中开启「自动运行」后生效） ----------
   const autoRunTried = useRef<Set<string>>(new Set());
@@ -1086,14 +1095,10 @@ const BookplatePage: React.FC = () => {
     });
     if (!ok) return;
     recordHistory();
+    // 中止全部进行中流并清空模块级执行状态；clearCanvasState 重置 store（节点/连线/尺寸/收藏/公开）
     streamControllers.current.forEach((controller) => controller.abort());
     streamControllers.current.clear();
     clearCanvasState();
-    setFavoritedState({});
-    setPublishedState({});
-    setNodes([]);
-    setEdges([]);
-    setNodeSizes({});
     setSelectedImageId(null);
   };
 
@@ -1278,6 +1283,7 @@ const BookplatePage: React.FC = () => {
                     : (edgeBranchInfo.get(edge.id)?.index ?? 0)
                 }
                 compatible={compatible}
+                onDelete={() => handleRemoveEdge(edge.id)}
               />
             );
           })}

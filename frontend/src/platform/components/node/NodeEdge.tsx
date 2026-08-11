@@ -23,6 +23,8 @@ interface NodeEdgeProps {
   tintIndex?: number;
   /** 端口类型不匹配：false 时整条连线以错误色渲染（红色标注） */
   compatible?: boolean;
+  /** 点击连线中间的删除按钮 */
+  onDelete?: () => void;
 }
 
 /** 分支连线端点色调：序号 0 保持主 accent（与单边视觉一致），后续分支取柔和对比色 */
@@ -53,12 +55,15 @@ const NodeEdge = forwardRef<NodeEdgeHandle, NodeEdgeProps>(function NodeEdge(
     branchCount = 1,
     tintIndex,
     compatible = true,
+    onDelete,
   },
   ref
 ) {
   const svgRef = useRef<SVGSVGElement>(null);
   const basePathRef = useRef<SVGPathElement>(null);
   const flowPathRef = useRef<SVGPathElement>(null);
+  const hitPathRef = useRef<SVGPathElement>(null);
+  const deleteBtnRef = useRef<SVGForeignObjectElement>(null);
 
   // 尺寸在渲染期间恒定（拖拽只改位置），用 ref 供命令式重绘读取
   const sizesRef = useRef({ sourceWidth, sourceHeight, targetWidth, targetHeight });
@@ -110,6 +115,16 @@ const NodeEdge = forwardRef<NodeEdgeHandle, NodeEdgeProps>(function NodeEdge(
     svg.style.transform = `translate(${minX}px, ${minY}px)`;
     basePathRef.current?.setAttribute('d', path);
     flowPathRef.current?.setAttribute('d', path);
+    hitPathRef.current?.setAttribute('d', path);
+
+    // 计算贝塞尔曲线中点（t=0.5）以放置删除按钮
+    const btn = deleteBtnRef.current;
+    if (btn) {
+      const midX = 0.125 * (startX + 3 * cp1X + 3 * cp2X + endX);
+      const midY = 0.125 * (startY + 3 * cp1Y + 3 * cp2Y + endY);
+      btn.setAttribute('x', String(midX));
+      btn.setAttribute('y', String(midY));
+    }
   };
 
   // 每次渲染（props 变化）后应用最新路径
@@ -124,7 +139,8 @@ const NodeEdge = forwardRef<NodeEdgeHandle, NodeEdgeProps>(function NodeEdge(
   return (
     <svg
       ref={svgRef}
-      className="absolute top-0 left-0 pointer-events-none z-0"
+      className="absolute top-0 left-0 pointer-events-none z-0 group"
+      style={{ overflow: 'visible' }}
     >
       <defs>
         <linearGradient id={`grad-${id}`} x1="0%" y1="0%" x2="100%" y2="0%">
@@ -139,6 +155,14 @@ const NodeEdge = forwardRef<NodeEdgeHandle, NodeEdgeProps>(function NodeEdge(
           />
         </linearGradient>
       </defs>
+      {/* Hit target for hover and interactions */}
+      <path
+        ref={hitPathRef}
+        fill="none"
+        stroke="transparent"
+        strokeWidth="24"
+        className="pointer-events-auto cursor-pointer"
+      />
       {/* Base line */}
       <path
         ref={basePathRef}
@@ -156,6 +180,30 @@ const NodeEdge = forwardRef<NodeEdgeHandle, NodeEdgeProps>(function NodeEdge(
         strokeDasharray="5,5"
         className="animate-flow"
       />
+      {/* Delete button (positioned at bezier midpoint) */}
+      {onDelete && (
+        <foreignObject
+          ref={deleteBtnRef}
+          width="1"
+          height="1"
+          style={{ overflow: 'visible', pointerEvents: 'none' }}
+        >
+          <div
+            title="删除连线"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onDelete();
+            }}
+            className="w-6 h-6 bg-paper border border-error text-error rounded-full flex items-center justify-center cursor-pointer pointer-events-auto opacity-0 group-hover:opacity-100 hover:scale-110 hover:bg-error hover:text-white transition-all duration-200 shadow-sm"
+            style={{ marginLeft: '-12px', marginTop: '-12px' }}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-3.5 h-3.5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </div>
+        </foreignObject>
+      )}
     </svg>
   );
 });
