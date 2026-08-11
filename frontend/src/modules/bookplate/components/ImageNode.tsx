@@ -307,8 +307,10 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
               )}
               <div className="relative z-10 flex flex-col items-center gap-3 p-4">
                 {referenceImageUrl ? (
-                   <div className="relative w-12 h-12 rounded-md shadow-sm border border-paper-grid overflow-hidden bg-paper opacity-80">
+                   <div className="relative w-12 h-12 rounded-md shadow-sm border border-paper-grid overflow-hidden bg-paper opacity-90">
                      <img src={referenceImageUrl} className="w-full h-full object-cover grayscale opacity-70" alt="参考图" />
+                     {/* 增加待机微脉冲，表示节点处于活跃排队状态 */}
+                     <div className="absolute inset-0 bg-ink-faint/10 animate-pulse" />
                      {referenceWaiting && (
                         <div className="absolute inset-0 bg-paper/50 backdrop-blur-[1px] flex items-center justify-center">
                           <div className="w-4 h-4 border-2 border-ink-faint/70 border-t-transparent rounded-full animate-spin" />
@@ -316,13 +318,21 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
                      )}
                    </div>
                 ) : (
-                   <div className="w-10 h-10 rounded-full bg-paper shadow-sm border border-paper-grid flex items-center justify-center text-ink-faint/60">
-                     <RefreshCw size={16} strokeWidth={1.5} className="opacity-50" />
+                   <div className="relative w-10 h-10 rounded-full bg-paper shadow-sm border border-paper-grid flex items-center justify-center text-ink-faint/60 overflow-hidden">
+                     <div className="absolute inset-0 bg-ink-faint/5 animate-pulse" />
+                     <RefreshCw size={16} strokeWidth={1.5} className="opacity-50 animate-[spin_4s_linear_infinite]" />
                    </div>
                 )}
                 
                 <div className="flex flex-col gap-1.5 items-center">
-                  <span className="text-sm text-ink-light font-medium">等待生成藏书票</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-ink-light font-medium">等待生成藏书票</span>
+                    <div className="flex gap-1">
+                      <div className="w-1 h-1 rounded-full bg-ink-faint/50 animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <div className="w-1 h-1 rounded-full bg-ink-faint/50 animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <div className="w-1 h-1 rounded-full bg-ink-faint/50 animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </div>
+                  </div>
                   {referenceNote && (
                     <span className="text-[11px] text-ink-faint bg-paper-grid/50 px-2 py-0.5 rounded-full border border-paper-grid/50 shadow-sm">
                       {referenceNote}
