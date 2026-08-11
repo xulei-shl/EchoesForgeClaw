@@ -36,6 +36,8 @@ import { useCanvasHistory } from '../../modules/bookplate/useCanvasHistory';
 import { useGenerationHistory } from '../../modules/bookplate/useGenerationHistory';
 import { useNodeExecution } from '../../modules/bookplate/useNodeExecution';
 import { useChatExecution } from '../../modules/bookplate/useChatExecution';
+import { useManualConnection } from '../../modules/bookplate/useManualConnection';
+import ConnectionGhost from '../../modules/bookplate/ConnectionGhost';
 import { renderCanvasNode, type NodeViewHelpers } from '../../modules/bookplate/CanvasNodeViews';
 import { NodeEdge, type NodeEdgeHandle } from '../../platform/components/node/NodeEdge';
 import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
@@ -316,6 +318,16 @@ const BookplatePage: React.FC = () => {
     edgesRef,
     streamControllers,
     setNodes,
+  });
+
+  // 手动拖线连线：按住节点右侧连接点拖到目标节点左侧连接点创建连线（可撤销、防重、防环）
+  const { connecting, ghostRef, onAnchorPointerDown } = useManualConnection({
+    nodesRef,
+    edgesRef,
+    portTypesRef,
+    setEdges,
+    recordHistory,
+    showToast,
   });
 
   const handleSizeChange = useCallback((id: string, width: number, height: number) => {
@@ -1197,7 +1209,12 @@ const BookplatePage: React.FC = () => {
       <Navbar />
 
       <main className="flex-1 relative flex">
-        <Canvas scale={scale} position={position} onPositionChange={setPosition}>
+        <Canvas
+          scale={scale}
+          position={position}
+          onPositionChange={setPosition}
+          onAnchorPointerDown={onAnchorPointerDown}
+        >
           {edges.map((edge) => {
             const source = nodes.find((n) => n.id === edge.source);
             const target = nodes.find((n) => n.id === edge.target);
@@ -1243,6 +1260,9 @@ const BookplatePage: React.FC = () => {
 
           {nodes.map((node) => renderCanvasNode(node, nodeViewHelpers))}
         </Canvas>
+
+        {/* 手动拖线：待确认的幽灵连线（fixed 覆盖层，命令式跟随指针） */}
+        {connecting && <ConnectionGhost ref={ghostRef} sourceId={connecting} />}
 
         {/* 空画布引导提示 */}
         {nodes.length === 0 && !isLoading && <EmptyCanvasHint />}

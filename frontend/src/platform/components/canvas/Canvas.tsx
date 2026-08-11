@@ -1,14 +1,23 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import { CanvasContext } from './CanvasContext';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 
 interface CanvasProps {
   children: React.ReactNode;
   scale: number;
   position: { x: number; y: number };
   onPositionChange: (position: { x: number; y: number }) => void;
+  /** 节点输出锚点按下（手动拖线连线起点），经 context 透传给各节点 */
+  onAnchorPointerDown?: (nodeId: string, e: ReactPointerEvent) => void;
 }
 
-export const Canvas: React.FC<CanvasProps> = ({ children, scale, position, onPositionChange }) => {
+export const Canvas: React.FC<CanvasProps> = ({
+  children,
+  scale,
+  position,
+  onPositionChange,
+  onAnchorPointerDown,
+}) => {
   const isDragging = useRef(false);
   const lastMousePos = useRef({ x: 0, y: 0 });
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -85,7 +94,7 @@ export const Canvas: React.FC<CanvasProps> = ({ children, scale, position, onPos
   }, [handleMouseUp]);
 
   return (
-    <CanvasContext.Provider value={{ scale }}>
+    <CanvasContext.Provider value={{ scale, onAnchorPointerDown }}>
       <div
         ref={wrapperRef}
         className="w-full h-[calc(100vh-64px)] overflow-hidden bg-paper relative flex-1 cursor-grab active:cursor-grabbing"

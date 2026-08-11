@@ -68,7 +68,7 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
   dotColor,
 }) => {
   const rootRef = useRef<HTMLDivElement>(null);
-  const { scale } = useCanvas();
+  const { scale, onAnchorPointerDown } = useCanvas();
 
   const [zIndex, setZIndex] = useState(() => globalZIndex++);
 
@@ -239,6 +239,7 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
     <div
       ref={rootRef}
       id={id}
+      data-node-id={id}
       className={`absolute bg-node-bg border-dashed-grid border rounded-md shadow-sm flex flex-col pointer-events-auto ${className}`}
       style={{
         zIndex,
@@ -266,12 +267,31 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
         endDrag();
       }}
     >
-      {/* 左右连接点 */}
+      {/* 左右连接点（输出/输入端口） */}
       {showLeftAnchor && (
-        <div className="absolute top-1/2 -left-[6px] w-3 h-3 bg-paper border-[1.5px] border-accent rounded-full -translate-y-1/2 z-30 shadow-sm" />
+        <div
+          data-anchor-input={id}
+          title="拖拽连线到此：作为本节点的上级输入"
+          className="absolute top-1/2 -left-[10px] w-5 h-5 -translate-y-1/2 z-30 flex items-center justify-center rounded-full cursor-crosshair group/anchor"
+          style={{ touchAction: 'none' }}
+        >
+          <div className="w-3 h-3 bg-paper border-[1.5px] border-accent rounded-full shadow-sm transition-transform duration-150 group-hover/anchor:scale-125" />
+        </div>
       )}
       {showRightAnchor && (
-        <div className="absolute top-1/2 -right-[6px] w-3 h-3 bg-paper border-[1.5px] border-accent rounded-full -translate-y-1/2 z-30 shadow-sm" />
+        <div
+          data-anchor-output={id}
+          title="按住拖拽到目标节点的左侧连接点创建连线"
+          className="absolute top-1/2 -right-[10px] w-5 h-5 -translate-y-1/2 z-30 flex items-center justify-center rounded-full cursor-crosshair group/anchor"
+          style={{ touchAction: 'none' }}
+          onPointerDown={(e) => {
+            if (e.button !== 0) return;
+            e.stopPropagation(); // 防止触发节点拖动 / 画布平移
+            onAnchorPointerDown?.(id, e);
+          }}
+        >
+          <div className="w-3 h-3 bg-paper border-[1.5px] border-accent rounded-full shadow-sm transition-transform duration-150 group-hover/anchor:scale-125" />
+        </div>
       )}
 
       {/* 根层级覆盖层，如光束动效 */}
