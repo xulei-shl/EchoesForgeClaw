@@ -167,8 +167,8 @@ export function useManualConnection(ctx: ManualConnectionContext): ManualConnect
   const handlePointerUp = useCallback(
     (e: PointerEvent) => {
       const sourceId = sourceIdRef.current;
-      teardownRef.current();
       if (sourceId) finishConnection(e.clientX, e.clientY);
+      teardownRef.current();
     },
     [finishConnection]
   );
