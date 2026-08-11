@@ -52,10 +52,11 @@ const ConnectionGhost = forwardRef<ConnectionGhostHandle, ConnectionGhostProps>(
       
       if (flowPath) {
         flowPath.setAttribute('d', d);
+        flowPath.style.display = 'block'; // Always show the flow line for dynamic feedback
+        
         if (compatible === undefined) {
-          flowPath.style.display = 'none';
+          flowPath.setAttribute('stroke', 'url(#ghost-grad-default)');
         } else {
-          flowPath.style.display = 'block';
           flowPath.setAttribute(
             'stroke',
             compatible ? 'url(#ghost-grad-compat)' : 'url(#ghost-grad-err)'
@@ -75,12 +76,16 @@ const ConnectionGhost = forwardRef<ConnectionGhostHandle, ConnectionGhostProps>(
       <svg className="fixed inset-0 pointer-events-none" style={{ zIndex: 9999 }}>
         <defs>
           <linearGradient id="ghost-grad-compat" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="var(--color-paper-grid, #E4E1DA)" />
+            <stop offset="0%" stopColor="var(--color-paper-grid, #E4E1DA)" stopOpacity="0.5" />
             <stop offset="100%" stopColor="var(--color-accent, #A0622B)" />
           </linearGradient>
           <linearGradient id="ghost-grad-err" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="var(--color-paper-grid, #E4E1DA)" />
+            <stop offset="0%" stopColor="var(--color-paper-grid, #E4E1DA)" stopOpacity="0.5" />
             <stop offset="100%" stopColor="var(--color-error, #C0392B)" />
+          </linearGradient>
+          <linearGradient id="ghost-grad-default" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="var(--color-paper-grid, #E4E1DA)" stopOpacity="0.2" />
+            <stop offset="100%" stopColor="var(--color-text-secondary, #737373)" stopOpacity="0.8" />
           </linearGradient>
         </defs>
         <path

@@ -39,6 +39,7 @@ export function useManualConnection(ctx: ManualConnectionContext): ManualConnect
   // 只取每帧最新坐标重绘一次幽灵线（与 CanvasNode/NodeEdge 的 rAF 模式一致）
   const moveRafRef = useRef<number | null>(null);
   const lastMoveRef = useRef<{ clientX: number; clientY: number }>({ clientX: 0, clientY: 0 });
+  const pointerDownInfoRef = useRef<{ x: number; y: number; time: number } | null>(null);
 
   /** 新增 source→target 是否会在现有图中成环（target 沿出边可达 source） */
   const wouldCreateCycle = useCallback(
@@ -167,10 +168,26 @@ export function useManualConnection(ctx: ManualConnectionContext): ManualConnect
   const handlePointerUp = useCallback(
     (e: PointerEvent) => {
       const sourceId = sourceIdRef.current;
-      if (sourceId) finishConnection(e.clientX, e.clientY);
+      if (sourceId) {
+        const downInfo = pointerDownInfoRef.current;
+        if (downInfo) {
+          const dx = e.clientX - downInfo.x;
+          const dy = e.clientY - downInfo.y;
+          const distSq = dx * dx + dy * dy;
+          const timeDelta = Date.now() - downInfo.time;
+          
+          // If it's a quick click on the source (no target or same as source), enter sticky mode
+          const targetId = hitTargetId(e.clientX, e.clientY);
+          if ((!targetId || targetId === sourceId) && timeDelta < 300 && distSq < 25) {
+            pointerDownInfoRef.current = null; // Clear to prevent sticky mode on subsequent clicks
+            return;
+          }
+        }
+        finishConnection(e.clientX, e.clientY);
+      }
       teardownRef.current();
     },
-    [finishConnection]
+    [finishConnection, hitTargetId]
   );
 
   const handlePointerCancel = useCallback(() => {
@@ -187,9 +204,15 @@ export function useManualConnection(ctx: ManualConnectionContext): ManualConnect
   const onAnchorPointerDown = useCallback(
     (nodeId: string, e: ReactPointerEvent) => {
       if (e.button !== 0) return;
-      if (sourceIdRef.current) return; // 拖线已在进行中，忽略重复按下
+      if (sourceIdRef.current) {
+        // Sticky mode: clicked another anchor while connecting
+        finishConnection(e.clientX, e.clientY);
+        teardownRef.current();
+        return;
+      }
       e.preventDefault(); // 阻止原生拖拽 / 文本选择
       sourceIdRef.current = nodeId;
+      pointerDownInfoRef.current = { x: e.clientX, y: e.clientY, time: Date.now() };
       ghostRef.current?.setEnd(e.clientX, e.clientY);
       document.body.classList.add('is-connecting');
       setConnecting(nodeId);
