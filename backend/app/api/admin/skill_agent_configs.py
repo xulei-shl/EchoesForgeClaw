@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
@@ -12,6 +14,7 @@ from app.schemas.admin import (
     SkillAgentConfigUpdate,
     SkillAgentConfigOut,
 )
+from app.services.skill_agent_service import write_agent_md
 
 router = APIRouter(prefix="/admin/skill-agent-configs", tags=["admin-skill-agent-configs"])
 
@@ -37,6 +40,23 @@ def _to_out(cfg: SkillAgentConfig) -> SkillAgentConfigOut:
         created_at=cfg.created_at,
         updated_at=cfg.updated_at,
     )
+
+
+def _effective_prompt_content(cfg: SkillAgentConfig) -> str:
+    """最终生效的提示词内容：引用模板优先，回退旧字段（存量配置兼容）。
+
+    与 router._skill_agent_config_from 的口径一致：admin 保存即按此物化 AGENTS.md，
+    保证文件与 DB 在运行时读取时完全一致。
+    """
+    if cfg.prompt and cfg.prompt.is_active:
+        return cfg.prompt.content or ""
+    return cfg.system_prompt or ""
+
+
+def _sync_agent_md(cfg: SkillAgentConfig) -> None:
+    """按最终生效的提示词内容物化/删除 AGENTS.md（配置保存/复制/删除后调用）。"""
+    path = write_agent_md(cfg.id, _effective_prompt_content(cfg))
+    logger.info("AGENTS.md 同步完成: agent_id=%s exists=%s", cfg.id, bool(path))
 
 
 def _require_llm_config(db: Session, llm_config_id) -> None:
@@ -81,6 +101,7 @@ def create_skill_agent_config(
     db.add(cfg)
     db.commit()
     db.refresh(cfg)
+    _sync_agent_md(cfg)
     return _to_out(cfg)
 
 
@@ -103,6 +124,7 @@ def duplicate_skill_agent_config(
     db.add(new_cfg)
     db.commit()
     db.refresh(new_cfg)
+    _sync_agent_md(new_cfg)
     return _to_out(new_cfg)
 
 
@@ -125,6 +147,7 @@ def update_skill_agent_config(
     db.add(cfg)
     db.commit()
     db.refresh(cfg)
+    _sync_agent_md(cfg)
     return _to_out(cfg)
 
 
@@ -142,6 +165,8 @@ def delete_skill_agent_config(
 
     for nc in db.query(NodeConfig).filter(NodeConfig.skill_agent_config_id == cfg.id).all():
         nc.skill_agent_config_id = None
+    # 配置已删除：其 AGENTS.md 一并清理（write_agent_md 空内容 = 删除文件）
+    write_agent_md(cfg.id, "")
     db.delete(cfg)
     db.commit()
     return {"message": "Skill Agent 配置已删除"}

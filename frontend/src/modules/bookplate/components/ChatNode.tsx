@@ -1,6 +1,6 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, Eraser, ImagePlus, Link2, MessageSquare, Send, Copy, Check, Loader2, Square, RefreshCw, ChevronUp, ChevronDown, Lock, X, FileText, Download } from 'lucide-react';
+import { AlertTriangle, Eraser, ImagePlus, Link2, MessageSquare, Send, Copy, Check, Loader2, Square, RefreshCw, ChevronUp, ChevronDown, Lock, X, FileText, Download, Brain } from 'lucide-react';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
 import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
@@ -133,6 +133,64 @@ const SkillFileCard: React.FC<{ file: AgentFile }> = memo(({ file }) => {
   );
 });
 SkillFileCard.displayName = 'SkillFileCard';
+
+/** 模型思考过程（reasoning）折叠块：弱化样式、默认收起，点击展开。
+ *
+ * 交互时序：
+ * - 思考阶段（仅 reasoning、尚无正文）自动展开，实时可见思考过程；
+ * - 正文开始输出（hasContent 由 false -> true）时自动平滑收起——思考已完成，
+ *   让注意力回到回答上；此自动收起只触发一次，之后用户的手动展开/收起不受影响。
+ * - 挂载时已有正文（非流式历史消息）默认收起。
+ */
+const ReasoningBlock: React.FC<{
+  text: string;
+  streaming: boolean;
+  hasContent: boolean;
+}> = memo(({ text, streaming, hasContent }) => {
+  const [open, setOpen] = useState(streaming && !hasContent);
+  // 记录是否已见过正文：正文首次出现时自动收起（仅一次）
+  const sawContentRef = useRef(hasContent);
+  useEffect(() => {
+    if (hasContent && !sawContentRef.current) {
+      sawContentRef.current = true;
+      setOpen(false);
+    }
+  }, [hasContent]);
+  return (
+    <div className="w-full mb-1 rounded-lg border border-dashed border-paper-grid/80 bg-paper-grid/15 overflow-hidden msg-enter-anim">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-1.5 px-2 py-1 text-[10px] text-ink-faint hover:text-ink-light font-sans transition-colors"
+        title={open ? '收起思考过程' : '展开思考过程'}
+      >
+        <Brain size={11} strokeWidth={1.75} className={open ? 'text-accent' : 'shrink-0'} />
+        <span className={open ? 'text-ink-light' : ''}>思考过程</span>
+        <span className="ml-auto flex items-center gap-1">
+          {streaming && <Loader2 size={10} className="animate-spin text-ink-faint" />}
+          {open ? (
+            <ChevronUp size={11} strokeWidth={2} />
+          ) : (
+            <ChevronDown size={11} strokeWidth={2} />
+          )}
+        </span>
+      </button>
+      {/* grid-rows 0fr/1fr 过渡：折叠/展开平滑动画（无需固定高度） */}
+      <div
+        className={`grid transition-[grid-template-rows] duration-300 ease-out ${
+          open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+        }`}
+      >
+        <div className="overflow-hidden">
+          <pre className="text-[11px] text-ink-light font-sans whitespace-pre-wrap leading-relaxed px-2.5 pb-2 max-h-44 overflow-y-auto custom-scrollbar border-t border-dashed border-paper-grid/50">
+            {text}
+          </pre>
+        </div>
+      </div>
+    </div>
+  );
+});
+ReasoningBlock.displayName = 'ReasoningBlock';
 
 const STYLE_INJECTIONS = `
 @keyframes msg-enter {
@@ -437,7 +495,9 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
         </div>
       );
     }
-    const isThinking = msg.streaming && !msg.content;
+    // 思考占位：仅当流式且正文/思考都还没有内容时显示「思考中...」；
+    // 思考一旦开始产出（reasoning 独立字段），改由 ReasoningBlock 折叠块展示
+    const isThinking = msg.streaming && !msg.content && !msg.reasoning;
 
     return (
       <div key={idx} className="flex flex-col items-start gap-1 relative group msg-enter-anim">
@@ -449,6 +509,14 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
               running={!!msg.streaming}
             />
           </div>
+        )}
+        {/* 模型思考过程（reasoning）：与回答正文分离的折叠块；正文开始输出后自动收起 */}
+        {msg.reasoning && (
+          <ReasoningBlock
+            text={msg.reasoning}
+            streaming={!!msg.streaming}
+            hasContent={!!msg.content}
+          />
         )}
         <div className="flex items-end w-full min-w-0">
           <div className={`max-w-[92%] px-3 py-2 rounded-2xl rounded-bl-sm bg-paper-grid/25 border border-paper-grid/60 text-[13px] leading-relaxed font-sans min-w-0 ${isThinking ? 'flex items-center gap-1.5 text-ink-faint' : ''}`}>

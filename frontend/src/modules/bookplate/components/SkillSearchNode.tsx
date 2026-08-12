@@ -1,8 +1,8 @@
-import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Archive,
-  ChevronLeft,
+  Check,
   FolderTree,
   Loader2,
   Search,
@@ -23,13 +23,9 @@ export interface SkillSearchNodeProps {
   initialX?: number;
   initialY?: number;
   title?: string;
-  /** 已选 skill 名称（null = 未选择） */
-  skillName?: string | null;
-  skillDescription?: string;
-  /** 已选 skill 的文件树（相对路径列表） */
-  skillFiles?: string[];
-  skillBody?: string;
-  onUpdateSkill?: (id: string, selection: SkillSelection) => void;
+  /** 已选 skill 集合（受控：整块替换，支持多选） */
+  selections?: SkillSelection[];
+  onUpdateSkills?: (id: string, selections: SkillSelection[]) => void;
   onRemove?: () => void;
   onPositionChange?: (id: string, x: number, y: number) => void;
   onSizeChange?: (id: string, width: number, height: number) => void;
@@ -46,11 +42,8 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
   initialX,
   initialY,
   title,
-  skillName = null,
-  skillDescription = '',
-  skillFiles = [],
-  skillBody = '',
-  onUpdateSkill,
+  selections = [],
+  onUpdateSkills,
   onRemove,
   onPositionChange,
   onSizeChange,
@@ -69,6 +62,9 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
   const [uploadError, setUploadError] = useState('');
   const requestSeq = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  /** 已选 skill 名称集合（按 name 判等去重） */
+  const selectedNames = useMemo(() => new Set(selections.map((s) => s.name)), [selections]);
 
   const loadSkills = useCallback(async (keyword?: string) => {
     const seq = ++requestSeq.current;
@@ -105,6 +101,18 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
     setPickerOpen(false);
   }, []);
 
+  /** 切换某个 skill 的选择状态（已在集合中则移除，否则追加）。不触发安装/卸载。 */
+  const toggleSelection = useCallback(
+    (sel: SkillSelection) => {
+      const exists = selections.some((s) => s.name === sel.name);
+      const next = exists
+        ? selections.filter((s) => s.name !== sel.name)
+        : [...selections, sel];
+      onUpdateSkills?.(id, next);
+    },
+    [id, selections, onUpdateSkills]
+  );
+
   // 搜索防抖：输入停止 350ms 后重新加载
   useEffect(() => {
     if (!pickerOpen) return;
@@ -114,15 +122,20 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
     return () => window.clearTimeout(t);
   }, [pickerOpen, q, loadSkills]);
 
-  /** 从 Bifrost 安装并选用 */
+  /** 从 Bifrost 安装；成功后加入选择集（不关闭 picker，支持多选）。
+   *  已选中的条目再次点击 = 取消选择：仅从选择集移除，不重复安装、不卸载工作区 skill。 */
   const handleInstallBifrost = async (s: BifrostSkill) => {
     setUploadError('');
     setError('');
+    if (selectedNames.has(s.name)) {
+      toggleSelection({ name: s.name, source: 'bifrost' });
+      return;
+    }
     try {
       const meta: InstalledSkill = await api.post('/modules/bookplate/skills/install', {
         name: s.name,
       });
-      onUpdateSkill?.(id, {
+      toggleSelection({
         name: meta.name,
         description: meta.description,
         body: meta.body,
@@ -130,7 +143,6 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
         files: meta.files,
         source: 'bifrost',
       });
-      closePicker();
     } catch (e: any) {
       setError(e?.message || '安装失败，请重试');
     }
@@ -155,15 +167,20 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
       const meta: InstalledSkill = await api.post('/modules/bookplate/skills/upload', form, {
         timeout: 60000,
       });
-      onUpdateSkill?.(id, {
+      const sel: SkillSelection = {
         name: meta.name,
         description: meta.description,
         body: meta.body,
         path: meta.path,
         files: meta.files,
         source: 'upload',
-      });
-      closePicker();
+      };
+      // 已选同名 skill：视为「更新版本」，原位替换数据而非取消选择；未选则追加
+      const exists = selections.some((s) => s.name === sel.name);
+      onUpdateSkills?.(
+        id,
+        exists ? selections.map((s) => (s.name === sel.name ? sel : s)) : [...selections, sel]
+      );
     } catch (e: any) {
       // 校验失败原因（缺 SKILL.md / 缺 name / description）直接展示给用户
       setUploadError(e?.detail || e?.message || '上传失败，请重试');
@@ -179,14 +196,14 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
     void handleUploadZip(files[0]);
   };
 
-  const actionBar = skillName ? (
+  const actionBar = selections.length > 0 ? (
     <NodeActionBar>
       <NodeActionBar.Edit onClick={openPicker} hasDownstream={hasDownstream} />
     </NodeActionBar>
   ) : undefined;
 
   const renderBifrostList = () => (
-    <div className="space-y-1.5 max-h-[48vh] overflow-y-auto custom-scrollbar -mx-2 px-2">
+    <div className="space-y-1.5 max-h-[44vh] overflow-y-auto custom-scrollbar -mx-2 px-2">
       {loading && (
         <div className="py-10 flex items-center justify-center gap-2 text-sm text-ink-light font-sans">
           <Loader2 className="w-4 h-4 animate-spin text-accent" strokeWidth={1.5} />
@@ -211,39 +228,89 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
       )}
       {!loading &&
         !error &&
-        skills.map((s) => (
-          <div
-            key={s.id}
-            className="flex items-start gap-3 p-2.5 rounded-md border border-transparent hover:border-paper-grid hover:bg-paper-grid/30 transition cursor-pointer active:scale-[0.99]"
-            onClick={() => void handleInstallBifrost(s)}
-          >
-            <div className="w-9 h-9 shrink-0 rounded bg-paper border border-paper-grid flex items-center justify-center">
-              <Archive size={16} strokeWidth={1.5} className="text-ink-light" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <p className="text-sm font-medium text-ink truncate">{s.name}</p>
-                {s.latest_version && (
-                  <span className="shrink-0 text-[10px] text-ink-faint font-mono">v{s.latest_version}</span>
-                )}
-                {typeof s.file_count === 'number' && (
-                  <span className="shrink-0 text-[10px] text-ink-faint border border-dashed border-paper-grid rounded-pill px-1.5 py-px font-mono">
-                    {s.file_count} 文件
-                  </span>
+        skills.map((s) => {
+          const isSelected = selectedNames.has(s.name);
+          return (
+            <div
+              key={s.id}
+              className={`flex items-start gap-3 p-2.5 rounded-md border transition cursor-pointer active:scale-[0.99] ${
+                isSelected
+                  ? 'border-accent/50 bg-accent-surface/60'
+                  : 'border-transparent hover:border-paper-grid hover:bg-paper-grid/30'
+              }`}
+              onClick={() => void handleInstallBifrost(s)}
+            >
+              <div className="w-9 h-9 shrink-0 rounded bg-paper border border-paper-grid flex items-center justify-center">
+                <Archive size={16} strokeWidth={1.5} className="text-ink-light" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-ink truncate">{s.name}</p>
+                  {s.latest_version && (
+                    <span className="shrink-0 text-[10px] text-ink-faint font-mono">v{s.latest_version}</span>
+                  )}
+                  {typeof s.file_count === 'number' && (
+                    <span className="shrink-0 text-[10px] text-ink-faint border border-dashed border-paper-grid rounded-pill px-1.5 py-px font-mono">
+                      {s.file_count} 文件
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-ink-light line-clamp-2 leading-relaxed mt-1">{s.description || '（无描述）'}</p>
+                {s.compatibility && (
+                  <p className="text-[10px] text-ink-faint font-mono mt-1">兼容: {s.compatibility}</p>
                 )}
               </div>
-              <p className="text-xs text-ink-light line-clamp-2 leading-relaxed mt-1">{s.description || '（无描述）'}</p>
-              {s.compatibility && (
-                <p className="text-[10px] text-ink-faint font-mono mt-1">兼容: {s.compatibility}</p>
-              )}
+              <span
+                className={`shrink-0 self-center text-[10px] rounded-pill px-2 py-1 border flex items-center gap-1 ${
+                  isSelected
+                    ? 'text-accent border-accent/40 bg-accent-surface'
+                    : 'text-accent border-dashed border-accent/30'
+                }`}
+              >
+                {isSelected ? (
+                  <>
+                    <Check size={11} strokeWidth={2.5} />
+                    已选
+                  </>
+                ) : (
+                  '安装'
+                )}
+              </span>
             </div>
-            <span className="shrink-0 self-center text-[10px] text-accent border border-dashed border-accent/30 rounded-pill px-2 py-1">
-              安装
-            </span>
-          </div>
-        ))}
+          );
+        })}
     </div>
   );
+
+  /** 已选 skill 的 chip 列表（可单独移除） */
+  const renderSelectedChips = () => {
+    if (selections.length === 0) return null;
+    return (
+      <div className="flex flex-wrap gap-1.5">
+        {selections.map((s) => (
+          <span
+            key={s.name}
+            className="inline-flex items-center gap-1.5 text-[11px] text-accent bg-accent-surface border border-accent/40 rounded-pill pl-2 pr-1 py-1 font-mono"
+          >
+            {s.source === 'upload' ? (
+              <Upload size={10} strokeWidth={2} />
+            ) : (
+              <Archive size={10} strokeWidth={2} />
+            )}
+            {s.name}
+            <button
+              type="button"
+              aria-label={`移除 ${s.name}`}
+              className="p-0.5 rounded-full hover:bg-accent/10 text-accent/70 hover:text-accent transition"
+              onClick={() => toggleSelection(s)}
+            >
+              <X size={11} strokeWidth={2.5} />
+            </button>
+          </span>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <>
@@ -265,7 +332,7 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
         showLeftAnchor
         showRightAnchor
       >
-        {!skillName ? (
+        {selections.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center">
             <div className="w-14 h-14 rounded-full bg-paper border border-dashed border-paper-grid flex items-center justify-center">
               <Archive size={22} strokeWidth={1.5} className="text-ink-faint" />
@@ -285,34 +352,52 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
                 <Archive size={15} strokeWidth={1.5} className="text-accent" />
               </div>
               <div className="min-w-0">
-                <p className="font-serif text-sm font-semibold text-ink truncate">{skillName}</p>
-                {skillDescription && (
-                  <p className="text-xs text-ink-light line-clamp-1">{skillDescription}</p>
-                )}
+                <p className="font-serif text-sm font-semibold text-ink truncate">
+                  已选 {selections.length} 个 skill
+                </p>
+                <p className="text-xs text-ink-light truncate">
+                  {selections.map((s) => s.name).join('、')}
+                </p>
               </div>
             </div>
-            {skillBody && (
-              <div className="flex-1 min-h-0 overflow-y-auto pr-1.5 custom-scrollbar">
-                <pre className="text-xs text-ink-light font-sans whitespace-pre-wrap leading-relaxed bg-paper border border-paper-grid rounded-md p-3">
-                  {skillBody}
-                </pre>
-              </div>
-            )}
-            {skillFiles.length > 0 && (
-              <div className="shrink-0 max-h-36 overflow-y-auto pr-1.5 custom-scrollbar">
-                <p className="text-[10px] text-ink-faint font-sans flex items-center gap-1 mb-1">
-                  <FolderTree size={10} strokeWidth={1.5} />
-                  文件结构（{skillFiles.length}）
-                </p>
-                <div className="space-y-0.5">
-                  {skillFiles.map((f) => (
-                    <p key={f} className="text-[11px] text-ink-light font-mono truncate pl-2 border-l border-dashed border-paper-grid/60">
-                      {f}
-                    </p>
-                  ))}
+            <div className="flex-1 min-h-0 overflow-y-auto pr-1.5 custom-scrollbar space-y-2.5">
+              {selections.map((s) => (
+                <div key={s.name} className="rounded-md border border-paper-grid bg-paper/40 p-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-accent border border-dashed border-accent/30 rounded-pill px-1.5 py-px font-mono shrink-0">
+                      {s.source === 'upload' ? '上传' : 'Bifrost'}
+                    </span>
+                    <p className="text-xs font-medium text-ink truncate">{s.name}</p>
+                  </div>
+                  {s.description && (
+                    <p className="text-[11px] text-ink-light line-clamp-1 mt-1">{s.description}</p>
+                  )}
+                  {s.body && (
+                    <pre className="text-[11px] text-ink-light font-sans whitespace-pre-wrap leading-relaxed mt-1.5 max-h-24 overflow-y-auto custom-scrollbar">
+                      {s.body}
+                    </pre>
+                  )}
+                  {Array.isArray(s.files) && s.files.length > 0 && (
+                    <div className="mt-1.5">
+                      <p className="text-[10px] text-ink-faint font-sans flex items-center gap-1">
+                        <FolderTree size={10} strokeWidth={1.5} />
+                        文件结构（{s.files.length}）
+                      </p>
+                      <div className="space-y-0.5 mt-0.5">
+                        {s.files.slice(0, 20).map((f) => (
+                          <p key={f} className="text-[10px] text-ink-light font-mono truncate pl-2 border-l border-dashed border-paper-grid/60">
+                            {f}
+                          </p>
+                        ))}
+                        {s.files.length > 20 && (
+                          <p className="text-[10px] text-ink-faint font-mono pl-2">…共 {s.files.length} 个文件</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
+              ))}
+            </div>
           </div>
         )}
       </CanvasNode>
@@ -358,6 +443,9 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
                 )}
               </div>
 
+              {/* 已选列表（可移除） */}
+              {renderSelectedChips()}
+
               {/* Bifrost 检索 */}
               <div className="relative">
                 <Search
@@ -368,16 +456,21 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
                 <Input
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
-                  placeholder="搜索 Bifrost Skills 仓库…（点击条目即安装）"
+                  placeholder="搜索 Bifrost Skills 仓库…（点击条目切换选择）"
                   className="pl-9"
                   autoFocus
                 />
               </div>
               {renderBifrostList()}
-              <div className="flex justify-end pt-2 border-t border-dashed border-paper-grid">
+              <div className="flex items-center justify-between pt-2 border-t border-dashed border-paper-grid">
+                <p className="text-[11px] text-ink-faint font-sans">
+                  {selections.length > 0
+                    ? `已选择 ${selections.length} 个 skill`
+                    : '尚未选择 skill'}
+                </p>
                 <Button variant="ghost" size="sm" onClick={closePicker}>
-                  <ChevronLeft size={14} strokeWidth={1.5} className="mr-1" />
-                  关闭
+                  <Check size={14} strokeWidth={2} className="mr-1" />
+                  完成
                 </Button>
               </div>
             </div>

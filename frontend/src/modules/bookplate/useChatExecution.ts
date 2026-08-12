@@ -7,7 +7,7 @@ import { toWireChatMessages, type EdgeData, type NodeData } from './graphTypes';
 import { handleAgentSseMessage } from './agentSteps';
 import { makeIdleTimeout } from './idleTimeout';
 import { urlToDataUrl } from './imageUpload';
-import type { AgentFile, ChatMessage, ChatNodeSettings } from '../../platform/types';
+import type { AgentFile, ChatMessage, ChatNodeSettings, SkillSelection } from '../../platform/types';
 
 // AI 对话单轮携带的图片上限（附件 + 上下文图片合计）：防止超大 base64 请求体拖垮传输
 const MAX_CHAT_IMAGES = 4;
@@ -115,17 +115,23 @@ export function useChatExecution(ctx: ChatExecutionContext): ChatExecution {
     );
 
   /** 收集连线上游「Skill 检索」节点选中的 skill 名（Skill Agent 模式按需加载；空 = 全部已装 skill）。
+   *  读取节点的 skillSelections 数组（多选），跨节点幂等去重；旧单数字段节点默认为空。
    *  Skill Agent 的多轮历史由后端 messages 驱动，skills 每轮随请求重传（上游引用稳定，天然幂等）。 */
   const collectSkillNames = (node: NodeData): string[] => {
     const names: string[] = [];
     for (const p of ctx.nodesRef.current) {
       if (
         p.type === 'skill_search' &&
-        ctx.edgesRef.current.some((e) => e.target === node.id && e.source === p.id) &&
-        typeof p.data?.skillName === 'string' &&
-        p.data.skillName
+        ctx.edgesRef.current.some((e) => e.target === node.id && e.source === p.id)
       ) {
-        if (!names.includes(p.data.skillName)) names.push(p.data.skillName);
+        const selections: SkillSelection[] = Array.isArray(p.data?.skillSelections)
+          ? p.data.skillSelections
+          : [];
+        for (const s of selections) {
+          if (s && typeof s.name === 'string' && s.name && !names.includes(s.name)) {
+            names.push(s.name);
+          }
+        }
       }
     }
     return names;
@@ -162,6 +168,12 @@ export function useChatExecution(ctx: ChatExecutionContext): ChatExecution {
   ) => {
     // 防抖：该节点已有进行中的流时直接忽略（preAcquired 时跳过——首轮已预注册占位）
     if (streamControllers.current.has(node.id) && !preAcquired) return;
+    // 节点工作区标识：首轮生成（{node_id}_{timestamp}）并持久化到 node.data.workspaceId，
+    // 同节点多轮复用同一工作区（Skill Agent 产物/文件跨轮保留）；清空对话时由清空逻辑重置
+    const workspaceId =
+      typeof node.data?.workspaceId === 'string' && node.data.workspaceId
+        ? node.data.workspaceId
+        : `${node.id}_${Date.now()}`;
     const pendingMsg: ChatMessage = { role: 'assistant', content: '', streaming: true };
     // 乐观更新：追加 user 消息 + assistant 流式占位
     ctx.setNodes((prev) =>
@@ -175,6 +187,7 @@ export function useChatExecution(ctx: ChatExecutionContext): ChatExecution {
                 isGenerating: true,
                 error: null,
                 agentSteps: [],
+                workspaceId,
               },
             }
           : n
@@ -207,6 +220,8 @@ export function useChatExecution(ctx: ChatExecutionContext): ChatExecution {
         node_id: node.id,
         epoch: node.data?.epoch ?? 0,
         skills: collectSkillNames(node),
+        // Skill Agent 模式：节点工作区标识（后端据此装配软链 skill / AGENTS.md）
+        workspace_id: workspaceId,
       },
       signal: controller.signal,
       onMessage: (event, data) => {
@@ -229,6 +244,21 @@ export function useChatExecution(ctx: ChatExecutionContext): ChatExecution {
               const last = msgs[msgs.length - 1];
               if (!last || last.role !== 'assistant') return n;
               msgs[msgs.length - 1] = { ...last, content: last.content + data };
+              return { ...n, data: { ...n.data, messages: msgs } };
+            })
+          );
+          return;
+        }
+        if (event === 'reasoning') {
+          // 思考过程增量：累积到该轮 assistant 消息的独立字段（不并入 content，
+          // 不随多轮历史回传，仅 UI 折叠展示）；模型无思考时后端不产出该事件
+          ctx.setNodes((prev) =>
+            prev.map((n) => {
+              if (n.id !== node.id) return n;
+              const msgs = Array.isArray(n.data.messages) ? [...n.data.messages] : [];
+              const last = msgs[msgs.length - 1];
+              if (!last || last.role !== 'assistant') return n;
+              msgs[msgs.length - 1] = { ...last, reasoning: (last.reasoning ?? '') + data };
               return { ...n, data: { ...n.data, messages: msgs } };
             })
           );

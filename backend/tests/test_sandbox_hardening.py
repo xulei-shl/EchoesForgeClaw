@@ -15,9 +15,11 @@ import shutil
 import zipfile
 
 from app.services.skill_agent_service import (
+    RUNTIME_ROOT,
     SandboxedShellExecutor,
-    install_skill_zip,
-    workspace_root,
+    _POSIX_LIMITS_AVAILABLE,
+    install_user_skill_zip,
+    prepare_runtime_workspace,
 )
 
 USER = 99993
@@ -38,15 +40,23 @@ def make_zip(name, desc, extra_files=None):
 
 
 def run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    # Python 3.12+ 的 get_event_loop 在主线程无运行中 loop 时抛 RuntimeError，
+    # 改为每次新建独立事件循环（子进程/超时均为一次性任务，互不共享状态）
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
 
 
 def main():
-    root = workspace_root(USER)
+    root = RUNTIME_ROOT / str(USER)
     shutil.rmtree(root, ignore_errors=True)
-    install_skill_zip(USER, make_zip("my-skill", "A skill", {"data.txt": "hello\n"}))
+    # 用户私有安装 + 装配节点工作区（上传 skill 以真实目录复制进 .agents/skills/）
+    install_user_skill_zip(USER, make_zip("my-skill", "A skill", {"data.txt": "hello\n"}))
+    ws = prepare_runtime_workspace(USER, "sandbox-ws", 0, ["my-skill"])
 
-    ex = SandboxedShellExecutor(USER)
+    ex = SandboxedShellExecutor(USER, workspace=ws, workspace_id="sandbox-ws")
     failures = []
 
     def check(name, cond, detail=""):
@@ -73,22 +83,31 @@ def main():
     # 2) 合法命令放行（相对路径 / 无路径）
     out = run(ex.run_command(*mk_req("echo", "hello")))
     check("allow echo", out.strip() == "hello", f"-> {out[:40]}")
-    out = run(ex.run_command(*mk_req("cat", "skills/my-skill/data.txt")))
+    out = run(ex.run_command(*mk_req("cat", ".agents/skills/my-skill/data.txt")))
     check("allow relative cat", "hello" in out, f"-> {out[:40]}")
     out = run(ex.run_command(*mk_req("ls", "-la")))
-    check("allow ls", "skills" in out, f"-> {out[:40]}")
+    check("allow ls", ".agents" in out, f"-> {out[:40]}")
 
-    # 3) 资源限制在子进程内生效（RLIMIT_AS / NOFILE）
-    out = run(ex.run_command(*mk_req("python3", "-c", "import resource; print(resource.getrlimit(resource.RLIMIT_AS)[0], resource.getrlimit(resource.RLIMIT_NOFILE)[0])")))
-    check("rlimits applied", out.strip().startswith("2147483648 256"), f"-> {out[:60]}")
+    # 3) 资源限制在子进程内生效（RLIMIT_AS / NOFILE）——仅 POSIX（Windows 无 resource/fork）
+    if _POSIX_LIMITS_AVAILABLE:
+        out = run(ex.run_command(*mk_req("python3", "-c", "import resource; print(resource.getrlimit(resource.RLIMIT_AS)[0], resource.getrlimit(resource.RLIMIT_NOFILE)[0])")))
+        check("rlimits applied", out.strip().startswith("2147483648 256"), f"-> {out[:60]}")
+    else:
+        print("INFO skip rlimits check on Windows（POSIX only）")
 
     # 4) 超时：强杀进程组（sleep 7.77 + 500ms 超时；7.77 为独特参数，避免与宿主环境自带 sleep 混淆）
     out = run(ex.run_command(*mk_req("sleep", "7.77", timeout_ms=500)))
     check("timeout kill", "超时" in out, f"-> {out[:50]}")
-    # 残留检查：被超时强杀的 sleep 不应存活（用独特参数匹配）
-    p = run(asyncio.create_subprocess_exec("ps", "-eo", "args", stdout=asyncio.subprocess.PIPE))
-    stdout_b, _ = run(asyncio.wait_for(p.communicate(), 5))
-    orphan = [l for l in stdout_b.decode().splitlines() if "sleep 7[.]77" in l]
+    # 残留检查：被超时强杀的 sleep 不应存活（用独特参数匹配）。
+    # 子进程创建与 communicate 必须同在一个事件循环内（run() 每次新建独立 loop）
+    async def ps_check():
+        p = await asyncio.create_subprocess_exec(
+            "ps", "-eo", "args", stdout=asyncio.subprocess.PIPE
+        )
+        stdout_b, _ = await asyncio.wait_for(p.communicate(), 5)
+        return stdout_b.decode()
+
+    orphan = [l for l in run(ps_check()).splitlines() if "sleep 7[.]77" in l]
     check("no orphan proc", not orphan, f"-> {orphan}")
 
     # 5) 文件检测：touch 一个文件 → agent_file 事件数据
@@ -99,7 +118,13 @@ def main():
     check("file detected", len(ex.new_files) == 1, f"-> {ex.new_files}")
     if ex.new_files:
         f = ex.new_files[0]
-        check("file url", f["url"].endswith("path=output.txt") and f["name"] == "output.txt", str(f))
+        check(
+            "file url",
+            "path=output.txt" in f["url"]
+            and "workspace_id=sandbox-ws" in f["url"]
+            and f["name"] == "output.txt",
+            str(f),
+        )
 
     shutil.rmtree(root, ignore_errors=True)
     print("\n=== RESULT:", "ALL PASS" if not failures else f"{len(failures)} FAILURES: {failures} ===")

@@ -44,3 +44,9 @@ dist-ssr
 .env
 .env.*
 
+# 运行时工作区（Skill Agent）：跨用户共享 skill 包 + 用户私有 skill 登记 + 节点工作区，
+# 全部为运行时数据，不纳入版本控制 / 部署镜像
+/runtime/
+# 旧版 skill 工作区（已迁移到 runtime/，如不再使用一并忽略）
+/backend/workspaces/
+

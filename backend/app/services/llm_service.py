@@ -3,7 +3,7 @@ import asyncio
 import base64
 import logging
 from pathlib import Path
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Dict, Optional
 from dataclasses import dataclass
 
 from openai import AsyncOpenAI
@@ -236,11 +236,14 @@ class LLMService:
         self,
         messages: list,
         config: Optional[TextModelConfig] = None,
-    ) -> AsyncGenerator[str, None]:
+    ) -> AsyncGenerator[Dict[str, str], None]:
         """多轮对话流式生成（AI 对话节点用）。
 
         messages 为 OpenAI 格式的消息数组（不含 system，由 config 的提示词模板注入）；
         每个元素形如 {"role": "user" | "assistant", "content": str}。
+        每个增量产出 {"type": "content" | "reasoning", "delta": str}：
+        content = 回答正文（前端拼入消息内容）；reasoning = 思考过程（DeepSeek 等
+        端点的 reasoning_content，前端独立折叠展示，不混入正文）。
         无 API Key 时启用 Mock 流式回复，便于无配置环境下演示节点链路。
         """
         api_key = (config.api_key if config else "") or self.env_api_key
@@ -250,15 +253,18 @@ class LLMService:
                 if isinstance(m, dict) and m.get("role") == "user":
                     last_user = str(m.get("content", ""))
                     break
-            yield "【Mock 对话】\n"
+            yield {"type": "content", "delta": "【Mock 对话】\n"}
             await asyncio.sleep(0.4)
-            yield (
-                "当前未配置 LLM API Key / Agent，以下为演示回复。\n\n"
-                "你刚才说：\n\n"
-                f"> {last_user[:200]}\n\n"
-                "在管理后台「节点管理」为 AI 对话节点绑定模型（+提示词）或 FastClaw Agent 后，"
-                "即可获得真实的多轮对话回复。\n"
-            )
+            yield {
+                "type": "content",
+                "delta": (
+                    "当前未配置 LLM API Key / Agent，以下为演示回复。\n\n"
+                    "你刚才说：\n\n"
+                    f"> {last_user[:200]}\n\n"
+                    "在管理后台「节点管理」为 AI 对话节点绑定模型（+提示词）或 FastClaw Agent 后，"
+                    "即可获得真实的多轮对话回复。\n"
+                ),
+            }
             return
 
         model_name = (config.model_name if config and config.model_name else "") or "gpt-3.5-turbo"
@@ -293,12 +299,15 @@ class LLMService:
                 stream=True,
             )
             async for chunk in stream:
-                if (
-                    chunk.choices
-                    and chunk.choices[0].delta
-                    and chunk.choices[0].delta.content is not None
-                ):
-                    yield chunk.choices[0].delta.content
+                if not chunk.choices or not chunk.choices[0].delta:
+                    continue
+                delta = chunk.choices[0].delta
+                if delta.content is not None:
+                    yield {"type": "content", "delta": delta.content}
+                # DeepSeek 兼容端点的推理增量在 delta.reasoning_content（SDK 以 extra 字段透传）
+                reasoning = getattr(delta, "reasoning_content", None)
+                if isinstance(reasoning, str) and reasoning:
+                    yield {"type": "reasoning", "delta": reasoning}
         except Exception as e:
             logger.error("AI 对话失败: %s", e)
             raise LLMGenerationError(f"AI 对话失败: {e}") from e

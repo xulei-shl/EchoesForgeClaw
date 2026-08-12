@@ -14,14 +14,14 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from app.services.skill_agent_service import (
+    RUNTIME_ROOT,
     SkillRuntimeConfig,
     _to_input_items,
     run_skill_agent,
-    workspace_root,
 )
 
 USER = 99971
-ROOT = workspace_root(USER)
+ROOT = RUNTIME_ROOT / str(USER)
 
 
 def sse_chunk(payload: dict) -> bytes:

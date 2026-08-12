@@ -1,8 +1,11 @@
 """Skill Agent 执行服务（基于 openai-agents-python 的多步执行）。
 
 Skill = 一个目录（SKILL.md + scripts/ + references/ ...），SKILL.md 以 YAML
-frontmatter 开头（name / description 必填）。工作区按用户隔离：
-    backend/workspaces/skills/{user_id}/skills/<skill_name>/...
+frontmatter 开头（name / description 必填）。运行时工作区按节点隔离（目录约定见常量区）：
+    runtime/{user_id}/workspace/{workspace_id}/      # 节点工作区（软链装配 + agent 产物）
+    runtime/.agent/skills/{skill_name}/              # Bifrost 共享真实 skill 包（跨用户）
+    runtime/.agent/agents/{agent_id}/AGENTS.md       # 系统提示词物化文件
+    runtime/{user_id}/skills/{skill_name}/           # 用户「已安装 skill」登记（软链或真实目录）
 
 职责：
 1. SKILL.md 解析 / 上传 zip 合法性校验（根目录必须有含 name/description 的 SKILL.md）
@@ -19,9 +22,11 @@ import io
 import json
 import logging
 import os
-import resource  # noqa: F401  模块顶部导入：preexec_fn 内禁止 import（多线程下 fork 子进程可能死锁于导入锁）
+import re
 import shutil
 import signal
+import threading
+import time
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,8 +34,19 @@ from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-# 用户 skill 工作区根目录: backend/workspaces/skills/{user_id}/
-_WORKSPACES_ROOT = Path(__file__).resolve().parents[2] / "workspaces" / "skills"
+# 仓库根（backend/app/services/ 上溯 3 层）与运行时根目录 runtime/（整目录 gitignore，不纳入版本控制）：
+#   runtime/.agent/skills/{name}          Bifrost 检索安装的真实 skill 包（跨用户共享，只读「源」）
+#   runtime/.agent/agents/{agent_id}/AGENTS.md   SkillAgentConfig 引用的提示词物化文件
+#   runtime/{user_id}/skills/{name}       用户「已安装 skill」登记：Bifrost=软链->共享区；上传=真实目录
+#   runtime/{user_id}/workspace/{ws_id}/  单个 chat 节点的运行时工作区（软链装配 + agent 产物）
+REPO_ROOT = Path(__file__).resolve().parents[3]
+RUNTIME_ROOT = REPO_ROOT / "runtime"
+REAL_SKILLS_ROOT = RUNTIME_ROOT / ".agent" / "skills"
+REAL_AGENTS_ROOT = RUNTIME_ROOT / ".agent" / "agents"
+
+# workspace_id 允许的字符集（防目录穿越）：仅字母/数字/中划线/下划线，其余一律剔除
+_WORKSPACE_ID_PATTERN = re.compile(r"[^A-Za-z0-9_-]+")
+MAX_WORKSPACE_ID_LEN = 120
 
 # 单次 shell 命令输出上限（字符），防止海量输出撑爆上下文
 MAX_OUTPUT_LENGTH = 20000
@@ -55,7 +71,14 @@ LIMIT_AS_BYTES = 2 * 1024 * 1024 * 1024
 LIMIT_FSIZE_BYTES = 100 * 1024 * 1024
 # - 打开文件描述符上限
 LIMIT_NOFILE = 256
-# preexec_fn 仅 POSIX 可用（Linux/macOS）；Windows 上跳过资源限制
+# preexec_fn 仅 POSIX 可用（Linux/macOS）；Windows 上跳过资源限制。
+# resource 为 POSIX-only 模块：条件导入，Windows 下置 None（模块顶部导入——
+# preexec_fn 内禁止 import，多线程下 fork 子进程可能死锁于导入锁）
+try:
+    import resource  # noqa: F401
+
+except ImportError:  # pragma: no cover - Windows
+    resource = None  # type: ignore[assignment]
 _POSIX_LIMITS_AVAILABLE = hasattr(os, "fork")
 
 
@@ -69,13 +92,19 @@ class SkillValidationError(Exception):
 
 @dataclass
 class SkillRuntimeConfig:
-    """一次 Skill Agent 调用所需的运行时配置（由 NodeConfig 解析而来）。"""
+    """一次 Skill Agent 调用所需的运行时配置（由 NodeConfig 解析而来）。
+
+    system_prompt 保留字段（存量兼容）：运行时系统提示词唯一来源为物化的
+    runtime/.agent/agents/{agent_id}/AGENTS.md（见 write_agent_md / _build_instructions）。
+    """
 
     base_url: str = ""
     api_key: str = ""
     model_name: str = ""
     system_prompt: str = ""
     user_id: int = 0
+    # SkillAgentConfig.id：定位共享 AGENTS.md 物化文件（跨用户共享同一份）
+    agent_id: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -83,17 +112,72 @@ class SkillRuntimeConfig:
 # ---------------------------------------------------------------------------
 
 def workspace_root(user_id: int) -> Path:
-    """该用户的 skill 工作区根目录（自动创建）。"""
-    root = _WORKSPACES_ROOT / str(user_id)
+    """该用户的运行时工作区根目录（自动创建）：runtime/{user_id}/workspace/。
+
+    节点工作区（node_workspace）是其子目录；无 workspace_id 的旧路径回退用此根目录。
+    """
+    root = RUNTIME_ROOT / str(user_id) / "workspace"
     root.mkdir(parents=True, exist_ok=True)
     return root
 
 
-def skills_dir(user_id: int) -> Path:
-    """已安装 skill 目录（每个子目录 = 一个 skill 包）。"""
-    d = workspace_root(user_id) / "skills"
+def user_skills_root(user_id: int) -> Path:
+    """该用户「已安装 skill」登记目录：runtime/{user_id}/skills/。
+
+    - Bifrost 检索安装：子目录为软链 -> runtime/.agent/skills/{name}（共享真实包，零拷贝）；
+    - 用户上传安装：子目录为真实解压目录（私有，仅本用户可见）。
+    已安装列表 / 删除均以本目录为单一事实来源，避免共享区跨用户可见性泄漏。
+    """
+    d = RUNTIME_ROOT / str(user_id) / "skills"
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def skills_dir(user_id: int) -> Path:
+    """已安装 skill 目录（与 user_skills_root 同义，保留旧函数名供调用方使用）。"""
+    return user_skills_root(user_id)
+
+
+def sanitize_workspace_id(workspace_id: str) -> str:
+    """消毒 workspace_id：剔除非法字符（仅保留字母/数字/中划线/下划线）并限长，防目录穿越。"""
+    return _WORKSPACE_ID_PATTERN.sub("", workspace_id or "")[:MAX_WORKSPACE_ID_LEN]
+
+
+def node_workspace(user_id: int, workspace_id: str) -> Path:
+    """创建并返回单个 chat 节点的工作区：runtime/{user_id}/workspace/{workspace_id}。
+
+    workspace_id 预先消毒；为空时回退到时间戳目录。同节点同 workspace_id 多轮复用同一工作区
+    （产物/文件跨轮保留），清空对话后前端重新生成 workspace_id -> 干净工作区。
+    """
+    ws = sanitize_workspace_id(workspace_id)
+    if not ws:
+        ws = f"node_{int(time.time() * 1000)}"
+    d = RUNTIME_ROOT / str(user_id) / "workspace" / ws
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _remove_path(p: Path) -> None:
+    """删除文件 / 软链 / 目录（软链不穿透：删除软链本身，不动其指向的真实目录）。"""
+    if p.is_symlink() or p.is_file():
+        p.unlink(missing_ok=True)
+    elif p.is_dir():
+        shutil.rmtree(p, ignore_errors=True)
+
+
+def _symlink_or_copy(target: Path, link: Path) -> None:
+    """建软链指向绝对目标；失败（如 Windows 无 symlink 权限）退化为真实复制。
+
+    软链与复制功能等价（skill / AGENTS.md 均可被 agent 读取），仅失去零拷贝优势。
+    """
+    link.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        link.symlink_to(str(target), target_is_directory=target.is_dir())
+    except OSError:
+        if target.is_dir():
+            shutil.copytree(target, link, dirs_exist_ok=True)
+        else:
+            shutil.copy2(target, link)
 
 
 def _parse_frontmatter(markdown: str) -> Tuple[Dict[str, str], str]:
@@ -127,15 +211,20 @@ def _parse_frontmatter(markdown: str) -> Tuple[Dict[str, str], str]:
 
 
 def read_skill_meta(skill_dir: Path) -> Dict[str, Any]:
-    """读取单个 skill 目录的元数据（name/description/正文/文件树）。"""
-    md_path = skill_dir / "SKILL.md"
+    """读取单个 skill 目录的元数据（name/description/正文/文件树）。
+
+    登记目录里的 Bifrost skill 是软链：先 resolve 到真实目录再列文件树，
+    否则 Path.rglob 默认不递归符号链接目录，文件树会为空。
+    """
+    real = skill_dir.resolve() if skill_dir.is_symlink() else skill_dir
+    md_path = real / "SKILL.md"
     if not md_path.is_file():
-        return {"name": skill_dir.name, "description": "", "body": "", "files": []}
+        return {"name": real.name, "description": "", "body": "", "files": []}
     text = md_path.read_text(encoding="utf-8", errors="replace")
     meta, body = _parse_frontmatter(text)
     files = [
-        str(p.relative_to(skill_dir)).replace("\\", "/")
-        for p in sorted(skill_dir.rglob("*"))
+        str(p.relative_to(real)).replace("\\", "/")
+        for p in sorted(real.rglob("*"))
         if p.is_file()
     ]
     return {
@@ -147,8 +236,8 @@ def read_skill_meta(skill_dir: Path) -> Dict[str, Any]:
 
 
 def list_installed_skills(user_id: int) -> List[Dict[str, Any]]:
-    """列出该用户工作区已安装的 skill（含 name/description/文件树）。"""
-    d = skills_dir(user_id)
+    """列出该用户已安装的 skill（含 name/description/文件树）。以用户登记目录为事实来源。"""
+    d = user_skills_root(user_id)
     items = []
     for child in sorted(d.iterdir()):
         if not child.is_dir():
@@ -156,17 +245,41 @@ def list_installed_skills(user_id: int) -> List[Dict[str, Any]]:
         if not (child / "SKILL.md").is_file():
             continue
         meta = read_skill_meta(child)
-        meta["path"] = str(child.relative_to(workspace_root(user_id))).replace("\\", "/")
+        meta["path"] = f"skills/{child.name}"
         items.append(meta)
     return items
 
 
-def resolve_skill_abs(user_id: int, rel_path: str) -> Optional[Path]:
-    """把工作区内的相对路径解析为绝对路径；越界（../ 等）返回 None。"""
-    root = workspace_root(user_id).resolve()
-    candidate = (root / rel_path).resolve()
-    if candidate == root or root in candidate.parents:
-        return candidate
+def resolve_skill_abs(
+    user_id: int, rel_path: str, workspace: Optional[Path] = None
+) -> Optional[Path]:
+    """把工作区内的相对路径解析为绝对路径；越界（../ 等）返回 None。
+
+    workspace 为节点运行时工作区（/skill-files 下载时由 workspace_id 定位）；缺省回退
+    该用户工作区根目录。两道防线：
+    1. 词法越界拦截：先按 normpath 检查 .. 是否跳出工作区（阻止通过任意 ../ 直达
+       共享/登记区，如 ../../../.agent/agents/1/AGENTS.md）；
+    2. 软链放行：Path.resolve() 穿透软链后，仅当落点在工作区内或共享/登记前缀
+       （runtime/.agent/skills、runtime/.agent/agents、用户登记区）才放行。
+    工作区内指向他人目录的软链解析后不在任何前缀内，一律拒绝。
+    """
+    root = (workspace or workspace_root(user_id)).resolve()
+    root_str = str(root)
+    # 1) 词法层：.. 跳出工作区的路径直接拒绝（不跟随软链，纯路径规范化）
+    lexical = os.path.normpath(os.path.join(root_str, rel_path or ""))
+    if lexical != root_str and not lexical.startswith(root_str + os.sep):
+        return None
+    # 2) 符号层：跟随工作区内软链（装配的 skill / AGENTS.md），落点在前缀内才放行
+    candidate = Path(lexical).resolve()
+    allowed_roots = (
+        root,
+        REAL_SKILLS_ROOT.resolve(),
+        REAL_AGENTS_ROOT.resolve(),
+        user_skills_root(user_id).resolve(),
+    )
+    for allowed in allowed_roots:
+        if candidate == allowed or allowed in candidate.parents:
+            return candidate
     return None
 
 
@@ -225,16 +338,9 @@ def validate_skill_zip(zip_bytes: bytes) -> Dict[str, Any]:
     return {"name": name, "description": meta["description"], "body": body, "root": top}
 
 
-def install_skill_zip(user_id: int, zip_bytes: bytes) -> Dict[str, Any]:
-    """校验并安装 skill zip 到用户工作区（zip-slip 防护）。返回 skill 元数据。"""
-    info = validate_skill_zip(zip_bytes)
-    name = info["name"]
-    dest = skills_dir(user_id) / name
-    if dest.exists():
-        # 同名 skill 已存在：先清空再覆盖（重装 = 更新）
-        shutil.rmtree(dest)
+def _extract_skill_zip(zip_bytes: bytes, dest: Path, info: Dict[str, Any]) -> Dict[str, Any]:
+    """把已校验的 zip 解压到 dest（zip-slip 防护 + 大小/数量上限，失败清理半成品）。"""
     dest.mkdir(parents=True, exist_ok=True)
-
     root_prefix = info["root"] + "/"
     try:
         zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
@@ -272,10 +378,113 @@ def install_skill_zip(user_id: int, zip_bytes: bytes) -> Dict[str, Any]:
         if isinstance(exc, SkillValidationError):
             raise
         raise SkillValidationError(f"解压失败: {exc}") from exc
+    return read_skill_meta(dest)
 
-    meta = read_skill_meta(dest)
+
+# 共享区安装锁：install_skill_zip 的 rmtree+重解压作用于跨用户共享目录，
+# 并发安装/更新同名 skill 会互相破坏（FastAPI 同步端点跑在线程池中）
+_SHARED_INSTALL_LOCK = threading.Lock()
+
+
+def install_skill_zip(user_id: int, zip_bytes: bytes) -> Dict[str, Any]:
+    """Bifrost 检索路径：校验并真实解压到共享区 runtime/.agent/skills/{name}/，
+    再在该用户登记目录 runtime/{user_id}/skills/{name} 建软链（Windows 失败退化为复制）。
+
+    跨用户共享同一真实包（零拷贝）；删除登记不影响共享包（Q5 语义，由运维定期 GC）。
+    """
+    info = validate_skill_zip(zip_bytes)
+    name = info["name"]
+    with _SHARED_INSTALL_LOCK:
+        dest = REAL_SKILLS_ROOT / name
+        if dest.exists():
+            # 同名 skill 已存在：先清空再覆盖（重装 = 更新）
+            shutil.rmtree(dest)
+        meta = _extract_skill_zip(zip_bytes, dest, info)
+    # 用户登记：软链 -> 共享真实包（绝对目标路径；Windows 无权限退化为真实复制）
+    registry = user_skills_root(user_id) / name
+    if registry.exists() or registry.is_symlink():
+        _remove_path(registry)
+    _symlink_or_copy(dest, registry)
     meta["path"] = f"skills/{name}"
     return meta
+
+
+def install_user_skill_zip(user_id: int, zip_bytes: bytes) -> Dict[str, Any]:
+    """用户上传路径：校验并真实解压到私有登记目录 runtime/{user_id}/skills/{name}/。
+
+    用户私有数据不跨用户共享；运行时按需复制进节点工作区（真实目录语义）。
+    """
+    info = validate_skill_zip(zip_bytes)
+    name = info["name"]
+    dest = user_skills_root(user_id) / name
+    if dest.exists() or dest.is_symlink():
+        _remove_path(dest)
+    meta = _extract_skill_zip(zip_bytes, dest, info)
+    meta["path"] = f"skills/{name}"
+    return meta
+
+
+def write_agent_md(agent_id: Any, content: str) -> Optional[Path]:
+    """物化 SkillAgentConfig 的系统提示词为 runtime/.agent/agents/{agent_id}/AGENTS.md。
+
+    content 非空 → 写入并返回路径；为空 → 删除已存在文件并返回 None
+    （「未配置提示词则没有」语义，运行时以文件存在性为准，文件与 DB 同步刷新）。
+    """
+    target_dir = REAL_AGENTS_ROOT / str(agent_id)
+    target = target_dir / "AGENTS.md"
+    if content and content.strip():
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+        return target
+    if target.exists():
+        target.unlink(missing_ok=True)
+    return None
+
+
+def prepare_runtime_workspace(
+    user_id: int,
+    workspace_id: str,
+    agent_id: Optional[Any],
+    skill_names: Optional[List[str]] = None,
+) -> Path:
+    """按节点装配运行时工作区（每次 /chat 执行前调用，幂等）：
+
+    1. 工作区 = runtime/{user_id}/workspace/{workspace_id}；
+    2. 若该 agent 物化了 AGENTS.md → 工作区根软链一份（否则该文件不存在）；
+    3. 对每个选中的 skill：用户登记为软链（Bifrost）→ 工作区 .agents/skills/{name}
+       软链到共享真实包；登记为真实目录（上传）→ copytree 复制进工作区（用户私有语义）。
+    所有软链创建失败自动退化为真实复制（Windows 无权限仍可用）。
+    """
+    ws = node_workspace(user_id, workspace_id)
+
+    # AGENTS.md：仅当配置了提示词才存在（软链 -> runtime/.agent/agents/{id}/AGENTS.md）
+    agent_md = REAL_AGENTS_ROOT / str(agent_id or 0) / "AGENTS.md"
+    ws_agent_md = ws / "AGENTS.md"
+    if agent_md.is_file():
+        if not ws_agent_md.exists():
+            _symlink_or_copy(agent_md, ws_agent_md)
+
+    # 空/None = 加载该用户全部已安装 skill（与 _build_instructions 的空=全部语义一致），
+    # 否则工作区未装配的 skill 会在指令中被引用但实际不存在
+    if not skill_names:
+        skill_names = [s["name"] for s in list_installed_skills(user_id)]
+    skills_ws_dir = ws / ".agents" / "skills"
+    skills_ws_dir.mkdir(parents=True, exist_ok=True)
+    for name in skill_names:
+        if not isinstance(name, str) or not name:
+            continue
+        # 名称卫生：拒绝路径分隔符 / 相对跳转（防目录穿越到工作区外）
+        if "/" in name or "\\" in name or name in (".", ".."):
+            continue
+        link = skills_ws_dir / name
+        if link.exists():
+            continue  # 已装配（同 workspace_id 多轮复用）
+        src = user_skills_root(user_id) / name
+        if src.is_symlink():
+            _symlink_or_copy(src.resolve(), link)  # Bifrost：软链到共享真实包
+        elif src.is_dir():
+            shutil.copytree(src, link)  # 上传：真实复制（用户私有）
+    return ws
 
 
 # ---------------------------------------------------------------------------
@@ -283,15 +492,26 @@ def install_skill_zip(user_id: int, zip_bytes: bytes) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def _build_instructions(
-    config: SkillRuntimeConfig, user_id: int, skill_names: Optional[List[str]] = None
+    config: SkillRuntimeConfig,
+    user_id: int,
+    skill_names: Optional[List[str]] = None,
+    workspace: Optional[Path] = None,
 ) -> str:
-    """组装 Agent instructions：系统提示词 + 指定 skill 的 SKILL.md 指令。
+    """组装 Agent instructions：AGENTS.md 系统提示词 + 指定 skill 的 SKILL.md 指令。
 
-    skill_names 为上游「Skill 检索」节点选中的 skill 名（空/None = 加载全部已安装 skill）。
+    - 系统提示词唯一来源为物化的 runtime/.agent/agents/{id}/AGENTS.md（工作区根软链）：
+      工作区存在该文件则读全文置于 skills 段之前，不存在则无系统提示词段
+      （不再从 DB system_prompt 字段注入——管理端保存时已同步物化文件）。
+    - skill_names 为上游「Skill 检索」节点选中的 skill 名（空/None = 加载全部已安装 skill）。
+      位置字段固定为工作区相对路径 .agents/skills/{name}（软链可读，与目录约定一致）。
     """
     parts: List[str] = []
-    if config.system_prompt.strip():
-        parts.append(config.system_prompt.strip())
+    if workspace is not None:
+        agent_md = workspace / "AGENTS.md"
+        if agent_md.is_file():
+            text = agent_md.read_text(encoding="utf-8", errors="replace").strip()
+            if text:
+                parts.append(text)
     skills = list_installed_skills(user_id)
     if skill_names:
         wanted = set(skill_names)
@@ -301,7 +521,7 @@ def _build_instructions(
             (
                 f"## Skill: {s['name']}\n"
                 f"描述：{s['description']}\n"
-                f"位置：{s['path']}\n\n"
+                f"位置：.agents/skills/{s['name']}\n\n"
                 f"{s['body']}"
             )
             for s in skills
@@ -343,9 +563,20 @@ def _apply_child_limits() -> None:
 
 
 def _kill_process_group(proc) -> None:
-    """强杀整个进程组（命令与其派生的孙进程），防止超时后残留孤儿进程。"""
+    """强杀整个进程组（命令与其派生的孙进程），防止超时后残留孤儿进程。
+
+    POSIX 用 killpg（start_new_session 使命令自成进程组）；Windows 无进程组
+    语义（os.killpg 不存在），退化为直接 proc.kill()（尽力而为）。
+    """
+    killpg = getattr(os, "killpg", None)
+    if killpg is None:
+        try:
+            proc.kill()
+        except OSError:
+            pass
+        return
     try:
-        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        killpg(os.getpgid(proc.pid), signal.SIGKILL)
     except (ProcessLookupError, PermissionError, OSError):
         pass
 
@@ -371,9 +602,16 @@ class SandboxedShellExecutor:
     真正隔离需容器化（如 openai-agents-python 的 DockerSandboxEnvironment）。
     """
 
-    def __init__(self, user_id: int):
+    def __init__(
+        self,
+        user_id: int,
+        workspace: Optional[Path] = None,
+        workspace_id: Optional[str] = None,
+    ):
         self.user_id = user_id
-        self.root = workspace_root(user_id)
+        self.root = workspace or workspace_root(user_id)
+        # 工作区目录名（前端首轮生成的 workspaceId）：agent_file 下载 URL 携带，供 /skill-files 定位
+        self.workspace_id = workspace_id
         # 本次 run 产生的文件（由服务在工具调用后消费为 agent_file 事件）
         self.new_files: List[Dict[str, Any]] = []
         self._seen: set = set()
@@ -399,7 +637,8 @@ class SandboxedShellExecutor:
                     break
                 self.new_files.append(
                     {
-                        "url": f"/api/modules/bookplate/skill-files?path={rel}",
+                        "url": f"/api/modules/bookplate/skill-files?path={rel}"
+                        + (f"&workspace_id={self.workspace_id}" if self.workspace_id else ""),
                         "name": Path(rel).name,
                         "mime": _detect_mime(rel),
                         "size": size,
@@ -476,7 +715,10 @@ class SandboxedShellExecutor:
 
 
 def build_agent(
-    config: SkillRuntimeConfig, skill_names: Optional[List[str]] = None
+    config: SkillRuntimeConfig,
+    skill_names: Optional[List[str]] = None,
+    workspace: Optional[Path] = None,
+    workspace_id: Optional[str] = None,
 ):
     """构建 openai-agents-python Agent（任意 OpenAI 兼容端点，chat completions 协议）。
 
@@ -500,7 +742,9 @@ def build_agent(
         base_url=config.base_url or None,
         use_responses=False,  # 兼容任意 OpenAI-compatible 端点（不走 Responses API）
     )
-    executor = SandboxedShellExecutor(config.user_id)
+    executor = SandboxedShellExecutor(
+        config.user_id, workspace=workspace, workspace_id=workspace_id
+    )
 
     async def _invoke_shell(_ctx, arguments: str) -> ToolOutputText:
         """FunctionTool 处理器：解析模型 JSON 参数 → 沙箱执行。
@@ -528,7 +772,7 @@ def build_agent(
         name="local_shell",
         description=(
             "在工作区目录中执行 shell 命令（无 shell 展开，命令以参数数组形式给出）。"
-            "例如 [\"ls\", \"-la\"]、[\"cat\", \"skills/demo/SKILL.md\"]、"
+            "例如 [\"ls\", \"-la\"]、[\"cat\", \".agents/skills/demo/SKILL.md\"]、"
             "[\"bash\", \"scripts/run.sh\"]。禁止使用绝对路径或 .. 路径段。"
         ),
         params_json_schema={
@@ -553,7 +797,7 @@ def build_agent(
 
     agent = Agent(
         name="Skill Agent",
-        instructions=_build_instructions(config, config.user_id, skill_names),
+        instructions=_build_instructions(config, config.user_id, skill_names, workspace),
         model=config.model_name or "gpt-4o-mini",
         tools=[shell_tool],
         model_settings=ModelSettings(temperature=0.3),
@@ -676,12 +920,18 @@ async def run_skill_agent(
     config: SkillRuntimeConfig,
     messages: list,
     skills: Optional[List[str]] = None,
+    workspace_id: Optional[str] = None,
+    workspace: Optional[Path] = None,
 ) -> AsyncGenerator[Dict[str, Any], None]:
     """运行 Skill Agent 并产出归一化事件流。
 
     事件形态与 fastclaw_service 一致（content_delta / tool_call / tool_result /
     status / done / error），并新增 agent_file（skill 执行产生的文件，前端渲染下载卡片）。
-    skills 为上游 Skill 检索节点选中的 skill 名（空 = 加载该用户全部已安装 skill）。
+
+    - workspace_id：前端下发的节点工作区标识（{node_id}_{timestamp}），据此装配工作区
+      （软链 skill / AGENTS.md，prepare_runtime_workspace）；缺省回退该用户工作区根目录
+      （旧路径兼容，不装配软链）。
+    - workspace：调用方已装配好的工作区（router 层 prepare 后传入），优先于 workspace_id。
     """
     from agents import Runner
 
@@ -698,7 +948,13 @@ async def run_skill_agent(
         raise SkillAgentError("Skill Agent 配置缺少模型名称")
 
     try:
-        agent, run_config, executor = build_agent(config, skills)
+        if workspace is None and workspace_id:
+            workspace = prepare_runtime_workspace(
+                config.user_id, workspace_id, config.agent_id, skills
+            )
+        agent, run_config, executor = build_agent(
+            config, skills, workspace=workspace, workspace_id=workspace_id
+        )
         items = _to_input_items(messages)
         if not any(i.get("role") == "user" for i in items):
             raise SkillAgentError("AI 对话缺少用户消息")
@@ -713,28 +969,36 @@ async def run_skill_agent(
             if etype == "raw_response_event":
                 data = event.data
                 dtype = getattr(data, "type", "")
-                # 仅透传真正的文本/思考增量：输出文本 / 思考过程（DeepSeek 等端点
-                # 的 reasoning 以 reasoning_summary_text.delta 形式到达）。工具调用参数增量
-                # （response.function_call_arguments.delta）的 delta 字段是参数 JSON，
-                # 绝不能当对话文本渲染（此前被误透传 → 聊天气泡里出现 {"command": ...}）。
+                # 回答正文与思考过程（reasoning）拆成独立事件：output_text.delta ->
+                # content_delta（前端拼入消息正文），reasoning_text/reasoning_summary_text.delta
+                # （DeepSeek 等端点的推理增量）-> reasoning_delta（前端独立折叠展示）。
+                # 工具调用参数增量（response.function_call_arguments.delta）的 delta 字段是参数
+                # JSON，绝不能当对话文本渲染（此前被误透传 → 聊天气泡里出现 {"command": ...}）。
                 # refusal 增量（response.refusal.delta）刻意不展示：安全过滤拒答不应作为
                 # 正常回复文本渲染（模型最终会以 output_text 给出拒答说明）。
+                if dtype == "response.output_text.delta":
+                    delta = getattr(data, "delta", None)
+                    if isinstance(delta, str) and delta:
+                        yield {"type": "content_delta", "data": {"delta": delta}}
+                    continue
                 if dtype in (
-                    "response.output_text.delta",
                     "response.reasoning_text.delta",
                     "response.reasoning_summary_text.delta",
                 ):
                     delta = getattr(data, "delta", None)
                     if isinstance(delta, str) and delta:
-                        yield {"type": "content_delta", "data": {"delta": delta}}
+                        yield {"type": "reasoning_delta", "data": {"delta": delta}}
                     continue
-                # 未走事件归一化时的原始 chunk 兜底（仅取 content 文本，工具调用除外）
+                # 未走事件归一化时的原始 chunk 兜底（content / reasoning_content，工具调用除外）
                 choices = getattr(data, "choices", None)
                 if choices:
                     d = getattr(choices[0], "delta", None)
                     content = getattr(d, "content", None)
                     if content and not getattr(d, "tool_calls", None):
                         yield {"type": "content_delta", "data": {"delta": content}}
+                    reasoning = getattr(d, "reasoning_content", None)
+                    if isinstance(reasoning, str) and reasoning:
+                        yield {"type": "reasoning_delta", "data": {"delta": reasoning}}
                 continue
             # 工具调用 / 结果
             if etype == "run_item_stream_event":

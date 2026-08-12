@@ -73,9 +73,12 @@ export function selfHealNode(
  *  隐藏的 contextImages 上下文图片并入 images 字段，同样随历史重发。 */
 export const toWireChatMessages = (msgs: ChatMessage[]): ChatMessage[] =>
   msgs.map((m) => {
-    const expanded = m.context
-      ? { ...m, content: `${m.context}\n\n${m.content}`, context: undefined }
-      : m;
+    // 思考过程（reasoning）仅用于 UI 展示：剥离后不随多轮历史回传
+    // （省 token，且避免把上一轮的内部思考重新喂给模型/端点）
+    const clean: ChatMessage = m.reasoning ? { ...m, reasoning: undefined } : m;
+    const expanded = clean.context
+      ? { ...clean, content: `${clean.context}\n\n${clean.content}`, context: undefined }
+      : clean;
     if (!expanded.contextImages?.length) {
       return expanded.contextImages ? { ...expanded, contextImages: undefined } : expanded;
     }

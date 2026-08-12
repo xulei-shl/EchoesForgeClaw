@@ -598,12 +598,7 @@ const BookplatePage: React.FC = () => {
         return { promptId: null, promptName: '', content: '', promptImage: null, error: null };
       case 'skill_search':
         return {
-          skillName: null,
-          skillDescription: '',
-          skillFiles: [],
-          skillBody: '',
-          skillPath: '',
-          skillSource: null,
+          skillSelections: [],
           error: null,
         };
     }
@@ -1069,6 +1064,8 @@ const BookplatePage: React.FC = () => {
       agentSteps: [],
       error: null,
       epoch: (node.data?.epoch ?? 0) + 1,
+      // 干净对话 -> 干净工作区：重新生成 workspaceId，后端以新目录装配（Skill Agent 产物不残留）
+      workspaceId: `${id}_${Date.now()}`,
     });
   }, []);
   /** AI 对话节点：停止当前生成（中止 SSE 流，标记用户中断） */
@@ -1121,30 +1118,16 @@ const BookplatePage: React.FC = () => {
     if (reason) showToast(reason, { type: 'warning', position: 'top-right' });
   }, []);
 
-  /** Skill 检索节点：选用 / 安装一个 skill（写入 data；未变化不记历史） */
-  const handleUpdateSkillFor = useCallback(
-    (id: string, selection: SkillSelection) => {
+  /** Skill 检索节点：整块替换已选 skill 集合（写入 data.skillSelections；未变化不记历史）。
+   *  旧单数字段节点（skillName 等）重新编辑即迁移为数组；读取侧默认空数组向后兼容。 */
+  const handleUpdateSkillsFor = useCallback(
+    (id: string, selections: SkillSelection[]) => {
       const node = nodesRef.current.find((n) => n.id === id);
       if (!node || node.type !== 'skill_search') return;
-      const old = {
-        skillName: node.data?.skillName ?? null,
-        skillDescription: node.data?.skillDescription ?? '',
-        skillFiles: node.data?.skillFiles ?? [],
-        skillBody: node.data?.skillBody ?? '',
-        skillPath: node.data?.skillPath ?? '',
-        skillSource: node.data?.skillSource ?? null,
-      };
-      const next = {
-        skillName: selection.name ?? old.skillName,
-        skillDescription: selection.description ?? old.skillDescription,
-        skillFiles: selection.files ?? old.skillFiles,
-        skillBody: selection.body ?? old.skillBody,
-        skillPath: selection.path ?? old.skillPath,
-        skillSource: selection.source ?? old.skillSource,
-      };
-      if (JSON.stringify(old) === JSON.stringify(next)) return;
+      const old = Array.isArray(node.data?.skillSelections) ? node.data.skillSelections : [];
+      if (JSON.stringify(old) === JSON.stringify(selections)) return;
       recordHistory();
-      updateNodeData(id, next);
+      updateNodeData(id, { skillSelections: selections });
     },
     []
   );
@@ -1439,7 +1422,7 @@ const BookplatePage: React.FC = () => {
     handleImageChangeFor,
     handleSendChatFor,
     handleUpdatePromptFor,
-    handleUpdateSkillFor,
+    handleUpdateSkillsFor,
     handleUpdateAggregateTemplateFor,
     handleRenameAggregatePlaceholderFor,
     handleUpdateChatSettingsFor,

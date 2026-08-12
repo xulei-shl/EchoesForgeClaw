@@ -52,8 +52,8 @@ export interface NodeViewHelpers {
   handleSendChatFor: (id: string, text: string, images?: string[]) => void;
   /** 提示词检索节点：选用一条 Bifrost 提示词 */
   handleUpdatePromptFor: (id: string, selection: PromptSelection) => void;
-  /** Skill 检索节点：选用 / 安装一个 skill */
-  handleUpdateSkillFor: (id: string, selection: SkillSelection) => void;
+  /** Skill 检索节点：整块替换已选 skill 集合（多选） */
+  handleUpdateSkillsFor: (id: string, selections: SkillSelection[]) => void;
   /** 文本聚合节点：保存占位符模板 */
   handleUpdateAggregateTemplateFor: (id: string, template: string) => void;
   /** 文本聚合节点：重命名某上级节点的占位符别名 */
@@ -299,16 +299,17 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
     }
     case 'skill_search': {
       const hasDownstream = hasDownstreamOf(node, h.edges);
+      // 已选 skill 集合（多选）；存量节点仍是旧单数字段 -> 空数组（重新编辑即迁移）
+      const selections: SkillSelection[] = Array.isArray(node.data?.skillSelections)
+        ? node.data.skillSelections
+        : [];
       return (
         <SkillSearchNode
           {...common}
-          title={typeof node.data?.skillName === 'string' && node.data.skillName ? node.data.skillName : common.title}
-          skillName={node.data?.skillName ?? null}
-          skillDescription={typeof node.data?.skillDescription === 'string' ? node.data.skillDescription : ''}
-          skillFiles={Array.isArray(node.data?.skillFiles) ? node.data.skillFiles : []}
-          skillBody={typeof node.data?.skillBody === 'string' ? node.data.skillBody : ''}
+          title={selections.length > 0 && selections[0].name ? selections[0].name : common.title}
+          selections={selections}
           hasDownstream={hasDownstream}
-          onUpdateSkill={h.handleUpdateSkillFor}
+          onUpdateSkills={h.handleUpdateSkillsFor}
         />
       );
     }

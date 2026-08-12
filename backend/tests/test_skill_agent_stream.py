@@ -4,7 +4,7 @@
 - 工具必须以 function 形式下发（LocalShellTool 是 hosted tool，ChatCompletions
   端点转换器会直接报错 → 曾导致「对话超时」的根因）；
 - 事件流完整：tool_call → tool_result → content_delta（含 DeepSeek 风格
-  reasoning_content）→ done；
+  reasoning_content，以独立 reasoning_delta 事件产出，不得混入正文）→ done；
 - 工具调用参数 JSON 不得泄漏进 content_delta（曾渲染进聊天气泡）。
 
 运行：cd backend && PYTHONPATH=. .venv/bin/python tests/test_skill_agent_stream.py
@@ -19,14 +19,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from app.services.llm_service import _multimodal_messages
 from app.services.skill_agent_service import (
+    RUNTIME_ROOT,
     SkillRuntimeConfig,
-    install_skill_zip,
+    install_user_skill_zip,
     run_skill_agent,
-    workspace_root,
 )
 
 USER = 99997
-ROOT = workspace_root(USER)
+ROOT = RUNTIME_ROOT / str(USER)
 
 CALLS = {"n": 0}
 
@@ -134,7 +134,7 @@ async def main():
     with zipfile.ZipFile(buf, "w") as z:
         z.writestr("demo/SKILL.md", "---\nname: demo\ndescription: 演示 skill\n---\n\n# demo\n列出目录内容")
         z.writestr("demo/scripts/run.sh", "echo hi")
-    install_skill_zip(USER, buf.getvalue())
+    install_user_skill_zip(USER, buf.getvalue())  # 用户私有安装（不污染共享区）
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     t = threading.Thread(target=server.serve_forever, daemon=True)
@@ -161,11 +161,14 @@ async def main():
 
     events = []
     tool_calls = []
+    reasoning_texts = []
     try:
         async for evt in run_skill_agent(cfg, messages):
             events.append(evt["type"])
             if evt["type"] in ("content_delta",):
                 events.append(evt["data"]["delta"][:20])
+            elif evt["type"] == "reasoning_delta":
+                reasoning_texts.append(evt["data"]["delta"])
             elif evt["type"] == "tool_call":
                 events.append(evt["data"]["name"])
                 tool_calls.append(evt["data"])
@@ -179,6 +182,13 @@ async def main():
     assert "tool_result" in events, "缺少 tool_result 事件"
     assert "content_delta" in events, "缺少 content_delta 事件（这是超时根源！）"
     assert "done" in events, "缺少 done 事件"
+    # 思考过程契约：reasoning 增量必须以独立 reasoning_delta 事件产出（前端折叠展示）
+    assert "reasoning_delta" in events, "缺少 reasoning_delta 事件（思考过程应独立事件）"
+    assert "让我思考一下" in "".join(reasoning_texts), f"思考文本缺失: {reasoning_texts}"
+    content_text = "".join(
+        e for e in events if isinstance(e, str) and e.startswith(("执行", "是"))
+    )
+    assert "让我思考一下" not in content_text, "思考过程混入了回答正文（content_delta）"
     # 工具调用参数契约：local_shell 且参数含 ls（此前仅断言事件存在）
     assert tool_calls, "缺少 tool_call 数据"
     assert tool_calls[0]["name"] == "local_shell", f"工具名异常: {tool_calls[0]}"

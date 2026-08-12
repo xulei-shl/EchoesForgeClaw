@@ -58,8 +58,11 @@ from app.services.skill_agent_service import (
     SkillValidationError,
     list_installed_skills,
     install_skill_zip,
+    install_user_skill_zip,
     resolve_skill_abs,
     skills_dir,
+    node_workspace,
+    prepare_runtime_workspace,
 )
 from sse_starlette.sse import EventSourceResponse
 
@@ -363,6 +366,10 @@ class ChatRequest(BaseModel):
     # Skill Agent 模式：上游「Skill 检索」节点选中的 skill 名称列表；
     # 非空时仅加载这些 skill（空 = 加载该用户工作区全部已安装 skill）
     skills: List[str] = []
+    # Skill Agent 模式：节点工作区标识（前端首轮生成的 {node_id}_{timestamp}，持久化在
+    # node.data.workspaceId）。同节点同 workspaceId 多轮复用同一工作区（产物跨轮保留）；
+    # 清空对话后前端重新生成 -> 干净工作区。缺省回退 node_id 派生（兼容旧前端）。
+    workspace_id: Optional[str] = None
 
 
 def _decode_uploaded_image(data_url: str) -> Optional[bytes]:
@@ -494,6 +501,7 @@ def _skill_agent_config_from(
         model_name=model_name,
         system_prompt=system_prompt,
         user_id=user_id,
+        agent_id=nc.skill_agent_config.id,
     )
 
 
@@ -521,6 +529,9 @@ def _sse_from_agent_event(
     data = evt.get("data", {}) or {}
     if etype in ("content_delta", "content"):
         return {"event": content_event, "data": data.get("delta", "")}
+    if etype == "reasoning_delta":
+        # 模型思考过程（Skill Agent 的 reasoning 增量）：独立事件，前端折叠展示、不混入正文
+        return {"event": "reasoning", "data": data.get("delta", "")}
     if etype == "tool_call":
         return {
             "event": "agent_tool_call",
@@ -949,15 +960,32 @@ async def chat(
         raise HTTPException(status_code=499, detail="客户端已断开连接")
 
     if skill_agent_config:
+        # 节点工作区标识：前端首轮生成并持久化的 workspaceId；缺省回退 node_id 派生（兼容旧前端），
+        # 两者皆缺时按「用户+纪元」派生（旧前端 + 无 node_id 的极端场景，清空对话仍得干净工作区）
+        workspace_id = payload.workspace_id or (
+            f"node_{payload.node_id}"
+            if payload.node_id
+            else f"node_{current_user.id}_{payload.epoch or 0}"
+        )
+        workspace = prepare_runtime_workspace(
+            current_user.id,
+            workspace_id,
+            nc.skill_agent_config.id,
+            payload.skills or None,
+        )
+
         async def skill_chat_generator():
             try:
                 # Skill Agent 以 messages（OpenAI 格式完整历史）驱动多步执行；
                 # 图片经 _multimodal_messages 转为多模态 content（与 LLM 模式一致）；
-                # skills 为上游 Skill 检索节点选中的 skill 名（空 = 全部已装 skill）
+                # skills 为上游 Skill 检索节点选中的 skill 名（空 = 全部已装 skill）；
+                # workspace 为装配好的节点工作区（软链 skill / AGENTS.md）
                 async for evt in run_skill_agent(
                     skill_agent_config,
                     _multimodal_messages(payload.messages or []),
                     skills=payload.skills or None,
+                    workspace=workspace,
+                    workspace_id=workspace_id,
                 ):
                     if await request.is_disconnected():
                         break
@@ -1009,7 +1037,12 @@ async def chat(
             ):
                 if await request.is_disconnected():
                     break
-                yield {"event": "message", "data": chunk}
+                # chat_stream 产出 {type: content|reasoning, delta}：
+                # content -> message（拼入正文）；reasoning -> 独立事件（折叠展示）
+                if chunk.get("type") == "reasoning":
+                    yield {"event": "reasoning", "data": chunk.get("delta", "")}
+                else:
+                    yield {"event": "message", "data": chunk.get("delta", "")}
         except LLMGenerationError as exc:
             if not await request.is_disconnected():
                 yield {"event": "error", "data": str(exc)}
@@ -1206,7 +1239,8 @@ async def upload_skill_zip(
     if not zip_bytes or len(zip_bytes) > 20 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="文件为空或超过 20MB 上限")
     try:
-        meta = install_skill_zip(current_user.id, zip_bytes)
+        # 用户上传路径：私有登记目录（真实解压），不进入跨用户共享区
+        meta = install_user_skill_zip(current_user.id, zip_bytes)
     except SkillValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return meta
@@ -1227,31 +1261,37 @@ async def remove_user_skill(
     if not skill_name or "/" in skill_name or "\\" in skill_name:
         raise HTTPException(status_code=400, detail="非法 skill 名称")
     d = _skills_dir(current_user.id)
-    target = (d / skill_name).resolve()
-    if d != target and d not in target.parents:
-        raise HTTPException(status_code=400, detail="非法路径")
-    if not target.exists():
+    target = d / skill_name
+    if not target.exists() and not target.is_symlink():
         raise HTTPException(status_code=404, detail="skill 不存在")
-    shutil.rmtree(target)
+    if target.is_symlink() or target.is_file():
+        # Bifrost 登记是软链：只移除登记条目，不动共享真实包（Q5：共享区由运维定期 GC）
+        target.unlink()
+    else:
+        # 用户上传是真实目录：完整删除
+        shutil.rmtree(target)
     return {"message": f"已移除 skill：{skill_name}"}
 
 
 @router.get("/skill-files")
 async def get_skill_file(
     path: str,
-    request: Request,
+    workspace_id: str = "",
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
     """下载 skill 执行产生的文件（工作区内相对路径）。
 
+    workspace_id 为可选参数：agent_file 事件 URL 会携带（前端首轮生成的节点工作区标识），
+    用于定位具体节点工作区；缺省回退该用户工作区根目录（旧 URL 兼容）。
     鉴权：仅当前登录用户可访问自己工作区的文件；
-    路径防护：resolve 后必须位于该用户工作区根目录内，拒绝 ../ 越界。
+    路径防护：resolve 后必须位于工作区内或共享/登记前缀内（软链穿透放行），拒绝 ../ 越界。
     用于 ChatNode 的文件卡片下载与图片缩略图（前端 fetch 带 token → blob）。
     """
     from fastapi.responses import FileResponse
 
-    target = resolve_skill_abs(current_user.id, path)
+    workspace = node_workspace(current_user.id, workspace_id) if workspace_id else None
+    target = resolve_skill_abs(current_user.id, path, workspace=workspace)
     if target is None or not target.is_file():
         raise HTTPException(status_code=404, detail="文件不存在")
     return FileResponse(

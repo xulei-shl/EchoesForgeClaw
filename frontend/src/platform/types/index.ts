@@ -232,6 +232,11 @@ export interface ChatMessage {
   contextImages?: string[];
   /** 该轮回复被用户主动停止（保留已流出的部分，展示「重试」入口） */
   interrupted?: boolean;
+  /**
+   * 该轮回复的思考过程（模型 reasoning 推理文本，DeepSeek 等端点）。
+   * 与回答正文分开存储：UI 折叠展示，不并入 content、不随多轮历史回传。
+   */
+  reasoning?: string;
   /** Agent 模式中间步骤（工具调用 / 思考状态），附加在 assistant 消息上 */
   agentSteps?: AgentStep[];
   /** Skill Agent 执行产生的文件（agent_file 事件），渲染为下载/预览卡片 */
