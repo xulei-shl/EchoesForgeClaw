@@ -343,7 +343,7 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
                    </div>
                 )
               }
-              text="点击 ▶ 运行生成藏书票"
+              text="点击 ▶ 运行生成图像"
               subtext={referenceNote}
             />
           )}
