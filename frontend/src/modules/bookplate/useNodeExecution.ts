@@ -323,7 +323,12 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
       case 'book_info':
         return ''; // 需用户输入 ISBN
       case 'image_analysis': {
-        const inputs = resolveNodeRunInputs(node, ctx.nodesRef.current, ctx.edgesRef.current);
+        const inputs = resolveNodeRunInputs(
+          node,
+          ctx.nodesRef.current,
+          ctx.edgesRef.current,
+          ctx.portTypesRef.current
+        );
         const { book, uploadNode, refImage } = inputs;
         // 注意：必须传豆瓣原始 URL（cover_image），而非本地代理 URL（cover_image_local）——
         // 后端仅接受 doubanio.com 域名做封面抓取/分析
@@ -344,7 +349,12 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
         return '';
       }
       case 'prompt_generation': {
-        const inputs = resolveNodeRunInputs(node, ctx.nodesRef.current, ctx.edgesRef.current);
+        const inputs = resolveNodeRunInputs(
+          node,
+          ctx.nodesRef.current,
+          ctx.edgesRef.current,
+          ctx.portTypesRef.current
+        );
         if (!inputs.book?.data?.isbn && !inputs.analysis && !inputs.text) {
           return pendingReason(
             node,
@@ -359,7 +369,12 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
         return '';
       }
       case 'image_generation': {
-        const inputs = resolveNodeRunInputs(node, ctx.nodesRef.current, ctx.edgesRef.current);
+        const inputs = resolveNodeRunInputs(
+          node,
+          ctx.nodesRef.current,
+          ctx.edgesRef.current,
+          ctx.portTypesRef.current
+        );
         if (inputs.promptNodes.some((p) => p.data?.isGenerating)) return '提示词生成中，请稍候';
         if (!inputs.imagePrompt.trim()) {
           return pendingReason(
@@ -375,6 +390,8 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
       case 'text':
       case 'image_upload':
         return ''; // 用户手动输入 / 上传，无需自动执行
+      case 'text_aggregate':
+        return ''; // 纯文本变换：输出随上级内容/连线变化自动重算，无需手动运行
     }
   };
 

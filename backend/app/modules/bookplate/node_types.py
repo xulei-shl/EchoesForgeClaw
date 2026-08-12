@@ -12,6 +12,7 @@ NODE_IMAGE = "image_generation"
 NODE_TEXT = "text"
 NODE_IMAGE_UPLOAD = "image_upload"
 NODE_CHAT = "chat"
+NODE_TEXT_AGGREGATE = "text_aggregate"
 
 NODE_TEMPLATES = [
     {
@@ -73,6 +74,15 @@ NODE_TEMPLATES = [
         "description": "多轮对话 AI 助手，可绑定大模型或 FastClaw Agent，输出最后一轮回复",
         "category": "generate",
         "configurable": True,
+        "output_type": "text",
+        "input_types": ["text"],
+    },
+    {
+        "type": NODE_TEXT_AGGREGATE,
+        "name": "文本聚合",
+        "description": "用占位符模板把多个上级文本按自定义格式拼接（如 ## 标题 + {占位符}）",
+        "category": "generate",
+        "configurable": False,
         "output_type": "text",
         "input_types": ["text"],
     },

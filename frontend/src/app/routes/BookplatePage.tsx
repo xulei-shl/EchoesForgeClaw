@@ -23,7 +23,18 @@ import {
   computeAutoLayout,
   computeFitViewport,
 } from '../../modules/bookplate/nodeLayout';
-import { NODE_TEMPLATES, NODE_PORT_TYPES, getNodeTitle, matchPortType } from '../../modules/bookplate/nodeTypes';
+import {
+  NODE_TEMPLATES,
+  NODE_PORT_TYPES,
+  getNodeTitle,
+  matchPortType,
+  resolveDirectParents,
+} from '../../modules/bookplate/nodeTypes';
+import {
+  AGGREGATE_DEFAULT_TEMPLATE,
+  renderAggregateTemplate,
+  syncAggregatePlaceholders,
+} from '../../modules/bookplate/textTemplate';
 import {
   resolveNodeRunInputs,
   DEFAULT_RUN_SETTINGS,
@@ -322,6 +333,7 @@ const BookplatePage: React.FC = () => {
     nodesRef,
     edgesRef,
     streamControllers,
+    portTypesRef,
     setNodes,
   });
 
@@ -573,6 +585,13 @@ const BookplatePage: React.FC = () => {
           settings: { includeBook: true, includeUpstream: true },
           epoch: 0,
         };
+      case 'text_aggregate':
+        return {
+          template: AGGREGATE_DEFAULT_TEMPLATE,
+          placeholders: {},
+          output: '',
+          error: null,
+        };
     }
   };
 
@@ -713,18 +732,18 @@ const BookplatePage: React.FC = () => {
       let ready = false;
       if (node.type === 'image_analysis') {
         idle = !node.data?.analysis;
-        const inputs = resolveNodeRunInputs(node, nodesRef.current, edgesRef.current);
+        const inputs = resolveNodeRunInputs(node, nodesRef.current, edgesRef.current, portTypesOf);
         const uploaded = analysisUploads.current.get(node.id);
         const imageReady = !!(uploaded || inputs.refImage);
         const coverReady = !inputs.uploadNode && (!!inputs.book?.data?.cover_image || !!inputs.book?.data?.coverUrl);
         ready = imageReady || coverReady;
       } else if (node.type === 'prompt_generation') {
         idle = !node.data?.content;
-        const inputs = resolveNodeRunInputs(node, nodesRef.current, edgesRef.current);
+        const inputs = resolveNodeRunInputs(node, nodesRef.current, edgesRef.current, portTypesOf);
         ready = !!(inputs.book?.data?.isbn || inputs.analysis || inputs.text);
       } else if (node.type === 'image_generation') {
         idle = !node.data?.imageUrl;
-        const inputs = resolveNodeRunInputs(node, nodesRef.current, edgesRef.current);
+        const inputs = resolveNodeRunInputs(node, nodesRef.current, edgesRef.current, portTypesOf);
         ready = !!inputs.imagePrompt.trim() && !inputs.promptNodes.some((p) => p.data?.isGenerating);
         if (inputs.uploadNode && !inputs.refImage) ready = false;
       }
@@ -740,6 +759,35 @@ const BookplatePage: React.FC = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodes, edges]);
+
+  // ---------- 文本聚合节点：自动重算输出（纯文本变换，不调 API） ----------
+  // 上级内容 / 连线变化时即时重算聚合结果并同步占位符映射（新上级补默认别名、断开的移除）。
+  // 只写入实际变化的字段，避免无意义渲染；写入后 nodes 变化触发本 effect 重跑，二次无变化即收敛。
+  useEffect(() => {
+    const patches: Record<string, Record<string, any>> = {};
+    for (const node of nodesRef.current) {
+      if (node.type !== 'text_aggregate') continue;
+      const parents = resolveDirectParents(node.id, nodesRef.current, edgesRef.current);
+      const placeholders = syncAggregatePlaceholders(node, parents, portTypesOf);
+      const output = renderAggregateTemplate(
+        typeof node.data?.template === 'string' ? node.data.template : '',
+        parents,
+        placeholders
+      );
+      const patch: Record<string, any> = {};
+      if (JSON.stringify(placeholders) !== JSON.stringify(node.data?.placeholders ?? {})) {
+        patch.placeholders = placeholders;
+      }
+      if (output !== (node.data?.output ?? '')) patch.output = output;
+      if (Object.keys(patch).length > 0) patches[node.id] = patch;
+    }
+    if (Object.keys(patches).length > 0) {
+      setNodes((prev) =>
+        prev.map((n) => (patches[n.id] ? { ...n, data: { ...n.data, ...patches[n.id] } } : n))
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes, edges, portTypesOf]);
 
   // ---------- 自动聚焦新节点 ----------
   /** 判断节点是否（部分）落在当前视口内（画布坐标换算，含少量边距） */
@@ -1053,6 +1101,40 @@ const BookplatePage: React.FC = () => {
     if (reason) showToast(reason, { type: 'warning', position: 'top-right' });
   }, []);
 
+  /** 文本聚合节点：保存占位符模板（未变化不记历史） */
+  const handleUpdateAggregateTemplateFor = useCallback((id: string, template: string) => {
+    const node = nodesRef.current.find((n) => n.id === id);
+    if (!node || node.type !== 'text_aggregate') return;
+    const old = typeof node.data?.template === 'string' ? node.data.template : '';
+    if (template === old) return;
+    recordHistory();
+    updateNodeData(id, { template });
+  }, []);
+  /** 文本聚合节点：重命名某上级节点的占位符别名（空别名忽略；与其他上级重名拒绝；未变化不记历史） */
+  const handleRenameAggregatePlaceholderFor = useCallback(
+    (id: string, parentId: string, alias: string) => {
+      const node = nodesRef.current.find((n) => n.id === id);
+      if (!node || node.type !== 'text_aggregate') return;
+      const trimmed = alias.trim();
+      if (!trimmed) return;
+      const placeholders = { ...(node.data?.placeholders ?? {}) };
+      if (placeholders[parentId] === trimmed) return;
+      const conflict = Object.entries(placeholders).some(
+        ([pid, a]) => pid !== parentId && a === trimmed
+      );
+      if (conflict) {
+        showToast('该占位符别名已被其他上级节点使用，请换一个', {
+          type: 'warning',
+          position: 'top-right',
+        });
+        return;
+      }
+      placeholders[parentId] = trimmed;
+      recordHistory();
+      updateNodeData(id, { placeholders });
+    },
+    []
+  );
   /** 可执行节点：更新运行设置（包含图书元数据 / 自动运行；未变化不记历史） */
   const handleUpdateRunSettingsFor = useCallback((id: string, settings: NodeRunSettings) => {
     const node = nodesRef.current.find((n) => n.id === id);
@@ -1284,6 +1366,8 @@ const BookplatePage: React.FC = () => {
     handleEditTextFor,
     handleImageChangeFor,
     handleSendChatFor,
+    handleUpdateAggregateTemplateFor,
+    handleRenameAggregatePlaceholderFor,
     handleUpdateChatSettingsFor,
     handleClearChatFor,
     handleStopChatFor,

@@ -2,7 +2,7 @@ import type { Dispatch, RefObject, SetStateAction } from 'react';
 import { postSSEStream } from '../../platform/services/sse';
 import { PROMPT_SSE_IDLE_TIMEOUT_MS } from '../../platform/utils/timeouts';
 import { bookMetadataText, nodeOutputText } from './nodeTypes';
-import { resolveNodeRunInputs } from './execution';
+import { resolveNodeRunInputs, type PortTypesLookup } from './execution';
 import { toWireChatMessages, type EdgeData, type NodeData } from './graphTypes';
 import { handleAgentSseMessage } from './agentSteps';
 import { makeIdleTimeout } from './idleTimeout';
@@ -13,6 +13,7 @@ export interface ChatExecutionContext {
   nodesRef: RefObject<NodeData[]>;
   edgesRef: RefObject<EdgeData[]>;
   streamControllers: RefObject<Map<string, AbortController>>;
+  portTypesRef: RefObject<PortTypesLookup>;
   setNodes: Dispatch<SetStateAction<NodeData[]>>;
 }
 
@@ -35,7 +36,12 @@ export function useChatExecution(ctx: ChatExecutionContext): ChatExecution {
     };
     const blocks: { title: string; body: string }[] = [];
     if (settings.includeBook) {
-      const book = resolveNodeRunInputs(node, ctx.nodesRef.current, ctx.edgesRef.current).book;
+      const book = resolveNodeRunInputs(
+        node,
+        ctx.nodesRef.current,
+        ctx.edgesRef.current,
+        ctx.portTypesRef.current
+      ).book;
       const metaText = bookMetadataText(book?.data);
       if (metaText.trim()) blocks.push({ title: '图书元数据', body: metaText });
     }

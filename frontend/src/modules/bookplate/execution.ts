@@ -1,4 +1,4 @@
-import type { CanvasNodeType, NodePortType, NodeRunSettings } from '../../platform/types';
+import type { NodeRunSettings } from '../../platform/types';
 import {
   bookMetadataText,
   findConnectedBookInfoUpstream,
@@ -7,12 +7,13 @@ import {
   nodeOutputText,
   resolveDirectParents,
 } from './nodeTypes';
+import { isTextOutputNode } from './textTemplate';
+import type { PortTypesLookup } from './nodeTypes';
 import type { EdgeData, NodeData } from './graphTypes';
 
-/** 端口类型查找（由画布提供：后端模板声明优先，前端静态镜像兜底） */
-export type PortTypesLookup = (
-  type: CanvasNodeType
-) => { output: NodePortType; inputs: NodePortType[] };
+// 端口类型查找类型定义在基础模块 nodeTypes.ts（textTemplate 等不依赖 execution 的模块也引用），
+// 此处再导出以保持既有调用方的 import 路径不变
+export type { PortTypesLookup } from './nodeTypes';
 
 /** 可执行节点的运行设置默认值（破坏性更新：默认手动运行、不注入图书元数据） */
 export const DEFAULT_RUN_SETTINGS: NodeRunSettings = { includeBook: false, autoRun: false };
@@ -66,7 +67,8 @@ export interface RunInputs {
 export function resolveNodeRunInputs(
   node: NodeData,
   nodes: NodeData[],
-  edges: EdgeData[]
+  edges: EdgeData[],
+  portTypesOf: PortTypesLookup
 ): RunInputs {
   const parents = resolveDirectParents(node.id, nodes, edges);
   const settings: NodeRunSettings = node.data?.settings ?? DEFAULT_RUN_SETTINGS;
@@ -82,8 +84,17 @@ export function resolveNodeRunInputs(
   const analysisValues = parents
     .filter((p) => p.type === 'image_analysis')
     .map((p) => nodeOutputText(p));
+  // 文本上下文来源：按端口类型声明推导（output ∈ text/any）——文本 / AI 对话 / 文本聚合 /
+  // 以及后续新增的任何文本输出节点，无需在此逐个枚举；排除已单独分桶的
+  // 图书元数据（book）、图片分析（analysis）、提示词生成（prompt）。
   const textValues = parents
-    .filter((p) => p.type === 'text' || p.type === 'chat')
+    .filter(
+      (p) =>
+        isTextOutputNode(p, portTypesOf) &&
+        p.type !== 'book_info' &&
+        p.type !== 'image_analysis' &&
+        p.type !== 'prompt_generation'
+    )
     .map((p) => nodeOutputText(p));
   const promptNodes = parents.filter((p) => p.type === 'prompt_generation');
   const promptValues = promptNodes.map((p) => nodeOutputText(p));

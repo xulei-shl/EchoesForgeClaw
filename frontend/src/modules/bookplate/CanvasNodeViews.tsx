@@ -6,6 +6,7 @@ import { ChatNode } from './components/ChatNode';
 import { ImageNode } from './components/ImageNode';
 import { TextNode } from './components/TextNode';
 import { ImageUploadNode } from './components/ImageUploadNode';
+import { TextAggregateNode } from './components/TextAggregateNode';
 import { getNodeTitle, matchPortType, resolveDirectParents } from './nodeTypes';
 import { DEFAULT_RUN_SETTINGS, type PortTypesLookup } from './execution';
 import type { EdgeData, NodeData, NodeSize } from './graphTypes';
@@ -45,6 +46,10 @@ export interface NodeViewHelpers {
   handleEditTextFor: (id: string, content: string) => void;
   handleImageChangeFor: (id: string, imageUrl: string | null, imageName: string) => void;
   handleSendChatFor: (id: string, text: string) => void;
+  /** 文本聚合节点：保存占位符模板 */
+  handleUpdateAggregateTemplateFor: (id: string, template: string) => void;
+  /** 文本聚合节点：重命名某上级节点的占位符别名 */
+  handleRenameAggregatePlaceholderFor: (id: string, parentId: string, alias: string) => void;
   handleUpdateChatSettingsFor: (id: string, settings: ChatNodeSettings) => void;
   handleClearChatFor: (id: string) => void;
   handleStopChatFor: (id: string) => void;
@@ -232,6 +237,23 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           onClearChat={h.handleClearChatFor}
           onStop={h.handleStopChatFor}
           onRetry={h.handleRetryChatFor}
+        />
+      );
+    }
+    case 'text_aggregate': {
+      const hasDownstream = h.edges.some((e) => e.source === node.id);
+      return (
+        <TextAggregateNode
+          {...common}
+          parents={resolveDirectParents(node.id, h.nodes, h.edges)}
+          template={typeof node.data?.template === 'string' ? node.data.template : ''}
+          placeholders={node.data?.placeholders ?? {}}
+          output={typeof node.data?.output === 'string' ? node.data.output : ''}
+          portTypesOf={h.portTypesOf}
+          hasDownstream={hasDownstream}
+          mismatchBadge={mismatchBadge}
+          onUpdateTemplate={h.handleUpdateAggregateTemplateFor}
+          onRenamePlaceholder={h.handleRenameAggregatePlaceholderFor}
         />
       );
     }

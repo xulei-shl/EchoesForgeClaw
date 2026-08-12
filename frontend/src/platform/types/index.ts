@@ -159,7 +159,9 @@ export type CanvasNodeType =
   /** 图片上传节点：手动上传一张图片（无需配置） */
   | 'image_upload'
   /** AI 对话节点：多轮对话 AI 助手（可配置绑定 LLM / Agent） */
-  | 'chat';
+  | 'chat'
+  /** 文本聚合节点：用占位符模板把多个上级文本按自定义格式拼接（无需配置，纯文本变换） */
+  | 'text_aggregate';
 
 /**
  * 节点端口类型（输入/输出）：text / image 为当前实际使用的类型，

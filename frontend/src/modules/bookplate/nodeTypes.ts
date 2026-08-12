@@ -11,6 +11,7 @@ export const NODE_DEFAULT_SIZES: Record<CanvasNodeType, { width: number; height:
   text: { width: 420, height: 400 },
   image_upload: { width: 420, height: 420 },
   chat: { width: 420, height: 560 },
+  text_aggregate: { width: 460, height: 520 },
 };
 
 /** 节点的主题色（用于左上角指示圆点） */
@@ -22,6 +23,7 @@ export const NODE_COLORS: Record<CanvasNodeType, string> = {
   image_analysis: 'oklch(0.65 0.15 260)',
   chat: 'oklch(0.65 0.15 280)',
   prompt_generation: 'oklch(0.65 0.15 340)',
+  text_aggregate: 'oklch(0.65 0.15 165)',
 };
 
 export interface NodeTemplateDef {
@@ -95,6 +97,14 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     configurable: true,
     defaultSize: NODE_DEFAULT_SIZES.chat,
   },
+  {
+    type: 'text_aggregate',
+    name: '文本聚合',
+    description: '用占位符模板把多个上级文本按自定义格式拼接（如 ## 标题 + {占位符}）',
+    category: 'generate',
+    configurable: false,
+    defaultSize: NODE_DEFAULT_SIZES.text_aggregate,
+  },
 ];
 
 export const NODE_TEMPLATE_MAP: Record<CanvasNodeType, NodeTemplateDef> = Object.fromEntries(
@@ -135,7 +145,13 @@ export const NODE_PORT_TYPES: Record<CanvasNodeType, { output: NodePortType; inp
   prompt_generation: { output: 'text', inputs: ['text'] },
   image_generation: { output: 'image', inputs: ['text', 'image'] },
   chat: { output: 'text', inputs: ['text'] },
+  text_aggregate: { output: 'text', inputs: ['text'] },
 };
+
+/** 端口类型查找（由画布提供：后端模板声明优先，前端静态镜像兜底） */
+export type PortTypesLookup = (
+  type: CanvasNodeType
+) => { output: NodePortType; inputs: NodePortType[] };
 
 /** 连线端口匹配结果：match（匹配）/ mismatch（不匹配，红色标注）/ unknown（类型未知，不判定） */
 export type PortMatch = 'match' | 'mismatch' | 'unknown';
@@ -276,6 +292,18 @@ export function nodeOutputText(node: GraphNode | undefined): string {
       return typeof node.data.prompt === 'string' ? node.data.prompt : '';
     case 'image_upload':
       return '';
+    case 'text_aggregate':
+      return typeof node.data.output === 'string' ? node.data.output : '';
+    default: {
+      // 约定式兜底：后续新增文本输出节点类型时，只要把对外文本存入
+      // data.output / data.content / data.analysis 任一字段（按此优先级），
+      // 即可被下游（含文本聚合占位符）默认引用，无需在此逐个枚举。
+      const d = node.data;
+      if (typeof d.output === 'string' && d.output) return d.output;
+      if (typeof d.content === 'string' && d.content) return d.content;
+      if (typeof d.analysis === 'string' && d.analysis) return d.analysis;
+      return '';
+    }
   }
 }
 
