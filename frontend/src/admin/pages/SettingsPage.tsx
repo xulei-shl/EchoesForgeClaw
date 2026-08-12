@@ -22,7 +22,8 @@ const KNOWN_KEYS: { key: string; description: string }[] = [
   { key: 'douban.qps', description: '豆瓣请求速率（次/秒）' },
   { key: 'douban.proxy', description: '豆瓣请求 HTTP 代理' },
   { key: 'bitfrost.base_url', description: 'Bifrost Gateway 基础地址' },
-  { key: 'bitfrost.api_key', description: 'Bifrost Management API Key（敏感，仅显示掩码）' },
+  { key: 'bitfrost.username', description: 'Bifrost 管理账号（Basic Auth 用户名，初始来自 .env）' },
+  { key: 'bitfrost.password', description: 'Bifrost 管理密码（敏感，仅显示掩码）' },
 ];
 
 /** 敏感设置项的值展示 / 编辑提示 */

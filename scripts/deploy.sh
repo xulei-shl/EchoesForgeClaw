@@ -148,6 +148,15 @@ if ! grep -q '^ADMIN_PASSWORD=' "$ENV_FILE" 2>/dev/null; then
 else
   info "保留已有 ADMIN_PASSWORD（如需重置请手动修改 backend/.env 或重新运行并指定 --admin-password）"
 fi
+# Bifrost 管理 API Basic Auth 账号密码（存在则保留，避免覆盖已有配置）；
+# 后端启动时会种子化到系统设置（admin/settings），之后以页面修改为准
+if ! grep -q '^BITFROST_USERNAME=' "$ENV_FILE" 2>/dev/null; then
+  echo "BITFROST_USERNAME=admin" >> "$ENV_FILE"
+fi
+if ! grep -q '^BITFROST_PASSWORD=' "$ENV_FILE" 2>/dev/null; then
+  echo "BITFROST_PASSWORD=" >> "$ENV_FILE"
+  warn "已写入 BITFROST_USERNAME=admin（密码留空）：请在 admin/settings 或 backend/.env 配置 Bifrost 管理密码"
+fi
 chmod 600 "$ENV_FILE"
 
 # ---------------- 源码配置同步（CORS / vite 代理） ----------------

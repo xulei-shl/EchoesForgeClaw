@@ -144,7 +144,7 @@ export const BifrostPromptsPage: React.FC = () => {
             <Link to="/admin/settings" className="text-accent underline underline-offset-2 mx-1">
               系统设置
             </Link>
-            中管理（bitfrost.base_url / bitfrost.api_key）。
+            中管理（bitfrost.base_url / bitfrost.username / bitfrost.password）。
           </p>
         </Card>
       )}

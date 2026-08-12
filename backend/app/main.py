@@ -44,10 +44,20 @@ DEFAULT_SETTINGS = {
     ),
     "douban.qps": ("0.5", "豆瓣请求速率（次/秒），建议 ≤ 0.5 以防反爬"),
     "douban.proxy": ("", "豆瓣请求 HTTP 代理，如 http://127.0.0.1:7890（留空不使用）"),
-    "bitfrost.base_url": ("", "Bifrost Gateway 基础地址（如 https://bifrost.example.com）"),
-    "bitfrost.api_key": (
+    "bitfrost.base_url": (
         "",
-        "Bifrost Management API Key（敏感，管理后台仅显示掩码，绝不回传明文）",
+        "Bifrost Gateway 基础地址（本地可用 http://localhost:8080；远程请用 HTTPS，Basic Auth 明文等价传输）",
+    ),
+    # Bifrost 管理 API 认证：自部署默认 Basic Auth（username:password）。
+    # 首次启动时用 .env 中的 BITFROST_USERNAME / BITFROST_PASSWORD 种子化；
+    # 之后以本页修改为准（仅当设置缺失时重新种子，不会覆盖管理员修改）。
+    "bitfrost.username": (
+        settings.BITFROST_USERNAME,
+        "Bifrost 管理账号（Basic Auth 用户名，初始来自 .env，可在本页修改）",
+    ),
+    "bitfrost.password": (
+        settings.BITFROST_PASSWORD,
+        "Bifrost 管理密码（敏感，仅显示掩码；初始来自 .env，可在本页修改）",
     ),
 }
 
@@ -80,6 +90,20 @@ def _startup_init():
             existing = db.query(AppSetting).filter(AppSetting.key == key).first()
             if not existing:
                 db.add(AppSetting(key=key, value=value, description=description))
+            elif key.startswith("bitfrost.") and value and not existing.value:
+                # 种子回填（仅 bitfrost.*）：存量值为空且种子值（.env）非空时补写——
+                # 兼容「先启动后补 .env」与管理员清空后重启恢复；绝不覆盖非空修改
+                existing.value = value
+
+        # 清理遗留配置：Basic 凭据（username + password）均已配置非空时，删除旧版种子化的
+        # bitfrost.api_key 行——Bearer 回退仅应在未配置 Basic 时兜底；避免设置页出现
+        # 误导性的「已配置」掩码项（若只有 api_key 的部署，该行保留、回退照常生效）。
+        bf_user = db.query(AppSetting).filter(AppSetting.key == "bitfrost.username").first()
+        bf_pass = db.query(AppSetting).filter(AppSetting.key == "bitfrost.password").first()
+        if bf_user and bf_user.value and bf_pass and bf_pass.value:
+            stale_key = db.query(AppSetting).filter(AppSetting.key == "bitfrost.api_key").first()
+            if stale_key:
+                db.delete(stale_key)
 
         # ---- 默认提示词模板（按固定 key 判重，name 可编辑不影响种子身份） ----
         DEFAULT_PROMPT_KEY = "bookplate.prompt_generation.default"

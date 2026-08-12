@@ -8,10 +8,12 @@ Bifrost Management API（所有 `/api/prompt-repo/*`）使用
 预览图：Bifrost 官方数据无图片字段，预览图由本系统本地存储
 （backend/static/prompt-previews + prompt_metadata 表），列表/详情接口合并返回。
 """
+import base64
 import logging
 import re
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import httpx
 
@@ -62,34 +64,68 @@ def sanitize_prompt_id(prompt_id: str) -> str:
     return re.sub(r"[^A-Za-z0-9_-]", "", prompt_id) or "prompt"
 
 
-def _bifrost_settings(db) -> Tuple[str, str]:
+@dataclass
+class BifrostAuthConfig:
+    """一次 Bifrost 管理 API 调用所需的连接与认证配置。
+
+    自部署版本的管理 API（/api/*，含 Prompt Repo）默认使用 Basic Auth
+    （Authorization: Basic base64(username:password)），账号密码存于系统设置
+    （bitfrost.username / bitfrost.password，密码掩码）。兼容旧部署的 Bearer
+    Management API Key（bitfrost.api_key）——两者都配置时 Basic 优先。
+    """
+
+    base_url: str = ""
+    username: str = ""
+    password: str = ""
+    api_key: str = ""
+
+    @property
+    def headers(self) -> Dict[str, str]:
+        headers = {"Accept": "application/json"}
+        if self.username and self.password:
+            token = base64.b64encode(
+                f"{self.username}:{self.password}".encode("utf-8")
+            ).decode("ascii")
+            headers["Authorization"] = f"Basic {token}"
+        elif self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        return headers
+
+
+def _bifrost_config(db) -> BifrostAuthConfig:
     settings_map = {s.key: s.value for s in db.query(AppSetting).all()}
-    base_url = (settings_map.get("bitfrost.base_url") or "").strip().rstrip("/")
-    api_key = (settings_map.get("bitfrost.api_key") or "").strip()
-    return base_url, api_key
+    return BifrostAuthConfig(
+        base_url=(settings_map.get("bitfrost.base_url") or "").strip().rstrip("/"),
+        username=(settings_map.get("bitfrost.username") or "").strip(),
+        password=settings_map.get("bitfrost.password") or "",
+        api_key=(settings_map.get("bitfrost.api_key") or "").strip(),
+    )
 
 
-def _require_config(db) -> Tuple[str, str]:
-    base_url, api_key = _bifrost_settings(db)
-    if not base_url or not api_key:
+def _require_config(db) -> BifrostAuthConfig:
+    config = _bifrost_config(db)
+    if not config.base_url:
         raise BifrostNotConfiguredError(
-            "Bifrost 未配置：请在「系统设置」中添加 bitfrost.base_url 与 bitfrost.api_key"
+            "Bifrost 未配置：请在「系统设置」中添加 bitfrost.base_url"
         )
-    return base_url, api_key
+    if not ((config.username and config.password) or config.api_key):
+        raise BifrostNotConfiguredError(
+            "Bifrost 未配置：请在「系统设置」中添加 bitfrost.username / bitfrost.password"
+            "（或兼容的 bitfrost.api_key）"
+        )
+    return config
 
 
 async def _get_json(
-    base_url: str, api_key: str, path: str, params: Optional[Dict[str, Any]] = None
+    config: BifrostAuthConfig, path: str, params: Optional[Dict[str, Any]] = None
 ) -> Any:
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Accept": "application/json",
-    }
     try:
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(10.0, read=30.0)
         ) as client:
-            resp = await client.get(base_url + path, headers=headers, params=params)
+            resp = await client.get(
+                config.base_url + path, headers=config.headers, params=params
+            )
     except httpx.HTTPError as exc:
         raise BifrostError(f"连接 Bifrost 失败: {exc}") from exc
     if resp.status_code == 404:
@@ -192,8 +228,8 @@ def _compact_prompt(
 
 async def list_folders(db) -> List[Dict[str, Any]]:
     """列出全部文件夹（Bifrost 官方数据，原样透传）。"""
-    base_url, api_key = _require_config(db)
-    payload = await _get_json(base_url, api_key, "/api/prompt-repo/folders")
+    config = _require_config(db)
+    payload = await _get_json(config, "/api/prompt-repo/folders")
     return _as_list(payload, "folders")
 
 
@@ -207,11 +243,9 @@ async def list_prompts(
     Bifrost 官方列表接口不支持关键词检索，`q` 在代理侧对
     「名称 + 正文文本」做包含过滤（供画布检索节点与管理页搜索）。
     """
-    base_url, api_key = _require_config(db)
+    config = _require_config(db)
     params = {"folder_id": folder_id} if folder_id else None
-    payload = await _get_json(
-        base_url, api_key, "/api/prompt-repo/prompts", params=params
-    )
+    payload = await _get_json(config, "/api/prompt-repo/prompts", params=params)
     prompts = _as_list(payload, "prompts")
     if not prompts:
         return []
@@ -233,8 +267,8 @@ async def list_prompts(
 
 async def get_prompt(db, prompt_id: str) -> Dict[str, Any]:
     """获取单个提示词详情（含提取的正文文本 + 本地预览图）。"""
-    base_url, api_key = _require_config(db)
-    payload = await _get_json(base_url, api_key, f"/api/prompt-repo/prompts/{prompt_id}")
+    config = _require_config(db)
+    payload = await _get_json(config, f"/api/prompt-repo/prompts/{prompt_id}")
     if not isinstance(payload, dict):
         raise BifrostError("Bifrost 返回了非预期的提示词数据")
     previews = _preview_map(db, [prompt_id])

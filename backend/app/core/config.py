@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     ADMIN_USERNAME: str = "admin"
     ADMIN_PASSWORD: str = "admin123"
 
+    # Bifrost 管理 API 认证（自部署默认 Basic Auth，username:password）。
+    # 首次启动时种子化到系统设置（admin/settings 的 bitfrost.username / bitfrost.password），
+    # 之后以页面修改为准（仅在设置缺失时重新种子）。
+    BITFROST_USERNAME: str = ""
+    BITFROST_PASSWORD: str = ""
+
     class Config:
         env_file = ".env"
 

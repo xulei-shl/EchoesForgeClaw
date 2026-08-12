@@ -10,9 +10,9 @@ from app.schemas.admin import AppSettingCreate, AppSettingUpdate, AppSettingOut
 
 router = APIRouter(prefix="/admin/settings", tags=["admin-settings"])
 
-# 敏感设置键：值永不回传明文（如 Bifrost Management API Key）。
-# 判定规则取键名中的 api_key / secret 片段，命中即以掩码回传、留空保存不修改。
-_SENSITIVE_MARKERS = ("api_key", "secret")
+# 敏感设置键：值永不回传明文（如 Bifrost 管理密码 / API Key）。
+# 判定规则取键名中的 api_key / secret / password 片段，命中即以掩码回传、留空保存不修改。
+_SENSITIVE_MARKERS = ("api_key", "secret", "password")
 
 
 def _is_sensitive(key: str) -> bool:
