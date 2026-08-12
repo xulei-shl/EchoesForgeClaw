@@ -2,8 +2,8 @@
 
 Bifrost Management API（所有 `/api/prompt-repo/*`）鉴权（自部署默认）：
 - 主方案：Basic Auth（`Authorization: Basic base64(username:password)`），
-  凭据存于系统设置 bitfrost.username / bitfrost.password（密码仅掩码回传）；
-- 兼容方案：Bearer Management API Key（bitfrost.api_key，旧部署回退）。
+  凭据存于系统设置 bifrost.username / bifrost.password（密码仅掩码回传）；
+- 兼容方案：Bearer Management API Key（bifrost.api_key，旧部署回退）。
 两者都配置时 Basic 优先；启动时若 Basic 凭据齐全会自动清理遗留的 api_key 行。
 
 正文提取：提示词内容必须 Commit 成 Version 才存在，取 `latest_version`
@@ -73,8 +73,8 @@ class BifrostAuthConfig:
 
     自部署版本的管理 API（/api/*，含 Prompt Repo）默认使用 Basic Auth
     （Authorization: Basic base64(username:password)），账号密码存于系统设置
-    （bitfrost.username / bitfrost.password，密码掩码）。兼容旧部署的 Bearer
-    Management API Key（bitfrost.api_key）——两者都配置时 Basic 优先。
+    （bifrost.username / bifrost.password，密码掩码）。兼容旧部署的 Bearer
+    Management API Key（bifrost.api_key）——两者都配置时 Basic 优先。
 
     allowed_folders：白名单文件夹（小写集合，元素可为文件夹 ID 或名称）；
     非空时列表/详情只返回白名单文件夹下的提示词（管理页与画布检索节点
@@ -103,17 +103,17 @@ class BifrostAuthConfig:
 def _bifrost_config(db) -> BifrostAuthConfig:
     settings_map = {s.key: s.value for s in db.query(AppSetting).all()}
     # 白名单：逗号分隔的文件夹 ID 或名称（小写集合，如 "绘图,13058372-..."）
-    allowed_raw = (settings_map.get("bitfrost.allowed_folders") or "").strip()
+    allowed_raw = (settings_map.get("bifrost.allowed_folders") or "").strip()
     allowed = tuple(
         sorted(
             {seg.strip().lower() for seg in allowed_raw.split(",") if seg.strip()}
         )
     )
     return BifrostAuthConfig(
-        base_url=(settings_map.get("bitfrost.base_url") or "").strip().rstrip("/"),
-        username=(settings_map.get("bitfrost.username") or "").strip(),
-        password=settings_map.get("bitfrost.password") or "",
-        api_key=(settings_map.get("bitfrost.api_key") or "").strip(),
+        base_url=(settings_map.get("bifrost.base_url") or "").strip().rstrip("/"),
+        username=(settings_map.get("bifrost.username") or "").strip(),
+        password=settings_map.get("bifrost.password") or "",
+        api_key=(settings_map.get("bifrost.api_key") or "").strip(),
         allowed_folders=allowed,
     )
 
@@ -133,12 +133,12 @@ def _require_config(db) -> BifrostAuthConfig:
     config = _bifrost_config(db)
     if not config.base_url:
         raise BifrostNotConfiguredError(
-            "Bifrost 未配置：请在「系统设置」中添加 bitfrost.base_url"
+            "Bifrost 未配置：请在「系统设置」中添加 bifrost.base_url"
         )
     if not ((config.username and config.password) or config.api_key):
         raise BifrostNotConfiguredError(
-            "Bifrost 未配置：请在「系统设置」中添加 bitfrost.username / bitfrost.password"
-            "（或兼容的 bitfrost.api_key）"
+            "Bifrost 未配置：请在「系统设置」中添加 bifrost.username / bifrost.password"
+            "（或兼容的 bifrost.api_key）"
         )
     return config
 

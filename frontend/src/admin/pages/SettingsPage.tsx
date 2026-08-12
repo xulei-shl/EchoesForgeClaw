@@ -25,10 +25,10 @@ const KNOWN_KEYS: { key: string; description: string }[] = [
   { key: 'douban.base_url', description: '豆瓣 API 基础地址' },
   { key: 'douban.qps', description: '豆瓣请求速率（次/秒）' },
   { key: 'douban.proxy', description: '豆瓣请求 HTTP 代理' },
-  { key: 'bitfrost.base_url', description: 'Bifrost Gateway 基础地址' },
-  { key: 'bitfrost.username', description: 'Bifrost 管理账号（Basic Auth 用户名，初始来自 .env）' },
-  { key: 'bitfrost.password', description: 'Bifrost 管理密码（敏感，仅显示掩码）' },
-  { key: 'bitfrost.allowed_folders', description: 'Bifrost 白名单文件夹（逗号分隔，建议填文件夹 ID 也可填名称；留空=允许全部；仅白名单内的提示词出现在管理页与画布检索列表）' },
+  { key: 'bifrost.base_url', description: 'Bifrost Gateway 基础地址' },
+  { key: 'bifrost.username', description: 'Bifrost 管理账号（Basic Auth 用户名，初始来自 .env）' },
+  { key: 'bifrost.password', description: 'Bifrost 管理密码（敏感，仅显示掩码）' },
+  { key: 'bifrost.allowed_folders', description: 'Bifrost 白名单文件夹（逗号分隔，建议填文件夹 ID 也可填名称；留空=允许全部；仅白名单内的提示词出现在管理页与画布检索列表）' },
 ];
 
 /** 敏感设置项的值展示 / 编辑提示 */
@@ -62,7 +62,7 @@ export const SettingsPage: React.FC = () => {
   const [formError, setFormError] = useState('');
   const { dialog, showToast } = useFeedback();
 
-  // Bifrost 白名单文件夹（bitfrost.allowed_folders）专用配置 UI
+  // Bifrost 白名单文件夹（bifrost.allowed_folders）专用配置 UI
   const [bifrostFolders, setBifrostFolders] = useState<BifrostFolder[]>([]);
   const [wlOpen, setWlOpen] = useState(false);
   const [wlSelected, setWlSelected] = useState<Set<string>>(new Set());
@@ -126,7 +126,7 @@ export const SettingsPage: React.FC = () => {
       const folders = folderRes?.folders ?? [];
       setBifrostFolders(folders);
       // 同步白名单回显（卡片与弹窗共用同一状态）
-      const raw = (res.find((s) => s.key === 'bitfrost.allowed_folders')?.value || '')
+      const raw = (res.find((s) => s.key === 'bifrost.allowed_folders')?.value || '')
         .split(',')
         .map((s) => s.trim().toLowerCase())
         .filter(Boolean);
@@ -197,7 +197,7 @@ export const SettingsPage: React.FC = () => {
   const openWhitelistEditor = async () => {
     try {
       const res = await adminService.listSettings();
-      const raw = (res.find((s) => s.key === 'bitfrost.allowed_folders')?.value || '')
+      const raw = (res.find((s) => s.key === 'bifrost.allowed_folders')?.value || '')
         .split(',')
         .map((s) => s.trim().toLowerCase())
         .filter(Boolean);
@@ -234,7 +234,7 @@ export const SettingsPage: React.FC = () => {
       const ids = [...wlSelected];
       // createSetting 为 upsert 语义：键不存在时创建、存在时覆盖（修复「配置项不存在」）
       await adminService.createSetting({
-        key: 'bitfrost.allowed_folders',
+        key: 'bifrost.allowed_folders',
         value: ids.join(','),
         description:
           'Bifrost 白名单文件夹（逗号分隔的文件夹 ID；留空 = 允许全部；仅白名单内的提示词出现在管理页与画布检索列表）',
@@ -407,14 +407,14 @@ export const SettingsPage: React.FC = () => {
                   </button>
                   {!isCollapsed && (
                     <div className="space-y-3">
-                      {/* bitfrost 分组：白名单文件夹专用配置卡片（普通 KV 行隐藏，避免重复） */}
-                      {group.key === 'group:bitfrost' && (
+                      {/* bifrost 分组：白名单文件夹专用配置卡片（普通 KV 行隐藏，避免重复） */}
+                      {group.key === 'group:bifrost' && (
                         <Card className="p-4">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="font-mono text-sm text-accent border border-dashed border-accent/40 bg-accent/5 rounded-pill px-2.5 py-0.5">
-                                  bitfrost.allowed_folders
+                                  bifrost.allowed_folders
                                 </span>
                                 <ShieldCheck size={14} strokeWidth={1.5} className="text-accent" />
                               </div>
@@ -444,7 +444,7 @@ export const SettingsPage: React.FC = () => {
                         </Card>
                       )}
                       {group.configs
-                        .filter((s) => !(group.key === 'group:bitfrost' && s.key === 'bitfrost.allowed_folders'))
+                        .filter((s) => !(group.key === 'group:bifrost' && s.key === 'bifrost.allowed_folders'))
                         .map((s) => (
                           <Card key={s.id} className="p-4">
                             <div className="flex items-start justify-between gap-3">
