@@ -195,7 +195,7 @@ export const BifrostPromptsPage: React.FC = () => {
       )}
 
       {/* 工具栏 */}
-      <div className="flex items-center gap-3 mb-4">
+      <div className="flex items-center gap-3 mb-6">
         <div className="relative flex-1 max-w-xs">
           <Search
             size={15}
@@ -278,7 +278,7 @@ export const BifrostPromptsPage: React.FC = () => {
               {prompts.map((p) => (
                 <Card
                   key={p.id}
-                  className="p-3 cursor-pointer transition hover:shadow-md active:scale-[0.99]"
+                  className="p-2.5 rounded-2xl cursor-pointer transition hover:shadow-md active:scale-[0.96]"
                   onClick={() => {
                     // 切换详情时重置原始响应调试区，避免展示上一个提示词的残留数据
                     if (detail?.id !== p.id) {
@@ -297,7 +297,7 @@ export const BifrostPromptsPage: React.FC = () => {
                   }
                   onMouseLeave={() => setHoverPreview(null)}
                 >
-                  <div className="h-32 rounded-md overflow-hidden bg-paper border border-dashed border-paper-grid flex items-center justify-center">
+                  <div className={`h-32 relative rounded-md overflow-hidden bg-paper flex items-center justify-center ${p.preview_image ? 'after:absolute after:inset-0 after:rounded-md after:ring-1 after:ring-inset after:ring-black/5 dark:after:ring-white/5' : 'border border-dashed border-paper-grid'}`}>
                     {p.preview_image ? (
                       <img
                         src={p.preview_image}
@@ -309,17 +309,19 @@ export const BifrostPromptsPage: React.FC = () => {
                       <ImageOff size={24} strokeWidth={1} className="text-ink-faint" />
                     )}
                   </div>
-                  <p className="mt-2 font-serif text-sm font-semibold text-ink truncate" title={p.name}>
-                    {p.name}
-                  </p>
-                  <p className="mt-0.5 text-xs text-ink-light font-sans line-clamp-2">
-                    {p.content || '（空内容）'}
-                  </p>
-                  <div className="flex items-center gap-2 mt-1.5">
-                    {p.folder_name && <Badge>{p.folder_name}</Badge>}
-                    <span className="text-[10px] text-ink-faint font-sans tabular-nums">
-                      {formatDate(p.updated_at)}
-                    </span>
+                  <div className="px-1 pt-2 pb-1 antialiased">
+                    <p className="font-serif text-sm font-semibold text-ink truncate" title={p.name}>
+                      {p.name}
+                    </p>
+                    <p className="mt-0.5 text-xs text-ink-light font-sans line-clamp-2">
+                      {p.content || '（空内容）'}
+                    </p>
+                    <div className="flex items-center gap-2 mt-3">
+                      {p.folder_name && <Badge>{p.folder_name}</Badge>}
+                      <span className="text-[10px] text-ink-faint font-sans tabular-nums">
+                        {formatDate(p.updated_at)}
+                      </span>
+                    </div>
                   </div>
                 </Card>
               ))}
@@ -340,10 +342,12 @@ export const BifrostPromptsPage: React.FC = () => {
         panelClassName="max-w-xl"
       >
         {detail && (
-          <div className="space-y-4">
-            <div className="rounded-md border border-dashed border-paper-grid bg-paper overflow-hidden">
+          <div className="space-y-6">
+            <div className="p-1 rounded-xl border border-dashed border-paper-grid bg-paper overflow-hidden">
               {detail.preview_image ? (
-                <img src={detail.preview_image} alt={detail.name} className="w-full max-h-72 object-contain" />
+                <div className="relative rounded-lg overflow-hidden after:absolute after:inset-0 after:rounded-lg after:ring-1 after:ring-inset after:ring-black/5 dark:after:ring-white/5">
+                  <img src={detail.preview_image} alt={detail.name} className="w-full max-h-72 object-contain" />
+                </div>
               ) : (
                 <div className="h-36 flex flex-col items-center justify-center gap-2 text-ink-faint">
                   <ImageOff size={28} strokeWidth={1} />
@@ -352,7 +356,7 @@ export const BifrostPromptsPage: React.FC = () => {
               )}
             </div>
 
-            <div className="flex items-center gap-2 flex-wrap text-xs text-ink-light font-sans">
+            <div className="flex items-center gap-2 flex-wrap text-xs text-ink-light font-sans -mt-2">
               {detail.folder_name && <Badge>{detail.folder_name}</Badge>}
               {typeof detail.version_number === 'number' && (
                 <span className="font-mono">版本 v{detail.version_number}</span>
@@ -427,11 +431,13 @@ export const BifrostPromptsPage: React.FC = () => {
       {/* 悬停大图浮层 */}
       {hoverPreview && (
         <div
-          className="fixed z-[80] pointer-events-none"
+          className="fixed z-[80] pointer-events-none transition-opacity duration-200 animate-in fade-in zoom-in-[0.98]"
           style={{ left: hoverPreview.x, top: hoverPreview.y }}
         >
-          <div className="bg-paper border border-dashed border-paper-grid rounded-lg shadow-xl p-1.5">
-            <img src={hoverPreview.url} alt="" className="w-56 h-56 object-cover rounded" />
+          <div className="bg-paper border border-paper-grid rounded-xl shadow-xl p-1.5">
+            <div className="relative rounded-md overflow-hidden after:absolute after:inset-0 after:rounded-md after:ring-1 after:ring-inset after:ring-black/5 dark:after:ring-white/5">
+              <img src={hoverPreview.url} alt="" className="w-56 h-56 object-cover" />
+            </div>
           </div>
         </div>
       )}
