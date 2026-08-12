@@ -37,12 +37,16 @@ def _bifrost_error_http(exc: BifrostError) -> HTTPException:
 
 @router.get("/folders")
 async def list_bifrost_folders(
+    all: bool = False,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_admin_user),
 ):
-    """Bifrost 文件夹列表（提示词按文件夹筛选用）。"""
+    """Bifrost 文件夹列表（提示词按文件夹筛选用）。
+
+    all=true 时返回全部文件夹（不过滤白名单），供管理页配置白名单多选用。
+    """
     try:
-        folders = await list_folders(db)
+        folders = await list_folders(db, include_all=all)
     except BifrostError as exc:
         raise _bifrost_error_http(exc)
     return {"folders": folders}

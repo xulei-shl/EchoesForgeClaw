@@ -59,14 +59,10 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
   const [error, setError] = useState('');
   const [q, setQ] = useState('');
   const [detail, setDetail] = useState<BifrostPrompt | null>(null);
-  // 详情加载态：列表项数据可能不含正文（自部署 Bifrost 条件性返回），点开时拉取完整详情
-  const [detailLoading, setDetailLoading] = useState(false);
   // 悬停预览：跟随鼠标的浮层大图（fixed 覆盖层，portal 到 body 避免被画布 transform 裁剪）
   const [hoverPreview, setHoverPreview] = useState<{ x: number; y: number; url: string } | null>(null);
   // 请求序号：丢弃过期响应，防止快速输入时旧结果覆盖新结果
   const requestSeq = useRef(0);
-  // 详情请求序号：防止快速切换提示词时旧详情响应/加载态互相覆盖
-  const detailSeq = useRef(0);
 
   const loadPrompts = useCallback(async (keyword?: string) => {
     const seq = ++requestSeq.current;
@@ -114,25 +110,6 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
     }, 350);
     return () => window.clearTimeout(t);
   }, [pickerOpen, q, loadPrompts]);
-
-  const openDetail = useCallback(async (p: BifrostPrompt) => {
-    const seq = ++detailSeq.current;
-    setHoverPreview(null);
-    setDetail(p); // 先用列表数据即时展示
-    setDetailLoading(true);
-    try {
-      const fresh: BifrostPrompt = await api.get(
-        `/modules/bookplate/bifrost/prompts/${encodeURIComponent(p.id)}`,
-        { timeout: 20000 }
-      );
-      if (seq !== detailSeq.current) return;
-      setDetail((prev) => (prev && prev.id === p.id ? fresh : prev));
-    } catch {
-      // 详情拉取失败时保留列表数据，不打断查看
-    } finally {
-      if (seq === detailSeq.current) setDetailLoading(false);
-    }
-  }, []);
 
   const handleSelect = (p: BifrostPrompt) => {
     onUpdatePrompt?.(id, {
@@ -182,7 +159,10 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
           <div
             key={p.id}
             className="flex items-center gap-3 p-2.5 rounded-md cursor-pointer transition border border-transparent hover:border-paper-grid hover:bg-paper-grid/30 active:scale-[0.99]"
-            onClick={() => void openDetail(p)}
+            onClick={() => {
+              setHoverPreview(null);
+              setDetail(p);
+            }}
             onMouseEnter={(e) =>
               p.preview_image &&
               setHoverPreview({ x: e.clientX + 18, y: e.clientY + 12, url: p.preview_image })
@@ -253,7 +233,7 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
           </div>
         </div>
         <pre className="text-sm text-ink font-sans whitespace-pre-wrap bg-paper border border-paper-grid rounded-md p-3 max-h-56 overflow-y-auto">
-          {detailLoading ? '加载详情中…' : detail.content || '（空内容）'}
+          {detail.content || '（空内容）'}
         </pre>
         <div className="flex justify-end gap-2 pt-1">
           <Button variant="ghost" size="sm" onClick={closePicker}>

@@ -92,8 +92,9 @@ export const adminService = {
 
   /* ---------------- Bifrost 提示词 ---------------- */
 
-  listBifrostFolders: (): Promise<{ folders: BifrostFolder[] }> =>
-    api.get<{ folders: BifrostFolder[] }, { folders: BifrostFolder[] }>('/admin/bifrost/folders'),
+  /** all=true 时返回全部文件夹（不过滤白名单），供配置白名单多选用 */
+  listBifrostFolders: (params?: { all?: boolean }): Promise<{ folders: BifrostFolder[] }> =>
+    api.get<{ folders: BifrostFolder[] }, { folders: BifrostFolder[] }>('/admin/bifrost/folders', { params }),
   listBifrostPrompts: (params?: { folder_id?: string; q?: string }): Promise<{ prompts: BifrostPrompt[] }> =>
     api.get<{ prompts: BifrostPrompt[] }, { prompts: BifrostPrompt[] }>('/admin/bifrost/prompts', { params }),
   getBifrostPrompt: (promptId: string): Promise<BifrostPrompt> =>

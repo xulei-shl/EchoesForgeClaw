@@ -6,12 +6,15 @@ Bifrost Management API（所有 `/api/prompt-repo/*`）鉴权（自部署默认�
 - 兼容方案：Bearer Management API Key（bitfrost.api_key，旧部署回退）。
 两者都配置时 Basic 优先；启动时若 Basic 凭据齐全会自动清理遗留的 api_key 行。
 
+正文提取：提示词内容必须 Commit 成 Version 才存在，取 `latest_version`
+（缺省回退 versions 数组）。真实结构为
+`messages[].message.payload.content`（payload 内含 role/content），
+未提交的 Session 草稿不作为正文来源。
+
 预览图：Bifrost 官方数据无图片字段，预览图由本系统本地存储
 （backend/static/prompt-previews + prompt_metadata 表），列表/详情接口合并返回。
 """
-import asyncio
 import base64
-import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,8 +24,6 @@ import httpx
 
 from app.models.app_setting import AppSetting
 from app.models.prompt_metadata import PromptMetadata
-
-logger = logging.getLogger(__name__)
 
 # 预览图本地目录: backend/static/prompt-previews（复用 main.py 的 /static 挂载）
 PREVIEW_DIR = Path(__file__).resolve().parents[2] / "static" / "prompt-previews"
@@ -74,12 +75,17 @@ class BifrostAuthConfig:
     （Authorization: Basic base64(username:password)），账号密码存于系统设置
     （bitfrost.username / bitfrost.password，密码掩码）。兼容旧部署的 Bearer
     Management API Key（bitfrost.api_key）——两者都配置时 Basic 优先。
+
+    allowed_folders：白名单文件夹（小写集合，元素可为文件夹 ID 或名称）；
+    非空时列表/详情只返回白名单文件夹下的提示词（管理页与画布检索节点
+    共用同一过滤，空 = 允许全部，向后兼容）。
     """
 
     base_url: str = ""
     username: str = ""
     password: str = ""
     api_key: str = ""
+    allowed_folders: Tuple[str, ...] = ()
 
     @property
     def headers(self) -> Dict[str, str]:
@@ -96,12 +102,31 @@ class BifrostAuthConfig:
 
 def _bifrost_config(db) -> BifrostAuthConfig:
     settings_map = {s.key: s.value for s in db.query(AppSetting).all()}
+    # 白名单：逗号分隔的文件夹 ID 或名称（小写集合，如 "绘图,13058372-..."）
+    allowed_raw = (settings_map.get("bitfrost.allowed_folders") or "").strip()
+    allowed = tuple(
+        sorted(
+            {seg.strip().lower() for seg in allowed_raw.split(",") if seg.strip()}
+        )
+    )
     return BifrostAuthConfig(
         base_url=(settings_map.get("bitfrost.base_url") or "").strip().rstrip("/"),
         username=(settings_map.get("bitfrost.username") or "").strip(),
         password=settings_map.get("bitfrost.password") or "",
         api_key=(settings_map.get("bitfrost.api_key") or "").strip(),
+        allowed_folders=allowed,
     )
+
+
+def _folder_allowed(config: BifrostAuthConfig, folder_id, folder_name) -> bool:
+    """白名单匹配：空白名单 = 全部允许；否则按文件夹 ID 或名称（小写）命中。"""
+    if not config.allowed_folders:
+        return True
+    if folder_id and str(folder_id).strip().lower() in config.allowed_folders:
+        return True
+    if folder_name and str(folder_name).strip().lower() in config.allowed_folders:
+        return True
+    return False
 
 
 def _require_config(db) -> BifrostAuthConfig:
@@ -171,37 +196,30 @@ def _as_list(payload: Any, key: str) -> List[Dict[str, Any]]:
 
 
 def _message_text(message: Any) -> str:
-    """从单条 message 提取文本内容（OpenAI 风格 content：字符串或多段列表）。"""
+    """从单条 message 提取文本内容。
+
+    真实结构（已确认）：`message.payload` 内含 `role` / `content`（字符串），
+    如 `{"payload": {"role": "system", "content": "..."}}`。
+    兼容部分接口直接以 `message.content` 字符串返回的形态。
+    """
     if not isinstance(message, dict):
         return ""
+    payload = message.get("payload")
+    if isinstance(payload, dict):
+        content = payload.get("content")
+        if isinstance(content, str) and content.strip():
+            return content.strip()
     content = message.get("content")
     if isinstance(content, str):
         return content.strip()
-    if isinstance(content, list):
-        parts: List[str] = []
-        for seg in content:
-            if not isinstance(seg, dict):
-                continue
-            text = seg.get("text")
-            if isinstance(text, str) and text.strip():
-                parts.append(text.strip())
-            elif isinstance(seg.get("content"), str) and seg["content"].strip():
-                parts.append(seg["content"].strip())
-        return "\n".join(parts)
-    # 兜底：content 缺失时尝试 text 字段
-    text = message.get("text")
-    if isinstance(text, str):
-        return text.strip()
     return ""
 
 
 def _pick_message_source(prompt: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], str]:
-    """选择最佳正文来源，逐级回退：latest_version → versions → sessions。
+    """选择正文来源：latest_version → versions（版本号最大）。
 
-    返回 (来源对象, 来源类型)。Bifrost Dashboard 中编辑的内容默认存在
-    Session（Playground）里，只有 Commit 后才生成不可变 Version；若用户
-    未提交，latest_version 可能缺失或为空——回退到 versions / sessions
-    才能取到实际编辑的正文。
+    返回 (来源对象, 来源类型)。提示词内容必须 Commit 成 Version 才存在
+    （已确认），因此只从不可变版本中取正文，未提交的 Session 草稿不参与。
     """
     latest = prompt.get("latest_version")
     if isinstance(latest, dict) and isinstance(latest.get("messages"), list) and latest["messages"]:
@@ -219,27 +237,14 @@ def _pick_message_source(prompt: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any
         )
         if ordered:
             return ordered[0], "versions"
-    sessions = prompt.get("sessions")
-    if isinstance(sessions, list) and sessions:
-        ordered = sorted(
-            (
-                s
-                for s in sessions
-                if isinstance(s, dict) and isinstance(s.get("messages"), list) and s["messages"]
-            ),
-            key=lambda s: s.get("id") if isinstance(s.get("id"), int) else 0,
-            reverse=True,
-        )
-        if ordered:
-            return ordered[0], "sessions"
     return latest if isinstance(latest, dict) else None, "latest_version"
 
 
 def _extract_prompt_text(prompt: Dict[str, Any]) -> str:
-    """从 prompt 的正文来源（latest_version → versions → sessions）提取可读文本。
+    """从 prompt 的正文来源（latest_version → versions）提取可读文本。
 
-    官方结构：messages: [{"id": 1, "order_index": 0, "message": {...}}]，
-    message 内含 role / content（string 或多段列表）。多段用空行拼接。
+    结构：messages: [{"id": 1, "order_index": 0, "message": {...}}]，
+    message 的 payload 内含 role / content。多条消息用空行拼接。
     """
     source, _ = _pick_message_source(prompt)
     if not source:
@@ -254,6 +259,14 @@ def _extract_prompt_text(prompt: Dict[str, Any]) -> str:
         if text:
             parts.append(text)
     return "\n\n".join(parts)
+
+
+def _folder_name_of(prompt: Dict[str, Any]) -> Optional[str]:
+    """取 prompt 内嵌 folder 的 name（可能缺失，兼容列表项无 folder 对象）。"""
+    folder = prompt.get("folder")
+    if isinstance(folder, dict):
+        return folder.get("name")
+    return None
 
 
 def _preview_map(db, prompt_ids: List[str]) -> Dict[str, str]:
@@ -271,15 +284,12 @@ def _compact_prompt(
     prompt: Dict[str, Any], preview_image: Optional[str]
 ) -> Dict[str, Any]:
     """Bifrost prompt 对象 → 前端紧凑结构（含提取的正文文本 + 本地预览图）。"""
-    folder = prompt.get("folder") or {}
     source, _ = _pick_message_source(prompt)
     return {
         "id": prompt.get("id") or "",
         "name": prompt.get("name") or "",
         "folder_id": prompt.get("folder_id"),
-        "folder_name": (
-            folder.get("name") if isinstance(folder, dict) else None
-        ) or None,
+        "folder_name": _folder_name_of(prompt),
         "content": _extract_prompt_text(prompt),
         "preview_image": preview_image or None,
         "created_at": prompt.get("created_at"),
@@ -291,11 +301,22 @@ def _compact_prompt(
     }
 
 
-async def list_folders(db) -> List[Dict[str, Any]]:
-    """列出全部文件夹（Bifrost 官方数据，原样透传）。"""
+async def list_folders(db, include_all: bool = False) -> List[Dict[str, Any]]:
+    """列出文件夹（Bifrost 官方数据，原样透传）。
+
+    配置白名单时默认仅返回白名单文件夹（页面筛选用）；include_all=True
+    时返回全部（管理页配置白名单的多选下拉需要看到全部文件夹）。
+    """
     config = _require_config(db)
     payload = await _get_json(config, "/api/prompt-repo/folders")
-    return _as_list(payload, "folders")
+    folders = _as_list(payload, "folders")
+    if config.allowed_folders and not include_all:
+        folders = [
+            f
+            for f in folders
+            if isinstance(f, dict) and _folder_allowed(config, f.get("id"), f.get("name"))
+        ]
+    return folders
 
 
 async def list_prompts(
@@ -305,11 +326,9 @@ async def list_prompts(
 ) -> List[Dict[str, Any]]:
     """列出提示词（可选按文件夹过滤），合并本地预览图。
 
-    Bifrost 官方列表接口不支持关键词检索，`q` 在代理侧对
-    「名称 + 正文文本」做包含过滤（供画布检索节点与管理页搜索）。
-    自部署版本可能条件性返回字段（列表项无内嵌正文来源）——对这些
-    空内容项做并发受限的回退拉取（sessions / versions），否则列表
-    显示空内容且按内容检索失效。
+    官方列表接口每个 prompt 项已含 latest_version（含 messages 正文），
+    无需额外请求。`q` 在代理侧对「名称 + 正文文本」做包含过滤
+    （供画布检索节点与管理页搜索）。
     """
     config = _require_config(db)
     params = {"folder_id": folder_id} if folder_id else None
@@ -317,13 +336,15 @@ async def list_prompts(
     prompts = _as_list(payload, "prompts")
     if not prompts:
         return []
-    prompts = await _enrich_empty_prompts(config, prompts)
     previews = _preview_map(db, [p.get("id") or "" for p in prompts if p.get("id")])
     keyword = (q or "").strip().lower()
     items: List[Dict[str, Any]] = []
     for p in prompts:
         pid = p.get("id")
         if not pid:
+            continue
+        # 白名单过滤：仅允许的文件夹下的提示词进入列表
+        if not _folder_allowed(config, p.get("folder_id"), _folder_name_of(p)):
             continue
         item = _compact_prompt(p, previews.get(pid))
         if keyword:
@@ -332,63 +353,6 @@ async def list_prompts(
                 continue
         items.append(item)
     return items
-
-
-async def _enrich_empty_prompts(
-    config: BifrostAuthConfig, prompts: List[Dict[str, Any]]
-) -> List[Dict[str, Any]]:
-    """对无内嵌正文来源的 prompt 并发回退拉取 sessions / versions。
-
-    列表数据量未知，用信号量限制并发（8）防止请求风暴；失败的项保持
-    原样（内容为空），不影响其余项。仅处理内嵌确实为空（含 messages
-    但无可提取文本）的 prompt，已有内容的项零额外请求。
-    """
-    targets = [p for p in prompts if isinstance(p, dict) and not _extract_prompt_text(p)]
-    if not targets:
-        return prompts
-
-    sem = asyncio.Semaphore(8)
-
-    async def enrich(p: Dict[str, Any]) -> Dict[str, Any]:
-        async with sem:
-            sessions = await _try_get_list(
-                config, f"/api/prompt-repo/prompts/{p.get('id')}/sessions", "sessions"
-            )
-            merged = {**p}
-            if sessions:
-                merged["sessions"] = sessions
-            if not _extract_prompt_text(merged):
-                versions = await _try_get_list(
-                    config, f"/api/prompt-repo/prompts/{p.get('id')}/versions", "versions"
-                )
-                if versions:
-                    merged["versions"] = versions
-        return merged
-
-    enriched = await asyncio.gather(*(enrich(p) for p in targets))
-    by_id = {p.get("id"): e for p, e in zip(targets, enriched)}
-    return [by_id.get(p.get("id"), p) for p in prompts]
-
-
-async def _try_get_list(
-    config: BifrostAuthConfig, path: str, key: str
-) -> List[Dict[str, Any]]:
-    """尽力拉取独立列表接口（sessions / versions），失败返回空列表。
-
-    自部署版本可能条件性返回字段（Get Prompt 内嵌无内容时），
-    回退调用独立接口补取正文来源；接口不存在 / 报错都不影响主流程。
-    """
-    try:
-        payload = await _get_json(config, path)
-    except BifrostError as exc:
-        # warning 级别：回退接口持续不可用意味着内容将缺失，应可见而非静默
-        logger.warning("Bifrost 回退接口 %s 不可用: %s", path, exc)
-        return []
-    return [
-        item
-        for item in _as_list(payload, key)
-        if isinstance(item, dict) and isinstance(item.get("messages"), list) and item["messages"]
-    ]
 
 
 async def get_prompt_raw(db, prompt_id: str) -> Any:
@@ -424,19 +388,8 @@ async def get_prompt(db, prompt_id: str) -> Dict[str, Any]:
     prompt = payload.get("prompt") or payload
     if not isinstance(prompt, dict):
         raise BifrostError("Bifrost 返回了非预期的提示词数据")
-    # 自部署版本可能条件性返回字段：Get Prompt 内嵌无正文来源时，
-    # 回退调用 sessions / versions 独立接口补充（优先未提交的草稿 Session）。
-    if not _extract_prompt_text(prompt):
-        sessions = await _try_get_list(
-            config, f"/api/prompt-repo/prompts/{prompt_id}/sessions", "sessions"
-        )
-        if sessions:
-            prompt = {**prompt, "sessions": sessions}
-        if not _extract_prompt_text(prompt):
-            versions = await _try_get_list(
-                config, f"/api/prompt-repo/prompts/{prompt_id}/versions", "versions"
-            )
-            if versions:
-                prompt = {**prompt, "versions": versions}
+    # 白名单过滤同样作用于详情：非白名单文件夹下的提示词按不存在处理（404）
+    if not _folder_allowed(config, prompt.get("folder_id"), _folder_name_of(prompt)):
+        raise BifrostNotFoundError("Bifrost 资源不存在（可能已被删除）")
     previews = _preview_map(db, [prompt_id])
     return _compact_prompt(prompt, previews.get(prompt_id))
