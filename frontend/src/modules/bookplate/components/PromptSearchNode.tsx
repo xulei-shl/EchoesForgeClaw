@@ -268,6 +268,8 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
         defaultSize={{ width: 420, height: 440 }}
         footer={footer}
         actionBar={actionBar}
+        showLeftAnchor
+        showRightAnchor
       >
         {!promptId ? (
           <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center">

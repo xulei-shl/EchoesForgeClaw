@@ -1,9 +1,10 @@
 """Bifrost Prompt Repository 代理服务。
 
-Bifrost Management API（所有 `/api/prompt-repo/*`）使用
-`Authorization: Bearer <Management API Key>` 鉴权。Key 只存于系统设置
-（admin/settings，列表接口只返回掩码），所有请求经后端代理转发，
-绝不暴露给画布前端。
+Bifrost Management API（所有 `/api/prompt-repo/*`）鉴权（自部署默认）：
+- 主方案：Basic Auth（`Authorization: Basic base64(username:password)`），
+  凭据存于系统设置 bitfrost.username / bitfrost.password（密码仅掩码回传）；
+- 兼容方案：Bearer Management API Key（bitfrost.api_key，旧部署回退）。
+两者都配置时 Basic 优先；启动时若 Basic 凭据齐全会自动清理遗留的 api_key 行。
 
 预览图：Bifrost 官方数据无图片字段，预览图由本系统本地存储
 （backend/static/prompt-previews + prompt_metadata 表），列表/详情接口合并返回。
@@ -13,7 +14,7 @@ import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 
@@ -160,24 +161,71 @@ def _message_text(message: Any) -> str:
     if isinstance(content, list):
         parts: List[str] = []
         for seg in content:
-            if isinstance(seg, dict):
-                text = seg.get("text")
-                if isinstance(text, str) and text.strip():
-                    parts.append(text.strip())
+            if not isinstance(seg, dict):
+                continue
+            text = seg.get("text")
+            if isinstance(text, str) and text.strip():
+                parts.append(text.strip())
+            elif isinstance(seg.get("content"), str) and seg["content"].strip():
+                parts.append(seg["content"].strip())
         return "\n".join(parts)
+    # 兜底：content 缺失时尝试 text 字段
+    text = message.get("text")
+    if isinstance(text, str):
+        return text.strip()
     return ""
 
 
-def _extract_prompt_text(prompt: Dict[str, Any]) -> str:
-    """从 prompt 的 latest_version.messages 提取可读文本（多段用空行拼接）。
+def _pick_message_source(prompt: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], str]:
+    """选择最佳正文来源，逐级回退：latest_version → versions → sessions。
 
-    官方结构：messages: [{"id": 1, "order_index": 0, "message": {...}}]。
-    兼容 message 直接携带 content 的形态。
+    返回 (来源对象, 来源类型)。Bifrost Dashboard 中编辑的内容默认存在
+    Session（Playground）里，只有 Commit 后才生成不可变 Version；若用户
+    未提交，latest_version 可能缺失或为空——回退到 versions / sessions
+    才能取到实际编辑的正文。
     """
-    latest = prompt.get("latest_version") or {}
-    if not isinstance(latest, dict):
+    latest = prompt.get("latest_version")
+    if isinstance(latest, dict) and isinstance(latest.get("messages"), list) and latest["messages"]:
+        return latest, "latest_version"
+    versions = prompt.get("versions")
+    if isinstance(versions, list) and versions:
+        ordered = sorted(
+            (
+                v
+                for v in versions
+                if isinstance(v, dict) and isinstance(v.get("messages"), list) and v["messages"]
+            ),
+            key=lambda v: v.get("version_number") if isinstance(v.get("version_number"), int) else v.get("id") or 0,
+            reverse=True,
+        )
+        if ordered:
+            return ordered[0], "versions"
+    sessions = prompt.get("sessions")
+    if isinstance(sessions, list) and sessions:
+        ordered = sorted(
+            (
+                s
+                for s in sessions
+                if isinstance(s, dict) and isinstance(s.get("messages"), list) and s["messages"]
+            ),
+            key=lambda s: s.get("id") if isinstance(s.get("id"), int) else 0,
+            reverse=True,
+        )
+        if ordered:
+            return ordered[0], "sessions"
+    return latest if isinstance(latest, dict) else None, "latest_version"
+
+
+def _extract_prompt_text(prompt: Dict[str, Any]) -> str:
+    """从 prompt 的正文来源（latest_version → versions → sessions）提取可读文本。
+
+    官方结构：messages: [{"id": 1, "order_index": 0, "message": {...}}]，
+    message 内含 role / content（string 或多段列表）。多段用空行拼接。
+    """
+    source, _ = _pick_message_source(prompt)
+    if not source:
         return ""
-    messages = latest.get("messages") or []
+    messages = source.get("messages") or []
     parts: List[str] = []
     for m in messages:
         if not isinstance(m, dict):
@@ -205,7 +253,7 @@ def _compact_prompt(
 ) -> Dict[str, Any]:
     """Bifrost prompt 对象 → 前端紧凑结构（含提取的正文文本 + 本地预览图）。"""
     folder = prompt.get("folder") or {}
-    latest = prompt.get("latest_version") or {}
+    source, _ = _pick_message_source(prompt)
     return {
         "id": prompt.get("id") or "",
         "name": prompt.get("name") or "",
@@ -217,11 +265,9 @@ def _compact_prompt(
         "preview_image": preview_image or None,
         "created_at": prompt.get("created_at"),
         "updated_at": prompt.get("updated_at"),
-        "version_number": (
-            latest.get("version_number") if isinstance(latest, dict) else None
-        ),
+        "version_number": source.get("version_number") if source else None,
         "commit_message": (
-            (latest.get("commit_message") or "") if isinstance(latest, dict) else ""
+            (source.get("commit_message") or "") if source else ""
         ) or None,
     }
 
@@ -266,10 +312,17 @@ async def list_prompts(
 
 
 async def get_prompt(db, prompt_id: str) -> Dict[str, Any]:
-    """获取单个提示词详情（含提取的正文文本 + 本地预览图）。"""
+    """获取单个提示词详情（含提取的正文文本 + 本地预览图）。
+
+    官方 Get Prompt 响应为 `{"prompt": {...}}` 包装结构（列表接口才是裸数组
+    items），必须先解包；否则 latest_version 永远取不到、正文恒为空。
+    """
     config = _require_config(db)
     payload = await _get_json(config, f"/api/prompt-repo/prompts/{prompt_id}")
     if not isinstance(payload, dict):
         raise BifrostError("Bifrost 返回了非预期的提示词数据")
+    prompt = payload.get("prompt") or payload
+    if not isinstance(prompt, dict):
+        raise BifrostError("Bifrost 返回了非预期的提示词数据")
     previews = _preview_map(db, [prompt_id])
-    return _compact_prompt(payload, previews.get(prompt_id))
+    return _compact_prompt(prompt, previews.get(prompt_id))
