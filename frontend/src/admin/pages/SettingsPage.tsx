@@ -6,7 +6,6 @@ import {
   Pencil,
   Plus,
   RefreshCw,
-  Save,
   Settings as SettingsIcon,
   Trash2,
 } from 'lucide-react';
@@ -129,7 +128,7 @@ export const SettingsPage: React.FC = () => {
 
   const openEdit = (s: AppSetting) => {
     setShowCreate(false);
-    setEdit({ id: s.id, key: s.key, value: s.value, description: s.description, sensitive: s.sensitive });
+    setEdit({ id: s.id, key: s.key, value: s.value, description: s.description, sensitive: s.sensitive ?? false });
     setFormError('');
   };
 
