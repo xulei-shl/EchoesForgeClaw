@@ -221,5 +221,7 @@ class AppSettingOut(BaseModel):
     value: str
     description: str
     updated_at: datetime
+    # 敏感设置项（如 API Key）：值为掩码，明文永不回传；留空保存表示不修改
+    sensitive: bool = False
 
     model_config = ConfigDict(from_attributes=True)

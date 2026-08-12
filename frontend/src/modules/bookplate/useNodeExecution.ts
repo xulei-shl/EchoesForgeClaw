@@ -392,6 +392,8 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
         return ''; // 用户手动输入 / 上传，无需自动执行
       case 'text_aggregate':
         return ''; // 纯文本变换：输出随上级内容/连线变化自动重算，无需手动运行
+      case 'prompt_search':
+        return ''; // 手动选用提示词，无需自动执行
     }
   };
 

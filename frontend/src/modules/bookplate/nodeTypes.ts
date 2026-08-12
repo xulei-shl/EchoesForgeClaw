@@ -12,6 +12,7 @@ export const NODE_DEFAULT_SIZES: Record<CanvasNodeType, { width: number; height:
   image_upload: { width: 420, height: 420 },
   chat: { width: 420, height: 560 },
   text_aggregate: { width: 460, height: 520 },
+  prompt_search: { width: 420, height: 440 },
 };
 
 /** 节点的主题色（用于左上角指示圆点） */
@@ -24,6 +25,7 @@ export const NODE_COLORS: Record<CanvasNodeType, string> = {
   chat: 'oklch(0.65 0.15 280)',
   prompt_generation: 'oklch(0.65 0.15 340)',
   text_aggregate: 'oklch(0.65 0.15 165)',
+  prompt_search: 'oklch(0.65 0.15 25)',
 };
 
 export interface NodeTemplateDef {
@@ -105,6 +107,14 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     configurable: false,
     defaultSize: NODE_DEFAULT_SIZES.text_aggregate,
   },
+  {
+    type: 'prompt_search',
+    name: '提示词检索',
+    description: '从 Bifrost 提示词库检索并选用一条提示词，将其内容作为文本输出',
+    category: 'input',
+    configurable: false,
+    defaultSize: NODE_DEFAULT_SIZES.prompt_search,
+  },
 ];
 
 export const NODE_TEMPLATE_MAP: Record<CanvasNodeType, NodeTemplateDef> = Object.fromEntries(
@@ -146,6 +156,7 @@ export const NODE_PORT_TYPES: Record<CanvasNodeType, { output: NodePortType; inp
   image_generation: { output: 'image', inputs: ['text', 'image'] },
   chat: { output: 'text', inputs: ['text'] },
   text_aggregate: { output: 'text', inputs: ['text'] },
+  prompt_search: { output: 'text', inputs: [] },
 };
 
 /** 端口类型查找（由画布提供：后端模板声明优先，前端静态镜像兜底） */
@@ -294,6 +305,8 @@ export function nodeOutputText(node: GraphNode | undefined): string {
       return '';
     case 'text_aggregate':
       return typeof node.data.output === 'string' ? node.data.output : '';
+    case 'prompt_search':
+      return typeof node.data.content === 'string' ? node.data.content : '';
     default: {
       // 约定式兜底：后续新增文本输出节点类型时，只要把对外文本存入
       // data.output / data.content / data.analysis 任一字段（按此优先级），

@@ -11,6 +11,7 @@ import AdminLayout from '../admin/AdminLayout';
 import UsersPage from '../admin/pages/UsersPage';
 import LlmConfigsPage from '../admin/pages/LlmConfigsPage';
 import PromptsPage from '../admin/pages/PromptsPage';
+import BifrostPromptsPage from '../admin/pages/BifrostPromptsPage';
 import NodeConfigsPage from '../admin/pages/NodeConfigsPage';
 import FastClawAgentsPage from '../admin/pages/FastClawAgentsPage';
 import SettingsPage from '../admin/pages/SettingsPage';
@@ -97,6 +98,7 @@ const AppRoutes = () => {
         <Route path="users" element={<UsersPage />} />
         <Route path="llm-configs" element={<LlmConfigsPage />} />
         <Route path="prompts" element={<PromptsPage />} />
+        <Route path="bifrost-prompts" element={<BifrostPromptsPage />} />
         <Route path="node-configs" element={<NodeConfigsPage />} />
         <Route path="fastclaw-agents" element={<FastClawAgentsPage />} />
         <Route path="settings" element={<SettingsPage />} />

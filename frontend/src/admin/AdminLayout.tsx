@@ -7,6 +7,7 @@ import {
   GitBranch,
   Users,
   Bot,
+  BookOpen,
   ArrowLeft,
 } from 'lucide-react';
 import { useAuth } from '../platform/stores/authStore';
@@ -15,6 +16,7 @@ const NAV_ITEMS = [
   { to: '/admin/users', label: '用户管理', icon: Users },
   { to: '/admin/llm-configs', label: '模型配置', icon: Cpu },
   { to: '/admin/prompts', label: '提示词管理', icon: FileText },
+  { to: '/admin/bifrost-prompts', label: 'Bifrost 提示词', icon: BookOpen },
   { to: '/admin/fastclaw-agents', label: 'Agent 配置', icon: Bot },
   { to: '/admin/node-configs', label: '节点管理', icon: GitBranch },
   { to: '/admin/settings', label: '系统设置', icon: Settings },
@@ -25,6 +27,7 @@ const TITLE_MAP: Record<string, string> = {
   '/admin/users': '用户管理',
   '/admin/llm-configs': '模型配置',
   '/admin/prompts': '提示词管理',
+  '/admin/bifrost-prompts': 'Bifrost 提示词',
   '/admin/node-configs': '节点管理',
   '/admin/fastclaw-agents': 'Agent 配置',
   '/admin/settings': '系统设置',

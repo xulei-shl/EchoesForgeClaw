@@ -27,7 +27,9 @@ from app.api.admin.prompts import router as admin_prompts_router
 from app.api.admin.node_configs import router as admin_node_configs_router
 from app.api.admin.settings import router as admin_settings_router
 from app.api.admin.fastclaw_agents import router as admin_fastclaw_agents_router
+from app.api.admin.bifrost import router as admin_bifrost_router
 from app.modules.bookplate.router import router as bookplate_router
+from app.modules.bookplate.bifrost_router import router as bookplate_bifrost_router
 from app.models.app_setting import AppSetting
 from app.models.prompt_template import PromptTemplate
 from app.services.llm_service import DEFAULT_SYSTEM_PROMPT, DEFAULT_COVER_SYSTEM_PROMPT
@@ -42,6 +44,11 @@ DEFAULT_SETTINGS = {
     ),
     "douban.qps": ("0.5", "豆瓣请求速率（次/秒），建议 ≤ 0.5 以防反爬"),
     "douban.proxy": ("", "豆瓣请求 HTTP 代理，如 http://127.0.0.1:7890（留空不使用）"),
+    "bitfrost.base_url": ("", "Bifrost Gateway 基础地址（如 https://bifrost.example.com）"),
+    "bitfrost.api_key": (
+        "",
+        "Bifrost Management API Key（敏感，管理后台仅显示掩码，绝不回传明文）",
+    ),
 }
 
 
@@ -136,11 +143,13 @@ app.include_router(generations_router)
 app.include_router(favorites_router)
 app.include_router(public_router)
 app.include_router(bookplate_router)
+app.include_router(bookplate_bifrost_router)
 app.include_router(admin_llm_configs_router, prefix="/api", tags=["admin"])
 app.include_router(admin_prompts_router, prefix="/api", tags=["admin"])
 app.include_router(admin_node_configs_router, prefix="/api", tags=["admin"])
 app.include_router(admin_settings_router, prefix="/api", tags=["admin"])
 app.include_router(admin_fastclaw_agents_router, prefix="/api", tags=["admin"])
+app.include_router(admin_bifrost_router, prefix="/api", tags=["admin"])
 
 @app.get("/")
 def root():

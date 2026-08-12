@@ -2,6 +2,8 @@ import api from './api';
 import type {
   AppSetting,
   AppSettingPayload,
+  BifrostFolder,
+  BifrostPrompt,
   FastClawAgentConfig,
   FastClawAgentConfigPayload,
   LLMConfig,
@@ -87,6 +89,28 @@ export const adminService = {
   /** 批量更新自定义分组排序（同组配置共享序号） */
   reorderNodeGroups: (groups: { group: string; order: number }[]): Promise<{ message: string }> =>
     api.post<{ message: string }, { message: string }>('/admin/node-configs/reorder-groups', { groups }),
+
+  /* ---------------- Bifrost 提示词 ---------------- */
+
+  listBifrostFolders: (): Promise<{ folders: BifrostFolder[] }> =>
+    api.get<{ folders: BifrostFolder[] }, { folders: BifrostFolder[] }>('/admin/bifrost/folders'),
+  listBifrostPrompts: (params?: { folder_id?: string; q?: string }): Promise<{ prompts: BifrostPrompt[] }> =>
+    api.get<{ prompts: BifrostPrompt[] }, { prompts: BifrostPrompt[] }>('/admin/bifrost/prompts', { params }),
+  getBifrostPrompt: (promptId: string): Promise<BifrostPrompt> =>
+    api.get<BifrostPrompt, BifrostPrompt>(`/admin/bifrost/prompts/${encodeURIComponent(promptId)}`),
+  /** 上传 / 更换提示词预览图（multipart，axios 自动设置 boundary） */
+  uploadBifrostPreview: (promptId: string, file: File): Promise<{ preview_image: string }> => {
+    const form = new FormData();
+    form.append('file', file);
+    return api.post<{ preview_image: string }, { preview_image: string }>(
+      `/admin/bifrost/prompts/${encodeURIComponent(promptId)}/preview`,
+      form
+    );
+  },
+  deleteBifrostPreview: (promptId: string): Promise<{ preview_image: null }> =>
+    api.delete<{ preview_image: null }, { preview_image: null }>(
+      `/admin/bifrost/prompts/${encodeURIComponent(promptId)}/preview`
+    ),
 
   /* ---------------- 系统设置 ---------------- */
 

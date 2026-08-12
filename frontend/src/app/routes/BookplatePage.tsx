@@ -67,6 +67,7 @@ import type {
   NodePortType,
   NodeRegistry,
   NodeRunSettings,
+  PromptSelection,
   RegistryNodeConfig,
 } from '../../platform/types';
 
@@ -592,6 +593,8 @@ const BookplatePage: React.FC = () => {
           output: '',
           error: null,
         };
+      case 'prompt_search':
+        return { promptId: null, promptName: '', content: '', promptImage: null, error: null };
     }
   };
 
@@ -1101,6 +1104,30 @@ const BookplatePage: React.FC = () => {
     if (reason) showToast(reason, { type: 'warning', position: 'top-right' });
   }, []);
 
+  /** 提示词检索节点：选用一条 Bifrost 提示词（正文写入 data.content；未变化不记历史） */
+  const handleUpdatePromptFor = useCallback(
+    (id: string, selection: PromptSelection) => {
+      const node = nodesRef.current.find((n) => n.id === id);
+      if (!node || node.type !== 'prompt_search') return;
+      const old = {
+        promptId: node.data?.promptId ?? null,
+        promptName: node.data?.promptName ?? '',
+        content: node.data?.content ?? '',
+        promptImage: node.data?.promptImage ?? null,
+      };
+      const next = {
+        promptId: selection.promptId,
+        promptName: selection.name ?? old.promptName,
+        content: selection.content ?? old.content,
+        promptImage: selection.imageUrl ?? null,
+      };
+      if (JSON.stringify(old) === JSON.stringify(next)) return;
+      recordHistory();
+      updateNodeData(id, next);
+    },
+    []
+  );
+
   /** 文本聚合节点：保存占位符模板（未变化不记历史） */
   const handleUpdateAggregateTemplateFor = useCallback((id: string, template: string) => {
     const node = nodesRef.current.find((n) => n.id === id);
@@ -1366,6 +1393,7 @@ const BookplatePage: React.FC = () => {
     handleEditTextFor,
     handleImageChangeFor,
     handleSendChatFor,
+    handleUpdatePromptFor,
     handleUpdateAggregateTemplateFor,
     handleRenameAggregatePlaceholderFor,
     handleUpdateChatSettingsFor,

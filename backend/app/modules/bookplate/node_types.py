@@ -13,6 +13,7 @@ NODE_TEXT = "text"
 NODE_IMAGE_UPLOAD = "image_upload"
 NODE_CHAT = "chat"
 NODE_TEXT_AGGREGATE = "text_aggregate"
+NODE_PROMPT_SEARCH = "prompt_search"
 
 NODE_TEMPLATES = [
     {
@@ -85,6 +86,14 @@ NODE_TEMPLATES = [
         "configurable": False,
         "output_type": "text",
         "input_types": ["text"],
+    },
+    {
+        "type": NODE_PROMPT_SEARCH,
+        "name": "提示词检索",
+        "description": "从 Bifrost 提示词库检索并选用一条提示词，将其内容作为文本输出",
+        "category": "input",
+        "configurable": False,
+        "output_type": "text",
     },
 ]
 

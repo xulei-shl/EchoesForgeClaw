@@ -7,12 +7,14 @@ import { ImageNode } from './components/ImageNode';
 import { TextNode } from './components/TextNode';
 import { ImageUploadNode } from './components/ImageUploadNode';
 import { TextAggregateNode } from './components/TextAggregateNode';
+import { PromptSearchNode } from './components/PromptSearchNode';
 import { getNodeTitle, matchPortType, resolveDirectParents } from './nodeTypes';
 import { DEFAULT_RUN_SETTINGS, type PortTypesLookup } from './execution';
 import type { EdgeData, NodeData, NodeSize } from './graphTypes';
 import type {
   ChatNodeSettings,
   NodeRunSettings,
+  PromptSelection,
   RegistryNodeConfig,
 } from '../../platform/types';
 
@@ -46,6 +48,8 @@ export interface NodeViewHelpers {
   handleEditTextFor: (id: string, content: string) => void;
   handleImageChangeFor: (id: string, imageUrl: string | null, imageName: string) => void;
   handleSendChatFor: (id: string, text: string) => void;
+  /** 提示词检索节点：选用一条 Bifrost 提示词 */
+  handleUpdatePromptFor: (id: string, selection: PromptSelection) => void;
   /** 文本聚合节点：保存占位符模板 */
   handleUpdateAggregateTemplateFor: (id: string, template: string) => void;
   /** 文本聚合节点：重命名某上级节点的占位符别名 */
@@ -254,6 +258,21 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           mismatchBadge={mismatchBadge}
           onUpdateTemplate={h.handleUpdateAggregateTemplateFor}
           onRenamePlaceholder={h.handleRenameAggregatePlaceholderFor}
+        />
+      );
+    }
+    case 'prompt_search': {
+      const hasDownstream = h.edges.some((e) => e.source === node.id);
+      return (
+        <PromptSearchNode
+          {...common}
+          title={typeof node.data?.promptName === 'string' && node.data.promptName ? node.data.promptName : common.title}
+          promptId={node.data?.promptId ?? null}
+          promptName={typeof node.data?.promptName === 'string' ? node.data.promptName : ''}
+          content={typeof node.data?.content === 'string' ? node.data.content : ''}
+          promptImage={typeof node.data?.promptImage === 'string' ? node.data.promptImage : null}
+          hasDownstream={hasDownstream}
+          onUpdatePrompt={h.handleUpdatePromptFor}
         />
       );
     }

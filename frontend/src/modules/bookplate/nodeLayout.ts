@@ -13,7 +13,8 @@ export type NodeType =
   | 'text'
   | 'image_upload'
   | 'chat'
-  | 'text_aggregate';
+  | 'text_aggregate'
+  | 'prompt_search';
 
 /** 各节点模板类型的默认尺寸（必须与组件 defaultSize 一致） */
 export const NODE_SIZES: Record<NodeType, { width: number; height: number }> = {
@@ -25,6 +26,7 @@ export const NODE_SIZES: Record<NodeType, { width: number; height: number }> = {
   image_upload:     { width: 420, height: 420 },
   chat:             { width: 420, height: 560 },
   text_aggregate:   { width: 460, height: 520 },
+  prompt_search:    { width: 420, height: 440 },
 };
 
 /** 节点间水平间距（px） */

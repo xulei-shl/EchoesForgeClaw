@@ -21,7 +21,19 @@ const KNOWN_KEYS: { key: string; description: string }[] = [
   { key: 'douban.base_url', description: '豆瓣 API 基础地址' },
   { key: 'douban.qps', description: '豆瓣请求速率（次/秒）' },
   { key: 'douban.proxy', description: '豆瓣请求 HTTP 代理' },
+  { key: 'bitfrost.base_url', description: 'Bifrost Gateway 基础地址' },
+  { key: 'bitfrost.api_key', description: 'Bifrost Management API Key（敏感，仅显示掩码）' },
 ];
+
+/** 敏感设置项的值展示 / 编辑提示 */
+function SensitiveValueHint({ setting }: { setting: AppSetting }) {
+  if (!setting.sensitive) return null;
+  return (
+    <p className="mt-1 text-xs text-ink-faint font-sans">
+      敏感项：仅显示掩码，留空保存表示不修改密钥
+    </p>
+  );
+}
 
 interface EditState {
   id: number | null;
@@ -230,7 +242,15 @@ export const SettingsPage: React.FC = () => {
                         <Input
                           value={edit.value}
                           onChange={(e) => setEdit({ ...edit, value: e.target.value })}
+                          placeholder={
+                            s.sensitive ? '留空 / 保持 **** 不修改密钥' : undefined
+                          }
                         />
+                        {s.sensitive && (
+                          <p className="text-xs text-ink-faint font-sans">
+                            敏感项：留空或保持掩码保存将不修改密钥
+                          </p>
+                        )}
                       </div>
                       <div className="space-y-1.5">
                         <FieldLabel>说明</FieldLabel>
@@ -264,7 +284,14 @@ export const SettingsPage: React.FC = () => {
                           {new Date(s.updated_at).toLocaleString('zh-CN', { hour12: false })}
                         </span>
                       </div>
-                      <p className="mt-2 font-mono text-sm text-ink break-all">{s.value || '（空）'}</p>
+                      <p className="mt-2 font-mono text-sm text-ink break-all">
+                        {s.sensitive
+                          ? s.value
+                            ? '••••••••（已配置）'
+                            : '（未配置）'
+                          : s.value || '（空）'}
+                      </p>
+                      <SensitiveValueHint setting={s} />
                       {s.description && (
                         <p className="mt-1 text-xs text-ink-light font-sans">{s.description}</p>
                       )}

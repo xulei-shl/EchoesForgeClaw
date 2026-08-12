@@ -161,7 +161,9 @@ export type CanvasNodeType =
   /** AI 对话节点：多轮对话 AI 助手（可配置绑定 LLM / Agent） */
   | 'chat'
   /** 文本聚合节点：用占位符模板把多个上级文本按自定义格式拼接（无需配置，纯文本变换） */
-  | 'text_aggregate';
+  | 'text_aggregate'
+  /** 提示词检索节点：从 Bifrost 提示词库检索并选用一条提示词，输出其内容为文本（无需配置） */
+  | 'prompt_search';
 
 /**
  * 节点端口类型（输入/输出）：text / image 为当前实际使用的类型，
@@ -276,6 +278,8 @@ export interface AppSetting {
   value: string;
   description: string;
   updated_at: string;
+  /** 敏感设置项（如 API Key）：值为掩码，明文永不回传；留空保存表示不修改 */
+  sensitive?: boolean;
 }
 
 export interface AppSettingPayload {
@@ -290,4 +294,42 @@ export interface UserPayload {
   password: string;
   role: 'admin' | 'user';
   is_active: boolean;
+}
+
+/* ===================================================================== */
+/* Bifrost 提示词（Prompt Repository 代理）                               */
+/* ===================================================================== */
+
+/** Bifrost 文件夹（官方数据，经后端代理） */
+export interface BifrostFolder {
+  id: string;
+  name: string;
+  description?: string | null;
+  prompts_count?: number;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+/** Bifrost 提示词（紧凑结构：正文文本由 latest_version 提取，预览图来自本地元数据） */
+export interface BifrostPrompt {
+  id: string;
+  name: string;
+  folder_id: string | null;
+  folder_name?: string | null;
+  /** 从最新版本 messages 提取的正文文本 */
+  content: string;
+  /** 本地预览图访问路径（未上传时为 null） */
+  preview_image: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  version_number?: number | null;
+  commit_message?: string | null;
+}
+
+/** 提示词检索节点：选用一条提示词后写入节点的数据 */
+export interface PromptSelection {
+  promptId: string;
+  name?: string;
+  content?: string;
+  imageUrl?: string | null;
 }
