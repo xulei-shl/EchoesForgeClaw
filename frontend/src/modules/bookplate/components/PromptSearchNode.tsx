@@ -34,9 +34,6 @@ export interface PromptSearchNodeProps {
   hasDownstream?: boolean;
 }
 
-/** 默认加载的提示词条数上限（展示层截断；检索仍走服务端全量 q） */
-const MAX_LIST_ITEMS = 50;
-
 const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
   id,
   initialX,
@@ -65,6 +62,8 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
   const [hoverPreview, setHoverPreview] = useState<{ x: number; y: number; url: string } | null>(null);
   // 请求序号：丢弃过期响应，防止快速输入时旧结果覆盖新结果
   const requestSeq = useRef(0);
+  const [visibleCount, setVisibleCount] = useState(20);
+  const observerTarget = useRef<HTMLDivElement>(null);
 
   const loadPrompts = useCallback(async (keyword?: string) => {
     const seq = ++requestSeq.current;
@@ -90,6 +89,7 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
 
   const openPicker = useCallback(() => {
     setQ('');
+    setVisibleCount(20);
     setDetail(null);
     setPrompts([]);
     // 首次加载交由下方搜索防抖 effect 触发（打开后 350ms 内完成），避免重复请求
@@ -107,11 +107,32 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
   // 搜索防抖：输入停止 350ms 后按关键词重新加载
   useEffect(() => {
     if (!pickerOpen) return;
+    setVisibleCount(20);
     const t = window.setTimeout(() => {
       void loadPrompts(q);
     }, 350);
     return () => window.clearTimeout(t);
   }, [pickerOpen, q, loadPrompts]);
+
+  // 触底自动加载更多
+  useEffect(() => {
+    if (!pickerOpen || !!detail || prompts.length === 0) return;
+    
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setVisibleCount((prev) => Math.min(prev + 20, prompts.length));
+        }
+      },
+      { rootMargin: '100px' }
+    );
+
+    if (observerTarget.current) {
+      observer.observe(observerTarget.current);
+    }
+
+    return () => observer.disconnect();
+  }, [pickerOpen, detail, prompts.length, visibleCount]);
 
   const handleSelect = (p: BifrostPrompt) => {
     onUpdatePrompt?.(id, {
@@ -127,7 +148,7 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
     s ? new Date(s).toLocaleString('zh-CN', { hour12: false }) : '';
 
   const renderList = () => (
-    <div className="space-y-1.5">
+    <div className="space-y-1.5 max-h-[52vh] overflow-y-auto custom-scrollbar -mx-2 px-2">
       {loading && (
         <div className="py-10 flex items-center justify-center gap-2 text-sm text-ink-light font-sans">
           <Loader2 className="w-4 h-4 animate-spin text-accent" strokeWidth={1.5} />
@@ -150,14 +171,9 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
           </p>
         </div>
       )}
-      {!loading && !error && prompts.length > MAX_LIST_ITEMS && (
-        <p className="text-xs text-ink-faint font-sans px-1 pt-1">
-          共 {prompts.length} 条，仅显示前 {MAX_LIST_ITEMS} 条；输入关键词可精确检索
-        </p>
-      )}
       {!loading &&
         !error &&
-        prompts.slice(0, MAX_LIST_ITEMS).map((p) => (
+        prompts.slice(0, visibleCount).map((p) => (
           <div
             key={p.id}
             className="flex items-center gap-3 p-2.5 rounded-md cursor-pointer transition border border-transparent hover:border-paper-grid hover:bg-paper-grid/30 active:scale-[0.99]"
@@ -193,21 +209,33 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
             )}
           </div>
         ))}
+      {!loading && !error && prompts.length > 0 && visibleCount < prompts.length && (
+        <div ref={observerTarget} className="py-4 flex justify-center">
+          <Loader2 className="w-4 h-4 animate-spin text-ink-faint" />
+        </div>
+      )}
+      {!loading && !error && prompts.length > 0 && visibleCount >= prompts.length && (
+        <p className="text-xs text-ink-faint font-sans text-center py-4">已加载全部 {prompts.length} 条</p>
+      )}
     </div>
   );
 
   const renderDetail = () => {
     if (!detail) return null;
     return (
-      <div className="space-y-3">
-        <button
-          onClick={() => setDetail(null)}
-          className="flex items-center gap-1 text-sm text-accent hover:text-accent-hover font-sans active:scale-95 transition"
-        >
-          <ChevronLeft size={15} strokeWidth={1.5} />
-          返回列表
-        </button>
-        <div className="rounded-md border border-dashed border-paper-grid bg-paper overflow-hidden">
+      <div className="flex flex-col h-[52vh] -mx-2 px-2">
+        <div className="flex items-center justify-between pb-3 border-b border-paper-grid/60 shrink-0">
+          <button
+            onClick={() => setDetail(null)}
+            className="flex items-center gap-1 text-sm text-ink-light hover:text-accent font-sans active:scale-95 transition"
+          >
+            <ChevronLeft size={15} strokeWidth={1.5} />
+            返回列表
+          </button>
+          <span className="text-xs text-ink-faint font-sans">提示词详情</span>
+        </div>
+        <div className="flex-1 overflow-y-auto custom-scrollbar py-4 space-y-4 pr-1.5">
+          <div className="rounded-md border border-dashed border-paper-grid bg-paper overflow-hidden">
           {detail.preview_image ? (
             <PhotoProvider maskOpacity={0.8} bannerVisible={false}>
               <PhotoView src={detail.preview_image}>
@@ -243,10 +271,11 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
             {detail.updated_at && <span>{formatDate(detail.updated_at)}</span>}
           </div>
         </div>
-        <pre className="text-sm text-ink font-sans whitespace-pre-wrap leading-relaxed bg-paper border border-paper-grid rounded-md p-3 max-h-64 overflow-y-auto custom-scrollbar">
+        <pre className="text-sm text-ink font-sans whitespace-pre-wrap leading-relaxed bg-paper border border-paper-grid rounded-md p-3">
           {detail.content || '（空内容）'}
         </pre>
-        <div className="flex justify-end gap-2 pt-1">
+        </div>
+        <div className="flex justify-end gap-2 pt-3 border-t border-paper-grid/60 shrink-0">
           <Button variant="ghost" size="sm" onClick={closePicker}>
             关闭
           </Button>
@@ -324,24 +353,24 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
               title="选择提示词"
               panelClassName="max-w-2xl"
             >
-              <div className="space-y-3">
-                <div className="relative">
-                  <Search
-                    size={15}
-                    strokeWidth={1.5}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint pointer-events-none"
-                  />
-                  <Input
-                    value={q}
-                    onChange={(e) => setQ(e.target.value)}
-                    placeholder="搜索提示词名称或内容…"
-                    className="pl-9"
-                    autoFocus
-                  />
-                </div>
-                <div className="max-h-[52vh] overflow-y-auto -mx-2 px-2">
-                  {detail ? renderDetail() : renderList()}
-                </div>
+              <div>
+                {!detail && (
+                  <div className="relative mb-3">
+                    <Search
+                      size={15}
+                      strokeWidth={1.5}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint pointer-events-none"
+                    />
+                    <Input
+                      value={q}
+                      onChange={(e) => setQ(e.target.value)}
+                      placeholder="搜索提示词名称或内容…"
+                      className="pl-9"
+                      autoFocus
+                    />
+                  </div>
+                )}
+                {detail ? renderDetail() : renderList()}
               </div>
             </Dialog>
             {hoverPreview && (
