@@ -579,9 +579,27 @@ def _to_input_items(messages: list) -> list:
             continue
         role = m.get("role")
         content = m.get("content")
+        if role in ("system", "developer"):
+            # 系统/开发者消息原样透传（转换器原生支持这两个角色）
+            if isinstance(content, str) and content.strip():
+                items.append({"role": role, "content": content})
+            continue
         if role == "assistant":
-            text = content if isinstance(content, str) else ""
-            items.append({"role": "assistant", "content": [{"type": "output_text", "text": text}]})
+            # assistant 历史消息必须以 input_text 呈现：output_text 是输出类型，
+            # ChatCompletions 转换器的 extract_all_content 不认它，
+            # 多轮对话（第二轮起含 assistant 历史）会抛 "Unknown content"
+            if isinstance(content, str):
+                text = content
+            elif isinstance(content, list):
+                # 多段 assistant 回复（output_text/text 段）合并为纯文本，避免静默丢弃
+                segments = []
+                for part in content:
+                    if isinstance(part, dict) and part.get("type") in ("output_text", "text") and part.get("text"):
+                        segments.append(str(part["text"]))
+                text = "\n".join(segments)
+            else:
+                text = ""
+            items.append({"role": "assistant", "content": [{"type": "input_text", "text": text}]})
             continue
         # user：纯文本
         if isinstance(content, str):
