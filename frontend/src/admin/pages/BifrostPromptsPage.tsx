@@ -364,7 +364,7 @@ export const BifrostPromptsPage: React.FC = () => {
             )}
 
             <div className="space-y-1.5">
-              <FieldLabel>提示词内容（来自最新版本）</FieldLabel>
+              <FieldLabel>提示词内容</FieldLabel>
               <pre className="text-sm text-ink font-sans whitespace-pre-wrap bg-paper border border-paper-grid rounded-md p-3 max-h-60 overflow-y-auto">
                 {detail.content || '（空内容）'}
               </pre>

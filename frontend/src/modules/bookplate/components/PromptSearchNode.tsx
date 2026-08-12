@@ -180,9 +180,9 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
                 <ImageOff size={16} strokeWidth={1.5} className="text-ink-faint" />
               )}
             </div>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 py-0.5">
               <p className="text-sm font-medium text-ink truncate">{p.name}</p>
-              <p className="text-xs text-ink-light truncate mt-0.5">{p.content || '（空内容）'}</p>
+              <p className="text-xs text-ink-light line-clamp-2 leading-relaxed mt-1">{p.content || '（空内容）'}</p>
             </div>
             {p.folder_name && (
               <span className="shrink-0 text-[10px] text-ink-faint border border-dashed border-paper-grid rounded-pill px-1.5 py-px font-mono">
@@ -232,7 +232,7 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
             {detail.updated_at && <span>{formatDate(detail.updated_at)}</span>}
           </div>
         </div>
-        <pre className="text-sm text-ink font-sans whitespace-pre-wrap bg-paper border border-paper-grid rounded-md p-3 max-h-56 overflow-y-auto">
+        <pre className="text-sm text-ink font-sans whitespace-pre-wrap leading-relaxed bg-paper border border-paper-grid rounded-md p-3 max-h-64 overflow-y-auto custom-scrollbar">
           {detail.content || '（空内容）'}
         </pre>
         <div className="flex justify-end gap-2 pt-1">
@@ -288,20 +288,17 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
             </Button>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="flex flex-col h-full overflow-hidden gap-3">
             {promptImage && (
               <img
                 src={promptImage}
                 alt={promptName}
-                className="w-full h-28 object-cover rounded-md border border-paper-grid"
+                className="w-full h-28 object-cover rounded-md border border-paper-grid shrink-0"
               />
             )}
-            <p className="font-serif text-base font-semibold text-ink leading-snug">
-              {promptName || '未命名提示词'}
-            </p>
-            <p className="text-sm text-ink-light font-sans whitespace-pre-wrap line-clamp-6">
+            <div className="flex-1 overflow-y-auto min-h-0 pr-1.5 custom-scrollbar text-sm text-ink-light font-sans whitespace-pre-wrap leading-relaxed">
               {content || '（空内容）'}
-            </p>
+            </div>
           </div>
         )}
       </CanvasNode>
