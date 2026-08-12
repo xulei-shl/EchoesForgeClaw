@@ -52,6 +52,6 @@ curl -X GET http://localhost:8080/api/prompt-repo/prompts \
 
 ---
 
-我的管路员账号密码：
+管路员账号密码：
 admin
 Yfzjlxy_0527
