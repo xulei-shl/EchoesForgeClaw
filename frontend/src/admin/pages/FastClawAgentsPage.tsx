@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bot,
   KeyRound,
@@ -65,6 +65,8 @@ export const FastClawAgentsPage: React.FC = () => {
   /** 拉取列表的搜索关键词（匹配名字 / ID / 模型） */
   const [pullSearch, setPullSearch] = useState('');
   const { dialog, showToast } = useFeedback();
+  /** 记住上次新建时填的 Base URL + API Key，下次新建自动填入，避免重复输入 */
+  const lastUsed = useRef({ base_url: '', api_key: '' });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -95,6 +97,7 @@ export const FastClawAgentsPage: React.FC = () => {
 
   const openCreate = () => {
     resetForm();
+    setForm({ ...EMPTY_FORM, base_url: lastUsed.current.base_url, api_key: lastUsed.current.api_key });
     setShowCreate(true);
   };
 
@@ -202,6 +205,8 @@ export const FastClawAgentsPage: React.FC = () => {
         showToast('Agent 配置已更新', { type: 'success' });
       } else {
         await adminService.createFastClawAgent({ ...base, api_key: form.api_key.trim() });
+        // 记住这次的 Base URL + API Key，下次新建时自动填入
+        lastUsed.current = { base_url: form.base_url.trim(), api_key: form.api_key.trim() };
         showToast('Agent 配置已创建', { type: 'success' });
       }
       resetForm();
