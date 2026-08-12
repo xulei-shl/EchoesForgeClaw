@@ -75,8 +75,9 @@ NODE_TEMPLATES = [
         "description": "多轮对话 AI 助手，可绑定大模型或 FastClaw Agent，输出最后一轮回复",
         "category": "generate",
         "configurable": True,
+        # 接受文本（上一级节点内容）+ 图片（图片上传 / 图像生成节点的输出，作为视觉上下文）
         "output_type": "text",
-        "input_types": ["text"],
+        "input_types": ["text", "image"],
     },
     {
         "type": NODE_TEXT_AGGREGATE,

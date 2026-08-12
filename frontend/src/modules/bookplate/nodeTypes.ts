@@ -154,7 +154,8 @@ export const NODE_PORT_TYPES: Record<CanvasNodeType, { output: NodePortType; inp
   image_analysis: { output: 'text', inputs: ['image', 'text'] },
   prompt_generation: { output: 'text', inputs: ['text'] },
   image_generation: { output: 'image', inputs: ['text', 'image'] },
-  chat: { output: 'text', inputs: ['text'] },
+  // chat 接受文本（上一级节点内容）+ 图片（图片上传 / 图像生成节点输出，作为视觉上下文）
+  chat: { output: 'text', inputs: ['text', 'image'] },
   text_aggregate: { output: 'text', inputs: ['text'] },
   prompt_search: { output: 'text', inputs: [] },
 };
