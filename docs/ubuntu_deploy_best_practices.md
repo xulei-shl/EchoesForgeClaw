@@ -133,6 +133,28 @@ npm run build        # 类型检查 + 生产构建，产物输出到 dist/
 
 > `vite preview` 会复用 `vite.config.ts` 中的代理配置，因此 `dist/` 的直接服务即可代理 `/api` 到后端。
 
+### 5.1 代码更新后重新部署（增量更新）
+
+Git 拉取新代码后，按"最小可用"原则重新部署，**无需重装依赖**：
+
+```bash
+cd /opt/EchoesForgeClaw
+git pull
+
+# 后端：重启即触发 alembic upgrade head，自动新建/更新表（如本次的 book_cache 表）
+sudo systemctl restart bookforge-backend
+
+# 前端：只要前端源码有改动，必须重建 dist，否则部署的是旧逻辑
+cd frontend && npm run build && cd ..
+sudo systemctl restart bookforge-frontend
+```
+
+要点：
+
+- **新增/变更数据库表无需手工建表**：迁移脚本随后端启动时的 `alembic upgrade head` 自动执行（见 `app/main.py` 的 `command.upgrade(alembic_cfg, "head")`）。
+- **前端改动必须 `npm run build`**：`vite preview` 只服务 `dist/`，不编译源码；漏构建会把旧页面当作最新逻辑部署（本次提交就改了前端 `BookInfoNode` 等组件）。
+- **后端依赖一般不用重装**：除非 `requirements.txt` 有变动（本次提交未改动依赖）。
+
 ---
 
 ## 6. Systemd 服务（开机自启 + 崩溃自愈）
@@ -293,21 +315,31 @@ sudo systemctl start bookforge-backend
 3. systemd 服务文件的 `ExecStart --port`
 4. `ufw` 放行新端口
 
----
+### 10.6 代码更新后新增的数据库表未生效
+**原因**：只重启了服务但忘了处理迁移，或误以为需要手动建表。
+**解决**：本项目**无需手动建表**。后端每次启动都会执行 `alembic upgrade head`（`app/main.py`）自动应用迁移脚本（如 `book_cache` 表的 `c4d5e6f7a8b0_create_book_cache_table.py`）。只需 `sudo systemctl restart bookforge-backend` 即可，新表会自动创建。若仍缺表，查看日志确认迁移是否报错：`journalctl -u bookforge-backend -n 50 | grep -i alembic`。
 
+---
 ## 11. 一键部署脚本
 
 为减少重复排障，提供一键部署/启动脚本 `scripts/deploy.sh`（见本目录），完成：
-- 依赖安装（含 bcrypt 锁定）
-- `.env` 自动生成（随机 SECRET_KEY，管理员账号密码可配置）
-- 前端构建
-- systemd 服务生成与启动
-- ufw 放行
-- 启动自检
+
+- 环境自检、端口自动选型
+- 依赖安装（含 bcrypt 锁定；默认仅首次 `--install` 或虚拟环境/`node_modules` 缺失时安装）
+- `.env` 自动生成（随机 `SECRET_KEY`；管理员密码**仅在未设置时**写入，避免每次部署覆盖已有密码）
+- **每次都执行前端生产构建 `npm run build`**（修复点：旧版仅在 `--install` 时构建，导致代码更新后部署了旧前端；`book_cache` 那次更新即因此需手动构建）
+- 后端重启时 Alembic 自动迁移建表（详见 5.1）
+- systemd 服务生成与启动、ufw 放行、启动自检
 
 ```bash
+# 首次部署（安装依赖 + 构建 + 启动）
+sudo bash scripts/deploy.sh --install
+
+# 代码更新后重新部署（跳过依赖安装，但前端仍会重新构建）
 sudo bash scripts/deploy.sh
 ```
+
+> 脚本幂等，可重复执行。无 `--install` 时只重建前端并重启服务，适合日常增量更新。
 
 ---
 

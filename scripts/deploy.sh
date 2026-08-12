@@ -6,22 +6,23 @@
 #   1. 环境自检（python3 / node / npm / ufw）
 #   2. 自动挑选未被占用的后端、前端端口
 #   3. 创建/更新 backend/.env（随机 SECRET_KEY，管理员账号密码可配置）
-#   4. 安装后端依赖（含 bcrypt 锁定修复）
-#   5. 安装前端依赖并生产构建
-#   6. 生成并安装 3 处端口相关的配置（CORS / vite 代理 / systemd / ufw）
-#   7. 生成 systemd 服务并启用开机自启
-#   8. ufw 放行端口
-#   9. 启动服务并自检
+#   4. 安装后端依赖（含 bcrypt 锁定修复，仅 --install 或虚拟环境缺失时）
+#   5. 安装前端依赖（按需）并**每次都**生产构建（前端代码可能已更新）
+#   6. 后端启动时由 Alembic 自动执行迁移建表（新增表无需手工处理）
+#   7. 生成并安装 4 处端口相关的配置（CORS / vite 代理 / systemd / ufw）
+#   8. 生成 systemd 服务并启用开机自启
+#   9. ufw 放行端口
+#  10. 启动服务并自检
 #
 # 用法：
 #   sudo bash scripts/deploy.sh [--install] [--admin-password PASSWORD] [--backend-port P] [--frontend-port P]
-#     --install          安装依赖（首次部署；不传则只做配置+启动）
-#     --admin-password   管理员密码，默认 yfzjlxy0527
+#     --install          安装依赖（首次部署；不传则只构建前端（代码可能已更新）并重启服务）
+#     --admin-password   管理员密码，默认 yfzjlxy0527（仅当 backend/.env 尚未设置时写入，避免覆盖已有密码）
 #     --backend-port     后端端口，默认 8010（若被占用则自动寻找空闲端口）
 #     --frontend-port    前端端口，默认 5180
 #     --node-path        node/npm 绝对路径，默认自动探测
 #
-# 说明：脚本是幂等的，可重复执行；重复执行默认只更新配置并重启服务。
+# 说明：脚本是幂等的，可重复执行；重复执行默认只构建前端（代码可能已更新）并重启服务。
 
 set -euo pipefail
 
@@ -138,10 +139,15 @@ if ! grep -q '^SECRET_KEY=' "$ENV_FILE" 2>/dev/null || [[ -z "$(grep '^SECRET_KE
   echo "SECRET_KEY=$SECRET_KEY" >> "$ENV_FILE"
   info "已生成随机 SECRET_KEY"
 fi
-# 覆盖管理员账号密码（每次都确保为配置值）
-sed -i '/^ADMIN_USERNAME=/d;/^ADMIN_PASSWORD=/d' "$ENV_FILE"
+# 管理员账号：用户名固定为 admin；密码若已存在则保留（避免每次部署重置），否则写入配置值
+sed -i '/^ADMIN_USERNAME=/d' "$ENV_FILE"
 echo "ADMIN_USERNAME=admin" >> "$ENV_FILE"
-echo "ADMIN_PASSWORD=$ADMIN_PASSWORD" >> "$ENV_FILE"
+if ! grep -q '^ADMIN_PASSWORD=' "$ENV_FILE" 2>/dev/null; then
+  echo "ADMIN_PASSWORD=$ADMIN_PASSWORD" >> "$ENV_FILE"
+  info "已写入管理员密码（默认/配置值）"
+else
+  info "保留已有 ADMIN_PASSWORD（如需重置请手动修改 backend/.env 或重新运行并指定 --admin-password）"
+fi
 chmod 600 "$ENV_FILE"
 
 # ---------------- 源码配置同步（CORS / vite 代理） ----------------
@@ -159,18 +165,27 @@ VITE_CFG="$FRONTEND_DIR/vite.config.ts"
 sed -E -i "s#(target: 'http://localhost:)[0-9]+'\$#\1$BACKEND_PORT'#" "$VITE_CFG" 2>/dev/null || \
   sed -E -i "s#(target: 'http://localhost:)[0-9]+'#\1$BACKEND_PORT'#g" "$VITE_CFG"
 
-# ---------------- 安装依赖（可选） ----------------
-if [[ "$INSTALL" == "yes" ]]; then
+# ---------------- 后端依赖安装（按需） ----------------
+# 仅在 --install 或虚拟环境缺失时安装；日常更新（如新增数据库表）无需重装
+if [[ "$INSTALL" == "yes" || ! -d "$BACKEND_DIR/.venv" ]]; then
   info "安装后端依赖..."
   ( cd "$BACKEND_DIR" && if [[ ! -d .venv ]]; then python3 -m venv .venv; fi )
   "$BACKEND_DIR/.venv/bin/pip" install -r "$BACKEND_DIR/requirements.txt"
-
-  info "安装前端依赖并构建..."
-  ( cd "$FRONTEND_DIR" && "$NPM_BIN" install )
-  ( cd "$FRONTEND_DIR" && "$NPM_BIN" run build )
 else
-  info "跳过依赖安装（使用 --install 首次部署时安装依赖）"
+  info "跳过后端依赖安装（虚拟环境已存在且未指定 --install）"
 fi
+
+# ---------------- 前端依赖安装与构建 ----------------
+# 前端构建【每次都执行】：前端代码可能已更新（如本次增加的「强制更新」按钮），
+# 若跳过构建会把旧 dist 当作最新逻辑部署。依赖仅在 --install 或缺失时安装。
+if [[ "$INSTALL" == "yes" || ! -d "$FRONTEND_DIR/node_modules" ]]; then
+  info "安装前端依赖..."
+  ( cd "$FRONTEND_DIR" && "$NPM_BIN" install )
+else
+  info "跳过前端依赖安装（node_modules 已存在且未指定 --install）"
+fi
+info "构建前端生产产物（npm run build）..."
+( cd "$FRONTEND_DIR" && "$NPM_BIN" run build )
 
 # ---------------- systemd 服务 ----------------
 info "生成 systemd 服务..."
