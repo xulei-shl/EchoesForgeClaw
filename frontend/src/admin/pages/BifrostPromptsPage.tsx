@@ -7,7 +7,6 @@ import {
   Loader2,
   RefreshCw,
   Search,
-  ShieldCheck,
   Trash2,
   Upload,
 } from 'lucide-react';
@@ -21,6 +20,7 @@ import { Card } from '../../platform/components/ui/Card';
 import { Badge } from '../../platform/components/ui/Badge';
 import { FieldLabel, PageHeader } from '../components/AdminBits';
 import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
+import { Pagination } from '../../platform/components/ui/Pagination';
 
 export const BifrostPromptsPage: React.FC = () => {
   const [folders, setFolders] = useState<BifrostFolder[]>([]);
@@ -31,6 +31,9 @@ export const BifrostPromptsPage: React.FC = () => {
   const [q, setQ] = useState('');
   const [folderId, setFolderId] = useState('');
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 24;
+
   const [detail, setDetail] = useState<BifrostPrompt | null>(null);
   const [uploading, setUploading] = useState(false);
   const [rawOpen, setRawOpen] = useState(false);
@@ -40,41 +43,21 @@ export const BifrostPromptsPage: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { dialog, showToast } = useFeedback();
 
-  // 白名单只读展示（配置在 /admin/settings）：当前白名单文件夹名称列表
-  const [wlFolderNames, setWlFolderNames] = useState<string[]>([]);
-  const [wlConfigured, setWlConfigured] = useState(false);
+
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const [folderRes, promptRes, settingRes] = await Promise.all([
+      const [folderRes, promptRes] = await Promise.all([
         adminService.listBifrostFolders(),
         adminService.listBifrostPrompts({
           folder_id: folderId || undefined,
           q: q || undefined,
         }),
-        adminService.listSettings(),
       ]);
       setFolders(folderRes.folders);
       setPrompts(promptRes.prompts);
-      // 白名单只读回显：把设置里的 ID/名称映射为文件夹名称列表
-      const raw = (settingRes.find((s) => s.key === 'bitfrost.allowed_folders')?.value || '')
-        .split(',')
-        .map((s) => s.trim().toLowerCase())
-        .filter(Boolean);
-      setWlConfigured(raw.length > 0);
-      if (raw.length) {
-        const names = new Set<string>();
-        for (const f of folderRes.folders) {
-          if (raw.includes(String(f.id).toLowerCase()) || raw.includes((f.name || '').toLowerCase())) {
-            names.add(f.name);
-          }
-        }
-        setWlFolderNames([...names]);
-      } else {
-        setWlFolderNames([]);
-      }
     } catch (e: any) {
       setError(e?.message || '加载失败，请重试');
     } finally {
@@ -100,6 +83,11 @@ export const BifrostPromptsPage: React.FC = () => {
     }, 350);
     return () => window.clearTimeout(t);
   }, [q]);
+
+  // 当搜索条件变化时，重置回第一页
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [q, folderId]);
 
   const notConfigured = !!error && error.includes('未配置');
 
@@ -169,6 +157,9 @@ export const BifrostPromptsPage: React.FC = () => {
   const formatDate = (s?: string | null) =>
     s ? new Date(s).toLocaleString('zh-CN', { hour12: false }) : '';
 
+  const totalPages = Math.ceil(prompts.length / PAGE_SIZE);
+  const currentPrompts = prompts.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
   return (
     <div>
       <PageHeader
@@ -215,20 +206,6 @@ export const BifrostPromptsPage: React.FC = () => {
           className="w-44"
           options={[{ label: '全部文件夹', value: '' }, ...folders.map((f) => ({ label: f.name, value: f.id }))]}
         />
-        {/* 白名单只读展示（配置入口在系统设置） */}
-        {wlConfigured && (
-          <Link
-            to="/admin/settings"
-            title="在系统设置中调整白名单文件夹"
-            className="flex items-center gap-1.5 h-10 px-3 rounded-md border border-dashed border-accent/40 bg-accent/5 text-sm text-accent font-sans hover:bg-accent/10 transition-colors"
-          >
-            <ShieldCheck size={14} strokeWidth={1.5} />
-            <span className="hidden md:inline truncate max-w-[14rem]">
-              白名单：{wlFolderNames.join('、') || '已配置'}
-            </span>
-            <span className="md:hidden">白名单已配置</span>
-          </Link>
-        )}
         {(q || folderId) && (
           <button
             onClick={() => {
@@ -275,7 +252,7 @@ export const BifrostPromptsPage: React.FC = () => {
             </Card>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {prompts.map((p) => (
+              {currentPrompts.map((p) => (
                 <Card
                   key={p.id}
                   className="p-2.5 rounded-2xl cursor-pointer transition hover:shadow-md active:scale-[0.96]"
@@ -327,6 +304,16 @@ export const BifrostPromptsPage: React.FC = () => {
               ))}
             </div>
           )}
+
+          {totalPages > 1 && (
+            <div className="mt-8 flex justify-center">
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={setCurrentPage}
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -340,13 +327,22 @@ export const BifrostPromptsPage: React.FC = () => {
         }}
         title={detail ? detail.name : ''}
         panelClassName="max-w-xl"
+        footer={
+          <Button size="sm" onClick={() => {
+            setDetail(null);
+            setRawOpen(false);
+            setRawData('');
+          }}>
+            关闭
+          </Button>
+        }
       >
         {detail && (
           <div className="space-y-6">
             <div className="p-1 rounded-xl border border-dashed border-paper-grid bg-paper overflow-hidden">
               {detail.preview_image ? (
                 <div className="relative rounded-lg overflow-hidden after:absolute after:inset-0 after:rounded-lg after:ring-1 after:ring-inset after:ring-black/5 dark:after:ring-white/5">
-                  <img src={detail.preview_image} alt={detail.name} className="w-full max-h-72 object-contain" />
+                  <img src={detail.preview_image} alt={detail.name} className="w-full max-h-56 object-contain bg-paper/50" />
                 </div>
               ) : (
                 <div className="h-36 flex flex-col items-center justify-center gap-2 text-ink-faint">
@@ -414,15 +410,9 @@ export const BifrostPromptsPage: React.FC = () => {
                   </Button>
                 )}
               </div>
-              <p className="text-xs text-ink-light font-sans">
+              <p className="text-xs text-ink-light font-sans mt-2">
                 图片存于本地（{detail.preview_image ? '已配置' : '未配置'}），画布检索节点悬停 / 详情时展示
               </p>
-            </div>
-
-            <div className="flex justify-end pt-2 border-t border-dashed border-paper-grid">
-              <Button size="sm" onClick={() => setDetail(null)}>
-                关闭
-              </Button>
             </div>
           </div>
         )}
