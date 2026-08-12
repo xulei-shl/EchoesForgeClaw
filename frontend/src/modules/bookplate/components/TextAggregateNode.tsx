@@ -32,7 +32,6 @@ export interface TextAggregateNodeProps {
   onDrag?: (id: string, x: number, y: number) => void;
   footer?: React.ReactNode;
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
-  hasDownstream?: boolean;
   /** 入边端口类型不匹配数徽标（如「类型不匹配 ×1」） */
   mismatchBadge?: string | null;
   /** 端口类型查找（后端模板声明优先，前端静态镜像兜底）：用于判断哪些上级是文本输出 */

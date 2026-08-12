@@ -63,6 +63,8 @@ export interface ImageNodeProps {
   hasBookInfo?: boolean;
   /** 标题旁的类型不匹配提示 */
   mismatchBadge?: string | null;
+  /** 是否有下级节点关联（有下级时禁用输出影响按钮） */
+  hasDownstream?: boolean;
 }
 
 const ImageNodeInner: React.FC<ImageNodeProps> = ({
@@ -99,6 +101,7 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
   onUpdateSettings,
   hasBookInfo,
   mismatchBadge,
+  hasDownstream,
 }) => {
   const [notice, setNotice] = useState<string | null>(null);
   const noticeTimer = useRef<number | null>(null);
@@ -162,11 +165,13 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
             <NodeActionBar.Run
               onClick={() => onRun?.(id)}
               disabled={isGenerating}
+              hasDownstream={hasDownstream}
             />
           ) : (
             <NodeActionBar.Retry
               onClick={() => onRetry?.(id)}
               disabled={isGenerating}
+              hasDownstream={hasDownstream}
               error={!!displayError}
             />
           )}
@@ -175,6 +180,7 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
               settings={settings}
               onChange={(s) => onUpdateSettings?.(id, s)}
               disabled={isGenerating}
+              hasDownstream={hasDownstream}
               hasBookInfo={hasBookInfo}
             />
           )}

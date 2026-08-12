@@ -50,6 +50,7 @@ const ImageUploadNodeInner: React.FC<ImageUploadNodeProps> = ({
   onDrag,
   footer,
   onContextMenu,
+  hasDownstream,
 }) => {
   const { showToast } = useFeedback();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -109,6 +110,7 @@ const ImageUploadNodeInner: React.FC<ImageUploadNodeProps> = ({
           <NodeActionBar.Custom
             icon={<RefreshCw size={16} strokeWidth={1.5} />}
             tooltip={imageUrl ? '替换图片' : '上传图片'}
+            hasDownstream={hasDownstream}
             onClick={() => {
               fileInputRef.current?.click();
             }}
@@ -117,6 +119,7 @@ const ImageUploadNodeInner: React.FC<ImageUploadNodeProps> = ({
             <NodeActionBar.Custom
               icon={<Trash2 size={16} strokeWidth={1.5} />}
               tooltip="移除图片"
+              hasDownstream={hasDownstream}
               onClick={() => onImageChange?.(id, null, '')}
               className="text-ink-faint hover:text-error"
             />

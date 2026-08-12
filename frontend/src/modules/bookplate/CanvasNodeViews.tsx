@@ -77,6 +77,12 @@ function mismatchBadgeOf(node: NodeData, h: NodeViewHelpers): string | null {
   return count > 0 ? `类型不匹配 ×${count}` : null;
 }
 
+/** 某节点是否有下级节点（沿出边判断）：有下级时节点组件禁用「影响输出」类操作（重跑 / 编辑 / 清空等）。
+ *  各节点共用同一口径，抽成公共判定避免重复计算。 */
+function hasDownstreamOf(node: { id: string }, edges: EdgeData[]): boolean {
+  return edges.some((e) => e.source === node.id);
+}
+
 /** 画布节点渲染：按节点类型分发到对应组件（bookplate 模块唯一渲染入口） */
 export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.ReactNode {
   const common = {
@@ -96,22 +102,25 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
   const settings: NodeRunSettings = node.data?.settings ?? DEFAULT_RUN_SETTINGS;
 
   switch (node.type) {
-    case 'book_info':
+    case 'book_info': {
+      const hasDownstream = hasDownstreamOf(node, h.edges);
       return (
         <BookInfoNode
           {...common}
           data={node.data}
           isGenerating={!!node.data.isGenerating}
           error={node.data.error ?? null}
+          hasDownstream={hasDownstream}
           onRetry={h.handleRetryBookFor}
           onFetch={h.handleFetchBookFor}
           onForceRefresh={h.handleForceRefreshBookFor}
           onDownload={h.handleDownloadBookData}
         />
       );
+    }
     case 'image_analysis': {
       const config = h.configOf(node);
-      const hasDownstream = h.edges.some((e) => e.source === node.id);
+      const hasDownstream = hasDownstreamOf(node, h.edges);
       return (
         <ImageAnalysisNode
           {...common}
@@ -132,7 +141,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
     }
     case 'prompt_generation': {
       const config = h.configOf(node);
-      const hasDownstream = h.edges.some((e) => e.source === node.id);
+      const hasDownstream = hasDownstreamOf(node, h.edges);
       return (
         <PromptNode
           {...common}
@@ -170,6 +179,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
             : '已使用参考图 · 图生图'
           : '等待上传参考图（上传后点击运行）'
         : undefined;
+      const hasDownstream = hasDownstreamOf(node, h.edges);
       return (
         <ImageNode
           {...common}
@@ -178,6 +188,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           agentName={config?.mode === 'agent' ? (config.agent_name ?? undefined) : undefined}
           group={config?.group?.trim() || undefined}
           mismatchBadge={mismatchBadge}
+          hasDownstream={hasDownstream}
           referenceImageUrl={refImage ?? null}
           referenceNote={referenceNote}
           referenceWaiting={!!uploadNode && !refImage}
@@ -200,7 +211,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       );
     }
     case 'text': {
-      const hasDownstream = h.edges.some((e) => e.source === node.id);
+      const hasDownstream = hasDownstreamOf(node, h.edges);
       return (
         <TextNode
           {...common}
@@ -211,7 +222,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       );
     }
     case 'image_upload': {
-      const hasDownstream = h.edges.some((e) => e.source === node.id);
+      const hasDownstream = hasDownstreamOf(node, h.edges);
       return (
         <ImageUploadNode
           {...common}
@@ -223,7 +234,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       );
     }
     case 'chat': {
-      const hasDownstream = h.edges.some((e) => e.source === node.id);
+      const hasDownstream = hasDownstreamOf(node, h.edges);
       const config = h.configOf(node);
       return (
         <ChatNode
@@ -247,7 +258,6 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       );
     }
     case 'text_aggregate': {
-      const hasDownstream = h.edges.some((e) => e.source === node.id);
       return (
         <TextAggregateNode
           {...common}
@@ -256,7 +266,6 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           placeholders={node.data?.placeholders ?? {}}
           output={typeof node.data?.output === 'string' ? node.data.output : ''}
           portTypesOf={h.portTypesOf}
-          hasDownstream={hasDownstream}
           mismatchBadge={mismatchBadge}
           onUpdateTemplate={h.handleUpdateAggregateTemplateFor}
           onRenamePlaceholder={h.handleRenameAggregatePlaceholderFor}
@@ -264,7 +273,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       );
     }
     case 'prompt_search': {
-      const hasDownstream = h.edges.some((e) => e.source === node.id);
+      const hasDownstream = hasDownstreamOf(node, h.edges);
       return (
         <PromptSearchNode
           {...common}

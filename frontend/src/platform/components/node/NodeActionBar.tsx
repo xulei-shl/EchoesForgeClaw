@@ -120,12 +120,13 @@ NodeActionBar.Eraser = (props: Omit<BaseButtonProps, 'icon' | 'tooltip' | 'downs
   />
 );
 
-NodeActionBar.SettingsTrigger = React.forwardRef<HTMLButtonElement, Omit<BaseButtonProps, 'icon' | 'tooltip' | 'downstreamTooltip'> & { hasDownstream?: boolean, active?: boolean, tooltip?: string }>(
-  ({ active, className = '', tooltip, ...props }, ref) => (
+NodeActionBar.SettingsTrigger = React.forwardRef<HTMLButtonElement, Omit<BaseButtonProps, 'icon' | 'tooltip' | 'downstreamTooltip'> & { hasDownstream?: boolean, active?: boolean, tooltip?: string, downstreamTooltip?: string }>(
+  ({ active, className = '', tooltip, downstreamTooltip, ...props }, ref) => (
     <BaseButton
       ref={ref}
       icon={<Settings2 size={16} strokeWidth={1.5} />}
       tooltip={tooltip || "设置"}
+      downstreamTooltip={downstreamTooltip || "有下级节点，不可修改设置"}
       className={active ? `opacity-60 ${className}` : className}
       {...props}
     />

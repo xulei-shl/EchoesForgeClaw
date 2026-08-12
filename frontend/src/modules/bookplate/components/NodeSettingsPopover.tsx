@@ -19,6 +19,8 @@ export interface NodeSettingsPopoverProps {
   disabled?: boolean;
   /** 画布是否已存在图书元数据节点（无根节点时禁用「包含图书元数据」） */
   hasBookInfo?: boolean;
+  /** 是否有下级节点关联（有下级时禁用设置，避免影响下游输出） */
+  hasDownstream?: boolean;
   /** 按钮样式（沿用各节点的 actionBtn 类） */
   className?: string;
 }
@@ -28,6 +30,7 @@ const NodeSettingsPopoverInner: React.FC<NodeSettingsPopoverProps> = ({
   onChange,
   disabled,
   hasBookInfo = true,
+  hasDownstream,
   className = '',
 }) => {
   const [open, setOpen] = useState(false);
@@ -75,6 +78,7 @@ const NodeSettingsPopoverInner: React.FC<NodeSettingsPopoverProps> = ({
         ref={btnRef}
         onClick={toggleOpen}
         disabled={disabled}
+        hasDownstream={hasDownstream}
         className={className}
         tooltip="运行设置"
       />

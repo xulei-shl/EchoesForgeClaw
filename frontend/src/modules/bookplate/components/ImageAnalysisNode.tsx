@@ -80,6 +80,7 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
   onUpdateSettings,
   hasBookInfo,
   mismatchBadge,
+  hasDownstream,
 }) => {
   const { showToast } = useFeedback();
   // 本次会话上传的参考图（base64 data URL，仅存内存）
@@ -126,6 +127,7 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
           <NodeActionBar.Retry
             onClick={() => onRun?.(id)}
             error={!!error}
+            hasDownstream={hasDownstream}
             icon={error || analysis ? <RefreshCw size={16} strokeWidth={1.5} /> : <Play size={16} strokeWidth={1.5} />}
             tooltip={error ? '重试' : analysis ? '重新生成' : '运行分析'}
           />
@@ -134,6 +136,7 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
           <NodeSettingsPopover
             settings={settings}
             onChange={(s) => onUpdateSettings?.(id, s)}
+            hasDownstream={hasDownstream}
             hasBookInfo={hasBookInfo}
           />
         )}

@@ -50,6 +50,7 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
   onDrag,
   footer,
   onContextMenu,
+  hasDownstream,
 }) => {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [prompts, setPrompts] = useState<BifrostPrompt[]>([]);
@@ -289,7 +290,7 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
 
   const actionBar = promptId ? (
     <NodeActionBar>
-      <NodeActionBar.Edit onClick={openPicker} />
+      <NodeActionBar.Edit onClick={openPicker} hasDownstream={hasDownstream} />
     </NodeActionBar>
   ) : undefined;
 

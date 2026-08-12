@@ -96,6 +96,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
   onContextMenu,
   group,
   mismatchBadge,
+  hasDownstream,
 }) => {
   const [draft, setDraft] = useState('');
   // 本轮待发送的图片附件（data URL），随消息发送后在气泡内展示
@@ -130,11 +131,19 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
 
   const handleDownload = () => {
     if (messages.length === 0) return;
-    
+
     let md = `# ${title || 'AI 对话记录'}\n\n`;
-    messages.forEach(msg => {
+    messages.forEach((msg) => {
       if (msg.role === 'user') {
-        md += `**You**:\n${msg.content}\n\n`;
+        md += `**You**:\n${msg.content}\n`;
+        // 用户附带图片以 data URL 内嵌进 Markdown（base64 不含括号/换行，可直接进图片语法），
+        // 随对话一并导出：本地 Markdown 查看器（VS Code / Typora / Obsidian 等）可直接渲染
+        if (msg.images && msg.images.length > 0) {
+          md += `${msg.images
+            .map((img, j) => `![附带图片 ${j + 1}](${img})`)
+            .join('\n')}\n`;
+        }
+        md += '\n';
       } else {
         md += `**AI**:\n${msg.content}\n\n`;
       }
@@ -275,6 +284,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
           <NodeActionBar.Eraser
             onClick={() => onClearChat?.(id)}
             disabled={isGenerating}
+            hasDownstream={hasDownstream}
           />
         )}
       </NodeActionBar>
