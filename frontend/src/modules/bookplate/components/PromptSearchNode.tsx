@@ -330,11 +330,20 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
         ) : (
           <div className="flex flex-col h-full overflow-hidden gap-3">
             {promptImage && (
-              <img
-                src={promptImage}
-                alt={promptName}
-                className="w-full h-28 object-cover rounded-md border border-paper-grid shrink-0"
-              />
+              <PhotoProvider maskOpacity={0.8} bannerVisible={false}>
+                <PhotoView src={promptImage}>
+                  <div className="relative group cursor-pointer" title="点击全屏查看">
+                    <img
+                      src={promptImage}
+                      alt={promptName}
+                      className="w-full h-28 object-cover rounded-md border border-paper-grid shrink-0 group-hover:opacity-95 transition"
+                    />
+                    <div className="absolute right-2 bottom-2 p-1 rounded bg-black/40 backdrop-blur-sm text-white/90 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-sm flex items-center justify-center">
+                      <Maximize2 size={14} strokeWidth={2} />
+                    </div>
+                  </div>
+                </PhotoView>
+              </PhotoProvider>
             )}
             <div className="flex-1 overflow-y-auto min-h-0 pr-1.5 custom-scrollbar text-sm text-ink-light font-sans whitespace-pre-wrap leading-relaxed">
               {content || '（空内容）'}
