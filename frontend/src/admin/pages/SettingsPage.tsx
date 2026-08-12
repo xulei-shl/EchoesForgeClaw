@@ -1,5 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import {
+  ChevronDown,
+  ChevronRight,
   Loader2,
   Pencil,
   Plus,
@@ -13,6 +15,7 @@ import type { AppSetting } from '../../platform/types';
 import { Button } from '../../platform/components/ui/Button';
 import { Input } from '../../platform/components/ui/Input';
 import { Card } from '../../platform/components/ui/Card';
+import { Dialog } from '../../platform/components/ui/Dialog';
 import { FieldLabel, PageHeader } from '../components/AdminBits';
 import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
 
@@ -41,9 +44,10 @@ interface EditState {
   key: string;
   value: string;
   description: string;
+  sensitive: boolean;
 }
 
-const EMPTY_EDIT: EditState = { id: null, key: '', value: '', description: '' };
+const EMPTY_EDIT: EditState = { id: null, key: '', value: '', description: '', sensitive: false };
 
 export const SettingsPage: React.FC = () => {
   const [items, setItems] = useState<AppSetting[]>([]);
@@ -55,6 +59,45 @@ export const SettingsPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const { dialog, showToast } = useFeedback();
+
+  const grouped = useMemo(() => {
+    const groups: {
+      key: string;
+      title: string;
+      configs: AppSetting[];
+    }[] = [];
+    const groupMap = new Map<string, typeof groups[number]>();
+    const ungrouped: AppSetting[] = [];
+
+    for (const s of items) {
+      const parts = s.key.split('.');
+      if (parts.length > 1) {
+        const category = parts[0];
+        let grp = groupMap.get(category);
+        if (!grp) {
+          grp = { key: `group:${category}`, title: category, configs: [] };
+          groupMap.set(category, grp);
+          groups.push(grp);
+        }
+        grp.configs.push(s);
+      } else {
+        ungrouped.push(s);
+      }
+    }
+
+    groups.sort((a, b) => a.title.localeCompare(b.title));
+    if (ungrouped.length > 0) {
+      groups.push({
+        key: 'group:other',
+        title: '其他',
+        configs: ungrouped,
+      });
+    }
+
+    return groups;
+  }, [items]);
+
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -86,7 +129,7 @@ export const SettingsPage: React.FC = () => {
 
   const openEdit = (s: AppSetting) => {
     setShowCreate(false);
-    setEdit({ id: s.id, key: s.key, value: s.value, description: s.description });
+    setEdit({ id: s.id, key: s.key, value: s.value, description: s.description, sensitive: s.sensitive });
     setFormError('');
   };
 
@@ -148,56 +191,75 @@ export const SettingsPage: React.FC = () => {
         }
       />
 
-      {/* 新建/编辑表单 */}
-      {showCreate && (
-        <Card className="p-5 mb-6">
-          <form onSubmit={handleSave} className="space-y-4">
-            <div className="flex items-center gap-2 text-ink font-serif text-base font-semibold">
-              <Plus size={16} strokeWidth={1.5} className="text-accent" />
-              新建设置项
-            </div>
-            <div className="space-y-1.5">
-              <FieldLabel required>键名（key）</FieldLabel>
-              <Input
-                value={edit.key}
-                onChange={(e) => setEdit({ ...edit, key: e.target.value })}
-                placeholder="如 douban.proxy"
-                list="known-setting-keys"
-              />
+      {/* 新建/编辑表单弹窗 */}
+      <Dialog
+        open={showCreate || edit.id !== null}
+        onClose={resetForm}
+        panelClassName="max-w-xl"
+        title={
+          <div className="flex items-center gap-2">
+            <SettingsIcon size={18} strokeWidth={1.5} className="text-accent" />
+            {edit.id !== null ? `编辑设置项：${edit.key}` : '新建设置项'}
+          </div>
+        }
+      >
+        <form onSubmit={handleSave} className="space-y-5">
+          <div className="space-y-1.5">
+            <FieldLabel required>键名（key）</FieldLabel>
+            <Input
+              value={edit.key}
+              onChange={(e) => setEdit({ ...edit, key: e.target.value })}
+              placeholder="如 douban.proxy"
+              list="known-setting-keys"
+              disabled={edit.id !== null}
+            />
+            {edit.id === null && (
               <datalist id="known-setting-keys">
                 {KNOWN_KEYS.map((k) => (
                   <option key={k.key} value={k.key} label={k.description} />
                 ))}
               </datalist>
-            </div>
-            <div className="space-y-1.5">
-              <FieldLabel>值（value）</FieldLabel>
-              <Input
-                value={edit.value}
-                onChange={(e) => setEdit({ ...edit, value: e.target.value })}
-                placeholder="设置值"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <FieldLabel>说明（description）</FieldLabel>
-              <Input
-                value={edit.description}
-                onChange={(e) => setEdit({ ...edit, description: e.target.value })}
-                placeholder="该项的用途说明"
-              />
-            </div>
-            {formError && <p className="text-sm text-error font-sans">{formError}</p>}
-            <div className="flex gap-3 pt-1">
-              <Button type="submit" size="sm" isLoading={saving}>
-                保存
-              </Button>
-              <Button type="button" variant="ghost" size="sm" onClick={resetForm}>
-                取消
-              </Button>
-            </div>
-          </form>
-        </Card>
-      )}
+            )}
+            {edit.id !== null && (
+              <p className="text-xs text-ink-faint font-sans">
+                编辑时不可修改键名
+              </p>
+            )}
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>值（value）</FieldLabel>
+            <Input
+              value={edit.value}
+              onChange={(e) => setEdit({ ...edit, value: e.target.value })}
+              placeholder={
+                edit.sensitive ? '留空 / 保持 **** 不修改密钥' : '设置值'
+              }
+            />
+            {edit.sensitive && (
+              <p className="text-xs text-ink-faint font-sans">
+                敏感项：留空或保持掩码保存将不修改密钥
+              </p>
+            )}
+          </div>
+          <div className="space-y-1.5">
+            <FieldLabel>说明（description）</FieldLabel>
+            <Input
+              value={edit.description}
+              onChange={(e) => setEdit({ ...edit, description: e.target.value })}
+              placeholder="该项的用途说明"
+            />
+          </div>
+          {formError && <p className="text-sm text-error font-sans">{formError}</p>}
+          <div className="flex justify-end gap-3 pt-5 border-t border-dashed border-paper-grid">
+            <Button type="button" variant="ghost" size="sm" onClick={resetForm}>
+              取消
+            </Button>
+            <Button type="submit" size="sm" isLoading={saving}>
+              保存
+            </Button>
+          </div>
+        </form>
+      </Dialog>
 
       {/* 加载态 */}
       {loading && (
@@ -219,7 +281,7 @@ export const SettingsPage: React.FC = () => {
 
       {/* 列表 */}
       {!loading && !error && (
-        <div className="space-y-3">
+        <div className="space-y-6">
           {items.length === 0 ? (
             <Card className="py-14 flex flex-col items-center gap-3 text-center">
               <SettingsIcon size={36} strokeWidth={1} className="text-ink-faint" />
@@ -227,96 +289,80 @@ export const SettingsPage: React.FC = () => {
               <p className="text-sm text-ink-light font-sans">点击「新建设置项」添加配置</p>
             </Card>
           ) : (
-            items.map((s) =>
-              edit.id === s.id && !showCreate ? (
-                /* 行内编辑态 */
-                <Card key={s.id} className="p-4">
-                  <form onSubmit={handleSave} className="space-y-3">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-sm text-accent border border-dashed border-accent/40 bg-accent/5 rounded-pill px-2.5 py-0.5">
-                        {s.key}
-                      </span>
+            grouped.map((group) => {
+              const isCollapsed = !!collapsedGroups[group.key];
+              return (
+                <div key={group.key}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCollapsedGroups((prev) => ({ ...prev, [group.key]: !prev[group.key] }))
+                    }
+                    title={isCollapsed ? '展开分组' : '折叠分组'}
+                    className="w-full mb-2 flex items-center gap-2 text-left group hover:opacity-80 transition-opacity focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent rounded"
+                  >
+                    {isCollapsed ? (
+                      <ChevronRight size={15} strokeWidth={1.5} className="text-ink-faint shrink-0 transition-transform" />
+                    ) : (
+                      <ChevronDown size={15} strokeWidth={1.5} className="text-ink-faint shrink-0 transition-transform" />
+                    )}
+                    <span className="font-serif text-sm font-semibold text-ink capitalize">
+                      {group.title === 'other' ? '其他' : group.title}
+                    </span>
+                    <span className="ml-auto text-xs text-ink-faint font-sans tabular-nums">
+                      {group.configs.length} 项
+                    </span>
+                  </button>
+                  {!isCollapsed && (
+                    <div className="space-y-3">
+                      {group.configs.map((s) => (
+                          <Card key={s.id} className="p-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-mono text-sm text-accent border border-dashed border-accent/40 bg-accent/5 rounded-pill px-2.5 py-0.5">
+                                    {s.key}
+                                  </span>
+                                  <span className="text-xs text-ink-faint font-sans tabular-nums">
+                                    {new Date(s.updated_at).toLocaleString('zh-CN', { hour12: false })}
+                                  </span>
+                                </div>
+                                <p className="mt-2 font-mono text-sm text-ink break-all">
+                                  {s.sensitive
+                                    ? s.value
+                                      ? '••••••••（已配置）'
+                                      : '（未配置）'
+                                    : s.value || '（空）'}
+                                </p>
+                                <SensitiveValueHint setting={s} />
+                                {s.description && (
+                                  <p className="mt-1 text-xs text-ink-light font-sans">{s.description}</p>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <button
+                                  onClick={() => openEdit(s)}
+                                  title="编辑"
+                                  className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-95"
+                                >
+                                  <Pencil size={15} strokeWidth={1.5} />
+                                </button>
+                                <button
+                                  onClick={() => handleDelete(s)}
+                                  title="删除"
+                                  className="p-1.5 rounded-md text-ink-light hover:text-error hover:bg-error/5 transition-colors active:scale-95"
+                                >
+                                  <Trash2 size={15} strokeWidth={1.5} />
+                                </button>
+                              </div>
+                            </div>
+                          </Card>
+                      ))}
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="space-y-1.5">
-                        <FieldLabel>值</FieldLabel>
-                        <Input
-                          value={edit.value}
-                          onChange={(e) => setEdit({ ...edit, value: e.target.value })}
-                          placeholder={
-                            s.sensitive ? '留空 / 保持 **** 不修改密钥' : undefined
-                          }
-                        />
-                        {s.sensitive && (
-                          <p className="text-xs text-ink-faint font-sans">
-                            敏感项：留空或保持掩码保存将不修改密钥
-                          </p>
-                        )}
-                      </div>
-                      <div className="space-y-1.5">
-                        <FieldLabel>说明</FieldLabel>
-                        <Input
-                          value={edit.description}
-                          onChange={(e) => setEdit({ ...edit, description: e.target.value })}
-                        />
-                      </div>
-                    </div>
-                    {formError && <p className="text-sm text-error font-sans">{formError}</p>}
-                    <div className="flex gap-3">
-                      <Button type="submit" size="sm" isLoading={saving}>
-                        <Save size={14} strokeWidth={2} className="mr-1" />
-                        保存
-                      </Button>
-                      <Button type="button" variant="ghost" size="sm" onClick={resetForm}>
-                        取消
-                      </Button>
-                    </div>
-                  </form>
-                </Card>
-              ) : (
-                <Card key={s.id} className="p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-mono text-sm text-accent border border-dashed border-accent/40 bg-accent/5 rounded-pill px-2.5 py-0.5">
-                          {s.key}
-                        </span>
-                        <span className="text-xs text-ink-faint font-sans tabular-nums">
-                          {new Date(s.updated_at).toLocaleString('zh-CN', { hour12: false })}
-                        </span>
-                      </div>
-                      <p className="mt-2 font-mono text-sm text-ink break-all">
-                        {s.sensitive
-                          ? s.value
-                            ? '••••••••（已配置）'
-                            : '（未配置）'
-                          : s.value || '（空）'}
-                      </p>
-                      <SensitiveValueHint setting={s} />
-                      {s.description && (
-                        <p className="mt-1 text-xs text-ink-light font-sans">{s.description}</p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button
-                        onClick={() => openEdit(s)}
-                        title="编辑"
-                        className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-95"
-                      >
-                        <Pencil size={15} strokeWidth={1.5} />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(s)}
-                        title="删除"
-                        className="p-1.5 rounded-md text-ink-light hover:text-error hover:bg-error/5 transition-colors active:scale-95"
-                      >
-                        <Trash2 size={15} strokeWidth={1.5} />
-                      </button>
-                    </div>
-                  </div>
-                </Card>
-              )
-            )
+                  )}
+                </div>
+              );
+            })
           )}
         </div>
       )}
