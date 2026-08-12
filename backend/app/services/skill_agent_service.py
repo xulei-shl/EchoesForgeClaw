@@ -7,8 +7,10 @@ frontmatter 开头（name / description 必填）。工作区按用户隔离：
 职责：
 1. SKILL.md 解析 / 上传 zip 合法性校验（根目录必须有含 name/description 的 SKILL.md）
 2. 构建 openai-agents-python Agent（任意 OpenAI 兼容端点，chat completions 协议）
-3. LocalShellTool 沙箱执行器：cwd 限定在用户工作区、绝对路径/.. 逃逸拦截、
-   POSIX 资源限制（CPU/内存/文件大小）、超时强杀进程组、输出上限、新文件检测
+3. FunctionTool 沙箱执行器（不能用 LocalShellTool：它是 hosted tool，ChatCompletions
+   兼容端点（use_responses=False）会在转换工具时直接报错）：cwd 限定在用户工作区、
+   绝对路径/.. 逃逸拦截、POSIX 资源限制（CPU/内存/文件大小）、超时强杀进程组、
+   输出上限、新文件检测
 4. Runner.run_streamed 事件归一化为统一 dict 事件流（与 fastclaw_service 同构），
    新增 agent_file 事件透传 skill 执行产生的文件（供前端渲染下载卡片）
 """
@@ -349,7 +351,7 @@ def _kill_process_group(proc) -> None:
 
 
 class SandboxedShellExecutor:
-    """LocalShellTool 的沙箱执行器。
+    """沙箱 shell 执行器（供 FunctionTool 包装）。
 
     安全约束（尽力而为，非完整沙箱）：
     - cwd 强制为该用户工作区（忽略模型请求的 working_directory）
@@ -427,12 +429,8 @@ class SandboxedShellExecutor:
                 return f"（命令含 .. 路径穿越，已拒绝：{arg}）"
         return None
 
-    async def __call__(self, request) -> str:
-        from openai.types.responses.response_output_item import LocalShellCall
-
-        data: LocalShellCall = request.data
-        action = data.action
-        command: List[str] = list(getattr(action, "command", []) or [])
+    async def run_command(self, command: List[str], timeout_ms: Optional[int] = None) -> str:
+        """执行一条命令（FunctionTool on_invoke 调用）。"""
         if not command:
             return "（空命令）"
         # 路径逃逸校验：绝对路径 / .. 穿越一律拒绝（cwd 限定之外的又一道闸）
@@ -440,7 +438,7 @@ class SandboxedShellExecutor:
         if reject:
             return reject
         # 超时：模型请求值封顶，避免长命令拖垮连接
-        timeout_ms = getattr(action, "timeout_ms", None) or DEFAULT_CMD_TIMEOUT * 1000
+        timeout_ms = timeout_ms or DEFAULT_CMD_TIMEOUT * 1000
         timeout = min(timeout_ms / 1000.0, DEFAULT_CMD_TIMEOUT)
 
         before = self._snapshot()
@@ -480,8 +478,22 @@ class SandboxedShellExecutor:
 def build_agent(
     config: SkillRuntimeConfig, skill_names: Optional[List[str]] = None
 ):
-    """构建 openai-agents-python Agent（任意 OpenAI 兼容端点，chat completions 协议）。"""
-    from agents import Agent, ModelSettings, OpenAIProvider, RunConfig
+    """构建 openai-agents-python Agent（任意 OpenAI 兼容端点，chat completions 协议）。
+
+    关键：工具必须是 FunctionTool。LocalShellTool 是 hosted tool，ChatCompletions
+    兼容端点的工具转换器（Converter.tool_to_openai）不识别它，会直接抛
+    "Hosted tools are not supported with the ChatCompletions API"——这正是
+    Skill Agent 在任意兼容端点上「对话超时」的根因（异常逃逸出 SSE 生成器，
+    前端 120 秒空闲超时后才提示）。
+    """
+    from agents import (
+        Agent,
+        FunctionTool,
+        ModelSettings,
+        OpenAIProvider,
+        RunConfig,
+        ToolOutputText,
+    )
 
     provider = OpenAIProvider(
         api_key=config.api_key or None,
@@ -489,22 +501,77 @@ def build_agent(
         use_responses=False,  # 兼容任意 OpenAI-compatible 端点（不走 Responses API）
     )
     executor = SandboxedShellExecutor(config.user_id)
+
+    async def _invoke_shell(_ctx, arguments: str) -> ToolOutputText:
+        """FunctionTool 处理器：解析模型 JSON 参数 → 沙箱执行。
+
+        _ctx 为 ToolContext（ToolContext 未从 agents 顶层导出，无需注解；
+        FunctionTool 直接构造时 schema 来自 params_json_schema，不依赖签名注解）。
+        """
+        try:
+            args = json.loads(arguments or "{}")
+        except json.JSONDecodeError:
+            return ToolOutputText(text="（工具参数不是合法 JSON，无法执行）")
+        raw_cmd = args.get("command")
+        # 先校验再转换：直接 list("ls") 会把字符串拆成 ["l","s"] 绕过类型检查
+        if not isinstance(raw_cmd, list) or not all(isinstance(c, str) for c in raw_cmd):
+            return ToolOutputText(text="（工具参数缺少 command 字符串数组）")
+        command = raw_cmd
+        timeout_ms = args.get("timeout_ms")
+        # bool 是 int 子类：True 会被当成 1ms 超时，需显式排除
+        if not isinstance(timeout_ms, int) or isinstance(timeout_ms, bool):
+            timeout_ms = None
+        result = await executor.run_command(command, timeout_ms)
+        return ToolOutputText(text=result)
+
+    shell_tool = FunctionTool(
+        name="local_shell",
+        description=(
+            "在工作区目录中执行 shell 命令（无 shell 展开，命令以参数数组形式给出）。"
+            "例如 [\"ls\", \"-la\"]、[\"cat\", \"skills/demo/SKILL.md\"]、"
+            "[\"bash\", \"scripts/run.sh\"]。禁止使用绝对路径或 .. 路径段。"
+        ),
+        params_json_schema={
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "命令及其参数（不经过 shell 展开）",
+                },
+                "timeout_ms": {
+                    "type": "integer",
+                    "description": "可选：命令超时（毫秒），不传则用默认超时",
+                },
+            },
+            "required": ["command"],
+        },
+        on_invoke_tool=_invoke_shell,
+        # 非 strict：兼容更多 OpenAI 兼容端点的工具 schema 解析
+        strict_json_schema=False,
+    )
+
     agent = Agent(
         name="Skill Agent",
         instructions=_build_instructions(config, config.user_id, skill_names),
         model=config.model_name or "gpt-4o-mini",
-        tools=[executor],
+        tools=[shell_tool],
         model_settings=ModelSettings(temperature=0.3),
     )
-    run_config = RunConfig(model_provider=provider, max_turns=MAX_TURNS)
+    # 注意：max_turns 不是 RunConfig 的字段，而是 Runner.run_streamed() 的参数，
+    # 传错会抛 TypeError 并逃逸出 SSE 生成器（表现为前端「对话超时」）
+    run_config = RunConfig(model_provider=provider)
     return agent, run_config, executor
 
 
 def _to_input_items(messages: list) -> list:
     """OpenAI 格式消息 → openai-agents-python 输入项。
 
-    兼容多模态 user 消息（content 为 text + image_url 数组）与纯文本消息；
-    assistant 消息保持 output_text。
+    兼容多种消息形态（历史消息可能来自不同路径）：
+    - 纯文本 user 消息（content 为 str）；
+    - 多模态 user 消息（content 为 text + image_url 数组，_multimodal_messages 产出）；
+    - 已按 Responses/Items 格式的 user 消息（content 为 input_text / input_image 数组）；
+    - assistant 消息保持 output_text。
     """
     items: list = []
     for m in messages or []:
@@ -516,17 +583,20 @@ def _to_input_items(messages: list) -> list:
             text = content if isinstance(content, str) else ""
             items.append({"role": "assistant", "content": [{"type": "output_text", "text": text}]})
             continue
-        # user：兼容纯文本与多模态 content（text + image_url）
+        # user：纯文本
         if isinstance(content, str):
             items.append({"role": "user", "content": [{"type": "input_text", "text": content}]})
             continue
         parts: list = []
-        for part in content or []:
+        # 仅接受可迭代的 content（防御非列表值，如数字，避免 for 循环直接炸裂）
+        for part in content if isinstance(content, list) else []:
             if not isinstance(part, dict):
                 continue
-            if part.get("type") == "text":
+            ptype = part.get("type")
+            # chat-completions 的 text 与 Responses 的 input_text 语义一致，合并处理
+            if ptype in ("text", "input_text"):
                 parts.append({"type": "input_text", "text": str(part.get("text", ""))})
-            elif part.get("type") == "image_url":
+            elif ptype in ("image_url", "input_image"):
                 url = part.get("image_url")
                 if isinstance(url, dict):
                     url = url.get("url")
@@ -549,13 +619,27 @@ def _tool_name(item) -> str:
 
 
 def _tool_arguments(item) -> str:
-    """从 ToolCallItem 提取参数 JSON 字符串。"""
+    """从 ToolCallItem 提取参数 JSON 字符串。
+
+    兼容三种 raw_item 形态：
+    - dict（自定义/旧路径）：arguments 可能为 dict 或 JSON 字符串；
+    - ResponseFunctionToolCall（chatcmpl 模式 FunctionTool）：
+      arguments 直接挂在对象上，为 JSON 字符串（如 '{"command": ["ls"]}'）；
+    - Responses API FunctionCall：arguments 为 dict。
+    """
     raw = getattr(item, "raw_item", None)
     if isinstance(raw, dict):
         args = raw.get("arguments")
         if isinstance(args, dict):
             return json.dumps(args, ensure_ascii=False)
         return str(args or "")
+    # ResponseFunctionToolCall / FunctionCall：arguments 为对象字段
+    args = getattr(raw, "arguments", None)
+    if isinstance(args, dict):
+        return json.dumps(args, ensure_ascii=False)
+    if isinstance(args, str):
+        return args
+    # 兜底：function.arguments（部分 provider 的嵌套结构）
     fn = getattr(raw, "function", None)
     args = getattr(fn, "arguments", None) if fn else None
     if isinstance(args, dict):
@@ -595,27 +679,43 @@ async def run_skill_agent(
     if not config.model_name:
         raise SkillAgentError("Skill Agent 配置缺少模型名称")
 
-    agent, run_config, executor = build_agent(config, skills)
-    items = _to_input_items(messages)
-    if not any(i.get("role") == "user" for i in items):
-        raise SkillAgentError("AI 对话缺少用户消息")
-
-    result = Runner.run_streamed(agent, input=items, run_config=run_config)
     try:
+        agent, run_config, executor = build_agent(config, skills)
+        items = _to_input_items(messages)
+        if not any(i.get("role") == "user" for i in items):
+            raise SkillAgentError("AI 对话缺少用户消息")
+
+        # max_turns 是 Runner.run_streamed() 的参数（不是 RunConfig 的）
+        result = Runner.run_streamed(
+            agent, input=items, run_config=run_config, max_turns=MAX_TURNS
+        )
         async for event in result.stream_events():
             etype = event.type
             # 文本增量（Responses 路径：ResponseTextDeltaEvent；ChatCompletions 路径：chunk delta）
             if etype == "raw_response_event":
                 data = event.data
-                delta = getattr(data, "delta", None)
-                if isinstance(delta, str) and delta:
-                    yield {"type": "content_delta", "data": {"delta": delta}}
+                dtype = getattr(data, "type", "")
+                # 仅透传真正的文本/思考增量：输出文本 / 思考过程（DeepSeek 等端点
+                # 的 reasoning 以 reasoning_summary_text.delta 形式到达）。工具调用参数增量
+                # （response.function_call_arguments.delta）的 delta 字段是参数 JSON，
+                # 绝不能当对话文本渲染（此前被误透传 → 聊天气泡里出现 {"command": ...}）。
+                # refusal 增量（response.refusal.delta）刻意不展示：安全过滤拒答不应作为
+                # 正常回复文本渲染（模型最终会以 output_text 给出拒答说明）。
+                if dtype in (
+                    "response.output_text.delta",
+                    "response.reasoning_text.delta",
+                    "response.reasoning_summary_text.delta",
+                ):
+                    delta = getattr(data, "delta", None)
+                    if isinstance(delta, str) and delta:
+                        yield {"type": "content_delta", "data": {"delta": delta}}
                     continue
+                # 未走事件归一化时的原始 chunk 兜底（仅取 content 文本，工具调用除外）
                 choices = getattr(data, "choices", None)
                 if choices:
                     d = getattr(choices[0], "delta", None)
                     content = getattr(d, "content", None)
-                    if content:
+                    if content and not getattr(d, "tool_calls", None):
                         yield {"type": "content_delta", "data": {"delta": content}}
                 continue
             # 工具调用 / 结果
@@ -658,7 +758,11 @@ async def run_skill_agent(
                 yield {"type": "status", "data": {"message": f"进入 Agent：{name}"}}
                 continue
         yield {"type": "done", "data": {}}
+    except SkillAgentError:
+        raise
     except Exception as exc:
+        # 任何意外异常（SDK 参数错误 / 端点不兼容等）都必须转成 error 事件透传，
+        # 否则会逃逸出 SSE 生成器 → 前端流静默中断 → 表现为「对话超时，请重试」
         logger.error("Skill Agent 执行失败: %s", exc, exc_info=True)
         raise SkillAgentError(f"Skill Agent 执行失败: {exc}") from exc
 
