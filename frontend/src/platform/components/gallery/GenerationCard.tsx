@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { BookOpen, Bot, Globe, Heart, Trash2 } from 'lucide-react';
 import type { Generation } from '../../types';
-import { generationMeta } from '../../utils/generation';
+import { generationMeta, generationNodeTypeLabel } from '../../utils/generation';
 import { formatDateTime } from '../../utils/format';
 
 export interface GenerationCardProps {
@@ -63,7 +63,13 @@ export const GenerationCard: React.FC<GenerationCardProps> = ({
 
       {/* 元数据 */}
       <div className="flex-1 min-w-0">
-        <h3 className="font-serif text-base font-semibold text-ink truncate">{title}</h3>
+        <div className="flex items-center gap-2 min-w-0">
+          <h3 className="font-serif text-base font-semibold text-ink truncate">{title}</h3>
+          {/* 节点类型徽标：区分图片 / 音频等不同结果类型 */}
+          <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-sm border border-dashed border-paper-grid text-[10px] leading-none text-ink-faint font-sans">
+            {generationNodeTypeLabel(gen.node_type)}
+          </span>
+        </div>
         <p className="text-[13px] text-ink-light font-sans mt-0.5 truncate">{author}</p>
         <p className="text-xs text-ink-faint font-sans mt-0.5 tabular-nums">
           {formatDateTime(gen.created_at)}

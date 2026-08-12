@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { BookOpen, Globe, Heart, History, Loader2, RefreshCw, Search, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Navbar } from '../../platform/components/layout/Navbar';
@@ -13,7 +13,9 @@ import {
   getCanvasGenerationIds,
 } from '../../platform/stores/useCanvasState';
 import { getStartCreationRoute } from '../../platform/utils/creation';
-import type { GalleryMode, Generation } from '../../platform/types';
+import { Select } from '../../platform/components/ui/Select';
+import { generationNodeTypeLabel } from '../../platform/utils/generation';
+import type { GalleryMode, Generation, NodeTypeCount } from '../../platform/types';
 
 /** 每页条数（后端 limit 上限为 100） */
 const PAGE_SIZE = 20;
@@ -67,6 +69,11 @@ export const GenerationListPage: React.FC<GenerationListPageProps> = ({ mode }) 
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [keyword, setKeyword] = useState('');
   const [debouncedKeyword, setDebouncedKeyword] = useState('');
+  // 类型筛选：以 URL ?type= 为单一数据源（刷新 / 后退前进保留）；'' = 全部
+  const [searchParams, setSearchParams] = useSearchParams();
+  const nodeType = searchParams.get('type') ?? '';
+  // 类型筛选项（含数量）：来自接口返回的作用域内 node_type_counts（随加载刷新）
+  const [nodeTypeCounts, setNodeTypeCounts] = useState<NodeTypeCount[]>([]);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const isFirstLoad = useRef(true);
   // 记录下一次请求的 offset（删除条目时同步修正，避免加载中删除导致跳项）
@@ -75,13 +82,14 @@ export const GenerationListPage: React.FC<GenerationListPageProps> = ({ mode }) 
 
   const fetchPage = useCallback(
     async (skip: number, limit: number) => {
-      const params: { skip: number; limit: number; keyword?: string } = { skip, limit };
+      const params: { skip: number; limit: number; keyword?: string; node_type?: string } = { skip, limit };
       if (debouncedKeyword) params.keyword = debouncedKeyword;
+      if (nodeType) params.node_type = nodeType;
       if (mode === 'history') return generationsService.listMine(params);
       if (mode === 'favorites') return generationsService.listFavorites(params);
       return generationsService.listPublic(params);
     },
-    [mode, debouncedKeyword]
+    [mode, debouncedKeyword, nodeType]
   );
 
   /** 首屏加载 / 重试 */
@@ -96,6 +104,7 @@ export const GenerationListPage: React.FC<GenerationListPageProps> = ({ mode }) 
       const res = await fetchPage(0, PAGE_SIZE);
       setItems(res.items);
       setTotal(res.total);
+      setNodeTypeCounts(res.node_type_counts ?? []);
       nextSkipRef.current = res.items.length;
     } catch (e: any) {
       setError(e?.message || '加载失败，请重试');
@@ -113,6 +122,37 @@ export const GenerationListPage: React.FC<GenerationListPageProps> = ({ mode }) 
     const t = setTimeout(() => setDebouncedKeyword(keyword), 400);
     return () => clearTimeout(t);
   }, [keyword]);
+
+  /** 切换类型筛选：写入 URL（push 以支持后退/前进），关闭详情面板并重置分页游标，列表由 load（依赖 fetchPage）自动重拉 */
+  const handleTypeChange = (val: string) => {
+    setSelectedId(null);
+    nextSkipRef.current = 0;
+    const next = new URLSearchParams(searchParams);
+    if (val) {
+      next.set('type', val);
+    } else {
+      next.delete('type');
+    }
+    setSearchParams(next);
+  };
+
+  // 类型变化（含后退/前进导致的 URL 变化）时重置分页游标，避免触底加载使用旧游标
+  useEffect(() => {
+    nextSkipRef.current = 0;
+  }, [nodeType]);
+
+  // 自动清理失效的类型参数（记录被删 / 手改 URL）：类型不在筛选项里则移除，避免下拉落到「请选择」死态
+  useEffect(() => {
+    if (
+      nodeType &&
+      nodeTypeCounts.length > 0 &&
+      !nodeTypeCounts.some((t) => t.node_type === nodeType)
+    ) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('type');
+      setSearchParams(next, { replace: true });
+    }
+  }, [nodeType, nodeTypeCounts, searchParams, setSearchParams]);
 
   /** 滚动触底加载下一页（追加去重） */
   const loadMore = useCallback(async () => {
@@ -276,6 +316,8 @@ export const GenerationListPage: React.FC<GenerationListPageProps> = ({ mode }) 
     (mode === 'gallery' && gen.username === user?.username);
 
   const hasMore = items.length < total;
+  // 是否处于筛选态（关键词 / 类型任一激活），空列表时展示筛选空态
+  const hasFilter = !!(debouncedKeyword || nodeType);
 
   const emptyState = {
     history: {
@@ -319,12 +361,34 @@ export const GenerationListPage: React.FC<GenerationListPageProps> = ({ mode }) 
 
         <main className="flex-1 w-full max-w-[960px] mx-auto px-4 sm:px-6 py-8">
           {/* 页头 */}
-          <header className="flex items-center gap-3 mb-6">
+          <header className="flex items-center flex-wrap gap-x-3 gap-y-3 mb-6">
             <span className="text-accent">{MODE_ICON[mode]}</span>
             <div>
               <h1 className="font-serif text-2xl font-bold text-ink">{config.title}</h1>
             </div>
             <div className="ml-auto flex items-center gap-3">
+              {/* 类型筛选：选项来自接口返回的作用域内节点类型（全部类型 = 不筛选） */}
+              <Select
+                size="sm"
+                value={nodeType}
+                onChange={handleTypeChange}
+                className="w-36"
+                options={[
+                  { label: '全部类型', value: '' },
+                  ...[...nodeTypeCounts]
+                    .sort((a, b) =>
+                      generationNodeTypeLabel(a.node_type).localeCompare(
+                        generationNodeTypeLabel(b.node_type),
+                        'zh'
+                      )
+                    )
+                    .map((t) => ({
+                      label: `${generationNodeTypeLabel(t.node_type)}（${t.count}）`,
+                      value: t.node_type,
+                      title: `${t.node_type} · ${t.count} 条`,
+                    })),
+                ]}
+              />
               <div className="relative">
                 <Search size={14} strokeWidth={1.5} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-faint pointer-events-none" />
                 <input
@@ -383,17 +447,42 @@ export const GenerationListPage: React.FC<GenerationListPageProps> = ({ mode }) 
           {/* 空态 */}
           {!loading && !error && items.length === 0 && !isRefreshing && (
             <div className="py-20 flex flex-col items-center gap-4 text-center">
-              {emptyState.icon}
-              <div>
-                <p className="font-serif text-lg text-ink">{emptyState.title}</p>
-                <p className="text-sm text-ink-light font-sans mt-1">{emptyState.desc}</p>
-              </div>
-              <Link
-                to={emptyState.to}
-                className="px-5 py-2 bg-accent text-paper text-sm font-serif rounded-md hover:bg-accent-hover active:scale-[0.97] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-              >
-                {emptyState.cta}
-              </Link>
+              {hasFilter ? (
+                <>
+                  <Search size={40} strokeWidth={1} className="text-ink-faint" />
+                  <div>
+                    <p className="font-serif text-lg text-ink">没有符合条件的记录</p>
+                    <p className="text-sm text-ink-light font-sans mt-1">试试调整关键词或类型筛选</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setKeyword('');
+                      setSelectedId(null);
+                      nextSkipRef.current = 0;
+                      const next = new URLSearchParams(searchParams);
+                      next.delete('type');
+                      setSearchParams(next);
+                    }}
+                    className="px-5 py-2 bg-accent text-paper text-sm font-serif rounded-md hover:bg-accent-hover active:scale-[0.97] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                  >
+                    清除筛选
+                  </button>
+                </>
+              ) : (
+                <>
+                  {emptyState.icon}
+                  <div>
+                    <p className="font-serif text-lg text-ink">{emptyState.title}</p>
+                    <p className="text-sm text-ink-light font-sans mt-1">{emptyState.desc}</p>
+                  </div>
+                  <Link
+                    to={emptyState.to}
+                    className="px-5 py-2 bg-accent text-paper text-sm font-serif rounded-md hover:bg-accent-hover active:scale-[0.97] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                  >
+                    {emptyState.cta}
+                  </Link>
+                </>
+              )}
             </div>
           )}
 

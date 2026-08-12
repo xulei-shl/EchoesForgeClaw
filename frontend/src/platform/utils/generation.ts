@@ -29,7 +29,7 @@ export function generationMeta(gen: Generation) {
     (typeof gen.stage_results?.stage3?.prompt === 'string' ? gen.stage_results.stage3.prompt : '') ||
     '';
   const imageUrl =
-    (typeof gen.final_image_url === 'string' && gen.final_image_url ? gen.final_image_url : '') ||
+    (typeof gen.result_url === 'string' && gen.result_url ? gen.result_url : '') ||
     (typeof gen.stage_results?.stage3?.image_url === 'string'
       ? gen.stage_results.stage3.image_url
       : '') ||
@@ -54,4 +54,20 @@ export function generationMeta(gen: Generation) {
   const series = typeof meta.series === 'string' ? meta.series : '';
 
   return { title, author, publisher, isbn, cover, prompt, imageUrl, agentSteps, pub_year, rating, producer, translator, url, summary, subtitle, series };
+}
+
+/** 节点类型 → 展示名（历史/画廊详情展示用；未识别时回退原值）。与画板模板名保持一致 */
+export function generationNodeTypeLabel(nodeType?: string | null): string {
+  const labels: Record<string, string> = {
+    book_info: '图书元数据',
+    image_analysis: '图片分析',
+    prompt_generation: '提示词生成',
+    image_generation: '图像生成',
+    text: '文本',
+    image_upload: '图片上传',
+    chat: 'AI 对话',
+    text_aggregate: '文本聚合',
+    prompt_search: '提示词检索',
+  };
+  return (nodeType && labels[nodeType]) || nodeType || '未知类型';
 }

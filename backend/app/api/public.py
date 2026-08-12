@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from typing import Optional
 
@@ -7,7 +8,7 @@ from app.core.deps import get_current_active_user
 from app.models.user import User
 from app.models.generation import Generation
 from app.models.public_share import PublicShare
-from app.schemas.generation import GenerationIdAction, GenerationOut, GenerationPage
+from app.schemas.generation import GenerationIdAction, GenerationOut, GenerationPage, NodeTypeCount
 from app.api.generations import _get_owned_generation, _to_out
 
 router = APIRouter(prefix="/api/public", tags=["public"])
@@ -31,16 +32,20 @@ def share_generation(
 @router.get("", response_model=GenerationPage)
 def list_public_shares(
     keyword: Optional[str] = None,
+    node_type: Optional[str] = None,
     skip: int = 0,
     limit: int = 20,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    """公开画廊：所有用户公开的生成记录（可按 keyword 搜索，分页返回）。"""
+    """公开画廊：所有用户公开的生成记录（可按 keyword / node_type 筛选，分页返回）。"""
     query = db.query(PublicShare)
-    if keyword:
+    if keyword or node_type:
         query = query.join(Generation, PublicShare.generation_id == Generation.id)
+    if keyword:
         query = query.filter(Generation.name.ilike(f"%{keyword}%"))
+    if node_type:
+        query = query.filter(Generation.node_type == node_type)
     total = query.count()
     page_limit = min(limit, 100)
     shares = (
@@ -49,6 +54,14 @@ def list_public_shares(
         .limit(page_limit)
         .all()
     )
+    # 类型筛选项：公开画廊全部记录按类型分组计数（不受 keyword/node_type 过滤影响）
+    node_type_counts = [
+        NodeTypeCount(node_type=row[0], count=row[1])
+        for row in db.query(Generation.node_type, func.count(Generation.id))
+        .join(PublicShare, PublicShare.generation_id == Generation.id)
+        .group_by(Generation.node_type)
+        .all()
+    ]
     return GenerationPage(
         items=[
             _to_out(share.generation, current_user, include_username=True)
@@ -58,6 +71,7 @@ def list_public_shares(
         total=total,
         skip=skip,
         limit=page_limit,
+        node_type_counts=node_type_counts,
     )
 
 

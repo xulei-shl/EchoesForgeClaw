@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from typing import Optional
 
@@ -6,7 +7,7 @@ from app.core.database import get_db
 from app.core.deps import get_current_active_user
 from app.models.user import User
 from app.models.generation import Generation
-from app.schemas.generation import GenerationCreate, GenerationOut, GenerationPage
+from app.schemas.generation import GenerationCreate, GenerationOut, GenerationPage, NodeTypeCount
 
 router = APIRouter(prefix="/api/generations", tags=["generations"])
 
@@ -19,10 +20,10 @@ def _to_out(
     """将 Generation ORM 对象转为响应（附带当前用户的收藏/公开状态）。"""
     return GenerationOut(
         id=gen.id,
-        module=gen.module,
+        node_type=gen.node_type,
         name=gen.name or "",
         stage_results=gen.stage_results or {},
-        final_image_url=gen.final_image_url,
+        result_url=gen.result_url,
         status=gen.status,
         created_at=gen.created_at,
         is_favorited=any(f.user_id == current_user.id for f in gen.favorites),
@@ -31,13 +32,19 @@ def _to_out(
     )
 
 
-def _extract_generation_name(stage_results) -> str:
-    """从生成记录的 stage_results 元数据中提取题名（bookplate 为 stage1.metadata.title）。"""
-    metadata = (stage_results or {}).get("stage1", {}).get("metadata", {})
-    if isinstance(metadata, dict):
-        title = metadata.get("title")
-        if isinstance(title, str):
-            return title.strip()
+def _extract_generation_name(stage_results, node_type: str) -> str:
+    """从生成记录的 stage_results 中提取题名（供关键词检索）。
+
+    不同节点类型的结果结构不同，按 node_type 分发提取器：
+    - image_generation（藏书票图像）：stage1.metadata.title
+    新增节点类型时在此登记各自的取名字段即可。
+    """
+    if node_type == "image_generation":
+        metadata = (stage_results or {}).get("stage1", {}).get("metadata", {})
+        if isinstance(metadata, dict):
+            title = metadata.get("title")
+            if isinstance(title, str):
+                return title.strip()
     return ""
 
 
@@ -74,10 +81,10 @@ def create_generation(
     """保存一次画布生成结果到历史记录。"""
     gen = Generation(
         user_id=current_user.id,
-        module=payload.module or "bookplate",
-        name=_extract_generation_name(payload.stage_results),
+        node_type=payload.node_type or "image_generation",
+        name=_extract_generation_name(payload.stage_results, payload.node_type or "image_generation"),
         stage_results=payload.stage_results or {},
-        final_image_url=payload.final_image_url or "",
+        result_url=payload.result_url or "",
         status=payload.status or "completed",
     )
     db.add(gen)
@@ -89,15 +96,18 @@ def create_generation(
 @router.get("", response_model=GenerationPage)
 def list_generations(
     keyword: Optional[str] = None,
+    node_type: Optional[str] = None,
     skip: int = 0,
     limit: int = 20,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    """当前用户的历史记录（可按 keyword 搜索，分页返回）。"""
+    """当前用户的历史记录（可按 keyword / node_type 筛选，分页返回）。"""
     query = db.query(Generation).filter(Generation.user_id == current_user.id)
     if keyword:
         query = query.filter(Generation.name.ilike(f"%{keyword}%"))
+    if node_type:
+        query = query.filter(Generation.node_type == node_type)
     total = query.count()
     page_limit = min(limit, 100)
     gens = (
@@ -106,11 +116,20 @@ def list_generations(
         .limit(page_limit)
         .all()
     )
+    # 类型筛选项：全部记录按类型分组计数（不受 keyword/node_type 过滤影响，筛选时选项保持稳定）
+    node_type_counts = [
+        NodeTypeCount(node_type=row[0], count=row[1])
+        for row in db.query(Generation.node_type, func.count(Generation.id))
+        .filter(Generation.user_id == current_user.id)
+        .group_by(Generation.node_type)
+        .all()
+    ]
     return GenerationPage(
         items=[_to_out(g, current_user) for g in gens],
         total=total,
         skip=skip,
         limit=page_limit,
+        node_type_counts=node_type_counts,
     )
 
 

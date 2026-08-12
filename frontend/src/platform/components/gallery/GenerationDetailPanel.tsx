@@ -7,7 +7,7 @@ import { normalizeMarkdown } from '../../utils/normalizeMarkdown';
 import { AgentActivity } from '../agent/AgentActivity';
 import { Download, Globe, Heart, Loader2, Trash2, X, ChevronLeft, ChevronRight, Maximize2 } from 'lucide-react';
 import type { Generation } from '../../types';
-import { generationMeta } from '../../utils/generation';
+import { generationMeta, generationNodeTypeLabel } from '../../utils/generation';
 import { formatDateTime } from '../../utils/format';
 
 export interface GenerationDetailPanelProps {
@@ -373,8 +373,8 @@ export const GenerationDetailPanel: React.FC<GenerationDetailPanelProps> = ({
                   <span className="tabular-nums">{formatDateTime(gen.created_at)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>模块</span>
-                  <span>{gen.module}</span>
+                  <span>节点类型</span>
+                  <span>{generationNodeTypeLabel(gen.node_type)}</span>
                 </div>
                 {gen.username && (
                   <div className="flex justify-between">

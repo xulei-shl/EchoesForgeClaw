@@ -28,7 +28,7 @@ export interface AgentStep {
   message?: string;
 }
 
-/** 生成记录各阶段结果（藏书票模块） */
+/** 生成记录各阶段结果（image_generation 节点为 stage1/2/3 结构；其他节点类型由各自保存方定义） */
 export interface GenerationStageResults {
   stage1?: {
     isbn?: string;
@@ -53,10 +53,12 @@ export interface GenerationStageResults {
 /** 历史 / 收藏 / 画廊共用的生成记录 */
 export interface Generation {
   id: number;
-  module: string;
+  /** 产出该结果的节点模板类型（image_generation 等），取代旧 module 维度 */
+  node_type: string;
   name: string;
   stage_results: GenerationStageResults;
-  final_image_url?: string | null;
+  /** 最终产物地址（图片/音频/视频等 URL；文本类结果可为空） */
+  result_url?: string | null;
   status: string;
   created_at: string;
   is_favorited?: boolean;
@@ -67,12 +69,20 @@ export interface Generation {
 
 export type GalleryMode = 'history' | 'favorites' | 'gallery';
 
+/** 节点类型及其在作用域内的记录数量（类型筛选项） */
+export interface NodeTypeCount {
+  node_type: string;
+  count: number;
+}
+
 /** 列表接口的分页响应信封 */
 export interface GenerationPage {
   items: Generation[];
   total: number;
   skip: number;
   limit: number;
+  /** 当前作用域内各节点类型的记录数量（类型筛选项；不受 keyword/node_type 过滤影响） */
+  node_type_counts?: NodeTypeCount[];
 }
 
 /* ===================================================================== */

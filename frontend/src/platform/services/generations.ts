@@ -2,9 +2,9 @@ import api from './api';
 import type { Generation, GenerationPage } from '../types';
 
 export interface CreateGenerationPayload {
-  module?: string;
+  node_type?: string;
   stage_results: Generation['stage_results'];
-  final_image_url?: string;
+  result_url?: string;
   status?: string;
 }
 
@@ -13,6 +13,8 @@ export interface ListGenerationsParams {
   limit?: number;
   /** 按题名关键词检索 */
   keyword?: string;
+  /** 按节点类型筛选（image_generation 等；空 = 全部） */
+  node_type?: string;
 }
 
 /** 历史 / 收藏 / 公开画廊 通用 API */

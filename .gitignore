@@ -1,6 +1,7 @@
 
 *.pyc
 *.db
+*.db.bak.*
 
 # Python cache
 __pycache__/

@@ -9,10 +9,11 @@
 #   4. 安装后端依赖（含 bcrypt 锁定修复，仅 --install 或虚拟环境缺失时）
 #   5. 安装前端依赖（按需）并**每次都**生产构建（前端代码可能已更新）
 #   6. 后端启动时由 Alembic 自动执行迁移建表（新增表无需手工处理）
-#   7. 生成并安装 4 处端口相关的配置（CORS / vite 代理 / systemd / ufw）
-#   8. 生成 systemd 服务并启用开机自启
-#   9. ufw 放行端口
-#  10. 启动服务并自检
+#   7. 重启前自动备份 SQLite 数据库（读取 backend/.env 的 DATABASE_URL，python3 在线快照）
+#   8. 生成并安装 4 处端口相关的配置（CORS / vite 代理 / systemd / ufw）
+#   9. 生成 systemd 服务并启用开机自启
+#  10. ufw 放行端口
+#  11. 启动服务并自检
 #
 # 用法：
 #   sudo bash scripts/deploy.sh [--install] [--admin-password PASSWORD] [--backend-port P] [--frontend-port P]
@@ -90,6 +91,57 @@ pick_port() {
 }
 
 need_cmd() { command -v "$1" >/dev/null 2>&1 || die "缺少命令: $1"; }
+
+# 重启前备份 SQLite 数据库：从 backend/.env 的 DATABASE_URL 解析 db 文件路径，
+# 用 python3 在线快照（服务仍在运行，一致性快照，兼容 WAL，无需 sqlite3 CLI）；
+# 解析失败 / 非 SQLite / 文件缺失时跳过并告警，快照失败回退为文件复制。保留最近 5 份。
+backup_sqlite_db() {
+  local env_file="$BACKEND_DIR/.env"
+  local url
+  url="$(grep -E '^DATABASE_URL=' "$env_file" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '"' | tr -d "'" | xargs || true)"
+  [[ -z "$url" ]] && url="sqlite:///./bookforge.db"
+  # 兼容 sqlite:/// 与 sqlite+pysqlite:/// 等带驱动的 SQLite URL
+  if [[ "$url" != sqlite*:///* ]]; then
+    warn "DATABASE_URL 非 SQLite（$url），跳过数据库备份"
+    return 0
+  fi
+  local db_path="${url#*:///}"
+  # 绝对路径（sqlite:////abs/x.db）直接使用；相对路径按 systemd WorkingDirectory（backend/）解析
+  if [[ "$db_path" != /* ]]; then
+    db_path="$(realpath -m "$BACKEND_DIR/$db_path")"
+  fi
+  if [[ ! -f "$db_path" ]]; then
+    warn "未找到数据库文件: $db_path，跳过备份"
+    return 0
+  fi
+  local stamp backup
+  # 纳秒时间戳：避免同秒内连续部署覆盖上一份备份
+  stamp="$(date +%Y%m%d%H%M%S.%N)"
+  backup="$db_path.bak.$stamp"
+  info "备份数据库: $db_path -> $backup"
+  if python3 - "$db_path" "$backup" <<'PYEOF'; then
+import sqlite3, sys
+
+src, dst = sys.argv[1], sys.argv[2]
+s = sqlite3.connect(src)
+d = sqlite3.connect(dst)
+with d:
+    s.backup(d)
+d.close()
+s.close()
+PYEOF
+    info "数据库备份完成"
+  else
+    warn "在线快照失败，回退为文件复制"
+    cp -p "$db_path" "$backup"
+    # WAL 模式下的伴随文件一并复制（主路径 python 快照已兼容 WAL，此为兜底）
+    for suffix in -wal -shm; do
+      [[ -f "$db_path$suffix" ]] && cp -p "$db_path$suffix" "$backup$suffix"
+    done
+  fi
+  # 保留最近 5 份备份，清理更旧的
+  ls -1t "${db_path}".bak.* 2>/dev/null | tail -n +6 | xargs -r rm -f || true
+}
 
 # ---------------- 前置检查 ----------------
 die_if_root_mismatch() {
@@ -253,6 +305,9 @@ else
 fi
 
 # ---------------- 启动并自检 ----------------
+# 重启前备份数据库（后端重启时自动执行 Alembic 迁移，列改名等属重建表操作，多个安全网）
+backup_sqlite_db
+
 info "启动服务..."
 systemctl restart bookforge-backend bookforge-frontend
 

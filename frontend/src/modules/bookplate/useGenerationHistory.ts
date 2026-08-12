@@ -102,10 +102,12 @@ export function useGenerationHistory(ctx: GenerationHistoryContext): GenerationH
         agent_steps: agentSteps,
       };
       try {
+        const imageNode = ctx.nodesRef.current.find((n) => n.id === imageNodeId);
         const gen = await generationsService.create({
-          module: 'bookplate',
+          // 记录产出该结果的节点类型（当前为图像生成；后续音频等节点接入后沿用）
+          node_type: imageNode?.type || 'image_generation',
           stage_results: stageResults,
-          final_image_url: imageUrl,
+          result_url: imageUrl,
           status: 'completed',
         });
         ctx.generationIds.current[imageNodeId] = gen.id;
@@ -133,9 +135,10 @@ export function useGenerationHistory(ctx: GenerationHistoryContext): GenerationH
       const stageResults = buildStageResults(imageNodeId) ?? {};
       const imageUrl = stageResults.stage3?.image_url || '';
       const gen = await generationsService.create({
-        module: 'bookplate',
+        // 记录产出该结果的节点类型（当前为图像生成；后续音频等节点接入后沿用）
+        node_type: imageNode?.type || 'image_generation',
         stage_results: stageResults,
-        final_image_url: imageUrl,
+        result_url: imageUrl,
         status: 'completed',
       });
       ctx.generationIds.current[imageNodeId] = gen.id;
