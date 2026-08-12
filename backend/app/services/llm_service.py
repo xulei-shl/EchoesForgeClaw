@@ -59,6 +59,34 @@ class VisionModelConfig:
     system_prompt: str = DEFAULT_COVER_SYSTEM_PROMPT
 
 
+def _multimodal_messages(messages: list) -> list:
+    """把携带 images 字段的 user 消息转换为 OpenAI 多模态 content 数组（text + image_url）。
+
+    AI 对话节点前端随历史一并发送图片（data URL），此处拆解为标准多模态消息格式
+    （与 analyze_cover 已验证的格式一致）；不携带图片的消息原样透传，assistant 消息
+    保持字符串 content。模型需支持视觉输入，否则由模型服务商返回错误并透传到前端。
+    """
+    result: list = []
+    for m in messages or []:
+        if not isinstance(m, dict) or m.get("role") != "user":
+            result.append(m)
+            continue
+        images = m.get("images")
+        if not images:
+            result.append(m)
+            continue
+        parts: list = []
+        content = m.get("content")
+        if content:
+            parts.append({"type": "text", "text": str(content)})
+        for img in images:
+            if isinstance(img, str) and img:
+                parts.append({"type": "image_url", "image_url": {"url": img}})
+        clean = {k: v for k, v in m.items() if k != "images"}
+        result.append({**clean, "content": parts})
+    return result
+
+
 def _detect_mime(head: bytes) -> str:
     """通过文件头魔数推测图片 MIME 类型。"""
     if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
@@ -241,10 +269,11 @@ class LLMService:
 
         # system 提示词（即节点绑定的提示词模板，充当助手人设）注入到消息开头；
         # 未绑定提示词模板时不注入，保持通用助手行为
+        # 携带图片的 user 消息经 _multimodal_messages 转为多模态 content（text + image_url）
         full_messages: list = []
         if system_prompt:
             full_messages.append({"role": "system", "content": system_prompt})
-        full_messages.extend(messages or [])
+        full_messages.extend(_multimodal_messages(messages or []))
         if not any(
             isinstance(m, dict) and m.get("role") == "user" for m in full_messages
         ):

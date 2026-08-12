@@ -335,10 +335,13 @@ class ChatRequest(BaseModel):
 
     - messages: OpenAI 格式完整消息历史（LLM 模式，含本轮 user 消息；不含 system）
     - message: 本轮用户消息文本（Agent 模式；FastClaw 以 session key 服务端维护多轮历史）
+    - images: 本轮携带的图片（data URL，可为空）。LLM 模式随 user 消息构造多模态
+      content；Agent 模式经 imageUrls 传给 FastClaw（物化到 workspace 供视觉模型使用）
     """
 
     messages: List[Dict[str, Any]] = []
     message: str = ""
+    images: List[str] = []
     # 节点配置 id（可选）：未绑定/未启用/类型不匹配时回退环境变量
     config_id: Optional[int] = None
     # 画布节点 id：Agent 模式下用作 FastClaw 会话 key 的一部分（同节点多轮共享上下文）
@@ -893,6 +896,7 @@ async def chat(
                     agent_config,
                     payload.message or "",
                     session_key=session_key,
+                    images=payload.images or None,
                     params={"module": "bookplate", "node_type": NODE_CHAT},
                 ):
                     if await request.is_disconnected():

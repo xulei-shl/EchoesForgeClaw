@@ -47,7 +47,7 @@ export interface NodeViewHelpers {
   handleTogglePublicFor: (id: string) => Promise<boolean>;
   handleEditTextFor: (id: string, content: string) => void;
   handleImageChangeFor: (id: string, imageUrl: string | null, imageName: string) => void;
-  handleSendChatFor: (id: string, text: string) => void;
+  handleSendChatFor: (id: string, text: string, images?: string[]) => void;
   /** 提示词检索节点：选用一条 Bifrost 提示词 */
   handleUpdatePromptFor: (id: string, selection: PromptSelection) => void;
   /** 文本聚合节点：保存占位符模板 */
@@ -235,7 +235,9 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           group={config?.group?.trim() || undefined}
           isGenerating={!!node.data.isGenerating}
           error={node.data.error ?? null}
-          settings={node.data.settings ?? { includeBook: true, includeUpstream: true }}
+          settings={
+            node.data.settings ?? { includeBook: true, includeUpstream: true, includeUpstreamImages: true }
+          }
           onSend={h.handleSendChatFor}
           onUpdateSettings={h.handleUpdateChatSettingsFor}
           onClearChat={h.handleClearChatFor}

@@ -320,4 +320,21 @@ export function nodeOutputText(node: GraphNode | undefined): string {
   }
 }
 
+/**
+ * 提取任意节点的对外图片输出（data URL 或可访问的图片 URL，供 AI 对话节点作为视觉上下文）。
+ * 目前产出图片的节点：图片上传（data URL）、图像生成（/static/generated 本地路径）。
+ * 返回空数组表示该节点当前无可用图片输出。
+ */
+export function nodeOutputImages(node: GraphNode | undefined): string[] {
+  if (!node || !node.data) return [];
+  const d = node.data;
+  switch (node.type) {
+    case 'image_upload':
+    case 'image_generation':
+      return typeof d.imageUrl === 'string' && d.imageUrl ? [d.imageUrl] : [];
+    default:
+      return [];
+  }
+}
+
 

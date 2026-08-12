@@ -1,12 +1,23 @@
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import { postSSEStream } from '../../platform/services/sse';
 import { PROMPT_SSE_IDLE_TIMEOUT_MS } from '../../platform/utils/timeouts';
-import { bookMetadataText, nodeOutputText } from './nodeTypes';
+import { bookMetadataText, nodeOutputImages, nodeOutputText } from './nodeTypes';
 import { resolveNodeRunInputs, type PortTypesLookup } from './execution';
 import { toWireChatMessages, type EdgeData, type NodeData } from './graphTypes';
 import { handleAgentSseMessage } from './agentSteps';
 import { makeIdleTimeout } from './idleTimeout';
+import { urlToDataUrl } from './imageUpload';
 import type { ChatMessage, ChatNodeSettings } from '../../platform/types';
+
+// AI 对话单轮携带的图片上限（附件 + 上下文图片合计）：防止超大 base64 请求体拖垮传输
+const MAX_CHAT_IMAGES = 4;
+
+/** 上下文设置兜底（旧节点持久化的 settings 缺少 includeUpstreamImages，undefined 视为开启） */
+const DEFAULT_CHAT_SETTINGS: ChatNodeSettings = {
+  includeBook: true,
+  includeUpstream: true,
+  includeUpstreamImages: true,
+};
 
 /** AI 对话执行依赖（由画布注入：refs + 稳定 setter） */
 export interface ChatExecutionContext {
@@ -18,7 +29,8 @@ export interface ChatExecutionContext {
 }
 
 export interface ChatExecution {
-  runChatTurn: (node: NodeData, text: string) => void;
+  /** 发送一条用户消息；images 为本轮附带图片（data URL） */
+  runChatTurn: (node: NodeData, text: string, images?: string[]) => void;
   retryChatTurn: (node: NodeData) => void;
 }
 
@@ -30,10 +42,7 @@ export function useChatExecution(ctx: ChatExecutionContext): ChatExecution {
    *  按内容主体去重：直接父节点恰为图书元数据时，includeBook 与 includeUpstream
    *  两条路径会注入同一份元数据（仅标题不同），逐块去重后只保留一份。 */
   const buildChatContext = (node: NodeData): string => {
-    const settings: ChatNodeSettings = node.data?.settings ?? {
-      includeBook: true,
-      includeUpstream: true,
-    };
+    const settings: ChatNodeSettings = node.data?.settings ?? DEFAULT_CHAT_SETTINGS;
     const blocks: { title: string; body: string }[] = [];
     if (settings.includeBook) {
       const book = resolveNodeRunInputs(
@@ -65,8 +74,49 @@ export function useChatExecution(ctx: ChatExecutionContext): ChatExecution {
     return parts.join('\n\n');
   };
 
+  /** 收集对话上下文图片：直接父节点的图片输出（图片上传 / 图像生成节点），受设置开关控制。
+   *  本地静态路径（如 /static/generated/xxx.png）需转换为 data URL 才能被模型 / Agent 消费；
+   *  转换失败或超限时静默跳过，不阻断对话。 */
+  const buildChatImages = async (node: NodeData): Promise<string[]> => {
+    const settings: ChatNodeSettings = node.data?.settings ?? DEFAULT_CHAT_SETTINGS;
+    if (settings.includeUpstreamImages === false) return [];
+    const parents = ctx.nodesRef.current.filter((n) =>
+      ctx.edgesRef.current.some((e) => e.target === node.id && e.source === n.id)
+    );
+    const urls: string[] = [];
+    for (const p of parents) {
+      for (const u of nodeOutputImages(p)) {
+        if (!urls.includes(u)) urls.push(u);
+      }
+    }
+    const result: string[] = [];
+    for (const u of urls) {
+      if (result.length >= MAX_CHAT_IMAGES) break;
+      if (u.startsWith('data:')) {
+        result.push(u);
+        continue;
+      }
+      try {
+        const dataUrl = await urlToDataUrl(u);
+        if (dataUrl && result.length < MAX_CHAT_IMAGES) result.push(dataUrl);
+      } catch {
+        // 无法访问 / 非图片的 URL 直接跳过，不阻断对话
+      }
+    }
+    return result;
+  };
+
+  /** 发送给后端的消息：合并 contextImages 后单条消息图片数截断到上限（上下文与附件合计） */
+  const capWireImages = (msgs: ChatMessage[]): ChatMessage[] =>
+    msgs.map((m) =>
+      m.images && m.images.length > MAX_CHAT_IMAGES
+        ? { ...m, images: m.images.slice(0, MAX_CHAT_IMAGES) }
+        : m
+    );
+
   /** AI 对话节点核心发送逻辑：把指定历史 + 用户消息发送到后端，SSE 流式接收助手回复。
-   *  供新消息（runChatTurn）与重试（retryChatTurn）复用，保证两次请求负载完全一致。 */
+   *  供新消息（runChatTurn）与重试（retryChatTurn）复用，保证两次请求负载完全一致。
+   *  @param preAcquired 可选：runChatTurn 在收集上下文图片前预注册的控制器（首轮防并发窗口） */
   const executeChatTurn = (
     node: NodeData,
     opts: {
@@ -74,10 +124,11 @@ export function useChatExecution(ctx: ChatExecutionContext): ChatExecution {
       userMsg: ChatMessage;
       userText: string;
       wireMessages: ChatMessage[];
-    }
+    },
+    preAcquired?: AbortController
   ) => {
-    // 重试防抖：该节点已有进行中的流时直接忽略
-    if (streamControllers.current.has(node.id)) return;
+    // 防抖：该节点已有进行中的流时直接忽略（preAcquired 时跳过——首轮已预注册占位）
+    if (streamControllers.current.has(node.id) && !preAcquired) return;
     const pendingMsg: ChatMessage = { role: 'assistant', content: '', streaming: true };
     // 乐观更新：追加 user 消息 + assistant 流式占位
     ctx.setNodes((prev) =>
@@ -97,19 +148,28 @@ export function useChatExecution(ctx: ChatExecutionContext): ChatExecution {
       )
     );
 
-    const controller = new AbortController();
+    const controller = preAcquired ?? new AbortController();
     streamControllers.current.set(node.id, controller);
 
     const idle = makeIdleTimeout(controller, PROMPT_SSE_IDLE_TIMEOUT_MS);
     idle.arm();
 
+    // Agent 模式携带的图片：本轮用户附件优先，其次首条 user 消息持久化的上下文图片
+    // （仅首轮注入，与文本 context 语义一致）；合计截断到上限
+    const agentImages = [...(opts.userMsg.images ?? []), ...(opts.userMsg.contextImages ?? [])].slice(
+      0,
+      MAX_CHAT_IMAGES
+    );
     postSSEStream({
       url: '/api/modules/bookplate/chat',
       body: {
-        // LLM 模式：context 经 toWireChatMessages 展开进首条 user 消息 content（历史持久、多轮延续）；
-        // Agent 模式：上下文直接拼进下方 message 字段（FastClaw 以 session key 服务端维护历史）
+        // LLM 模式：context 经 toWireChatMessages 展开进首条 user 消息 content（历史持久、多轮延续），
+        //         contextImages 经 toWireChatMessages 并入 messages[].images（多模态 content）；
+        // Agent 模式：上下文直接拼进下方 message 字段（FastClaw 以 session key 服务端维护历史），
+        //         图片经下方 images 字段（imageUrls）随本轮透传。
         messages: opts.wireMessages,
         message: opts.userText,
+        images: agentImages,
         config_id: node.configId ?? null,
         node_id: node.id,
         epoch: node.data?.epoch ?? 0,
@@ -225,7 +285,14 @@ export function useChatExecution(ctx: ChatExecutionContext): ChatExecution {
   };
 
   /** AI 对话节点：发送一条用户消息（多轮），SSE 流式返回助手回复。 */
-  const runChatTurn = (node: NodeData, text: string) => {
+  const runChatTurn = async (node: NodeData, text: string, images?: string[]) => {
+    // 防抖：该节点已有进行中的流（含正在收集上下文图片的 await 窗口期）时直接忽略，
+    // 与旧同步流程的语义一致，避免快速连发被静默丢弃
+    if (streamControllers.current.has(node.id)) return;
+    // 首轮收集上级图片可能发起网络请求：先注册占位控制器并交给 executeChatTurn，
+    // 保证 await 期间节点级防抖仍然生效（再次发送会被上方 guard 拦截）
+    const preAcquired = new AbortController();
+    streamControllers.current.set(node.id, preAcquired);
     const existing: ChatMessage[] = Array.isArray(node.data?.messages)
       ? node.data.messages
       : [];
@@ -235,19 +302,30 @@ export function useChatExecution(ctx: ChatExecutionContext): ChatExecution {
     // 是否注入由「上下文设置」决定（buildChatContext 内读取 includeBook / includeUpstream）。
     const alreadyHasContext = existing.some((m) => m.role === 'user' && !!m.context);
     const context = !alreadyHasContext ? buildChatContext(node) : '';
+    // 上下文图片同理：仅在首轮收集一次，持久在首条 user 消息的隐藏 contextImages 字段上
+    const alreadyHasContextImages = existing.some(
+      (m) => m.role === 'user' && !!m.contextImages
+    );
+    const contextImages = !alreadyHasContextImages ? await buildChatImages(node) : [];
     const userText = (context ? context + '\n\n' : '') + text;
 
     const userMsg: ChatMessage = {
       role: 'user',
       content: text,
+      images: images?.length ? images : undefined,
       ...(context ? { context } : {}),
+      ...(contextImages.length ? { contextImages } : {}),
     };
-    executeChatTurn(node, {
-      history: existing,
-      userMsg,
-      userText,
-      wireMessages: toWireChatMessages([...existing, userMsg]),
-    });
+    executeChatTurn(
+      node,
+      {
+        history: existing,
+        userMsg,
+        userText,
+        wireMessages: capWireImages(toWireChatMessages([...existing, userMsg])),
+      },
+      preAcquired
+    );
   };
 
   /** AI 对话节点：重试最后一轮（失败 / 中断后重新调用 API）。 */
@@ -268,7 +346,7 @@ export function useChatExecution(ctx: ChatExecutionContext): ChatExecution {
       history,
       userMsg,
       userText: userMsg.context ? `${userMsg.context}\n\n${userMsg.content}` : userMsg.content,
-      wireMessages: toWireChatMessages([...history, userMsg]),
+      wireMessages: capWireImages(toWireChatMessages([...history, userMsg])),
     });
   };
 

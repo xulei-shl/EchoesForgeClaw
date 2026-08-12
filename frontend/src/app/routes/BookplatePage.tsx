@@ -583,7 +583,7 @@ const BookplatePage: React.FC = () => {
           isGenerating: false,
           error: null,
           agentSteps: [],
-          settings: { includeBook: true, includeUpstream: true },
+          settings: { includeBook: true, includeUpstream: true, includeUpstreamImages: true },
           epoch: 0,
         };
       case 'text_aggregate':
@@ -1025,16 +1025,20 @@ const BookplatePage: React.FC = () => {
     recordHistory();
     updateNodeData(id, { content });
   }, []);
-  /** AI 对话节点：发送一条用户消息（多轮对话） */
-  const handleSendChatFor = useCallback((id: string, text: string) => {
+  /** AI 对话节点：发送一条用户消息（多轮对话，images 为本轮附带图片） */
+  const handleSendChatFor = useCallback((id: string, text: string, images?: string[]) => {
     const node = nodesRef.current.find((n) => n.id === id);
-    if (node && node.type === 'chat') runChatTurn(node, text);
+    if (node && node.type === 'chat') runChatTurn(node, text, images);
   }, []);
   /** AI 对话节点：更新上下文加载设置（未变化不记历史） */
   const handleUpdateChatSettingsFor = useCallback((id: string, settings: ChatNodeSettings) => {
     const node = nodesRef.current.find((n) => n.id === id);
     if (!node || node.type !== 'chat') return;
-    const old = node.data?.settings ?? { includeBook: true, includeUpstream: true };
+    const old = node.data?.settings ?? {
+      includeBook: true,
+      includeUpstream: true,
+      includeUpstreamImages: true,
+    };
     if (JSON.stringify(old) === JSON.stringify(settings)) return;
     recordHistory();
     updateNodeData(id, { settings });

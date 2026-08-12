@@ -193,6 +193,15 @@ export interface ChatMessage {
    * 发送时经 toWireChatMessages 展开进 content，随每轮完整历史重发（LLM 模式多轮可见）。
    */
   context?: string;
+  /**
+   * 本轮用户附带发送的图片（data URL），随消息展示在气泡内，发送时随请求透传。
+   */
+  images?: string[];
+  /**
+   * 首条 user 消息携带的上下文图片（上级图片节点的输出，data URL），UI 不展示；
+   * 发送时经 toWireChatMessages 并入 images，随每轮完整历史重发（LLM 模式多轮可见）。
+   */
+  contextImages?: string[];
   /** 该轮回复被用户主动停止（保留已流出的部分，展示「重试」入口） */
   interrupted?: boolean;
   /** Agent 模式中间步骤（工具调用 / 思考状态），附加在 assistant 消息上 */
@@ -205,6 +214,11 @@ export interface ChatNodeSettings {
   includeBook: boolean;
   /** 加载紧随的上一级节点内容作为上下文 */
   includeUpstream: boolean;
+  /**
+   * 加载紧随上级节点的图片输出（图片上传 / 图像生成节点）作为上下文；
+   * 默认开启：旧节点持久化的设置未含该字段，undefined 视为开启。
+   */
+  includeUpstreamImages?: boolean;
 }
 
 /** 可执行节点（图片分析 / 提示词生成 / 图像生成）的运行设置（节点内可开关） */

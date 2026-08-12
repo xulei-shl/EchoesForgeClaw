@@ -69,8 +69,19 @@ export function selfHealNode(
 }
 
 /** 发送给后端的消息历史：把首条 user 消息上隐藏的 context 元数据展开到 content（UI 展示保持精简）。
- *  上下文由此随每轮完整历史重发（LLM 模式），模型在多轮中始终可见，不会在第二轮丢失。 */
+ *  上下文由此随每轮完整历史重发（LLM 模式），模型在多轮中始终可见，不会在第二轮丢失。
+ *  隐藏的 contextImages 上下文图片并入 images 字段，同样随历史重发。 */
 export const toWireChatMessages = (msgs: ChatMessage[]): ChatMessage[] =>
-  msgs.map((m) =>
-    m.context ? { ...m, content: `${m.context}\n\n${m.content}`, context: undefined } : m
-  );
+  msgs.map((m) => {
+    const expanded = m.context
+      ? { ...m, content: `${m.context}\n\n${m.content}`, context: undefined }
+      : m;
+    if (!expanded.contextImages?.length) {
+      return expanded.contextImages ? { ...expanded, contextImages: undefined } : expanded;
+    }
+    return {
+      ...expanded,
+      images: [...expanded.contextImages, ...(expanded.images ?? [])],
+      contextImages: undefined,
+    };
+  });

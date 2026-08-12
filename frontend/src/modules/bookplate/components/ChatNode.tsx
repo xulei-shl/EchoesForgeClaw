@@ -1,14 +1,25 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, Eraser, Link2, MessageSquare, Send, Copy, Check, Loader2, Square, RefreshCw, ChevronUp, ChevronDown, Lock } from 'lucide-react';
+import { AlertTriangle, Eraser, ImagePlus, Link2, MessageSquare, Send, Copy, Check, Loader2, Square, RefreshCw, ChevronUp, ChevronDown, Lock, X } from 'lucide-react';
+import { PhotoProvider, PhotoView } from 'react-photo-view';
 import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
 import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { AgentActivity } from '../../../platform/components/agent/AgentActivity';
 import { Toggle } from '../../../platform/components/ui/Toggle';
+import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
 import type { ChatMessage, ChatNodeSettings } from '../../../platform/types';
 import { NODE_COLORS } from '../nodeTypes';
+import {
+  RASTER_IMAGE_TYPES,
+  MAX_UPLOAD_BYTES,
+  fileToDataUrl,
+  optimizeDataUrl,
+} from '../imageUpload';
+
+// 单轮最多附带的图片数（与后端透传上限保持一致）
+const MAX_ATTACHMENTS = 4;
 
 const STYLE_INJECTIONS = `
 @keyframes msg-enter {
@@ -37,8 +48,8 @@ export interface ChatNodeProps {
   /** 上下文加载设置 */
   settings: ChatNodeSettings;
   onRemove?: (id: string) => void;
-  /** 发送一条用户消息（多轮对话） */
-  onSend?: (id: string, text: string) => void;
+  /** 发送一条用户消息（多轮对话），images 为本轮附带图片（data URL） */
+  onSend?: (id: string, text: string, images?: string[]) => void;
   /** 停止当前生成（点击后中止本次调用） */
   onStop?: (id: string) => void;
   /** 重试最后一轮（失败 / 中断后重新发送调用） */
@@ -87,12 +98,16 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
   mismatchBadge,
 }) => {
   const [draft, setDraft] = useState('');
+  // 本轮待发送的图片附件（data URL），随消息发送后在气泡内展示
+  const [attachments, setAttachments] = useState<string[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsBtnRef = useRef<HTMLButtonElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [coords, setCoords] = useState({ x: 0, y: 0 });
   const listRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { showToast } = useFeedback();
   // 是否「贴底」：贴底时新消息自动滚动到底部，向上翻阅历史时不打扰
   const stickBottomRef = useRef(true);
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -202,11 +217,38 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
     setSettingsOpen((v) => !v);
   };
 
+  /** 选择并处理附件图片（格式 / 体积校验 + 压缩），追加到附件列表 */
+  const handleAttachFile = async (file: File) => {
+    if (!RASTER_IMAGE_TYPES.includes(file.type)) {
+      showToast('请选择 PNG / JPG / WebP / GIF 格式的图片', { type: 'error' });
+      return;
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      showToast('图片大小不能超过 8MB', { type: 'error' });
+      return;
+    }
+    try {
+      const raw = await fileToDataUrl(file);
+      const stored = await optimizeDataUrl(raw, file.size);
+      setAttachments((prev) => (prev.length < MAX_ATTACHMENTS ? [...prev, stored] : prev));
+    } catch (e: any) {
+      showToast(e?.message || '图片处理失败，请重试', { type: 'error' });
+    }
+  };
+
+  const handlePick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = ''; // 允许重复选择同一文件
+    if (files.length === 0) return;
+    files.slice(0, MAX_ATTACHMENTS - attachments.length).forEach((f) => void handleAttachFile(f));
+  };
+
   const handleSend = () => {
     const text = draft.trim();
-    if (!text || isGenerating) return;
-    onSend?.(id, text);
+    if ((!text && attachments.length === 0) || isGenerating) return;
+    onSend?.(id, text, attachments.length ? attachments : undefined);
     setDraft('');
+    setAttachments([]);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -241,17 +283,34 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
 
   const renderMessage = (msg: ChatMessage, idx: number) => {
     if (msg.role === 'user') {
+      const hasHiddenContext = !!(msg.context || msg.contextImages?.length);
       return (
         <div key={idx} className="flex flex-col items-end gap-0.5 msg-enter-anim">
-          {msg.context && (
+          {hasHiddenContext && (
             <span className="text-[10px] text-ink-faint font-sans flex items-center gap-1">
               <Link2 size={9} strokeWidth={2} />
               已附带上下文
             </span>
           )}
-          <div className="max-w-[85%] px-3 py-2 rounded-2xl rounded-br-sm bg-accent text-white text-[13px] leading-relaxed whitespace-pre-wrap break-words font-sans shadow-sm">
-            {msg.content}
-          </div>
+          {msg.images && msg.images.length > 0 && (
+            <div className="flex flex-wrap justify-end gap-1.5 max-w-[85%]">
+              {msg.images.map((img, i) => (
+                <PhotoView key={i} src={img}>
+                  <img
+                    src={img}
+                    alt={`附带图片 ${i + 1}`}
+                    className="w-16 h-16 rounded-lg object-cover cursor-zoom-in border border-white/20 shadow-sm hover:opacity-90 active:scale-95 transition"
+                    loading="lazy"
+                  />
+                </PhotoView>
+              ))}
+            </div>
+          )}
+          {msg.content && (
+            <div className="max-w-[85%] px-3 py-2 rounded-2xl rounded-br-sm bg-accent text-white text-[13px] leading-relaxed whitespace-pre-wrap break-words font-sans shadow-sm">
+              {msg.content}
+            </div>
+          )}
         </div>
       );
     }
@@ -364,24 +423,26 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
         )}
 
         {/* 消息列表 */}
-        <div
-          ref={listRef}
-          onScroll={handleScroll}
-          className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden space-y-2.5 pr-0.5"
-        >
-          {messages.length === 0 ? (
-            <div className="h-full min-h-[120px] flex flex-col items-center justify-center gap-2 text-center px-4">
-              <MessageSquare size={22} strokeWidth={1.25} className="text-ink-faint/70" />
-              <p className="text-xs text-ink-faint font-sans leading-relaxed">
-                输入消息开始多轮对话
-                <br />
-                支持绑定大模型或 FastClaw Agent（工具调用）
-              </p>
-            </div>
-          ) : (
-            messages.map(renderMessage)
-          )}
-        </div>
+        <PhotoProvider maskOpacity={0.8} bannerVisible={false}>
+          <div
+            ref={listRef}
+            onScroll={handleScroll}
+            className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden space-y-2.5 pr-0.5"
+          >
+            {messages.length === 0 ? (
+              <div className="h-full min-h-[120px] flex flex-col items-center justify-center gap-2 text-center px-4">
+                <MessageSquare size={22} strokeWidth={1.25} className="text-ink-faint/70" />
+                <p className="text-xs text-ink-faint font-sans leading-relaxed">
+                  输入消息（可附带图片）开始多轮对话
+                  <br />
+                  支持绑定大模型或 FastClaw Agent（工具调用）
+                </p>
+              </div>
+            ) : (
+              messages.map(renderMessage)
+            )}
+          </div>
+        </PhotoProvider>
 
         {/* 悬浮滚动按钮 */}
         <div className="absolute right-4 bottom-14 flex flex-col gap-2 z-20 pointer-events-none">
@@ -405,9 +466,53 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
           </div>
         </div>
 
-        {/* 输入区（当前仅支持文本，后续可扩展图片 / 本地文档上传） */}
+        {/* 输入区：文本 + 图片附件 */}
         <div className="shrink-0 mt-2 pt-2 border-t border-solid border-black/5 dark:border-white/5">
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-1.5">
+              {attachments.map((img, i) => (
+                <div
+                  key={i}
+                  className="relative group w-11 h-11 rounded-md overflow-hidden border border-paper-grid bg-paper"
+                >
+                  <img
+                    src={img}
+                    alt={`附件 ${i + 1}`}
+                    className="w-full h-full object-cover"
+                  />
+                  <button
+                    onClick={() => setAttachments((prev) => prev.filter((_, j) => j !== i))}
+                    disabled={isGenerating}
+                    title="移除图片"
+                    className="absolute -top-1.5 -right-1.5 flex items-center justify-center w-4 h-4 rounded-full bg-paper border border-paper-grid shadow-sm text-ink-faint hover:text-error hover:border-error/40 transition disabled:opacity-40"
+                  >
+                    <X size={9} strokeWidth={2.5} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="flex items-end gap-1.5">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              multiple
+              className="hidden"
+              onChange={handlePick}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isGenerating || attachments.length >= MAX_ATTACHMENTS}
+              title={
+                attachments.length >= MAX_ATTACHMENTS
+                  ? `最多附带 ${MAX_ATTACHMENTS} 张图片`
+                  : '附带图片'
+              }
+              className="flex shrink-0 items-center justify-center w-9 h-9 rounded-lg border border-dashed border-paper-grid text-ink-faint hover:text-accent hover:border-accent/40 hover:bg-accent/5 active:scale-95 transition disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              <ImagePlus size={15} strokeWidth={2} />
+            </button>
             <textarea
               ref={textareaRef}
               value={draft}
@@ -429,7 +534,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
             ) : (
               <button
                 onClick={handleSend}
-                disabled={!draft.trim()}
+                disabled={!draft.trim() && attachments.length === 0}
                 title="发送 (Enter)"
                 className="flex items-center justify-center w-9 h-9 rounded-lg bg-accent text-white shadow-sm hover:bg-accent/90 active:scale-95 transition disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
               >
@@ -474,6 +579,22 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                     checked={settings.includeUpstream}
                     onChange={(v) => onUpdateSettings?.(id, { ...settings, includeUpstream: v })}
                     label="加载上一级节点内容"
+                    disabled={messages.length > 0}
+                  />
+                </div>
+                <div className="flex items-start justify-between gap-2.5">
+                  <div className="min-w-0">
+                    <p className="text-xs font-sans text-ink">加载上级图片</p>
+                    <p className="text-[10px] text-ink-faint font-sans mt-0.5 leading-snug">
+                      紧随的上级节点图片（图片上传 / 图像生成节点），随对话一并交给模型 / Agent
+                    </p>
+                  </div>
+                  <Toggle
+                    checked={settings.includeUpstreamImages !== false}
+                    onChange={(v) =>
+                      onUpdateSettings?.(id, { ...settings, includeUpstreamImages: v })
+                    }
+                    label="加载上级图片"
                     disabled={messages.length > 0}
                   />
                 </div>
