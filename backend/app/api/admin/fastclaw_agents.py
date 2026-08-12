@@ -78,6 +78,30 @@ def create_fastclaw_agent(
     return _to_out(cfg)
 
 
+@router.post("/{config_id}/duplicate", response_model=FastClawAgentConfigOut)
+def duplicate_fastclaw_agent(
+    config_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user),
+):
+    """复制 FastClaw Agent 配置：沿用原 Base URL / API Key / Agent ID，名字加「(副本)」后缀。"""
+    cfg = db.query(FastClawAgentConfig).filter(FastClawAgentConfig.id == config_id).first()
+    if not cfg:
+        raise HTTPException(status_code=404, detail="FastClaw Agent 配置不存在")
+    new_cfg = FastClawAgentConfig(
+        name=f"{cfg.name} (副本)",
+        agent_name=cfg.agent_name,
+        base_url=cfg.base_url,
+        api_key=cfg.api_key,
+        agent_id=cfg.agent_id,
+        is_active=cfg.is_active,
+    )
+    db.add(new_cfg)
+    db.commit()
+    db.refresh(new_cfg)
+    return _to_out(new_cfg)
+
+
 @router.patch("/{config_id}", response_model=FastClawAgentConfigOut)
 def update_fastclaw_agent(
     config_id: int,

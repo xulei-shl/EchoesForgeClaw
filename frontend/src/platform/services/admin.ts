@@ -64,6 +64,8 @@ export const adminService = {
     api.patch<FastClawAgentConfig, FastClawAgentConfig>(`/admin/fastclaw-agents/${id}`, payload),
   deleteFastClawAgent: (id: number): Promise<{ message: string }> =>
     api.delete(`/admin/fastclaw-agents/${id}`),
+  duplicateFastClawAgent: (id: number): Promise<FastClawAgentConfig> =>
+    api.post<FastClawAgentConfig, FastClawAgentConfig>(`/admin/fastclaw-agents/${id}/duplicate`),
 
   /* ---------------- 提示词模板 ---------------- */
 

@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Bot,
+  Copy,
   KeyRound,
   Link2,
   Loader2,
@@ -65,8 +66,6 @@ export const FastClawAgentsPage: React.FC = () => {
   /** 拉取列表的搜索关键词（匹配名字 / ID / 模型） */
   const [pullSearch, setPullSearch] = useState('');
   const { dialog, showToast } = useFeedback();
-  /** 记住上次新建时填的 Base URL + API Key，下次新建自动填入，避免重复输入 */
-  const lastUsed = useRef({ base_url: '', api_key: '' });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -97,7 +96,6 @@ export const FastClawAgentsPage: React.FC = () => {
 
   const openCreate = () => {
     resetForm();
-    setForm({ ...EMPTY_FORM, base_url: lastUsed.current.base_url, api_key: lastUsed.current.api_key });
     setShowCreate(true);
   };
 
@@ -205,8 +203,6 @@ export const FastClawAgentsPage: React.FC = () => {
         showToast('Agent 配置已更新', { type: 'success' });
       } else {
         await adminService.createFastClawAgent({ ...base, api_key: form.api_key.trim() });
-        // 记住这次的 Base URL + API Key，下次新建时自动填入
-        lastUsed.current = { base_url: form.base_url.trim(), api_key: form.api_key.trim() };
         showToast('Agent 配置已创建', { type: 'success' });
       }
       resetForm();
@@ -242,6 +238,16 @@ export const FastClawAgentsPage: React.FC = () => {
       load();
     } catch (e: any) {
       showToast(e?.message || '删除失败，请重试', { type: 'error' });
+    }
+  };
+
+  const handleDuplicate = async (c: FastClawAgentConfig) => {
+    try {
+      await adminService.duplicateFastClawAgent(c.id);
+      showToast(`已复制「${c.name}」`, { type: 'success' });
+      load();
+    } catch (e: any) {
+      showToast(e?.message || '复制失败，请重试', { type: 'error' });
     }
   };
 
@@ -486,6 +492,13 @@ export const FastClawAgentsPage: React.FC = () => {
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <Toggle checked={c.is_active} onChange={(v) => handleToggleActive(c, v)} label={c.is_active ? '停用' : '启用'} />
+                    <button
+                      onClick={() => handleDuplicate(c)}
+                      title="复制（沿用 Base URL / API Key / Agent ID）"
+                      className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-95"
+                    >
+                      <Copy size={15} strokeWidth={1.5} />
+                    </button>
                     <button
                       onClick={() => openEdit(c)}
                       title="编辑"
