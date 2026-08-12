@@ -72,9 +72,12 @@ def delete_prompt(
     if not item:
         raise HTTPException(status_code=404, detail="提示词模板不存在")
     from app.models.node_config import NodeConfig
+    from app.models.skill_agent_config import SkillAgentConfig
 
     for nc in db.query(NodeConfig).filter(NodeConfig.prompt_id == item.id).all():
         nc.prompt_id = None
+    for sac in db.query(SkillAgentConfig).filter(SkillAgentConfig.prompt_id == item.id).all():
+        sac.prompt_id = None
     db.delete(item)
     db.commit()
     return {"message": "提示词模板已删除"}

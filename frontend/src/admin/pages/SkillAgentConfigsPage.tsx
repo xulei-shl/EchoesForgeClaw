@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Bot,
   Copy,
@@ -7,39 +7,48 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  Sparkles,
   Trash2,
 } from 'lucide-react';
 import { adminService } from '../../platform/services/admin';
-import type { SkillAgentConfig } from '../../platform/types';
+import type { LLMConfig, PromptTemplate, SkillAgentConfig } from '../../platform/types';
 import { Button } from '../../platform/components/ui/Button';
 import { Dialog } from '../../platform/components/ui/Dialog';
 import { Input } from '../../platform/components/ui/Input';
+import { Select } from '../../platform/components/ui/Select';
 import { Toggle } from '../../platform/components/ui/Toggle';
 import { Badge } from '../../platform/components/ui/Badge';
 import { Card } from '../../platform/components/ui/Card';
 import { FieldLabel, PageHeader } from '../components/AdminBits';
 import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
 
+/** 模型类型短标签（下拉选项展示） */
+const KIND_SHORT_LABEL: Record<string, string> = {
+  text: '文本',
+  multimodal: '多模态',
+  image: '图像',
+  video: '视频',
+  audio: '音频',
+};
+
 interface FormState {
   name: string;
-  base_url: string;
-  api_key: string;
-  model_name: string;
-  system_prompt: string;
+  llm_config_id: number | '';
+  prompt_id: number | '';
   is_active: boolean;
 }
 
 const EMPTY_FORM: FormState = {
   name: '',
-  base_url: '',
-  api_key: '',
-  model_name: '',
-  system_prompt: '',
+  llm_config_id: '',
+  prompt_id: '',
   is_active: true,
 };
 
 export const SkillAgentConfigsPage: React.FC = () => {
   const [items, setItems] = useState<SkillAgentConfig[]>([]);
+  const [llmConfigs, setLlmConfigs] = useState<LLMConfig[]>([]);
+  const [prompts, setPrompts] = useState<PromptTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -54,8 +63,14 @@ export const SkillAgentConfigsPage: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      const res = await adminService.listSkillAgentConfigs();
+      const [res, llmRes, promptRes] = await Promise.all([
+        adminService.listSkillAgentConfigs(),
+        adminService.listLlmConfigs(),
+        adminService.listPrompts(),
+      ]);
       setItems(res);
+      setLlmConfigs(llmRes);
+      setPrompts(promptRes);
     } catch (e: any) {
       setError(e?.message || '加载失败，请重试');
     } finally {
@@ -66,6 +81,27 @@ export const SkillAgentConfigsPage: React.FC = () => {
   useEffect(() => {
     load();
   }, [load]);
+
+  /** 可选的模型配置：仅启用且已配置 Key 的（Skill Agent 的 url/key/model 全部来自它）。
+   *  编辑时若绑定项已停用/删除，追加到末尾兜底展示，避免下拉为空 */
+  const usableLlmConfigs = useMemo(() => {
+    const usable = llmConfigs.filter((c) => c.is_active && c.has_api_key);
+    if (editing && editing.llm_config_id != null) {
+      const bound = llmConfigs.find((c) => c.id === editing.llm_config_id);
+      if (bound && !usable.some((c) => c.id === bound.id)) return [...usable, bound];
+    }
+    return usable;
+  }, [llmConfigs, editing]);
+
+  /** 提示词模板候选：全部模板可选（Skill Agent 与具体节点模板类型无关）；编辑时绑定项兜底展示 */
+  const availablePrompts = useMemo(() => {
+    const usable = prompts.filter((p) => p.is_active);
+    if (editing && editing.prompt_id != null) {
+      const bound = prompts.find((p) => p.id === editing.prompt_id);
+      if (bound && !usable.some((p) => p.id === bound.id)) return [...usable, bound];
+    }
+    return usable;
+  }, [prompts, editing]);
 
   const resetForm = () => {
     setForm(EMPTY_FORM);
@@ -84,10 +120,8 @@ export const SkillAgentConfigsPage: React.FC = () => {
     setEditing(c);
     setForm({
       name: c.name,
-      base_url: c.base_url,
-      api_key: '',
-      model_name: c.model_name,
-      system_prompt: c.system_prompt,
+      llm_config_id: c.llm_config_id ?? '',
+      prompt_id: c.prompt_id ?? '',
       is_active: c.is_active,
     });
     setFormError('');
@@ -96,25 +130,22 @@ export const SkillAgentConfigsPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) return setFormError('请输入配置名称');
-    if (!form.model_name.trim()) return setFormError('请输入模型名称');
+    if (form.llm_config_id === '') return setFormError('请选择模型配置（模型 url/key 复用于「模型配置」）');
 
     setSaving(true);
     setFormError('');
     try {
       const base = {
         name: form.name.trim(),
-        base_url: form.base_url.trim(),
-        model_name: form.model_name.trim(),
-        system_prompt: form.system_prompt.trim(),
+        llm_config_id: Number(form.llm_config_id),
+        prompt_id: form.prompt_id === '' ? null : Number(form.prompt_id),
         is_active: form.is_active,
       };
       if (editing) {
-        const payload: Record<string, any> = { ...base };
-        if (form.api_key) payload.api_key = form.api_key.trim();
-        await adminService.updateSkillAgentConfig(editing.id, payload);
+        await adminService.updateSkillAgentConfig(editing.id, base);
         showToast('Skill Agent 配置已更新', { type: 'success' });
       } else {
-        await adminService.createSkillAgentConfig({ ...base, api_key: form.api_key.trim() });
+        await adminService.createSkillAgentConfig(base);
         showToast('Skill Agent 配置已创建', { type: 'success' });
       }
       resetForm();
@@ -167,7 +198,7 @@ export const SkillAgentConfigsPage: React.FC = () => {
     <div>
       <PageHeader
         title="Skill Agent 配置"
-        subtitle="openai-agents-python 多步执行接入参数（OpenAI 兼容端点 + 模型）"
+        subtitle="openai-agents-python 多步执行：模型 url/key 复用「模型配置」，系统提示词复用「提示词模板」"
         actions={
           !showCreate && !editing && (
             <Button size="sm" onClick={openCreate}>
@@ -200,46 +231,39 @@ export const SkillAgentConfigsPage: React.FC = () => {
               />
             </div>
             <div className="space-y-1.5">
-              <FieldLabel required>模型名称</FieldLabel>
-              <Input
-                value={form.model_name}
-                onChange={(e) => setForm({ ...form, model_name: e.target.value })}
-                placeholder="如 gpt-4o-mini / deepseek-chat"
+              <FieldLabel required>模型配置</FieldLabel>
+              <Select
+                value={String(form.llm_config_id || '')}
+                onChange={(val) => setForm({ ...form, llm_config_id: val === '' ? '' : Number(val) })}
+                options={[
+                  { label: '请选择模型配置', value: '' },
+                  ...usableLlmConfigs.map((c) => ({
+                    label: `${c.model_name || c.name}（${KIND_SHORT_LABEL[c.kind] ?? c.kind}）`,
+                    value: String(c.id),
+                  })),
+                ]}
               />
-            </div>
-            <div className="space-y-1.5 sm:col-span-2">
-              <FieldLabel>Base URL（OpenAI 兼容端点）</FieldLabel>
-              <Input
-                value={form.base_url}
-                onChange={(e) => setForm({ ...form, base_url: e.target.value })}
-                placeholder="如 https://api.openai.com/v1（留空使用官方地址）"
-              />
-            </div>
-            <div className="space-y-1.5 sm:col-span-2">
-              <FieldLabel>{editing?.has_api_key ? 'API Key（留空保持原 Key 不变）' : 'API Key'}</FieldLabel>
-              <Input
-                type="password"
-                value={form.api_key}
-                onChange={(e) => setForm({ ...form, api_key: e.target.value })}
-                placeholder={editing?.has_api_key ? '已配置 · 留空不修改' : 'sk-...'}
-                autoComplete="off"
-              />
-              {editing?.has_api_key && (
-                <p className="text-xs text-ink-faint font-sans flex items-center gap-1">
-                  <KeyRound size={11} strokeWidth={1.5} />
-                  当前已配置 Key，出于安全考虑不会回显
+              {usableLlmConfigs.length === 0 && (
+                <p className="text-xs text-ink-faint font-sans">
+                  暂无可用模型配置，可先在「模型配置」中创建并配置 API Key
                 </p>
               )}
             </div>
             <div className="space-y-1.5 sm:col-span-2">
-              <FieldLabel>系统提示词（可选，Agent 基础指令）</FieldLabel>
-              <textarea
-                value={form.system_prompt}
-                onChange={(e) => setForm({ ...form, system_prompt: e.target.value })}
-                rows={3}
-                placeholder="留空则仅由已加载 skill 的 SKILL.md 指令驱动"
-                className="flex w-full rounded-md border border-dashed border-paper-grid bg-transparent px-3 py-2 text-sm text-ink focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors resize-none"
+              <FieldLabel>系统提示词（提示词模板，可选）</FieldLabel>
+              <Select
+                value={String(form.prompt_id || '')}
+                onChange={(val) => setForm({ ...form, prompt_id: val === '' ? '' : Number(val) })}
+                options={[
+                  { label: '不使用提示词模板（仅由 skill 指令驱动）', value: '' },
+                  ...availablePrompts.map((p) => ({ label: p.name, value: String(p.id) })),
+                ]}
               />
+              {availablePrompts.length === 0 && (
+                <p className="text-xs text-ink-faint font-sans">
+                  暂无提示词模板，可先在「提示词管理」中创建
+                </p>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2.5 pt-2">
@@ -289,7 +313,7 @@ export const SkillAgentConfigsPage: React.FC = () => {
             items.map((c) => (
               <Card key={c.id} className="p-4">
                 <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-serif text-base font-semibold text-ink">{c.name}</span>
                       <span className="text-xs text-ink-light border border-dashed border-paper-grid rounded-pill px-2 py-px font-sans">
@@ -300,24 +324,33 @@ export const SkillAgentConfigsPage: React.FC = () => {
                       </Badge>
                     </div>
                     <div className="mt-1.5 flex items-center gap-3 flex-wrap text-xs text-ink-faint font-mono">
-                      <span>model: {c.model_name || '—'}</span>
-                      <span className="max-w-[260px] truncate" title={c.base_url}>
-                        base_url: {c.base_url || '官方地址'}
+                      <span className="inline-flex items-center gap-1">
+                        <Sparkles size={11} strokeWidth={1.5} className="text-accent" />
+                        模型：{c.model_name || '—'}
+                        {c.llm_config_name && <span className="text-ink-faint/70">（{c.llm_config_name}）</span>}
+                      </span>
+                      <span className="max-w-[240px] truncate" title={c.base_url}>
+                        {c.base_url || '官方地址'}
                       </span>
                       <span className="flex items-center gap-1">
                         <KeyRound size={11} strokeWidth={1.5} />
                         {c.has_api_key ? '已配置 Key' : '未配置 Key'}
                       </span>
                     </div>
-                    {c.system_prompt && (
-                      <p className="mt-1.5 text-xs text-ink-light font-sans line-clamp-2">{c.system_prompt}</p>
-                    )}
+                    <p className="mt-1 text-xs text-ink-light font-sans">
+                      提示词：
+                      {c.prompt_name ? (
+                        <span className="text-ink">{c.prompt_name}</span>
+                      ) : (
+                        <span className="text-ink-faint">无（仅由已加载 skill 的 SKILL.md 指令驱动）</span>
+                      )}
+                    </p>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <Toggle checked={c.is_active} onChange={(v) => handleToggleActive(c, v)} label={c.is_active ? '停用' : '启用'} />
                     <button
                       onClick={() => handleDuplicate(c)}
-                      title="复制（沿用 Base URL / API Key / 模型）"
+                      title="复制（沿用模型 / 提示词引用）"
                       className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-95"
                     >
                       <Copy size={15} strokeWidth={1.5} />

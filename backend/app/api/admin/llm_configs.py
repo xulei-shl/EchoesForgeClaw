@@ -97,11 +97,14 @@ def delete_llm_config(
     cfg = db.query(LLMConfig).filter(LLMConfig.id == config_id).first()
     if not cfg:
         raise HTTPException(status_code=404, detail="模型配置不存在")
-    # 解除 NodeConfig 引用（置空），避免悬空外键
+    # 解除引用（置空），避免悬空外键：NodeConfig + SkillAgentConfig
     from app.models.node_config import NodeConfig
+    from app.models.skill_agent_config import SkillAgentConfig
 
     for nc in db.query(NodeConfig).filter(NodeConfig.llm_config_id == cfg.id).all():
         nc.llm_config_id = None
+    for sac in db.query(SkillAgentConfig).filter(SkillAgentConfig.llm_config_id == cfg.id).all():
+        sac.llm_config_id = None
     db.delete(cfg)
     db.commit()
     return {"message": "模型配置已删除"}

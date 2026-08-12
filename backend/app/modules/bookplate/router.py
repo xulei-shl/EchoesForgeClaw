@@ -465,19 +465,34 @@ def _agent_config_from(
 def _skill_agent_config_from(
     nc: Optional[NodeConfig], user_id: int
 ) -> Optional[SkillRuntimeConfig]:
-    """从节点配置解析 Skill Agent 运行时配置（未绑定/未启用/无 Key 则 None）。"""
-    if (
-        not nc
-        or not nc.skill_agent_config
-        or not nc.skill_agent_config.is_active
-        or not nc.skill_agent_config.api_key
-    ):
+    """从节点配置解析 Skill Agent 运行时配置（未绑定/未启用/无 Key 则 None）。
+
+    模型接入参数（base_url / api_key / model_name）优先来自引用的「模型配置」
+    （llm_config_id），系统提示词来自引用的「提示词模板」（prompt_id）；
+    引用缺失时回退旧字段（存量数据兼容）。
+    """
+    if not nc or not nc.skill_agent_config or not nc.skill_agent_config.is_active:
+        return None
+    sac = nc.skill_agent_config
+    llm = sac.llm_config
+    if llm and llm.is_active and llm.api_key:
+        base_url = llm.base_url or ""
+        api_key = llm.api_key
+        model_name = llm.model_name or ""
+        system_prompt = sac.prompt.content if sac.prompt and sac.prompt.is_active else ""
+    elif sac.api_key:
+        # 旧字段回退（存量配置未引用模型配置时）
+        base_url = sac.base_url or ""
+        api_key = sac.api_key
+        model_name = sac.model_name or ""
+        system_prompt = sac.system_prompt or ""
+    else:
         return None
     return SkillRuntimeConfig(
-        base_url=nc.skill_agent_config.base_url or "",
-        api_key=nc.skill_agent_config.api_key,
-        model_name=nc.skill_agent_config.model_name or "",
-        system_prompt=nc.skill_agent_config.system_prompt or "",
+        base_url=base_url,
+        api_key=api_key,
+        model_name=model_name,
+        system_prompt=system_prompt,
         user_id=user_id,
     )
 

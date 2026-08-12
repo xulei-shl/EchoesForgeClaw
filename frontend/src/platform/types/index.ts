@@ -157,6 +157,13 @@ export interface FastClawAgentConfigPayload {
 export interface SkillAgentConfig {
   id: number;
   name: string;
+  /** 引用的「模型配置」（url/key/model 全部复用之） */
+  llm_config_id: number | null;
+  /** 引用的「提示词模板」（作为系统提示词，可空） */
+  prompt_id: number | null;
+  llm_config_name?: string | null;
+  prompt_name?: string | null;
+  /** 展示用（引用解析或旧字段回退） */
   base_url: string;
   model_name: string;
   system_prompt: string;
@@ -168,10 +175,8 @@ export interface SkillAgentConfig {
 
 export interface SkillAgentConfigPayload {
   name: string;
-  base_url?: string;
-  api_key?: string;
-  model_name?: string;
-  system_prompt?: string;
+  llm_config_id?: number | null;
+  prompt_id?: number | null;
   is_active?: boolean;
 }
 

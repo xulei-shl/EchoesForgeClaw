@@ -147,31 +147,36 @@ class FastClawAgentConfigOut(BaseModel):
 # ---------------------------------------------------------------------------
 
 class SkillAgentConfigBase(BaseModel):
+    """Skill Agent 配置：模型接入参数复用「模型配置」（llm_config_id），
+    系统提示词复用「提示词模板」（prompt_id），与 NodeConfig 同构。"""
+
     name: str
-    base_url: str = ""
-    model_name: str = ""
-    system_prompt: str = ""
+    llm_config_id: Optional[int] = None
+    prompt_id: Optional[int] = None
     is_active: bool = True
 
 
 class SkillAgentConfigCreate(SkillAgentConfigBase):
-    api_key: str = ""
+    pass
 
 
 class SkillAgentConfigUpdate(BaseModel):
     name: Optional[str] = None
-    base_url: Optional[str] = None
-    api_key: Optional[str] = None  # 留空/None 表示不修改
-    model_name: Optional[str] = None
-    system_prompt: Optional[str] = None
+    llm_config_id: Optional[int] = None
+    prompt_id: Optional[int] = None
     is_active: Optional[bool] = None
 
 
 class SkillAgentConfigOut(BaseModel):
     id: int
     name: str
-    base_url: str
-    model_name: str
+    llm_config_id: Optional[int] = None
+    prompt_id: Optional[int] = None
+    llm_config_name: Optional[str] = None
+    prompt_name: Optional[str] = None
+    # 展示用（引用解析或旧字段回退）：url/key 标记/模型名/系统提示词
+    base_url: str = ""
+    model_name: str = ""
     system_prompt: str = ""
     is_active: bool
     has_api_key: bool = False
