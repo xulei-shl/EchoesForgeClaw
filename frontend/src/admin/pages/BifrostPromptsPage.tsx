@@ -80,13 +80,21 @@ export const BifrostPromptsPage: React.FC = () => {
 
   const notConfigured = !!error && error.includes('未配置');
 
+  const [detailLoading, setDetailLoading] = useState(false);
+  // 详情请求序号：防止快速切换提示词时旧详情响应/加载态互相覆盖
+  const detailSeq = useRef(0);
+
   const refreshDetail = useCallback(async (id: string) => {
+    const seq = ++detailSeq.current;
+    setDetailLoading(true);
     try {
       const p = await adminService.getBifrostPrompt(id);
       setDetail((prev) => (prev && prev.id === id ? p : prev));
       return p;
     } catch {
       return null;
+    } finally {
+      if (seq === detailSeq.current) setDetailLoading(false);
     }
   }, []);
 
@@ -249,6 +257,8 @@ export const BifrostPromptsPage: React.FC = () => {
                       setRawData('');
                     }
                     setDetail(p);
+                    // 列表项可能不含正文（自部署 Bifrost 条件性返回字段），点开时拉取完整详情
+                    void refreshDetail(p.id);
                   }}
                   onMouseEnter={(e) =>
                     p.preview_image &&
@@ -329,7 +339,7 @@ export const BifrostPromptsPage: React.FC = () => {
             <div className="space-y-1.5">
               <FieldLabel>提示词内容（来自最新版本）</FieldLabel>
               <pre className="text-sm text-ink font-sans whitespace-pre-wrap bg-paper border border-paper-grid rounded-md p-3 max-h-60 overflow-y-auto">
-                {detail.content || '（空内容）'}
+                {detailLoading && !detail.content ? '加载详情中…' : detail.content || '（空内容）'}
               </pre>
             </div>
 

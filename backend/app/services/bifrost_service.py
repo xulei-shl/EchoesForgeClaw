@@ -9,6 +9,7 @@ Bifrost Management API（所有 `/api/prompt-repo/*`）鉴权（自部署默认�
 预览图：Bifrost 官方数据无图片字段，预览图由本系统本地存储
 （backend/static/prompt-previews + prompt_metadata 表），列表/详情接口合并返回。
 """
+import asyncio
 import base64
 import logging
 import re
@@ -306,6 +307,9 @@ async def list_prompts(
 
     Bifrost 官方列表接口不支持关键词检索，`q` 在代理侧对
     「名称 + 正文文本」做包含过滤（供画布检索节点与管理页搜索）。
+    自部署版本可能条件性返回字段（列表项无内嵌正文来源）——对这些
+    空内容项做并发受限的回退拉取（sessions / versions），否则列表
+    显示空内容且按内容检索失效。
     """
     config = _require_config(db)
     params = {"folder_id": folder_id} if folder_id else None
@@ -313,6 +317,7 @@ async def list_prompts(
     prompts = _as_list(payload, "prompts")
     if not prompts:
         return []
+    prompts = await _enrich_empty_prompts(config, prompts)
     previews = _preview_map(db, [p.get("id") or "" for p in prompts if p.get("id")])
     keyword = (q or "").strip().lower()
     items: List[Dict[str, Any]] = []
@@ -327,6 +332,63 @@ async def list_prompts(
                 continue
         items.append(item)
     return items
+
+
+async def _enrich_empty_prompts(
+    config: BifrostAuthConfig, prompts: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """对无内嵌正文来源的 prompt 并发回退拉取 sessions / versions。
+
+    列表数据量未知，用信号量限制并发（8）防止请求风暴；失败的项保持
+    原样（内容为空），不影响其余项。仅处理内嵌确实为空（含 messages
+    但无可提取文本）的 prompt，已有内容的项零额外请求。
+    """
+    targets = [p for p in prompts if isinstance(p, dict) and not _extract_prompt_text(p)]
+    if not targets:
+        return prompts
+
+    sem = asyncio.Semaphore(8)
+
+    async def enrich(p: Dict[str, Any]) -> Dict[str, Any]:
+        async with sem:
+            sessions = await _try_get_list(
+                config, f"/api/prompt-repo/prompts/{p.get('id')}/sessions", "sessions"
+            )
+            merged = {**p}
+            if sessions:
+                merged["sessions"] = sessions
+            if not _extract_prompt_text(merged):
+                versions = await _try_get_list(
+                    config, f"/api/prompt-repo/prompts/{p.get('id')}/versions", "versions"
+                )
+                if versions:
+                    merged["versions"] = versions
+        return merged
+
+    enriched = await asyncio.gather(*(enrich(p) for p in targets))
+    by_id = {p.get("id"): e for p, e in zip(targets, enriched)}
+    return [by_id.get(p.get("id"), p) for p in prompts]
+
+
+async def _try_get_list(
+    config: BifrostAuthConfig, path: str, key: str
+) -> List[Dict[str, Any]]:
+    """尽力拉取独立列表接口（sessions / versions），失败返回空列表。
+
+    自部署版本可能条件性返回字段（Get Prompt 内嵌无内容时），
+    回退调用独立接口补取正文来源；接口不存在 / 报错都不影响主流程。
+    """
+    try:
+        payload = await _get_json(config, path)
+    except BifrostError as exc:
+        # warning 级别：回退接口持续不可用意味着内容将缺失，应可见而非静默
+        logger.warning("Bifrost 回退接口 %s 不可用: %s", path, exc)
+        return []
+    return [
+        item
+        for item in _as_list(payload, key)
+        if isinstance(item, dict) and isinstance(item.get("messages"), list) and item["messages"]
+    ]
 
 
 async def get_prompt_raw(db, prompt_id: str) -> Any:
@@ -362,5 +424,19 @@ async def get_prompt(db, prompt_id: str) -> Dict[str, Any]:
     prompt = payload.get("prompt") or payload
     if not isinstance(prompt, dict):
         raise BifrostError("Bifrost 返回了非预期的提示词数据")
+    # 自部署版本可能条件性返回字段：Get Prompt 内嵌无正文来源时，
+    # 回退调用 sessions / versions 独立接口补充（优先未提交的草稿 Session）。
+    if not _extract_prompt_text(prompt):
+        sessions = await _try_get_list(
+            config, f"/api/prompt-repo/prompts/{prompt_id}/sessions", "sessions"
+        )
+        if sessions:
+            prompt = {**prompt, "sessions": sessions}
+        if not _extract_prompt_text(prompt):
+            versions = await _try_get_list(
+                config, f"/api/prompt-repo/prompts/{prompt_id}/versions", "versions"
+            )
+            if versions:
+                prompt = {**prompt, "versions": versions}
     previews = _preview_map(db, [prompt_id])
     return _compact_prompt(prompt, previews.get(prompt_id))
