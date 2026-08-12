@@ -8,6 +8,7 @@ import { TextNode } from './components/TextNode';
 import { ImageUploadNode } from './components/ImageUploadNode';
 import { TextAggregateNode } from './components/TextAggregateNode';
 import { PromptSearchNode } from './components/PromptSearchNode';
+import { SkillSearchNode } from './components/SkillSearchNode';
 import { getNodeTitle, matchPortType, resolveDirectParents } from './nodeTypes';
 import { DEFAULT_RUN_SETTINGS, type PortTypesLookup } from './execution';
 import type { EdgeData, NodeData, NodeSize } from './graphTypes';
@@ -16,6 +17,7 @@ import type {
   NodeRunSettings,
   PromptSelection,
   RegistryNodeConfig,
+  SkillSelection,
 } from '../../platform/types';
 
 /** 节点渲染所需的全部依赖（由画布注入：稳定回调 + 派生状态 + 查找函数） */
@@ -50,6 +52,8 @@ export interface NodeViewHelpers {
   handleSendChatFor: (id: string, text: string, images?: string[]) => void;
   /** 提示词检索节点：选用一条 Bifrost 提示词 */
   handleUpdatePromptFor: (id: string, selection: PromptSelection) => void;
+  /** Skill 检索节点：选用 / 安装一个 skill */
+  handleUpdateSkillFor: (id: string, selection: SkillSelection) => void;
   /** 文本聚合节点：保存占位符模板 */
   handleUpdateAggregateTemplateFor: (id: string, template: string) => void;
   /** 文本聚合节点：重命名某上级节点的占位符别名 */
@@ -242,7 +246,13 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           messages={node.data.messages}
           hasDownstream={hasDownstream}
           mismatchBadge={mismatchBadge}
-          agentName={config?.mode === 'agent' ? (config.agent_name ?? undefined) : undefined}
+          agentName={
+            config?.mode === 'agent'
+              ? (config.agent_name ?? undefined)
+              : config?.mode === 'skill_agent'
+                ? (config.skill_agent_config_name ?? undefined)
+                : undefined
+          }
           group={config?.group?.trim() || undefined}
           isGenerating={!!node.data.isGenerating}
           error={node.data.error ?? null}
@@ -284,6 +294,21 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           promptImage={typeof node.data?.promptImage === 'string' ? node.data.promptImage : null}
           hasDownstream={hasDownstream}
           onUpdatePrompt={h.handleUpdatePromptFor}
+        />
+      );
+    }
+    case 'skill_search': {
+      const hasDownstream = hasDownstreamOf(node, h.edges);
+      return (
+        <SkillSearchNode
+          {...common}
+          title={typeof node.data?.skillName === 'string' && node.data.skillName ? node.data.skillName : common.title}
+          skillName={node.data?.skillName ?? null}
+          skillDescription={typeof node.data?.skillDescription === 'string' ? node.data.skillDescription : ''}
+          skillFiles={Array.isArray(node.data?.skillFiles) ? node.data.skillFiles : []}
+          skillBody={typeof node.data?.skillBody === 'string' ? node.data.skillBody : ''}
+          hasDownstream={hasDownstream}
+          onUpdateSkill={h.handleUpdateSkillFor}
         />
       );
     }

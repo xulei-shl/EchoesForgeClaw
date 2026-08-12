@@ -15,7 +15,7 @@ export interface NodePickerItem {
   group?: string;
   /** 自定义分组排序序号（0 表示未排序，按首见顺序回退） */
   groupOrder?: number;
-  mode?: 'llm' | 'agent';
+  mode?: 'llm' | 'agent' | 'skill_agent';
   agentName?: string | null;
   /** 该模板类型下无任何配置，将回退默认配置 */
   fallback?: boolean;

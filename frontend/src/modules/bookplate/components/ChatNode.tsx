@@ -1,6 +1,6 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, Eraser, ImagePlus, Link2, MessageSquare, Send, Copy, Check, Loader2, Square, RefreshCw, ChevronUp, ChevronDown, Lock, X } from 'lucide-react';
+import { AlertTriangle, Eraser, ImagePlus, Link2, MessageSquare, Send, Copy, Check, Loader2, Square, RefreshCw, ChevronUp, ChevronDown, Lock, X, FileText, Download } from 'lucide-react';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
 import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
@@ -9,7 +9,7 @@ import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { AgentActivity } from '../../../platform/components/agent/AgentActivity';
 import { Toggle } from '../../../platform/components/ui/Toggle';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
-import type { ChatMessage, ChatNodeSettings } from '../../../platform/types';
+import type { AgentFile, ChatMessage, ChatNodeSettings } from '../../../platform/types';
 import { NODE_COLORS } from '../nodeTypes';
 import {
   RASTER_IMAGE_TYPES,
@@ -20,6 +20,119 @@ import {
 
 // 单轮最多附带的图片数（与后端透传上限保持一致）
 const MAX_ATTACHMENTS = 4;
+
+/** 带鉴权获取 skill 执行产生的文件字节。
+ *  skill-files 接口要求登录鉴权，<img> / <a href> 无法携带 Authorization 头，
+ *  因此图片预览与文件下载统一走 fetch + token → blob → objectURL 路线。 */
+async function fetchSkillFile(file: AgentFile): Promise<Blob> {
+  const token = localStorage.getItem('token');
+  const resp = await fetch(file.url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  return resp.blob();
+}
+
+/** 文件大小人类可读格式（B / KB / MB） */
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** Skill Agent 执行产生的文件卡片：图片内联缩略预览（鉴权 fetch → blob → objectURL），其他类型展示下载按钮。 */
+const SkillFileCard: React.FC<{ file: AgentFile }> = memo(({ file }) => {
+  const { showToast } = useFeedback();
+  const isImage = file.mime?.startsWith('image/') ?? false;
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  // 图片：加载为 blob → objectURL 后展示缩略图（组件卸载时释放）
+  useEffect(() => {
+    if (!isImage) return;
+    let url: string | null = null;
+    let cancelled = false;
+    fetchSkillFile(file)
+      .then((blob) => {
+        if (cancelled) return;
+        url = URL.createObjectURL(blob);
+        setObjectUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [file, isImage]);
+
+  const handleDownload = async () => {
+    try {
+      const blob = await fetchSkillFile(file);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = file.name;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      showToast('文件下载失败，请重试', { type: 'error' });
+    }
+  };
+
+  if (isImage) {
+    const thumb = (
+      <div className="relative group w-20 h-20 rounded-lg overflow-hidden border border-paper-grid bg-paper cursor-zoom-in shrink-0">
+        {objectUrl ? (
+          <img src={objectUrl} alt={file.name} className="w-full h-full object-cover" loading="lazy" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            {failed ? (
+              <span className="text-[10px] text-ink-faint font-sans">加载失败</span>
+            ) : (
+              <Loader2 size={14} className="animate-spin text-ink-faint" />
+            )}
+          </div>
+        )}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            void handleDownload();
+          }}
+          title="下载文件"
+          className="absolute bottom-1 right-1 flex items-center justify-center w-6 h-6 rounded-md bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-black/70 transition"
+        >
+          <Download size={12} strokeWidth={2} />
+        </button>
+      </div>
+    );
+    // 图片加载完成（objectURL 可用）后才挂 PhotoView，避免 src 为空时点击出错
+    return objectUrl ? <PhotoView src={objectUrl}>{thumb}</PhotoView> : thumb;
+  }
+
+  return (
+    <div className="flex items-center gap-2 max-w-full rounded-lg border border-paper-grid bg-paper-grid/20 px-2.5 py-1.5 hover:bg-paper-grid/40 transition-colors msg-enter-anim">
+      <FileText size={15} strokeWidth={1.75} className="text-ink-faint shrink-0" />
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] font-sans text-ink truncate" title={file.name}>
+          {file.name}
+        </p>
+        {typeof file.size === 'number' && file.size > 0 && (
+          <p className="text-[10px] text-ink-faint font-sans">{formatFileSize(file.size)}</p>
+        )}
+      </div>
+      <button
+        onClick={() => void handleDownload()}
+        title="下载文件"
+        className="shrink-0 flex items-center justify-center w-7 h-7 rounded-md text-ink-faint hover:text-accent hover:bg-accent/10 active:scale-95 transition"
+      >
+        <Download size={13} strokeWidth={2} />
+      </button>
+    </div>
+  );
+});
+SkillFileCard.displayName = 'SkillFileCard';
 
 const STYLE_INJECTIONS = `
 @keyframes msg-enter {
@@ -367,6 +480,14 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
             </div>
           )}
         </div>
+        {/* Skill Agent 执行产生的文件：图片缩略预览 + 下载卡片 */}
+        {msg.files && msg.files.length > 0 && (
+          <div className="flex flex-wrap gap-2 mt-1 w-full pl-0.5">
+            {msg.files.map((f) => (
+              <SkillFileCard key={f.url} file={f} />
+            ))}
+          </div>
+        )}
         {/* 被用户停止的回复：展示「重试」入口（仅当该消息是最后一条时，重试目标 = 本轮） */}
         {msg.interrupted && !msg.streaming && idx === messages.length - 1 && (
           <div className="flex items-center gap-1.5 text-[10px] font-sans text-ink-faint pl-1">
@@ -445,7 +566,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                 <p className="text-xs text-ink-faint font-sans leading-relaxed">
                   输入消息（可附带图片）开始多轮对话
                   <br />
-                  支持绑定大模型或 FastClaw Agent（工具调用）
+                  支持绑定大模型、FastClaw Agent 或 Skill Agent（加载 skill 执行）
                 </p>
               </div>
             ) : (

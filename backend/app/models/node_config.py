@@ -25,6 +25,7 @@ class NodeConfig(Base):
     llm_config_id = Column(Integer, ForeignKey("llm_configs.id"), nullable=True)
     prompt_id = Column(Integer, ForeignKey("prompt_templates.id"), nullable=True)
     agent_config_id = Column(Integer, ForeignKey("fastclaw_agent_configs.id"), nullable=True)
+    skill_agent_config_id = Column(Integer, ForeignKey("skill_agent_configs.id"), nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=get_current_time)
     updated_at = Column(DateTime, default=get_current_time, onupdate=get_current_time)
@@ -32,3 +33,4 @@ class NodeConfig(Base):
     llm_config = relationship("LLMConfig")
     prompt = relationship("PromptTemplate")
     agent_config = relationship("FastClawAgentConfig")
+    skill_agent_config = relationship("SkillAgentConfig")

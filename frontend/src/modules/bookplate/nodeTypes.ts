@@ -13,6 +13,7 @@ export const NODE_DEFAULT_SIZES: Record<CanvasNodeType, { width: number; height:
   chat: { width: 420, height: 560 },
   text_aggregate: { width: 460, height: 520 },
   prompt_search: { width: 420, height: 440 },
+  skill_search: { width: 440, height: 460 },
 };
 
 /** 节点的主题色（用于左上角指示圆点） */
@@ -26,6 +27,7 @@ export const NODE_COLORS: Record<CanvasNodeType, string> = {
   prompt_generation: 'oklch(0.65 0.15 340)',
   text_aggregate: 'oklch(0.65 0.15 165)',
   prompt_search: 'oklch(0.65 0.15 25)',
+  skill_search: 'oklch(0.7 0.15 310)',
 };
 
 export interface NodeTemplateDef {
@@ -115,6 +117,14 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     configurable: false,
     defaultSize: NODE_DEFAULT_SIZES.prompt_search,
   },
+  {
+    type: 'skill_search',
+    name: 'Skill 检索',
+    description: '从 Bifrost Skills 仓库检索并安装 skill（或上传本地 zip），作为 Skill Agent 的 skill 来源',
+    category: 'input',
+    configurable: false,
+    defaultSize: NODE_DEFAULT_SIZES.skill_search,
+  },
 ];
 
 export const NODE_TEMPLATE_MAP: Record<CanvasNodeType, NodeTemplateDef> = Object.fromEntries(
@@ -155,9 +165,12 @@ export const NODE_PORT_TYPES: Record<CanvasNodeType, { output: NodePortType; inp
   prompt_generation: { output: 'text', inputs: ['text'] },
   image_generation: { output: 'image', inputs: ['text', 'image'] },
   // chat 接受文本（上一级节点内容）+ 图片（图片上传 / 图像生成节点输出，作为视觉上下文）
-  chat: { output: 'text', inputs: ['text', 'image'] },
+  // + document（Skill 检索节点的 skill 包，作为 Skill Agent 的 skill 来源）
+  chat: { output: 'text', inputs: ['text', 'image', 'document'] },
   text_aggregate: { output: 'text', inputs: ['text'] },
   prompt_search: { output: 'text', inputs: [] },
+  // skill 包（文件夹 + SKILL.md + scripts），作为 Skill Agent 的上游 skill 来源
+  skill_search: { output: 'document', inputs: [] },
 };
 
 /** 端口类型查找（由画布提供：后端模板声明优先，前端静态镜像兜底） */

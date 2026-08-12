@@ -143,6 +143,45 @@ class FastClawAgentConfigOut(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# SkillAgentConfig（Skill Agent 配置：openai-agents-python 多步执行）
+# ---------------------------------------------------------------------------
+
+class SkillAgentConfigBase(BaseModel):
+    name: str
+    base_url: str = ""
+    model_name: str = ""
+    system_prompt: str = ""
+    is_active: bool = True
+
+
+class SkillAgentConfigCreate(SkillAgentConfigBase):
+    api_key: str = ""
+
+
+class SkillAgentConfigUpdate(BaseModel):
+    name: Optional[str] = None
+    base_url: Optional[str] = None
+    api_key: Optional[str] = None  # 留空/None 表示不修改
+    model_name: Optional[str] = None
+    system_prompt: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class SkillAgentConfigOut(BaseModel):
+    id: int
+    name: str
+    base_url: str
+    model_name: str
+    system_prompt: str = ""
+    is_active: bool
+    has_api_key: bool = False
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ---------------------------------------------------------------------------
 # NodeConfig（节点配置：节点模板的一个具体实例）
 # ---------------------------------------------------------------------------
 
@@ -151,10 +190,11 @@ class NodeConfigCreate(BaseModel):
     name: str
     # 可选自定义分组（画板「+」菜单分组展示）；空串/None 则按模板类型分组
     group: Optional[str] = None
-    # 模式互斥：agent_config_id 与 llm_config_id / prompt_id 只能选择一组
+    # 模式互斥：agent_config_id / skill_agent_config_id 与 llm_config_id / prompt_id 只能选择一组
     llm_config_id: Optional[int] = None
     prompt_id: Optional[int] = None
     agent_config_id: Optional[int] = None
+    skill_agent_config_id: Optional[int] = None
     is_active: bool = True
 
 
@@ -165,6 +205,7 @@ class NodeConfigUpdate(BaseModel):
     llm_config_id: Optional[int] = None
     prompt_id: Optional[int] = None
     agent_config_id: Optional[int] = None
+    skill_agent_config_id: Optional[int] = None
     is_active: Optional[bool] = None
 
 
@@ -177,9 +218,11 @@ class NodeConfigOut(BaseModel):
     llm_config_id: Optional[int] = None
     prompt_id: Optional[int] = None
     agent_config_id: Optional[int] = None
+    skill_agent_config_id: Optional[int] = None
     llm_config_name: Optional[str] = None
     prompt_name: Optional[str] = None
     agent_config_name: Optional[str] = None
+    skill_agent_config_name: Optional[str] = None
     # 绑定 agent 的 FastClaw 真实名字（如 "Xulei"），供列表展示可读名字
     agent_config_agent_name: Optional[str] = None
     is_active: bool = True

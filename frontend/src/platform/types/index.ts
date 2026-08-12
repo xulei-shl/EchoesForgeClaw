@@ -154,6 +154,27 @@ export interface FastClawAgentConfigPayload {
   is_active?: boolean;
 }
 
+export interface SkillAgentConfig {
+  id: number;
+  name: string;
+  base_url: string;
+  model_name: string;
+  system_prompt: string;
+  is_active: boolean;
+  /** 是否已配置 api_key（api_key 本身永不回传） */
+  has_api_key: boolean;
+  created_at: string;
+}
+
+export interface SkillAgentConfigPayload {
+  name: string;
+  base_url?: string;
+  api_key?: string;
+  model_name?: string;
+  system_prompt?: string;
+  is_active?: boolean;
+}
+
 /* ===================================================================== */
 /* 节点画板（Phase 6 重构）                                              */
 /* ===================================================================== */
@@ -173,7 +194,9 @@ export type CanvasNodeType =
   /** 文本聚合节点：用占位符模板把多个上级文本按自定义格式拼接（无需配置，纯文本变换） */
   | 'text_aggregate'
   /** 提示词检索节点：从 Bifrost 提示词库检索并选用一条提示词，输出其内容为文本（无需配置） */
-  | 'prompt_search';
+  | 'prompt_search'
+  /** Skill 检索节点：从 Bifrost Skills 仓库检索并安装 skill（或上传本地 zip），作为 Skill Agent 的 skill 来源 */
+  | 'skill_search';
 
 /**
  * 节点端口类型（输入/输出）：text / image 为当前实际使用的类型，
@@ -206,6 +229,8 @@ export interface ChatMessage {
   interrupted?: boolean;
   /** Agent 模式中间步骤（工具调用 / 思考状态），附加在 assistant 消息上 */
   agentSteps?: AgentStep[];
+  /** Skill Agent 执行产生的文件（agent_file 事件），渲染为下载/预览卡片 */
+  files?: AgentFile[];
 }
 
 /** AI 对话节点的上下文加载设置（节点内可开关） */
@@ -256,9 +281,11 @@ export interface NodeConfig {
   llm_config_id: number | null;
   prompt_id: number | null;
   agent_config_id: number | null;
+  skill_agent_config_id: number | null;
   llm_config_name: string | null;
   prompt_name: string | null;
   agent_config_name: string | null;
+  skill_agent_config_name: string | null;
   /** 绑定 agent 的 FastClaw 真实名字（如 "Xulei"） */
   agent_config_agent_name?: string | null;
   is_active: boolean;
@@ -272,6 +299,7 @@ export interface NodeConfigPayload {
   llm_config_id: number | null;
   prompt_id: number | null;
   agent_config_id: number | null;
+  skill_agent_config_id: number | null;
   is_active?: boolean;
 }
 
@@ -290,8 +318,9 @@ export interface RegistryNodeConfig {
   group?: string | null;
   /** 自定义分组排序序号 */
   group_order?: number;
-  mode: 'llm' | 'agent';
+  mode: 'llm' | 'agent' | 'skill_agent';
   agent_name?: string | null;
+  skill_agent_config_name?: string | null;
   llm_config_name?: string | null;
   is_active: boolean;
 }
@@ -356,4 +385,59 @@ export interface PromptSelection {
   name?: string;
   content?: string;
   imageUrl?: string | null;
+}
+
+/* ===================================================================== */
+/* Skill（Skill Agent / Skill 检索节点）                                  */
+/* ===================================================================== */
+
+/** 已安装到用户工作区的 skill（含 SKILL.md 元数据 + 文件树） */
+export interface InstalledSkill {
+  name: string;
+  description: string;
+  body: string;
+  /** 工作区内相对路径（如 skills/my-skill） */
+  path: string;
+  /** 文件树（相对路径列表） */
+  files: string[];
+}
+
+/** Bifrost Skills 仓库中的 skill（检索结果） */
+export interface BifrostSkill {
+  id: string;
+  name: string;
+  description: string;
+  license?: string;
+  compatibility?: string;
+  /** SKILL.md 正文（不含 frontmatter） */
+  skill_md_body?: string;
+  latest_version?: string;
+  file_count?: number;
+  files?: { path: string }[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Skill 检索节点：选用一个 skill 后写入节点的数据 */
+export interface SkillSelection {
+  /** skill 名称（工作区目录名） */
+  name: string;
+  description?: string;
+  /** SKILL.md 正文 */
+  body?: string;
+  /** 工作区内相对路径（如 skills/my-skill） */
+  path?: string;
+  /** 文件树（相对路径列表） */
+  files?: string[];
+  /** 来源：bifrost / upload */
+  source?: 'bifrost' | 'upload';
+}
+
+/** Skill Agent 执行产生的文件（agent_file 事件） */
+export interface AgentFile {
+  url: string;
+  name: string;
+  mime: string;
+  size: number;
+  path: string;
 }

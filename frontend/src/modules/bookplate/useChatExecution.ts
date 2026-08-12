@@ -7,7 +7,7 @@ import { toWireChatMessages, type EdgeData, type NodeData } from './graphTypes';
 import { handleAgentSseMessage } from './agentSteps';
 import { makeIdleTimeout } from './idleTimeout';
 import { urlToDataUrl } from './imageUpload';
-import type { ChatMessage, ChatNodeSettings } from '../../platform/types';
+import type { AgentFile, ChatMessage, ChatNodeSettings } from '../../platform/types';
 
 // AI 对话单轮携带的图片上限（附件 + 上下文图片合计）：防止超大 base64 请求体拖垮传输
 const MAX_CHAT_IMAGES = 4;
@@ -114,6 +114,39 @@ export function useChatExecution(ctx: ChatExecutionContext): ChatExecution {
         : m
     );
 
+  /** 收集连线上游「Skill 检索」节点选中的 skill 名（Skill Agent 模式按需加载；空 = 全部已装 skill）。
+   *  Skill Agent 的多轮历史由后端 messages 驱动，skills 每轮随请求重传（上游引用稳定，天然幂等）。 */
+  const collectSkillNames = (node: NodeData): string[] => {
+    const names: string[] = [];
+    for (const p of ctx.nodesRef.current) {
+      if (
+        p.type === 'skill_search' &&
+        ctx.edgesRef.current.some((e) => e.target === node.id && e.source === p.id) &&
+        typeof p.data?.skillName === 'string' &&
+        p.data.skillName
+      ) {
+        if (!names.includes(p.data.skillName)) names.push(p.data.skillName);
+      }
+    }
+    return names;
+  };
+
+  /** 把 skill 执行产生的文件（agent_file 事件）追加到最后一条 assistant 消息上（去重渲染下载卡片） */
+  const appendAgentFile = (nodeId: string, file: AgentFile) => {
+    ctx.setNodes((prev) =>
+      prev.map((n) => {
+        if (n.id !== nodeId) return n;
+        const msgs = Array.isArray(n.data.messages) ? [...n.data.messages] : [];
+        const last = msgs[msgs.length - 1];
+        if (!last || last.role !== 'assistant') return n;
+        const files = Array.isArray(last.files) ? [...last.files] : [];
+        if (!files.some((f) => f.url === file.url)) files.push(file);
+        msgs[msgs.length - 1] = { ...last, files };
+        return { ...n, data: { ...n.data, messages: msgs } };
+      })
+    );
+  };
+
   /** AI 对话节点核心发送逻辑：把指定历史 + 用户消息发送到后端，SSE 流式接收助手回复。
    *  供新消息（runChatTurn）与重试（retryChatTurn）复用，保证两次请求负载完全一致。
    *  @param preAcquired 可选：runChatTurn 在收集上下文图片前预注册的控制器（首轮防并发窗口） */
@@ -173,6 +206,7 @@ export function useChatExecution(ctx: ChatExecutionContext): ChatExecution {
         config_id: node.configId ?? null,
         node_id: node.id,
         epoch: node.data?.epoch ?? 0,
+        skills: collectSkillNames(node),
       },
       signal: controller.signal,
       onMessage: (event, data) => {
@@ -198,6 +232,19 @@ export function useChatExecution(ctx: ChatExecutionContext): ChatExecution {
               return { ...n, data: { ...n.data, messages: msgs } };
             })
           );
+          return;
+        }
+        if (event === 'agent_file') {
+          // Skill Agent 执行产生的文件：解析后附加到本轮 assistant 消息（渲染下载/预览卡片）
+          let file: AgentFile | null = null;
+          try {
+            file = JSON.parse(data);
+          } catch {
+            file = null;
+          }
+          if (file && typeof file?.url === 'string' && file.url) {
+            appendAgentFile(node.id, file);
+          }
           return;
         }
         if (event === 'error') {

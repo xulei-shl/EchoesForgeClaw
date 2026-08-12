@@ -14,6 +14,7 @@ NODE_IMAGE_UPLOAD = "image_upload"
 NODE_CHAT = "chat"
 NODE_TEXT_AGGREGATE = "text_aggregate"
 NODE_PROMPT_SEARCH = "prompt_search"
+NODE_SKILL_SEARCH = "skill_search"
 
 NODE_TEMPLATES = [
     {
@@ -76,8 +77,9 @@ NODE_TEMPLATES = [
         "category": "generate",
         "configurable": True,
         # 接受文本（上一级节点内容）+ 图片（图片上传 / 图像生成节点的输出，作为视觉上下文）
+        # + document（Skill 检索节点的 skill 包，作为 Skill Agent 的 skill 来源）
         "output_type": "text",
-        "input_types": ["text", "image"],
+        "input_types": ["text", "image", "document"],
     },
     {
         "type": NODE_TEXT_AGGREGATE,
@@ -95,6 +97,15 @@ NODE_TEMPLATES = [
         "category": "input",
         "configurable": False,
         "output_type": "text",
+    },
+    {
+        "type": NODE_SKILL_SEARCH,
+        "name": "Skill 检索",
+        "description": "从 Bifrost Skills 仓库检索并安装 skill（或直接上传本地 skill zip），作为 Skill Agent 的 skill 来源",
+        "category": "input",
+        "configurable": False,
+        # 输出为 skill 包（文件夹 + SKILL.md + scripts），作为 Skill Agent 的上游 skill 来源
+        "output_type": "document",
     },
 ]
 

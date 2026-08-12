@@ -375,6 +375,79 @@ async def list_prompts_raw(db, folder_id: Optional[str] = None) -> Any:
     return await _get_json(config, "/api/prompt-repo/prompts", params=params, raw=True)
 
 
+# ---------------------------------------------------------------------------
+# Bifrost Skills 仓库（Skill 检索 / 下载）
+# 文档：docs/bifrost/skills/Bifrost Skills API 完整说明.md
+# - 检索/详情：Management API（GET /api/skills），需认证（Basic / Bearer，与提示词一致）
+# - 下载 ZIP：Serving API（GET /api/skills/serve/{name}/download.zip），公开无需认证
+# ---------------------------------------------------------------------------
+
+async def search_bifrost_skills(
+    db,
+    q: str = "",
+    limit: int = 50,
+) -> List[Dict[str, Any]]:
+    """检索 Bifrost Skills 仓库（按名称/描述，Management API）。
+
+    返回紧凑结构（skill 元数据 + SKILL.md 正文），供画布「Skill 检索」节点与管理端使用。
+    """
+    config = _require_config(db)
+    params: Dict[str, Any] = {"limit": min(max(limit, 1), 100)}
+    if q.strip():
+        params["search"] = q.strip()
+    payload = await _get_json(config, "/api/skills", params=params)
+    skills = _as_list(payload, "skills")
+    return [
+        {
+            "id": s.get("id") or "",
+            "name": s.get("name") or "",
+            "description": s.get("description") or "",
+            "license": s.get("license") or "",
+            "compatibility": s.get("compatibility") or "",
+            "skill_md_body": s.get("skill_md_body") or "",
+            "latest_version": s.get("latest_version") or "",
+            "file_count": s.get("file_count") or 0,
+            "files": [
+                {"path": f.get("path", "")}
+                for f in (s.get("files") or [])
+                if isinstance(f, dict)
+            ],
+            "created_at": s.get("created_at"),
+            "updated_at": s.get("updated_at"),
+        }
+        for s in skills
+        if isinstance(s, dict)
+    ]
+
+
+async def download_bifrost_skill_zip(db, skill_name: str) -> bytes:
+    """下载单个 skill 的完整 ZIP（Serving API，公开接口）。
+
+    skill_name 用 skill 的 name（不是 id）；返回 zip 字节，由调用方校验并安装。
+    """
+    config = _bifrost_config(db)
+    if not config.base_url:
+        raise BifrostNotConfiguredError(
+            "Bifrost 未配置：请在「系统设置」中添加 bifrost.base_url"
+        )
+    if not skill_name.strip():
+        raise BifrostError("skill 名称不能为空")
+    url = f"{config.base_url.rstrip('/')}/api/skills/serve/{skill_name.strip()}/download.zip"
+    try:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(10.0, read=60.0), follow_redirects=True
+        ) as client:
+            resp = await client.get(url)
+    except httpx.HTTPError as exc:
+        raise BifrostError(f"连接 Bifrost 失败: {exc}") from exc
+    if resp.status_code == 404:
+        raise BifrostNotFoundError("skill 不存在（可能已被删除）")
+    if resp.status_code != 200:
+        detail = resp.text[:300] if resp.text else ""
+        raise BifrostError(f"Bifrost 返回 HTTP {resp.status_code}: {detail}")
+    return resp.content
+
+
 async def get_prompt(db, prompt_id: str) -> Dict[str, Any]:
     """获取单个提示词详情（含提取的正文文本 + 本地预览图）。
 

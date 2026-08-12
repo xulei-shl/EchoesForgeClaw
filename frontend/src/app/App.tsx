@@ -14,6 +14,7 @@ import PromptsPage from '../admin/pages/PromptsPage';
 import BifrostPromptsPage from '../admin/pages/BifrostPromptsPage';
 import NodeConfigsPage from '../admin/pages/NodeConfigsPage';
 import FastClawAgentsPage from '../admin/pages/FastClawAgentsPage';
+import SkillAgentConfigsPage from '../admin/pages/SkillAgentConfigsPage';
 import SettingsPage from '../admin/pages/SettingsPage';
 
 // 路由守卫：未登录时跳转登录页，登录后回到原页面
@@ -101,6 +102,7 @@ const AppRoutes = () => {
         <Route path="bifrost-prompts" element={<BifrostPromptsPage />} />
         <Route path="node-configs" element={<NodeConfigsPage />} />
         <Route path="fastclaw-agents" element={<FastClawAgentsPage />} />
+        <Route path="skill-agent-configs" element={<SkillAgentConfigsPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
 

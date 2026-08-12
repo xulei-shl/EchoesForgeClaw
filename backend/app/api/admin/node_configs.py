@@ -9,6 +9,7 @@ from app.models.node_config import NodeConfig
 from app.models.llm_config import LLMConfig
 from app.models.prompt_template import PromptTemplate
 from app.models.fastclaw_agent_config import FastClawAgentConfig
+from app.models.skill_agent_config import SkillAgentConfig
 from app.modules.bookplate.node_types import NODE_TEMPLATE_MAP
 from app.schemas.admin import (
     NodeConfigCreate,
@@ -26,12 +27,22 @@ def _validate_node_type(node_type: str) -> None:
         raise HTTPException(status_code=400, detail=f"未知的节点模板类型: {node_type}")
 
 
-def _validate_mode(has_llm: bool, has_prompt: bool, has_agent: bool) -> None:
-    """校验模式互斥：agent 模式与「提示词 + 大模型」只能选择一组。"""
-    if has_agent and (has_llm or has_prompt):
+def _validate_mode(
+    has_llm: bool,
+    has_prompt: bool,
+    has_agent: bool,
+    has_skill_agent: bool,
+) -> None:
+    """校验模式互斥：agent / skill_agent 模式与「提示词 + 大模型」只能选择一组。"""
+    if (has_agent or has_skill_agent) and (has_llm or has_prompt):
         raise HTTPException(
             status_code=400,
-            detail="Agent 模式与「提示词 + 大模型」互斥，只能选择一组",
+            detail="Agent / Skill Agent 模式与「提示词 + 大模型」互斥，只能选择一组",
+        )
+    if has_agent and has_skill_agent:
+        raise HTTPException(
+            status_code=400,
+            detail="FastClaw Agent 与 Skill Agent 模式互斥，只能选择一组",
         )
 
 
@@ -40,6 +51,7 @@ def _validate_refs(
     llm_config_id: Optional[int],
     prompt_id: Optional[int],
     agent_config_id: Optional[int],
+    skill_agent_config_id: Optional[int],
 ) -> None:
     if llm_config_id is not None:
         if not db.query(LLMConfig).filter(LLMConfig.id == llm_config_id).first():
@@ -50,6 +62,9 @@ def _validate_refs(
     if agent_config_id is not None:
         if not db.query(FastClawAgentConfig).filter(FastClawAgentConfig.id == agent_config_id).first():
             raise HTTPException(status_code=400, detail="所选 FastClaw Agent 配置不存在")
+    if skill_agent_config_id is not None:
+        if not db.query(SkillAgentConfig).filter(SkillAgentConfig.id == skill_agent_config_id).first():
+            raise HTTPException(status_code=400, detail="所选 Skill Agent 配置不存在")
 
 
 def _to_out(nc: NodeConfig) -> NodeConfigOut:
@@ -62,9 +77,11 @@ def _to_out(nc: NodeConfig) -> NodeConfigOut:
         llm_config_id=nc.llm_config_id,
         prompt_id=nc.prompt_id,
         agent_config_id=nc.agent_config_id,
+        skill_agent_config_id=nc.skill_agent_config_id,
         llm_config_name=nc.llm_config.name if nc.llm_config else None,
         prompt_name=nc.prompt.name if nc.prompt else None,
         agent_config_name=nc.agent_config.name if nc.agent_config else None,
+        skill_agent_config_name=nc.skill_agent_config.name if nc.skill_agent_config else None,
         agent_config_agent_name=nc.agent_config.agent_name if nc.agent_config else None,
         is_active=nc.is_active,
         created_at=nc.created_at,
@@ -107,8 +124,15 @@ def create_node_config(
         payload.llm_config_id is not None,
         payload.prompt_id is not None,
         payload.agent_config_id is not None,
+        payload.skill_agent_config_id is not None,
     )
-    _validate_refs(db, payload.llm_config_id, payload.prompt_id, payload.agent_config_id)
+    _validate_refs(
+        db,
+        payload.llm_config_id,
+        payload.prompt_id,
+        payload.agent_config_id,
+        payload.skill_agent_config_id,
+    )
     nc = NodeConfig(**payload.model_dump())
     db.add(nc)
     db.commit()
@@ -137,18 +161,21 @@ def update_node_config(
         "llm_config_id": nc.llm_config_id,
         "prompt_id": nc.prompt_id,
         "agent_config_id": nc.agent_config_id,
+        "skill_agent_config_id": nc.skill_agent_config_id,
         **data,
     }
     _validate_mode(
         merged.get("llm_config_id") is not None,
         merged.get("prompt_id") is not None,
         merged.get("agent_config_id") is not None,
+        merged.get("skill_agent_config_id") is not None,
     )
     _validate_refs(
         db,
         merged.get("llm_config_id"),
         merged.get("prompt_id"),
         merged.get("agent_config_id"),
+        merged.get("skill_agent_config_id"),
     )
     for key, value in data.items():
         setattr(nc, key, value)

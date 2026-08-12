@@ -13,6 +13,8 @@ import type {
   NodeConfigPayload,
   PromptTemplate,
   PromptTemplatePayload,
+  SkillAgentConfig,
+  SkillAgentConfigPayload,
   User,
   UserPayload,
 } from '../types';
@@ -66,6 +68,19 @@ export const adminService = {
     api.delete(`/admin/fastclaw-agents/${id}`),
   duplicateFastClawAgent: (id: number): Promise<FastClawAgentConfig> =>
     api.post<FastClawAgentConfig, FastClawAgentConfig>(`/admin/fastclaw-agents/${id}/duplicate`),
+
+  /* ---------------- Skill Agent 配置 ---------------- */
+
+  listSkillAgentConfigs: (): Promise<SkillAgentConfig[]> =>
+    api.get<SkillAgentConfig[], SkillAgentConfig[]>('/admin/skill-agent-configs'),
+  createSkillAgentConfig: (payload: SkillAgentConfigPayload): Promise<SkillAgentConfig> =>
+    api.post<SkillAgentConfig, SkillAgentConfig>('/admin/skill-agent-configs', payload),
+  updateSkillAgentConfig: (id: number, payload: Partial<SkillAgentConfigPayload>): Promise<SkillAgentConfig> =>
+    api.patch<SkillAgentConfig, SkillAgentConfig>(`/admin/skill-agent-configs/${id}`, payload),
+  deleteSkillAgentConfig: (id: number): Promise<{ message: string }> =>
+    api.delete(`/admin/skill-agent-configs/${id}`),
+  duplicateSkillAgentConfig: (id: number): Promise<SkillAgentConfig> =>
+    api.post<SkillAgentConfig, SkillAgentConfig>(`/admin/skill-agent-configs/${id}/duplicate`),
 
   /* ---------------- 提示词模板 ---------------- */
 

@@ -28,6 +28,7 @@ from app.models.user import User
 from app.models.node_config import NodeConfig
 from app.models.app_setting import AppSetting
 from app.models.fastclaw_agent_config import FastClawAgentConfig
+from app.models.skill_agent_config import SkillAgentConfig
 from app.models.book_cache import BookCache
 from app.modules.bookplate.node_types import (
     NODE_TEMPLATES,
@@ -41,6 +42,7 @@ from app.services.llm_service import (
     TextModelConfig,
     VisionModelConfig,
     LLMGenerationError,
+    _multimodal_messages,
 )
 from app.services.image_service import image_service, ImageModelConfig, ImageGenerationError
 from app.services.fastclaw_service import (
@@ -48,6 +50,16 @@ from app.services.fastclaw_service import (
     FastClawRuntimeConfig,
     FastClawAgentError,
     extract_image_url,
+)
+from app.services.skill_agent_service import (
+    run_skill_agent,
+    SkillRuntimeConfig,
+    SkillAgentError,
+    SkillValidationError,
+    list_installed_skills,
+    install_skill_zip,
+    resolve_skill_abs,
+    skills_dir,
 )
 from sse_starlette.sse import EventSourceResponse
 
@@ -348,6 +360,9 @@ class ChatRequest(BaseModel):
     node_id: Optional[str] = None
     # 对话纪元：清空对话后递增，让 FastClaw 服务端会话随之重置（多轮语义正确性）
     epoch: int = 0
+    # Skill Agent 模式：上游「Skill 检索」节点选中的 skill 名称列表；
+    # 非空时仅加载这些 skill（空 = 加载该用户工作区全部已安装 skill）
+    skills: List[str] = []
 
 
 def _decode_uploaded_image(data_url: str) -> Optional[bytes]:
@@ -444,6 +459,26 @@ def _agent_config_from(
         api_key=nc.agent_config.api_key,
         agent_id=nc.agent_config.agent_id or "",
         end_user=f"bookplate-{user_id}",
+    )
+
+
+def _skill_agent_config_from(
+    nc: Optional[NodeConfig], user_id: int
+) -> Optional[SkillRuntimeConfig]:
+    """从节点配置解析 Skill Agent 运行时配置（未绑定/未启用/无 Key 则 None）。"""
+    if (
+        not nc
+        or not nc.skill_agent_config
+        or not nc.skill_agent_config.is_active
+        or not nc.skill_agent_config.api_key
+    ):
+        return None
+    return SkillRuntimeConfig(
+        base_url=nc.skill_agent_config.base_url or "",
+        api_key=nc.skill_agent_config.api_key,
+        model_name=nc.skill_agent_config.model_name or "",
+        system_prompt=nc.skill_agent_config.system_prompt or "",
+        user_id=user_id,
     )
 
 
@@ -702,7 +737,12 @@ async def get_node_registry(
     for nc in configs:
         if not nc.is_active or nc.node_type not in {t["type"] for t in NODE_TEMPLATES}:
             continue
-        mode = "agent" if _agent_config_from(nc, current_user.id) else "llm"
+        if _skill_agent_config_from(nc, current_user.id):
+            mode = "skill_agent"
+        elif _agent_config_from(nc, current_user.id):
+            mode = "agent"
+        else:
+            mode = "llm"
         items.append(
             {
                 "id": nc.id,
@@ -715,6 +755,9 @@ async def get_node_registry(
                     nc.agent_config.agent_name or nc.agent_config.name
                     if nc.agent_config
                     else None
+                ),
+                "skill_agent_config_name": (
+                    nc.skill_agent_config.name if nc.skill_agent_config else None
                 ),
                 "llm_config_name": nc.llm_config.name if nc.llm_config else None,
                 "is_active": nc.is_active,
@@ -875,17 +918,51 @@ async def chat(
     """AI 对话节点：多轮对话，SSE 流式返回助手回复。
 
     执行模式由该节点的节点配置决定：
-    - 绑定 Agent：以 node_id 派生确定性会话 key，交给 FastClaw 服务端维护多轮历史，
+    - 绑定 Skill Agent：openai-agents-python 多步执行（skill 工具调用），
+      流式透传 content_delta（映射为 message 事件）+ 中间步骤 + agent_file 事件；
+    - 绑定 FastClaw Agent：以 node_id 派生确定性会话 key，交给 FastClaw 服务端维护多轮历史，
       流式透传 content_delta（映射为 message 事件）+ 中间步骤（工具调用/状态）；
     - 绑定模型：多轮流式调用 LLM（messages 数组，system 提示词来自绑定的提示词模板）；
     - 未绑定配置：回退环境变量 / Mock。
     """
     nc = _resolve_node_config(db, payload.config_id, NODE_CHAT)
+    skill_agent_config = _skill_agent_config_from(nc, current_user.id)
     agent_config = _agent_config_from(nc, current_user.id)
     text_config = _text_config_from(nc)
 
     if await request.is_disconnected():
         raise HTTPException(status_code=499, detail="客户端已断开连接")
+
+    if skill_agent_config:
+        async def skill_chat_generator():
+            try:
+                # Skill Agent 以 messages（OpenAI 格式完整历史）驱动多步执行；
+                # 图片经 _multimodal_messages 转为多模态 content（与 LLM 模式一致）；
+                # skills 为上游 Skill 检索节点选中的 skill 名（空 = 全部已装 skill）
+                async for evt in run_skill_agent(
+                    skill_agent_config,
+                    _multimodal_messages(payload.messages or []),
+                    skills=payload.skills or None,
+                ):
+                    if await request.is_disconnected():
+                        break
+                    sse = _sse_from_agent_event(evt, content_event="message")
+                    if sse:
+                        yield sse
+                        continue
+                    # agent_file 事件：skill 执行产生的文件（图片缩略 + 下载）
+                    if evt.get("type") == "agent_file":
+                        yield {
+                            "event": "agent_file",
+                            "data": json.dumps(
+                                evt.get("data", {}), ensure_ascii=False
+                            ),
+                        }
+            except SkillAgentError as exc:
+                if not await request.is_disconnected():
+                    yield {"event": "error", "data": str(exc)}
+
+        return EventSourceResponse(skill_chat_generator())
 
     if agent_config:
         session_key = _agent_session_key(current_user.id, payload.node_id, payload.epoch)
@@ -1011,3 +1088,159 @@ async def generate_bookplate_image(
         )
     except ImageGenerationError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# Skill 工作区（Skill Agent 的 skill 来源）
+# ---------------------------------------------------------------------------
+
+class SkillInstallRequest(BaseModel):
+    """从 Bifrost 安装 skill：按 skill 的 name（非 id）下载 zip 并安装到用户工作区。"""
+
+    name: str
+
+
+@router.get("/skills")
+async def list_user_skills(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """列出当前用户工作区已安装的 skill（含 name/description/文件树）。"""
+    return {"skills": list_installed_skills(current_user.id)}
+
+
+@router.get("/skills/bifrost-search")
+async def search_skills(
+    q: str = "",
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """检索 Bifrost Skills 仓库（普通用户可用，供 Skill 检索节点 / Skill Agent 管理弹层）。"""
+    from app.services.bifrost_service import (
+        BifrostError,
+        BifrostNotConfiguredError,
+        search_bifrost_skills,
+    )
+
+    try:
+        skills = await search_bifrost_skills(db, q=q, limit=limit)
+    except BifrostNotConfiguredError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except BifrostError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {"skills": skills}
+
+
+@router.post("/skills/install")
+async def install_bifrost_skill(
+    payload: SkillInstallRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """从 Bifrost 下载 skill zip 并安装到当前用户工作区（校验 SKILL.md 结构）。"""
+    from app.services.bifrost_service import (
+        BifrostError,
+        BifrostNotConfiguredError,
+        BifrostNotFoundError,
+        download_bifrost_skill_zip,
+    )
+
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="skill 名称不能为空")
+    try:
+        zip_bytes = await download_bifrost_skill_zip(db, name)
+    except BifrostNotConfiguredError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except BifrostNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except BifrostError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    if not zip_bytes or len(zip_bytes) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="skill 压缩包为空或超过 20MB 上限")
+    try:
+        meta = install_skill_zip(current_user.id, zip_bytes)
+    except SkillValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return meta
+
+
+@router.post("/skills/upload")
+async def upload_skill_zip(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """上传本地 skill zip 并安装到当前用户工作区。
+
+    校验：zip 根目录必须有 SKILL.md，且 SKILL.md 开头必须有 name / description
+    的 YAML frontmatter；不合法返回 400 及中文原因。
+    """
+    try:
+        form = await request.form()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"表单解析失败: {exc}") from exc
+    file = form.get("file")
+    if not file or not hasattr(file, "read"):
+        raise HTTPException(status_code=400, detail="缺少上传文件（字段名 file）")
+    try:
+        zip_bytes = await file.read()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"读取上传文件失败: {exc}") from exc
+    if not zip_bytes or len(zip_bytes) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="文件为空或超过 20MB 上限")
+    try:
+        meta = install_skill_zip(current_user.id, zip_bytes)
+    except SkillValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return meta
+
+
+@router.delete("/skills/{skill_name}")
+async def remove_user_skill(
+    skill_name: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """从用户工作区移除一个已安装的 skill。"""
+    import shutil
+
+    from app.services.skill_agent_service import skills_dir as _skills_dir
+
+    # skill 名称即顶层目录名：拒绝路径分隔符，防止误删嵌套路径
+    if not skill_name or "/" in skill_name or "\\" in skill_name:
+        raise HTTPException(status_code=400, detail="非法 skill 名称")
+    d = _skills_dir(current_user.id)
+    target = (d / skill_name).resolve()
+    if d != target and d not in target.parents:
+        raise HTTPException(status_code=400, detail="非法路径")
+    if not target.exists():
+        raise HTTPException(status_code=404, detail="skill 不存在")
+    shutil.rmtree(target)
+    return {"message": f"已移除 skill：{skill_name}"}
+
+
+@router.get("/skill-files")
+async def get_skill_file(
+    path: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """下载 skill 执行产生的文件（工作区内相对路径）。
+
+    鉴权：仅当前登录用户可访问自己工作区的文件；
+    路径防护：resolve 后必须位于该用户工作区根目录内，拒绝 ../ 越界。
+    用于 ChatNode 的文件卡片下载与图片缩略图（前端 fetch 带 token → blob）。
+    """
+    from fastapi.responses import FileResponse
+
+    target = resolve_skill_abs(current_user.id, path)
+    if target is None or not target.is_file():
+        raise HTTPException(status_code=404, detail="文件不存在")
+    return FileResponse(
+        str(target),
+        media_type="application/octet-stream",
+        filename=target.name,
+    )

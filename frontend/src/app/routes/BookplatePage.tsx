@@ -69,6 +69,7 @@ import type {
   NodeRunSettings,
   PromptSelection,
   RegistryNodeConfig,
+  SkillSelection,
 } from '../../platform/types';
 
 const BookplatePage: React.FC = () => {
@@ -595,6 +596,16 @@ const BookplatePage: React.FC = () => {
         };
       case 'prompt_search':
         return { promptId: null, promptName: '', content: '', promptImage: null, error: null };
+      case 'skill_search':
+        return {
+          skillName: null,
+          skillDescription: '',
+          skillFiles: [],
+          skillBody: '',
+          skillPath: '',
+          skillSource: null,
+          error: null,
+        };
     }
   };
 
@@ -687,9 +698,11 @@ const BookplatePage: React.FC = () => {
             label: c.name,
             description: c.agent_name
               ? `Agent · ${c.agent_name}`
-              : c.llm_config_name
-                ? `模型 · ${c.llm_config_name}`
-                : t.description,
+              : c.skill_agent_config_name
+                ? `Skill Agent · ${c.skill_agent_config_name}`
+                : c.llm_config_name
+                  ? `模型 · ${c.llm_config_name}`
+                  : t.description,
             configId: c.id,
             group: c.group ?? undefined,
             groupOrder: c.group_order ?? 0,
@@ -1108,6 +1121,34 @@ const BookplatePage: React.FC = () => {
     if (reason) showToast(reason, { type: 'warning', position: 'top-right' });
   }, []);
 
+  /** Skill 检索节点：选用 / 安装一个 skill（写入 data；未变化不记历史） */
+  const handleUpdateSkillFor = useCallback(
+    (id: string, selection: SkillSelection) => {
+      const node = nodesRef.current.find((n) => n.id === id);
+      if (!node || node.type !== 'skill_search') return;
+      const old = {
+        skillName: node.data?.skillName ?? null,
+        skillDescription: node.data?.skillDescription ?? '',
+        skillFiles: node.data?.skillFiles ?? [],
+        skillBody: node.data?.skillBody ?? '',
+        skillPath: node.data?.skillPath ?? '',
+        skillSource: node.data?.skillSource ?? null,
+      };
+      const next = {
+        skillName: selection.name ?? old.skillName,
+        skillDescription: selection.description ?? old.skillDescription,
+        skillFiles: selection.files ?? old.skillFiles,
+        skillBody: selection.body ?? old.skillBody,
+        skillPath: selection.path ?? old.skillPath,
+        skillSource: selection.source ?? old.skillSource,
+      };
+      if (JSON.stringify(old) === JSON.stringify(next)) return;
+      recordHistory();
+      updateNodeData(id, next);
+    },
+    []
+  );
+
   /** 提示词检索节点：选用一条 Bifrost 提示词（正文写入 data.content；未变化不记历史） */
   const handleUpdatePromptFor = useCallback(
     (id: string, selection: PromptSelection) => {
@@ -1398,6 +1439,7 @@ const BookplatePage: React.FC = () => {
     handleImageChangeFor,
     handleSendChatFor,
     handleUpdatePromptFor,
+    handleUpdateSkillFor,
     handleUpdateAggregateTemplateFor,
     handleRenameAggregatePlaceholderFor,
     handleUpdateChatSettingsFor,

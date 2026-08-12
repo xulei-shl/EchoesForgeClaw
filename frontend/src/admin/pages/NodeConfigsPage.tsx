@@ -20,6 +20,7 @@ import type {
   LLMConfig,
   NodeConfig,
   PromptTemplate,
+  SkillAgentConfig,
 } from '../../platform/types';
 import { Button } from '../../platform/components/ui/Button';
 import { Dialog } from '../../platform/components/ui/Dialog';
@@ -30,6 +31,7 @@ import { Badge } from '../../platform/components/ui/Badge';
 import { FieldLabel, PageHeader } from '../components/AdminBits';
 import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
 import { NODE_TEMPLATES, NODE_PORT_TYPES, PORT_TYPE_LABELS, CATEGORY_LABELS } from '../../modules/bookplate/nodeTypes';
+import { Sparkles } from 'lucide-react';
 
 /** 模型类型短标签（下拉选项展示） */
 const KIND_SHORT_LABEL: Record<string, string> = {
@@ -53,11 +55,12 @@ interface FormState {
   name: string;
   /** 可选自定义分组（画板「+」菜单分组展示） */
   group: string;
-  /** 模式：llm（提示词 + 大模型）/ agent（FastClaw Agent） */
-  mode: 'llm' | 'agent';
+  /** 模式：llm（提示词 + 大模型）/ agent（FastClaw Agent）/ skill_agent（Skill Agent） */
+  mode: 'llm' | 'agent' | 'skill_agent';
   llm_config_id: number | '';
   prompt_id: number | '';
   agent_config_id: number | '';
+  skill_agent_config_id: number | '';
   is_active: boolean;
 }
 
@@ -76,6 +79,7 @@ const EMPTY_FORM: FormState = {
   llm_config_id: '',
   prompt_id: '',
   agent_config_id: '',
+  skill_agent_config_id: '',
   is_active: true,
 };
 
@@ -84,6 +88,7 @@ export const NodeConfigsPage: React.FC = () => {
   const [llmConfigs, setLlmConfigs] = useState<LLMConfig[]>([]);
   const [prompts, setPrompts] = useState<PromptTemplate[]>([]);
   const [fastclawAgents, setFastclawAgents] = useState<FastClawAgentConfig[]>([]);
+  const [skillAgentConfigs, setSkillAgentConfigs] = useState<SkillAgentConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -98,16 +103,18 @@ export const NodeConfigsPage: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      const [nodeRes, llmRes, promptRes, agentRes] = await Promise.all([
+      const [nodeRes, llmRes, promptRes, agentRes, skillRes] = await Promise.all([
         adminService.listNodeConfigs(),
         adminService.listLlmConfigs(),
         adminService.listPrompts(),
         adminService.listFastClawAgents(),
+        adminService.listSkillAgentConfigs(),
       ]);
       setItems(nodeRes);
       setLlmConfigs(llmRes);
       setPrompts(promptRes);
       setFastclawAgents(agentRes);
+      setSkillAgentConfigs(skillRes);
     } catch (e: any) {
       setError(e?.message || '加载失败，请重试');
     } finally {
@@ -156,10 +163,15 @@ export const NodeConfigsPage: React.FC = () => {
       node_type: nc.node_type,
       name: nc.name,
       group: nc.group ?? '',
-      mode: nc.agent_config_id ? 'agent' : 'llm',
+      mode: nc.skill_agent_config_id
+        ? 'skill_agent'
+        : nc.agent_config_id
+          ? 'agent'
+          : 'llm',
       llm_config_id: nc.llm_config_id ?? '',
       prompt_id: nc.prompt_id ?? '',
       agent_config_id: nc.agent_config_id ?? '',
+      skill_agent_config_id: nc.skill_agent_config_id ?? '',
       is_active: nc.is_active,
     });
     setFormError('');
@@ -182,6 +194,10 @@ export const NodeConfigsPage: React.FC = () => {
         llm_config_id: form.mode === 'llm' && form.llm_config_id !== '' ? Number(form.llm_config_id) : null,
         prompt_id: form.mode === 'llm' && form.prompt_id !== '' ? Number(form.prompt_id) : null,
         agent_config_id: form.mode === 'agent' && form.agent_config_id !== '' ? Number(form.agent_config_id) : null,
+        skill_agent_config_id:
+          form.mode === 'skill_agent' && form.skill_agent_config_id !== ''
+            ? Number(form.skill_agent_config_id)
+            : null,
         is_active: form.is_active,
       };
       if (editing) {
@@ -401,8 +417,8 @@ export const NodeConfigsPage: React.FC = () => {
         }
       >
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* 模式互斥选择：提示词+大模型 / Agent */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* 模式互斥选择：提示词+大模型 / FastClaw Agent / Skill Agent */}
+          <div className="grid grid-cols-3 gap-3">
             <button
               type="button"
               onClick={() => setForm({ ...form, mode: 'llm', agent_config_id: '' })}
@@ -433,6 +449,23 @@ export const NodeConfigsPage: React.FC = () => {
               </p>
               <p className="text-xs text-ink-faint font-sans mt-1">调用 FastClaw Agent（工具/思考）</p>
             </button>
+            <button
+              type="button"
+              onClick={() =>
+                setForm({ ...form, mode: 'skill_agent', llm_config_id: '', prompt_id: '', agent_config_id: '' })
+              }
+              className={`rounded-md border p-3 text-left transition-all active:scale-[0.96] ${
+                form.mode === 'skill_agent'
+                  ? 'border-accent/60 bg-accent-surface ring-1 ring-accent/40'
+                  : 'border-paper-grid hover:border-paper-grid/70 hover:bg-paper-grid/20'
+              }`}
+            >
+              <p className={`text-sm font-medium font-sans ${form.mode === 'skill_agent' ? 'text-accent' : 'text-ink'}`}>
+                <Sparkles size={13} strokeWidth={1.5} className="inline mr-1 -mt-0.5" />
+                Skill Agent
+              </p>
+              <p className="text-xs text-ink-faint font-sans mt-1">openai-agents 多步执行（skill 工具）</p>
+            </button>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
@@ -456,6 +489,7 @@ export const NodeConfigsPage: React.FC = () => {
                     prompt_id: '',
                     llm_config_id: '',
                     agent_config_id: '',
+                    skill_agent_config_id: '',
                   })
                 }
                 options={configurableTemplates.map((t) => ({
@@ -505,7 +539,36 @@ export const NodeConfigsPage: React.FC = () => {
                 留空则按节点模板类型分组展示
               </p>
             </div>
-            {form.mode === 'agent' ? (
+            {form.mode === 'skill_agent' ? (
+              <div className="space-y-1.5 sm:col-span-2">
+                <FieldLabel>Skill Agent 配置</FieldLabel>
+                <Select
+                  value={String(form.skill_agent_config_id || '')}
+                  onChange={(val) => setForm({ ...form, skill_agent_config_id: val === '' ? '' : Number(val) })}
+                  options={[
+                    { label: '请选择 Skill Agent 配置', value: '' },
+                    ...skillAgentConfigs
+                      .filter((a) => a.is_active)
+                      .map((a) => ({ label: a.name, value: String(a.id) })),
+                  ]}
+                />
+                <AnimatePresence initial={false}>
+                  {skillAgentConfigs.filter((a) => a.is_active).length === 0 && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="overflow-hidden"
+                    >
+                      <p className="text-xs text-ink-faint font-sans pt-1.5">
+                        暂无启用的 Skill Agent 配置，可先在「Skill Agent」中创建
+                      </p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            ) : form.mode === 'agent' ? (
               <div className="space-y-1.5 sm:col-span-2">
                 <FieldLabel>FastClaw Agent</FieldLabel>
                 <Select
@@ -754,7 +817,15 @@ export const NodeConfigsPage: React.FC = () => {
                               {nc.is_active ? '启用' : '停用'}
                             </Badge>
                           </div>
-                          {nc.agent_config_id ? (
+                          {nc.skill_agent_config_id ? (
+                            <div className="mt-2 flex items-center gap-2 flex-wrap text-sm font-sans">
+                              <span className="inline-flex items-center gap-1.5 text-accent">
+                                <Sparkles size={14} strokeWidth={1.5} />
+                                <span className="text-ink-faint text-xs">Skill Agent 模式</span>
+                                {nc.skill_agent_config_name ?? <span className="text-ink-faint">未命名配置</span>}
+                              </span>
+                            </div>
+                          ) : nc.agent_config_id ? (
                             <div className="mt-2 flex items-center gap-2 flex-wrap text-sm font-sans">
                               <span className="inline-flex items-center gap-1.5 text-accent">
                                 <Bot size={14} strokeWidth={1.5} />
