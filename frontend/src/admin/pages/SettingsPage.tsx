@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import {
+  Check,
   ChevronDown,
   ChevronRight,
   Loader2,
@@ -7,10 +8,11 @@ import {
   Plus,
   RefreshCw,
   Settings as SettingsIcon,
+  ShieldCheck,
   Trash2,
 } from 'lucide-react';
 import { adminService } from '../../platform/services/admin';
-import type { AppSetting } from '../../platform/types';
+import type { AppSetting, BifrostFolder } from '../../platform/types';
 import { Button } from '../../platform/components/ui/Button';
 import { Input } from '../../platform/components/ui/Input';
 import { Card } from '../../platform/components/ui/Card';
@@ -60,6 +62,13 @@ export const SettingsPage: React.FC = () => {
   const [formError, setFormError] = useState('');
   const { dialog, showToast } = useFeedback();
 
+  // Bifrost 白名单文件夹（bitfrost.allowed_folders）专用配置 UI
+  const [bifrostFolders, setBifrostFolders] = useState<BifrostFolder[]>([]);
+  const [wlOpen, setWlOpen] = useState(false);
+  const [wlSelected, setWlSelected] = useState<Set<string>>(new Set());
+  const [wlSaving, setWlSaving] = useState(false);
+  const [wlLoadError, setWlLoadError] = useState('');
+
   const grouped = useMemo(() => {
     const groups: {
       key: string;
@@ -102,9 +111,34 @@ export const SettingsPage: React.FC = () => {
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
+    setWlLoadError('');
     try {
-      const res = await adminService.listSettings();
+      const [res, folderRes] = await Promise.all([
+        adminService.listSettings(),
+        adminService
+          .listBifrostFolders({ all: true })
+          .catch((e: any) => {
+            setWlLoadError(e?.message || 'Bifrost 未配置或不可用');
+            return null;
+          }),
+      ]);
       setItems(res);
+      const folders = folderRes?.folders ?? [];
+      setBifrostFolders(folders);
+      // 同步白名单回显（卡片与弹窗共用同一状态）
+      const raw = (res.find((s) => s.key === 'bitfrost.allowed_folders')?.value || '')
+        .split(',')
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean);
+      const selected = new Set<string>();
+      if (raw.length) {
+        for (const f of folders) {
+          if (raw.includes(String(f.id).toLowerCase()) || raw.includes((f.name || '').toLowerCase())) {
+            selected.add(f.id);
+          }
+        }
+      }
+      setWlSelected(selected);
     } catch (e: any) {
       setError(e?.message || '加载失败，请重试');
     } finally {
@@ -156,6 +190,64 @@ export const SettingsPage: React.FC = () => {
       setFormError(err?.message || '保存失败，请重试');
     } finally {
       setSaving(false);
+    }
+  };
+
+  /** 打开白名单编辑：回显当前设置值（兼容 ID 或名称） */
+  const openWhitelistEditor = async () => {
+    try {
+      const res = await adminService.listSettings();
+      const raw = (res.find((s) => s.key === 'bitfrost.allowed_folders')?.value || '')
+        .split(',')
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean);
+      const selected = new Set<string>();
+      if (raw.length) {
+        for (const f of bifrostFolders) {
+          if (raw.includes(String(f.id).toLowerCase()) || raw.includes((f.name || '').toLowerCase())) {
+            selected.add(f.id);
+          }
+        }
+      }
+      setWlSelected(selected);
+      setWlOpen(true);
+    } catch (e: any) {
+      showToast(e?.message || '加载白名单失败', { type: 'error' });
+    }
+  };
+
+  const toggleWhitelist = (folderId: string) => {
+    setWlSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(folderId)) {
+        next.delete(folderId);
+      } else {
+        next.add(folderId);
+      }
+      return next;
+    });
+  };
+
+  const saveWhitelist = async () => {
+    setWlSaving(true);
+    try {
+      const ids = [...wlSelected];
+      // createSetting 为 upsert 语义：键不存在时创建、存在时覆盖（修复「配置项不存在」）
+      await adminService.createSetting({
+        key: 'bitfrost.allowed_folders',
+        value: ids.join(','),
+        description:
+          'Bifrost 白名单文件夹（逗号分隔的文件夹 ID；留空 = 允许全部；仅白名单内的提示词出现在管理页与画布检索列表）',
+      });
+      showToast(ids.length ? `已保存白名单：${ids.length} 个文件夹` : '已清空白名单（允许全部）', {
+        type: 'success',
+      });
+      setWlOpen(false);
+      load();
+    } catch (e: any) {
+      showToast(e?.message || '保存白名单失败，请重试', { type: 'error' });
+    } finally {
+      setWlSaving(false);
     }
   };
 
@@ -315,7 +407,45 @@ export const SettingsPage: React.FC = () => {
                   </button>
                   {!isCollapsed && (
                     <div className="space-y-3">
-                      {group.configs.map((s) => (
+                      {/* bitfrost 分组：白名单文件夹专用配置卡片（普通 KV 行隐藏，避免重复） */}
+                      {group.key === 'group:bitfrost' && (
+                        <Card className="p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-mono text-sm text-accent border border-dashed border-accent/40 bg-accent/5 rounded-pill px-2.5 py-0.5">
+                                  bitfrost.allowed_folders
+                                </span>
+                                <ShieldCheck size={14} strokeWidth={1.5} className="text-accent" />
+                              </div>
+                              <p className="mt-2 text-sm text-ink font-sans">
+                                {wlSelected.size > 0
+                                  ? `当前白名单：${bifrostFolders
+                                      .filter((f) => wlSelected.has(f.id))
+                                      .map((f) => f.name)
+                                      .join('、') || '已选择但文件夹不可用'}`
+                                  : '未配置（允许全部文件夹）'}
+                              </p>
+                              <p className="mt-1 text-xs text-ink-light font-sans">
+                                仅白名单文件夹下的提示词出现在 Bifrost 管理页与画布检索列表
+                              </p>
+                              {wlLoadError && (
+                                <p className="mt-1 text-xs text-error font-sans">{wlLoadError}</p>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => void openWhitelistEditor()}
+                              title="编辑白名单"
+                              className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-95"
+                            >
+                              <Pencil size={15} strokeWidth={1.5} />
+                            </button>
+                          </div>
+                        </Card>
+                      )}
+                      {group.configs
+                        .filter((s) => !(group.key === 'group:bitfrost' && s.key === 'bitfrost.allowed_folders'))
+                        .map((s) => (
                           <Card key={s.id} className="p-4">
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0 flex-1">
@@ -366,6 +496,61 @@ export const SettingsPage: React.FC = () => {
           )}
         </div>
       )}
+
+      {/* Bifrost 白名单文件夹多选弹窗 */}
+      <Dialog
+        open={wlOpen}
+        onClose={() => setWlOpen(false)}
+        title="Bifrost 白名单文件夹"
+        panelClassName="max-w-md"
+      >
+        <div className="space-y-3">
+          <p className="text-xs text-ink-light font-sans">
+            勾选后仅这些文件夹下的提示词会出现在 Bifrost 管理页与画布检索列表；不选 = 允许全部
+          </p>
+          <div className="max-h-72 overflow-y-auto border border-dashed border-paper-grid rounded-md p-1">
+            {bifrostFolders.length === 0 ? (
+              <p className="py-6 text-center text-sm text-ink-faint font-sans">
+                {wlLoadError ? wlLoadError : '未获取到文件夹（请确认 Bifrost 已配置）'}
+              </p>
+            ) : (
+              bifrostFolders.map((f) => {
+                const checked = wlSelected.has(f.id);
+                return (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => toggleWhitelist(f.id)}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-left rounded hover:bg-paper-grid/40 transition-colors"
+                  >
+                    <span
+                      className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center transition-colors ${
+                        checked ? 'bg-accent border-accent text-white' : 'border-paper-grid text-transparent'
+                      }`}
+                    >
+                      <Check size={12} strokeWidth={2.5} />
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">{f.name}</span>
+                    {typeof f.prompts_count === 'number' && (
+                      <span className="shrink-0 text-[10px] text-ink-faint font-mono tabular-nums">
+                        {f.prompts_count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })
+            )}
+          </div>
+          <div className="flex justify-end gap-3 pt-2 border-t border-dashed border-paper-grid">
+            <Button type="button" variant="ghost" size="sm" onClick={() => setWlOpen(false)}>
+              取消
+            </Button>
+            <Button type="button" size="sm" isLoading={wlSaving} onClick={() => void saveWhitelist()}>
+              保存
+            </Button>
+          </div>
+        </div>
+      </Dialog>
 
     </div>
   );
