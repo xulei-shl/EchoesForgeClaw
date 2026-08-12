@@ -84,7 +84,6 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
   footer,
   onContextMenu,
   group,
-  hasDownstream,
   mismatchBadge,
 }) => {
   const [draft, setDraft] = useState('');

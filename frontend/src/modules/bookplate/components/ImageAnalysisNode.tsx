@@ -55,7 +55,6 @@ export interface ImageAnalysisNodeProps {
   hasBookInfo?: boolean;
   /** 标题旁的类型不匹配提示 */
   mismatchBadge?: string | null;
-  /** 是否有下级关联节点 */
   hasDownstream?: boolean;
 }
 
@@ -81,7 +80,6 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
   onUpdateSettings,
   hasBookInfo,
   mismatchBadge,
-  hasDownstream,
 }) => {
   const { showToast } = useFeedback();
   // 本次会话上传的参考图（base64 data URL，仅存内存）

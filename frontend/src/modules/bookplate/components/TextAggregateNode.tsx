@@ -32,7 +32,6 @@ export interface TextAggregateNodeProps {
   onDrag?: (id: string, x: number, y: number) => void;
   footer?: React.ReactNode;
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
-  /** 是否有下级关联节点 */
   hasDownstream?: boolean;
   /** 入边端口类型不匹配数徽标（如「类型不匹配 ×1」） */
   mismatchBadge?: string | null;
@@ -57,7 +56,6 @@ const TextAggregateNodeInner: React.FC<TextAggregateNodeProps> = ({
   onDrag,
   footer,
   onContextMenu,
-  hasDownstream,
   mismatchBadge,
   portTypesOf,
 }) => {
