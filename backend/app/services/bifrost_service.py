@@ -118,7 +118,11 @@ def _require_config(db) -> BifrostAuthConfig:
 
 
 async def _get_json(
-    config: BifrostAuthConfig, path: str, params: Optional[Dict[str, Any]] = None
+    config: BifrostAuthConfig,
+    path: str,
+    params: Optional[Dict[str, Any]] = None,
+    *,
+    raw: bool = False,
 ) -> Any:
     try:
         async with httpx.AsyncClient(
@@ -135,9 +139,23 @@ async def _get_json(
         detail = resp.text[:300] if resp.text else ""
         raise BifrostError(f"Bifrost API 返回 HTTP {resp.status_code}: {detail}")
     try:
-        return resp.json()
+        data = resp.json()
     except ValueError:
         raise BifrostError("Bifrost 返回了非 JSON 响应")
+    # Bifrost 部分错误以 HTTP 200 + is_bifrost_error 标记返回（网关形态）：
+    # 不能当作成功数据解析，否则列表/详情会静默得到空内容。
+    # raw=true（调试透传）时跳过该检查，让调用方看到 Bifrost 的真实返回。
+    if not raw and isinstance(data, dict) and data.get("is_bifrost_error"):
+        # 包络内带 404 语义（如提示词已删除）时映射为 BifrostNotFoundError
+        if data.get("status_code") == 404:
+            raise BifrostNotFoundError("Bifrost 资源不存在（可能已被删除）")
+        err = data.get("error") or {}
+        message = err.get("message") if isinstance(err, dict) else ""
+        raise BifrostError(
+            message
+            or f"Bifrost 返回错误: {data.get('type') or data.get('status_code') or '未知'}"
+        )
+    return data
 
 
 def _as_list(payload: Any, key: str) -> List[Dict[str, Any]]:
@@ -309,6 +327,26 @@ async def list_prompts(
                 continue
         items.append(item)
     return items
+
+
+async def get_prompt_raw(db, prompt_id: str) -> Any:
+    """获取单个提示词的 Bifrost 原始响应（调试用，管理端 raw=true 透传）。
+
+    raw 透传不做错误包络判断——调试目的就是看 Bifrost 真实返回了什么。
+    """
+    config = _require_config(db)
+    return await _get_json(config, f"/api/prompt-repo/prompts/{prompt_id}", raw=True)
+
+
+async def list_prompts_raw(db, folder_id: Optional[str] = None) -> Any:
+    """获取提示词列表的 Bifrost 原始响应（调试用，管理端 raw=true 透传）。
+
+    raw 透传不做错误包络判断——调试目的就是看 Bifrost 真实返回了什么。
+    注意：raw 透传时忽略关键词 q（管理端调试场景不参与内容过滤）。
+    """
+    config = _require_config(db)
+    params = {"folder_id": folder_id} if folder_id else None
+    return await _get_json(config, "/api/prompt-repo/prompts", params=params, raw=True)
 
 
 async def get_prompt(db, prompt_id: str) -> Dict[str, Any]:

@@ -98,6 +98,9 @@ export const adminService = {
     api.get<{ prompts: BifrostPrompt[] }, { prompts: BifrostPrompt[] }>('/admin/bifrost/prompts', { params }),
   getBifrostPrompt: (promptId: string): Promise<BifrostPrompt> =>
     api.get<BifrostPrompt, BifrostPrompt>(`/admin/bifrost/prompts/${encodeURIComponent(promptId)}`),
+  /** 调试：Bifrost 原始响应（raw=true 透传，排查正文提取 / 数据结构问题） */
+  getBifrostPromptRaw: (promptId: string): Promise<unknown> =>
+    api.get<unknown, unknown>(`/admin/bifrost/prompts/${encodeURIComponent(promptId)}?raw=true`),
   /** 上传 / 更换提示词预览图（multipart，axios 自动设置 boundary） */
   uploadBifrostPreview: (promptId: string, file: File): Promise<{ preview_image: string }> => {
     const form = new FormData();

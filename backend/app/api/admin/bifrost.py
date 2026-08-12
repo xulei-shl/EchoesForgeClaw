@@ -17,8 +17,10 @@ from app.services.bifrost_service import (
     PREVIEW_PREFIX,
     detect_image_ext,
     get_prompt,
+    get_prompt_raw,
     list_folders,
     list_prompts,
+    list_prompts_raw,
     sanitize_prompt_id,
 )
 
@@ -50,11 +52,17 @@ async def list_bifrost_folders(
 async def list_bifrost_prompts(
     folder_id: Optional[str] = None,
     q: str = "",
+    raw: bool = False,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_admin_user),
 ):
-    """Bifrost 提示词列表（可选 folder_id / 关键词 q 过滤），合并本地预览图。"""
+    """Bifrost 提示词列表（可选 folder_id / 关键词 q 过滤），合并本地预览图。
+
+    raw=true 时直接透传 Bifrost 原始响应（调试用，排查正文提取问题）。
+    """
     try:
+        if raw:
+            return await list_prompts_raw(db, folder_id=folder_id or None)
         prompts = await list_prompts(db, folder_id=folder_id or None, q=q)
     except BifrostError as exc:
         raise _bifrost_error_http(exc)
@@ -64,11 +72,17 @@ async def list_bifrost_prompts(
 @router.get("/prompts/{prompt_id}")
 async def get_bifrost_prompt(
     prompt_id: str,
+    raw: bool = False,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_admin_user),
 ):
-    """Bifrost 提示词详情（含提取的正文文本与本地预览图）。"""
+    """Bifrost 提示词详情（含提取的正文文本与本地预览图）。
+
+    raw=true 时直接透传 Bifrost 原始响应（调试用，排查正文提取问题）。
+    """
     try:
+        if raw:
+            return await get_prompt_raw(db, prompt_id)
         return await get_prompt(db, prompt_id)
     except BifrostError as exc:
         raise _bifrost_error_http(exc)

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   BookOpen,
+  Braces,
   ImageOff,
   Loader2,
   RefreshCw,
@@ -31,6 +32,9 @@ export const BifrostPromptsPage: React.FC = () => {
 
   const [detail, setDetail] = useState<BifrostPrompt | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [rawOpen, setRawOpen] = useState(false);
+  const [rawData, setRawData] = useState<string>('');
+  const [rawLoading, setRawLoading] = useState(false);
   const [hoverPreview, setHoverPreview] = useState<{ x: number; y: number; url: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { dialog, showToast } = useFeedback();
@@ -99,6 +103,24 @@ export const BifrostPromptsPage: React.FC = () => {
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const toggleRaw = async () => {
+    if (!detail) return;
+    if (rawOpen) {
+      setRawOpen(false);
+      return;
+    }
+    setRawLoading(true);
+    try {
+      const raw = await adminService.getBifrostPromptRaw(detail.id);
+      setRawData(JSON.stringify(raw, null, 2));
+      setRawOpen(true);
+    } catch (e: any) {
+      showToast(e?.message || '获取原始响应失败', { type: 'error' });
+    } finally {
+      setRawLoading(false);
     }
   };
 
@@ -220,7 +242,14 @@ export const BifrostPromptsPage: React.FC = () => {
                 <Card
                   key={p.id}
                   className="p-3 cursor-pointer transition hover:shadow-md active:scale-[0.99]"
-                  onClick={() => setDetail(p)}
+                  onClick={() => {
+                    // 切换详情时重置原始响应调试区，避免展示上一个提示词的残留数据
+                    if (detail?.id !== p.id) {
+                      setRawOpen(false);
+                      setRawData('');
+                    }
+                    setDetail(p);
+                  }}
                   onMouseEnter={(e) =>
                     p.preview_image &&
                     setHoverPreview({ x: e.clientX + 18, y: e.clientY + 12, url: p.preview_image })
@@ -265,7 +294,11 @@ export const BifrostPromptsPage: React.FC = () => {
       {/* 详情弹窗 */}
       <Dialog
         open={!!detail}
-        onClose={() => setDetail(null)}
+        onClose={() => {
+          setDetail(null);
+          setRawOpen(false);
+          setRawData('');
+        }}
         title={detail ? detail.name : ''}
         panelClassName="max-w-xl"
       >
@@ -298,6 +331,22 @@ export const BifrostPromptsPage: React.FC = () => {
               <pre className="text-sm text-ink font-sans whitespace-pre-wrap bg-paper border border-paper-grid rounded-md p-3 max-h-60 overflow-y-auto">
                 {detail.content || '（空内容）'}
               </pre>
+            </div>
+
+            {/* 调试：Bifrost 原始响应（raw=true） */}
+            <div className="pt-1">
+              <button
+                onClick={() => void toggleRaw()}
+                className="inline-flex items-center gap-1.5 text-xs text-ink-light hover:text-accent font-sans transition active:scale-95"
+              >
+                <Braces size={13} strokeWidth={1.5} className={rawLoading ? 'animate-pulse' : ''} />
+                {rawOpen ? '收起原始响应' : rawLoading ? '加载原始响应中…' : '查看原始响应（调试）'}
+              </button>
+              {rawOpen && (
+                <pre className="mt-2 text-[11px] leading-relaxed text-ink font-mono whitespace-pre-wrap bg-paper border border-paper-grid rounded-md p-3 max-h-64 overflow-y-auto">
+                  {rawData || '（空）'}
+                </pre>
+              )}
             </div>
 
             <div className="space-y-1.5">
