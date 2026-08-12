@@ -79,7 +79,6 @@ export interface ImageUploadNodeProps {
   footer?: React.ReactNode;
   /** 根节点右键菜单回调 */
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
-  /** 是否存在下级连线节点 */
   hasDownstream?: boolean;
 }
 
@@ -97,7 +96,6 @@ const ImageUploadNodeInner: React.FC<ImageUploadNodeProps> = ({
   onDrag,
   footer,
   onContextMenu,
-  hasDownstream,
 }) => {
   const { showToast } = useFeedback();
   const fileInputRef = useRef<HTMLInputElement>(null);
