@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { CornerDecorations } from './CornerDecorations';
 
 interface DialogProps {
   open: boolean;
@@ -78,10 +79,7 @@ export const Dialog: React.FC<DialogProps> = ({
       {/* 面板 */}
       <div className={`relative w-full bg-node-bg rounded-lg border border-dashed border-paper-grid shadow-[0_16px_48px_rgba(43,41,38,0.22)] flex flex-col max-h-[90vh] dialog-panel ${panelClassName}`}>
         {/* 四角装饰 */}
-        <span className="pointer-events-none absolute top-2 left-2 w-3 h-3 border-t-2 border-l-2 border-accent/60" aria-hidden="true" />
-        <span className="pointer-events-none absolute top-2 right-2 w-3 h-3 border-t-2 border-r-2 border-accent/60" aria-hidden="true" />
-        <span className="pointer-events-none absolute bottom-2 left-2 w-3 h-3 border-b-2 border-l-2 border-accent/60" aria-hidden="true" />
-        <span className="pointer-events-none absolute bottom-2 right-2 w-3 h-3 border-b-2 border-r-2 border-accent/60" aria-hidden="true" />
+        <CornerDecorations borderColorClass="border-accent/60" />
 
         {title != null && (
           <div className="shrink-0 px-5 pt-4 pb-3 border-b border-dashed border-paper-grid">

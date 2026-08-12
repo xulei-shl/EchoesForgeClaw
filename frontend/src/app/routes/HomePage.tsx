@@ -4,6 +4,7 @@ import { Navbar } from '../../platform/components/layout/Navbar';
 import { Button } from '../../platform/components/ui/Button';
 import { useAuth } from '../../platform/stores/authStore';
 import { getStartCreationRoute } from '../../platform/utils/creation';
+import { CornerDecorations } from '../../platform/components/ui/CornerDecorations';
 
 const HomePage: React.FC = () => {
   const { user } = useAuth();
@@ -20,10 +21,7 @@ const HomePage: React.FC = () => {
         <main className="flex-grow flex flex-col items-center justify-center p-6 text-center max-w-4xl mx-auto">
           <div className="bg-node-bg p-12 rounded-lg border-2 border-dashed border-paper-grid relative shadow-sm">
             {/* 角落装饰 */}
-            <div className="absolute top-2 left-2 w-3 h-3 border-t-2 border-l-2 border-accent"></div>
-            <div className="absolute top-2 right-2 w-3 h-3 border-t-2 border-r-2 border-accent"></div>
-            <div className="absolute bottom-2 left-2 w-3 h-3 border-b-2 border-l-2 border-accent"></div>
-            <div className="absolute bottom-2 right-2 w-3 h-3 border-b-2 border-r-2 border-accent"></div>
+            <CornerDecorations />
             
             <h1 className="text-5xl font-serif font-bold text-ink mb-6">
               Welcome to <span className="text-accent">BookForge</span>
