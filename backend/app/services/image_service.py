@@ -71,6 +71,20 @@ class ImageService:
         GENERATED_DIR.mkdir(parents=True, exist_ok=True)
         (GENERATED_DIR / filename).write_text(content, encoding="utf-8")
 
+    @staticmethod
+    def delete_file(url_path: str) -> bool:
+        if not url_path or not url_path.startswith(STATIC_PREFIX):
+            return False
+        filename = url_path[len(STATIC_PREFIX):].lstrip("/")
+        if not filename:
+            return False
+        file_path = GENERATED_DIR / filename
+        if file_path.exists() and file_path.is_file():
+            file_path.unlink()
+            logger.info("已删除静态文件: %s", file_path)
+            return True
+        return False
+
     async def generate_image(
         self,
         prompt: str,

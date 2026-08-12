@@ -8,6 +8,7 @@ from app.core.deps import get_current_active_user
 from app.models.user import User
 from app.models.generation import Generation
 from app.schemas.generation import GenerationCreate, GenerationOut, GenerationPage, NodeTypeCount
+from app.services.image_service import image_service
 
 router = APIRouter(prefix="/api/generations", tags=["generations"])
 
@@ -46,6 +47,19 @@ def _extract_generation_name(stage_results, node_type: str) -> str:
             if isinstance(title, str):
                 return title.strip()
     return ""
+
+
+def _collect_artifact_urls(gen: Generation) -> list[str]:
+    urls = []
+    if gen.result_url:
+        urls.append(gen.result_url)
+    sr = gen.stage_results or {}
+    stage3 = sr.get("stage3", {}) or {}
+    if isinstance(stage3, dict):
+        u = stage3.get("image_url")
+        if u:
+            urls.append(u)
+    return urls
 
 
 def _get_owned_generation(
@@ -150,10 +164,13 @@ def delete_generation(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    """删除当前用户的生成记录（ORM 级联清理其收藏与公开状态）。"""
+    """删除当前用户的生成记录（ORM 级联清理其收藏与公开状态，并删除对应静态文件）。"""
     gen = _get_owned_generation(generation_id, current_user, db)
     # Generation.favorites / public_share 已配置 cascade="all, delete-orphan"，
     # 删除父记录时（含其他用户对该记录的收藏）会一并删除
+    urls = _collect_artifact_urls(gen)
     db.delete(gen)
     db.commit()
+    for url in urls:
+        image_service.delete_file(url)
     return {"message": "生成记录已删除"}
