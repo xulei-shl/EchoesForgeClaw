@@ -1,6 +1,8 @@
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { FileSearch, ImageOff, Loader2, Search, ChevronLeft, Check } from 'lucide-react';
+import { FileSearch, ImageOff, Loader2, Search, ChevronLeft, Check, Maximize2 } from 'lucide-react';
+import { PhotoProvider, PhotoView } from 'react-photo-view';
+import 'react-photo-view/dist/react-photo-view.css';
 import api from '../../../platform/services/api';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
@@ -207,11 +209,20 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
         </button>
         <div className="rounded-md border border-dashed border-paper-grid bg-paper overflow-hidden">
           {detail.preview_image ? (
-            <img
-              src={detail.preview_image}
-              alt={detail.name}
-              className="w-full max-h-56 object-contain bg-paper"
-            />
+            <PhotoProvider maskOpacity={0.8} bannerVisible={false}>
+              <PhotoView src={detail.preview_image}>
+                <div className="relative group cursor-pointer" title="点击全屏查看">
+                  <img
+                    src={detail.preview_image}
+                    alt={detail.name}
+                    className="w-full max-h-56 object-contain bg-paper group-hover:opacity-95 transition"
+                  />
+                  <div className="absolute right-3 bottom-3 p-1.5 rounded bg-black/40 backdrop-blur-sm text-white/90 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-sm flex items-center justify-center">
+                    <Maximize2 size={16} strokeWidth={2} />
+                  </div>
+                </div>
+              </PhotoView>
+            </PhotoProvider>
           ) : (
             <div className="h-32 flex items-center justify-center">
               <ImageOff size={28} strokeWidth={1} className="text-ink-faint" />

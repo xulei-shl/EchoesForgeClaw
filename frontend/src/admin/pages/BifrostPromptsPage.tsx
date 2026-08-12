@@ -9,7 +9,10 @@ import {
   Search,
   Trash2,
   Upload,
+  Maximize2,
 } from 'lucide-react';
+import { PhotoProvider, PhotoView } from 'react-photo-view';
+import 'react-photo-view/dist/react-photo-view.css';
 import { adminService } from '../../platform/services/admin';
 import type { BifrostFolder, BifrostPrompt } from '../../platform/types';
 import { Button } from '../../platform/components/ui/Button';
@@ -341,9 +344,16 @@ export const BifrostPromptsPage: React.FC = () => {
           <div className="space-y-6">
             <div className="p-1 rounded-xl border border-dashed border-paper-grid bg-paper overflow-hidden">
               {detail.preview_image ? (
-                <div className="relative rounded-lg overflow-hidden after:absolute after:inset-0 after:rounded-lg after:ring-1 after:ring-inset after:ring-black/5 dark:after:ring-white/5">
-                  <img src={detail.preview_image} alt={detail.name} className="w-full max-h-56 object-contain bg-paper/50" />
-                </div>
+                <PhotoProvider maskOpacity={0.8} bannerVisible={false}>
+                  <PhotoView src={detail.preview_image}>
+                    <div className="relative group rounded-lg overflow-hidden after:absolute after:inset-0 after:rounded-lg after:ring-1 after:ring-inset after:ring-black/5 dark:after:ring-white/5 cursor-pointer" title="点击全屏查看">
+                      <img src={detail.preview_image} alt={detail.name} className="w-full max-h-56 object-contain bg-paper/50 group-hover:opacity-95 transition" />
+                      <div className="absolute right-3 bottom-3 p-1.5 rounded bg-black/40 backdrop-blur-sm text-white/90 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-sm flex items-center justify-center">
+                        <Maximize2 size={16} strokeWidth={2} />
+                      </div>
+                    </div>
+                  </PhotoView>
+                </PhotoProvider>
               ) : (
                 <div className="h-36 flex flex-col items-center justify-center gap-2 text-ink-faint">
                   <ImageOff size={28} strokeWidth={1} />
