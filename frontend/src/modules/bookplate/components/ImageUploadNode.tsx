@@ -105,10 +105,6 @@ const ImageUploadNodeInner: React.FC<ImageUploadNodeProps> = ({
   const [dragOver, setDragOver] = useState(false);
 
   const handleFile = async (file: File) => {
-    if (imageUrl && hasDownstream) {
-      showToast('该图片已有下级节点，无法替换。请先删除下级节点。', { type: 'warning' });
-      return;
-    }
     if (!RASTER_IMAGE_TYPES.includes(file.type)) {
       showToast('请选择 PNG / JPG / WebP / GIF 格式的图片', { type: 'error' });
       return;
@@ -135,10 +131,6 @@ const ImageUploadNodeInner: React.FC<ImageUploadNodeProps> = ({
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
-    if (imageUrl && hasDownstream) {
-      showToast('该图片已有下级节点，无法替换。请先删除下级节点。', { type: 'warning' });
-      return;
-    }
     const file = e.dataTransfer.files?.[0];
     if (file) void handleFile(file);
   };
@@ -164,15 +156,10 @@ const ImageUploadNodeInner: React.FC<ImageUploadNodeProps> = ({
         <NodeActionBar>
           <NodeActionBar.Custom
             icon={<RefreshCw size={16} strokeWidth={1.5} />}
-            tooltip={imageUrl ? (hasDownstream ? '已有下级节点，无法替换' : '替换图片') : '上传图片'}
+            tooltip={imageUrl ? '替换图片' : '上传图片'}
             onClick={() => {
-              if (imageUrl && hasDownstream) {
-                showToast('该图片已有下级节点，无法替换。请先删除下级节点。', { type: 'warning' });
-                return;
-              }
               fileInputRef.current?.click();
             }}
-            disabled={!!(imageUrl && hasDownstream)}
           />
           {imageUrl && (
             <NodeActionBar.Custom

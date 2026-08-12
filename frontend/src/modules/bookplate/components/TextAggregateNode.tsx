@@ -132,7 +132,6 @@ const TextAggregateNodeInner: React.FC<TextAggregateNodeProps> = ({
       showLeftAnchor={true}
       showRightAnchor={true}
       footer={footer}
-      disableRemove={hasDownstream}
       mismatchBadge={mismatchBadge}
     >
       <div className="relative h-full flex flex-col flex-1 min-h-0">

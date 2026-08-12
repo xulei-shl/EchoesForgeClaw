@@ -233,8 +233,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
         {messages.length > 0 && (
           <NodeActionBar.Eraser
             onClick={() => onClearChat?.(id)}
-            disabled={isGenerating || hasDownstream}
-            hasDownstream={hasDownstream}
+            disabled={isGenerating}
           />
         )}
       </NodeActionBar>
@@ -492,18 +491,13 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                   </p>
                 )}
                 {messages.length > 0 && (
-                  <div title={hasDownstream ? "已连接下级节点，无法清空对话" : undefined}>
+                  <div>
                     <button
                       onClick={() => {
                         setSettingsOpen(false);
                         onClearChat?.(id);
                       }}
-                      disabled={hasDownstream}
-                      className={`w-full flex items-center justify-center gap-1.5 rounded-md border border-dashed py-1.5 text-[11px] font-sans transition ${
-                        hasDownstream
-                          ? 'border-paper-grid/50 text-ink-faint/50 bg-paper-grid/10 cursor-not-allowed'
-                          : 'border-error/30 text-error/90 hover:bg-error/5 active:scale-[0.98]'
-                      }`}
+                      className="w-full flex items-center justify-center gap-1.5 rounded-md border border-dashed py-1.5 text-[11px] font-sans transition border-error/30 text-error/90 hover:bg-error/5 active:scale-[0.98]"
                     >
                       <Eraser size={11} strokeWidth={2} />
                       清空对话（清空后重新注入上下文）

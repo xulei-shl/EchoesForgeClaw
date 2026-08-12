@@ -187,7 +187,6 @@ const PromptNodeInner: React.FC<PromptNodeProps> = ({
       footer={footer}
       groupBadge={group}
       mismatchBadge={mismatchBadge}
-      disableRemove={hasDownstream}
       actionBar={renderActionBar()}
     >
       <div className="relative h-full flex flex-col flex-1 min-h-0">

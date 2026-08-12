@@ -113,7 +113,6 @@ const TextNodeInner: React.FC<TextNodeProps> = ({
       showLeftAnchor={true}
       showRightAnchor={true}
       footer={footer}
-      disableRemove={hasDownstream}
       actionBar={renderActionBar()}
     >
       <div className="relative h-full flex flex-col flex-1 min-h-0">

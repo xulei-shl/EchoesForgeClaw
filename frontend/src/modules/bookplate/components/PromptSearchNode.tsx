@@ -290,7 +290,7 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
 
   const actionBar = promptId ? (
     <NodeActionBar>
-      <NodeActionBar.Edit onClick={openPicker} hasDownstream={hasDownstream} />
+      <NodeActionBar.Edit onClick={openPicker} />
     </NodeActionBar>
   ) : undefined;
 
