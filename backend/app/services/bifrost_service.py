@@ -156,6 +156,22 @@ def _folder_allowed(config: BifrostAuthConfig, folder_id, folder_name) -> bool:
     return False
 
 
+def bifrost_error_to_http(exc: BifrostError) -> "HTTPException":
+    """把 Bifrost 服务层异常映射为 FastAPI HTTP 响应（三个 Bifrost 路由共用）。
+
+    - BifrostNotFoundError（资源不存在，如被删除）→ 404
+    - BifrostNotConfiguredError（base_url 缺失）→ 503
+    - 其余 BifrostError（网络/上游错误）→ 502
+    """
+    from fastapi import HTTPException
+
+    if isinstance(exc, BifrostNotFoundError):
+        return HTTPException(status_code=404, detail=str(exc))
+    if isinstance(exc, BifrostNotConfiguredError):
+        return HTTPException(status_code=503, detail=str(exc))
+    return HTTPException(status_code=502, detail=str(exc))
+
+
 def _require_config(db) -> BifrostAuthConfig:
     config = _bifrost_config(db)
     if not config.base_url:

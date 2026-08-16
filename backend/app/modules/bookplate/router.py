@@ -59,6 +59,7 @@ from app.services.skill_agent_service import (
     list_installed_skills,
     install_skill_zip,
     install_user_skill_zip,
+    register_existing_bifrost_skill,
     resolve_skill_abs,
     skills_dir,
     node_workspace,
@@ -1197,20 +1198,27 @@ async def install_bifrost_skill(
     name = payload.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="skill 名称不能为空")
+    # 缓存命中：共享区 runtime/.agent/skills/{name} 已有该 skill 包 → 跳过网络下载，
+    # 仅在该用户登记区建软链（毫秒级）。未命中返回 None，才走 Bifrost 下载。
     try:
-        zip_bytes = await download_bifrost_skill_zip(db, name)
-    except BifrostNotConfiguredError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except BifrostNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except BifrostError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    if not zip_bytes or len(zip_bytes) > 20 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="skill 压缩包为空或超过 20MB 上限")
-    try:
-        meta = install_skill_zip(current_user.id, zip_bytes)
+        meta = register_existing_bifrost_skill(current_user.id, name)
     except SkillValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if meta is None:
+        try:
+            zip_bytes = await download_bifrost_skill_zip(db, name)
+        except BifrostNotConfiguredError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except BifrostNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except BifrostError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        if not zip_bytes or len(zip_bytes) > 20 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="skill 压缩包为空或超过 20MB 上限")
+        try:
+            meta = install_skill_zip(current_user.id, zip_bytes)
+        except SkillValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     return meta
 
 

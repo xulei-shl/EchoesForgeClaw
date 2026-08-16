@@ -4,6 +4,7 @@ import type {
   AppSettingPayload,
   BifrostFolder,
   BifrostPrompt,
+  CachedBifrostSkill,
   FastClawAgentConfig,
   FastClawAgentConfigPayload,
   LLMConfig,
@@ -132,6 +133,22 @@ export const adminService = {
     api.delete<{ preview_image: null }, { preview_image: null }>(
       `/admin/bifrost/prompts/${encodeURIComponent(promptId)}/preview`
     ),
+
+  /* ---------------- Bifrost Skills 管理 ---------------- */
+
+  /** 共享区缓存的 Bifrost Skills 列表（Bifrost 可达时富化远端版本信息） */
+  listBifrostSkills: (): Promise<{ skills: CachedBifrostSkill[] }> =>
+    api.get<{ skills: CachedBifrostSkill[] }, { skills: CachedBifrostSkill[] }>(
+      '/admin/bifrost-skills'
+    ),
+  /** 强制从 Bifrost 拉取最新 zip 覆盖共享区（不触碰用户登记） */
+  syncBifrostSkill: (name: string): Promise<{ skill: CachedBifrostSkill }> =>
+    api.post<{ skill: CachedBifrostSkill }, { skill: CachedBifrostSkill }>(
+      `/admin/bifrost-skills/${encodeURIComponent(name)}/sync`
+    ),
+  /** 从共享区删除 skill 包（并清理指向它的用户登记软链） */
+  deleteBifrostSkill: (name: string): Promise<{ message: string; cleaned_registries: number }> =>
+    api.delete(`/admin/bifrost-skills/${encodeURIComponent(name)}`),
 
   /* ---------------- 系统设置 ---------------- */
 

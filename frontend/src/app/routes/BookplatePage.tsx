@@ -36,7 +36,6 @@ import {
   syncAggregatePlaceholders,
 } from '../../modules/bookplate/textTemplate';
 import {
-  resolveNodeRunInputs,
   DEFAULT_RUN_SETTINGS,
   type PortTypesLookup,
 } from '../../modules/bookplate/execution';

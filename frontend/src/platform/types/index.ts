@@ -414,6 +414,22 @@ export interface InstalledSkill {
   files: string[];
 }
 
+/** Admin 端：共享区已缓存的 Bifrost Skill（本地元数据 + Bifrost 可达时的远端富化） */
+export interface CachedBifrostSkill {
+  name: string;
+  description: string;
+  body: string;
+  /** 文件树（相对路径列表） */
+  files: string[];
+  /** 本地共享包目录修改时间（unix 秒） */
+  updated_at?: number | null;
+  /** 远端最新版本（Bifrost 可达时富化） */
+  latest_version?: string;
+  license?: string;
+  compatibility?: string;
+  remote_updated_at?: string | null;
+}
+
 /** Bifrost Skills 仓库中的 skill（检索结果） */
 export interface BifrostSkill {
   id: string;

@@ -424,6 +424,120 @@ def install_user_skill_zip(user_id: int, zip_bytes: bytes) -> Dict[str, Any]:
     return meta
 
 
+# ---------------------------------------------------------------------------
+# Bifrost skill 共享包管理（Admin 端集中管理 + 画布缓存命中）
+# ---------------------------------------------------------------------------
+
+def register_existing_bifrost_skill(
+    user_id: int, name: str
+) -> Optional[Dict[str, Any]]:
+    """共享区已缓存该 Bifrost skill 时，跳过网络下载，仅在该用户登记区建软链。
+
+    画布安装接口的缓存命中路径：共享真实包 runtime/.agent/skills/{name} 存在且
+    SKILL.md 有效即视为命中（毫秒级）；未命中返回 None，由调用方走网络下载。
+    用户登记已存在且有效 → 直接返回（幂等，不重复建链）。
+
+    name 含非法字符时抛 SkillValidationError（与 install_skill_zip 同套卫生规则）。
+    """
+    name = (name or "").strip()
+    if (
+        not name
+        or len(name) > MAX_SKILL_NAME_LEN
+        or "/" in name
+        or "\\" in name
+        or name in (".", "..")
+        or any(ord(ch) < 32 for ch in name)
+    ):
+        raise SkillValidationError(
+            "SKILL.md 的 name 含非法字符：仅允许字母/数字/中划线/下划线/空格（将作为目录名使用）"
+        )
+    dest = REAL_SKILLS_ROOT / name
+    if not dest.is_dir() or not (dest / "SKILL.md").is_file():
+        return None
+    registry = user_skills_root(user_id) / name
+    # 已登记且有效：幂等返回，不重复建链（软链或复制退化副本均可）
+    if (registry / "SKILL.md").is_file():
+        meta = read_skill_meta(registry)
+        meta["path"] = f"skills/{name}"
+        return meta
+    if registry.exists() or registry.is_symlink():
+        _remove_path(registry)
+    _symlink_or_copy(dest, registry)
+    meta = read_skill_meta(registry)
+    meta["path"] = f"skills/{name}"
+    return meta
+
+
+def update_shared_bifrost_skill(zip_bytes: bytes) -> Dict[str, Any]:
+    """Admin 同步：校验并覆盖共享区 runtime/.agent/skills/{name}/（不动任何用户登记）。
+
+    与 install_skill_zip 的共享区部分等价，但不触碰用户登记：
+    - POSIX：用户登记是软链，下次节点运行自动读到新版本；
+    - Windows 无软链权限（登记退化为复制）：已登记用户保留旧副本，需重新安装才更新。
+    """
+    info = validate_skill_zip(zip_bytes)
+    name = info["name"]
+    with _SHARED_INSTALL_LOCK:
+        dest = REAL_SKILLS_ROOT / name
+        if dest.exists() or dest.is_symlink():
+            _remove_path(dest)
+        meta = _extract_skill_zip(zip_bytes, dest, info)
+    return meta
+
+
+def list_shared_bifrost_skills() -> List[Dict[str, Any]]:
+    """扫描共享区 runtime/.agent/skills/，返回各 skill 的元数据 + 目录修改时间。
+
+    供 Admin 端 Bifrost Skills 管理页使用（本地缓存的事实来源）；
+    残缺目录（缺 SKILL.md，如历史残留）不展示。
+    """
+    if not REAL_SKILLS_ROOT.is_dir():
+        return []
+    items = []
+    for child in sorted(REAL_SKILLS_ROOT.iterdir()):
+        if not child.is_dir() or not (child / "SKILL.md").is_file():
+            continue
+        meta = read_skill_meta(child)
+        try:
+            meta["updated_at"] = child.stat().st_mtime
+        except OSError:
+            meta["updated_at"] = None
+        items.append(meta)
+    return items
+
+
+def remove_shared_bifrost_skill(name: str) -> int:
+    """Admin 删除：从共享区彻底删除该 skill 包，并清理指向它的用户登记软链。
+
+    返回清理掉的用户登记软链条目数。登记软链被删后变悬空（导致装配/列表异常），
+    故一并移除；真实目录登记（用户上传 / Windows 复制退化）是用户数据，保留不删。
+    删除后画布再次安装该 skill 会重新触发网络下载（缓存未命中）。
+    """
+    name = (name or "").strip()
+    if (
+        not name
+        or "/" in name
+        or "\\" in name
+        or name in (".", "..")
+    ):
+        raise SkillValidationError("skill 名称含非法字符")
+    cleaned = 0
+    with _SHARED_INSTALL_LOCK:
+        dest = REAL_SKILLS_ROOT / name
+        if dest.exists() or dest.is_symlink():
+            _remove_path(dest)
+        # 清理指向共享区的用户登记软链（真实目录 = 用户上传/复制副本，保留）
+        if RUNTIME_ROOT.is_dir():
+            for user_dir in RUNTIME_ROOT.iterdir():
+                if not user_dir.is_dir() or not user_dir.name.isdigit():
+                    continue
+                registry = user_dir / "skills" / name
+                if registry.is_symlink():
+                    registry.unlink(missing_ok=True)
+                    cleaned += 1
+    return cleaned
+
+
 def write_agent_md(agent_id: Any, content: str) -> Optional[Path]:
     """物化 SkillAgentConfig 的系统提示词为 runtime/.agent/agents/{agent_id}/AGENTS.md。
 

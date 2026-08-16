@@ -29,6 +29,7 @@ from app.api.admin.settings import router as admin_settings_router
 from app.api.admin.fastclaw_agents import router as admin_fastclaw_agents_router
 from app.api.admin.skill_agent_configs import router as admin_skill_agent_configs_router
 from app.api.admin.bifrost import router as admin_bifrost_router
+from app.api.admin.bifrost_skills import router as admin_bifrost_skills_router
 from app.modules.bookplate.router import router as bookplate_router
 from app.modules.bookplate.bifrost_router import router as bookplate_bifrost_router
 from app.models.app_setting import AppSetting
@@ -176,6 +177,7 @@ app.include_router(admin_settings_router, prefix="/api", tags=["admin"])
 app.include_router(admin_fastclaw_agents_router, prefix="/api", tags=["admin"])
 app.include_router(admin_skill_agent_configs_router, prefix="/api", tags=["admin"])
 app.include_router(admin_bifrost_router, prefix="/api", tags=["admin"])
+app.include_router(admin_bifrost_skills_router, prefix="/api", tags=["admin"])
 
 @app.get("/")
 def root():

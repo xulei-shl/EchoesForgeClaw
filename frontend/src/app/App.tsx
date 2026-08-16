@@ -12,6 +12,7 @@ import UsersPage from '../admin/pages/UsersPage';
 import LlmConfigsPage from '../admin/pages/LlmConfigsPage';
 import PromptsPage from '../admin/pages/PromptsPage';
 import BifrostPromptsPage from '../admin/pages/BifrostPromptsPage';
+import BifrostSkillsPage from '../admin/pages/BifrostSkillsPage';
 import NodeConfigsPage from '../admin/pages/NodeConfigsPage';
 import FastClawAgentsPage from '../admin/pages/FastClawAgentsPage';
 import SkillAgentConfigsPage from '../admin/pages/SkillAgentConfigsPage';
@@ -100,6 +101,7 @@ const AppRoutes = () => {
         <Route path="llm-configs" element={<LlmConfigsPage />} />
         <Route path="prompts" element={<PromptsPage />} />
         <Route path="bifrost-prompts" element={<BifrostPromptsPage />} />
+        <Route path="bifrost-skills" element={<BifrostSkillsPage />} />
         <Route path="node-configs" element={<NodeConfigsPage />} />
         <Route path="fastclaw-agents" element={<FastClawAgentsPage />} />
         <Route path="skill-agent-configs" element={<SkillAgentConfigsPage />} />

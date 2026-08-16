@@ -6,7 +6,7 @@
 """
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -14,21 +14,12 @@ from app.core.deps import get_current_active_user
 from app.models.user import User
 from app.services.bifrost_service import (
     BifrostError,
-    BifrostNotConfiguredError,
-    BifrostNotFoundError,
+    bifrost_error_to_http,
     get_prompt,
     list_prompts,
 )
 
 router = APIRouter(prefix="/api/modules/bookplate/bifrost", tags=["bookplate-bifrost"])
-
-
-def _bifrost_error_http(exc: BifrostError) -> HTTPException:
-    if isinstance(exc, BifrostNotFoundError):
-        return HTTPException(status_code=404, detail=str(exc))
-    if isinstance(exc, BifrostNotConfiguredError):
-        return HTTPException(status_code=503, detail=str(exc))
-    return HTTPException(status_code=502, detail=str(exc))
 
 
 @router.get("/prompts")
@@ -42,7 +33,7 @@ async def list_bifrost_prompts(
     try:
         prompts = await list_prompts(db, folder_id=folder_id or None, q=q)
     except BifrostError as exc:
-        raise _bifrost_error_http(exc)
+        raise bifrost_error_to_http(exc)
     return {"prompts": prompts}
 
 
@@ -56,4 +47,4 @@ async def get_bifrost_prompt(
     try:
         return await get_prompt(db, prompt_id)
     except BifrostError as exc:
-        raise _bifrost_error_http(exc)
+        raise bifrost_error_to_http(exc)
