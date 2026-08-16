@@ -1,5 +1,5 @@
 import type { Dispatch, RefObject, SetStateAction } from 'react';
-import { postSSEStream } from '../../platform/services/sse';
+import { postUIStream } from './uiStream';
 import api from '../../platform/services/api';
 import {
   PROMPT_SSE_IDLE_TIMEOUT_MS,
@@ -41,7 +41,7 @@ export interface NodeExecution {
 export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
   const { streamControllers, analysisUploads } = ctx;
 
-  /** 图片分析节点：SSE 流式执行（LLM 一次性返回 analysis 事件；Agent 透传中间步骤 + 最终 analysis） */
+  /** 图片分析节点：UI Message Stream 流式执行（LLM 一次性返回文本；Agent 透传中间步骤 + 最终文本） */
   const runImageAnalysis = (node: NodeData, opts: { image?: string; coverUrl?: string }) => {
     if (streamControllers.current.has(node.id)) return;
     const controller = new AbortController();
@@ -56,7 +56,7 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
     const idle = makeIdleTimeout(controller, PROMPT_SSE_IDLE_TIMEOUT_MS);
     idle.arm();
 
-    postSSEStream({
+    postUIStream({
       url: '/api/modules/bookplate/analyze-image',
       body: {
         image: opts.image,
@@ -65,24 +65,26 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
         node_id: node.id,
       },
       signal: controller.signal,
-      onMessage: (event, data) => {
+      onData: (event, data) => {
         idle.arm(); // 收到数据，重置空闲计时
         if (
           event === 'agent_tool_call' ||
           event === 'agent_tool_result' ||
           event === 'agent_status'
         ) {
-          handleAgentSseMessage(ctx.setNodes, node.id, event, data);
+          handleAgentSseMessage(ctx.setNodes, node.id, event, JSON.stringify(data));
           return;
         }
-        if (event === 'analysis') {
-          ctx.updateNodeData(node.id, { analysis: data, isGenerating: false, error: null });
-          return;
+        // 其余 data part（agent_file / agent_image 等）本节点不需要
+      },
+      onStreamEnd: (analysis) => {
+        idle.arm();
+        if (analysis.trim()) {
+          ctx.updateNodeData(node.id, { analysis, isGenerating: false, error: null });
         }
-        if (event === 'error') {
-          ctx.updateNodeData(node.id, { isGenerating: false, error: data });
-          return;
-        }
+      },
+      onError: (message) => {
+        ctx.updateNodeData(node.id, { isGenerating: false, error: message });
       },
     })
       .then(() => {
@@ -116,7 +118,7 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
     const idle = makeIdleTimeout(controller, PROMPT_SSE_IDLE_TIMEOUT_MS);
     idle.arm();
 
-    postSSEStream({
+    postUIStream({
       url: '/api/modules/bookplate/generate-prompt',
       body: {
         metadata: inputs.metadata,
@@ -126,27 +128,30 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
         node_id: node.id,
       },
       signal: controller.signal,
-      onMessage: (event, data) => {
+      onTextDelta: (delta) => {
         idle.arm(); // 收到数据，重置空闲计时
+        ctx.setNodes((prev) =>
+          prev.map((n) =>
+            n.id === node.id
+              ? { ...n, data: { ...n.data, content: (n.data.content || '') + delta } }
+              : n
+          )
+        );
+      },
+      onData: (event, data) => {
+        idle.arm();
         // Agent 模式中间步骤（工具调用 / 思考状态）单独处理，不注入提示词内容
         if (
           event === 'agent_tool_call' ||
           event === 'agent_tool_result' ||
           event === 'agent_status'
         ) {
-          handleAgentSseMessage(ctx.setNodes, node.id, event, data);
-          return;
+          handleAgentSseMessage(ctx.setNodes, node.id, event, JSON.stringify(data));
         }
-        ctx.setNodes((prev) =>
-          prev.map((n) => {
-            if (n.id !== node.id) return n;
-            if (event === 'error') {
-              // 后端流式生成失败：切换为错误态（复用错误横幅 + 重试），不注入文本到内容
-              return { ...n, data: { ...n.data, isGenerating: false, error: data } };
-            }
-            return { ...n, data: { ...n.data, content: (n.data.content || '') + data } };
-          })
-        );
+      },
+      onError: (message) => {
+        // 后端流式生成失败：切换为错误态（复用错误横幅 + 重试），不注入文本到内容
+        ctx.updateNodeData(node.id, { isGenerating: false, error: message });
       },
     })
       .then(() => {
@@ -167,7 +172,7 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
   };
 
   // ---------- 图像生成 ----------
-  /** Agent 模式图片生成：SSE 流式透传中间步骤，最终 image_url 事件落图 */
+  /** Agent 模式图片生成：UI Message Stream 透传中间步骤，最终 agent_image part 落图 */
   const runImageGenerationAgent = async (
     nodeId: string,
     prompt: string,
@@ -179,7 +184,7 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
     idle.arm();
 
     try {
-      await postSSEStream({
+      await postUIStream({
         url: '/api/modules/bookplate/generate-image',
         body: {
           prompt,
@@ -188,24 +193,19 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
           node_id: nodeId,
         },
         signal: controller.signal,
-        onMessage: (event, data) => {
+        onData: (event, data) => {
           idle.arm(); // 收到数据，重置空闲计时
           if (
             event === 'agent_tool_call' ||
             event === 'agent_tool_result' ||
             event === 'agent_status'
           ) {
-            handleAgentSseMessage(ctx.setNodes, nodeId, event, data);
+            handleAgentSseMessage(ctx.setNodes, nodeId, event, JSON.stringify(data));
             return;
           }
-          if (event === 'image_url') {
-            let payload: any = {};
-            try {
-              payload = JSON.parse(data);
-            } catch {
-              /* 忽略 */
-            }
-            const url = payload?.image_url;
+          if (event === 'agent_image') {
+            const payload = (data ?? {}) as { url?: string; image_url?: string; mock?: boolean };
+            const url = payload?.url || payload?.image_url;
             if (url) {
               ctx.updateNodeData(nodeId, {
                 imageUrl: url,
@@ -220,10 +220,10 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
             }
             return;
           }
-          if (event === 'error') {
-            ctx.updateNodeData(nodeId, { isGenerating: false, error: data });
-            return;
-          }
+          // 其余 data part（agent_file 等）本节点不需要
+        },
+        onError: (message) => {
+          ctx.updateNodeData(nodeId, { isGenerating: false, error: message });
         },
       });
     } catch (err: any) {

@@ -18,7 +18,7 @@ const NAV_ITEMS = [
   { to: '/admin/llm-configs', label: '模型配置', icon: Cpu },
   { to: '/admin/prompts', label: '提示词管理', icon: FileText },
   { to: '/admin/bifrost-prompts', label: 'Bifrost 提示词', icon: BookOpen },
-  { to: '/admin/fastclaw-agents', label: 'Agent 配置', icon: Bot },
+  { to: '/admin/fastclaw-agents', label: 'FastClaw Agent', icon: Bot },
   { to: '/admin/skill-agent-configs', label: 'Skill Agent', icon: Sparkles },
   { to: '/admin/node-configs', label: '节点管理', icon: GitBranch },
   { to: '/admin/settings', label: '系统设置', icon: Settings },

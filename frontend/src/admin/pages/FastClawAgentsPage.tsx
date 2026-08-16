@@ -254,7 +254,7 @@ export const FastClawAgentsPage: React.FC = () => {
   return (
     <div>
       <PageHeader
-        title="Agent 配置"
+        title="FastClaw Agent"
         subtitle="FastClaw Agent 接入参数（Base URL + API Key + Agent ID）"
         actions={
           !showCreate && !editing && (

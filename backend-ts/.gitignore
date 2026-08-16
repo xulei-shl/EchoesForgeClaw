@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+*.db
+static/generated/*
+!static/generated/.gitkeep
+static/covers/
+static/prompt-previews/

@@ -1,8 +1,9 @@
-# BookForge 生产部署与运维最佳实践（Ubuntu）
+# BookForge 生产部署与运维最佳实践（Ubuntu，TypeScript 后端）
 
 本文档记录 BookForge（书海回响素材工坊）在 Ubuntu 服务器上的生产部署、启动与运维的完整最佳实践，汇总了真实部署过程中踩过的坑与对应的根治方案，避免每次重新部署重复排障。
 
 > 项目当前已部署于 `10.40.92.18`，后端端口 `8010`，前端端口 `5180`。
+> 后端已由 Python（FastAPI/uvicorn）迁移为 **TypeScript（Fastify + Drizzle + better-sqlite3 + AI SDK，目录 `backend-ts/`）**，**不再需要 Python / venv / pip / uvicorn / Alembic**。
 
 ---
 
@@ -10,10 +11,10 @@
 
 | 组件 | 技术 | 生产运行方式 |
 |------|------|--------------|
-| 后端 | Python 3.12 · FastAPI · SQLAlchemy · SQLite | `uvicorn`，systemd 托管 |
+| 后端 | Node.js 22.9+ · Fastify 5 · Drizzle · better-sqlite3 · AI SDK | `npm run start`（tsx 直跑 TS），systemd 托管 |
 | 前端 | React 19 · Vite · TS | `npm run build` 产物 + `vite preview`，systemd 托管 |
-| 数据库 | SQLite（文件 `backend/bookforge.db`） | 后端启动时 Alembic 自动迁移建表 |
-| 通信 | REST + SSE | 前端 Vite 代理 `/api`、`/static` 到后端 |
+| 数据库 | SQLite（默认文件 `backend-ts/bookforge.db`） | 后端启动时**幂等建表**（表缺失才创建，无需迁移工具） |
+| 通信 | REST + SSE（AI SDK UI Message Stream） | 前端 Vite 代理 `/api`、`/static` 到后端 |
 
 ---
 
@@ -22,11 +23,7 @@
 ### 2.1 必需软件
 
 ```bash
-# Python 3.10+（推荐 3.12）
-sudo apt update
-sudo apt install -y python3 python3-venv python3-pip
-
-# Node.js 18+（本机使用 nvm，v22.23.1）
+# Node.js >= 22.9（本机使用 nvm，v22.23.1）
 # 使用 nvm 安装：curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
 nvm install 22
 nvm use 22
@@ -34,6 +31,8 @@ nvm use 22
 # 防火墙
 sudo apt install -y ufw
 ```
+
+> `backend-ts` 的启动脚本使用 `--env-file-if-exists` 加载 `.env`，需 Node ≥ 22.9；`better-sqlite3` 为原生模块，Node 版本尽量保持 LTS（22/24），切换大版本后需重新 `npm install`。
 
 ### 2.2 端口占用的先验检查（重要）
 
@@ -47,78 +46,62 @@ ss -tuln
 ss -tuln | grep -E ':(8000|5173|8010|5180)\b' || echo "端口空闲"
 ```
 
-本项目默认端口存在冲突风险，因为：
-- 后端默认 `8000` 常被其他服务占用（本机被 `chroma` 占用）
-- 前端默认 `5173` 常被其他服务占用（本机被 `node` 占用）
-
-因此生产环境使用**自定义端口**：后端 `8010`、前端 `5180`（均需确认空闲）。
+本项目默认端口存在冲突风险，因此生产环境使用**自定义端口**：后端 `8010`、前端 `5180`（均需确认空闲）。
 
 ---
 
-## 3. 代码层面的必要修复（一次性）
+## 3. 代码层面的必要约定（部署前了解）
 
-以下修复已在源码中完成，重新部署**不要**回退这些改动。
+以下约定已在源码中完成，重新部署**不要**回退这些改动。
 
-### 3.1 后端 `requirements.txt`：锁定 `bcrypt`
+### 3.1 后端 npm scripts 自动加载 `.env`
 
-`passlib[bcrypt]` 与 `bcrypt>=4.1` 不兼容（`passlib` 读取 `bcrypt.__about__` 报错，登录时抛 `ValueError: password cannot be longer than 72 bytes`）。必须锁定：
+`backend-ts/package.json` 的 `start` / `dev` 脚本带 `--env-file-if-exists=.env`（tsx 转发 Node flag），启动时自动读取 `backend-ts/.env`，无需手动 export。要求 Node ≥ 22.9。
 
-```txt
-passlib[bcrypt]
-bcrypt==4.0.1
-```
+### 3.2 端口与 CORS 全部由 `.env` 管理（不再改代码）
 
-### 3.2 后端 `app/core/config.py`：管理员账号可由 `.env` 配置
+- 后端端口：`backend-ts/.env` 的 `PORT`（默认 8010）；
+- CORS 来源：`CORS_ORIGINS`（默认 `http://localhost:5173,http://localhost:5180`），前端端口变更时同步写入；
+- 前端代理：`frontend/vite.config.ts` 的 `/api`、`/static` target 指向后端端口（一键脚本自动同步）。
 
-```python
-ADMIN_USERNAME: str = "admin"
-ADMIN_PASSWORD: str = "admin123"
-```
+### 3.3 数据库
 
-### 3.3 后端 `app/main.py`：启动初始化使用配置的管理员账号，并导入 `settings`
-
-- 必须 `from app.core.config import settings`
-- 创建管理员时使用 `settings.ADMIN_USERNAME` / `settings.ADMIN_PASSWORD`，而非硬编码 `admin/admin123`
-- `_startup_init()` 在 FastAPI `lifespan` 中通过 `await asyncio.to_thread(...)` 执行（避免阻塞事件循环、避免 SQLite 死锁）
-
-### 3.4 后端 `app/main.py`：CORS 允许前端生产端口
-
-```python
-allow_origins=[
-    "http://localhost:5180",
-    "http://localhost:5173",
-],
-```
-
-### 3.5 前端 `vite.config.ts`：代理目标指向后端端口
-
-`server.proxy` 中 `/api` 与 `/static` 的 `target` 改为 `http://localhost:8010`。
+- 默认 `DATABASE_URL=sqlite:///./bookforge.db`，按 systemd `WorkingDirectory`（`backend-ts/`）解析为 `backend-ts/bookforge.db`；
+- **存量 Python 数据迁移**：表结构与旧库一致（已验证可直接读取）。若需复用旧数据，设 `DATABASE_URL=sqlite:///../backend/bookforge.db`，或把旧 `backend/bookforge.db` 拷贝到 `backend-ts/` 下；
+- 启动时**幂等建表**：`users` 表不存在才执行建表 DDL（对应旧版 Alembic 迁移），**无需任何迁移工具 / 手工建表**。
 
 ---
 
 ## 4. 后端部署步骤
 
 ```bash
-cd /opt/EchoesForgeClaw/backend
+cd /opt/EchoesForgeClaw/backend-ts
 
-# 1. 创建虚拟环境并安装依赖（依赖含 bcrypt 锁定）
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
+# 1. 安装依赖（含 better-sqlite3 原生模块的预编译二进制）
+npm install
 
-# 2. 创建 .env（至少需 SECRET_KEY；管理员账号密码）
+# 2. 创建 .env（至少需 SECRET_KEY；管理员账号密码；端口/CORS）
+cp .env.example .env
+
 # 生成随机 SECRET_KEY：
-python3 -c "import secrets; print(secrets.token_hex(32))"
+node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))'
 ```
 
-`backend/.env` 内容：
+`backend-ts/.env` 内容：
 
 ```ini
 SECRET_KEY=<随机 64 位 hex>
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=<你的强密码>
+PORT=8010
+CORS_ORIGINS=http://localhost:5180,http://localhost:5173
+# DATABASE_URL=sqlite:///./bookforge.db        # 默认；存量数据迁移见 3.3
+# OPENAI_API_KEY=                              # 文本模型 Key（无 Key 时 Mock）
+# OPENAI_IMAGE_API_KEY=                        # 图像生成 Key（无 Key 时占位图）
+# BIFROST_USERNAME= / BIFROST_PASSWORD=        # Bifrost 管理 API Basic Auth（种子化到系统设置）
 ```
 
-> 数据库表结构、默认管理员、默认设置、默认提示词均在首次启动时由后端自动创建，无需手工建表。
+> 表结构、默认管理员、默认设置、默认提示词均在首次启动时由后端自动创建（幂等），无需手工建表。
 
 ---
 
@@ -141,7 +124,7 @@ Git 拉取新代码后，按"最小可用"原则重新部署，**无需重装依
 cd /opt/EchoesForgeClaw
 git pull
 
-# 后端：重启即触发 alembic upgrade head，自动新建/更新表（如本次的 book_cache 表）
+# 后端：重启即触发幂等建表（表缺失才创建；新增表无需手工处理）
 sudo systemctl restart bookforge-backend
 
 # 前端：只要前端源码有改动，必须重建 dist，否则部署的是旧逻辑
@@ -151,9 +134,9 @@ sudo systemctl restart bookforge-frontend
 
 要点：
 
-- **新增/变更数据库表无需手工建表**：迁移脚本随后端启动时的 `alembic upgrade head` 自动执行（见 `app/main.py` 的 `command.upgrade(alembic_cfg, "head")`）。
-- **前端改动必须 `npm run build`**：`vite preview` 只服务 `dist/`，不编译源码；漏构建会把旧页面当作最新逻辑部署（本次提交就改了前端 `BookInfoNode` 等组件）。
-- **后端依赖一般不用重装**：除非 `requirements.txt` 有变动（本次提交未改动依赖）。
+- **新增/变更数据库表无需手工建表**：后端启动时自动执行幂等建表（见 `backend-ts/src/config/database.ts` 的 `applyInitialSchema`）。
+- **前端改动必须 `npm run build`**：`vite preview` 只服务 `dist/`，不编译源码；漏构建会把旧页面当作最新逻辑部署。
+- **后端依赖一般不用重装**：除非 `backend-ts/package.json` 或 Node 版本有变动（`better-sqlite3` 原生模块对 Node 版本敏感，切换 Node 大版本后必须 `npm install`）。
 
 ---
 
@@ -163,14 +146,15 @@ sudo systemctl restart bookforge-frontend
 
 ```ini
 [Unit]
-Description=BookForge Backend (FastAPI)
+Description=BookForge Backend (TypeScript/Fastify)
 After=network.target
 
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/opt/EchoesForgeClaw/backend
-ExecStart=/opt/EchoesForgeClaw/backend/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8010
+WorkingDirectory=/opt/EchoesForgeClaw/backend-ts
+EnvironmentFile=/opt/EchoesForgeClaw/backend-ts/.env
+ExecStart=/root/.nvm/versions/node/v22.23.1/bin/npm run start
 Restart=always
 RestartSec=5
 StandardOutput=journal
@@ -180,7 +164,9 @@ StandardError=journal
 WantedBy=multi-user.target
 ```
 
-> `WorkingDirectory` **必须**设为 `backend` 目录，否则 `app` 模块与相对路径 `.env`、`bookforge.db` 找不到。
+> - `WorkingDirectory` **必须**设为 `backend-ts` 目录：`src/` 模块解析、相对路径 `.env`、`bookforge.db`（默认 `DATABASE_URL`）都以此为基准。
+> - `EnvironmentFile` 指向 `backend-ts/.env`：systemd 注入的环境变量优先于 `.env` 文件，二者内容一致时无冲突。
+> - `ExecStart` 中的 node/npm 路径需替换为服务器实际的 nvm 路径（`which npm` 查看）。也可改为 `ExecStart=/usr/bin/npm run start`。
 
 ### 6.2 前端 `/etc/systemd/system/bookforge-frontend.service`
 
@@ -234,9 +220,13 @@ systemctl is-active bookforge-backend bookforge-frontend   # 期望 active activ
 
 # 后端根路径
 curl -s http://localhost:8010/
-# {"message":"Welcome to BookForge API"}
+# {"message":"Welcome to BookForge API (TypeScript)"}
 
-# 登录接口（验证管理员账号与 bcrypt 修复）
+# 健康检查（部署探针）
+curl -s http://localhost:8010/health
+# {"status":"ok","project":"BookForge"}
+
+# 登录接口（验证管理员账号与 JWT）
 curl -s -X POST http://localhost:8010/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"<你的密码>"}'
@@ -278,9 +268,16 @@ sudo systemctl disable bookforge-backend bookforge-frontend
 
 ## 10. 常见问题排查（FAQ）
 
-### 10.1 登录报 `ValueError: password cannot be longer than 72 bytes`
-**原因**：`bcrypt` 版本过新（≥4.1），与 `passlib 1.7.4` 不兼容。
-**解决**：`pip install "bcrypt==4.0.1"`，并确保 `requirements.txt` 已锁定。
+### 10.1 后端启动即崩溃（exit-code 3 / 4）
+**排查**：查看日志确认具体错误。
+```bash
+journalctl -u bookforge-backend -n 50
+```
+常见原因：
+- `WorkingDirectory` 错误 → 找不到 `src/server.ts` / `.env` / `bookforge.db`
+- Node 版本过低（< 22.9）→ `--env-file-if-exists` 不被支持，`npm run start` 直接报错 → 升级 Node 并重装依赖
+- `better-sqlite3` 原生模块缺失/版本不匹配（切换 Node 版本后未重装）→ 在 `backend-ts` 下 `npm install` 重新拉取预编译二进制
+- 端口被占用 → 换端口并同步（见 10.5）
 
 ### 10.2 前端打不开 / 502 Bad Gateway
 **原因**：后端未启动，或前端代理目标端口错误。
@@ -288,48 +285,52 @@ sudo systemctl disable bookforge-backend bookforge-frontend
 ```bash
 systemctl is-active bookforge-backend      # 必须 active
 ss -tuln | grep 8010                       # 后端必须监听
+cat backend-ts/.env | grep PORT            # 必须与前端代理 target 一致（8010）
 cat frontend/vite.config.ts                # target 必须为 8010
 ```
 
-### 10.3 后端启动即崩溃（exit-code 3）
-**排查**：查看日志确认是否 `ModuleNotFoundError` 或绑定失败。
-```bash
-journalctl -u bookforge-backend -n 50
-```
-常见原因：
-- `WorkingDirectory` 错误 → 找不到 `app` 模块 / `.env` / `bookforge.db`
-- 端口被占用 → 换端口并放行
+### 10.3 登录 401 / 管理员密码不对
+**原因**：`.env` 中 `ADMIN_PASSWORD` 与种子创建时不一致（首次启动后修改 `.env` 不会回写已建库）。
+**解决**：部署前先写好 `.env` 再首次启动；或删除数据库重建（见 10.4）。
 
 ### 10.4 数据库被破坏 / 需要重置
-删除数据库文件后重启服务，Alembic 会自动重建全部表并重建管理员：
+删除数据库文件后重启服务，后端会自动重建全部表并重建管理员：
 ```bash
 sudo systemctl stop bookforge-backend
-rm -f /opt/EchoesForgeClaw/backend/bookforge.db
+rm -f /opt/EchoesForgeClaw/backend-ts/bookforge.db
 sudo systemctl start bookforge-backend
 ```
 
 ### 10.5 修改端口后需要同步改动
 修改端口时，以下 4 处**必须**同步：
-1. `backend/app/main.py` 的 CORS `allow_origins`
-2. `frontend/vite.config.ts` 的代理 `target`
-3. systemd 服务文件的 `ExecStart --port`
-4. `ufw` 放行新端口
+1. `backend-ts/.env` 的 `PORT`（后端监听）
+2. `backend-ts/.env` 的 `CORS_ORIGINS`（前端来源，若改的是前端端口）
+3. `frontend/vite.config.ts` 的代理 `target`（后端端口；一键脚本会自动同步）
+4. `ufw` 放行新端口（systemd 服务无硬编码端口，无需改）
 
 ### 10.6 代码更新后新增的数据库表未生效
 **原因**：只重启了服务但忘了处理迁移，或误以为需要手动建表。
-**解决**：本项目**无需手动建表**。后端每次启动都会执行 `alembic upgrade head`（`app/main.py`）自动应用迁移脚本（如 `book_cache` 表的 `c4d5e6f7a8b0_create_book_cache_table.py`）。只需 `sudo systemctl restart bookforge-backend` 即可，新表会自动创建。若仍缺表，查看日志确认迁移是否报错：`journalctl -u bookforge-backend -n 50 | grep -i alembic`。
+**解决**：本项目**无需手动建表、无需迁移工具**。后端每次启动都会执行幂等建表（`backend-ts/src/config/database.ts` 的 `applyInitialSchema`，`users` 表缺失时才建）。只需 `sudo systemctl restart bookforge-backend` 即可。若仍缺表，查看日志确认建表是否报错：`journalctl -u bookforge-backend -n 50`。
+
+### 10.7 从旧 Python 后端迁移存量数据
+- **直接复用**：`backend-ts/.env` 设 `DATABASE_URL=sqlite:///../backend/bookforge.db`（相对 `backend-ts/` 解析到旧库），表结构一致，已验证可读；
+- **拷贝**：`cp /opt/EchoesForgeClaw/backend/bookforge.db /opt/EchoesForgeClaw/backend-ts/`；
+- 迁移后首次启动会幂等补建缺失表（如有），并保留已有用户/生成记录/收藏。
 
 ---
+
 ## 11. 一键部署脚本
 
-为减少重复排障，提供一键部署/启动脚本 `scripts/deploy.sh`（见本目录），完成：
+为减少重复排障，提供一键部署/启动脚本 `scripts/deploy.sh`（见仓库根目录），完成：
 
-- 环境自检、端口自动选型
-- 依赖安装（含 bcrypt 锁定；默认仅首次 `--install` 或虚拟环境/`node_modules` 缺失时安装）
-- `.env` 自动生成（随机 `SECRET_KEY`；管理员密码**仅在未设置时**写入，避免每次部署覆盖已有密码）
-- **每次都执行前端生产构建 `npm run build`**（修复点：旧版仅在 `--install` 时构建，导致代码更新后部署了旧前端；`book_cache` 那次更新即因此需手动构建）
-- 后端重启时 Alembic 自动迁移建表（详见 5.1）
-- systemd 服务生成与启动、ufw 放行、启动自检
+- 环境自检（node ≥ 22.9 / npm / ss / ufw）
+- 端口自动选型
+- 依赖安装（`npm install`；默认仅首次 `--install` 或 `node_modules` 缺失时安装）
+- `.env` 自动生成（随机 `SECRET_KEY`、`PORT`、`CORS_ORIGINS`；管理员密码**仅在未设置时**写入，避免每次部署覆盖已有密码）
+- **每次都执行前端生产构建 `npm run build`**（修复点：旧版仅在 `--install` 时构建，导致代码更新后部署了旧前端）
+- 后端重启时自动幂等建表（表缺失才创建，无需迁移工具，见 5.1）
+- 重启前自动备份 SQLite 数据库（读取 `backend-ts/.env` 的 `DATABASE_URL`，cp 快照，保留最近 5 份）
+- systemd 服务生成与启动（后端 `EnvironmentFile` + `npm run start`）、ufw 放行、启动自检
 
 ```bash
 # 首次部署（安装依赖 + 构建 + 启动）
@@ -345,6 +346,6 @@ sudo bash scripts/deploy.sh
 
 ## 12. 安全与配置注意
 
-- `.env` 含 `SECRET_KEY` 与管理员密码，**不要提交到 git**（`backend/.gitignore` 未忽略 `.env`，需自行确认或补充）。
-- 生产环境建议将 `SECRET_KEY` 换成随机值，避免使用默认值。
+- `.env` 含 `SECRET_KEY` 与管理员密码，**不要提交到 git**（`backend-ts/.gitignore` 已忽略 `.env` 与 `*.db`）。
+- 生产环境建议将 `SECRET_KEY` 换成随机值，避免使用默认值（`scripts/deploy.sh` 会自动生成）。
 - 管理员账号首次创建后请勿在代码中硬编码，全部通过 `.env` 管理。

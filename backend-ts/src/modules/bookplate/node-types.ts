@@ -1,0 +1,117 @@
+/**
+ * bookplate 节点模板定义（对应 Python `app/modules/bookplate/node_types.py`）。
+ * 节点模板是画板节点类型的静态定义；管理端基于模板创建「节点配置」（NodeConfig）。
+ */
+
+export const NODE_TYPES = {
+  BOOK_INFO: 'book_info',
+  IMAGE_ANALYSIS: 'image_analysis',
+  PROMPT: 'prompt_generation',
+  IMAGE: 'image_generation',
+  TEXT: 'text',
+  IMAGE_UPLOAD: 'image_upload',
+  CHAT: 'chat',
+  TEXT_AGGREGATE: 'text_aggregate',
+  PROMPT_SEARCH: 'prompt_search',
+  SKILL_SEARCH: 'skill_search',
+} as const;
+
+export type NodeType = (typeof NODE_TYPES)[keyof typeof NODE_TYPES];
+
+export interface NodeTemplate {
+  type: NodeType;
+  name: string;
+  description: string;
+  category: 'input' | 'analysis' | 'generate' | 'output';
+  configurable: boolean;
+  output_type?: 'text' | 'image' | 'document';
+  input_types?: string[];
+}
+
+export const NODE_TEMPLATES: NodeTemplate[] = [
+  {
+    type: NODE_TYPES.BOOK_INFO,
+    name: '图书元数据',
+    description: '通过豆瓣 API 获取 ISBN 对应的图书元数据',
+    category: 'input',
+    configurable: false,
+    output_type: 'text',
+  },
+  {
+    type: NODE_TYPES.IMAGE_ANALYSIS,
+    name: '图片分析',
+    description: '多模态模型分析封面 / 参考图，输出艺术风格与主题色分析',
+    category: 'analysis',
+    configurable: true,
+    output_type: 'text',
+    input_types: ['image', 'text'],
+  },
+  {
+    type: NODE_TYPES.PROMPT,
+    name: '提示词生成',
+    description: '基于图书元数据与图片分析流式生成图像提示词',
+    category: 'generate',
+    configurable: true,
+    output_type: 'text',
+    input_types: ['text'],
+  },
+  {
+    type: NODE_TYPES.IMAGE,
+    name: '图像生成',
+    description: '根据提示词生成藏书票图片',
+    category: 'output',
+    configurable: true,
+    output_type: 'image',
+    input_types: ['text', 'image'],
+  },
+  {
+    type: NODE_TYPES.TEXT,
+    name: '文本',
+    description: '手动输入 / 编辑 Markdown 文本，作为工作流中的笔记或说明',
+    category: 'input',
+    configurable: false,
+    output_type: 'text',
+  },
+  {
+    type: NODE_TYPES.IMAGE_UPLOAD,
+    name: '图片上传',
+    description: '手动上传一张图片到画布，作为工作流中的参考素材',
+    category: 'input',
+    configurable: false,
+    output_type: 'image',
+  },
+  {
+    type: NODE_TYPES.CHAT,
+    name: 'AI 对话',
+    description: '多轮对话 AI 助手，可绑定大模型或 FastClaw Agent，输出最后一轮回复',
+    category: 'generate',
+    configurable: true,
+    output_type: 'text',
+    input_types: ['text', 'image', 'document'],
+  },
+  {
+    type: NODE_TYPES.TEXT_AGGREGATE,
+    name: '文本聚合',
+    description: '用占位符模板把多个上级文本按自定义格式拼接（如 ## 标题 + {占位符}）',
+    category: 'generate',
+    configurable: false,
+    output_type: 'text',
+    input_types: ['text'],
+  },
+  {
+    type: NODE_TYPES.PROMPT_SEARCH,
+    name: '提示词检索',
+    description: '从 Bifrost 提示词库检索并选用一条提示词，将其内容作为文本输出',
+    category: 'input',
+    configurable: false,
+    output_type: 'text',
+  },
+  {
+    type: NODE_TYPES.SKILL_SEARCH,
+    name: 'Skill 检索',
+    description: '从 Bifrost Skills 仓库检索并安装 skill（或直接上传本地 skill zip），作为 Skill Agent 的 skill 来源',
+    category: 'input',
+    configurable: false,
+    output_type: 'document',
+  },
+];

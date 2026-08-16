@@ -2,7 +2,7 @@ import React from 'react';
 import { BookInfoNode } from './components/BookInfoNode';
 import { ImageAnalysisNode } from './components/ImageAnalysisNode';
 import { PromptNode } from './components/PromptNode';
-import { ChatNode } from './components/ChatNode';
+import { ChatNodeHost, type ChatHostDeps } from './ChatNodeHost';
 import { ImageNode } from './components/ImageNode';
 import { TextNode } from './components/TextNode';
 import { ImageUploadNode } from './components/ImageUploadNode';
@@ -49,7 +49,8 @@ export interface NodeViewHelpers {
   handleTogglePublicFor: (id: string) => Promise<boolean>;
   handleEditTextFor: (id: string, content: string) => void;
   handleImageChangeFor: (id: string, imageUrl: string | null, imageName: string) => void;
-  handleSendChatFor: (id: string, text: string, images?: string[]) => void;
+  /** AI 对话节点宿主依赖（useChat 迁移：state setter + 端口类型查找） */
+  chatDeps: ChatHostDeps;
   /** 提示词检索节点：选用一条 Bifrost 提示词 */
   handleUpdatePromptFor: (id: string, selection: PromptSelection) => void;
   /** Skill 检索节点：整块替换已选 skill 集合（多选） */
@@ -60,8 +61,6 @@ export interface NodeViewHelpers {
   handleRenameAggregatePlaceholderFor: (id: string, parentId: string, alias: string) => void;
   handleUpdateChatSettingsFor: (id: string, settings: ChatNodeSettings) => void;
   handleClearChatFor: (id: string) => void;
-  handleStopChatFor: (id: string) => void;
-  handleRetryChatFor: (id: string) => void;
   handleNodeContextMenu: (e: React.MouseEvent, nodeId: string) => void;
   handlePositionChange: (id: string, x: number, y: number) => void;
   handleSizeChange: (id: string, width: number, height: number) => void;
@@ -69,7 +68,7 @@ export interface NodeViewHelpers {
 }
 
 /** 某节点的入边端口类型不匹配数（软提示：红色连线 + 节点徽标） */
-function mismatchBadgeOf(node: NodeData, h: NodeViewHelpers): string | null {
+export function mismatchBadgeOf(node: NodeData, h: NodeViewHelpers): string | null {
   let count = 0;
   for (const e of h.edges) {
     if (e.target !== node.id) continue;
@@ -83,7 +82,7 @@ function mismatchBadgeOf(node: NodeData, h: NodeViewHelpers): string | null {
 
 /** 某节点是否有下级节点（沿出边判断）：有下级时节点组件禁用「影响输出」类操作（重跑 / 编辑 / 清空等）。
  *  各节点共用同一口径，抽成公共判定避免重复计算。 */
-function hasDownstreamOf(node: { id: string }, edges: EdgeData[]): boolean {
+export function hasDownstreamOf(node: { id: string }, edges: EdgeData[]): boolean {
   return edges.some((e) => e.source === node.id);
 }
 
@@ -243,35 +242,8 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       );
     }
     case 'chat': {
-      const hasDownstream = hasDownstreamOf(node, h.edges);
-      const config = h.configOf(node);
-      return (
-        <ChatNode
-          key={node.id}
-          {...common}
-          messages={node.data.messages}
-          hasDownstream={hasDownstream}
-          mismatchBadge={mismatchBadge}
-          agentName={
-            config?.mode === 'agent'
-              ? (config.agent_name ?? undefined)
-              : config?.mode === 'skill_agent'
-                ? (config.skill_agent_config_name ?? undefined)
-                : undefined
-          }
-          group={config?.group?.trim() || undefined}
-          isGenerating={!!node.data.isGenerating}
-          error={node.data.error ?? null}
-          settings={
-            node.data.settings ?? { includeBook: true, includeUpstream: true, includeUpstreamImages: true }
-          }
-          onSend={h.handleSendChatFor}
-          onUpdateSettings={h.handleUpdateChatSettingsFor}
-          onClearChat={h.handleClearChatFor}
-          onStop={h.handleStopChatFor}
-          onRetry={h.handleRetryChatFor}
-        />
-      );
+      // AI 对话节点：每节点一个 ChatNodeHost（useChat 实例），内部渲染 ChatNode 并镜像消息回 store
+      return <ChatNodeHost key={node.id} node={node} h={h} deps={h.chatDeps} />;
     }
     case 'text_aggregate': {
       return (

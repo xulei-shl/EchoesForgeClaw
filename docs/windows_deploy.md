@@ -1,78 +1,80 @@
 # Windows 部署与启动指南（Win11 64 位）
 
-本文档记录 BookForge 在 Windows（Win11 64 位）环境下从零启动的完整步骤，以及实际踩坑后总结的兼容性修复，便于后续在同一类环境快速复现。
+本文档记录 BookForge 在 Windows（Win11 64 位）环境下从零启动的完整步骤。后端已由 Python（FastAPI/uvicorn）迁移为 **TypeScript（Fastify + Drizzle + AI SDK，目录 `backend-ts/`）**，启动方式与依赖要求已随之变化。
 
-> 适用环境：Windows 11 64 位、Python 3.13.x、Node.js 25.x、npm 11.x
-> 已知结论：项目本身代码无需改动，**仅需补齐两个第三方依赖的 Windows/Python 3.13 兼容问题**即可正常启动。
+> 适用环境：Windows 11 64 位、Node.js ≥ 22.9（已在 v24.13.0 验证）、npm 11.x
+> **不再需要 Python / venv / pip / uvicorn**。项目启动前仅需准备 Node.js 环境与 `backend-ts/.env`。
 
 ---
 
 ## 1. 环境前置要求
 
-- **Python** ≥ 3.11（已在 3.13.9 验证）
-- **Node.js** ≥ 18（已在 v25.2.0 验证）
+- **Node.js** ≥ 22.9（`backend-ts` 的启动脚本使用 `--env-file-if-exists` 加载 `.env`，依赖此版本；已在本机 v24.13.0 验证）
+- **npm**（随 Node.js 安装）
 - **Git**（用于拉取仓库与潜在迁移）
 
 检查命令：
 
 ```powershell
-python --version
-node --version
+node --version   # 必须 >= v22.9.0
 npm --version
 ```
+
+> 注意：切换 Node 大版本后，`better-sqlite3` 是原生模块，需重新执行 `npm install` 下载匹配该版本的预编译二进制（见「踩坑记录」坑 3）。
 
 ---
 
 ## 2. 后端启动
 
-### 2.1 创建虚拟环境并安装依赖
+后端位于 `backend-ts/` 目录，直接以 Node.js 运行 TypeScript（tsx 加载器），**无需编译产物**。
+
+### 2.1 安装依赖
 
 ```powershell
-cd backend
-
-# 创建虚拟环境（Windows 激活脚本在 .venv\Scripts\）
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-
-pip install -r requirements.txt
+cd backend-ts
+npm install
 ```
 
-> 说明：`pip install` 结束后若看到 `pip is available ...` 提示，属于 pip 自身升级提醒，**不是错误**，依赖已安装完成。
-
-### 2.2 Windows / Python 3.13 必做的两项兼容修复（关键）
-
-直接按 README 启动会在 Windows + Python 3.13 下崩溃，需先执行以下修复（已写入 `requirements.txt` 之外的系统级补充，建议每次新环境都执行）：
-
-```powershell
-# 修复 1：Python 3.13 移除了内置 IANA 时区数据，Asia/Shanghai 需要 tzdata 包
-pip install tzdata
-
-# 修复 2：bcrypt 5.0 与 passlib 在 Python 3.13 不兼容（见下方“踩坑记录”）
-pip install "bcrypt==4.0.1"
-```
-
-> 若 `requirements.txt` 已锁定 `bcrypt>=5`，请将 `bcrypt` 版本约束改为 `bcrypt==4.0.1` 后再安装，避免被升级回去。
-
-### 2.3 配置环境变量
+### 2.2 配置环境变量
 
 ```powershell
 cp .env.example .env
-# 编辑 .env，至少设置 SECRET_KEY（可用任意随机字符串）
+# 编辑 .env：
+#  - 必改 SECRET_KEY（任意随机字符串，JWT 签名密钥）
+#  - PORT 保持 8010（与前端 Vite 代理 target 一致，改动需同步，见坑 2）
 ```
 
-### 2.4 启动后端
+`.env` 关键项（`npm run start` 会自动加载，无需手动 export）：
+
+```ini
+SECRET_KEY=change-me                # 必改：JWT 签名密钥
+PORT=8010                           # 监听端口（前端代理指向 8010）
+CORS_ORIGINS=http://localhost:5173,http://localhost:5180
+ADMIN_USERNAME=admin                # 首次启动创建的默认管理员
+ADMIN_PASSWORD=admin123             # 登录后请尽快修改
+# DATABASE_URL=sqlite:///./bookforge.db   # 默认库文件 backend-ts/bookforge.db
+# OPENAI_API_KEY=                   # 文本模型 Key（无 Key 时聊天/提示词走 Mock 演示）
+# OPENAI_IMAGE_API_KEY=             # 图像生成 Key（无 Key 时生成占位图）
+```
+
+### 2.3 启动后端
 
 ```powershell
-# 开发模式（建议加 -u 避免日志缓冲导致看不到启动进度）
-$env:PYTHONPATH="."
-python -u -m uvicorn app.main:app --reload --port 8010
+# 开发模式（文件变更自动重启）
+npm run dev
+
+# 或普通启动
+npm run start
 ```
 
-- 启动成功标志：`INFO: Application startup complete`
-- 首次启动会自动执行 Alembic 迁移建表，并创建默认管理员（用户名 `admin`，密码取自 `.env` 的 `ADMIN_PASSWORD`，未配置时默认为 `admin123`；登录后请尽快修改）
-- 交互式文档：http://localhost:8010/docs
+- 启动成功标志：`Server listening at http://127.0.0.1:8010`
+- 首次启动会自动**幂等建表**（表缺失才创建，对应旧版 Alembic 迁移），并创建默认管理员（用户名取 `.env` 的 `ADMIN_USERNAME`，默认 `admin`；密码取 `ADMIN_PASSWORD`，默认 `admin123`）与默认系统设置、提示词
+- 健康检查：http://localhost:8010/health （返回 `{"status":"ok"}`）
+- 无 Swagger 文档页（旧版 `/docs` 已移除）；接口契约见 `backend-ts/tests/` 契约测试
 
-> 端口说明：后端统一使用 **8010**（与 `docs/ubuntu_deploy_best_practices.md` 的生产端口保持一致，且规避常见 8000 占用冲突）。前端 Vite 代理（`frontend/vite.config.ts`）的 `/api`、`/static` target 也必须指向 `http://localhost:8010`，否则会 502。
+> 端口说明：后端统一使用 **8010**（与 `docs/ubuntu_deploy_best_practices.md` 的生产端口保持一致）。前端 Vite 代理（`frontend/vite.config.ts`）的 `/api`、`/static` target 指向 `http://localhost:8010`，两者必须一致，否则 502。
+>
+> **存量数据复用**：TS 后端默认使用 `backend-ts/bookforge.db`（全新空库）。若需直接复用旧 Python 后端的数据，在 `.env` 中设置 `DATABASE_URL=sqlite:///../backend/bookforge.db`（表结构与旧库一致，已验证可读），或把旧 `backend/bookforge.db` 拷贝到 `backend-ts/` 下。
 
 ---
 
@@ -95,11 +97,15 @@ npm run dev -- --port 5173
 ```powershell
 # 后端根路径
 (Invoke-RestMethod http://127.0.0.1:8010/).message
-# 期望输出：Welcome to BookForge API
+# 期望输出：Welcome to BookForge API (TypeScript)
 
-# 后端文档
-(Invoke-WebRequest http://127.0.0.1:8010/docs -UseBasicParsing).StatusCode
-# 期望：200
+# 后端健康检查
+(Invoke-RestMethod http://127.0.0.1:8010/health).status
+# 期望：ok
+
+# 登录接口（验证管理员账号与 JWT）
+(Invoke-RestMethod -Method Post http://127.0.0.1:8010/api/auth/login -ContentType "application/json" -Body '{"username":"admin","password":"admin123"}').token
+# 返回一长串 token 即成功
 
 # 前端
 (Invoke-WebRequest http://127.0.0.1:5173/ -UseBasicParsing).StatusCode
@@ -115,12 +121,14 @@ npm run dev -- --port 5173
 **方式 A：PowerShell 后台作业（当前会话内）**
 
 ```powershell
-# 后端
-Start-Process -FilePath "python" -ArgumentList "-u","-m","uvicorn","app.main:app","--reload","--port","8010" -WorkingDirectory "$PWD\backend" -RedirectStandardOutput "$env:TEMP\uv_out.log" -RedirectStandardError "$env:TEMP\uv_err.log"
+# 后端（node 绝对路径用 where.exe node 查看）
+Start-Process -FilePath "node" -ArgumentList "--import","tsx","src/server.ts" -WorkingDirectory "$PWD\backend-ts" -RedirectStandardOutput "$env:TEMP\bk_out.log" -RedirectStandardError "$env:TEMP\bk_err.log"
 
 # 前端
 Start-Process -FilePath "npm" -ArgumentList "run","dev","--","--port","5173" -WorkingDirectory "$PWD\frontend"
 ```
+
+> 注意：`Start-Process -FilePath "node"` 方式不会加载 `.env`（`--env-file-if-exists` 仅存在于 npm scripts）。常驻场景请改用 **方式 B**，或在启动前手动设置 `$env:SECRET_KEY`、`$env:PORT` 等环境变量，或用 `node --env-file=.env --import tsx src/server.ts` 显式加载。
 
 **方式 B：使用进程管理器（如 supervisor / nssm / Windows 任务计划程序）**，适合生产或长期开发机。
 
@@ -128,23 +136,36 @@ Start-Process -FilePath "npm" -ArgumentList "run","dev","--","--port","5173" -Wo
 
 ## 6. 踩坑记录（FIRST-RUN 必读）
 
-### 坑 1：缺少 `tzdata` → `ZoneInfoNotFoundError: 'No time zone found with key Asia/Shanghai'`
+### 坑 1：`npm run start` 直接报错 / Node 版本过低
 
-- **根因**：`app/core/timeutils.py` 使用 `ZoneInfo("Asia/Shanghai")`。Python 3.9+ 的 `zoneinfo` 在 **Windows** 上需要独立的 `tzdata` 包提供时区数据；Linux 通常内置，Windows 没有。
-- **现象**：后端启动即报 `ZoneInfoNotFoundError`，进程退出。
-- **修复**：`pip install tzdata`
+- **现象**：`bad option: --env-file-if-exists` 或启动即退出。
+- **根因**：`backend-ts` 的启动脚本用 `tsx --env-file-if-exists=.env` 加载 `.env`，该 flag 需要 **Node ≥ 22.9**；另外 `better-sqlite3` 原生模块对 Node 版本敏感。
+- **修复**：安装 Node.js ≥ 22.9（nvm-windows / fnm / 官网安装包均可），然后 `npm install` 重装原生依赖。
 
-### 坑 2：passlib + bcrypt 5.0 崩溃 → `ValueError: password cannot be longer than 72 bytes`
+### 坑 2：后端起来了但前端 502 Bad Gateway
 
-- **根因**：后端 `lifespan` 启动时会用 `passlib` 的 `bcrypt` 创建默认管理员账号。bcrypt **5.0** 在 Python 3.13 上加载 backend 时即抛错（内部 `detect_wrap_bug` 触发 72 字节限制校验），导致 uvicorn 在 `Application startup complete` 前异常退出，**且错误信息被日志缓冲吞掉，仅能看到卡在 Alembic migration 阶段**。
-- **现象**：进程在 `Waiting for application startup` 后静默退出，端口连不通。
-- **修复**：降级到兼容版本 `pip install "bcrypt==4.0.1"`
-- **排查技巧**：用 `python -u -c "from app.core.security import get_password_hash; get_password_hash('admin123')"` 可独立复现并暴露真实错误，绕开 uvicorn 日志缓冲。
+- **根因**：后端端口与前端 Vite 代理 target 不一致。前端代理固定指向 `http://localhost:8010`，而 `backend-ts` 未配置时默认 `8000`。
+- **修复**：确认 `backend-ts/.env` 中 `PORT=8010`（.env.example 已默认），且启动时 `.env` 被加载（`npm run start` 会自动加载；手动 `node src/server.ts` 不会）。
 
-### 坑 3：日志缓冲导致误判“卡死”
+### 坑 3：`npm install` 报 better-sqlite3 编译错误
 
-- **根因**：PowerShell 管道 + uvicorn 子进程输出缓冲，使 `Running upgrade` / `Application startup complete` 等日志看不到，误以为卡在 migration。
-- **缓解**：启动命令加 `-u`（无缓冲 Python），或把日志重定向到文件（`RedirectStandardOutput/Error`）再 `Get-Content` 查看。
+- **根因**：`better-sqlite3` 是原生模块，当前 Node 版本没有预编译二进制时会走 node-gyp 编译，Windows 上需要 VS Build Tools + Python。
+- **修复**：优先安装**官方预编译二进制匹配的 Node LTS 版本**（22.x / 24.x 常见版本均有 prebuild）；确需编译时安装 `python` + `Visual Studio Build Tools`（勾选 C++ 桌面开发）后重试 `npm install`。
+
+### 坑 4：登录 401 / 管理员密码不对
+
+- **根因**：首次启动种子创建管理员时读取 `.env` 的 `ADMIN_PASSWORD`；若 `.env` 未配置则默认 `admin123`。修改 `.env` 后需删除已建库（`backend-ts/bookforge.db`，见坑 5）或手工改库才能生效。
+- **修复**：首次部署前先写好 `.env` 再启动。
+
+### 坑 5：数据库被破坏 / 想重置
+
+删除数据库文件后重启，后端会自动重建全部表并重新创建管理员：
+
+```powershell
+# 先停服务（若常驻）
+# Remove-Item backend-ts\bookforge.db
+npm run start
+```
 
 ---
 
@@ -152,15 +173,11 @@ Start-Process -FilePath "npm" -ArgumentList "run","dev","--","--port","5173" -Wo
 
 ```powershell
 # 后端
-cd backend
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-pip install tzdata
-pip install "bcrypt==4.0.1"
+cd backend-ts
+npm install
 cp .env.example .env
-$env:PYTHONPATH="."
-python -u -m uvicorn app.main:app --reload --port 8010
+# 编辑 .env：改 SECRET_KEY（其余保持默认）
+npm run start
 
 # 前端（另开终端）
 cd frontend

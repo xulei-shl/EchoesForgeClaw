@@ -10,8 +10,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@ai-sdk/react": "^4.0.69",
     "@streamdown/cjk": "^1.0.3",
     "@streamdown/code": "^1.1.1",
+    "ai": "^7.0.66",
     "axios": "^1.19.0",
     "framer-motion": "^13.0.0",
     "lucide-react": "^1.29.0",

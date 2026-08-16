@@ -52,7 +52,6 @@ import {
 import { useCanvasHistory } from '../../modules/bookplate/useCanvasHistory';
 import { useGenerationHistory } from '../../modules/bookplate/useGenerationHistory';
 import { useNodeExecution } from '../../modules/bookplate/useNodeExecution';
-import { useChatExecution } from '../../modules/bookplate/useChatExecution';
 import { useManualConnection } from '../../modules/bookplate/useManualConnection';
 import ConnectionGhost from '../../modules/bookplate/ConnectionGhost';
 import { renderCanvasNode, type NodeViewHelpers } from '../../modules/bookplate/CanvasNodeViews';
@@ -330,14 +329,9 @@ const BookplatePage: React.FC = () => {
     generationIds,
     autoSaveGeneration,
   });
-  // AI 对话节点执行（多轮 SSE）独立成 hook，与节点执行引擎解耦
-  const { runChatTurn, retryChatTurn } = useChatExecution({
-    nodesRef,
-    edgesRef,
-    streamControllers,
-    portTypesRef,
-    setNodes,
-  });
+  // AI 对话节点执行（多轮 useChat）由每节点的 ChatNodeHost 承载（见 CanvasNodeViews），
+  // 此处仅注入其依赖（state setter + 端口类型查找）
+  const chatDeps = { setNodes, portTypesRef };
 
   // 手动拖线连线：按住节点右侧连接点拖到目标节点左侧连接点创建连线（可撤销、防重、防环）
   const { connecting, ghostRef, onAnchorPointerDown } = useManualConnection({
@@ -1033,11 +1027,6 @@ const BookplatePage: React.FC = () => {
     recordHistory();
     updateNodeData(id, { content });
   }, []);
-  /** AI 对话节点：发送一条用户消息（多轮对话，images 为本轮附带图片） */
-  const handleSendChatFor = useCallback((id: string, text: string, images?: string[]) => {
-    const node = nodesRef.current.find((n) => n.id === id);
-    if (node && node.type === 'chat') runChatTurn(node, text, images);
-  }, []);
   /** AI 对话节点：更新上下文加载设置（未变化不记历史） */
   const handleUpdateChatSettingsFor = useCallback((id: string, settings: ChatNodeSettings) => {
     const node = nodesRef.current.find((n) => n.id === id);
@@ -1067,18 +1056,6 @@ const BookplatePage: React.FC = () => {
       // 干净对话 -> 干净工作区：重新生成 workspaceId，后端以新目录装配（Skill Agent 产物不残留）
       workspaceId: `${id}_${Date.now()}`,
     });
-  }, []);
-  /** AI 对话节点：停止当前生成（中止 SSE 流，标记用户中断） */
-  const handleStopChatFor = useCallback((id: string) => {
-    const controller = streamControllers.current.get(id);
-    if (!controller) return;
-    (controller as any).userInterrupted = true;
-    controller.abort();
-  }, []);
-  /** AI 对话节点：重试最后一轮 */
-  const handleRetryChatFor = useCallback((id: string) => {
-    const node = nodesRef.current.find((n) => n.id === id);
-    if (node && node.type === 'chat') retryChatTurn(node);
   }, []);
   /** 图片上传节点上传 / 替换 / 移除图片（imageUrl 为 null 表示移除；未变化不记历史） */
   const handleImageChangeFor = useCallback(
@@ -1420,15 +1397,13 @@ const BookplatePage: React.FC = () => {
     handleTogglePublicFor,
     handleEditTextFor,
     handleImageChangeFor,
-    handleSendChatFor,
+    chatDeps,
     handleUpdatePromptFor,
     handleUpdateSkillsFor,
     handleUpdateAggregateTemplateFor,
     handleRenameAggregatePlaceholderFor,
     handleUpdateChatSettingsFor,
     handleClearChatFor,
-    handleStopChatFor,
-    handleRetryChatFor,
     handleNodeContextMenu,
     handlePositionChange,
     handleSizeChange,

@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 #
-# BookForge 一键部署/启动脚本（Ubuntu）
+# BookForge 一键部署/启动脚本（Ubuntu，TypeScript 后端）
 #
 # 功能：
-#   1. 环境自检（python3 / node / npm / ufw）
+#   1. 环境自检（node >= 22.9 / npm / ss / ufw）
 #   2. 自动挑选未被占用的后端、前端端口
-#   3. 创建/更新 backend/.env（随机 SECRET_KEY，管理员账号密码可配置）
-#   4. 安装后端依赖（含 bcrypt 锁定修复，仅 --install 或虚拟环境缺失时）
+#   3. 创建/更新 backend-ts/.env（随机 SECRET_KEY、PORT、CORS_ORIGINS、管理员账号密码）
+#   4. 安装后端依赖（npm install，仅 --install 或 node_modules 缺失时）
 #   5. 安装前端依赖（按需）并**每次都**生产构建（前端代码可能已更新）
-#   6. 后端启动时由 Alembic 自动执行迁移建表（新增表无需手工处理）
-#   7. 重启前自动备份 SQLite 数据库（读取 backend/.env 的 DATABASE_URL，python3 在线快照）
-#   8. 生成并安装 4 处端口相关的配置（CORS / vite 代理 / systemd / ufw）
+#   6. 后端启动时自动幂等建表（表缺失才创建，无需迁移工具/手工建表）
+#   7. 重启前自动备份 SQLite 数据库（读取 backend-ts/.env 的 DATABASE_URL，cp 快照）
+#   8. 生成并安装 4 处端口相关的配置（backend-ts/.env PORT / CORS_ORIGINS / vite 代理 / systemd / ufw）
 #   9. 生成 systemd 服务并启用开机自启
 #  10. ufw 放行端口
 #  11. 启动服务并自检
@@ -18,7 +18,7 @@
 # 用法：
 #   sudo bash scripts/deploy.sh [--install] [--admin-password PASSWORD] [--backend-port P] [--frontend-port P]
 #     --install          安装依赖（首次部署；不传则只构建前端（代码可能已更新）并重启服务）
-#     --admin-password   管理员密码，默认 yfzjlxy0527（仅当 backend/.env 尚未设置时写入，避免覆盖已有密码）
+#     --admin-password   管理员密码，默认 yfzjlxy0527（仅当 backend-ts/.env 尚未设置时写入，避免覆盖已有密码）
 #     --backend-port     后端端口，默认 8010（若被占用则自动寻找空闲端口）
 #     --frontend-port    前端端口，默认 5180
 #     --node-path        node/npm 绝对路径，默认自动探测
@@ -34,11 +34,11 @@ BACKEND_PORT="8010"
 FRONTEND_PORT="5180"
 NODE_PATH=""
 PROJECT_DIR="/opt/EchoesForgeClaw"
-BACKEND_DIR="$PROJECT_DIR/backend"
+BACKEND_DIR="$PROJECT_DIR/backend-ts"
 FRONTEND_DIR="$PROJECT_DIR/frontend"
 
 print_help() {
-  sed -n '2,24p' "$0"
+  sed -n '2,26p' "$0"
   exit 0
 }
 
@@ -92,9 +92,9 @@ pick_port() {
 
 need_cmd() { command -v "$1" >/dev/null 2>&1 || die "缺少命令: $1"; }
 
-# 重启前备份 SQLite 数据库：从 backend/.env 的 DATABASE_URL 解析 db 文件路径，
-# 用 python3 在线快照（服务仍在运行，一致性快照，兼容 WAL，无需 sqlite3 CLI）；
-# 解析失败 / 非 SQLite / 文件缺失时跳过并告警，快照失败回退为文件复制。保留最近 5 份。
+# 重启前备份 SQLite 数据库：从 backend-ts/.env 的 DATABASE_URL 解析 db 文件路径，
+# cp 快照（服务运行中复制，SQLite WAL 下可能非严格一致，作为部署前安全网足够；
+# 伴随文件 -wal/-shm 一并复制）。保留最近 5 份。
 backup_sqlite_db() {
   local env_file="$BACKEND_DIR/.env"
   local url
@@ -106,7 +106,7 @@ backup_sqlite_db() {
     return 0
   fi
   local db_path="${url#*:///}"
-  # 绝对路径（sqlite:////abs/x.db）直接使用；相对路径按 systemd WorkingDirectory（backend/）解析
+  # 绝对路径（sqlite:////abs/x.db）直接使用；相对路径按 systemd WorkingDirectory（backend-ts/）解析
   if [[ "$db_path" != /* ]]; then
     db_path="$(realpath -m "$BACKEND_DIR/$db_path")"
   fi
@@ -119,39 +119,20 @@ backup_sqlite_db() {
   stamp="$(date +%Y%m%d%H%M%S.%N)"
   backup="$db_path.bak.$stamp"
   info "备份数据库: $db_path -> $backup"
-  if python3 - "$db_path" "$backup" <<'PYEOF'; then
-import sqlite3, sys
-
-src, dst = sys.argv[1], sys.argv[2]
-s = sqlite3.connect(src)
-d = sqlite3.connect(dst)
-with d:
-    s.backup(d)
-d.close()
-s.close()
-PYEOF
-    info "数据库备份完成"
-  else
-    warn "在线快照失败，回退为文件复制"
-    cp -p "$db_path" "$backup"
-    # WAL 模式下的伴随文件一并复制（主路径 python 快照已兼容 WAL，此为兜底）
-    for suffix in -wal -shm; do
-      [[ -f "$db_path$suffix" ]] && cp -p "$db_path$suffix" "$backup$suffix"
-    done
-  fi
+  cp -p "$db_path" "$backup"
+  # WAL 模式下的伴随文件一并复制（保证备份尽量一致）
+  for suffix in -wal -shm; do
+    [[ -f "$db_path$suffix" ]] && cp -p "$db_path$suffix" "$backup$suffix"
+  done
   # 保留最近 5 份备份，清理更旧的
   ls -1t "${db_path}".bak.* 2>/dev/null | tail -n +6 | xargs -r rm -f || true
 }
 
 # ---------------- 前置检查 ----------------
-die_if_root_mismatch() {
-  if [[ "$(id -u)" -ne 0 ]]; then
-    die "请以 root 运行（或 sudo bash $0）"
-  fi
-}
-die_if_root_mismatch
+if [[ "$(id -u)" -ne 0 ]]; then
+  die "请以 root 运行（或 sudo bash $0）"
+fi
 
-need_cmd python3
 need_cmd ss
 need_cmd systemctl
 command -v ufw >/dev/null 2>&1 && HAS_UFW=1 || HAS_UFW=0
@@ -162,11 +143,26 @@ if [[ ! -d "$FRONTEND_DIR" ]]; then die "未找到前端目录: $FRONTEND_DIR"; 
 # 探测 node / npm
 if [[ -z "$NODE_PATH" ]]; then
   NPM_BIN="$(command -v npm || true)"
-  [[ -z "$NPM_BIN" ]] && die "未找到 npm，请安装 Node.js 或传 --node-path"
+  [[ -z "$NPM_BIN" ]] && die "未找到 npm，请安装 Node.js（>= 22.9）或传 --node-path"
 else
   NPM_BIN="$NODE_PATH/npm"
 fi
 command -v "$NPM_BIN" >/dev/null 2>&1 || die "npm 不可用: $NPM_BIN"
+
+# Node 版本检查（backend-ts 的 npm scripts 使用 --env-file-if-exists，需 >= 22.9）
+NODE_BIN="$(command -v node || true)"
+if [[ -n "$NODE_BIN" ]]; then
+  NODE_MAJOR="$(node -e 'console.log(process.versions.node.split(".")[0])')"
+  if [[ "$NODE_MAJOR" -lt 22 ]]; then
+    die "Node 版本过低（$NODE_MAJOR.x < 22.9），请安装 Node.js >= 22.9"
+  fi
+  if [[ "$NODE_MAJOR" -eq 22 ]]; then
+    NODE_MINOR="$(node -e 'console.log(process.versions.node.split(".")[1])')"
+    if [[ "$NODE_MINOR" -lt 9 ]]; then
+      die "Node 版本过低（22.$NODE_MINOR < 22.9），请升级 Node.js"
+    fi
+  fi
+fi
 
 # ---------------- 端口规划 ----------------
 info "正在挑选未被占用的端口..."
@@ -175,19 +171,14 @@ FRONTEND_PORT=$(pick_port "$FRONTEND_PORT")
 info "后端端口: $BACKEND_PORT"
 info "前端端口: $FRONTEND_PORT"
 
-# ---------------- 版本锁定检查（关键修复） ----------------
-info "检查后端依赖的 bcrypt 锁定..."
-if ! grep -qE '^bcrypt==4\.0\.1' "$BACKEND_DIR/requirements.txt" 2>/dev/null; then
-  warn "requirements.txt 缺少 bcrypt==4.0.1 锁定（passlib 兼容性修复），自动补充"
-  echo "bcrypt==4.0.1" >> "$BACKEND_DIR/requirements.txt"
-fi
-
 # ---------------- .env 生成 ----------------
-info "配置 backend/.env ..."
+info "配置 backend-ts/.env ..."
 ENV_FILE="$BACKEND_DIR/.env"
 touch "$ENV_FILE"
+# SECRET_KEY：存在且非空则保留，否则用 node crypto 生成
 if ! grep -q '^SECRET_KEY=' "$ENV_FILE" 2>/dev/null || [[ -z "$(grep '^SECRET_KEY=' "$ENV_FILE" | cut -d= -f2)" ]]; then
-  SECRET_KEY="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+  SECRET_KEY="$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')"
+  sed -i '/^SECRET_KEY=/d' "$ENV_FILE"
   echo "SECRET_KEY=$SECRET_KEY" >> "$ENV_FILE"
   info "已生成随机 SECRET_KEY"
 fi
@@ -198,7 +189,7 @@ if ! grep -q '^ADMIN_PASSWORD=' "$ENV_FILE" 2>/dev/null; then
   echo "ADMIN_PASSWORD=$ADMIN_PASSWORD" >> "$ENV_FILE"
   info "已写入管理员密码（默认/配置值）"
 else
-  info "保留已有 ADMIN_PASSWORD（如需重置请手动修改 backend/.env 或重新运行并指定 --admin-password）"
+  info "保留已有 ADMIN_PASSWORD（如需重置请手动修改 backend-ts/.env 或重新运行并指定 --admin-password）"
 fi
 # Bifrost 管理 API Basic Auth 账号密码（存在则保留，避免覆盖已有配置）；
 # 后端启动时会种子化到系统设置（admin/settings），之后以页面修改为准
@@ -207,38 +198,34 @@ if ! grep -q '^BIFROST_USERNAME=' "$ENV_FILE" 2>/dev/null; then
 fi
 if ! grep -q '^BIFROST_PASSWORD=' "$ENV_FILE" 2>/dev/null; then
   echo "BIFROST_PASSWORD=" >> "$ENV_FILE"
-  warn "已写入 BIFROST_USERNAME=admin（密码留空）：请在 admin/settings 或 backend/.env 配置 Bifrost 管理密码"
+  warn "已写入 BIFROST_USERNAME=admin（密码留空）：请在 admin/settings 或 backend-ts/.env 配置 Bifrost 管理密码"
 fi
+# 端口与 CORS（每次部署强制同步，端口可能变化）
+sed -i '/^PORT=/d' "$ENV_FILE"
+echo "PORT=$BACKEND_PORT" >> "$ENV_FILE"
+sed -i '/^CORS_ORIGINS=/d' "$ENV_FILE"
+echo "CORS_ORIGINS=http://localhost:$FRONTEND_PORT" >> "$ENV_FILE"
+# DATABASE_URL 保留现有配置；缺省时后端默认 sqlite:///./bookforge.db（相对 backend-ts/）
+# 存量 Python 数据迁移：手动设为 DATABASE_URL=sqlite:///../backend/bookforge.db（或拷贝 db 文件）
 chmod 600 "$ENV_FILE"
 
-# ---------------- 源码配置同步（CORS / vite 代理） ----------------
-info "同步后端 CORS 配置（端口 $FRONTEND_PORT）..."
-MAIN_PY="$BACKEND_DIR/app/main.py"
-if ! grep -q "$FRONTEND_PORT" "$MAIN_PY" 2>/dev/null; then
-  # 在 allow_origins 列表中加入当前前端端口（若列表以特定端口开头则替换）
-  if grep -qE 'http://localhost:5[0-9]+' "$MAIN_PY"; then
-    sed -E -i 's#(http://localhost:5[0-9]+)#http://localhost:'"$FRONTEND_PORT"'#' "$MAIN_PY"
-  fi
-fi
-
+# ---------------- 前端代理目标同步 ----------------
 info "同步前端 Vite 代理目标（端口 $BACKEND_PORT）..."
 VITE_CFG="$FRONTEND_DIR/vite.config.ts"
-sed -E -i "s#(target: 'http://localhost:)[0-9]+'\$#\1$BACKEND_PORT'#" "$VITE_CFG" 2>/dev/null || \
-  sed -E -i "s#(target: 'http://localhost:)[0-9]+'#\1$BACKEND_PORT'#g" "$VITE_CFG"
+sed -E -i "s#(target: 'http://localhost:)[0-9]+'#\1$BACKEND_PORT'#g" "$VITE_CFG"
 
 # ---------------- 后端依赖安装（按需） ----------------
-# 仅在 --install 或虚拟环境缺失时安装；日常更新（如新增数据库表）无需重装
-if [[ "$INSTALL" == "yes" || ! -d "$BACKEND_DIR/.venv" ]]; then
-  info "安装后端依赖..."
-  ( cd "$BACKEND_DIR" && if [[ ! -d .venv ]]; then python3 -m venv .venv; fi )
-  "$BACKEND_DIR/.venv/bin/pip" install -r "$BACKEND_DIR/requirements.txt"
+# 仅在 --install 或 node_modules 缺失时安装；日常更新（如新增数据库表）无需重装
+if [[ "$INSTALL" == "yes" || ! -d "$BACKEND_DIR/node_modules" ]]; then
+  info "安装后端依赖（npm install）..."
+  ( cd "$BACKEND_DIR" && "$NPM_BIN" install )
 else
-  info "跳过后端依赖安装（虚拟环境已存在且未指定 --install）"
+  info "跳过后端依赖安装（node_modules 已存在且未指定 --install）"
 fi
 
 # ---------------- 前端依赖安装与构建 ----------------
-# 前端构建【每次都执行】：前端代码可能已更新（如本次增加的「强制更新」按钮），
-# 若跳过构建会把旧 dist 当作最新逻辑部署。依赖仅在 --install 或缺失时安装。
+# 前端构建【每次都执行】：前端代码可能已更新，若跳过构建会把旧 dist 当作最新逻辑部署。
+# 依赖仅在 --install 或缺失时安装。
 if [[ "$INSTALL" == "yes" || ! -d "$FRONTEND_DIR/node_modules" ]]; then
   info "安装前端依赖..."
   ( cd "$FRONTEND_DIR" && "$NPM_BIN" install )
@@ -255,14 +242,15 @@ NPM_CANON="$NODE_PREFIX/bin/npm"
 
 cat > /etc/systemd/system/bookforge-backend.service <<EOF
 [Unit]
-Description=BookForge Backend (FastAPI)
+Description=BookForge Backend (TypeScript/Fastify)
 After=network.target
 
 [Service]
 Type=simple
 User=root
 WorkingDirectory=$BACKEND_DIR
-ExecStart=$BACKEND_DIR/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port $BACKEND_PORT
+EnvironmentFile=$BACKEND_DIR/.env
+ExecStart=$NPM_CANON run start
 Restart=always
 RestartSec=5
 StandardOutput=journal
@@ -305,7 +293,7 @@ else
 fi
 
 # ---------------- 启动并自检 ----------------
-# 重启前备份数据库（后端重启时自动执行 Alembic 迁移，列改名等属重建表操作，多个安全网）
+# 重启前备份数据库（后端重启时表缺失自动创建，备份作安全网）
 backup_sqlite_db
 
 info "启动服务..."
@@ -334,8 +322,8 @@ echo "日志        : journalctl -u bookforge-backend -f"
 echo "=================================================="
 
 # 快速自检
-if curl -sf -o /dev/null --max-time 3 "http://localhost:$BACKEND_PORT/"; then
-  info "后端自检通过"
+if curl -sf -o /dev/null --max-time 3 "http://localhost:$BACKEND_PORT/health"; then
+  info "后端自检通过（/health）"
 else
   warn "后端自检失败，查看日志排查"
 fi

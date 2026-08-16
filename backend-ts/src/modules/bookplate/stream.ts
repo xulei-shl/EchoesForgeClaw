@@ -1,0 +1,126 @@
+import {
+  createUIMessageStream,
+  createUIMessageStreamResponse,
+  type UIMessageChunk,
+} from 'ai';
+import { AICapabilityError, aiErrorMessage } from '../../infrastructure/ai/errors.js';
+
+/**
+ * AI 对话流式输出（AI SDK UI Message Stream，前端 `@ai-sdk/react useChat` 消费）。
+ *
+ * 把所有执行模式（LLM / FastClaw Agent / 未来 Skill Agent）归一化为统一的
+ * `ChatStreamEvent` 事件流，再映射为 AI SDK UI Message Stream chunks：
+ *
+ * | ChatStreamEvent        | UI Message Stream chunk        | 前端消费 |
+ * | ---------------------- | ------------------------------ | -------- |
+ * | content_delta          | text-start / text-delta / text-end | 消息正文 |
+ * | reasoning_delta        | reasoning-start / reasoning-delta / reasoning-end | 思考折叠块 |
+ * | tool_call              | data-agent_tool_call           | AgentStep |
+ * | tool_result            | data-agent_tool_result         | AgentStep |
+ * | status                 | data-agent_status              | AgentStep |
+ * | agent_file             | data-agent_file                | 文件卡片 |
+ * | agent_image            | data-agent_image               | 图片节点落图（image_url 事件语义） |
+ * | error                  | error chunk（onError 映射）    | 错误态 |
+ *
+ * 自定义 data part 名称沿用现有 `agent_*` 事件名（transient，不进入持久化消息），
+ * 保证 FastClaw / deepseek harness（未来 skill agent）接入时前端消费逻辑不变。
+ */
+
+/** Agent 中间步骤 / 文件事件（对应前端 AgentStep / AgentFile 结构）。 */
+export interface AgentFilePayload {
+  url: string;
+  name: string;
+  mime: string;
+  size: number;
+  path: string;
+}
+
+/** 归一化的 AI 对话流式事件（所有执行模式的统一内部表达）。 */
+export type ChatStreamEvent =
+  | { type: 'content_delta'; delta: string }
+  | { type: 'reasoning_delta'; delta: string }
+  | { type: 'tool_call'; id: string; name: string; arguments: string }
+  | { type: 'tool_result'; id: string; name: string; result: string }
+  | { type: 'status'; message: string }
+  | { type: 'agent_file'; file: AgentFilePayload }
+  | { type: 'agent_image'; url: string }
+  | { type: 'error'; message: string };
+
+/** 把归一化事件流映射为 AI SDK UI Message Stream 的 Response。 */
+export function chatStreamToResponse(
+  events: AsyncIterable<ChatStreamEvent>,
+  opts: { onError?: (err: unknown) => string } = {}
+): Response {
+  const stream = createUIMessageStream({
+    // 默认隐藏服务端错误细节；传入 onError 可透出更丰富的信息（当前保持中文可读）
+    onError: (err) => aiErrorMessage(err, 'AI 对话失败'),
+    execute: async ({ writer }) => {
+      let textStarted = false;
+      let reasoningStarted = false;
+      try {
+        for await (const evt of events) {
+          switch (evt.type) {
+            case 'content_delta':
+              if (evt.delta === '') break;
+              if (!textStarted) {
+                writer.write({ type: 'text-start', id: MESSAGE_ID });
+                textStarted = true;
+              }
+              writer.write({ type: 'text-delta', id: MESSAGE_ID, delta: evt.delta });
+              break;
+            case 'reasoning_delta':
+              if (evt.delta === '') break;
+              if (!reasoningStarted) {
+                writer.write({ type: 'reasoning-start', id: MESSAGE_ID });
+                reasoningStarted = true;
+              }
+              writer.write({ type: 'reasoning-delta', id: MESSAGE_ID, delta: evt.delta });
+              break;
+            case 'tool_call':
+              writer.write({
+                type: 'data-agent_tool_call',
+                data: { id: evt.id, name: evt.name, arguments: evt.arguments },
+                transient: true,
+              });
+              break;
+            case 'tool_result':
+              writer.write({
+                type: 'data-agent_tool_result',
+                data: { id: evt.id, name: evt.name, result: evt.result },
+                transient: true,
+              });
+              break;
+            case 'status':
+              writer.write({ type: 'data-agent_status', data: { message: evt.message }, transient: true });
+              break;
+            case 'agent_file':
+              writer.write({ type: 'data-agent_file', data: evt.file, transient: true });
+              break;
+            case 'agent_image':
+              writer.write({
+                type: 'data-agent_image',
+                data: { url: evt.url, mock: false },
+                transient: true,
+              });
+              break;
+            case 'error':
+              throw new AICapabilityError(evt.message);
+          }
+        }
+        if (textStarted) writer.write({ type: 'text-end', id: MESSAGE_ID });
+        if (reasoningStarted) writer.write({ type: 'reasoning-end', id: MESSAGE_ID });
+        writer.write({ type: 'finish', finishReason: 'stop' });
+      } catch (err) {
+        // 事件流错误：createUIMessageStream 会经 onError 转为 error chunk 并正常收尾
+        throw err;
+      }
+    },
+  });
+  return createUIMessageStreamResponse({ stream });
+}
+
+/** 单轮回复消息 id（createUIMessageStream 会在 start chunk 注入其生成的 messageId）。 */
+const MESSAGE_ID = 'assistant';
+
+/** 便捷类型：UI message chunk（供路由层引用，避免直接 import ai）。 */
+export type { UIMessageChunk };
