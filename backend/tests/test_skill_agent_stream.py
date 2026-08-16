@@ -96,6 +96,29 @@ def text_stream(handler: BaseHTTPRequestHandler):
     handler.wfile.flush()
 
 
+def reasoning_only_stream(handler: BaseHTTPRequestHandler):
+    """第三轮：仅产出 reasoning_content、content 恒为空（agnes 类网关行为）
+    → 整轮无正文，触发 skill_agent_service 的正文兜底（思考文本作为正文透传）。"""
+    handler.send_response(200)
+    handler.send_header("Content-Type", "text/event-stream")
+    handler.send_header("Cache-Control", "no-cache")
+    handler.end_headers()
+    base = {"id": "chatcmpl-3", "object": "chat.completion.chunk", "created": 0, "model": "mock-model"}
+    for piece in ["这是思考片段", "最终答案在这里"]:
+        handler.wfile.write(sse_chunk({
+            **base, "choices": [{"index": 0, "delta": {"reasoning_content": piece}, "finish_reason": None}]
+        }))
+        handler.wfile.flush()
+    handler.wfile.write(sse_chunk({
+        **base, "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]
+    }))
+    handler.wfile.flush()
+    handler.wfile.write(sse_chunk({**base, "choices": [], "usage": {"prompt_tokens": 10, "completion_tokens": 10, "total_tokens": 20}}))
+    handler.wfile.flush()
+    handler.wfile.write(b"data: [DONE]\n\n")
+    handler.wfile.flush()
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
@@ -120,8 +143,10 @@ class Handler(BaseHTTPRequestHandler):
             assert t.get("type") == "function", f"工具必须是 function 类型，实际: {t}"
         if CALLS["n"] == 1:
             tool_call_stream(self)
-        else:
+        elif CALLS["n"] == 2:
             text_stream(self)
+        else:
+            reasoning_only_stream(self)
 
     def log_message(self, *args):
         pass
@@ -197,7 +222,23 @@ async def main():
     leaks = [e for e in events if isinstance(e, str) and e.lstrip().startswith('{"command"')]
     assert not leaks, f"工具参数泄漏为 content_delta: {leaks}"
     text = "".join(e for e in events if isinstance(e, str) and e.startswith("执行"))
-    print("\n=== ALL OK: 事件流完整且无工具参数泄漏 ===")
+
+    # 第三轮：端点仅产出 reasoning、无正文（agnes 类网关）→ 兜底把思考文本作为正文透传
+    wire2 = [{"role": "user", "content": "只输出思考过程，不要输出正文"}]
+    events2: list = []
+    async for evt in run_skill_agent(cfg, _multimodal_messages(wire2)):
+        events2.append(evt["type"])
+        if evt["type"] in ("content_delta", "reasoning_delta"):
+            events2.append(evt["data"]["delta"])
+    print("\n[events2]", events2)
+    # 兜底契约：reasoning 实时透传（思考块展示）……
+    assert "reasoning_delta" in events2, "缺少 reasoning_delta 事件"
+    # ……且整轮无正文时，最后补发 content_delta，正文包含全部思考文本（不被折叠吞掉）
+    assert "content_delta" in events2, "仅 reasoning 无正文时未触发正文兜底（缺 content_delta）"
+    body = "".join(e for e in events2[events2.index("content_delta"):] if isinstance(e, str))
+    assert "最终答案在这里" in body, f"兜底正文内容异常: {body[:60]}"
+
+    print("\n=== ALL OK: 事件流完整且无工具参数泄漏（含 reasoning-only 正文兜底） ===")
     shutil.rmtree(ROOT, ignore_errors=True)
 
 

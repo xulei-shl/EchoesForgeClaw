@@ -16,9 +16,11 @@ Bifrost Management API（所有 `/api/prompt-repo/*`）鉴权（自部署默认�
 """
 import base64
 import re
+import time
+from functools import wraps
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import httpx
 
@@ -48,6 +50,31 @@ class BifrostNotConfiguredError(BifrostError):
 
 class BifrostNotFoundError(BifrostError):
     """Bifrost 资源不存在（HTTP 404，如提示词已被删除），映射为 404 响应。"""
+
+
+def async_ttl_cache(ttl_seconds: int = 300):
+    """简单的异步 TTL 内存缓存装饰器，忽略第一个参数（db session）构造 key。"""
+    cache = {}
+
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            # 忽略 db，利用后续的参数作为缓存键
+            key_args = args[1:]
+            key_kwargs = tuple(sorted(kwargs.items()))
+            key = (key_args, key_kwargs)
+            
+            now = time.time()
+            if key in cache:
+                val, expires_at = cache[key]
+                if now < expires_at:
+                    return val
+            
+            result = await func(*args, **kwargs)
+            cache[key] = (result, now + ttl_seconds)
+            return result
+        return wrapper
+    return decorator
 
 
 def detect_image_ext(content: bytes) -> Optional[str]:
@@ -319,6 +346,7 @@ async def list_folders(db, include_all: bool = False) -> List[Dict[str, Any]]:
     return folders
 
 
+@async_ttl_cache(ttl_seconds=300)
 async def list_prompts(
     db,
     folder_id: Optional[str] = None,
@@ -382,6 +410,7 @@ async def list_prompts_raw(db, folder_id: Optional[str] = None) -> Any:
 # - 下载 ZIP：Serving API（GET /api/skills/serve/{name}/download.zip），公开无需认证
 # ---------------------------------------------------------------------------
 
+@async_ttl_cache(ttl_seconds=300)
 async def search_bifrost_skills(
     db,
     q: str = "",

@@ -65,12 +65,14 @@ cp .env.example .env
 ```powershell
 # 开发模式（建议加 -u 避免日志缓冲导致看不到启动进度）
 $env:PYTHONPATH="."
-python -u -m uvicorn app.main:app --reload --port 8000
+python -u -m uvicorn app.main:app --reload --port 8010
 ```
 
 - 启动成功标志：`INFO: Application startup complete`
-- 首次启动会自动执行 Alembic 迁移建表，并创建默认管理员 **admin / admin123**（登录后请尽快修改）
-- 交互式文档：http://localhost:8000/docs
+- 首次启动会自动执行 Alembic 迁移建表，并创建默认管理员（用户名 `admin`，密码取自 `.env` 的 `ADMIN_PASSWORD`，未配置时默认为 `admin123`；登录后请尽快修改）
+- 交互式文档：http://localhost:8010/docs
+
+> 端口说明：后端统一使用 **8010**（与 `docs/ubuntu_deploy_best_practices.md` 的生产端口保持一致，且规避常见 8000 占用冲突）。前端 Vite 代理（`frontend/vite.config.ts`）的 `/api`、`/static` target 也必须指向 `http://localhost:8010`，否则会 502。
 
 ---
 
@@ -83,7 +85,7 @@ npm run dev -- --port 5173
 ```
 
 - 启动成功标志：`VITE ready in ...` + `Local: http://localhost:5173/`
-- Vite 自动将 `/api` 与 `/static` 代理转发到 `http://localhost:8000`
+- Vite 自动将 `/api` 与 `/static` 代理转发到 `http://localhost:8010`
 - 出现的 `__dirname` 警告无害（Vite 未来版本提示），不影响运行
 
 ---
@@ -92,11 +94,11 @@ npm run dev -- --port 5173
 
 ```powershell
 # 后端根路径
-(Invoke-RestMethod http://127.0.0.1:8000/).message
+(Invoke-RestMethod http://127.0.0.1:8010/).message
 # 期望输出：Welcome to BookForge API
 
 # 后端文档
-(Invoke-WebRequest http://127.0.0.1:8000/docs -UseBasicParsing).StatusCode
+(Invoke-WebRequest http://127.0.0.1:8010/docs -UseBasicParsing).StatusCode
 # 期望：200
 
 # 前端
@@ -114,7 +116,7 @@ npm run dev -- --port 5173
 
 ```powershell
 # 后端
-Start-Process -FilePath "python" -ArgumentList "-u","-m","uvicorn","app.main:app","--reload","--port","8000" -WorkingDirectory "$PWD\backend" -RedirectStandardOutput "$env:TEMP\uv_out.log" -RedirectStandardError "$env:TEMP\uv_err.log"
+Start-Process -FilePath "python" -ArgumentList "-u","-m","uvicorn","app.main:app","--reload","--port","8010" -WorkingDirectory "$PWD\backend" -RedirectStandardOutput "$env:TEMP\uv_out.log" -RedirectStandardError "$env:TEMP\uv_err.log"
 
 # 前端
 Start-Process -FilePath "npm" -ArgumentList "run","dev","--","--port","5173" -WorkingDirectory "$PWD\frontend"
@@ -158,7 +160,7 @@ pip install tzdata
 pip install "bcrypt==4.0.1"
 cp .env.example .env
 $env:PYTHONPATH="."
-python -u -m uvicorn app.main:app --reload --port 8000
+python -u -m uvicorn app.main:app --reload --port 8010
 
 # 前端（另开终端）
 cd frontend

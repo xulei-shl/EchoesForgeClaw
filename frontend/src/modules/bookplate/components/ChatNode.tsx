@@ -147,7 +147,7 @@ const ReasoningBlock: React.FC<{
   streaming: boolean;
   hasContent: boolean;
 }> = memo(({ text, streaming, hasContent }) => {
-  const [open, setOpen] = useState(streaming && !hasContent);
+  const [open, setOpen] = useState(false);
   // 记录是否已见过正文：正文首次出现时自动收起（仅一次）
   const sawContentRef = useRef(hasContent);
   useEffect(() => {
@@ -156,17 +156,27 @@ const ReasoningBlock: React.FC<{
       setOpen(false);
     }
   }, [hasContent]);
+
+  const tailText = text.slice(-50).replace(/\n/g, ' ');
+
   return (
     <div className="w-full mb-1 rounded-lg border border-dashed border-paper-grid/80 bg-paper-grid/15 overflow-hidden msg-enter-anim">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-1.5 px-2 py-1 text-[10px] text-ink-faint hover:text-ink-light font-sans transition-colors"
+        className="w-full flex items-center gap-1.5 px-2 py-1 text-[10px] text-ink-faint hover:text-ink-light font-sans transition-colors overflow-hidden"
         title={open ? '收起思考过程' : '展开思考过程'}
       >
-        <Brain size={11} strokeWidth={1.75} className={open ? 'text-accent' : 'shrink-0'} />
-        <span className={open ? 'text-ink-light' : ''}>思考过程</span>
-        <span className="ml-auto flex items-center gap-1">
+        <Brain size={11} strokeWidth={1.75} className={open ? 'text-accent shrink-0' : 'shrink-0'} />
+        <span className={open ? 'text-ink-light shrink-0' : 'shrink-0'}>思考过程</span>
+        
+        {!open && tailText && (
+          <span className="flex-1 min-w-0 mx-1 overflow-hidden whitespace-nowrap text-right mask-gradient-left text-ink-faint/70 select-none">
+            {tailText}
+          </span>
+        )}
+
+        <span className={`flex items-center gap-1 shrink-0 ${open || !tailText ? 'ml-auto' : ''}`}>
           {streaming && <Loader2 size={10} className="animate-spin text-ink-faint" />}
           {open ? (
             <ChevronUp size={11} strokeWidth={2} />
@@ -203,6 +213,10 @@ const STYLE_INJECTIONS = `
   100% { opacity: 1; transform: scale(1); transform-origin: bottom right; }
 }
 .pop-enter-anim { animation: pop-enter 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+.mask-gradient-left {
+  mask-image: linear-gradient(to right, transparent, black 16px);
+  -webkit-mask-image: linear-gradient(to right, transparent, black 16px);
+}
 `;
 
 export interface ChatNodeProps {

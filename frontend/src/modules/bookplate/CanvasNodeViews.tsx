@@ -90,7 +90,6 @@ function hasDownstreamOf(node: { id: string }, edges: EdgeData[]): boolean {
 /** 画布节点渲染：按节点类型分发到对应组件（bookplate 模块唯一渲染入口） */
 export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.ReactNode {
   const common = {
-    key: node.id,
     id: node.id,
     initialX: node.x,
     initialY: node.y,
@@ -110,6 +109,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       const hasDownstream = hasDownstreamOf(node, h.edges);
       return (
         <BookInfoNode
+          key={node.id}
           {...common}
           data={node.data}
           isGenerating={!!node.data.isGenerating}
@@ -127,6 +127,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       const hasDownstream = hasDownstreamOf(node, h.edges);
       return (
         <ImageAnalysisNode
+          key={node.id}
           {...common}
           analysis={node.data.analysis}
           agentSteps={node.data.agentSteps}
@@ -148,6 +149,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       const hasDownstream = hasDownstreamOf(node, h.edges);
       return (
         <PromptNode
+          key={node.id}
           {...common}
           content={node.data.content}
           agentSteps={node.data.agentSteps}
@@ -186,6 +188,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       const hasDownstream = hasDownstreamOf(node, h.edges);
       return (
         <ImageNode
+          key={node.id}
           {...common}
           imageUrl={node.data.imageUrl}
           agentSteps={node.data.agentSteps}
@@ -218,6 +221,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       const hasDownstream = hasDownstreamOf(node, h.edges);
       return (
         <TextNode
+          key={node.id}
           {...common}
           content={node.data.content ?? ''}
           hasDownstream={hasDownstream}
@@ -229,6 +233,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       const hasDownstream = hasDownstreamOf(node, h.edges);
       return (
         <ImageUploadNode
+          key={node.id}
           {...common}
           imageUrl={node.data.imageUrl ?? null}
           imageName={node.data.imageName ?? ''}
@@ -242,6 +247,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       const config = h.configOf(node);
       return (
         <ChatNode
+          key={node.id}
           {...common}
           messages={node.data.messages}
           hasDownstream={hasDownstream}
@@ -270,6 +276,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
     case 'text_aggregate': {
       return (
         <TextAggregateNode
+          key={node.id}
           {...common}
           parents={resolveDirectParents(node.id, h.nodes, h.edges)}
           template={typeof node.data?.template === 'string' ? node.data.template : ''}
@@ -286,6 +293,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       const hasDownstream = hasDownstreamOf(node, h.edges);
       return (
         <PromptSearchNode
+          key={node.id}
           {...common}
           title={typeof node.data?.promptName === 'string' && node.data.promptName ? node.data.promptName : common.title}
           promptId={node.data?.promptId ?? null}
@@ -305,6 +313,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
         : [];
       return (
         <SkillSearchNode
+          key={node.id}
           {...common}
           title={selections.length > 0 && selections[0].name ? selections[0].name : common.title}
           selections={selections}

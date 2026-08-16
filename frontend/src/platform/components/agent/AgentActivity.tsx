@@ -17,7 +17,7 @@ export interface AgentActivityProps {
 }
 
 const AgentActivityInner: React.FC<AgentActivityProps> = ({ steps = [], agentName, running }) => {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
 
   if (steps.length === 0 && !running) return null;
 

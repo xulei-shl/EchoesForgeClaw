@@ -680,8 +680,9 @@ class SandboxedShellExecutor:
         timeout_ms = timeout_ms or DEFAULT_CMD_TIMEOUT * 1000
         timeout = min(timeout_ms / 1000.0, DEFAULT_CMD_TIMEOUT)
 
-        before = self._snapshot()
+        before: Optional[Dict[str, Tuple[int, int]]] = None
         try:
+            before = self._snapshot()
             proc = await asyncio.create_subprocess_exec(
                 *command,
                 cwd=str(self.root),
@@ -701,8 +702,12 @@ class SandboxedShellExecutor:
                 stdout_b, stderr_b = b"", "（命令超时，已终止）".encode("utf-8")
         except (FileNotFoundError, PermissionError) as exc:
             return f"（命令无法执行: {exc}）"
-        except OSError as exc:
-            return f"（命令执行失败: {exc}）"
+        except Exception as exc:
+            # 命令级故障一律转为可见的工具结果（而不是中断整轮 agent 流）：
+            # 除 FileNotFoundError/PermissionError 外还有 Windows 专属异常 / 非法
+            # 命令参数等非 OSError 异常，带类型名一并返回，便于模型调整与排查。
+            logger.warning("local_shell 命令执行失败: %s", command, exc_info=True)
+            return f"（命令执行失败: {type(exc).__name__}: {exc}）"
 
         parts: List[str] = []
         if stdout_b:
@@ -710,7 +715,12 @@ class SandboxedShellExecutor:
         if stderr_b:
             parts.append("[stderr]\n" + stderr_b.decode("utf-8", errors="replace")[:MAX_OUTPUT_LENGTH])
         result = "\n".join(parts).strip() or "（命令执行完成，无输出）"
-        self._diff(before)
+        if before is not None:
+            try:
+                self._diff(before)
+            except Exception:
+                # 产物文件扫描失败不影响命令结果（尽力而为的探测）
+                pass
         return result
 
 
@@ -959,6 +969,13 @@ async def run_skill_agent(
         if not any(i.get("role") == "user" for i in items):
             raise SkillAgentError("AI 对话缺少用户消息")
 
+        # 端点兼容兜底：部分思维模型/网关把完整回答（含正文）也放在 reasoning_content
+        # 字段流式输出、content 字段恒为空（agnes-2.5-flash 等）→ SDK 会把全部增量
+        # 归为 reasoning。此处 reasoning 仍实时透传（保持思考过程展示），同时缓冲全文；
+        # 整轮结束时若从未产出正文，把缓冲的思考文本作为正文补发，避免回答被全部
+        # 折叠进思考过程组件（正文气泡为空）。正常端点（思考 + 正文分离）不受影响。
+        pending_reasoning: List[str] = []
+        saw_content = False
         # max_turns 是 Runner.run_streamed() 的参数（不是 RunConfig 的）
         result = Runner.run_streamed(
             agent, input=items, run_config=run_config, max_turns=MAX_TURNS
@@ -979,6 +996,7 @@ async def run_skill_agent(
                 if dtype == "response.output_text.delta":
                     delta = getattr(data, "delta", None)
                     if isinstance(delta, str) and delta:
+                        saw_content = True
                         yield {"type": "content_delta", "data": {"delta": delta}}
                     continue
                 if dtype in (
@@ -987,6 +1005,7 @@ async def run_skill_agent(
                 ):
                     delta = getattr(data, "delta", None)
                     if isinstance(delta, str) and delta:
+                        pending_reasoning.append(delta)
                         yield {"type": "reasoning_delta", "data": {"delta": delta}}
                     continue
                 # 未走事件归一化时的原始 chunk 兜底（content / reasoning_content，工具调用除外）
@@ -995,9 +1014,11 @@ async def run_skill_agent(
                     d = getattr(choices[0], "delta", None)
                     content = getattr(d, "content", None)
                     if content and not getattr(d, "tool_calls", None):
+                        saw_content = True
                         yield {"type": "content_delta", "data": {"delta": content}}
                     reasoning = getattr(d, "reasoning_content", None)
                     if isinstance(reasoning, str) and reasoning:
+                        pending_reasoning.append(reasoning)
                         yield {"type": "reasoning_delta", "data": {"delta": reasoning}}
                 continue
             # 工具调用 / 结果
@@ -1039,6 +1060,16 @@ async def run_skill_agent(
                 name = getattr(new_agent, "name", "") if new_agent else ""
                 yield {"type": "status", "data": {"message": f"进入 Agent：{name}"}}
                 continue
+        # 整轮未产出任何正文（仅 reasoning）：把思考文本作为正文补发（见循环前的兜底说明）
+        if not saw_content and pending_reasoning:
+            logger.warning(
+                "Skill Agent 端点本轮未产出正文（仅 reasoning，共 %d 字符），已将思考文本作为正文透传",
+                sum(len(s) for s in pending_reasoning),
+            )
+            yield {
+                "type": "content_delta",
+                "data": {"delta": "\n".join(pending_reasoning)},
+            }
         yield {"type": "done", "data": {}}
     except SkillAgentError:
         raise
@@ -1046,7 +1077,9 @@ async def run_skill_agent(
         # 任何意外异常（SDK 参数错误 / 端点不兼容等）都必须转成 error 事件透传，
         # 否则会逃逸出 SSE 生成器 → 前端流静默中断 → 表现为「对话超时，请重试」
         logger.error("Skill Agent 执行失败: %s", exc, exc_info=True)
-        raise SkillAgentError(f"Skill Agent 执行失败: {exc}") from exc
+        # 带上异常类型名：即使异常 str() 为空（如某些裸抛 Exception），
+        # 前端也能看到具体类型，避免出现「Error running tool local_shell:」无尾注的哑错误
+        raise SkillAgentError(f"Skill Agent 执行失败: {type(exc).__name__}: {exc}") from exc
 
 
 
