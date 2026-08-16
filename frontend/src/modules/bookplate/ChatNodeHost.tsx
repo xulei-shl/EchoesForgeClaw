@@ -129,13 +129,13 @@ const capWireImages = (msgs: ChatMessage[]): ChatMessage[] =>
       : m
   );
 
-/** 鉴权请求头（每次请求时读取最新 token）。 */
+/** 鉴权请求头（每次请求时读取最新 token）。
+ * 注意不要带 Content-Type：AI SDK 传输层会自动设置 `Content-Type: application/json`；
+ * 若这里也带上，normalize 成小写 `content-type` 后与传输层的键并存，浏览器 fetch 会把
+ * 大小写相同的头合并成 `application/json, application/json`，Fastify 5 严格解析判为非法 → 415。 */
 function authHeaders(): Record<string, string> {
   const token = localStorage.getItem('token');
-  return {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 /** 401 统一处理：清除本地凭据并跳转登录（与 postSSEStream 行为一致）。 */
