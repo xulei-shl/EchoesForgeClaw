@@ -35,7 +35,8 @@ export function useCanvasHistory(ctx: CanvasHistoryContext): CanvasHistory {
       edges: ctx.edgesRef.current,
       generationIds: { ...ctx.generationIds.current },
     }),
-    []
+    // ctx 由调用方 useMemo 保证稳定（内部均为模块级 ref / React setter）
+    [ctx]
   );
 
   /** 记录一步历史（在任何结构性/内容/位置变更前调用），并清空重做栈 */
@@ -73,7 +74,8 @@ export function useCanvasHistory(ctx: CanvasHistoryContext): CanvasHistory {
       ctx.setStaleRecordIds(new Set());
       void ctx.syncFavoritesFromServer();
     }
-  }, []);
+    // ctx 由调用方 useMemo 保证稳定（内部均为模块级 ref / React setter / 稳定回调）
+  }, [ctx]);
 
   const undo = useCallback(() => {
     const snapshot = historyStack.current.pop();

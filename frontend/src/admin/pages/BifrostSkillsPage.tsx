@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Boxes, FolderSync, Loader2, RefreshCw, Trash2 } from 'lucide-react';
+import { Boxes, FolderSync, Loader2, RefreshCw, Trash2, FileText, FolderTree } from 'lucide-react';
 import { adminService } from '../../platform/services/admin';
 import type { CachedBifrostSkill } from '../../platform/types';
 import { Button } from '../../platform/components/ui/Button';
 import { Card } from '../../platform/components/ui/Card';
 import { Badge } from '../../platform/components/ui/Badge';
-import { PageHeader } from '../components/AdminBits';
+import { Dialog } from '../../platform/components/ui/Dialog';
+import { PageHeader, FieldLabel } from '../components/AdminBits';
 import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
 
 export const BifrostSkillsPage: React.FC = () => {
@@ -14,6 +15,7 @@ export const BifrostSkillsPage: React.FC = () => {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [syncingAll, setSyncingAll] = useState(false);
+  const [detail, setDetail] = useState<CachedBifrostSkill | null>(null);
   const { dialog, showToast } = useFeedback();
 
   const load = useCallback(async () => {
@@ -174,7 +176,11 @@ export const BifrostSkillsPage: React.FC = () => {
               {skills.map((s) => {
                 const isBusy = busy.has(s.name);
                 return (
-                  <Card key={s.name} className="p-4">
+                  <Card 
+                    key={s.name} 
+                    className="p-4 cursor-pointer transition hover:shadow-md active:scale-[0.96]"
+                    onClick={() => setDetail(s)}
+                  >
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -196,7 +202,7 @@ export const BifrostSkillsPage: React.FC = () => {
                           variant="secondary"
                           isLoading={isBusy}
                           disabled={anyBusy && !isBusy}
-                          onClick={() => void syncOne(s)}
+                          onClick={(e) => { e.stopPropagation(); void syncOne(s); }}
                         >
                           <FolderSync size={14} strokeWidth={1.5} className="mr-1" />
                           同步最新
@@ -205,7 +211,7 @@ export const BifrostSkillsPage: React.FC = () => {
                           size="sm"
                           variant="ghost"
                           disabled={anyBusy}
-                          onClick={() => void removeOne(s)}
+                          onClick={(e) => { e.stopPropagation(); void removeOne(s); }}
                           className="text-error hover:bg-error/10"
                         >
                           <Trash2 size={14} strokeWidth={1.5} className="mr-1" />
@@ -220,6 +226,59 @@ export const BifrostSkillsPage: React.FC = () => {
           )}
         </div>
       )}
+
+      {/* 详情弹窗 */}
+      <Dialog
+        open={!!detail}
+        onClose={() => setDetail(null)}
+        title={detail ? detail.name : ''}
+        panelClassName="max-w-2xl"
+        footer={
+          <Button size="sm" onClick={() => setDetail(null)}>
+            关闭
+          </Button>
+        }
+      >
+        {detail && (
+          <div className="space-y-5">
+            <div className="flex items-center gap-2 flex-wrap text-xs text-ink-light font-sans -mt-2">
+              {detail.latest_version && <Badge>远端 v{detail.latest_version}</Badge>}
+              {detail.license && <Badge>{detail.license}</Badge>}
+              <span className="tabular-nums">本地更新于 {formatDate(detail.updated_at) || '—'}</span>
+            </div>
+            
+            {detail.description && (
+              <p className="text-sm text-ink leading-relaxed">{detail.description}</p>
+            )}
+
+            <div className="space-y-1.5">
+              <FieldLabel>
+                <FileText size={14} className="inline mr-1" />
+                SKILL.md 内容
+              </FieldLabel>
+              <pre className="text-xs text-ink-light font-sans whitespace-pre-wrap bg-paper border border-paper-grid rounded-md p-3 max-h-60 overflow-y-auto custom-scrollbar">
+                {detail.body || '（无内容）'}
+              </pre>
+            </div>
+
+            {Array.isArray(detail.files) && detail.files.length > 0 && (
+              <div className="space-y-1.5">
+                <FieldLabel>
+                  <FolderTree size={14} className="inline mr-1" />
+                  文件结构（<span className="tabular-nums">{detail.files.length}</span> 个）
+                </FieldLabel>
+                <div className="bg-paper border border-paper-grid rounded-md p-3 max-h-48 overflow-y-auto custom-scrollbar space-y-1">
+                  {detail.files.map((f) => (
+                    <p key={f} className="text-[11px] text-ink-light font-mono truncate pl-3 border-l-2 border-paper-grid/60 hover:bg-paper-grid/20 rounded-r transition-colors px-1 py-0.5">
+                      {f}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </Dialog>
     </div>
   );
 };

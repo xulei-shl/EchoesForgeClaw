@@ -319,6 +319,61 @@ export function removeSkill(userId: number, skillName: string): void {
   removePath(target); // 软链只移除登记条目，不动共享真实包
 }
 
+/** 扫描共享区 runtime/.agent/skills/，返回各 skill 元数据 + 目录修改时间（不含残缺目录）。 */
+export function listSharedBifrostSkills(): Record<string, unknown>[] {
+  if (!existsSync(REAL_SKILLS_ROOT)) return [];
+  const items: Record<string, unknown>[] = [];
+  for (const child of readdirSync(REAL_SKILLS_ROOT).sort()) {
+    const full = path.join(REAL_SKILLS_ROOT, child);
+    try {
+      if (!statSync(full).isDirectory() || !existsSync(path.join(full, 'SKILL.md'))) continue;
+    } catch {
+      continue;
+    }
+    const meta = readSkillMeta(full);
+    try {
+      meta.updated_at = Math.floor(statSync(full).mtimeMs / 1000);
+    } catch {
+      meta.updated_at = null;
+    }
+    items.push(meta);
+  }
+  return items;
+}
+
+/** Admin 同步：校验 zip 并覆盖共享区 runtime/.agent/skills/{name}/（不触碰任何用户登记）。 */
+export function updateSharedBifrostSkill(zipBytes: Uint8Array): Record<string, unknown> {
+  const info = validateSkillZip(zipBytes);
+  const name = info.name;
+  const dest = path.join(REAL_SKILLS_ROOT, name);
+  removePath(dest);
+  return extractSkillZip(zipBytes, dest, info);
+}
+
+/** Admin 删除：从共享区彻底删除 skill 包，并清理指向它的用户登记软链；返回清理条数。 */
+export function removeSharedBifrostSkill(skillName: string): number {
+  const name = (skillName ?? '').trim();
+  if (!name || name === '.' || name === '..' || name.includes('/') || name.includes('\\')) {
+    throw new SkillValidationError('skill 名称含非法字符');
+  }
+  removePath(path.join(REAL_SKILLS_ROOT, name));
+  let cleaned = 0;
+  if (!existsSync(RUNTIME_ROOT)) return cleaned;
+  for (const entry of readdirSync(RUNTIME_ROOT)) {
+    if (!/^\d+$/.test(entry)) continue;
+    const registry = path.join(RUNTIME_ROOT, entry, 'skills', name);
+    try {
+      if (lstatSync(registry).isSymbolicLink()) {
+        unlinkSync(registry);
+        cleaned += 1;
+      }
+    } catch {
+      /* 不存在则跳过 */
+    }
+  }
+  return cleaned;
+}
+
 /**
  * 把工作区内的相对路径解析为绝对路径；越界（../ 等）返回 null。
  * 两道防线：

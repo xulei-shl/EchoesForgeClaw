@@ -143,11 +143,11 @@ class FastClawAgentConfigOut(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# SkillAgentConfig（Skill Agent 配置：openai-agents-python 多步执行）
+# SkillAgentConfig（DeepSeek Agent 配置：openai-agents-python 多步执行）
 # ---------------------------------------------------------------------------
 
 class SkillAgentConfigBase(BaseModel):
-    """Skill Agent 配置：模型接入参数复用「模型配置」（llm_config_id），
+    """DeepSeek Agent 配置：模型接入参数复用「模型配置」（llm_config_id），
     系统提示词复用「提示词模板」（prompt_id），与 NodeConfig 同构。"""
 
     name: str

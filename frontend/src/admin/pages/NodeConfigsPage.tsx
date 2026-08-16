@@ -462,7 +462,7 @@ export const NodeConfigsPage: React.FC = () => {
             >
               <p className={`text-sm font-medium font-sans ${form.mode === 'skill_agent' ? 'text-accent' : 'text-ink'}`}>
                 <Sparkles size={13} strokeWidth={1.5} className="inline mr-1 -mt-0.5" />
-                Skill Agent
+                DeepSeek Agent
               </p>
               <p className="text-xs text-ink-faint font-sans mt-1">openai-agents 多步执行（skill 工具）</p>
             </button>
@@ -541,12 +541,12 @@ export const NodeConfigsPage: React.FC = () => {
             </div>
             {form.mode === 'skill_agent' ? (
               <div className="space-y-1.5 sm:col-span-2">
-                <FieldLabel>Skill Agent 配置</FieldLabel>
+                <FieldLabel>DeepSeek Agent 配置</FieldLabel>
                 <Select
                   value={String(form.skill_agent_config_id || '')}
                   onChange={(val) => setForm({ ...form, skill_agent_config_id: val === '' ? '' : Number(val) })}
                   options={[
-                    { label: '请选择 Skill Agent 配置', value: '' },
+                    { label: '请选择 DeepSeek Agent 配置', value: '' },
                     ...skillAgentConfigs
                       .filter((a) => a.is_active)
                       .map((a) => ({ label: a.name, value: String(a.id) })),
@@ -562,7 +562,7 @@ export const NodeConfigsPage: React.FC = () => {
                       className="overflow-hidden"
                     >
                       <p className="text-xs text-ink-faint font-sans pt-1.5">
-                        暂无启用的 Skill Agent 配置，可先在「Skill Agent」中创建
+                        暂无启用的 DeepSeek Agent 配置，可先在「Skill Agent」中创建
                       </p>
                     </motion.div>
                   )}

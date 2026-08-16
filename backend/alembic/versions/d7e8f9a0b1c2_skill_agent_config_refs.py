@@ -4,7 +4,7 @@ Revision ID: d7e8f9a0b1c2
 Revises: c6a7b8c9d0e1
 Create Date: 2026-08-12
 
-Skill Agent 配置改为与 NodeConfig 同构：模型接入参数（url/key/model）通过
+DeepSeek Agent 配置改为与 NodeConfig 同构：模型接入参数（url/key/model）通过
 llm_config_id 引用「模型配置」，系统提示词通过 prompt_id 引用「提示词模板」。
 旧字段（base_url / api_key / model_name / system_prompt）保留列，仅作存量兼容。
 

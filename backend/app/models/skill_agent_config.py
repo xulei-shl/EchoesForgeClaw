@@ -5,7 +5,7 @@ from app.core.database import Base
 
 
 class SkillAgentConfig(Base):
-    """Skill Agent 配置（openai-agents-python 多步执行的接入参数）。
+    """DeepSeek Agent 配置（openai-agents-python 多步执行的接入参数）。
 
     与 NodeConfig 同构：模型接入参数（base_url / api_key / model_name）通过
     llm_config_id 引用「模型配置」，系统提示词通过 prompt_id 引用「提示词模板」，

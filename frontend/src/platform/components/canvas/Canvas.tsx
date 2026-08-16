@@ -33,6 +33,7 @@ export const Canvas: React.FC<CanvasProps> = ({
   useEffect(() => {
     onPositionChangeRef.current = onPositionChange;
   }, [onPositionChange]);
+  const endDragRef = useRef<(pointerId?: number, currentTarget?: HTMLElement) => void>(() => {});
 
   const applyTransform = useCallback(() => {
     rafId.current = null;
@@ -107,16 +108,19 @@ export const Canvas: React.FC<CanvasProps> = ({
     applyTransform();
     onPositionChangeRef.current({ x: dragPos.current.x, y: dragPos.current.y });
   };
+  // 每渲染同步最新 endDrag（供仅挂载一次的窗口兜底 effect 调用）
+  endDragRef.current = endDrag;
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     endDrag(e.pointerId, e.currentTarget as HTMLElement);
   };
 
   // 全局兜底：防止意外丢失 pointerup（如窗口切换）
+  // 经 ref 调用最新 endDrag（普通函数每渲染重建，effect 仅挂载一次；ref 同时避免闭包持旧 scale）
   useEffect(() => {
     const onWindowPointerUp = () => {
       if (isDragging.current) {
-        endDrag();
+        endDragRef.current();
       }
     };
     window.addEventListener('pointerup', onWindowPointerUp);

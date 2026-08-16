@@ -221,7 +221,7 @@ export function useManualConnection(ctx: ManualConnectionContext): ManualConnect
       window.addEventListener('pointercancel', handlePointerCancel);
       window.addEventListener('keydown', handleKeyDown);
     },
-    [handlePointerMove, handlePointerUp, handlePointerCancel, handleKeyDown]
+    [finishConnection, handlePointerMove, handlePointerUp, handlePointerCancel, handleKeyDown]
   );
 
   // 卸载清理：移除监听、取消未执行的 rAF 并复位

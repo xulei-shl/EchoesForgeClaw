@@ -64,7 +64,7 @@ def _validate_refs(
             raise HTTPException(status_code=400, detail="所选 FastClaw Agent 配置不存在")
     if skill_agent_config_id is not None:
         if not db.query(SkillAgentConfig).filter(SkillAgentConfig.id == skill_agent_config_id).first():
-            raise HTTPException(status_code=400, detail="所选 Skill Agent 配置不存在")
+            raise HTTPException(status_code=400, detail="所选 DeepSeek Agent 配置不存在")
 
 
 def _to_out(nc: NodeConfig) -> NodeConfigOut:

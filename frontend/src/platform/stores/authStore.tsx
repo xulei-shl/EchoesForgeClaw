@@ -42,7 +42,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           applySessionUser(JSON.parse(storedUser));
           setToken(storedToken);
           // 实际应用中可能需要向后端验证 token
-        } catch (e) {
+        } catch {
           localStorage.removeItem('token');
           localStorage.removeItem('user');
         }
@@ -54,15 +54,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, [applySessionUser]);
 
   const login = async (username: string, password?: string) => {
-    try {
-      const res = await authService.login(username, password);
-      setToken(res.token);
-      applySessionUser(res.user);
-      localStorage.setItem('token', res.token);
-      localStorage.setItem('user', JSON.stringify(res.user));
-    } catch (error) {
-      throw error;
-    }
+    // 错误原样向上抛出（登录页展示）；无额外处理，故不包 try/catch
+    const res = await authService.login(username, password);
+    setToken(res.token);
+    applySessionUser(res.user);
+    localStorage.setItem('token', res.token);
+    localStorage.setItem('user', JSON.stringify(res.user));
   };
 
   const logout = async () => {
@@ -83,6 +80,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   );
 };
 
+// 约定：context + hook 与 Provider 同文件共存，便于就近维护（fast refresh 提示忽略）
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {

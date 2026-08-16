@@ -6,7 +6,7 @@ import { now, toIso } from '../../shared/datetime.js';
 import { writeAgentMd } from '../../services/skill-agent-files.js';
 
 /**
- * Skill Agent 配置管理（对应 Python `app/api/admin/skill_agent_configs.py`）：
+ * DeepSeek Agent 配置管理（对应 Python `app/api/admin/skill_agent_configs.py`）：
  * - GET/POST /api/admin/skill-agent-configs（列表/新建，必须引用模型配置）
  * - POST /api/admin/skill-agent-configs/:id/duplicate（复制）
  * - PATCH/DELETE /api/admin/skill-agent-configs/:id（修改/删除）
@@ -134,7 +134,7 @@ export async function registerSkillAgentConfigsAdminRouter(app: FastifyInstance)
     const id = Number((request.params as { id: string }).id);
     const db = getDb();
     const cfg = db.select().from(skillAgentConfigs).where(eq(skillAgentConfigs.id, id)).get();
-    if (!cfg) return reply.code(404).send({ detail: 'Skill Agent 配置不存在' });
+    if (!cfg) return reply.code(404).send({ detail: 'DeepSeek Agent 配置不存在' });
     const row = db
       .insert(skillAgentConfigs)
       .values({
@@ -164,7 +164,7 @@ export async function registerSkillAgentConfigsAdminRouter(app: FastifyInstance)
       const p = (request.body ?? {}) as SkillAgentPayload;
       const db = getDb();
       const cfg = db.select().from(skillAgentConfigs).where(eq(skillAgentConfigs.id, id)).get();
-      if (!cfg) return reply.code(404).send({ detail: 'Skill Agent 配置不存在' });
+      if (!cfg) return reply.code(404).send({ detail: 'DeepSeek Agent 配置不存在' });
       if (p.llm_config_id !== undefined) {
         const refErr = requireLLMConfig(db, p.llm_config_id);
         if (refErr) return reply.code(400).send({ detail: refErr });
@@ -187,10 +187,10 @@ export async function registerSkillAgentConfigsAdminRouter(app: FastifyInstance)
     const id = Number((request.params as { id: string }).id);
     const db = getDb();
     const cfg = db.select().from(skillAgentConfigs).where(eq(skillAgentConfigs.id, id)).get();
-    if (!cfg) return reply.code(404).send({ detail: 'Skill Agent 配置不存在' });
+    if (!cfg) return reply.code(404).send({ detail: 'DeepSeek Agent 配置不存在' });
     db.update(nodeConfigs).set({ skillAgentConfigId: null }).where(eq(nodeConfigs.skillAgentConfigId, id)).run();
     writeAgentMd(id, ''); // 空内容 = 删除文件
     db.delete(skillAgentConfigs).where(eq(skillAgentConfigs.id, id)).run();
-    return { message: 'Skill Agent 配置已删除' };
+    return { message: 'DeepSeek Agent 配置已删除' };
   });
 }

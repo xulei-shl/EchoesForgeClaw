@@ -20,6 +20,7 @@ import { registerSettingsAdminRouter } from './api/admin/settings.js';
 import { registerFastClawAgentsAdminRouter } from './api/admin/fastclaw-agents.js';
 import { registerSkillAgentConfigsAdminRouter } from './api/admin/skill-agent-configs.js';
 import { registerBifrostAdminRouter } from './api/admin/bifrost.js';
+import { registerBifrostSkillsAdminRouter } from './api/admin/bifrost-skills.js';
 
 /**
  * BookForge TypeScript 后端入口（对应 Python `app/main.py`）。
@@ -27,7 +28,7 @@ import { registerBifrostAdminRouter } from './api/admin/bifrost.js';
  * 已接入：CORS、静态目录（/static）、multipart、JWT 鉴权、登录、bookplate 模块路由
  * （chat / analyze-image / generate-prompt / generate-image / node-registry / fastclaw-probe / isbn / cover）、
  * 平台 API（users / generations / favorites / public）、管理端 API
- * （llm-configs / prompts / node-configs / settings / fastclaw-agents / skill-agent-configs / bifrost）、
+ * （llm-configs / prompts / node-configs / settings / fastclaw-agents / skill-agent-configs / bifrost / bifrost-skills）、
  * 启动种子（admin / 系统设置 / 默认提示词）。
  *
  * 待接入（后续阶段）：skills 上传/检索路由、Skill Agent 执行（deepseek harness，第二阶段）。
@@ -73,6 +74,7 @@ export async function buildApp() {
   await registerFastClawAgentsAdminRouter(app);
   await registerSkillAgentConfigsAdminRouter(app);
   await registerBifrostAdminRouter(app);
+  await registerBifrostSkillsAdminRouter(app);
 
   app.get('/', async () => ({ message: 'Welcome to BookForge API (TypeScript)' }));
 

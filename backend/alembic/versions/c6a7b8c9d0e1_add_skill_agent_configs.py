@@ -20,7 +20,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    # Skill Agent 配置表（openai-agents-python 多步执行接入参数）
+    # DeepSeek Agent 配置表（openai-agents-python 多步执行接入参数）
     op.create_table(
         'skill_agent_configs',
         sa.Column('id', sa.Integer(), nullable=False),

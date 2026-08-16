@@ -70,7 +70,7 @@ export const adminService = {
   duplicateFastClawAgent: (id: number): Promise<FastClawAgentConfig> =>
     api.post<FastClawAgentConfig, FastClawAgentConfig>(`/admin/fastclaw-agents/${id}/duplicate`),
 
-  /* ---------------- Skill Agent 配置 ---------------- */
+  /* ---------------- DeepSeek Agent 配置 ---------------- */
 
   listSkillAgentConfigs: (): Promise<SkillAgentConfig[]> =>
     api.get<SkillAgentConfig[], SkillAgentConfig[]>('/admin/skill-agent-configs'),

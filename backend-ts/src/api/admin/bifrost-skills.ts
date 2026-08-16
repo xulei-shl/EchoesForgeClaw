@@ -1,0 +1,107 @@
+import type { FastifyInstance } from 'fastify';
+import { getDb } from '../../config/database.js';
+import {
+  BifrostError,
+  BifrostNotConfiguredError,
+  BifrostNotFoundError,
+  downloadBifrostSkillZip,
+  searchBifrostSkills,
+} from '../../services/bifrost-service.js';
+import {
+  SkillValidationError,
+  listSharedBifrostSkills,
+  removeSharedBifrostSkill,
+  updateSharedBifrostSkill,
+} from '../../services/skill-agent-service.js';
+
+/**
+ * Admin 端 Bifrost Skills 管理（对应 Python `app/api/admin/bifrost_skills.py`）：
+ * - GET /api/admin/bifrost-skills（共享区缓存列表，Bifrost 可达时富化远端版本信息）
+ * - POST /api/admin/bifrost-skills/:name/sync（强制拉取最新 zip 覆盖共享区，不动用户登记）
+ * - DELETE /api/admin/bifrost-skills/:name（删除共享包并清理指向它的用户登记软链）
+ *
+ * 与画布侧（bookplate router 的 /skills/*）互补：画布按需下载安装（共享区缓存命中），
+ * 此处集中管理共享区 runtime/.agent/skills/ 的真实 skill 包。
+ */
+const MAX_SKILL_ZIP_BYTES = 20 * 1024 * 1024;
+
+function bifrostErrorHttp(err: unknown): { code: number; body: { detail: string } } {
+  if (err instanceof BifrostNotFoundError) return { code: 404, body: { detail: err.message } };
+  if (err instanceof BifrostNotConfiguredError) return { code: 503, body: { detail: err.message } };
+  if (err instanceof BifrostError) return { code: 502, body: { detail: err.message } };
+  return { code: 502, body: { detail: err instanceof Error ? err.message : String(err) } };
+}
+
+/** URL 路径参数卫生检查（服务层删除有同套校验，此处提前给出友好错误）。 */
+function checkSkillName(raw: string): string {
+  const name = (raw ?? '').trim();
+  if (!name || name === '.' || name === '..' || name.includes('/') || name.includes('\\')) {
+    throw new SkillValidationError('非法 skill 名称');
+  }
+  return name;
+}
+
+export async function registerBifrostSkillsAdminRouter(app: FastifyInstance): Promise<void> {
+  const admin = { preHandler: app.requireAdmin };
+
+  // 共享区缓存的 Bifrost Skills 列表（本地为事实来源；Bifrost 可达时用检索接口做富化）
+  app.get('/api/admin/bifrost-skills', admin, async () => {
+    const skills = listSharedBifrostSkills();
+    let remote: Record<string, any>[] = [];
+    try {
+      remote = await searchBifrostSkills(getDb());
+    } catch {
+      /* Bifrost 不可达：仅返回本地信息，不影响页面使用 */
+    }
+    const remoteMap = new Map<string, Record<string, any>>();
+    for (const r of remote) {
+      if (r?.name) remoteMap.set(String(r.name), r);
+    }
+    for (const s of skills) {
+      const r = remoteMap.get(String(s.name ?? ''));
+      if (!r) continue;
+      s.latest_version = r.latest_version ?? '';
+      s.license = r.license ?? '';
+      s.compatibility = r.compatibility ?? '';
+      s.remote_updated_at = r.updated_at ?? null;
+    }
+    return { skills };
+  });
+
+  // 强制从 Bifrost 拉取最新 zip 覆盖共享区（不触碰用户登记）
+  app.post('/api/admin/bifrost-skills/:name/sync', admin, async (request, reply) => {
+    try {
+      const skillName = checkSkillName((request.params as { name: string }).name);
+      const zipBytes = await downloadBifrostSkillZip(getDb(), skillName);
+      if (!zipBytes.length || zipBytes.length > MAX_SKILL_ZIP_BYTES) {
+        return reply.code(400).send({ detail: 'skill 压缩包为空或超过 20MB 上限' });
+      }
+      const meta = updateSharedBifrostSkill(zipBytes);
+      // 防御性校验：Bifrost 按 name 分发 zip，zip 内 SKILL.md 的 name 应一致，
+      // 否则会出现「同步的是 A、落盘的是 B」的困惑状态
+      if (meta.name !== skillName) {
+        removeSharedBifrostSkill(String(meta.name ?? ''));
+        return reply.code(400).send({
+          detail: `zip 内 SKILL.md 的 name（${meta.name}）与请求的 skill 名称（${skillName}）不一致，已中止`,
+        });
+      }
+      return { skill: meta };
+    } catch (err) {
+      if (err instanceof SkillValidationError) return reply.code(400).send({ detail: err.message });
+      const e = bifrostErrorHttp(err);
+      return reply.code(e.code).send(e.body);
+    }
+  });
+
+  // 从共享区删除 skill 包（并清理指向它的用户登记软链）
+  app.delete('/api/admin/bifrost-skills/:name', admin, async (request, reply) => {
+    try {
+      const skillName = checkSkillName((request.params as { name: string }).name);
+      const cleaned = removeSharedBifrostSkill(skillName);
+      return { message: `已删除 skill：${skillName}`, cleaned_registries: cleaned };
+    } catch (err) {
+      if (err instanceof SkillValidationError) return reply.code(400).send({ detail: err.message });
+      return reply.code(502).send({ detail: err instanceof Error ? err.message : String(err) });
+    }
+  });
+}

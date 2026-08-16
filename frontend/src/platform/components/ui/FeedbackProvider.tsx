@@ -62,6 +62,8 @@ export interface FeedbackApi {
 const FeedbackContext = createContext<FeedbackApi | null>(null);
 
 /** 读取全局反馈 API（弹窗 + 轻提示），必须在 <FeedbackProvider> 内使用 */
+// 约定：context + hook 与 Provider 同文件共存，便于就近维护（fast refresh 提示忽略）
+// eslint-disable-next-line react-refresh/only-export-components
 export const useFeedback = (): FeedbackApi => {
   const ctx = useContext(FeedbackContext);
   if (!ctx) {

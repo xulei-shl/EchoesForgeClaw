@@ -75,7 +75,7 @@ def list_skill_agent_configs(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_admin_user),
 ):
-    """Skill Agent 配置列表。"""
+    """DeepSeek Agent 配置列表。"""
     configs = db.query(SkillAgentConfig).order_by(SkillAgentConfig.id.asc()).all()
     return [_to_out(c) for c in configs]
 
@@ -86,7 +86,7 @@ def create_skill_agent_config(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_admin_user),
 ):
-    """新建 Skill Agent 配置：必须引用一个模型配置（url/key/model 复用之），提示词可选。"""
+    """新建 DeepSeek Agent 配置：必须引用一个模型配置（url/key/model 复用之），提示词可选。"""
     if not payload.name.strip():
         raise HTTPException(status_code=400, detail="配置名称不能为空")
     if payload.llm_config_id is None:
@@ -111,10 +111,10 @@ def duplicate_skill_agent_config(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_admin_user),
 ):
-    """复制 Skill Agent 配置：沿用模型/提示词引用，名字加「(副本)」后缀。"""
+    """复制 DeepSeek Agent 配置：沿用模型/提示词引用，名字加「(副本)」后缀。"""
     cfg = db.query(SkillAgentConfig).filter(SkillAgentConfig.id == config_id).first()
     if not cfg:
-        raise HTTPException(status_code=404, detail="Skill Agent 配置不存在")
+        raise HTTPException(status_code=404, detail="DeepSeek Agent 配置不存在")
     new_cfg = SkillAgentConfig(
         name=f"{cfg.name} (副本)",
         llm_config_id=cfg.llm_config_id,
@@ -135,10 +135,10 @@ def update_skill_agent_config(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_admin_user),
 ):
-    """修改 Skill Agent 配置（引用字段；prompt_id 传 null 表示清除提示词）。"""
+    """修改 DeepSeek Agent 配置（引用字段；prompt_id 传 null 表示清除提示词）。"""
     cfg = db.query(SkillAgentConfig).filter(SkillAgentConfig.id == config_id).first()
     if not cfg:
-        raise HTTPException(status_code=404, detail="Skill Agent 配置不存在")
+        raise HTTPException(status_code=404, detail="DeepSeek Agent 配置不存在")
     data = payload.model_dump(exclude_unset=True)
     if "llm_config_id" in data:
         _require_llm_config(db, data["llm_config_id"])
@@ -157,10 +157,10 @@ def delete_skill_agent_config(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_admin_user),
 ):
-    """删除 Skill Agent 配置（引用它的节点配置解除绑定）。"""
+    """删除 DeepSeek Agent 配置（引用它的节点配置解除绑定）。"""
     cfg = db.query(SkillAgentConfig).filter(SkillAgentConfig.id == config_id).first()
     if not cfg:
-        raise HTTPException(status_code=404, detail="Skill Agent 配置不存在")
+        raise HTTPException(status_code=404, detail="DeepSeek Agent 配置不存在")
     from app.models.node_config import NodeConfig
 
     for nc in db.query(NodeConfig).filter(NodeConfig.skill_agent_config_id == cfg.id).all():
@@ -169,4 +169,4 @@ def delete_skill_agent_config(
     write_agent_md(cfg.id, "")
     db.delete(cfg)
     db.commit()
-    return {"message": "Skill Agent 配置已删除"}
+    return {"message": "DeepSeek Agent 配置已删除"}

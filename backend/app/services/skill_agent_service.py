@@ -1067,9 +1067,9 @@ async def run_skill_agent(
         pass
 
     if not config.api_key:
-        raise SkillAgentError("Skill Agent 配置缺少 API Key")
+        raise SkillAgentError("DeepSeek Agent 配置缺少 API Key")
     if not config.model_name:
-        raise SkillAgentError("Skill Agent 配置缺少模型名称")
+        raise SkillAgentError("DeepSeek Agent 配置缺少模型名称")
 
     try:
         if workspace is None and workspace_id:

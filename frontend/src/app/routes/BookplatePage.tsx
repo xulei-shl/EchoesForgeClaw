@@ -186,14 +186,14 @@ const BookplatePage: React.FC = () => {
 
   const handleZoomIn = useCallback(() => {
     setScale((prev) => Math.min(prev + 0.2, 3));
-  }, []);
+  }, [setScale]);
   const handleZoomOut = useCallback(() => {
     setScale((prev) => Math.max(prev - 0.2, 0.1));
-  }, []);
+  }, [setScale]);
   const handleFocus = useCallback(() => {
     setPosition({ x: 0, y: 0 });
     setScale(1);
-  }, []);
+  }, [setPosition, setScale]);
 
   // ---------- 收藏/公开状态同步（服务端 + 跨 tab） ----------
   const invalidateGenerationLink = useCallback((nodeId: string) => {
@@ -206,7 +206,7 @@ const BookplatePage: React.FC = () => {
       next.add(nodeId);
       return next;
     });
-  }, []);
+  }, [generationIds, setFavoritedState, setPublishedState, setStaleRecordIds]);
 
   /** 从服务端同步各图片节点的收藏/公开状态（挂载与撤销恢复后调用） */
   const syncFavoritesFromServer = useCallback(async () => {
@@ -234,7 +234,7 @@ const BookplatePage: React.FC = () => {
     } catch (e) {
       console.error('同步画板收藏/公开状态失败:', e);
     }
-  }, [invalidateGenerationLink]);
+  }, [invalidateGenerationLink, generationIds, setFavoritedState, setPublishedState]);
 
   useEffect(() => {
     void syncFavoritesFromServer();
@@ -273,17 +273,31 @@ const BookplatePage: React.FC = () => {
   };
 
   // ---------- 撤销 / 重做 ----------
-  const { undo, redo, recordHistory, canUndo, canRedo } = useCanvasHistory({
-    nodesRef,
-    edgesRef,
-    generationIds,
-    streamControllers,
-    setNodes,
-    setEdges,
-    setSelectedImageId,
-    setStaleRecordIds,
-    syncFavoritesFromServer,
-  });
+  // ctx 经 useMemo 保持稳定（内部均为模块级 ref / React setter / 稳定回调），
+  // 使 useCanvasHistory 内部的 recordHistory / undo / redo 不随渲染重建
+  const historyCtx = useMemo(
+    () => ({
+      nodesRef,
+      edgesRef,
+      generationIds,
+      streamControllers,
+      setNodes,
+      setEdges,
+      setSelectedImageId,
+      setStaleRecordIds,
+      syncFavoritesFromServer,
+    }),
+    // nodesRef / edgesRef / streamControllers 为模块级单例（useCanvasState），身份恒定，无需列入
+    [
+      generationIds,
+      setNodes,
+      setEdges,
+      setSelectedImageId,
+      setStaleRecordIds,
+      syncFavoritesFromServer,
+    ]
+  );
+  const { undo, redo, recordHistory, canUndo, canRedo } = useCanvasHistory(historyCtx);
 
   // 全局快捷键：Ctrl/Cmd+Z 撤销，Ctrl/Cmd+Shift+Z / Ctrl/Cmd+Y 重做（聚焦文本输入区时忽略）
   useEffect(() => {
@@ -350,7 +364,7 @@ const BookplatePage: React.FC = () => {
       }
       return { ...prev, [id]: { width, height } };
     });
-  }, []);
+  }, [setNodeSizes]);
 
   /** 生成唯一节点 id（时间戳 + 随机后缀，避免快速连点同毫秒碰撞） */
   const genNodeId = (prefix: string) =>
@@ -514,7 +528,7 @@ const BookplatePage: React.FC = () => {
     if (cur && Math.abs(cur.x - x) < 0.5 && Math.abs(cur.y - y) < 0.5) return;
     recordHistory();
     setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, x, y } : n)));
-  }, []);
+  }, [recordHistory, setNodes]);
 
   /** 拖拽中实时重绘相连连线（命令式 DOM 更新，不触发渲染） */
   const handleNodeDrag = useCallback((id: string, x: number, y: number) => {
@@ -652,6 +666,8 @@ const BookplatePage: React.FC = () => {
       configId: item.configId,
       configName: item.configId ? item.label : undefined,
     });
+    // 稳定回调设计：addChildNode 仅读取 refs / 稳定 setter，闭包不会过期
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /** 「+」菜单可选项：基础模板 + 各配置变体（无配置的模板提供「默认配置」项） */
@@ -827,7 +843,9 @@ const BookplatePage: React.FC = () => {
     
     focusOnNode(newNode);
     setStandaloneMenu(null);
-  }, [recordHistory, setNodes, runNode]);
+    // 稳定回调设计：focusOnNode 仅读取 refs / 稳定 setter，闭包不会过期
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recordHistory, setNodes]);
 
   // ---------- 节点右键菜单 ----------
   const handleNodeContextMenu = useCallback((e: React.MouseEvent, nodeId: string) => {
@@ -891,20 +909,26 @@ const BookplatePage: React.FC = () => {
   };
 
   // ---------- 稳定回调（配合节点组件 memo）：避免内联箭头导致未变化节点重渲染 ----------
-  // 不变量：下方被引用的处理函数只能读取 refs / 模块函数 / 稳定 setter。
+  // 不变量：下方被引用的处理函数只能读取 refs / 模块函数 / 稳定 setter；依赖数组刻意保持
+  // []（eslint-disable exhaustive-deps）：被引用函数虽为普通函数，但仅读取 refs / 稳定 setter，
+  // 闭包不会过期；若把普通函数加入依赖会导致回调每渲染重建，破坏节点 memo。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const handleRemove = useCallback((id: string) => handleRemoveNode(id), []);
   const handleRetryBookFor = useCallback((id: string) => {
     const node = nodesRef.current.find((n) => n.id === id);
     if (node) handleRetryBook(node);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const handleFetchBookFor = useCallback((id: string, isbn: string) => {
     fetchBookInfo(isbn, id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const handleForceRefreshBookFor = useCallback((id: string) => {
     const node = nodesRef.current.find((n) => n.id === id);
     const isbn = node?.data?.isbn;
     if (!isbn) return;
     fetchBookInfo(isbn, id, { force: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const handleDownloadBookData = useCallback((id: string) => {
     const node = nodesRef.current.find((n) => n.id === id);
@@ -936,11 +960,13 @@ const BookplatePage: React.FC = () => {
     const oldContent = typeof promptNode.data?.content === 'string' ? promptNode.data.content : '';
     if (content === oldContent) return;
     branchPromptNode(promptNode, { content });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   /** 提示词节点重试/重新生成：从上游重新收集输入并流式生成 */
   const handleRetryPromptFor = useCallback((id: string) => {
     const node = nodesRef.current.find((n) => n.id === id);
     if (node && node.type === 'prompt_generation') runNode(node);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   /** 图片分析节点执行/重试：已有正确结果时「再次分析」新建兄弟节点保留旧分支；失败/空态原地执行 */
   const handleRunAnalysisFor = useCallback((id: string, image?: string) => {
@@ -952,6 +978,7 @@ const BookplatePage: React.FC = () => {
       return;
     }
     runNode(node);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const handleRetryImageFor = useCallback((id: string) => {
     const node = nodesRef.current.find((n) => n.id === id);
@@ -961,8 +988,11 @@ const BookplatePage: React.FC = () => {
       return;
     }
     runNode(node);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const handleToggleFavoriteFor = useCallback((id: string) => toggleFavoriteForImage(id), []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const handleTogglePublicFor = useCallback((id: string) => togglePublicForImage(id), []);
   /** 文本节点保存编辑内容（无需分支，原地保存；内容未变化不记历史） */
   const handleEditTextFor = useCallback((id: string, content: string) => {
@@ -972,6 +1002,7 @@ const BookplatePage: React.FC = () => {
     if (content === oldContent) return;
     recordHistory();
     updateNodeData(id, { content });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   /** AI 对话节点：更新上下文加载设置（未变化不记历史） */
   const handleUpdateChatSettingsFor = useCallback((id: string, settings: ChatNodeSettings) => {
@@ -985,6 +1016,7 @@ const BookplatePage: React.FC = () => {
     if (JSON.stringify(old) === JSON.stringify(settings)) return;
     recordHistory();
     updateNodeData(id, { settings });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   /** AI 对话节点：清空对话（递增会话纪元，Agent 模式下重置 FastClaw 服务端会话） */
   const handleClearChatFor = useCallback((id: string) => {
@@ -1002,6 +1034,7 @@ const BookplatePage: React.FC = () => {
       // 干净对话 -> 干净工作区：重新生成 workspaceId，后端以新目录装配（Skill Agent 产物不残留）
       workspaceId: `${id}_${Date.now()}`,
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   /** 图片上传节点上传 / 替换 / 移除图片（imageUrl 为 null 表示移除；未变化不记历史） */
   const handleImageChangeFor = useCallback(
@@ -1025,6 +1058,7 @@ const BookplatePage: React.FC = () => {
       recordHistory();
       updateNodeData(id, { imageUrl, imageName });
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
   /** 点击图片节点选中（作为全局操作栏的作用目标）；仅已有图片的节点可选中 */
@@ -1039,6 +1073,7 @@ const BookplatePage: React.FC = () => {
     if (!node || node.data?.isGenerating) return;
     const reason = runNode(node);
     if (reason) showToast(reason, { type: 'warning', position: 'top-right' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /** Skill 检索节点：整块替换已选 skill 集合（写入 data.skillSelections；未变化不记历史）。
@@ -1052,6 +1087,7 @@ const BookplatePage: React.FC = () => {
       recordHistory();
       updateNodeData(id, { skillSelections: selections });
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
 
@@ -1076,6 +1112,7 @@ const BookplatePage: React.FC = () => {
       recordHistory();
       updateNodeData(id, next);
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
 
@@ -1087,6 +1124,7 @@ const BookplatePage: React.FC = () => {
     if (template === old) return;
     recordHistory();
     updateNodeData(id, { template });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   /** 文本聚合节点：重命名某上级节点的占位符别名（空别名忽略；与其他上级重名拒绝；未变化不记历史） */
   const handleRenameAggregatePlaceholderFor = useCallback(
@@ -1111,6 +1149,7 @@ const BookplatePage: React.FC = () => {
       recordHistory();
       updateNodeData(id, { placeholders });
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
   /** 可执行节点：更新运行设置（包含图书元数据；未变化不记历史） */
@@ -1121,6 +1160,7 @@ const BookplatePage: React.FC = () => {
     if (JSON.stringify(old) === JSON.stringify(settings)) return;
     recordHistory();
     updateNodeData(id, { settings });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ---------- 侧边操作栏 ----------
@@ -1420,27 +1460,35 @@ const BookplatePage: React.FC = () => {
         {nodes.length === 0 && !isLoading && <EmptyCanvasHint />}
 
         {/* 画布空白处右键菜单（添加独立节点） */}
-        {standaloneMenu && (
-          <div
-            data-standalone-menu
-            className="fixed z-[9999]"
-            style={{ left: standaloneMenu.x, top: standaloneMenu.y }}
-          >
-            <div className="absolute left-0 top-0 w-72">
-              <div className="bg-paper border border-paper-grid rounded-xl shadow-xl overflow-hidden">
-                <div className="px-3 py-2.5 border-b border-dashed border-paper-grid bg-paper-grid/10">
-                  <p className="text-xs font-sans font-medium text-ink-light">添加独立节点</p>
-                </div>
-                <div className="max-h-[60vh] overflow-y-auto">
-                  <NodePickerList 
-                    items={pickerItems} 
-                    onPick={(item) => handleAddStandaloneNode(item, standaloneMenu.canvasX, standaloneMenu.canvasY)} 
-                  />
+        {standaloneMenu &&
+          (() => {
+            const MENU_WIDTH = 288;
+            const MENU_MAX_HEIGHT = 400; // 预估最大高度
+            const left = standaloneMenu.x + MENU_WIDTH > window.innerWidth - 8 ? Math.max(8, standaloneMenu.x - MENU_WIDTH) : standaloneMenu.x;
+            const top = Math.max(8, Math.min(standaloneMenu.y, window.innerHeight - MENU_MAX_HEIGHT));
+
+            return (
+              <div
+                data-standalone-menu
+                className="fixed z-[9999] w-72"
+                style={{ left, top }}
+              >
+                <div className="bg-paper border border-paper-grid rounded-xl shadow-xl overflow-hidden">
+                  <div className="px-3 py-2.5 border-b border-dashed border-paper-grid bg-paper-grid/10">
+                    <p className="text-xs font-sans font-medium text-ink-light">添加独立节点</p>
+                  </div>
+                  <div className="max-h-[320px] overflow-y-auto">
+                    <NodePickerList
+                      items={pickerItems}
+                      onPick={(item) =>
+                        handleAddStandaloneNode(item, standaloneMenu.canvasX, standaloneMenu.canvasY)
+                      }
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
-        )}
+            );
+          })()}
 
         {/* 节点右键菜单 */}
         {ctxMenu &&

@@ -20,7 +20,7 @@ const NAV_ITEMS = [
   { to: '/admin/bifrost-prompts', label: 'Bifrost 提示词', icon: BookOpen },
   { to: '/admin/bifrost-skills', label: 'Bifrost Skills', icon: BookOpen },
   { to: '/admin/fastclaw-agents', label: 'FastClaw Agent', icon: Bot },
-  { to: '/admin/skill-agent-configs', label: 'Skill Agent', icon: Sparkles },
+  { to: '/admin/skill-agent-configs', label: 'DeepSeek Agent', icon: Sparkles },
   { to: '/admin/node-configs', label: '节点管理', icon: GitBranch },
   { to: '/admin/settings', label: '系统设置', icon: Settings },
 ];
@@ -34,7 +34,7 @@ const TITLE_MAP: Record<string, string> = {
   '/admin/bifrost-skills': 'Bifrost Skills',
   '/admin/node-configs': '节点管理',
   '/admin/fastclaw-agents': 'Agent 配置',
-  '/admin/skill-agent-configs': 'Skill Agent 配置',
+  '/admin/skill-agent-configs': 'DeepSeek Agent 配置',
   '/admin/settings': '系统设置',
 };
 
@@ -44,14 +44,14 @@ export const AdminLayout: React.FC = () => {
   const title = TITLE_MAP[location.pathname] ?? '管理后台';
 
   return (
-    <div className="min-h-screen bg-paper flex">
+    <div className="h-screen bg-paper flex overflow-hidden">
       {/* 方格纸背景 */}
       <div className="fixed inset-0 pointer-events-none grid-paper opacity-20" />
 
       {/* 左侧边栏 240px */}
-      <aside className="relative z-10 w-60 shrink-0 border-r border-dashed border-paper-grid bg-node-bg flex flex-col min-h-screen">
+      <aside className="relative z-10 w-60 shrink-0 border-r border-dashed border-paper-grid bg-node-bg flex flex-col h-full">
         {/* 品牌区 */}
-        <div className="px-5 py-5 border-b border-dashed border-paper-grid">
+        <div className="px-5 py-5 border-b border-dashed border-paper-grid shrink-0">
           <div className="flex items-center gap-2.5">
             <img src="/icon.png" alt="BookForge Logo" className="h-9 w-9 rounded-md" />
             <div>
@@ -62,7 +62,7 @@ export const AdminLayout: React.FC = () => {
         </div>
 
         {/* 导航 */}
-        <nav className="flex-1 px-3 py-4 space-y-1" aria-label="管理后台导航">
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto" aria-label="管理后台导航">
           {NAV_ITEMS.map((item) => (
             <NavLink
               key={item.to}
@@ -82,7 +82,7 @@ export const AdminLayout: React.FC = () => {
         </nav>
 
         {/* 底部：用户信息 + 返回 */}
-        <div className="px-5 py-4 border-t border-dashed border-paper-grid space-y-3">
+        <div className="px-5 py-4 border-t border-dashed border-paper-grid space-y-3 shrink-0">
           {user && (
             <p className="text-xs text-ink-light font-sans truncate">
               当前管理员：<span className="text-ink font-medium">{user.username}</span>
@@ -99,8 +99,8 @@ export const AdminLayout: React.FC = () => {
       </aside>
 
       {/* 右侧内容区 */}
-      <main className="relative z-10 flex-1 min-w-0 flex flex-col">
-        <header className="h-14 border-b border-dashed border-paper-grid bg-paper/70 flex items-center px-6 sticky top-0 backdrop-blur-sm">
+      <main className="relative z-10 flex-1 min-w-0 flex flex-col h-full overflow-y-auto">
+        <header className="h-14 border-b border-dashed border-paper-grid bg-paper/70 flex items-center px-6 sticky top-0 z-10 backdrop-blur-sm shrink-0">
           <h1 className="font-serif text-lg font-semibold text-ink">{title}</h1>
         </header>
         <div className="flex-1 w-full max-w-[860px] mx-auto px-6 py-8">

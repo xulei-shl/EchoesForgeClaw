@@ -83,7 +83,8 @@ export function useGenerationHistory(ctx: GenerationHistoryContext): GenerationH
         },
       };
     },
-    []
+    // nodesRef / edgesRef 为模块级单例（useCanvasState），身份恒定，加入不会改变稳定性
+    [ctx.nodesRef, ctx.edgesRef]
   );
 
   /** 生成成功后自动保存到历史记录（每次成功新建一条，失败不保存）。 */
@@ -118,7 +119,7 @@ export function useGenerationHistory(ctx: GenerationHistoryContext): GenerationH
         return null;
       }
     },
-    [buildStageResults]
+    [buildStageResults, ctx.nodesRef, ctx.generationIds]
   );
 
   /** 确保该图片节点已有 Generation 记录，返回其 id */
@@ -145,7 +146,7 @@ export function useGenerationHistory(ctx: GenerationHistoryContext): GenerationH
       flushSnapshot(); // 同上：确保刷新后映射仍在，收藏/公开不会重复建记录
       return gen.id;
     },
-    [buildStageResults]
+    [buildStageResults, ctx.nodesRef, ctx.generationIds]
   );
 
   return { autoSaveGeneration, ensureGeneration };

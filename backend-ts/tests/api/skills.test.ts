@@ -64,7 +64,7 @@ afterAll(async () => {
   // 清理测试产生的 runtime 目录（用户登记 + 共享区）
   rmSync(path.join(RUNTIME_ROOT, String(TEST_UID)), { recursive: true, force: true });
   rmSync(path.join(RUNTIME_ROOT, String(uid)), { recursive: true, force: true });
-  for (const name of ['demo-skill', 'bifrost-skill']) {
+  for (const name of ['demo-skill', 'bifrost-skill', 'admin-skill']) {
     rmSync(path.join(RUNTIME_ROOT, '.agent', 'skills', name), { recursive: true, force: true });
   }
 });
@@ -285,5 +285,108 @@ describe('skill-files 下载', () => {
       headers: { authorization: `Bearer ${token}` },
     });
     expect(res.statusCode).toBe(404);
+  });
+});
+
+describe('admin bifrost-skills 管理', () => {
+  it('未登录 → 401', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/admin/bifrost-skills' });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('列表：共享区缓存可见；Bifrost 不可达时仅返回本地信息', async () => {
+    const zipBytes = makeSkillZip('admin-skill', { 'notes.txt': 'x' });
+    const srv = await startMockOpenAIServer((req) => {
+      if (req.path === '/api/skills') {
+        return JSON.stringify({ skills: [{ id: 'a1', name: 'unrelated', latest_version: '9' }] });
+      }
+      if (req.path === '/api/skills/serve/admin-skill/download.zip') {
+        return { raw: zipBytes, contentType: 'application/zip' };
+      }
+      return { raw: '{}', status: 404 };
+    });
+    openServers.push(srv);
+    await app.inject({
+      method: 'PUT',
+      url: '/api/admin/settings/bifrost.base_url',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { value: srv.rootURL },
+    });
+
+    const install = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/skills/install',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { name: 'admin-skill' },
+    });
+    expect(install.statusCode).toBe(200);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/admin/bifrost-skills',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const found = (res.json() as { skills: (Record<string, any> & { name: string; updated_at?: number | null })[] }).skills.find(
+      (s) => s.name === 'admin-skill'
+    );
+    expect(found).toBeTruthy();
+    expect(found!.files).toContain('SKILL.md');
+    expect(typeof found!.updated_at).toBe('number');
+  });
+
+  it('sync：拉取最新 zip 覆盖共享区（不动用户登记）', async () => {
+    const zipBytes = makeSkillZip('admin-skill', { 'v2.txt': 'v2' });
+    const srv = await startMockOpenAIServer((req) => ({
+      raw: zipBytes,
+      contentType: 'application/zip',
+    }));
+    openServers.push(srv);
+    await app.inject({
+      method: 'PUT',
+      url: '/api/admin/settings/bifrost.base_url',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { value: srv.rootURL },
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/bifrost-skills/admin-skill/sync',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const skill = (res.json() as { skill: { name: string; files: string[] } }).skill;
+    expect(skill.name).toBe('admin-skill');
+    expect(skill.files).toContain('v2.txt');
+  });
+
+  it('delete：从共享区删除并清理登记软链', async () => {
+    const res = await app.inject({
+      method: 'DELETE',
+      url: '/api/admin/bifrost-skills/admin-skill',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { message: string; cleaned_registries: number };
+    expect(body.message).toContain('admin-skill');
+    expect(typeof body.cleaned_registries).toBe('number');
+
+    const list = await app.inject({
+      method: 'GET',
+      url: '/api/admin/bifrost-skills',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const names = (list.json() as { skills: { name: string }[] }).skills.map((s) => s.name);
+    expect(names).not.toContain('admin-skill');
+  });
+
+  it('非法名称（含 \\ ）→ 400', async () => {
+    const res = await app.inject({
+      method: 'DELETE',
+      url: '/api/admin/bifrost-skills/%5C%5Cserver%5Cshare',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().detail).toContain('非法 skill 名称');
   });
 });

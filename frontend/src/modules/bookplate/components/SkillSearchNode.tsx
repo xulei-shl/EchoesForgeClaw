@@ -233,7 +233,7 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
           return (
             <div
               key={s.id}
-              className={`flex items-start gap-3 p-2.5 rounded-md border transition cursor-pointer active:scale-[0.99] ${
+              className={`flex items-start gap-3 p-2.5 rounded-md border transition cursor-pointer active:scale-[0.96] ${
                 isSelected
                   ? 'border-accent/50 bg-accent-surface/60'
                   : 'border-transparent hover:border-paper-grid hover:bg-paper-grid/30'
@@ -250,7 +250,7 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
                     <span className="shrink-0 text-[10px] text-ink-faint font-mono">v{s.latest_version}</span>
                   )}
                   {typeof s.file_count === 'number' && (
-                    <span className="shrink-0 text-[10px] text-ink-faint border border-dashed border-paper-grid rounded-pill px-1.5 py-px font-mono">
+                    <span className="shrink-0 text-[10px] text-ink-faint border border-dashed border-paper-grid rounded-pill px-1.5 py-px font-mono tabular-nums">
                       {s.file_count} 文件
                     </span>
                   )}
@@ -362,7 +362,7 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto pr-1.5 custom-scrollbar space-y-2.5">
               {selections.map((s) => (
-                <div key={s.name} className="rounded-md border border-paper-grid bg-paper/40 p-2.5">
+                <div key={s.name} className="rounded-lg border border-paper-grid bg-paper/40 p-2.5">
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] text-accent border border-dashed border-accent/30 rounded-pill px-1.5 py-px font-mono shrink-0">
                       {s.source === 'upload' ? '上传' : 'Bifrost'}
@@ -370,30 +370,7 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
                     <p className="text-xs font-medium text-ink truncate">{s.name}</p>
                   </div>
                   {s.description && (
-                    <p className="text-[11px] text-ink-light line-clamp-1 mt-1">{s.description}</p>
-                  )}
-                  {s.body && (
-                    <pre className="text-[11px] text-ink-light font-sans whitespace-pre-wrap leading-relaxed mt-1.5 max-h-24 overflow-y-auto custom-scrollbar">
-                      {s.body}
-                    </pre>
-                  )}
-                  {Array.isArray(s.files) && s.files.length > 0 && (
-                    <div className="mt-1.5">
-                      <p className="text-[10px] text-ink-faint font-sans flex items-center gap-1">
-                        <FolderTree size={10} strokeWidth={1.5} />
-                        文件结构（{s.files.length}）
-                      </p>
-                      <div className="space-y-0.5 mt-0.5">
-                        {s.files.slice(0, 20).map((f) => (
-                          <p key={f} className="text-[10px] text-ink-light font-mono truncate pl-2 border-l border-dashed border-paper-grid/60">
-                            {f}
-                          </p>
-                        ))}
-                        {s.files.length > 20 && (
-                          <p className="text-[10px] text-ink-faint font-mono pl-2">…共 {s.files.length} 个文件</p>
-                        )}
-                      </div>
-                    </div>
+                    <p className="text-[11px] text-ink-light line-clamp-2 leading-relaxed mt-1">{s.description}</p>
                   )}
                 </div>
               ))}
