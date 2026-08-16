@@ -1,8 +1,29 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Toggle } from '../../../platform/components/ui/Toggle';
+import { Select, type SelectOption } from '../../../platform/components/ui/Select';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import type { NodeRunSettings } from '../../../platform/types';
+
+/** 图像生成节点可选尺寸档位（Agnes 契约：1K/2K/3K/4K 档位式，配合宽高比使用） */
+const IMAGE_SIZE_OPTIONS: SelectOption[] = [
+  { value: '1K', label: '1K' },
+  { value: '2K', label: '2K' },
+  { value: '3K', label: '3K' },
+  { value: '4K', label: '4K' },
+];
+
+/** 图像生成节点可选宽高比（Agnes 支持的 ratio 枚举） */
+const IMAGE_RATIO_OPTIONS: SelectOption[] = [
+  { value: '1:1', label: '1:1' },
+  { value: '3:4', label: '3:4' },
+  { value: '4:3', label: '4:3' },
+  { value: '16:9', label: '16:9' },
+  { value: '9:16', label: '9:16' },
+  { value: '2:3', label: '2:3' },
+  { value: '3:2', label: '3:2' },
+  { value: '21:9', label: '21:9' },
+];
 
 const POPOVER_STYLE = `
 @keyframes ns-pop-enter {
@@ -21,6 +42,8 @@ export interface NodeSettingsPopoverProps {
   hasBookInfo?: boolean;
   /** 是否有下级节点关联（有下级时禁用设置，避免影响下游输出） */
   hasDownstream?: boolean;
+  /** 是否展示图像参数（尺寸/宽高比）区块：仅图像生成节点传入 */
+  showImageParams?: boolean;
   /** 按钮样式（沿用各节点的 actionBtn 类） */
   className?: string;
 }
@@ -31,6 +54,7 @@ const NodeSettingsPopoverInner: React.FC<NodeSettingsPopoverProps> = ({
   disabled,
   hasBookInfo = true,
   hasDownstream,
+  showImageParams = false,
   className = '',
 }) => {
   const [open, setOpen] = useState(false);
@@ -121,6 +145,32 @@ const NodeSettingsPopoverInner: React.FC<NodeSettingsPopoverProps> = ({
                     disabled={disabled}
                   />
                 </div>
+                {showImageParams && (
+                  <div className="space-y-2.5 border-t border-dashed border-paper-grid pt-3">
+                    <div>
+                      <p className="text-xs font-sans text-ink mb-1.5">输出尺寸</p>
+                      <Select
+                        size="sm"
+                        value={settings.imageSize ?? ''}
+                        onChange={(v) => onChange({ ...settings, imageSize: v || undefined })}
+                        placeholder="默认（不指定）"
+                        options={IMAGE_SIZE_OPTIONS}
+                        disabled={disabled}
+                      />
+                    </div>
+                    <div>
+                      <p className="text-xs font-sans text-ink mb-1.5">宽高比</p>
+                      <Select
+                        size="sm"
+                        value={settings.imageRatio ?? ''}
+                        onChange={(v) => onChange({ ...settings, imageRatio: v || undefined })}
+                        placeholder="默认（不指定）"
+                        options={IMAGE_RATIO_OPTIONS}
+                        disabled={disabled}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

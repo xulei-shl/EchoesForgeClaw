@@ -18,14 +18,17 @@ export interface ProviderConfig {
   base_url: string;
 }
 
+/** 归一化 baseURL（去尾斜杠；空值回退 OpenAI 官方端点，与 Python `AsyncOpenAI(base_url=None)` 一致）。 */
+export function resolveBaseURL(base_url: string): string {
+  return base_url.trim().replace(/\/+$/, '') || 'https://api.openai.com/v1';
+}
+
 /** 进程内 provider 实例缓存（key = baseURL + apiKey；baseURL 为空时不缓存）。 */
 const providerCache = new Map<string, OpenAICompatibleProvider>();
 
 /** 按配置创建（或复用）openai-compatible provider 实例。 */
 export function createAIProvider(cfg: ProviderConfig): OpenAICompatibleProvider {
-  // createOpenAICompatible 的 baseURL 为必填：空 base_url 时回退 OpenAI 官方端点
-  // （与 Python `AsyncOpenAI(base_url=None)` 的默认行为一致）
-  const baseURL = (cfg.base_url.trim().replace(/\/+$/, '') || 'https://api.openai.com/v1');
+  const baseURL = resolveBaseURL(cfg.base_url);
   const cacheKey = `${baseURL}\u0000${cfg.apiKey}`;
   let provider = providerCache.get(cacheKey);
   if (!provider) {

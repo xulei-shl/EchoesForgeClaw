@@ -323,6 +323,25 @@ export function ChatNodeHost({
         interruptPendingRef.current = false;
       }
     }
+    // 本轮结束仍无 assistant 消息（工具执行但无文本产出：工具-only / 报错 / 停止）：
+    // 合成一条携带 agentSteps 的空 assistant 消息，保证 AgentActivity 日志可见、步骤不丢。
+    // 刻意不写回 useChat（空正文消息不应随 LLM 模式历史重发），下一轮镜像会自然收敛。
+    if (!streaming && nodeSteps.length && next.length) {
+      const i = next.length - 1;
+      if (next[i].role !== 'assistant') {
+        const interrupted = interruptPendingRef.current;
+        if (interrupted) interruptPendingRef.current = false;
+        next = [
+          ...next,
+          {
+            role: 'assistant',
+            content: '',
+            agentSteps: nodeSteps,
+            ...(interrupted ? { interrupted: true } : {}),
+          },
+        ];
+      }
+    }
     // 当前轮 agent 步骤附加到最后一条 assistant 消息，并同步进 UI metadata（镜像不丢、跨轮持久）
     if (nodeSteps.length && next.length) {
       const i = next.length - 1;
@@ -352,13 +371,12 @@ export function ChatNodeHost({
     const nodeNow = nodesRef.current.find((n) => n.id === nodeId);
     const prevOutput = typeof nodeNow?.data?.output === 'string' ? nodeNow.data.output : '';
     const lastAssistant = [...next].reverse().find((m) => m.role === 'assistant');
-    // 输出 = 最后一轮助手回复（错误 / 中断时不覆盖，避免污染下游输入）
+    // 输出 = 最后一轮助手回复（错误 / 中断 / 无正文时不覆盖，避免污染下游输入：
+    // 工具执行但无文本产出的轮次由合成空消息承载步骤，不应清空既有输出）
     const output =
-      streaming || errMsg || lastAssistant?.interrupted
+      streaming || errMsg || lastAssistant?.interrupted || !lastAssistant?.content
         ? prevOutput
-        : lastAssistant
-          ? lastAssistant.content
-          : prevOutput;
+        : lastAssistant.content;
 
     const stateChanged =
       json !== lastMirroredRef.current ||
@@ -445,8 +463,14 @@ export function ChatNodeHost({
   const retry = useCallback(() => {
     if (statusRef.current !== 'ready' && statusRef.current !== 'error') return;
     if (status === 'error') clearError();
+    // 重置本轮 agent 步骤：重试是新一轮执行，旧步骤（含失败轮残留）不应混入新回复
+    setNodes((prev) =>
+      prev.map((n) =>
+        n.id === nodeId ? { ...n, data: { ...n.data, agentSteps: [], error: null } } : n
+      )
+    );
     void regenerate();
-  }, [status, clearError, regenerate]);
+  }, [status, clearError, regenerate, nodeId, setNodes]);
 
   // ---------- 渲染 ----------
   const config = h.configOf(node);
@@ -468,6 +492,7 @@ export function ChatNodeHost({
             ? (config.skill_agent_config_name ?? undefined)
             : undefined
       }
+      agentSteps={Array.isArray(node.data?.agentSteps) ? node.data.agentSteps : []}
       group={config?.group?.trim() || undefined}
       mismatchBadge={mismatchBadgeOf(node, h)}
       hasDownstream={hasDownstreamOf(node, h.edges)}

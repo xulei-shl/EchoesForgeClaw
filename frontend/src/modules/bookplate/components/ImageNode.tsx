@@ -56,9 +56,11 @@ export interface ImageNodeProps {
   group?: string;
   /** 手动运行（待运行态点击「运行」触发） */
   onRun?: (id: string) => void;
-  /** 运行设置（包含图书元数据 / 自动运行） */
+  /** 运行设置（包含图书元数据 / 自动运行 / 图像尺寸与宽高比） */
   settings?: NodeRunSettings;
   onUpdateSettings?: (id: string, settings: NodeRunSettings) => void;
+  /** 运行设置中展示图像参数（尺寸/宽高比）区块（仅图像生成节点开启） */
+  showImageParams?: boolean;
   /** 画布是否已有图书元数据节点 */
   hasBookInfo?: boolean;
   /** 标题旁的类型不匹配提示 */
@@ -99,6 +101,7 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
   onRun,
   settings,
   onUpdateSettings,
+  showImageParams = false,
   hasBookInfo,
   mismatchBadge,
   hasDownstream,
@@ -182,6 +185,7 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
               disabled={isGenerating}
               hasDownstream={hasDownstream}
               hasBookInfo={hasBookInfo}
+              showImageParams={showImageParams}
             />
           )}
           <NodeActionBar.Custom

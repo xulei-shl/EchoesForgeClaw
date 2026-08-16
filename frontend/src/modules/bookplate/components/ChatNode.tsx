@@ -9,7 +9,7 @@ import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { AgentActivity } from '../../../platform/components/agent/AgentActivity';
 import { Toggle } from '../../../platform/components/ui/Toggle';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
-import type { AgentFile, ChatMessage, ChatNodeSettings } from '../../../platform/types';
+import type { AgentFile, AgentStep, ChatMessage, ChatNodeSettings } from '../../../platform/types';
 import { NODE_COLORS } from '../nodeTypes';
 import {
   RASTER_IMAGE_TYPES,
@@ -228,6 +228,11 @@ export interface ChatNodeProps {
   messages?: ChatMessage[];
   /** Agent 名称（该节点配置为 agent 模式时展示） */
   agentName?: string;
+  /**
+   * 当前轮节点级 agent 步骤：正文开始流式前（工具执行阶段）实时展示；
+   * 正文开始后镜像会挂到消息级 agentSteps，此块的展示条件随即失效，避免重复。
+   */
+  agentSteps?: AgentStep[];
   isGenerating: boolean;
   error?: string | null;
   /** 上下文加载设置 */
@@ -265,6 +270,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
   title,
   messages = [],
   agentName,
+  agentSteps = [],
   isGenerating,
   error,
   settings,
@@ -366,7 +372,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
     });
   };
 
-  // 新消息 / 流式增量到达时自动滚到底（贴底状态下）
+  // 新消息 / 流式增量 / agent 步骤到达时自动滚到底（贴底状态下）
   useEffect(() => {
     const el = listRef.current;
     if (el) {
@@ -375,7 +381,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
       }
       handleScroll();
     }
-  }, [messages]);
+  }, [messages, agentSteps]);
 
   // 设置弹层：点击外部 / Esc 关闭
   useEffect(() => {
@@ -654,6 +660,15 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
             ) : (
               messages.map(renderMessage)
             )}
+            {/* 工具执行阶段（正文尚未开始流式）的实时 Agent 日志：步骤先落在节点级 agentSteps，
+                正文开始后由镜像挂到最后一条 assistant 消息，此块随即让位给消息级展示，避免重复 */}
+            {isGenerating &&
+              agentSteps.length > 0 &&
+              !messages[messages.length - 1]?.agentSteps?.length && (
+                <div className="w-full">
+                  <AgentActivity steps={agentSteps} agentName={agentName} running />
+                </div>
+              )}
           </div>
         </PhotoProvider>
 
@@ -769,7 +784,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
               <div className="p-3 space-y-3">
                 <div className="flex items-start justify-between gap-2.5">
                   <div className="min-w-0">
-                    <p className="text-xs font-sans text-ink">加载图书元数据</p>
+                    <p className="text-xs font-sans text-ink">包含图书元数据</p>
                     <p className="text-[10px] text-ink-faint font-sans mt-0.5 leading-snug">
                       连线上游的图书元数据（无连线时取画布根节点）
                     </p>
@@ -777,7 +792,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                   <Toggle
                     checked={settings.includeBook}
                     onChange={(v) => onUpdateSettings?.(id, { ...settings, includeBook: v })}
-                    label="加载图书元数据"
+                    label="包含图书元数据"
                     disabled={messages.length > 0}
                   />
                 </div>

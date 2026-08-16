@@ -262,6 +262,10 @@ export interface NodeRunSettings {
   includeBook: boolean;
   /** 输入就绪时自动运行；关闭则点击「运行」按钮手动执行 */
   autoRun: boolean;
+  /** 图像生成节点专属：输出尺寸（如 1K/2K/3K/4K；未设置不上送，由模型/服务端决定） */
+  imageSize?: string;
+  /** 图像生成节点专属：宽高比（如 1:1/16:9；未设置不上送） */
+  imageRatio?: string;
 }
 
 /** 节点模板（后端 node_types.py 定义，经 node-registry 下发） */

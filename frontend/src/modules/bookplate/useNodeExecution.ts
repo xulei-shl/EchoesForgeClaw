@@ -268,14 +268,20 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
         return;
       }
       // 图片生成耗时较长（可达 30-120s+），超时须覆盖后端最坏耗时（见 timeouts.ts）
-      const res: any = await api.post(
-        '/modules/bookplate/generate-image',
-        { prompt, image: image ? [image] : undefined, config_id: node.configId ?? null, node_id: node.id },
-        {
-          timeout: IMAGE_GENERATION_TIMEOUT_MS,
-          signal: controller.signal,
-        }
-      );
+      const runSettings = node.data?.settings;
+      const body: Record<string, unknown> = {
+        prompt,
+        image: image ? [image] : undefined,
+        config_id: node.configId ?? null,
+        node_id: node.id,
+      };
+      // 运行设置里的尺寸/宽高比按次透传（后端覆盖配置默认值）
+      if (runSettings?.imageSize) body.size = runSettings.imageSize;
+      if (runSettings?.imageRatio) body.ratio = runSettings.imageRatio;
+      const res: any = await api.post('/modules/bookplate/generate-image', body, {
+        timeout: IMAGE_GENERATION_TIMEOUT_MS,
+        signal: controller.signal,
+      });
       ctx.updateNodeData(node.id, {
         imageUrl: res.image_url,
         isGenerating: false,

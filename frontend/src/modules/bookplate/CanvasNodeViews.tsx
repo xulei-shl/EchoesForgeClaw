@@ -212,6 +212,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           onTogglePublic={h.handleTogglePublicFor}
           settings={settings}
           onUpdateSettings={h.handleUpdateRunSettingsFor}
+          showImageParams
           hasBookInfo={h.hasBookInfo}
         />
       );
