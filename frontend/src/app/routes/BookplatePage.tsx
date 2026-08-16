@@ -533,11 +533,10 @@ const BookplatePage: React.FC = () => {
   }, []);
 
   // ---------- 通用节点创建 ----------
-  /** 新节点的初始数据（按模板类型；includeBook 默认「直接上级是图书元数据」才开启） */
+  /** 新节点的初始数据（按模板类型；孤立节点（无连线创建）时 includeBook 默认关闭，有任何上级连线时默认开启） */
   const seedDataFor = (type: NodeType, parent?: NodeData): any => {
     const runSettings = (): NodeRunSettings => ({
-      includeBook: parent?.type === 'book_info',
-      autoRun: false,
+      includeBook: !!parent,
     });
     switch (type) {
       case 'book_info':
@@ -578,7 +577,7 @@ const BookplatePage: React.FC = () => {
           isGenerating: false,
           error: null,
           agentSteps: [],
-          settings: { includeBook: true, includeUpstream: true, includeUpstreamImages: true },
+          settings: { includeBook: !!parent, includeUpstream: true, includeUpstreamImages: true },
           epoch: 0,
         };
       case 'text_aggregate':
@@ -653,11 +652,6 @@ const BookplatePage: React.FC = () => {
       data: seedDataFor(item.nodeType, node),
       configId: item.configId,
       configName: item.configId ? item.label : undefined,
-      // 手动运行模型：默认不自动执行；仅当该节点开启「自动运行」时创建后立即补跑
-      run: (newNode) => {
-        const settings: NodeRunSettings = newNode.data?.settings ?? DEFAULT_RUN_SETTINGS;
-        if (settings.autoRun) runNode(newNode);
-      },
     });
   }, []);
 
@@ -714,56 +708,13 @@ const BookplatePage: React.FC = () => {
   // 画布状态持久化在 sessionStorage，整页刷新 / 崩溃 / 页面直关等路径会残留上次会话的生成中标记。
   // 切页往返路径的流仍在后台运行（模块级 streamControllers 存活），故以 hasActiveStream 判断：
   // 仍有活动流的节点是「正在正常生成」，保持不动；无活动流的节点才是残留，安全复位——
-  // 开启「自动运行」的节点交由下方 autoRun 检查重新执行；其余节点置失败提示由用户重试。
+  // 置失败提示由用户重试。
   useEffect(() => {
     setNodes((prev) =>
-      prev.map((n) => selfHealNode(n, streamControllers.current.has(n.id), true))
+      prev.map((n) => selfHealNode(n, streamControllers.current.has(n.id)))
     );
   }, [setNodes, user?.id]);
 
-  // ---------- 自动运行（默认关闭，节点运行设置中开启「自动运行」后生效） ----------
-  const autoRunTried = useRef<Set<string>>(new Set());
-
-  // 输入就绪自动执行：开启「自动运行」的节点在创建或上游数据到达
-  // （图书元数据返回 / 分析完成 / 提示词生成完）时自动补跑；其余节点由用户点击「运行」触发。
-  useEffect(() => {
-    for (const node of nodesRef.current) {
-      const settings: NodeRunSettings = node.data?.settings ?? DEFAULT_RUN_SETTINGS;
-      if (settings.autoRun !== true) continue;
-      if (autoRunTried.current.has(node.id)) continue;
-      if (node.data?.isGenerating || node.data?.error) continue;
-
-      let idle = false;
-      let ready = false;
-      if (node.type === 'image_analysis') {
-        idle = !node.data?.analysis;
-        const inputs = resolveNodeRunInputs(node, nodesRef.current, edgesRef.current, portTypesOf);
-        const uploaded = analysisUploads.current.get(node.id);
-        const imageReady = !!(uploaded || inputs.refImage);
-        const coverReady = !inputs.uploadNode && (!!inputs.book?.data?.cover_image || !!inputs.book?.data?.coverUrl);
-        ready = imageReady || coverReady;
-      } else if (node.type === 'prompt_generation') {
-        idle = !node.data?.content;
-        const inputs = resolveNodeRunInputs(node, nodesRef.current, edgesRef.current, portTypesOf);
-        ready = !!(inputs.book?.data?.isbn || inputs.analysis || inputs.text);
-      } else if (node.type === 'image_generation') {
-        idle = !node.data?.imageUrl;
-        const inputs = resolveNodeRunInputs(node, nodesRef.current, edgesRef.current, portTypesOf);
-        ready = !!inputs.imagePrompt.trim() && !inputs.promptNodes.some((p) => p.data?.isGenerating);
-        if (inputs.uploadNode && !inputs.refImage) ready = false;
-      }
-
-      if (!idle) {
-        autoRunTried.current.add(node.id); // 已有结果，无需补跑
-        continue;
-      }
-      if (ready) {
-        autoRunTried.current.add(node.id);
-        runNode(node);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes, edges]);
 
   // ---------- 文本聚合节点：自动重算输出（纯文本变换，不调 API） ----------
   // 上级内容 / 连线变化时即时重算聚合结果并同步占位符映射（新上级补默认别名、断开的移除）。
@@ -873,11 +824,7 @@ const BookplatePage: React.FC = () => {
     nodesRef.current = [...nodesRef.current, newNode];
     setNodes((prev) => [...prev, newNode]);
 
-    const run = () => {
-      const settings: NodeRunSettings = newNode.data?.settings ?? DEFAULT_RUN_SETTINGS;
-      if (settings.autoRun) runNode(newNode);
-    };
-    run();
+
     
     focusOnNode(newNode);
     setStandaloneMenu(null);
@@ -1032,7 +979,7 @@ const BookplatePage: React.FC = () => {
     const node = nodesRef.current.find((n) => n.id === id);
     if (!node || node.type !== 'chat') return;
     const old = node.data?.settings ?? {
-      includeBook: true,
+      includeBook: false,
       includeUpstream: true,
       includeUpstreamImages: true,
     };
@@ -1167,7 +1114,7 @@ const BookplatePage: React.FC = () => {
     },
     []
   );
-  /** 可执行节点：更新运行设置（包含图书元数据 / 自动运行；未变化不记历史） */
+  /** 可执行节点：更新运行设置（包含图书元数据；未变化不记历史） */
   const handleUpdateRunSettingsFor = useCallback((id: string, settings: NodeRunSettings) => {
     const node = nodesRef.current.find((n) => n.id === id);
     if (!node) return;
@@ -1175,8 +1122,6 @@ const BookplatePage: React.FC = () => {
     if (JSON.stringify(old) === JSON.stringify(settings)) return;
     recordHistory();
     updateNodeData(id, { settings });
-    // 开启「自动运行」：允许该节点重新参与输入就绪检查（此前可能已标记为尝试过）
-    if (settings.autoRun && !old.autoRun) autoRunTried.current.delete(id);
   }, []);
 
   // ---------- 侧边操作栏 ----------

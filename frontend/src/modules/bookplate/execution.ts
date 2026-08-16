@@ -16,7 +16,7 @@ import type { EdgeData, NodeData } from './graphTypes';
 export type { PortTypesLookup } from './nodeTypes';
 
 /** 可执行节点的运行设置默认值（破坏性更新：默认手动运行、不注入图书元数据） */
-export const DEFAULT_RUN_SETTINGS: NodeRunSettings = { includeBook: false, autoRun: false };
+export const DEFAULT_RUN_SETTINGS: NodeRunSettings = { includeBook: false };
 
 /**
  * 用 Markdown 结构拼接输入：每类来源用 `## 标题` 标注，块间用 `---` 分隔线隔离。

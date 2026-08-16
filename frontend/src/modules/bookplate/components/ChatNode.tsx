@@ -217,6 +217,11 @@ const STYLE_INJECTIONS = `
   mask-image: linear-gradient(to right, transparent, black 16px);
   -webkit-mask-image: linear-gradient(to right, transparent, black 16px);
 }
+@keyframes thinking-dot {
+  0%, 100% { transform: translateY(0); opacity: 0.3; }
+  50% { transform: translateY(-3px); opacity: 1; }
+}
+.animate-thinking-dot { animation: thinking-dot 1.2s ease-in-out infinite; }
 `;
 
 export interface ChatNodeProps {
@@ -539,12 +544,13 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
           />
         )}
         <div className="flex items-end w-full min-w-0">
-          <div className={`max-w-[92%] px-3 py-2 rounded-2xl rounded-bl-sm bg-paper-grid/25 border border-paper-grid/60 text-[13px] leading-relaxed font-sans min-w-0 ${isThinking ? 'flex items-center gap-1.5 text-ink-faint' : ''}`}>
+          <div className={`max-w-[92%] px-3 py-2 rounded-2xl rounded-bl-sm bg-paper-grid/25 border border-paper-grid/60 text-[13px] leading-relaxed font-sans min-w-0 ${isThinking ? 'flex items-center text-ink-faint/80' : ''}`}>
             {isThinking ? (
-              <>
-                <Loader2 size={14} className="animate-spin" />
-                <span>思考中...</span>
-              </>
+              <div className="flex items-center gap-1.5 h-[21px] px-1">
+                <div className="w-1.5 h-1.5 rounded-full bg-current animate-thinking-dot" style={{ animationDelay: '0ms' }} />
+                <div className="w-1.5 h-1.5 rounded-full bg-current animate-thinking-dot" style={{ animationDelay: '200ms' }} />
+                <div className="w-1.5 h-1.5 rounded-full bg-current animate-thinking-dot" style={{ animationDelay: '400ms' }} />
+              </div>
             ) : (
               <Streamdown
                 plugins={{ cjk, code }}
@@ -784,37 +790,37 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
               <div className="p-3 space-y-3">
                 <div className="flex items-start justify-between gap-2.5">
                   <div className="min-w-0">
-                    <p className="text-xs font-sans text-ink">包含图书元数据</p>
+                    <p className="text-xs font-sans text-ink">继承图书元数据</p>
                     <p className="text-[10px] text-ink-faint font-sans mt-0.5 leading-snug">
-                      连线上游的图书元数据（无连线时取画布根节点）
+                      上游穿透的图书节点或兜底的图书节点
                     </p>
                   </div>
                   <Toggle
                     checked={settings.includeBook}
                     onChange={(v) => onUpdateSettings?.(id, { ...settings, includeBook: v })}
-                    label="包含图书元数据"
+                    label="继承图书元数据"
                     disabled={messages.length > 0}
                   />
                 </div>
                 <div className="flex items-start justify-between gap-2.5">
                   <div className="min-w-0">
-                    <p className="text-xs font-sans text-ink">加载上一级节点内容</p>
+                    <p className="text-xs font-sans text-ink">加载直接上级文本</p>
                     <p className="text-[10px] text-ink-faint font-sans mt-0.5 leading-snug">
-                      紧随的上级节点输出（支持对话节点串联）
+                      仅提取紧邻相连的父节点输出的文字内容
                     </p>
                   </div>
                   <Toggle
                     checked={settings.includeUpstream}
                     onChange={(v) => onUpdateSettings?.(id, { ...settings, includeUpstream: v })}
-                    label="加载上一级节点内容"
+                    label="加载直接上级文本"
                     disabled={messages.length > 0}
                   />
                 </div>
                 <div className="flex items-start justify-between gap-2.5">
                   <div className="min-w-0">
-                    <p className="text-xs font-sans text-ink">加载上级图片</p>
+                    <p className="text-xs font-sans text-ink">加载直接上级图片</p>
                     <p className="text-[10px] text-ink-faint font-sans mt-0.5 leading-snug">
-                      紧随的上级节点图片（图片上传 / 图像生成节点），随对话一并交给模型 / Agent
+                      仅提取紧邻相连的父节点输出的图像
                     </p>
                   </div>
                   <Toggle
@@ -822,7 +828,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                     onChange={(v) =>
                       onUpdateSettings?.(id, { ...settings, includeUpstreamImages: v })
                     }
-                    label="加载上级图片"
+                    label="加载直接上级图片"
                     disabled={messages.length > 0}
                   />
                 </div>

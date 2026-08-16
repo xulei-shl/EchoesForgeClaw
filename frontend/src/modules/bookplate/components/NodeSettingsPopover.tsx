@@ -110,8 +110,8 @@ const NodeSettingsPopoverInner: React.FC<NodeSettingsPopoverProps> = ({
         <div ref={popupRef} className="fixed z-[9999]" style={{ right: coords.x, bottom: coords.y }}>
           <style dangerouslySetInnerHTML={{ __html: POPOVER_STYLE }} />
           <div className="w-64 ns-pop-enter-anim">
-            <div className="bg-paper border border-paper-grid rounded-xl shadow-xl overflow-hidden">
-              <div className="px-3 py-2.5 border-b border-dashed border-paper-grid bg-paper-grid/10">
+            <div className="bg-paper border border-paper-grid rounded-xl shadow-xl">
+              <div className="px-3 py-2.5 border-b border-dashed border-paper-grid bg-paper-grid/10 rounded-t-xl">
                 <p className="text-xs font-sans font-medium text-ink-light">运行设置</p>
               </div>
               <div className="p-3 space-y-3">
@@ -131,20 +131,7 @@ const NodeSettingsPopoverInner: React.FC<NodeSettingsPopoverProps> = ({
                     disabled={disabled || !hasBookInfo}
                   />
                 </div>
-                <div className="flex items-start justify-between gap-2.5">
-                  <div className="min-w-0">
-                    <p className="text-xs font-sans text-ink">自动运行</p>
-                    <p className="text-[10px] text-ink-faint font-sans mt-0.5 leading-snug">
-                      输入就绪时自动执行；关闭后需点击「运行」按钮手动执行
-                    </p>
-                  </div>
-                  <Toggle
-                    checked={settings.autoRun}
-                    onChange={(v) => onChange({ ...settings, autoRun: v })}
-                    label="自动运行"
-                    disabled={disabled}
-                  />
-                </div>
+
                 {showImageParams && (
                   <div className="space-y-2.5 border-t border-dashed border-paper-grid pt-3">
                     <div>

@@ -25,7 +25,7 @@ const MAX_CHAT_IMAGES = 4;
 
 /** 上下文设置兜底（旧节点持久化的 settings 缺少 includeUpstreamImages，undefined 视为开启） */
 const DEFAULT_CHAT_SETTINGS: ChatNodeSettings = {
-  includeBook: true,
+  includeBook: false,
   includeUpstream: true,
   includeUpstreamImages: true,
 };
@@ -295,6 +295,43 @@ export function ChatNodeHost({
     JSON.stringify(Array.isArray(node.data?.messages) ? node.data.messages : [])
   );
 
+  // 节流写入顶层 store 的定时器与最新待写入状态
+  const throttleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingPatchRef = useRef<{
+    next: ChatMessage[];
+    streaming: boolean;
+    errMsg: string | null;
+    output: string;
+    json: string;
+  } | null>(null);
+
+  const flushPendingPatch = useCallback(() => {
+    if (throttleTimerRef.current !== null) {
+      clearTimeout(throttleTimerRef.current);
+      throttleTimerRef.current = null;
+    }
+    const patch = pendingPatchRef.current;
+    if (!patch) return;
+    pendingPatchRef.current = null;
+    lastMirroredRef.current = patch.json;
+    setNodes((prev) =>
+      prev.map((n) =>
+        n.id === nodeId
+          ? {
+              ...n,
+              data: {
+                ...n.data,
+                messages: patch.next,
+                isGenerating: patch.streaming,
+                error: patch.errMsg,
+                ...(!patch.streaming && !patch.errMsg ? { output: patch.output } : {}),
+              },
+            }
+          : n
+      )
+    );
+  }, [nodeId, setNodes]);
+
   // ---------- 镜像：useChat 消息 / 状态 → 节点 store ----------
   useEffect(() => {
     const streaming = status === 'submitted' || status === 'streaming';
@@ -382,27 +419,24 @@ export function ChatNodeHost({
       json !== lastMirroredRef.current ||
       streaming !== !!nodeNow?.data?.isGenerating ||
       errMsg !== (nodeNow?.data?.error ?? null);
+
     if (stateChanged) {
-      lastMirroredRef.current = json;
-      setNodes((prev) =>
-        prev.map((n) =>
-          n.id === nodeId
-            ? {
-                ...n,
-                data: {
-                  ...n.data,
-                  messages: next,
-                  isGenerating: streaming,
-                  error: errMsg,
-                  ...(!streaming && !errMsg ? { output } : {}),
-                },
-              }
-            : n
-        )
-      );
+      pendingPatchRef.current = { next, streaming, errMsg, output, json };
+
+      // 流式中进行 80ms 节流写入顶层 store，流式结束（或出错）时立即 flush 最终状态
+      if (streaming) {
+        if (throttleTimerRef.current === null) {
+          throttleTimerRef.current = setTimeout(() => {
+            throttleTimerRef.current = null;
+            flushPendingPatch();
+          }, 80);
+        }
+      } else {
+        flushPendingPatch();
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uiMessages, status, nodeId, setNodes, setMessages]);
+  }, [uiMessages, status, nodeId, setNodes, setMessages, flushPendingPatch]);
 
   // ---------- 外部变更检测：清空对话 / 撤销 / 恢复时 store 与 useChat 不同步 ----------
   useEffect(() => {
@@ -417,12 +451,13 @@ export function ChatNodeHost({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [node.data?.messages, status, nodeId, setMessages]);
 
-  // 卸载清理：空闲计时器（useChat 自身会在卸载时中止流）
+  // 卸载清理：空闲计时器与节流定时器（立即 flush 待提交数据）
   useEffect(
     () => () => {
       idleRef.current?.idle.clear();
+      flushPendingPatch();
     },
-    []
+    [flushPendingPatch]
   );
 
   // ---------- 对外操作：发送 / 停止 / 重试（ChatNode 回调） ----------
@@ -476,7 +511,13 @@ export function ChatNodeHost({
   const config = h.configOf(node);
   const settings: ChatNodeSettings =
     node.data?.settings ?? DEFAULT_CHAT_SETTINGS;
-  const messages = Array.isArray(node.data?.messages) ? node.data.messages : [];
+  const isStreaming = status === 'submitted' || status === 'streaming';
+  const messages =
+    isStreaming && pendingPatchRef.current
+      ? pendingPatchRef.current.next
+      : Array.isArray(node.data?.messages)
+        ? node.data.messages
+        : [];
 
   return (
     <ChatNode

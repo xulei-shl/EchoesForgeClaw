@@ -39,7 +39,7 @@ export interface PromptNodeProps {
   group?: string;
   /** 手动运行（待运行态点击「运行」触发） */
   onRun?: (id: string) => void;
-  /** 运行设置（包含图书元数据 / 自动运行） */
+  /** 运行设置（包含图书元数据） */
   settings?: NodeRunSettings;
   onUpdateSettings?: (id: string, settings: NodeRunSettings) => void;
   /** 画布是否已有图书元数据节点 */

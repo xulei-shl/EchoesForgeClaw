@@ -118,6 +118,26 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
     const idle = makeIdleTimeout(controller, PROMPT_SSE_IDLE_TIMEOUT_MS);
     idle.arm();
 
+    let pendingDelta = '';
+    let throttleTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const flushDelta = () => {
+      if (throttleTimer !== null) {
+        clearTimeout(throttleTimer);
+        throttleTimer = null;
+      }
+      if (!pendingDelta) return;
+      const toApply = pendingDelta;
+      pendingDelta = '';
+      ctx.setNodes((prev) =>
+        prev.map((n) =>
+          n.id === node.id
+            ? { ...n, data: { ...n.data, content: (n.data.content || '') + toApply } }
+            : n
+        )
+      );
+    };
+
     postUIStream({
       url: '/api/modules/bookplate/generate-prompt',
       body: {
@@ -130,13 +150,13 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
       signal: controller.signal,
       onTextDelta: (delta) => {
         idle.arm(); // 收到数据，重置空闲计时
-        ctx.setNodes((prev) =>
-          prev.map((n) =>
-            n.id === node.id
-              ? { ...n, data: { ...n.data, content: (n.data.content || '') + delta } }
-              : n
-          )
-        );
+        pendingDelta += delta;
+        if (throttleTimer === null) {
+          throttleTimer = setTimeout(() => {
+            throttleTimer = null;
+            flushDelta();
+          }, 60);
+        }
       },
       onData: (event, data) => {
         idle.arm();
@@ -150,14 +170,17 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
         }
       },
       onError: (message) => {
+        flushDelta();
         // 后端流式生成失败：切换为错误态（复用错误横幅 + 重试），不注入文本到内容
         ctx.updateNodeData(node.id, { isGenerating: false, error: message });
       },
     })
       .then(() => {
+        flushDelta();
         ctx.updateNodeData(node.id, { isGenerating: false });
       })
       .catch((err) => {
+        flushDelta();
         if (!idle.isTimedOut() && err?.name === 'AbortError') return; // 节点被删除 / 画布清空
         console.error('SSE stream error:', err);
         ctx.updateNodeData(node.id, {
@@ -166,6 +189,7 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
         });
       })
       .finally(() => {
+        flushDelta();
         idle.clear();
         streamControllers.current.delete(node.id);
       });

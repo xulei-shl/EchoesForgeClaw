@@ -48,7 +48,7 @@ export interface ImageAnalysisNodeProps {
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
   /** 所属自定义分组（配置了分组时在标题旁展示小标签） */
   group?: string;
-  /** 运行设置（包含图书元数据 / 自动运行） */
+  /** 运行设置（包含图书元数据） */
   settings?: NodeRunSettings;
   onUpdateSettings?: (id: string, settings: NodeRunSettings) => void;
   /** 画布是否已有图书元数据节点 */
