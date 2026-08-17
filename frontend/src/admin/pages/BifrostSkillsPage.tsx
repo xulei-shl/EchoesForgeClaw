@@ -69,20 +69,25 @@ export const BifrostSkillsPage: React.FC = () => {
     }
   };
 
-  /** 已缓存的 skill（「同步全部」只作用于已缓存项，避免把整个远端仓库一次性下载） */
+  /** 已缓存的 skill */
   const cachedSkills = skills.filter((s) => s.cached !== false);
+  /** 全部未缓存时改为全部下载，否则只同步已缓存项 */
+  const syncTargets = cachedSkills.length > 0 ? cachedSkills : skills;
 
   const syncAll = async () => {
-    if (!cachedSkills.length) return;
+    if (!syncTargets.length) return;
+    const isDownloadAll = syncTargets === skills;
     const ok = await dialog.confirm({
       title: '同步全部',
-      message: `将从 Bifrost 逐个拉取 ${cachedSkills.length} 个已缓存 skill 的最新版本并覆盖本地共享包，确定继续？`,
+      message: isDownloadAll
+        ? `将从 Bifrost 逐个下载全部 ${syncTargets.length} 个远端 skill 到本地共享缓存，确定继续？`
+        : `将从 Bifrost 逐个拉取 ${syncTargets.length} 个已缓存 skill 的最新版本并覆盖本地共享包，确定继续？`,
       confirmText: '同步全部',
     });
     if (!ok) return;
     setSyncingAll(true);
     try {
-      for (const s of cachedSkills) {
+      for (const s of syncTargets) {
         await adminService.syncBifrostSkill(s.name);
       }
       showToast('全部 skill 已同步', { type: 'success' });
@@ -135,7 +140,7 @@ export const BifrostSkillsPage: React.FC = () => {
         subtitle="本地缓存的 skill 包（runtime/.agent/skills）+ 远端仓库浏览；「同步最新/下载并缓存」覆盖所有用户共享的同一份，画布上再次安装走本地缓存秒级完成"
         actions={
           <div className="flex items-center gap-2">
-            {cachedSkills.length > 0 && (
+            {skills.length > 0 && (
               <Button
                 size="sm"
                 variant="secondary"

@@ -21,14 +21,15 @@ import AdmZip from 'adm-zip';
  * Skill 工作区管理（对应 Python `app/services/skill_agent_service.py` 的
  * 工作区 & skill 元数据部分；Agent 执行器为第二阶段迁移，不在此文件）。
  *
- * 目录约定（runtime/ 整目录 gitignore）：
+ * 目录约定（根目录 runtime/，整目录 gitignore，与 Python 后端 REPO_ROOT 口径一致）：
  *   runtime/.agent/skills/{name}          Bifrost 检索安装的真实 skill 包（跨用户共享，只读「源」）
  *   runtime/.agent/agents/{agent_id}/AGENTS.md   SkillAgentConfig 引用的提示词物化文件（见 skill-agent-files.ts）
  *   runtime/{user_id}/skills/{name}       用户「已安装 skill」登记：Bifrost=软链->共享区；上传=真实目录
  *   runtime/{user_id}/workspace/{ws_id}/  单个 chat 节点的运行时工作区（软链装配 + agent 产物）
  */
 
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+// 仓库根 = 本文件（backend-ts/src/services/）向上三层；runtime/ 在仓库根下，不在 backend-ts/ 下
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 export const RUNTIME_ROOT = path.join(REPO_ROOT, 'runtime');
 export const REAL_SKILLS_ROOT = path.join(RUNTIME_ROOT, '.agent', 'skills');
 export const REAL_AGENTS_ROOT = path.join(RUNTIME_ROOT, '.agent', 'agents');

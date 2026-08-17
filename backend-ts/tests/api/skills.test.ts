@@ -20,7 +20,8 @@ import { nodeWorkspace } from '../../src/services/skill-agent-service.js';
  */
 
 const TEST_UID = 99999;
-const RUNTIME_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../runtime');
+// runtime/ 在仓库根目录下（与 skill-agent-service.ts 的 RUNTIME_ROOT 口径一致），测试文件位于 backend-ts/tests/api/，向上三层
+const RUNTIME_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../runtime');
 
 let db: DB;
 let app: Awaited<ReturnType<typeof buildApp>>;

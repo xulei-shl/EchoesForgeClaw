@@ -13,6 +13,9 @@ import type { ImageModelConfig } from '../../src/infrastructure/ai/types.js';
 
 const openServers: MockOpenAIServer[] = [];
 
+// 与 skills.test.ts 的专用用户 id（99999，afterAll 会整体清理）错开，避免测试产物互相删除
+const TEST_UID = 88888;
+
 afterEach(async () => {
   await Promise.all(openServers.splice(0).map((s) => s.close()));
 });
@@ -46,10 +49,10 @@ describe('图像生成（文生图）', () => {
       model_name: 'mock-image-model',
       size: '1024x1024',
     };
-    const result = await imageService.generateImage('一张藏书票，复古文艺', config);
+    const result = await imageService.generateImage('一张藏书票，复古文艺', config, TEST_UID);
 
     expect(result.mock).toBe(false);
-    expect(result.image_url.startsWith('/static/generated/')).toBe(true);
+    expect(result.image_url.startsWith(`/static/generated/${TEST_UID}/`)).toBe(true);
     // 落盘内容与 mock 返回一致
     const saved = imageService.readFile(result.image_url);
     expect(saved).not.toBeNull();
@@ -82,9 +85,9 @@ describe('图像生成（文生图）', () => {
       ratio: '16:9',
       image: ['https://example.com/ref.png'],
     };
-    const result = await imageService.generateImage('把场景改成赛博朋克夜景', config);
+    const result = await imageService.generateImage('把场景改成赛博朋克夜景', config, TEST_UID);
     expect(result.mock).toBe(false);
-    expect(result.image_url.startsWith('/static/generated/')).toBe(true);
+    expect(result.image_url.startsWith(`/static/generated/${TEST_UID}/`)).toBe(true);
     const saved = imageService.readFile(result.image_url);
     expect(saved).not.toBeNull();
     expect(Buffer.from(saved!).equals(PNG_BYTES)).toBe(true);
@@ -113,9 +116,9 @@ describe('图像生成（文生图）', () => {
       base_url: srv.baseURL,
       model_name: 'mock-image-model',
     };
-    const result = await imageService.generateImage('藏书票', config);
+    const result = await imageService.generateImage('藏书票', config, TEST_UID);
     expect(result.mock).toBe(false);
-    expect(result.image_url.startsWith('/static/generated/')).toBe(true);
+    expect(result.image_url.startsWith(`/static/generated/${TEST_UID}/`)).toBe(true);
     const saved = imageService.readFile(result.image_url);
     expect(saved).not.toBeNull();
     expect(Buffer.from(saved!).equals(PNG_BYTES)).toBe(true);
@@ -135,7 +138,7 @@ describe('图像生成（文生图）', () => {
       base_url: srv.baseURL,
       model_name: 'mock-image-model',
     };
-    const err = await imageService.generateImage('藏书票', config).catch((e) => e);
+    const err = await imageService.generateImage('藏书票', config, TEST_UID).catch((e) => e);
     expect(err).toBeInstanceOf(ImageGenerationError);
     // AI SDK 原始报错 + 我们补充的状态码/响应体片段都应出现在消息里
     expect(err.message).toContain('Invalid JSON response');
@@ -144,13 +147,17 @@ describe('图像生成（文生图）', () => {
   });
 
   it('无 API Key 时返回 Mock SVG 占位图', async () => {
-    const result = await imageService.generateImage('藏书票', {
-      apiKey: '',
-      base_url: '',
-      model_name: '',
-    });
+    const result = await imageService.generateImage(
+      '藏书票',
+      {
+        apiKey: '',
+        base_url: '',
+        model_name: '',
+      },
+      TEST_UID
+    );
     expect(result.mock).toBe(true);
-    expect(result.image_url.startsWith('/static/generated/')).toBe(true);
+    expect(result.image_url.startsWith(`/static/generated/${TEST_UID}/`)).toBe(true);
     const saved = imageService.readFile(result.image_url);
     expect(saved).not.toBeNull();
     const text = Buffer.from(saved!).toString('utf-8');

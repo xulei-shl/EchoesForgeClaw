@@ -472,7 +472,7 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
               return;
             }
             try {
-              const localUrl = await imageService.saveRemoteImage(imageUrl);
+              const localUrl = await imageService.saveRemoteImage(imageUrl, request.authUser!.id);
               // 结构化图片事件（前端 image_url 语义）：本地落盘 URL + mock=false；
               // status 消息仅作日志/展示，前端以 agent_image 为准
               yield { type: 'agent_image', url: localUrl };
@@ -503,7 +503,7 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
       imageConfig.ratio = payload.ratio || imageConfig.ratio;
       imageConfig.image = payload.image?.length ? payload.image : imageConfig.image;
       try {
-        const result = await imageService.generateImage(prompt, imageConfig);
+        const result = await imageService.generateImage(prompt, imageConfig, request.authUser!.id);
         return result;
       } catch (err) {
         if (err instanceof ImageGenerationError) {

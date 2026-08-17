@@ -6,3 +6,6 @@ static/generated/*
 !static/generated/.gitkeep
 static/covers/
 static/prompt-previews/
+# 运行时工作区（Skill Agent）：真实目录在仓库根 runtime/（见根 .gitignore 的 /runtime/）；
+# backend-ts/ 下不应出现 runtime/（历史路径 bug 曾把 skill 包提交进仓库）
+runtime/

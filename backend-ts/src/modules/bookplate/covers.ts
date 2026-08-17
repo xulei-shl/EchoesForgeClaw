@@ -1,24 +1,24 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { AsyncRateLimiter, COVER_REFERERS, USER_AGENTS } from '../../services/douban-service.js';
 import { getDb } from '../../config/database.js';
 import { bookCache } from '../../db/schema.js';
 import { eq } from 'drizzle-orm';
+import { RUNTIME_ROOT } from '../../services/skill-agent-service.js';
 
 /**
  * 豆瓣封面本地缓存（对应 Python `router.py` 的封面下载/缓存逻辑）。
  *
  * 豆瓣图片 CDN 有 Referer 防盗链（非豆瓣 Referer 直接 403），且 <img> 标签无法携带
- * Authorization 头，因此统一由后端携带 Referer 下载一次并缓存到 `static/covers`，
- * 前端从 /static/covers/... 直接加载。
+ * Authorization 头，因此统一由后端携带 Referer 下载一次并缓存到 `runtime/covers`（跨用户共享，
+ * 与全局 book_cache 表口径一致），前端从 /static/covers/... 直接加载（URL 前缀不变，
+ * 物理文件由 server.ts 的白名单公开路由服务）。
  * 反爬时豆瓣 CDN 返回「HTTP 200 + JS 挑战页」，必须校验文件头魔数（命中则轮换
  * Referer 重试），损坏的旧缓存会被删除重下。
  */
 
-const STATIC_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../static');
-export const COVERS_DIR = path.join(STATIC_DIR, 'covers');
+export const COVERS_DIR = path.join(RUNTIME_ROOT, 'covers');
 export const COVERS_PREFIX = '/static/covers';
 
 const MAX_COVER_BYTES = 5 * 1024 * 1024;

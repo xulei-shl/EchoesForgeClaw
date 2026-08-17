@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { hashSync } from 'bcryptjs';
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync, readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { initDb, setDb, type DB } from '../../src/config/database.js';
@@ -21,7 +21,8 @@ const openServers: MockOpenAIServer[] = [];
 let adminToken = '';
 let userToken = '';
 
-const REAL_AGENTS_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../runtime/.agent/agents');
+// runtime/ 在仓库根目录下（与 skill-agent-service.ts 的 REAL_AGENTS_ROOT 口径一致），测试文件位于 backend-ts/tests/api/，向上三层
+const REAL_AGENTS_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../runtime/.agent/agents');
 
 function agentMdPath(id: number): string {
   return path.join(REAL_AGENTS_ROOT, String(id), 'AGENTS.md');
@@ -55,9 +56,15 @@ afterAll(async () => {
   await app.close();
   await Promise.all(openServers.splice(0).map((s) => s.close()));
   setDb(null);
-  // 清理测试产生的 AGENTS.md
+  // 清理测试产生的 AGENTS.md 及其空父目录（非空 = 含真实数据，跳过）
   for (let i = 1; i <= 20; i++) {
     if (existsSync(agentMdPath(i))) rmSync(agentMdPath(i), { recursive: true });
+    const dir = path.dirname(agentMdPath(i));
+    try {
+      if (readdirSync(dir).length === 0) rmSync(dir, { recursive: true, force: true });
+    } catch {
+      /* 不存在或非空：跳过 */
+    }
   }
 });
 

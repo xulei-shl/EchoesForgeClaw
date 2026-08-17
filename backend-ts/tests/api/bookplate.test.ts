@@ -249,6 +249,11 @@ describe('generate-image 端点', () => {
     const body = res.json();
     expect(body.mock).toBe(false);
     expect(body.image_url.startsWith('/static/generated/')).toBe(true);
+    // 新落盘：runtime/{userId}/generated 下，公开路由可访问（无鉴权、Content-Type 正确）
+    const img = await app.inject({ method: 'GET', url: body.image_url });
+    expect(img.statusCode).toBe(200);
+    expect(img.headers['content-type']).toContain('image/png');
+    expect(Buffer.from(img.rawPayload).equals(png)).toBe(true);
   });
 
   it('无配置回退 Mock SVG', async () => {
@@ -262,5 +267,22 @@ describe('generate-image 端点', () => {
     const body = res.json();
     expect(body.mock).toBe(true);
     expect(body.image_url.startsWith('/static/generated/')).toBe(true);
+    // Mock SVG 经公开路由可访问
+    const img = await app.inject({ method: 'GET', url: body.image_url });
+    expect(img.statusCode).toBe(200);
+    expect(img.headers['content-type']).toContain('image/svg+xml');
+  });
+
+  it('静态图片路由：非数字 userId / 目录穿越返回 404', async () => {
+    const bad = [
+      '/static/generated/abc/1.png',
+      '/static/generated/1/../../etc/passwd',
+      '/static/covers/../../etc/passwd',
+      '/static/generated/1',
+    ];
+    for (const url of bad) {
+      const res = await app.inject({ method: 'GET', url });
+      expect(res.statusCode).toBe(404);
+    }
   });
 });
