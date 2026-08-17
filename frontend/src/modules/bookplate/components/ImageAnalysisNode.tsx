@@ -56,6 +56,10 @@ export interface ImageAnalysisNodeProps {
   /** 标题旁的类型不匹配提示 */
   mismatchBadge?: string | null;
   hasDownstream?: boolean;
+  /** 节点执行模式：仅 LLM 模式展示「模型」下拉（Agent 模式由 Agent 侧决定模型） */
+  mode?: 'llm' | 'agent' | 'skill_agent';
+  /** 绑定的节点配置 id（拉取服务商模型列表用） */
+  configId?: number | null;
 }
 
 const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
@@ -81,6 +85,8 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
   hasBookInfo,
   mismatchBadge,
   hasDownstream,
+  mode,
+  configId,
 }) => {
   const { showToast } = useFeedback();
   // 本次会话上传的参考图（base64 data URL，仅存内存）
@@ -138,6 +144,9 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
             onChange={(s) => onUpdateSettings?.(id, s)}
             hasDownstream={hasDownstream}
             hasBookInfo={hasBookInfo}
+            showModelOption
+            mode={mode}
+            configId={configId}
           />
         )}
       </NodeActionBar>

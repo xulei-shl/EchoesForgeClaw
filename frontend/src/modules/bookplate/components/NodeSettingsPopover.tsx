@@ -4,6 +4,7 @@ import { Toggle } from '../../../platform/components/ui/Toggle';
 import { Select, type SelectOption } from '../../../platform/components/ui/Select';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import type { NodeRunSettings } from '../../../platform/types';
+import { ModelOverrideField } from './ModelOverrideField';
 
 /** 图像生成节点可选尺寸档位（Agnes 契约：1K/2K/3K/4K 档位式，配合宽高比使用） */
 const IMAGE_SIZE_OPTIONS: SelectOption[] = [
@@ -46,6 +47,12 @@ export interface NodeSettingsPopoverProps {
   showImageParams?: boolean;
   /** 是否展示「加载图书封面图片」开关：仅图像生成节点传入（chat 节点有独立设置弹层） */
   showBookCoverOption?: boolean;
+  /** 是否展示「模型」下拉（仅 LLM 模式；提示词生成 / 图像生成节点传入） */
+  showModelOption?: boolean;
+  /** 节点执行模式：仅 LLM 模式展示模型下拉（Agent 模式由 Agent 侧决定模型） */
+  mode?: 'llm' | 'agent' | 'skill_agent';
+  /** 绑定的节点配置 id（拉取服务商模型列表用） */
+  configId?: number | null;
   /** 按钮样式（沿用各节点的 actionBtn 类） */
   className?: string;
 }
@@ -58,6 +65,9 @@ const NodeSettingsPopoverInner: React.FC<NodeSettingsPopoverProps> = ({
   hasDownstream,
   showImageParams = false,
   showBookCoverOption = false,
+  showModelOption = false,
+  mode,
+  configId,
   className = '',
 }) => {
   const [open, setOpen] = useState(false);
@@ -178,6 +188,24 @@ const NodeSettingsPopoverInner: React.FC<NodeSettingsPopoverProps> = ({
                         disabled={disabled}
                       />
                     </div>
+                  </div>
+                )}
+
+                {/* 模型选择：仅 LLM 模式（图片分析 / 提示词生成 / 图像生成节点）；服务商 /models 列表，留空 = 配置默认模型 */}
+                {showModelOption && mode === 'llm' && configId != null && (
+                  <div className="space-y-1.5 border-t border-dashed border-paper-grid pt-3">
+                    <div>
+                      <p className="text-xs font-sans text-ink">模型</p>
+                      <p className="text-[10px] text-ink-faint font-sans mt-0.5 leading-snug">
+                        切换服务商模型；留空 = 节点配置的默认模型
+                      </p>
+                    </div>
+                    <ModelOverrideField
+                      value={settings.modelOverride}
+                      onChange={(v) => onChange({ ...settings, modelOverride: v })}
+                      configId={configId}
+                      disabled={disabled}
+                    />
                   </div>
                 )}
               </div>

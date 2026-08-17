@@ -147,6 +147,8 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           settings={settings}
           onUpdateSettings={h.handleUpdateRunSettingsFor}
           hasBookInfo={h.hasBookInfo}
+          mode={config?.mode}
+          configId={node.configId ?? null}
         />
       );
     }
@@ -171,6 +173,8 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           settings={settings}
           onUpdateSettings={h.handleUpdateRunSettingsFor}
           hasBookInfo={h.hasBookInfo}
+          mode={config?.mode}
+          configId={node.configId ?? null}
         />
       );
     }
@@ -238,6 +242,8 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           showImageParams
           showBookCoverOption
           hasBookInfo={h.hasBookInfo}
+          mode={config?.mode}
+          configId={node.configId ?? null}
         />
       );
     }

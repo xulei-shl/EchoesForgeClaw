@@ -247,6 +247,12 @@ export function ChatNodeHost({
             epoch: cur?.data?.epoch ?? 0,
             skills: cur ? collectSkillNames(cur) : [],
             workspace_id: workspaceId,
+            // 节点内手动选择的模型名（仅 LLM 模式生效；空 = 跟随节点配置的默认模型）
+            model_name:
+              (cur?.data?.settings as ChatNodeSettings | undefined)?.modelOverride ?? null,
+            // 节点内手动选择的 FastClaw Agent（仅 Agent 模式生效；空 = 跟随节点绑定的 Agent）
+            agent_config_id:
+              (cur?.data?.settings as ChatNodeSettings | undefined)?.agentOverride ?? null,
           },
           headers: authHeaders(),
         };
@@ -553,6 +559,8 @@ export function ChatNodeHost({
             ? (config.skill_agent_config_name ?? undefined)
             : undefined
       }
+      mode={config?.mode}
+      configId={node.configId ?? null}
       agentSteps={Array.isArray(node.data?.agentSteps) ? node.data.agentSteps : []}
       group={config?.group?.trim() || undefined}
       mismatchBadge={mismatchBadgeOf(node, h)}

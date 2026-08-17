@@ -85,3 +85,29 @@ export function agentConfigFrom(
     end_user: `bookplate-${userId}`,
   };
 }
+
+/**
+ * 节点 Agent 配置解析（支持节点内手动选择的 Agent 覆盖）。
+ * 仅当节点本身为 Agent 模式（bound 非 null）时覆盖才生效；
+ * 覆盖项不存在/未启用/无 Key 时回退节点绑定配置，避免静默降级到 LLM 模式。
+ */
+export function agentConfigFromWithOverride(
+  configId: number | null,
+  overrideAgentConfigId: number | null,
+  nodeType: string,
+  userId: number
+): FastClawRuntimeConfig | null {
+  const bound = agentConfigFrom(configId, nodeType, userId);
+  if (bound && overrideAgentConfigId != null) {
+    const agent = findFastClawAgentConfigById(getDb(), overrideAgentConfigId);
+    if (agent && agent.isActive && agent.apiKey) {
+      return {
+        base_url: agent.baseUrl ?? '',
+        api_key: agent.apiKey,
+        agent_id: agent.agentId ?? '',
+        end_user: `bookplate-${userId}`,
+      };
+    }
+  }
+  return bound;
+}

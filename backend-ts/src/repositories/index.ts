@@ -77,6 +77,24 @@ export function findFastClawAgentConfigById(db: DB, id: number): FastClawAgentCo
   return db.select().from(fastclawAgentConfigs).where(eq(fastclawAgentConfigs.id, id)).get();
 }
 
+/** 全部启用的 FastClaw Agent 配置（用户级列表，不含 api_key 等敏感字段）。 */
+export function listActiveFastClawAgents(db: DB): Array<{
+  id: number;
+  name: string;
+  agentName: string | null;
+}> {
+  return db
+    .select({
+      id: fastclawAgentConfigs.id,
+      name: fastclawAgentConfigs.name,
+      agentName: fastclawAgentConfigs.agentName,
+    })
+    .from(fastclawAgentConfigs)
+    .where(eq(fastclawAgentConfigs.isActive, true))
+    .orderBy(fastclawAgentConfigs.id)
+    .all();
+}
+
 /** NodeConfig 行（节点模板的一个可执行实例）。 */
 export interface NodeConfigRow {
   id: number;

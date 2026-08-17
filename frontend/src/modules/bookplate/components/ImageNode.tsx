@@ -72,6 +72,10 @@ export interface ImageNodeProps {
   mismatchBadge?: string | null;
   /** 是否有下级节点关联（有下级时禁用输出影响按钮） */
   hasDownstream?: boolean;
+  /** 节点执行模式：仅 LLM 模式展示「模型」下拉（Agent 模式由 Agent 侧决定模型） */
+  mode?: 'llm' | 'agent' | 'skill_agent';
+  /** 绑定的节点配置 id（拉取服务商模型列表用） */
+  configId?: number | null;
 }
 
 const ImageNodeInner: React.FC<ImageNodeProps> = ({
@@ -112,6 +116,8 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
   hasBookInfo,
   mismatchBadge,
   hasDownstream,
+  mode,
+  configId,
 }) => {
   const [notice, setNotice] = useState<string | null>(null);
   const noticeTimer = useRef<number | null>(null);
@@ -194,6 +200,9 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
               hasBookInfo={hasBookInfo}
               showImageParams={showImageParams}
               showBookCoverOption={showBookCoverOption}
+              showModelOption
+              mode={mode}
+              configId={configId}
             />
           )}
           <NodeActionBar.Custom

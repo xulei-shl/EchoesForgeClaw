@@ -48,6 +48,10 @@ export interface PromptNodeProps {
   mismatchBadge?: string | null;
   /** 是否有下级关联节点 */
   hasDownstream?: boolean;
+  /** 节点执行模式：仅 LLM 模式展示「模型」下拉（Agent 模式由 Agent 侧决定模型） */
+  mode?: 'llm' | 'agent' | 'skill_agent';
+  /** 绑定的节点配置 id（拉取服务商模型列表用） */
+  configId?: number | null;
 }
 
 const PromptNodeInner: React.FC<PromptNodeProps> = ({
@@ -75,6 +79,8 @@ const PromptNodeInner: React.FC<PromptNodeProps> = ({
   hasBookInfo,
   mismatchBadge,
   hasDownstream,
+  mode,
+  configId,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(content);
@@ -136,6 +142,9 @@ const PromptNodeInner: React.FC<PromptNodeProps> = ({
               onChange={(s) => onUpdateSettings?.(id, s)}
               disabled={hasDownstream}
               hasBookInfo={hasBookInfo}
+              showModelOption
+              mode={mode}
+              configId={configId}
             />
           )}
         </NodeActionBar>
@@ -160,6 +169,9 @@ const PromptNodeInner: React.FC<PromptNodeProps> = ({
             onChange={(s) => onUpdateSettings?.(id, s)}
             disabled={isGenerating || hasDownstream}
             hasBookInfo={hasBookInfo}
+            showModelOption
+            mode={mode}
+            configId={configId}
           />
         )}
       </NodeActionBar>

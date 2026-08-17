@@ -13,6 +13,7 @@ import {
   visionConfigFrom,
   imageConfigFrom,
   agentConfigFrom,
+  agentConfigFromWithOverride,
 } from '../../services/node-config-service.js';
 import { chatStreamToResponse, type ChatStreamEvent } from './stream.js';
 import { NODE_TEMPLATES, NODE_TYPES } from './node-types.js';
@@ -21,6 +22,9 @@ import { fetchCalendar, fetchWeather, SmallToolError } from '../../services/tool
 import { getDb } from '../../config/database.js';
 import {
   findNodeConfigById,
+  findLLMConfigById,
+  findFastClawAgentConfigById,
+  listActiveFastClawAgents,
   listActiveNodeConfigs,
   findBookByIsbn,
   insertBookByIsbn,
@@ -88,6 +92,10 @@ export interface ChatRequest {
   epoch?: number;
   skills?: string[];
   workspace_id?: string | null;
+  /** 节点内手动覆盖的模型名（仅 LLM 模式生效；空/缺省 = 跟随节点配置的默认模型） */
+  model_name?: string | null;
+  /** 节点内手动选择的 FastClaw Agent 配置 id（仅 Agent 模式生效；空/缺省 = 跟随节点配置） */
+  agent_config_id?: number | null;
 }
 
 export interface AnalyzeImageRequest {
@@ -95,6 +103,8 @@ export interface AnalyzeImageRequest {
   cover_url?: string | null;
   config_id?: number | null;
   node_id?: string | null;
+  /** 节点内手动覆盖的模型名（仅 LLM 模式生效；空/缺省 = 跟随节点配置的默认模型） */
+  model_name?: string | null;
 }
 
 export interface PromptRequest {
@@ -103,6 +113,8 @@ export interface PromptRequest {
   text?: string | null;
   config_id?: number | null;
   node_id?: string | null;
+  /** 节点内手动覆盖的模型名（仅 LLM 模式生效；空/缺省 = 跟随节点配置的默认模型） */
+  model_name?: string | null;
 }
 
 export interface ImageGenRequest {
@@ -112,6 +124,8 @@ export interface ImageGenRequest {
   image?: string[] | null;
   config_id?: number | null;
   node_id?: string | null;
+  /** 节点内手动覆盖的模型名（仅 LLM 模式生效；空/缺省 = 跟随节点配置的默认模型） */
+  model_name?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -239,6 +253,39 @@ function hasSkillAgentBinding(configId: number | null): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// 模型列表（AI 对话节点「模型」下拉数据源）
+// ---------------------------------------------------------------------------
+
+/** 模型列表缓存 TTL（毫秒）：避免每次打开设置弹层都打上游服务商。 */
+const LLM_MODELS_CACHE_TTL_MS = 5 * 60 * 1000;
+
+const llmModelsCache = new Map<
+  number,
+  { at: number; defaultModel: string; models: string[] }
+>();
+
+/** GET {base_url}/models 拉取服务商模型 id 列表（key 仅服务端使用，不回传）。 */
+async function fetchLLMModelNames(baseUrl: string, apiKey: string): Promise<string[]> {
+  const url = baseUrl
+    ? `${baseUrl.replace(/\/+$/, '')}/models`
+    : 'https://api.openai.com/v1/models';
+  let resp: Response;
+  try {
+    resp = await fetch(url, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    throw new Error('无法连接模型服务');
+  }
+  if (!resp.ok) throw new Error(`模型列表拉取失败（HTTP ${resp.status}）`);
+  const data = (await resp.json().catch(() => null)) as { data?: Array<{ id?: unknown }> } | null;
+  return (data?.data ?? [])
+    .map((m) => (typeof m?.id === 'string' ? m.id : null))
+    .filter((id): id is string => id !== null && id !== '');
+}
+
+// ---------------------------------------------------------------------------
 // 路由注册
 // ---------------------------------------------------------------------------
 
@@ -264,8 +311,9 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
         );
       }
 
-      const agentConfig: FastClawRuntimeConfig | null = agentConfigFrom(
+      const agentConfig: FastClawRuntimeConfig | null = agentConfigFromWithOverride(
         configId,
+        payload.agent_config_id ?? null,
         NODE_TYPES.CHAT,
         request.authUser!.id
       );
@@ -296,9 +344,14 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
       // LLM 模式：AI SDK streamText → 归一化事件 → UI Message Stream
       async function* llmEvents(): AsyncGenerator<ChatStreamEvent, void, unknown> {
         try {
+          // 节点内手动选择的模型名覆盖默认模型（保留配置的 apiKey / base_url / 系统提示词）
+          const config =
+            payload.model_name && textConfig
+              ? { ...textConfig, model_name: payload.model_name }
+              : textConfig;
           for await (const chunk of llmService.chatStream(
             payload.messages ?? [],
-            textConfig,
+            config,
             requestAbortSignal(request)
           )) {
             yield chunk.type === 'reasoning'
@@ -371,7 +424,12 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
       // LLM 模式：generateText 单结果 → 以单个 text 增量输出
       async function* llmEvents(): AsyncGenerator<ChatStreamEvent, void, unknown> {
         try {
-          const analysis = await llmService.analyzeCover(imageBytes!, visionConfig);
+          // 节点内手动选择的模型名覆盖默认模型（保留配置的 apiKey / base_url / 系统提示词）
+          const config =
+            payload.model_name && visionConfig
+              ? { ...visionConfig, model_name: payload.model_name }
+              : visionConfig;
+          const analysis = await llmService.analyzeCover(imageBytes!, config);
           if (analysis) yield { type: 'content_delta', delta: analysis };
         } catch (err) {
           yield { type: 'error', message: err instanceof Error ? err.message : String(err) };
@@ -418,9 +476,14 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
 
       async function* llmEvents(): AsyncGenerator<ChatStreamEvent, void, unknown> {
         try {
+          // 节点内手动选择的模型名覆盖默认模型（保留配置的 apiKey / base_url / 系统提示词）
+          const config =
+            payload.model_name && textConfig
+              ? { ...textConfig, model_name: payload.model_name }
+              : textConfig;
           for await (const delta of llmService.generatePromptStream(
             metadata,
-            textConfig,
+            config,
             analysis,
             text
           )) {
@@ -505,6 +568,8 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
       imageConfig.size = payload.size || imageConfig.size;
       imageConfig.ratio = payload.ratio || imageConfig.ratio;
       imageConfig.image = payload.image?.length ? payload.image : imageConfig.image;
+      // 节点内手动选择的模型名覆盖默认模型（保留配置的 apiKey / base_url）
+      if (payload.model_name) imageConfig.model_name = payload.model_name;
       try {
         const result = await imageService.generateImage(prompt, imageConfig, request.authUser!.id);
         return result;
@@ -666,6 +731,73 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
         });
       }
       return { templates: NODE_TEMPLATES, configs: items };
+    }
+  );
+
+  // ---- 模型列表（AI 对话节点「模型」下拉数据源；服务商 key 仅服务端使用） ----
+  app.get(
+    '/api/modules/bookplate/llm-models',
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const q = (request.query ?? {}) as { config_id?: string };
+      const configId = Number(q.config_id) || null;
+      if (configId == null) return reply.code(400).send({ detail: '缺少 config_id' });
+      const db = getDb();
+      const nc = findNodeConfigById(db, configId);
+      // 不限节点类型：chat / prompt_generation / image_generation 等绑定模型配置的节点通用
+      if (!nc || nc.llmConfigId == null || !nc.isActive) {
+        return reply.code(400).send({ detail: '节点未绑定可用的模型配置' });
+      }
+      const llm = findLLMConfigById(db, nc.llmConfigId);
+      if (!llm || !llm.apiKey || !llm.isActive) {
+        return reply.code(400).send({ detail: '模型配置不可用（未启用或缺少 API Key）' });
+      }
+
+      const cached = llmModelsCache.get(llm.id);
+      if (cached && Date.now() - cached.at < LLM_MODELS_CACHE_TTL_MS) {
+        return { default_model: cached.defaultModel, models: cached.models };
+      }
+
+      const defaultModel = llm.modelName || '';
+      let models: string[];
+      try {
+        models = await fetchLLMModelNames(llm.baseUrl ?? '', llm.apiKey);
+      } catch (err) {
+        // 上游未实现 /models（或不可达）：回退为仅默认模型，前端展示「默认 + 手动输入」
+        request.log.warn({ config_id: configId }, '拉取模型列表失败: %s', err instanceof Error ? err.message : String(err));
+        return { default_model: defaultModel, models: defaultModel ? [defaultModel] : [] };
+      }
+      // 去重 + 保证默认模型始终在列表首位（服务商可能未列出已配置的别名模型）
+      const unique = [...new Set([defaultModel, ...models])].filter(Boolean);
+      llmModelsCache.set(llm.id, { at: Date.now(), defaultModel, models: unique });
+      return { default_model: defaultModel, models: unique };
+    }
+  );
+
+  // ---- FastClaw Agent 列表（AI 对话节点「Agent」下拉数据源；不含 api_key 等敏感字段） ----
+  app.get(
+    '/api/modules/bookplate/fastclaw-agents',
+    { preHandler: app.authenticate },
+    async (request) => {
+      const q = (request.query ?? {}) as { config_id?: string };
+      const configId = Number(q.config_id) || null;
+      // 默认 Agent = 节点配置绑定的 Agent（供前端展示「默认」项）
+      let defaultAgent: { id: number; name: string; agent_name: string | null } | null = null;
+      if (configId != null) {
+        const nc = findNodeConfigById(getDb(), configId);
+        if (nc && nc.nodeType === NODE_TYPES.CHAT && nc.agentConfigId != null && nc.isActive) {
+          const bound = findFastClawAgentConfigById(getDb(), nc.agentConfigId);
+          if (bound) {
+            defaultAgent = { id: bound.id, name: bound.name, agent_name: bound.agentName };
+          }
+        }
+      }
+      const agents = listActiveFastClawAgents(getDb()).map((a) => ({
+        id: a.id,
+        name: a.name,
+        agent_name: a.agentName,
+      }));
+      return { default_agent: defaultAgent, agents };
     }
   );
 

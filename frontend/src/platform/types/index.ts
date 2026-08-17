@@ -274,6 +274,16 @@ export interface ChatNodeSettings {
    * 仅当 includeBook 开启且封面可用时生效。默认开启：undefined 视为开启。
    */
   includeBookCover?: boolean;
+  /**
+   * 节点内手动选择的模型名（服务商 /models 列表，默认 = 节点配置的默认模型）；
+   * 仅 LLM 模式生效。undefined = 跟随节点配置。
+   */
+  modelOverride?: string;
+  /**
+   * 节点内手动选择的 FastClaw Agent 配置 id（全部启用 agent 列表，默认 = 节点配置绑定的 Agent）；
+   * 仅 Agent 模式生效。undefined = 跟随节点配置。
+   */
+  agentOverride?: number;
 }
 
 /** 可执行节点（图片分析 / 提示词生成 / 图像生成）的运行设置（节点内可开关） */
@@ -289,6 +299,11 @@ export interface NodeRunSettings {
   imageSize?: string;
   /** 图像生成节点专属：宽高比（如 1:1/16:9；未设置不上送） */
   imageRatio?: string;
+  /**
+   * 节点内手动选择的模型名（服务商 /models 列表，默认 = 节点配置的默认模型）；
+   * 仅 LLM 模式生效。undefined = 跟随节点配置。
+   */
+  modelOverride?: string;
 }
 
 /** 节点模板（后端 node_types.py 定义，经 node-registry 下发） */

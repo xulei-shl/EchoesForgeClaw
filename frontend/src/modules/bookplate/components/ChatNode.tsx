@@ -11,6 +11,8 @@ import { Toggle } from '../../../platform/components/ui/Toggle';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
 import type { AgentFile, AgentStep, ChatMessage, ChatNodeSettings, InjectedContextBlock } from '../../../platform/types';
 import { ContextInjectionBlock } from './ContextInjectionBlock';
+import { AgentOverrideField } from './AgentOverrideField';
+import { ModelOverrideField } from './ModelOverrideField';
 import { NODE_COLORS } from '../nodeTypes';
 import {
   RASTER_IMAGE_TYPES,
@@ -280,6 +282,10 @@ export interface ChatNodeProps {
   hasDownstream?: boolean;
   /** 标题旁的类型不匹配提示 */
   mismatchBadge?: string | null;
+  /** 节点执行模式：LLM 模式下展示「模型」下拉（Agent 模式由 Agent 侧决定模型，不展示） */
+  mode?: 'llm' | 'agent' | 'skill_agent';
+  /** 绑定的节点配置 id（拉取服务商模型列表用） */
+  configId?: number | null;
 }
 
 const ChatNodeInner: React.FC<ChatNodeProps> = ({
@@ -308,6 +314,8 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
   group,
   mismatchBadge,
   hasDownstream,
+  mode,
+  configId,
 }) => {
   const [draft, setDraft] = useState('');
   // 本轮待发送的图片附件（data URL），随消息发送后在气泡内展示
@@ -872,6 +880,45 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                     disabled={messages.length > 0}
                   />
                 </div>
+                {/* 模型选择：仅 LLM 模式（Agent 模式模型由 Agent 侧决定）；服务商 /models 列表，留空 = 配置默认模型 */}
+                {mode === 'llm' && configId != null && (
+                  <div className="space-y-1.5">
+                    <div>
+                      <p className="text-xs font-sans text-ink">模型</p>
+                      <p className="text-[10px] text-ink-faint font-sans mt-0.5 leading-snug">
+                        切换服务商模型；留空 = 节点配置的默认模型
+                      </p>
+                    </div>
+                    <ModelOverrideField
+                      value={settings.modelOverride}
+                      onChange={(v) =>
+                        onUpdateSettings?.(id, { ...settings, modelOverride: v })
+                      }
+                      configId={configId}
+                      disabled={messages.length > 0}
+                    />
+                  </div>
+                )}
+                {/* Agent 选择：仅 Agent 模式（全部启用 FastClaw Agent，留空 = 节点绑定 Agent；
+                    对话开始后锁定，需先清空对话才能切换，避免 FastClaw 服务端会话串台） */}
+                {mode === 'agent' && configId != null && (
+                  <div className="space-y-1.5">
+                    <div>
+                      <p className="text-xs font-sans text-ink">Agent</p>
+                      <p className="text-[10px] text-ink-faint font-sans mt-0.5 leading-snug">
+                        切换 FastClaw Agent；留空 = 节点配置的默认 Agent
+                      </p>
+                    </div>
+                    <AgentOverrideField
+                      value={settings.agentOverride}
+                      onChange={(v) =>
+                        onUpdateSettings?.(id, { ...settings, agentOverride: v })
+                      }
+                      configId={configId}
+                      disabled={messages.length > 0}
+                    />
+                  </div>
+                )}
                 {messages.length > 0 ? (
                   <div className="flex items-start gap-1.5 p-2 rounded-md bg-paper-grid/40 border border-paper-grid text-ink-light">
                     <Lock size={12} strokeWidth={1.5} className="shrink-0 mt-0.5" />
