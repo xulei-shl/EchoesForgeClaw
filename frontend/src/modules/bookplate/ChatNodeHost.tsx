@@ -58,19 +58,33 @@ function buildInjectedContextBlocks(
   const settings: ChatNodeSettings = node.data?.settings ?? DEFAULT_CHAT_SETTINGS;
   const blocks: InjectedContextBlock[] = [];
 
-  // 1. 图书元数据
+  // 1. 图书元数据与图书封面（拆分为独立条目注入）
+  let injectedBookId: string | null = null;
   if (settings.includeBook) {
     const book = resolveNodeRunInputs(node, nodes, edges, portTypesRef.current).book;
     if (book) {
-      const metaText = bookMetadataText(book.data);
-      // 图书封面：开启「加载图书封面图片」且封面可用时，随元数据注入图片上下文（镜像图片分析节点的封面传递）
+      injectedBookId = book.id;
+      const rawTitle = getNodeTitle(book);
+      const titleSuffix = rawTitle && rawTitle !== '图书元数据' ? ` · ${rawTitle}` : '';
+
+      // (1) 图书封面图条目：开启「加载图书封面图片」且封面可用时注入
       const cover = settings.includeBookCover !== false ? bookCoverImage(book.data) : '';
+      if (cover) {
+        blocks.push({
+          id: `book_cover_${book.id}`,
+          title: `图书封面图${titleSuffix}`,
+          nodeType: 'book_info',
+          images: [cover],
+        });
+      }
+
+      // (2) 图书元数据条目：结构化文本内容
+      const metaText = bookMetadataText(book.data).trim();
       blocks.push({
-        id: `book_${book.id}`,
-        title: `图书元数据 · ${getNodeTitle(book)}`,
+        id: `book_meta_${book.id}`,
+        title: `图书元数据${titleSuffix}`,
         nodeType: 'book_info',
-        text: metaText.trim() || undefined,
-        ...(cover ? { images: [cover] } : {}),
+        text: metaText || undefined,
       });
     }
   }
@@ -84,6 +98,9 @@ function buildInjectedContextBlocks(
       edges.some((e) => e.target === node.id && e.source === n.id)
     );
     for (const p of parents) {
+      // 若该直连父节点已作为图书元数据/封面注入，跳过以避免重复注入
+      if (injectedBookId && p.id === injectedBookId) continue;
+
       const text = includeText ? nodeOutputText(p).trim() : '';
       const rawImages = includeImages ? nodeOutputImages(p) : [];
       const images: string[] = [];

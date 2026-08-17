@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import type { ReactNode } from 'react';
 import type { User } from '../types';
 import { authService } from '../services/auth';
+import api from '../services/api';
 import { streamControllers, analysisUploads } from './useCanvasState';
 
 interface AuthContextType {
@@ -41,7 +42,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         try {
           applySessionUser(JSON.parse(storedUser));
           setToken(storedToken);
-          // 实际应用中可能需要向后端验证 token
+          // 向后端校验 token 是否仍然有效（过期/被吊销/SECRET_KEY 变更都会 401）。
+          // 仅当服务端明确拒绝（401/403）才清掉本地登录态；网络类错误则保留，
+          // 避免后端短暂不可达时把有效会话踢掉。
+          try {
+            const me = await api.get<User, User>('/users/me');
+            applySessionUser(me);
+          } catch (verifyErr: any) {
+            if (verifyErr?.status === 401 || verifyErr?.status === 403) {
+              localStorage.removeItem('token');
+              localStorage.removeItem('user');
+              setToken(null);
+              applySessionUser(null);
+            }
+          }
         } catch {
           localStorage.removeItem('token');
           localStorage.removeItem('user');
