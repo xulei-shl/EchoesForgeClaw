@@ -418,6 +418,34 @@ describe('llm-models 端点', () => {
     expect(body.models).toContain('m2');
   });
 
+  it('提示词生成节点也可选多模态类配置的模型（kind 过滤含 multimodal）', async () => {
+    const configId = await seedNode({
+      nodeType: 'prompt_generation',
+      llmConfig: { baseUrl: 'http://127.0.0.1:1/v1', modelName: 'pt-default' },
+    });
+    const schema = await import('../../src/db/schema.js');
+    db.insert(schema.llmConfigs)
+      .values({
+        name: 'llm-multi',
+        kind: 'multimodal',
+        apiKey: 'sk-multi',
+        baseUrl: 'http://127.0.0.1:1/v1',
+        modelName: 'multi-model',
+        isActive: true,
+      })
+      .run();
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/modules/bookplate/llm-models?config_id=${configId}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.default_model).toBe('pt-default');
+    expect(body.models).toContain('multi-model');
+  });
+
   it('节点未绑定模型配置（Agent 模式）返回 400', async () => {
     const configId = await seedNode({
       nodeType: 'chat',

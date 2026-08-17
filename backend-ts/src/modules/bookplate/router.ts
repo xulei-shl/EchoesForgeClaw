@@ -148,9 +148,9 @@ function llmKindsForNodeType(nodeType: string): string[] {
     case NODE_TYPES.CHAT:
       return ['text', 'multimodal']; // 多轮对话：文本 / 多模态（可带图）
     case NODE_TYPES.IMAGE_ANALYSIS:
-      return ['multimodal']; // 视觉分析
+      return ['multimodal']; // 视觉分析（需要视觉能力）
     case NODE_TYPES.PROMPT:
-      return ['text']; // 提示词生成
+      return ['text', 'multimodal']; // 提示词生成：多模态模型同样可做文本生成
     case NODE_TYPES.IMAGE:
       return ['image']; // 图像生成
     default:
