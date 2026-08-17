@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { Search, X, Layers, Sparkles } from 'lucide-react';
-import { CATEGORY_LABELS, NODE_TEMPLATES, NODE_COLORS } from '../nodeTypes';
+import { CATEGORY_LABELS, NODE_TEMPLATES, NODE_COLORS, NODE_TEMPLATE_MAP } from '../nodeTypes';
 import type { CanvasNodeType } from '../../../platform/types';
 
 /** 「+」菜单 / 右键菜单中的一个可选项 */
@@ -33,6 +33,17 @@ interface CategoryNav {
   title: string;
   order?: number;
   count: number;
+}
+
+/** 获取节点所属分类标签（用于搜索态下的微徽标展示） */
+function getItemCategoryLabel(item: NodePickerItem): string {
+  if (item.group?.trim()) return item.group.trim();
+  const tmpl = NODE_TEMPLATE_MAP[item.nodeType];
+  if (!tmpl) return item.nodeType;
+  if (tmpl.configurable) {
+    return tmpl.name;
+  }
+  return CATEGORY_LABELS[tmpl.category] || tmpl.name;
 }
 
 /** 构建所有分类项（含全部） */
@@ -110,6 +121,78 @@ function buildCategories(items: NodePickerItem[]): { categories: CategoryNav[]; 
   return { categories, groupMap };
 }
 
+/** 单个节点项组件 */
+interface NodeItemRowProps {
+  item: NodePickerItem;
+  pendingChildId?: string | null;
+  onPick: (item: NodePickerItem) => void;
+  showCategoryBadge?: boolean;
+}
+
+const NodeItemRow: React.FC<NodeItemRowProps> = ({
+  item,
+  pendingChildId,
+  onPick,
+  showCategoryBadge = false,
+}) => {
+  const themeColor = NODE_COLORS[item.nodeType] || '#5B8A5B';
+  const categoryBadge = showCategoryBadge ? getItemCategoryLabel(item) : null;
+
+  return (
+    <button
+      key={item.key}
+      type="button"
+      disabled={!!pendingChildId}
+      onClick={(e) => {
+        e.stopPropagation();
+        onPick(item);
+      }}
+      className="w-full flex items-start px-2.5 py-2 text-left rounded-lg border border-transparent hover:border-paper-grid/80 hover:bg-accent-surface/40 active:scale-[0.98] transition-all disabled:opacity-50 group/node"
+    >
+      {/* 节点类型指示圆点 */}
+      <div className="flex items-center justify-center w-4 h-4 shrink-0 mt-0.5">
+        {item.mode === 'agent' ? (
+          <Sparkles className="w-3.5 h-3.5 text-accent animate-pulse" />
+        ) : (
+          <span
+            className="w-2 h-2 rounded-full transition-transform duration-150 group-hover/node:scale-125"
+            style={{
+              backgroundColor: item.fallback ? 'rgba(120, 113, 108, 0.5)' : themeColor,
+            }}
+          />
+        )}
+      </div>
+
+      {/* 节点文本内容 */}
+      <div className="ml-2 min-w-0 flex-1">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-xs font-sans text-ink font-medium truncate group-hover/node:text-accent transition-colors">
+            {item.label}
+          </span>
+          {categoryBadge && (
+            <span className="shrink-0 text-[9px] text-ink-faint bg-paper-grid/30 border border-dashed border-paper-grid/60 rounded px-1 py-px leading-none font-sans">
+              {categoryBadge}
+            </span>
+          )}
+          {item.fallback && (
+            <span className="shrink-0 text-[9px] text-ink-faint border border-dashed border-paper-grid rounded-sm px-1 py-px leading-none">
+              默认
+            </span>
+          )}
+          {item.mode === 'agent' && (
+            <span className="shrink-0 text-[9px] text-accent bg-accent-surface rounded-sm px-1 py-px leading-none font-medium">
+              Agent
+            </span>
+          )}
+        </div>
+        <p className="text-[11px] text-ink-light/75 font-sans truncate mt-0.5 leading-tight">
+          {item.agentName ? `Agent · ${item.agentName}` : item.description}
+        </p>
+      </div>
+    </button>
+  );
+};
+
 const NodePickerListInner: React.FC<NodePickerListProps> = ({ items, onPick, pendingChildId }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('all');
@@ -135,18 +218,11 @@ const NodePickerListInner: React.FC<NodePickerListProps> = ({ items, onPick, pen
   // 分类与节点归类映射
   const { categories, groupMap } = useMemo(() => buildCategories(items), [items]);
 
-  // 当前右侧显示的节点列表
-  const displayedItems = useMemo(() => {
-    // 搜索态：平铺展示所有搜索匹配的节点
-    if (searchQuery.trim()) {
-      return filteredItems;
-    }
-    // 未搜索态：根据左侧选中的分类展示
-    if (activeCategory === 'all') {
-      return items;
-    }
-    return groupMap.get(activeCategory) || [];
-  }, [searchQuery, filteredItems, activeCategory, items, groupMap]);
+  // 子分类（排除全部节点）供「全部节点」视图下按小节分层渲染
+  const subSections = useMemo(
+    () => categories.filter((c) => c.key !== 'all'),
+    [categories]
+  );
 
   return (
     <div className="flex flex-col select-none">
@@ -226,65 +302,94 @@ const NodePickerListInner: React.FC<NodePickerListProps> = ({ items, onPick, pen
         </div>
 
         {/* 右侧节点列表 (Detail) */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-1 bg-paper/60 custom-scrollbar">
-          {displayedItems.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center p-4 text-center">
-              <Layers className="w-6 h-6 text-ink-faint/50 mb-1.5" />
-              <p className="text-xs text-ink-faint font-sans">
-                {searchQuery.trim() ? '未找到匹配的节点' : '该分类下暂无节点'}
-              </p>
-            </div>
-          ) : (
-            displayedItems.map((item) => {
-              const themeColor = NODE_COLORS[item.nodeType] || '#5B8A5B';
-              return (
-                <button
-                  key={item.key}
-                  disabled={!!pendingChildId}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onPick(item);
-                  }}
-                  className="w-full flex items-start px-2.5 py-2 text-left rounded-lg border border-transparent hover:border-paper-grid/80 hover:bg-accent-surface/40 active:scale-[0.98] transition-all disabled:opacity-50 group/node"
-                >
-                  {/* 节点类型指示圆点 */}
-                  <div className="flex items-center justify-center w-4 h-4 shrink-0 mt-0.5">
-                    {item.mode === 'agent' ? (
-                      <Sparkles className="w-3.5 h-3.5 text-accent animate-pulse" />
-                    ) : (
-                      <span
-                        className="w-2 h-2 rounded-full transition-transform duration-150 group-hover/node:scale-125"
-                        style={{
-                          backgroundColor: item.fallback ? 'rgba(120, 113, 108, 0.5)' : themeColor,
-                        }}
-                      />
-                    )}
-                  </div>
-
-                  {/* 节点文本内容 */}
-                  <div className="ml-2 min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-sans text-ink font-medium truncate group-hover/node:text-accent transition-colors">
-                        {item.label}
-                      </span>
-                      {item.fallback && (
-                        <span className="shrink-0 text-[9px] text-ink-faint border border-dashed border-paper-grid rounded-sm px-1 py-px leading-none">
-                          默认
+        <div className="flex-1 overflow-y-auto p-2 bg-paper/60 custom-scrollbar">
+          {searchQuery.trim() ? (
+            // 搜索态：平铺展示，并显示所属类别微徽标
+            filteredItems.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center p-4 text-center">
+                <Layers className="w-6 h-6 text-ink-faint/50 mb-1.5" />
+                <p className="text-xs text-ink-faint font-sans">未找到匹配的节点</p>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {filteredItems.map((item) => (
+                  <NodeItemRow
+                    key={item.key}
+                    item={item}
+                    pendingChildId={pendingChildId}
+                    onPick={onPick}
+                    showCategoryBadge={true}
+                  />
+                ))}
+              </div>
+            )
+          ) : activeCategory === 'all' ? (
+            // 全览态（全部节点）：按子分类分节分层渲染
+            subSections.length === 0 || items.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center p-4 text-center">
+                <Layers className="w-6 h-6 text-ink-faint/50 mb-1.5" />
+                <p className="text-xs text-ink-faint font-sans">暂无可添加的节点</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {subSections.map((sec) => {
+                  const secItems = groupMap.get(sec.key) || [];
+                  if (secItems.length === 0) return null;
+                  return (
+                    <div key={sec.key} className="space-y-1">
+                      {/* 分类小标头 */}
+                      <div className="sticky top-0 z-10 bg-paper/95 backdrop-blur-xs px-2 py-1 flex items-center justify-between border-b border-dashed border-paper-grid/40 rounded-t-sm">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="w-1.5 h-1.5 rounded-full bg-accent/60" />
+                          <span className="text-[11px] font-sans font-medium text-ink-faint truncate">
+                            {sec.title}
+                          </span>
+                        </div>
+                        <span className="text-[10px] tabular-nums font-sans text-ink-faint/70">
+                          {secItems.length}
                         </span>
-                      )}
-                      {item.mode === 'agent' && (
-                        <span className="shrink-0 text-[9px] text-accent bg-accent-surface rounded-sm px-1 py-px leading-none font-medium">
-                          Agent
-                        </span>
-                      )}
+                      </div>
+                      {/* 该分类下的节点项 */}
+                      <div className="space-y-1">
+                        {secItems.map((item) => (
+                          <NodeItemRow
+                            key={item.key}
+                            item={item}
+                            pendingChildId={pendingChildId}
+                            onPick={onPick}
+                          />
+                        ))}
+                      </div>
                     </div>
-                    <p className="text-[11px] text-ink-light/75 font-sans truncate mt-0.5 leading-tight">
-                      {item.agentName ? `Agent · ${item.agentName}` : item.description}
-                    </p>
+                  );
+                })}
+              </div>
+            )
+          ) : (
+            // 单分类态：展示该分类下所有节点项
+            (() => {
+              const currentItems = groupMap.get(activeCategory) || [];
+              if (currentItems.length === 0) {
+                return (
+                  <div className="h-full flex flex-col items-center justify-center p-4 text-center">
+                    <Layers className="w-6 h-6 text-ink-faint/50 mb-1.5" />
+                    <p className="text-xs text-ink-faint font-sans">该分类下暂无节点</p>
                   </div>
-                </button>
+                );
+              }
+              return (
+                <div className="space-y-1">
+                  {currentItems.map((item) => (
+                    <NodeItemRow
+                      key={item.key}
+                      item={item}
+                      pendingChildId={pendingChildId}
+                      onPick={onPick}
+                    />
+                  ))}
+                </div>
               );
-            })
+            })()
           )}
         </div>
       </div>

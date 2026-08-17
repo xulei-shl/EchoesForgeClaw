@@ -1,18 +1,32 @@
-import React, { memo, useEffect, useState } from 'react';
-import { CalendarDays, Loader2, Search, AlertTriangle } from 'lucide-react';
+import React, { memo, useEffect, useState, useCallback } from 'react';
+import { CalendarDays, Loader2, Search, AlertTriangle, Copy, Check, Sparkles } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { BeamGlow } from '../../../platform/components/node/BeamGlow';
+import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
+import { DatePicker } from '../../../platform/components/ui/DatePicker';
+import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
 import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
 import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
 import { NODE_COLORS } from '../nodeTypes';
 
-/** 本地时区的今天（yyyy-MM-dd），避免 toISOString 的 UTC 偏移导致跨天。 */
-function todayLocal(): string {
-  const d = new Date();
+/** 格式化日期为 YYYY-MM-DD */
+function formatDate(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+}
+
+/** 本地时区的今天（yyyy-MM-dd），避免 toISOString 的 UTC 偏移导致跨天 */
+function todayLocal(): string {
+  return formatDate(new Date());
+}
+
+/** 获取相对今天的偏移日期（yyyy-MM-dd） */
+function getOffsetDate(offsetDays: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  return formatDate(d);
 }
 
 export interface CalendarNodeProps {
@@ -35,7 +49,15 @@ export interface CalendarNodeProps {
   /** 卡片底部「+」插槽 */
   footer?: React.ReactNode;
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
+  /** 是否有下级节点关联（有下级时禁用影响输出的动作） */
+  hasDownstream?: boolean;
 }
+
+const QUICK_PRESETS = [
+  { label: '今天', getDays: 0 },
+  { label: '明天', getDays: 1 },
+  { label: '昨天', getDays: -1 },
+];
 
 const CalendarNodeInner: React.FC<CalendarNodeProps> = ({
   id,
@@ -53,19 +75,70 @@ const CalendarNodeInner: React.FC<CalendarNodeProps> = ({
   onDrag,
   footer,
   onContextMenu,
+  hasDownstream,
 }) => {
   const [dateInput, setDateInput] = useState(() => date || todayLocal());
+  const [copied, setCopied] = useState(false);
+  const { showToast } = useFeedback();
 
   // 外部内容变化（撤销/重做/历史恢复）时同步草稿日期
   useEffect(() => {
     if (date) setDateInput(date);
   }, [date]);
 
+  const handleQuery = useCallback(
+    (targetDate?: string) => {
+      const d = (targetDate || dateInput).trim();
+      if (!d || isGenerating) return;
+      onFetch?.(id, d);
+    },
+    [dateInput, id, isGenerating, onFetch]
+  );
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const d = dateInput.trim();
-    if (!d || isGenerating) return;
-    onFetch?.(id, d);
+    handleQuery();
+  };
+
+  const handleQuickPreset = (offset: number) => {
+    const d = getOffsetDate(offset);
+    setDateInput(d);
+    handleQuery(d);
+  };
+
+  const handleCopy = async () => {
+    if (!output.trim()) return;
+    try {
+      await navigator.clipboard.writeText(output);
+      setCopied(true);
+      showToast('万年历信息已复制到剪贴板', { type: 'success' });
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      showToast('复制失败，请重试', { type: 'error' });
+    }
+  };
+
+  const renderActionBar = () => {
+    if (isGenerating) return undefined;
+    return (
+      <NodeActionBar>
+        {(output.trim() || error) && (
+          <NodeActionBar.Retry
+            onClick={() => handleQuery()}
+            error={!!error}
+            hasDownstream={hasDownstream}
+            tooltip={error ? '重试查询' : '重新查询'}
+          />
+        )}
+        {output.trim() && (
+          <NodeActionBar.Custom
+            icon={copied ? <Check size={16} strokeWidth={2} className="text-accent" /> : <Copy size={16} strokeWidth={1.5} />}
+            tooltip={copied ? '已复制' : '复制万年历内容'}
+            onClick={handleCopy}
+          />
+        )}
+      </NodeActionBar>
+    );
   };
 
   return (
@@ -86,41 +159,83 @@ const CalendarNodeInner: React.FC<CalendarNodeProps> = ({
       glowOverlay={isGenerating && !error ? <BeamGlow /> : undefined}
       showRightAnchor
       footer={footer}
+      actionBar={renderActionBar()}
     >
       <div className="h-full flex flex-col flex-1 min-h-0 gap-3">
-        {/* 查询表单：始终可见，便于重复查询 */}
-        <form onSubmit={handleSubmit} className="shrink-0 flex gap-2">
-          <input
-            type="date"
-            value={dateInput}
-            onChange={(e) => setDateInput(e.target.value)}
-            disabled={isGenerating}
-            className="flex-1 h-10 min-w-0 rounded-md border border-dashed border-paper-grid bg-transparent px-3 py-2 text-sm text-ink focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors font-mono disabled:opacity-50"
-          />
-          <button
-            type="submit"
-            disabled={!dateInput.trim() || isGenerating}
-            className="flex items-center justify-center w-10 h-10 shrink-0 rounded-md bg-accent text-paper hover:bg-accent-hover active:scale-95 transition disabled:opacity-40 disabled:cursor-not-allowed"
-            title="查询"
-          >
-            <Search size={15} strokeWidth={2} />
-          </button>
-        </form>
+        {/* 顶部表单与快捷预设 */}
+        <div className="shrink-0 space-y-2">
+          <form onSubmit={handleSubmit} className="flex gap-2 items-center">
+            <div className="flex-1 min-w-0">
+              <DatePicker
+                value={dateInput}
+                onChange={(newVal) => setDateInput(newVal)}
+                disabled={isGenerating}
+                placeholder="选择日期（YYYY-MM-DD）"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={!dateInput.trim() || isGenerating || hasDownstream}
+              title={hasDownstream ? '有下级节点，不可修改输出' : '查询此日期'}
+              className="flex items-center justify-center w-10 h-10 shrink-0 rounded-md bg-accent text-paper hover:bg-accent-hover active:scale-[0.96] transition-all disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              <Search size={15} strokeWidth={2} />
+            </button>
+          </form>
+
+          {/* 快捷日期预设胶囊 */}
+          <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar py-0.5 select-none">
+            <span className="text-[11px] font-serif text-ink-faint shrink-0 mr-0.5">快捷：</span>
+            {QUICK_PRESETS.map((preset) => {
+              const pDate = getOffsetDate(preset.getDays);
+              const isSelected = dateInput === pDate;
+              return (
+                <button
+                  key={preset.label}
+                  type="button"
+                  disabled={isGenerating || hasDownstream}
+                  onClick={() => handleQuickPreset(preset.getDays)}
+                  className={`shrink-0 px-2 py-0.5 rounded-full text-[11px] font-sans border transition-all active:scale-[0.96] ${
+                    isSelected
+                      ? 'border-accent/60 bg-accent/10 text-accent font-medium'
+                      : 'border-dashed border-paper-grid text-ink-light hover:border-paper-grid hover:text-ink hover:bg-paper-grid/20'
+                  } disabled:opacity-40 disabled:cursor-not-allowed`}
+                >
+                  {preset.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         {/* 结果 / 加载 / 错误区 */}
         <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 custom-scrollbar">
           {isGenerating ? (
-            <div className="h-full flex flex-col items-center justify-center gap-2 text-center">
-              <Loader2 className="w-5 h-5 text-accent animate-spin" strokeWidth={1.5} />
-              <p className="text-xs font-serif text-accent">正在查询万年历...</p>
+            <div className="h-full flex flex-col items-center justify-center gap-3 text-center min-h-[160px]">
+              <div className="w-12 h-12 rounded-full border border-dashed border-accent/40 bg-accent/5 flex items-center justify-center">
+                <Loader2 className="w-5 h-5 text-accent animate-spin" strokeWidth={1.5} />
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-serif text-accent font-medium">正在研读历法与节气...</p>
+                <p className="text-[11px] font-mono text-ink-faint tabular-nums">{dateInput}</p>
+              </div>
             </div>
           ) : error ? (
-            <div className="p-3 rounded-md border border-error/20 bg-error/5 flex items-start gap-2.5">
-              <AlertTriangle size={14} strokeWidth={2} className="text-error shrink-0 mt-0.5" />
-              <p className="flex-1 min-w-0 text-[12px] text-error/90 leading-relaxed break-words font-sans">{error}</p>
+            <div className="p-3.5 rounded-md border border-error/20 bg-error/5 flex items-start gap-2.5">
+              <AlertTriangle size={15} strokeWidth={2} className="text-error shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0 space-y-1.5 font-sans">
+                <p className="text-[12px] text-error/90 leading-relaxed break-words">{error}</p>
+                <button
+                  type="button"
+                  onClick={() => handleQuery()}
+                  className="inline-flex items-center text-[11px] text-error font-medium hover:underline active:scale-[0.96] transition-transform"
+                >
+                  重试查询
+                </button>
+              </div>
             </div>
           ) : output.trim() ? (
-            <div className="w-full min-w-0 font-sans text-sm leading-relaxed">
+            <div className="w-full min-w-0 font-sans text-sm leading-relaxed p-3 rounded-md bg-paper/60 border border-dashed border-paper-grid">
               <Streamdown
                 plugins={{ cjk, code }}
                 isAnimating={false}
@@ -131,12 +246,22 @@ const CalendarNodeInner: React.FC<CalendarNodeProps> = ({
               </Streamdown>
             </div>
           ) : (
-            <div className="h-full flex flex-col items-center justify-center gap-3 text-center min-h-[140px]">
+            <div className="h-full flex flex-col items-center justify-center gap-3 text-center min-h-[180px]">
               <div className="w-14 h-14 rounded-full border border-dashed border-paper-grid bg-paper-grid/20 flex items-center justify-center text-ink-faint">
                 <CalendarDays size={24} strokeWidth={1.5} />
               </div>
-              <p className="text-sm font-serif text-ink-light">选择日期查询节假日与农历万年历</p>
-              <p className="text-xs text-ink-faint font-sans">默认查询今天</p>
+              <div className="space-y-1">
+                <p className="text-sm font-serif text-ink-light">选择日期查询节假日与农历万年历</p>
+                <p className="text-xs text-ink-faint font-sans">支持查询法定节假日放假安排、生肖干支与廿四节气</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleQuickPreset(0)}
+                className="mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-serif text-accent border border-dashed border-accent/40 bg-accent/5 hover:bg-accent/10 active:scale-[0.96] transition-all"
+              >
+                <Sparkles size={13} strokeWidth={1.75} />
+                查询今日万年历
+              </button>
             </div>
           )}
         </div>
@@ -148,3 +273,4 @@ const CalendarNodeInner: React.FC<CalendarNodeProps> = ({
 export const CalendarNode = memo(CalendarNodeInner);
 CalendarNode.displayName = 'CalendarNode';
 export default CalendarNode;
+

@@ -302,6 +302,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       );
     }
     case 'calendar': {
+      const hasDownstream = hasDownstreamOf(node, h.edges);
       return (
         <CalendarNode
           key={node.id}
@@ -310,11 +311,13 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           output={typeof node.data?.output === 'string' ? node.data.output : ''}
           isGenerating={!!node.data.isGenerating}
           error={node.data.error ?? null}
+          hasDownstream={hasDownstream}
           onFetch={h.handleFetchCalendarFor}
         />
       );
     }
     case 'weather': {
+      const hasDownstream = hasDownstreamOf(node, h.edges);
       // 连线即输入：直接上级文本节点内容作为城市（取第一个非空），优先于手动输入
       const upstreamCity =
         resolveDirectParents(node.id, h.nodes, h.edges)
@@ -329,6 +332,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           output={typeof node.data?.output === 'string' ? node.data.output : ''}
           isGenerating={!!node.data.isGenerating}
           error={node.data.error ?? null}
+          hasDownstream={hasDownstream}
           onFetch={h.handleFetchWeatherFor}
         />
       );

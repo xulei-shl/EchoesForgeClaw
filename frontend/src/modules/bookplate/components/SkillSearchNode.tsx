@@ -202,7 +202,7 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
   ) : undefined;
 
   const renderBifrostList = () => (
-    <div className="space-y-1.5 max-h-[44vh] overflow-y-auto custom-scrollbar -mx-2 px-2">
+    <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar -mx-2 px-2 space-y-1.5">
       {loading && (
         <div className="py-10 flex items-center justify-center gap-2 text-sm text-ink-light font-sans">
           <Loader2 className="w-4 h-4 animate-spin text-accent" strokeWidth={1.5} />
@@ -232,7 +232,7 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
           return (
             <div
               key={s.id}
-              className={`flex items-start gap-3 p-2.5 rounded-md border transition cursor-pointer active:scale-[0.96] ${
+              className={`flex items-start gap-3 p-2.5 rounded-md border transition-colors cursor-pointer active:scale-[0.98] ${
                 isSelected
                   ? 'border-accent/50 bg-accent-surface/60'
                   : 'border-transparent hover:border-paper-grid hover:bg-paper-grid/30'
@@ -260,9 +260,9 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
                 )}
               </div>
               <span
-                className={`shrink-0 self-center text-[10px] rounded-pill px-2 py-1 border flex items-center gap-1 ${
+                className={`shrink-0 self-center text-[10px] rounded-pill px-2 py-1 border flex items-center gap-1 transition-colors duration-150 ${
                   isSelected
-                    ? 'text-accent border-accent/40 bg-accent-surface'
+                    ? 'text-accent border-accent/40 bg-accent-surface font-medium'
                     : 'text-accent border-dashed border-accent/30'
                 }`}
               >
@@ -281,32 +281,51 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
     </div>
   );
 
-  /** 已选 skill 的 chip 列表（可单独移除） */
+  /** 已选 skill 的 chip 列表（置于列表下方，不干扰搜索与列表坐标） */
   const renderSelectedChips = () => {
     if (selections.length === 0) return null;
     return (
-      <div className="flex flex-wrap gap-1.5">
-        {selections.map((s) => (
-          <span
-            key={s.name}
-            className="inline-flex items-center gap-1.5 text-[11px] text-accent bg-accent-surface border border-accent/40 rounded-pill pl-2 pr-1 py-1 font-mono"
-          >
-            {s.source === 'upload' ? (
-              <Upload size={10} strokeWidth={2} />
-            ) : (
-              <Archive size={10} strokeWidth={2} />
-            )}
-            {s.name}
+      <div className="shrink-0 pt-2.5 pb-1 border-t border-dashed border-paper-grid space-y-1.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-serif font-medium text-ink">已选 Skill</span>
+            <span className="text-[10px] font-mono tabular-nums text-accent bg-accent-surface border border-accent/30 rounded-pill px-1.5 py-0.5">
+              {selections.length}
+            </span>
+          </div>
+          {selections.length > 1 && (
             <button
               type="button"
-              aria-label={`移除 ${s.name}`}
-              className="p-0.5 rounded-full hover:bg-accent/10 text-accent/70 hover:text-accent transition"
-              onClick={() => toggleSelection(s)}
+              onClick={() => onUpdateSkills?.(id, [])}
+              className="text-[11px] text-ink-faint hover:text-error transition-colors font-sans"
             >
-              <X size={11} strokeWidth={2.5} />
+              清空
             </button>
-          </span>
-        ))}
+          )}
+        </div>
+        <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto custom-scrollbar py-0.5">
+          {selections.map((s) => (
+            <span
+              key={s.name}
+              className="inline-flex items-center gap-1.5 text-[11px] text-accent bg-accent-surface border border-accent/40 rounded-pill pl-2 pr-1 py-1 font-mono transition-transform active:scale-[0.96]"
+            >
+              {s.source === 'upload' ? (
+                <Upload size={10} strokeWidth={2} />
+              ) : (
+                <Archive size={10} strokeWidth={2} />
+              )}
+              <span className="truncate max-w-[160px]">{s.name}</span>
+              <button
+                type="button"
+                aria-label={`移除 ${s.name}`}
+                className="p-0.5 rounded-full hover:bg-accent/20 text-accent/70 hover:text-accent transition-colors"
+                onClick={() => toggleSelection(s)}
+              >
+                <X size={11} strokeWidth={2.5} />
+              </button>
+            </span>
+          ))}
+        </div>
       </div>
     );
   };
@@ -384,11 +403,11 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
             open={pickerOpen}
             onClose={closePicker}
             title="选择 Skill"
-            panelClassName="max-w-2xl"
+            panelClassName="max-w-2xl h-[620px] max-h-[90vh] flex flex-col"
           >
-            <div className="space-y-4">
+            <div className="h-full flex flex-col gap-3">
               {/* 上传本地 zip */}
-              <div className="rounded-md border border-dashed border-paper-grid bg-paper-grid/20 p-3">
+              <div className="shrink-0 rounded-md border border-dashed border-paper-grid bg-paper-grid/20 p-3">
                 <div className="flex items-center gap-3">
                   <input
                     ref={fileInputRef}
@@ -419,11 +438,8 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
                 )}
               </div>
 
-              {/* 已选列表（可移除） */}
-              {renderSelectedChips()}
-
-              {/* Bifrost 检索 */}
-              <div className="relative">
+              {/* Bifrost 检索输入框 */}
+              <div className="shrink-0 relative">
                 <Search
                   size={15}
                   strokeWidth={1.5}
@@ -437,11 +453,18 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
                   autoFocus
                 />
               </div>
+
+              {/* 结果列表（弹性填充可用空间） */}
               {renderBifrostList()}
-              <div className="flex items-center justify-between pt-2 border-t border-dashed border-paper-grid">
-                <p className="text-[11px] text-ink-faint font-sans">
+
+              {/* 已选列表（置于列表下方，零布局偏移） */}
+              {renderSelectedChips()}
+
+              {/* 底部操作与完成 */}
+              <div className="shrink-0 flex items-center justify-between pt-2.5 border-t border-dashed border-paper-grid">
+                <p className="text-[11px] text-ink-faint font-sans tabular-nums">
                   {selections.length > 0
-                    ? `已选择 ${selections.length} 个 skill`
+                    ? `共已选择 ${selections.length} 个 skill`
                     : '尚未选择 skill'}
                 </p>
                 <Button variant="ghost" size="sm" onClick={closePicker}>

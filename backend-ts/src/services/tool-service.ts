@@ -51,7 +51,7 @@ interface MxnzpResponse {
 function formatCalendar(d: MxnzpHolidayData, dateStr: string): string {
   const lines: string[] = [`# 万年历 · ${d.date ?? dateStr}`];
   if (d.weekDay != null && d.weekDay >= 1 && d.weekDay <= 7) {
-    lines.push(`星期：${WEEKDAYS[d.weekDay - 1]}`);
+    lines.push(`- **星期**：${WEEKDAYS[d.weekDay - 1]}`);
   }
   const rows: Array<[string, string | number | undefined]> = [
     ['农历', d.lunarCalendar],
