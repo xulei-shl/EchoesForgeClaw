@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { ChevronDown, ChevronRight, Search } from 'lucide-react';
-import { CATEGORY_LABELS, NODE_TEMPLATES, NODE_TEMPLATE_MAP } from '../nodeTypes';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
+import { Search, X, Layers, Sparkles } from 'lucide-react';
+import { CATEGORY_LABELS, NODE_TEMPLATES, NODE_TEMPLATE_MAP, NODE_COLORS } from '../nodeTypes';
 import type { CanvasNodeType } from '../../../platform/types';
 
 /** 「+」菜单 / 右键菜单中的一个可选项 */
@@ -28,67 +28,90 @@ interface NodePickerListProps {
   pendingChildId?: string | null;
 }
 
-interface PickerGroup {
-  /** 分组 key（自定义分组用 group 名，模板分组用模板类型） */
+interface CategoryNav {
   key: string;
-  /** 分组标题 */
   title: string;
-  /** 自定义分组排序序号（模板分组不使用） */
   order?: number;
-  items: NodePickerItem[];
+  count: number;
 }
 
-/** 分组优先：有自定义分组的项按 group 分组（按 group_order 排序，未排序按首见顺序），
- *  无需配置的基础节点（图书元数据 / 文本 / 图片上传）合并为一个默认分组（可折叠），
- *  其余无分组的可配置项按模板分组追加到末尾（保持 NODE_TEMPLATES 顺序） */
-function groupItems(items: NodePickerItem[]): PickerGroup[] {
-  const groups: PickerGroup[] = [];
-  const groupMap = new Map<string, PickerGroup>();
+/** 构建所有分类项（含全部） */
+function buildCategories(items: NodePickerItem[]): { categories: CategoryNav[]; groupMap: Map<string, NodePickerItem[]> } {
+  const groupMap = new Map<string, NodePickerItem[]>();
+  const customGroups: { key: string; title: string; order: number }[] = [];
+  const customGroupSet = new Set<string>();
   const ungrouped: NodePickerItem[] = [];
 
   for (const item of items) {
     const g = item.group?.trim();
     if (g) {
-      let grp = groupMap.get(g);
-      if (!grp) {
-        grp = { key: `group:${g}`, title: g, order: item.groupOrder ?? 0, items: [] };
-        groupMap.set(g, grp);
-        groups.push(grp);
+      const key = `group:${g}`;
+      if (!customGroupSet.has(g)) {
+        customGroupSet.add(g);
+        customGroups.push({ key, title: g, order: item.groupOrder ?? 0 });
       }
-      grp.items.push(item);
+      const list = groupMap.get(key) || [];
+      list.push(item);
+      groupMap.set(key, list);
     } else {
       ungrouped.push(item);
     }
   }
 
-  // 自定义组排序：group_order 升序（0 的排最后、保持首见顺序）；同组首个 item 的 groupOrder 为准
-  groups.sort((a, b) => {
+  // 自定义分组排序
+  customGroups.sort((a, b) => {
     const ao = a.order || Number.MAX_SAFE_INTEGER;
     const bo = b.order || Number.MAX_SAFE_INTEGER;
     return ao - bo;
   });
 
-  // 无需配置的基础节点合并为一个「基础节点」分组（复用分组头部的折叠交互）
+  const categories: CategoryNav[] = [
+    { key: 'all', title: '全部节点', count: items.length },
+  ];
+
+  // 基础节点分组
   const baseList = ungrouped.filter((i) => !NODE_TEMPLATE_MAP[i.nodeType]?.configurable);
   if (baseList.length > 0) {
-    groups.unshift({ key: 'base-nodes', title: '基础节点', items: baseList });
+    const key = 'base-nodes';
+    groupMap.set(key, baseList);
+    categories.push({ key, title: '基础节点', count: baseList.length });
   }
 
-  // 其余可配置模板的无分组项按模板分组追加到末尾（保持 NODE_TEMPLATES 顺序）；
-  // 基础节点已并入上方分组，这里只遍历可配置模板避免重复分组
+  // 自定义分组
+  for (const cg of customGroups) {
+    const count = groupMap.get(cg.key)?.length || 0;
+    categories.push({ key: cg.key, title: cg.title, count });
+  }
+
+  // 可配置模板分组
   for (const t of NODE_TEMPLATES.filter((t) => t.configurable)) {
     const list = ungrouped.filter((i) => i.nodeType === t.type);
     if (list.length > 0) {
-      groups.push({ key: `template:${t.type}`, title: `${CATEGORY_LABELS[t.category]} · ${t.name}`, items: list });
+      const key = `template:${t.type}`;
+      groupMap.set(key, list);
+      categories.push({
+        key,
+        title: `${CATEGORY_LABELS[t.category]} · ${t.name}`,
+        count: list.length,
+      });
     }
   }
-  return groups;
+
+  return { categories, groupMap };
 }
 
 const NodePickerListInner: React.FC<NodePickerListProps> = ({ items, onPick, pendingChildId }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeCategory, setActiveCategory] = useState<string>('all');
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const filteredItems = React.useMemo(() => {
+  // 打开时自动聚焦搜索输入框
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  // 搜索过滤
+  const filteredItems = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return items;
     return items.filter(
@@ -99,68 +122,111 @@ const NodePickerListInner: React.FC<NodePickerListProps> = ({ items, onPick, pen
     );
   }, [items, searchQuery]);
 
-  const groups = React.useMemo(() => groupItems(filteredItems), [filteredItems]);
+  // 分类与节点归类映射
+  const { categories, groupMap } = useMemo(() => buildCategories(items), [items]);
 
-  // 折叠的分组 key 集合（默认全部展开）
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const toggleGroup = (key: string) => {
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
+  // 当前右侧显示的节点列表
+  const displayedItems = useMemo(() => {
+    // 搜索态：平铺展示所有搜索匹配的节点
+    if (searchQuery.trim()) {
+      return filteredItems;
+    }
+    // 未搜索态：根据左侧选中的分类展示
+    if (activeCategory === 'all') {
+      return items;
+    }
+    return groupMap.get(activeCategory) || [];
+  }, [searchQuery, filteredItems, activeCategory, items, groupMap]);
 
   return (
-    <div className="flex flex-col">
-      <div className="px-2 pt-2 pb-1">
-        <div className="relative">
+    <div className="flex flex-col select-none">
+      {/* 顶部搜索栏 */}
+      <div className="px-3 pt-2.5 pb-2 border-b border-paper-grid/50 bg-paper-grid/5">
+        <div className="relative flex items-center">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-faint pointer-events-none" />
           <input
+            ref={inputRef}
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="搜索节点..."
-            className="w-full pl-8 pr-3 py-1.5 bg-paper-grid/40 border border-transparent focus:border-accent/50 focus:bg-paper-grid/60 rounded-md text-xs text-ink outline-none transition-colors placeholder:text-ink-faint"
+            placeholder="搜索节点名称、描述或 Agent..."
+            className="w-full pl-8 pr-7 py-1.5 bg-paper-grid/30 border border-paper-grid/60 focus:border-accent focus:bg-paper rounded-md text-xs text-ink outline-none transition-all placeholder:text-ink-faint shadow-inner"
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => e.stopPropagation()}
           />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSearchQuery('');
+                inputRef.current?.focus();
+              }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-ink-faint hover:text-ink rounded transition-colors"
+              title="清空搜索"
+            >
+              <X size={12} />
+            </button>
+          )}
         </div>
       </div>
-      <div className="p-1.5 space-y-1">
-        {groups.length === 0 && (
-          <p className="px-3 py-6 text-xs text-ink-faint font-sans text-center">
-            {searchQuery.trim() ? '未找到相关节点' : '暂无可添加的节点'}
-          </p>
-        )}
-        {groups.map((group) => {
-          const isCollapsed = searchQuery.trim() ? false : collapsed.has(group.key);
-        return (
-        <div key={group.key}>
-          <button
-            type="button"
-            onClick={() => toggleGroup(group.key)}
-            title={isCollapsed ? '展开分组' : '折叠分组'}
-            className="w-full flex items-center px-1.5 py-1.5 text-left group hover:bg-paper-grid/40 active:bg-paper-grid/60 transition-colors focus-visible:outline-none rounded-md"
-          >
-            <div className="flex items-center justify-center w-4 h-4 shrink-0 text-ink-faint group-hover:text-ink-light transition-colors">
-              {isCollapsed ? (
-                <ChevronRight size={14} strokeWidth={2} />
-              ) : (
-                <ChevronDown size={14} strokeWidth={2} />
-              )}
+
+      {/* 主体分栏：左侧分类 + 右侧节点 */}
+      <div className="flex h-[340px] divide-x divide-dashed divide-paper-grid/70 overflow-hidden">
+        {/* 左侧分类导航 (Master) */}
+        <div className="w-[126px] shrink-0 overflow-y-auto p-1.5 space-y-0.5 bg-paper-grid/10 custom-scrollbar">
+          {searchQuery.trim() ? (
+            <div className="px-2 py-1.5 rounded-md bg-accent-surface text-accent text-xs font-medium flex items-center justify-between">
+              <span className="truncate">搜索结果</span>
+              <span className="text-[10px] tabular-nums font-sans opacity-80">
+                {filteredItems.length}
+              </span>
             </div>
-            <span className="ml-1.5 flex-1 min-w-0 truncate text-[11px] font-medium text-ink-light tracking-wide">
-              {group.title}
-            </span>
-            <span className="ml-2 text-[10px] text-ink-faint font-sans tabular-nums">
-              {group.items.length}
-            </span>
-          </button>
-          {!isCollapsed && (
-            <div className="pt-0.5 pb-1 space-y-0.5">
-              {group.items.map((item) => (
+          ) : (
+            categories.map((cat) => {
+              const isActive = activeCategory === cat.key;
+              return (
+                <button
+                  key={cat.key}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveCategory(cat.key);
+                  }}
+                  className={`w-full flex items-center justify-between px-2 py-1.5 rounded-md text-left text-xs transition-colors group ${
+                    isActive
+                      ? 'bg-accent-surface text-accent font-medium shadow-xs'
+                      : 'text-ink-light hover:bg-paper-grid/30 hover:text-ink'
+                  }`}
+                  title={cat.title}
+                >
+                  <span className="truncate flex-1 pr-1">{cat.title}</span>
+                  <span
+                    className={`text-[10px] tabular-nums font-sans ${
+                      isActive ? 'text-accent opacity-90' : 'text-ink-faint group-hover:text-ink-light'
+                    }`}
+                  >
+                    {cat.count}
+                  </span>
+                </button>
+              );
+            })
+          )}
+        </div>
+
+        {/* 右侧节点列表 (Detail) */}
+        <div className="flex-1 overflow-y-auto p-2 space-y-1 bg-paper/60 custom-scrollbar">
+          {displayedItems.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center p-4 text-center">
+              <Layers className="w-6 h-6 text-ink-faint/50 mb-1.5" />
+              <p className="text-xs text-ink-faint font-sans">
+                {searchQuery.trim() ? '未找到匹配的节点' : '该分类下暂无节点'}
+              </p>
+            </div>
+          ) : (
+            displayedItems.map((item) => {
+              const themeColor = NODE_COLORS[item.nodeType] || '#5B8A5B';
+              return (
                 <button
                   key={item.key}
                   disabled={!!pendingChildId}
@@ -168,39 +234,48 @@ const NodePickerListInner: React.FC<NodePickerListProps> = ({ items, onPick, pen
                     e.stopPropagation();
                     onPick(item);
                   }}
-                  className="w-full flex items-start px-2 py-2 text-left hover:bg-accent-surface/60 active:scale-[0.96] transition-all disabled:opacity-50 rounded-lg group/item"
+                  className="w-full flex items-start px-2.5 py-2 text-left rounded-lg border border-transparent hover:border-paper-grid/80 hover:bg-accent-surface/40 active:scale-[0.98] transition-all disabled:opacity-50 group/node"
                 >
-                  <div className="flex items-center justify-center w-4 h-4 shrink-0 mt-[1px]">
-                    <span
-                      className={`w-1.5 h-1.5 rounded-full ring-2 ring-transparent group-hover/item:ring-current/10 transition-all duration-200 group-hover/item:scale-125 ${
-                        item.mode === 'agent'
-                          ? 'bg-accent text-accent'
-                          : item.fallback
-                            ? 'bg-ink-faint/50 text-ink-faint'
-                            : 'bg-[#5B8A5B] text-[#5B8A5B]'
-                      }`}
-                    />
+                  {/* 节点类型指示圆点 */}
+                  <div className="flex items-center justify-center w-4 h-4 shrink-0 mt-0.5">
+                    {item.mode === 'agent' ? (
+                      <Sparkles className="w-3.5 h-3.5 text-accent animate-pulse" />
+                    ) : (
+                      <span
+                        className="w-2 h-2 rounded-full transition-transform duration-150 group-hover/node:scale-125"
+                        style={{
+                          backgroundColor: item.fallback ? 'rgba(120, 113, 108, 0.5)' : themeColor,
+                        }}
+                      />
+                    )}
                   </div>
-                  <span className="ml-2 min-w-0 flex-1">
-                    <span className="block text-sm font-sans text-ink font-medium truncate group-hover/item:text-accent transition-colors">
-                      {item.label}
+
+                  {/* 节点文本内容 */}
+                  <div className="ml-2 min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-sans text-ink font-medium truncate group-hover/node:text-accent transition-colors">
+                        {item.label}
+                      </span>
                       {item.fallback && (
-                        <span className="ml-1.5 text-[10px] text-ink-faint border border-dashed border-paper-grid rounded-full px-1.5 py-px align-middle">
-                          默认配置
+                        <span className="shrink-0 text-[9px] text-ink-faint border border-dashed border-paper-grid rounded-sm px-1 py-px leading-none">
+                          默认
                         </span>
                       )}
-                    </span>
-                    <span className="block text-xs text-ink-light/80 font-sans truncate mt-0.5">
+                      {item.mode === 'agent' && (
+                        <span className="shrink-0 text-[9px] text-accent bg-accent-surface rounded-sm px-1 py-px leading-none font-medium">
+                          Agent
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-ink-light/75 font-sans truncate mt-0.5 leading-tight">
                       {item.agentName ? `Agent · ${item.agentName}` : item.description}
-                    </span>
-                  </span>
+                    </p>
+                  </div>
                 </button>
-              ))}
-            </div>
+              );
+            })
           )}
         </div>
-        );
-      })}
       </div>
     </div>
   );

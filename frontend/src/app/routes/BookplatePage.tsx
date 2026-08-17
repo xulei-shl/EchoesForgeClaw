@@ -1462,22 +1462,23 @@ const BookplatePage: React.FC = () => {
         {/* 画布空白处右键菜单（添加独立节点） */}
         {standaloneMenu &&
           (() => {
-            const MENU_WIDTH = 288;
-            const MENU_MAX_HEIGHT = 400; // 预估最大高度
+            const MENU_WIDTH = 460;
+            const MENU_MAX_HEIGHT = 440; // 预估最大高度
             const left = standaloneMenu.x + MENU_WIDTH > window.innerWidth - 8 ? Math.max(8, standaloneMenu.x - MENU_WIDTH) : standaloneMenu.x;
             const top = Math.max(8, Math.min(standaloneMenu.y, window.innerHeight - MENU_MAX_HEIGHT));
 
             return (
               <div
                 data-standalone-menu
-                className="fixed z-[9999] w-72"
+                className="fixed z-[9999] w-[460px]"
                 style={{ left, top }}
               >
-                <div className="bg-paper border border-paper-grid rounded-xl shadow-xl overflow-hidden">
-                  <div className="px-3 py-2.5 border-b border-dashed border-paper-grid bg-paper-grid/10">
+                <div className="bg-paper border border-paper-grid rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                  <div className="px-3.5 py-2.5 border-b border-dashed border-paper-grid bg-paper-grid/10 flex items-center justify-between">
                     <p className="text-xs font-sans font-medium text-ink-light">添加独立节点</p>
+                    <span className="text-[10px] text-ink-faint font-sans">点击或搜索快速添加</span>
                   </div>
-                  <div className="max-h-[320px] overflow-y-auto">
+                  <div>
                     <NodePickerList
                       items={pickerItems}
                       onPick={(item) =>
@@ -1489,6 +1490,7 @@ const BookplatePage: React.FC = () => {
               </div>
             );
           })()}
+
 
         {/* 节点右键菜单 */}
         {ctxMenu &&

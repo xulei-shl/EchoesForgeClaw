@@ -15,9 +15,9 @@ interface NodeContextMenuProps {
   onClose: () => void;
 }
 
-/** 菜单宽度（w-72）与最大高度估算，用于视口边缘防溢出 */
-const MENU_WIDTH = 288;
-const MENU_MAX_HEIGHT = 400;
+/** 菜单宽度（w-[460px]）与最大高度估算，用于视口边缘防溢出 */
+const MENU_WIDTH = 460;
+const MENU_MAX_HEIGHT = 490;
 
 const NodeContextMenu: React.FC<NodeContextMenuProps> = ({
   x,
@@ -60,30 +60,34 @@ const NodeContextMenu: React.FC<NodeContextMenuProps> = ({
   return (
     <div
       ref={ref}
-      className="fixed z-[100] w-72 bg-paper border border-paper-grid rounded-xl shadow-xl overflow-hidden"
+      className="fixed z-[100] w-[460px] bg-paper border border-paper-grid rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-100"
       style={{ left, top }}
       onContextMenu={(e) => e.preventDefault()}
     >
-      <div className="px-3 py-2.5 border-b border-dashed border-paper-grid bg-paper-grid/10">
-        <p className="text-xs font-medium font-sans text-ink-light truncate" title={title}>{title}</p>
+      <div className="px-3.5 py-2.5 border-b border-dashed border-paper-grid bg-paper-grid/10 flex items-center justify-between">
+        <p className="text-xs font-medium font-sans text-ink truncate max-w-[280px]" title={title}>
+          {title} · <span className="text-ink-light font-normal">添加子节点</span>
+        </p>
+        <span className="text-[10px] text-ink-faint font-sans">点击或搜索快速添加</span>
       </div>
-      <div className="max-h-[264px] overflow-y-auto">
+      <div>
         <NodePickerList items={items} onPick={onPick} />
       </div>
-      <div className="border-t border-dashed border-paper-grid p-1.5">
+      <div className="border-t border-dashed border-paper-grid p-1.5 bg-paper-grid/5">
         <button
           onClick={(e) => {
             e.stopPropagation();
             onDelete();
           }}
-          className="w-full flex items-center gap-2 px-2 py-2 rounded-md text-left text-sm font-sans text-error hover:bg-error/10 active:scale-[0.96] transition-all"
+          className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-sans text-error hover:bg-error/10 active:scale-[0.98] transition-all"
         >
-          <Trash2 size={15} strokeWidth={2} />
-          删除节点（含子节点）
+          <Trash2 size={13} strokeWidth={2} />
+          删除此节点（含后续连线子节点）
         </button>
       </div>
     </div>
   );
 };
+
 
 export default NodeContextMenu;

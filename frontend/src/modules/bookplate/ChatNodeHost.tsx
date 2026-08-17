@@ -52,18 +52,16 @@ function buildInjectedContextBlocks(
     const book = resolveNodeRunInputs(node, nodes, edges, portTypesRef.current).book;
     if (book) {
       const metaText = bookMetadataText(book.data);
-      if (metaText.trim()) {
-        blocks.push({
-          id: `book_${book.id}`,
-          title: `图书元数据 · ${getNodeTitle(book)}`,
-          nodeType: 'book_info',
-          text: metaText,
-        });
-      }
+      blocks.push({
+        id: `book_${book.id}`,
+        title: `图书元数据 · ${getNodeTitle(book)}`,
+        nodeType: 'book_info',
+        text: metaText.trim() || undefined,
+      });
     }
   }
 
-  // 2. 直接父节点
+  // 2. 直接父节点（只要连线且开启配置，均生成对应的注入组件，不受类型与输出状态限制）
   const includeText = settings.includeUpstream !== false;
   const includeImages = settings.includeUpstreamImages !== false;
 
@@ -79,15 +77,13 @@ function buildInjectedContextBlocks(
         if (img && !images.includes(img)) images.push(img);
       }
 
-      if (text || images.length > 0) {
-        blocks.push({
-          id: `parent_${p.id}`,
-          title: getNodeTitle(p),
-          nodeType: p.type,
-          text: text || undefined,
-          images: images.length > 0 ? images : undefined,
-        });
-      }
+      blocks.push({
+        id: `parent_${p.id}`,
+        title: getNodeTitle(p),
+        nodeType: p.type,
+        text: text || undefined,
+        images: images.length > 0 ? images : undefined,
+      });
     }
   }
 

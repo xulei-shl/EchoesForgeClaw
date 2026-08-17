@@ -321,6 +321,16 @@ export function nodeOutputText(node: GraphNode | undefined): string {
       return typeof node.data.output === 'string' ? node.data.output : '';
     case 'prompt_search':
       return typeof node.data.content === 'string' ? node.data.content : '';
+    case 'skill_search': {
+      const selections = Array.isArray(node.data.skillSelections) ? node.data.skillSelections : [];
+      if (selections.length === 0) return '';
+      return selections
+        .map(
+          (s: { name: string; description?: string }) =>
+            `• ${s.name}${s.description ? `: ${s.description}` : ''}`
+        )
+        .join('\n');
+    }
     default: {
       // 约定式兜底：后续新增文本输出节点类型时，只要把对外文本存入
       // data.output / data.content / data.analysis 任一字段（按此优先级），

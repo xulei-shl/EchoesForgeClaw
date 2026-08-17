@@ -213,7 +213,11 @@ const ContextInjectionBlock: React.FC<{
   const hasImages = images.length > 0;
 
   // 单行摘要预览
-  const tailText = hasText ? text.slice(-40).replace(/\n/g, ' ') : '';
+  const tailText = hasText
+    ? text.slice(-40).replace(/\n/g, ' ')
+    : !hasImages
+      ? '(暂无内容)'
+      : '';
   const imageCountText = hasImages ? `[${images.length}张图片]` : '';
 
   return (
@@ -272,7 +276,7 @@ const ContextInjectionBlock: React.FC<{
               </pre>
             ) : !hasImages ? (
               <p className="text-[10px] text-ink-faint font-sans italic">
-                （上级节点暂无内容）
+                （上级节点暂无输出内容）
               </p>
             ) : null}
           </div>

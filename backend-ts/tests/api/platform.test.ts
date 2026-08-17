@@ -492,6 +492,17 @@ describe('管理端：Bifrost', () => {
           ],
         });
       }
+      if (req.path === '/api/prompt-repo/prompts/p1') {
+        return JSON.stringify({
+          id: 'p1',
+          name: '藏书票',
+          folder_id: 'f1',
+          latest_version: {
+            version_number: 2,
+            messages: [{ message: { payload: { role: 'user', content: '第一段正文' } } }],
+          },
+        });
+      }
       return JSON.stringify({});
     });
     openServers.push(srv);
@@ -563,5 +574,23 @@ describe('管理端：Bifrost', () => {
       headers: { authorization: `Bearer ${adminToken}` },
     });
     expect((del.json() as { preview_image: null }).preview_image).toBeNull();
+    // 画布端提示词检索（普通用户 token 即可访问）
+    const bookplatePrompts = await app.inject({
+      method: 'GET',
+      url: '/api/modules/bookplate/bifrost/prompts',
+      headers: { authorization: `Bearer ${userToken}` },
+    });
+    expect(bookplatePrompts.statusCode).toBe(200);
+    const bpItems = (bookplatePrompts.json() as { prompts: { id: string; content: string }[] }).prompts;
+    expect(bpItems[0]?.id).toBe('p1');
+    expect(bpItems[0]?.content).toBe('第一段正文');
+
+    const bookplateDetail = await app.inject({
+      method: 'GET',
+      url: '/api/modules/bookplate/bifrost/prompts/p1',
+      headers: { authorization: `Bearer ${userToken}` },
+    });
+    expect(bookplateDetail.statusCode).toBe(200);
+    expect((bookplateDetail.json() as { id: string }).id).toBe('p1');
   });
 });

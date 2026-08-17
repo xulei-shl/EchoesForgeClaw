@@ -80,24 +80,43 @@ const AddNodeButtonInner: React.FC<AddNodeButtonProps> = ({ items, onPick, pendi
       </button>
 
       {open && typeof document !== 'undefined' && createPortal(
-        <div 
-          ref={popupRef}
-          className="fixed z-[9999]" 
-          style={{ left: coords.x, top: coords.y }}
-        >
-          <div className="absolute left-0 top-1/2 -translate-y-1/2 ml-2 w-72">
-            <div className="bg-paper border border-paper-grid rounded-xl shadow-xl overflow-hidden">
-              <div className="px-3 py-2.5 border-b border-dashed border-paper-grid bg-paper-grid/10">
-                <p className="text-xs font-sans font-medium text-ink-light">添加下一级节点</p>
-              </div>
-              <div className="max-h-72 overflow-y-auto">
-                <NodePickerList items={items} onPick={(item) => { setOpen(false); onPick(item); }} pendingChildId={pendingChildId} />
+        (() => {
+          const POPUP_WIDTH = 460;
+          const POPUP_HEIGHT = 440;
+          // 水平：优先右侧，右侧不够放左侧
+          const isRightOverflow = coords.x + POPUP_WIDTH + 16 > window.innerWidth;
+          const left = isRightOverflow ? Math.max(12, coords.x - POPUP_WIDTH - 24) : coords.x + 8;
+          // 垂直：居中对齐按钮，并做视口上下贴边保护
+          const top = Math.max(12, Math.min(coords.y - POPUP_HEIGHT / 2, window.innerHeight - POPUP_HEIGHT - 12));
+
+          return (
+            <div 
+              ref={popupRef}
+              className="fixed z-[9999] w-[460px] animate-in fade-in zoom-in-95 duration-100" 
+              style={{ left, top }}
+            >
+              <div className="bg-paper border border-paper-grid rounded-xl shadow-2xl overflow-hidden">
+                <div className="px-3.5 py-2.5 border-b border-dashed border-paper-grid bg-paper-grid/10 flex items-center justify-between">
+                  <p className="text-xs font-sans font-medium text-ink-light">添加下一级节点</p>
+                  <span className="text-[10px] text-ink-faint font-sans">点击或搜索快速添加</span>
+                </div>
+                <div>
+                  <NodePickerList
+                    items={items}
+                    onPick={(item) => {
+                      setOpen(false);
+                      onPick(item);
+                    }}
+                    pendingChildId={pendingChildId}
+                  />
+                </div>
               </div>
             </div>
-          </div>
-        </div>,
+          );
+        })(),
         document.body
       )}
+
     </div>
   );
 };
