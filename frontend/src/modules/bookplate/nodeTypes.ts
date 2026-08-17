@@ -336,7 +336,9 @@ export function bookCoverImage(data: any): string {
 /**
  * 提取任意节点的对外输出文本（供下游作为输入）：
  * - 文本节点 → content；提示词生成 → content；图片分析 → analysis；
- * - AI 对话 → 最后一轮助手回复；图像生成 → prompt；图书元数据 → 过滤图片后的元数据。
+ * - AI 对话 → 最后一轮助手回复；图书元数据 → 过滤图片后的元数据。
+ * - 图像生成 → 空串：该节点对外输出仅为图片（端口类型 image），其提示词是生成过程的
+ *   记录元数据（写入历史记录 stage3.prompt），不作为文本传给下游节点。
  * 返回空串表示该节点当前无可消费的文本输出。
  */
 export function nodeOutputText(node: GraphNode | undefined): string {
@@ -352,7 +354,9 @@ export function nodeOutputText(node: GraphNode | undefined): string {
     case 'chat':
       return typeof node.data.output === 'string' ? node.data.output : '';
     case 'image_generation':
-      return typeof node.data.prompt === 'string' ? node.data.prompt : '';
+      // 对外输出仅为图片（与端口声明 output: 'image' 一致）：提示词只作历史记录元数据，
+      // 不传给下游。下游如需图片请用 nodeOutputImages（如 AI 对话节点的视觉上下文）。
+      return '';
     case 'image_upload':
       return '';
     case 'text_aggregate':

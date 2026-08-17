@@ -171,6 +171,7 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
       className={`transition-[opacity,transform,box-shadow,border-color] duration-150 ease-out ${isLoading ? 'border-transparent' : ''} ${isSelected ? 'ring-2 ring-accent/70 shadow-md' : ''}`}
       glowOverlay={isLoading ? <BeamGlow /> : undefined}
       showLeftAnchor={true}
+      showRightAnchor={true}
       onClick={() => onSelect?.(id)}
       footer={footer}
       groupBadge={group}
