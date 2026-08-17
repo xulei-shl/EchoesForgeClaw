@@ -14,6 +14,8 @@ export const NODE_DEFAULT_SIZES: Record<CanvasNodeType, { width: number; height:
   text_aggregate: { width: 460, height: 520 },
   prompt_search: { width: 420, height: 440 },
   skill_search: { width: 440, height: 460 },
+  calendar: { width: 420, height: 480 },
+  weather: { width: 420, height: 460 },
 };
 
 /** 节点的主题色（用于左上角指示圆点） */
@@ -28,13 +30,15 @@ export const NODE_COLORS: Record<CanvasNodeType, string> = {
   text_aggregate: 'oklch(0.65 0.15 165)',
   prompt_search: 'oklch(0.65 0.15 25)',
   skill_search: 'oklch(0.7 0.15 310)',
+  calendar: 'oklch(0.65 0.15 80)',
+  weather: 'oklch(0.6 0.15 220)',
 };
 
 export interface NodeTemplateDef {
   type: CanvasNodeType;
   name: string;
   description: string;
-  category: 'input' | 'analysis' | 'generate' | 'output';
+  category: 'input' | 'analysis' | 'generate' | 'output' | 'tool';
   configurable: boolean;
   defaultSize: { width: number; height: number };
 }
@@ -125,6 +129,22 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     configurable: false,
     defaultSize: NODE_DEFAULT_SIZES.skill_search,
   },
+  {
+    type: 'calendar',
+    name: '万年历',
+    description: '查询指定日期的节假日与农历万年历（MXNZP API，无需配置）',
+    category: 'tool',
+    configurable: false,
+    defaultSize: NODE_DEFAULT_SIZES.calendar,
+  },
+  {
+    type: 'weather',
+    name: '天气查询',
+    description: '查询指定城市当前天气（wttr.in，可连线文本节点传入城市，无需配置）',
+    category: 'tool',
+    configurable: false,
+    defaultSize: NODE_DEFAULT_SIZES.weather,
+  },
 ];
 
 export const NODE_TEMPLATE_MAP: Record<CanvasNodeType, NodeTemplateDef> = Object.fromEntries(
@@ -137,6 +157,7 @@ export const CATEGORY_LABELS: Record<NodeTemplateDef['category'], string> = {
   analysis: '分析',
   generate: '生成',
   output: '输出',
+  tool: '小工具',
 };
 
 /* ===================================================================== */
@@ -171,6 +192,10 @@ export const NODE_PORT_TYPES: Record<CanvasNodeType, { output: NodePortType; inp
   prompt_search: { output: 'text', inputs: [] },
   // skill 包（文件夹 + SKILL.md + scripts），作为 Skill Agent 的上游 skill 来源
   skill_search: { output: 'document', inputs: [] },
+  // 万年历：手动输入日期查询，不接受上游输入
+  calendar: { output: 'text', inputs: [] },
+  // 天气查询：可连线文本节点传入城市（连线即输入）；无连线时手动输入 / 自动定位
+  weather: { output: 'text', inputs: ['text'] },
 };
 
 /** 端口类型查找（由画布提供：后端模板声明优先，前端静态镜像兜底） */

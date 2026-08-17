@@ -426,6 +426,9 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
         return ''; // 手动选用提示词，无需自动执行
       case 'skill_search':
         return ''; // 手动检索 / 安装 skill，无需自动执行
+      case 'calendar':
+      case 'weather':
+        return ''; // 手动输入参数（日期 / 城市）后点查询，无需自动执行
     }
   };
 

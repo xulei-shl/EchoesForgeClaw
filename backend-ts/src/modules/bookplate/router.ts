@@ -16,6 +16,8 @@ import {
 } from '../../services/node-config-service.js';
 import { chatStreamToResponse, type ChatStreamEvent } from './stream.js';
 import { NODE_TEMPLATES, NODE_TYPES } from './node-types.js';
+import { env } from '../../config/env.js';
+import { fetchCalendar, fetchWeather, SmallToolError } from '../../services/tool-service.js';
 import { getDb } from '../../config/database.js';
 import {
   findNodeConfigById,
@@ -589,6 +591,50 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
       }
       book.isbn = isbn;
       return book;
+    }
+  );
+
+  // ---- 小工具节点：万年历 / 天气查询（无需配置，直接调用第三方公开 API） ----
+
+  app.post(
+    '/api/modules/bookplate/calendar',
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const payload = (request.body ?? {}) as { date?: string };
+      // 凭据与基础地址：优先 /admin/settings（mxnzp.*，种子自 .env），纯 .env 值作回退
+      const s = getAppSettingsMap(getDb());
+      const appId = (s['mxnzp.app_id'] ?? '').trim() || env.mxnzpAppId;
+      const appSecret = (s['mxnzp.app_secret'] ?? '').trim() || env.mxnzpAppSecret;
+      const baseUrl = (s['mxnzp.base_url'] ?? '').trim();
+      if (!appId || !appSecret) {
+        return reply.code(503).send({
+          detail: '万年历服务未配置：请在管理端「系统设置」配置 mxnzp.app_id / mxnzp.app_secret（或设置 .env 的 MXNZP_APP_ID / MXNZP_APP_SECRET 后重启后端）',
+        });
+      }
+      try {
+        return await fetchCalendar(payload.date, appId, appSecret, baseUrl);
+      } catch (err) {
+        if (err instanceof SmallToolError) {
+          return reply.code(502).send({ detail: err.message });
+        }
+        return reply.code(502).send({ detail: err instanceof Error ? err.message : String(err) });
+      }
+    }
+  );
+
+  app.post(
+    '/api/modules/bookplate/weather',
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const payload = (request.body ?? {}) as { city?: string };
+      try {
+        return await fetchWeather(payload.city);
+      } catch (err) {
+        if (err instanceof SmallToolError) {
+          return reply.code(502).send({ detail: err.message });
+        }
+        return reply.code(502).send({ detail: err instanceof Error ? err.message : String(err) });
+      }
     }
   );
 

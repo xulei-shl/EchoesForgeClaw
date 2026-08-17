@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { Search, X, Layers, Sparkles } from 'lucide-react';
-import { CATEGORY_LABELS, NODE_TEMPLATES, NODE_TEMPLATE_MAP, NODE_COLORS } from '../nodeTypes';
+import { CATEGORY_LABELS, NODE_TEMPLATES, NODE_COLORS } from '../nodeTypes';
 import type { CanvasNodeType } from '../../../platform/types';
 
 /** 「+」菜单 / 右键菜单中的一个可选项 */
@@ -69,12 +69,22 @@ function buildCategories(items: NodePickerItem[]): { categories: CategoryNav[]; 
     { key: 'all', title: '全部节点', count: items.length },
   ];
 
-  // 基础节点分组
-  const baseList = ungrouped.filter((i) => !NODE_TEMPLATE_MAP[i.nodeType]?.configurable);
-  if (baseList.length > 0) {
-    const key = 'base-nodes';
-    groupMap.set(key, baseList);
-    categories.push({ key, title: '基础节点', count: baseList.length });
+  // 非可配置（基础）节点按模板类别分组（如「输入」「小工具」），与可配置模板分组口径一致
+  const baseGroupMap = new Map<string, { title: string; items: NodePickerItem[] }>();
+  for (const t of NODE_TEMPLATES) {
+    if (t.configurable) continue;
+    const list = ungrouped.filter((i) => i.nodeType === t.type);
+    if (list.length === 0) continue;
+    const cat = t.category;
+    if (!baseGroupMap.has(cat)) {
+      baseGroupMap.set(cat, { title: CATEGORY_LABELS[cat], items: [] });
+    }
+    baseGroupMap.get(cat)!.items.push(...list);
+  }
+  for (const [cat, g] of baseGroupMap) {
+    const key = `base:${cat}`;
+    groupMap.set(key, g.items);
+    categories.push({ key, title: g.title, count: g.items.length });
   }
 
   // 自定义分组

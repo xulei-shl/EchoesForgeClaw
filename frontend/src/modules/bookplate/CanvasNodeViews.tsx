@@ -9,7 +9,9 @@ import { ImageUploadNode } from './components/ImageUploadNode';
 import { TextAggregateNode } from './components/TextAggregateNode';
 import { PromptSearchNode } from './components/PromptSearchNode';
 import { SkillSearchNode } from './components/SkillSearchNode';
-import { getNodeTitle, matchPortType, resolveDirectParents } from './nodeTypes';
+import { CalendarNode } from './components/CalendarNode';
+import { WeatherNode } from './components/WeatherNode';
+import { getNodeTitle, matchPortType, nodeOutputText, resolveDirectParents } from './nodeTypes';
 import { DEFAULT_RUN_SETTINGS, type PortTypesLookup } from './execution';
 import type { EdgeData, NodeData, NodeSize } from './graphTypes';
 import type {
@@ -55,6 +57,10 @@ export interface NodeViewHelpers {
   handleUpdatePromptFor: (id: string, selection: PromptSelection) => void;
   /** Skill 检索节点：整块替换已选 skill 集合（多选） */
   handleUpdateSkillsFor: (id: string, selections: SkillSelection[]) => void;
+  /** 万年历节点：按日期查询节假日 / 农历万年历 */
+  handleFetchCalendarFor: (id: string, date: string) => void;
+  /** 天气查询节点：按城市查询当前天气（城市由页面合并上游文本 / 手动输入） */
+  handleFetchWeatherFor: (id: string, city: string) => void;
   /** 文本聚合节点：保存占位符模板 */
   handleUpdateAggregateTemplateFor: (id: string, template: string) => void;
   /** 文本聚合节点：重命名某上级节点的占位符别名 */
@@ -292,6 +298,38 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           selections={selections}
           hasDownstream={hasDownstream}
           onUpdateSkills={h.handleUpdateSkillsFor}
+        />
+      );
+    }
+    case 'calendar': {
+      return (
+        <CalendarNode
+          key={node.id}
+          {...common}
+          date={typeof node.data?.date === 'string' ? node.data.date : undefined}
+          output={typeof node.data?.output === 'string' ? node.data.output : ''}
+          isGenerating={!!node.data.isGenerating}
+          error={node.data.error ?? null}
+          onFetch={h.handleFetchCalendarFor}
+        />
+      );
+    }
+    case 'weather': {
+      // 连线即输入：直接上级文本节点内容作为城市（取第一个非空），优先于手动输入
+      const upstreamCity =
+        resolveDirectParents(node.id, h.nodes, h.edges)
+          .map((p) => nodeOutputText(p))
+          .find((v) => v.trim()) ?? '';
+      return (
+        <WeatherNode
+          key={node.id}
+          {...common}
+          city={typeof node.data?.city === 'string' ? node.data.city : ''}
+          upstreamCity={upstreamCity}
+          output={typeof node.data?.output === 'string' ? node.data.output : ''}
+          isGenerating={!!node.data.isGenerating}
+          error={node.data.error ?? null}
+          onFetch={h.handleFetchWeatherFor}
         />
       );
     }

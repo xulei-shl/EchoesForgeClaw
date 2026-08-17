@@ -68,6 +68,8 @@ export function generationNodeTypeLabel(nodeType?: string | null): string {
     chat: 'AI 对话',
     text_aggregate: '文本聚合',
     prompt_search: '提示词检索',
+    calendar: '万年历',
+    weather: '天气查询',
   };
   return (nodeType && labels[nodeType]) || nodeType || '未知类型';
 }

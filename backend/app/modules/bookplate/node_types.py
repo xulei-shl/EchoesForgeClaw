@@ -15,6 +15,8 @@ NODE_CHAT = "chat"
 NODE_TEXT_AGGREGATE = "text_aggregate"
 NODE_PROMPT_SEARCH = "prompt_search"
 NODE_SKILL_SEARCH = "skill_search"
+NODE_CALENDAR = "calendar"
+NODE_WEATHER = "weather"
 
 NODE_TEMPLATES = [
     {
@@ -106,6 +108,23 @@ NODE_TEMPLATES = [
         "configurable": False,
         # 输出为 skill 包（文件夹 + SKILL.md + scripts），作为 Skill Agent 的上游 skill 来源
         "output_type": "document",
+    },
+    {
+        "type": NODE_CALENDAR,
+        "name": "万年历",
+        "description": "查询指定日期的节假日与农历万年历（MXNZP API，无需配置）",
+        "category": "tool",
+        "configurable": False,
+        "output_type": "text",
+    },
+    {
+        "type": NODE_WEATHER,
+        "name": "天气查询",
+        "description": "查询指定城市当前天气（wttr.in，可连线文本节点传入城市，无需配置）",
+        "category": "tool",
+        "configurable": False,
+        "output_type": "text",
+        "input_types": ["text"],
     },
 ]
 

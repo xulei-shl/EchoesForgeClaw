@@ -61,6 +61,20 @@ DEFAULT_SETTINGS = {
         settings.BIFROST_PASSWORD,
         "Bifrost 管理密码（敏感，仅显示掩码；初始来自 .env，可在本页修改）",
     ),
+    # 万年历节点（MXNZP 节假日/万年历 API）：凭据与基础地址在设置页修改，
+    # 首次启动时用 .env 中的 MXNZP_APP_ID / MXNZP_APP_SECRET 种子化。
+    "mxnzp.app_id": (
+        settings.MXNZP_APP_ID,
+        "万年历节点（MXNZP 节假日/万年历 API）应用 ID，初始来自 .env，可在本页修改",
+    ),
+    "mxnzp.app_secret": (
+        settings.MXNZP_APP_SECRET,
+        "万年历节点 MXNZP 应用密钥（敏感，仅显示掩码；初始来自 .env，可在本页修改）",
+    ),
+    "mxnzp.base_url": (
+        "https://www.mxnzp.com",
+        "万年历节点 MXNZP API 基础地址（一般无需修改）",
+    ),
 }
 
 
@@ -92,8 +106,8 @@ def _startup_init():
             existing = db.query(AppSetting).filter(AppSetting.key == key).first()
             if not existing:
                 db.add(AppSetting(key=key, value=value, description=description))
-            elif key.startswith("bifrost.") and value and not existing.value:
-                # 种子回填（仅 bifrost.*）：存量值为空且种子值（.env）非空时补写——
+            elif (key.startswith("bifrost.") or key.startswith("mxnzp.")) and value and not existing.value:
+                # 种子回填（bifrost.* / mxnzp.*）：存量值为空且种子值（.env）非空时补写——
                 # 兼容「先启动后补 .env」与管理员清空后重启恢复；绝不覆盖非空修改
                 existing.value = value
 

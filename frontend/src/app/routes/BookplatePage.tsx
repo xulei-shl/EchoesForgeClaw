@@ -28,6 +28,7 @@ import {
   NODE_PORT_TYPES,
   getNodeTitle,
   matchPortType,
+  nodeOutputText,
   resolveDirectParents,
 } from '../../modules/bookplate/nodeTypes';
 import {
@@ -58,7 +59,7 @@ import { NodeEdge, type NodeEdgeHandle } from '../../platform/components/node/No
 import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
 import api from '../../platform/services/api';
 import generationsService from '../../platform/services/generations';
-import { ISBN_FETCH_TIMEOUT_MS } from '../../platform/utils/timeouts';
+import { ISBN_FETCH_TIMEOUT_MS, SMALL_TOOL_TIMEOUT_MS } from '../../platform/utils/timeouts';
 import type {
   CanvasNodeType,
   ChatNodeSettings,
@@ -607,6 +608,10 @@ const BookplatePage: React.FC = () => {
           skillSelections: [],
           error: null,
         };
+      case 'calendar':
+        return { output: '', date: '', isGenerating: false, error: null };
+      case 'weather':
+        return { output: '', city: '', isGenerating: false, error: null };
     }
   };
 
@@ -1091,6 +1096,59 @@ const BookplatePage: React.FC = () => {
     []
   );
 
+  /** 万年历节点：按日期查询节假日 / 农历万年历（结果写入 data.output，供下游消费） */
+  const handleFetchCalendarFor = useCallback((id: string, date: string) => {
+    const node = nodesRef.current.find((n) => n.id === id);
+    if (!node || node.type !== 'calendar' || node.data?.isGenerating) return;
+    updateNodeData(id, { isGenerating: true, error: null, date });
+    api
+      .post('/modules/bookplate/calendar', { date }, { timeout: SMALL_TOOL_TIMEOUT_MS })
+      .then((res: any) => {
+        updateNodeData(id, {
+          output: typeof res?.output === 'string' ? res.output : '',
+          isGenerating: false,
+          error: null,
+        });
+      })
+      .catch((error: any) => {
+        console.error('Failed to fetch calendar:', error);
+        updateNodeData(id, {
+          isGenerating: false,
+          error: error?.isTimeout ? '万年历查询超时，请重试' : error?.detail || '万年历查询失败，请重试',
+        });
+      });
+    // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** 天气查询节点：按城市查询当前天气（城市 = 连线上级文本 > 手动输入；留空自动定位） */
+  const handleFetchWeatherFor = useCallback((id: string, city: string) => {
+    const node = nodesRef.current.find((n) => n.id === id);
+    if (!node || node.type !== 'weather' || node.data?.isGenerating) return;
+    const parents = resolveDirectParents(id, nodesRef.current, edgesRef.current);
+    const upstreamCity = parents.map((p) => nodeOutputText(p)).find((v) => v.trim()) ?? '';
+    const finalCity = upstreamCity || city;
+    updateNodeData(id, { isGenerating: true, error: null, city });
+    api
+      .post('/modules/bookplate/weather', { city: finalCity }, { timeout: SMALL_TOOL_TIMEOUT_MS })
+      .then((res: any) => {
+        updateNodeData(id, {
+          output: typeof res?.output === 'string' ? res.output : '',
+          isGenerating: false,
+          error: null,
+        });
+      })
+      .catch((error: any) => {
+        console.error('Failed to fetch weather:', error);
+        updateNodeData(id, {
+          isGenerating: false,
+          error: error?.isTimeout ? '天气查询超时，请重试' : error?.detail || '天气查询失败，请重试',
+        });
+      });
+    // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /** 提示词检索节点：选用一条 Bifrost 提示词（正文写入 data.content；未变化不记历史） */
   const handleUpdatePromptFor = useCallback(
     (id: string, selection: PromptSelection) => {
@@ -1384,6 +1442,8 @@ const BookplatePage: React.FC = () => {
     chatDeps,
     handleUpdatePromptFor,
     handleUpdateSkillsFor,
+    handleFetchCalendarFor,
+    handleFetchWeatherFor,
     handleUpdateAggregateTemplateFor,
     handleRenameAggregatePlaceholderFor,
     handleUpdateChatSettingsFor,

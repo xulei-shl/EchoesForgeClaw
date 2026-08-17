@@ -18,6 +18,9 @@ export interface EnvConfig {
   /** Bifrost 管理 API 认证（自部署默认 Basic Auth，启动时种子化到系统设置） */
   bifrostUsername: string;
   bifrostPassword: string;
+  /** 万年历节点（MXNZP 节假日/万年历 API）凭据；留空时该节点提示未配置 */
+  mxnzpAppId: string;
+  mxnzpAppSecret: string;
   /** 前端 CORS 来源（逗号分隔，默认本地开发端口 5173/5180） */
   corsOrigins: string[];
 }
@@ -35,6 +38,8 @@ export const env: EnvConfig = {
   adminPassword: process.env.ADMIN_PASSWORD ?? 'admin123',
   bifrostUsername: process.env.BIFROST_USERNAME ?? '',
   bifrostPassword: process.env.BIFROST_PASSWORD ?? '',
+  mxnzpAppId: process.env.MXNZP_APP_ID ?? '',
+  mxnzpAppSecret: process.env.MXNZP_APP_SECRET ?? '',
   corsOrigins: (process.env.CORS_ORIGINS ?? 'http://localhost:5173,http://localhost:5180')
     .split(',')
     .map((s) => s.trim())

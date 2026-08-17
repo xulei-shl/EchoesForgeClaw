@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     BIFROST_USERNAME: str = ""
     BIFROST_PASSWORD: str = ""
 
+    # 万年历节点（MXNZP 节假日/万年历 API）凭据；留空时该节点提示未配置
+    MXNZP_APP_ID: str = ""
+    MXNZP_APP_SECRET: str = ""
+
     class Config:
         env_file = ".env"
 

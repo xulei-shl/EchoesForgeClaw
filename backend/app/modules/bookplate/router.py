@@ -5,6 +5,7 @@ import hashlib
 import json
 import logging
 import random
+import re
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 from urllib.parse import urlparse, quote
@@ -23,6 +24,7 @@ from .douban_client import (
     COVER_REFERERS,
 )
 from app.core.database import get_db, SessionLocal
+from app.core.config import settings
 from app.core.deps import get_current_active_user, get_current_admin_user
 from app.models.user import User
 from app.models.node_config import NodeConfig
@@ -344,6 +346,18 @@ class ImageGenRequest(BaseModel):
     config_id: Optional[int] = None
     # 画布节点 id：Agent 模式下用作 FastClaw 会话 key 的一部分
     node_id: Optional[str] = None
+
+
+class CalendarRequest(BaseModel):
+    """万年历节点请求：查询指定日期的节假日 / 农历万年历（缺省今天）。"""
+
+    date: Optional[str] = None
+
+
+class WeatherRequest(BaseModel):
+    """天气查询节点请求：查询指定城市当前天气（缺省按 IP 自动定位）。"""
+
+    city: Optional[str] = None
 
 
 class ChatRequest(BaseModel):
@@ -1137,6 +1151,232 @@ async def generate_bookplate_image(
         )
     except ImageGenerationError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# 小工具节点：万年历 / 天气查询（无需配置，直接调用第三方公开 API）
+# ---------------------------------------------------------------------------
+
+_WEEKDAYS = ("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+
+# wttr.in weatherCode → 中文天气描述（收录常用代码；未收录回退英文原文）
+_WEATHER_CODE_ZH = {
+    "113": "晴", "116": "局部多云", "119": "多云", "122": "阴", "143": "薄雾",
+    "176": "局部有雨", "263": "局部小雨", "266": "小雨",
+    "293": "零星小雨", "296": "小雨", "299": "中雨", "302": "中雨",
+    "305": "大雨", "308": "大雨", "311": "冻雨", "314": "冻雨",
+    "317": "雨夹雪", "320": "雨夹雪", "323": "小雪", "326": "小雪",
+    "329": "中雪", "332": "中雪", "335": "大雪", "338": "大雪",
+    "350": "冰粒", "353": "阵雨", "356": "中阵雨", "359": "大阵雨",
+    "362": "阵性雨夹雪", "365": "阵性雨夹雪", "368": "阵雪", "371": "大阵雪",
+    "374": "冰粒", "377": "冰粒", "386": "雷阵雨", "389": "强雷阵雨",
+    "392": "雷阵雪", "395": "强雷阵雪",
+}
+
+# wttr.in 十六方位风向 → 中文
+_WIND_DIR_ZH = {
+    "N": "北风", "NNE": "北北东风", "NE": "东北风", "ENE": "东北偏东风",
+    "E": "东风", "ESE": "东南偏东风", "SE": "东南风", "SSE": "南南东风",
+    "S": "南风", "SSW": "南南西风", "SW": "西南风", "WSW": "西南偏西风",
+    "W": "西风", "WNW": "西北偏西风", "NW": "西北风", "NNW": "北北西风",
+}
+
+# wttr.in 月相 → 中文
+_MOON_PHASE_ZH = {
+    "New Moon": "新月", "Waxing Crescent": "蛾眉月", "First Quarter": "上弦月",
+    "Waxing Gibbous": "盈凸月", "Full Moon": "满月", "Waning Gibbous": "亏凸月",
+    "Last Quarter": "下弦月", "Waning Crescent": "残月",
+}
+
+
+def _to_24h(value: Optional[str]) -> str:
+    """12 小时制（如 "02:56 AM"）→ 24 小时制；无法解析原样返回。"""
+    if not value:
+        return ""
+    m = re.fullmatch(r"(\d{1,2}):(\d{2})\s*(AM|PM)", value.strip(), re.IGNORECASE)
+    if not m:
+        return value.strip()
+    hour = int(m.group(1)) % 12
+    if m.group(3).upper() == "PM":
+        hour += 12
+    return f"{hour:02d}:{m.group(2)}"
+
+
+def _format_calendar(data: Dict[str, Any], date_str: str) -> str:
+    """万年历数据 → 对外文本输出（Markdown 列表，仅含非空字段）。"""
+    lines = [f"# 万年历 · {data.get('date') or date_str}"]
+    week_day = data.get("weekDay")
+    if isinstance(week_day, int) and 1 <= week_day <= 7:
+        lines.append(f"星期：{_WEEKDAYS[week_day - 1]}")
+    rows = (
+        ("农历", "lunarCalendar"),
+        ("天干地支", "yearTips"),
+        ("属相", "chineseZodiac"),
+        ("节气", "solarTerms"),
+        ("星座", "constellation"),
+        ("类型", "typeDes"),
+        ("宜", "suit"),
+        ("忌", "avoid"),
+        ("一年第几天", "dayOfYear"),
+        ("一年第几周", "weekOfYear"),
+    )
+    for label, key in rows:
+        value = data.get(key)
+        if value not in (None, ""):
+            lines.append(f"- **{label}**：{value}")
+    return "\n".join(lines)
+
+
+def _format_weather(city: str, body: Dict[str, Any]) -> str:
+    """wttr.in format=j1 JSON → 对外文本输出（结构化中文，人类可读）。"""
+    conditions = body.get("current_condition") or []
+    if not conditions:
+        raise HTTPException(status_code=502, detail="未找到该城市的天气信息，请检查城市名")
+    cc = conditions[0]
+    nearest = (body.get("nearest_area") or [{}])[0]
+    area_name = ((nearest.get("areaName") or [{}])[0] or {}).get("value", "")
+    country = ((nearest.get("country") or [{}])[0] or {}).get("value", "")
+    title = city or "，".join(x for x in (area_name, country) if x) or "当前位置"
+
+    desc_en = ((cc.get("weatherDesc") or [{}])[0] or {}).get("value", "")
+    condition = _WEATHER_CODE_ZH.get(str(cc.get("weatherCode", "")), desc_en) or "未知"
+    feels = f"（体感 {cc.get('FeelsLikeC')}°C）" if cc.get("FeelsLikeC") else ""
+    lines = [
+        f"# {title} · 当前天气",
+        "",
+        f"**{condition}，{cc.get('temp_C') or '--'}°C{feels}**",
+    ]
+
+    rows = []
+    wind = _WIND_DIR_ZH.get(cc.get("winddir16Point", ""), cc.get("winddir16Point") or "")
+    if wind and cc.get("windspeedKmph") is not None:
+        rows.append(("风向风速", f"{wind} {cc['windspeedKmph']} km/h"))
+    if cc.get("humidity") is not None:
+        rows.append(("湿度", f"{cc['humidity']}%"))
+    if cc.get("visibility") is not None:
+        rows.append(("能见度", f"{cc['visibility']} km"))
+    if cc.get("cloudcover") is not None:
+        rows.append(("云量", f"{cc['cloudcover']}%"))
+    if cc.get("precipMM") is not None:
+        rows.append(("降水", f"{cc['precipMM']} mm"))
+    if cc.get("pressure") is not None:
+        rows.append(("气压", f"{cc['pressure']} hPa"))
+    if cc.get("uvIndex") is not None:
+        rows.append(("紫外线指数", str(cc["uvIndex"])))
+    obs = _to_24h(cc.get("observation_time"))
+    if obs:
+        rows.append(("观测时间", obs))
+    for label, value in rows:
+        lines.append(f"- **{label}**：{value}")
+
+    day = (body.get("weather") or [{}])[0]
+    summary = []
+    if day:
+        temps = []
+        if day.get("maxtempC") is not None:
+            temps.append(f"最高 {day['maxtempC']}°C")
+        if day.get("mintempC") is not None:
+            temps.append(f"最低 {day['mintempC']}°C")
+        if temps:
+            summary.append("今日：" + " / ".join(temps))
+        astro = (day.get("astronomy") or [{}])[0]
+        if astro:
+            parts = []
+            sunrise = _to_24h(astro.get("sunrise"))
+            sunset = _to_24h(astro.get("sunset"))
+            if sunrise:
+                parts.append(f"日出 {sunrise}")
+            if sunset:
+                parts.append(f"日落 {sunset}")
+            moon_phase = astro.get("moon_phase")
+            if moon_phase:
+                parts.append(f"月相：{_MOON_PHASE_ZH.get(moon_phase, moon_phase)}")
+            if parts:
+                summary.append(" · ".join(parts))
+    if summary:
+        lines.extend(["", "> " + " · ".join(summary)])
+    return "\n".join(lines)
+
+
+def _mxnzp_config(db: Session) -> Dict[str, str]:
+    """按系统设置组装 MXNZP 配置（/admin/settings 优先，.env 回退）。"""
+    settings_map = {s.key: s.value for s in db.query(AppSetting).all()}
+    return {
+        "app_id": (settings_map.get("mxnzp.app_id") or "").strip() or settings.MXNZP_APP_ID,
+        "app_secret": (settings_map.get("mxnzp.app_secret") or "").strip() or settings.MXNZP_APP_SECRET,
+        "base_url": (settings_map.get("mxnzp.base_url") or "").strip() or "https://www.mxnzp.com",
+    }
+
+
+@router.post("/calendar")
+async def calendar_query(
+    payload: CalendarRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """万年历节点：查询指定日期的节假日 / 农历万年历（MXNZP API）。"""
+    import httpx
+
+    cfg = _mxnzp_config(db)
+    if not cfg["app_id"] or not cfg["app_secret"]:
+        raise HTTPException(
+            status_code=503,
+            detail="万年历服务未配置：请在管理端「系统设置」配置 mxnzp.app_id / mxnzp.app_secret（或设置 .env 的 MXNZP_APP_ID / MXNZP_APP_SECRET 后重启后端）",
+        )
+    normalized = re.sub(r"[-/]", "", payload.date or "")
+    if not re.fullmatch(r"\d{8}", normalized):
+        raise HTTPException(status_code=400, detail="日期格式无效，应为 yyyy-MM-dd 或 yyyyMMdd")
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                f"{cfg['base_url'].rstrip('/')}/api/holiday/single/{normalized}",
+                params={
+                    "app_id": cfg["app_id"],
+                    "app_secret": cfg["app_secret"],
+                    "ignoreHoliday": "false",
+                },
+            )
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"万年历查询失败: {exc}") from exc
+    try:
+        body = resp.json()
+    except ValueError:
+        raise HTTPException(status_code=502, detail="万年历服务返回了无法解析的内容")
+    if body.get("code") != 1 or not body.get("data"):
+        raise HTTPException(status_code=502, detail=body.get("msg") or "万年历查询失败，请检查 MXNZP 凭据是否有效")
+    return {
+        "output": _format_calendar(body["data"], normalized),
+        "date": normalized,
+    }
+
+
+@router.post("/weather")
+async def weather_query(
+    payload: WeatherRequest,
+    current_user: User = Depends(get_current_active_user),
+):
+    """天气查询节点：查询指定城市当前天气（wttr.in，结构化中文输出）。"""
+    import httpx
+
+    city = (payload.city or "").strip()
+    path = f"/{quote(city)}" if city else ""
+    # wttr.in 按 User-Agent 区分客户端：浏览器 UA 返回 HTML 页面，curl 返回纯文本。
+    # 服务端请求伪装 curl + Accept: application/json 以稳定拿到 JSON 结构。
+    try:
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+            resp = await client.get(
+                f"https://wttr.in{path}?format=j1&lang=zh",
+                headers={"User-Agent": "curl/8.5.0", "Accept": "application/json"},
+            )
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"天气查询失败: {exc}") from exc
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"天气查询失败（HTTP {resp.status_code}）")
+    try:
+        body = resp.json()
+    except ValueError:
+        raise HTTPException(status_code=502, detail="未找到该城市的天气信息，请检查城市名")
+    return {"output": _format_weather(city, body), "city": city}
 
 
 # ---------------------------------------------------------------------------

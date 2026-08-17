@@ -26,3 +26,6 @@ export const PROMPT_SSE_IDLE_TIMEOUT_MS = 120_000;
 
 /** 图片生成超时（ms）。后端最坏 ≈ 180s（120s LLM + 60s URL 下载），留出余量 */
 export const IMAGE_GENERATION_TIMEOUT_MS = 240_000;
+
+/** 小工具节点（万年历 / 天气查询）外部 API 超时（ms）。后端单次请求超时为 15s */
+export const SMALL_TOOL_TIMEOUT_MS = 30_000;

@@ -29,6 +29,9 @@ const KNOWN_KEYS: { key: string; description: string }[] = [
   { key: 'bifrost.username', description: 'Bifrost 管理账号（Basic Auth 用户名，初始来自 .env）' },
   { key: 'bifrost.password', description: 'Bifrost 管理密码（敏感，仅显示掩码）' },
   { key: 'bifrost.allowed_folders', description: 'Bifrost 白名单文件夹（逗号分隔，建议填文件夹 ID 也可填名称；留空=允许全部；仅白名单内的提示词出现在管理页与画布检索列表）' },
+  { key: 'mxnzp.app_id', description: '万年历节点 MXNZP 应用 ID（初始来自 .env）' },
+  { key: 'mxnzp.app_secret', description: '万年历节点 MXNZP 应用密钥（敏感，仅显示掩码）' },
+  { key: 'mxnzp.base_url', description: '万年历节点 MXNZP API 基础地址（一般无需修改）' },
 ];
 
 /** 敏感设置项的值展示 / 编辑提示 */

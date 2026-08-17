@@ -14,6 +14,8 @@ export const NODE_TYPES = {
   TEXT_AGGREGATE: 'text_aggregate',
   PROMPT_SEARCH: 'prompt_search',
   SKILL_SEARCH: 'skill_search',
+  CALENDAR: 'calendar',
+  WEATHER: 'weather',
 } as const;
 
 export type NodeType = (typeof NODE_TYPES)[keyof typeof NODE_TYPES];
@@ -22,7 +24,7 @@ export interface NodeTemplate {
   type: NodeType;
   name: string;
   description: string;
-  category: 'input' | 'analysis' | 'generate' | 'output';
+  category: 'input' | 'analysis' | 'generate' | 'output' | 'tool';
   configurable: boolean;
   output_type?: 'text' | 'image' | 'document';
   input_types?: string[];
@@ -113,5 +115,22 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     category: 'input',
     configurable: false,
     output_type: 'document',
+  },
+  {
+    type: NODE_TYPES.CALENDAR,
+    name: '万年历',
+    description: '查询指定日期的节假日与农历万年历（MXNZP API，无需配置）',
+    category: 'tool',
+    configurable: false,
+    output_type: 'text',
+  },
+  {
+    type: NODE_TYPES.WEATHER,
+    name: '天气查询',
+    description: '查询指定城市当前天气（wttr.in，可连线文本节点传入城市，无需配置）',
+    category: 'tool',
+    configurable: false,
+    output_type: 'text',
+    input_types: ['text'],
   },
 ];

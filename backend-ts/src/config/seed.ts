@@ -36,6 +36,21 @@ const DEFAULT_SETTINGS: Array<[string, string, string]> = [
     env.bifrostPassword,
     'Bifrost 管理密码（敏感，仅显示掩码；初始来自 .env，可在本页修改）',
   ],
+  [
+    'mxnzp.app_id',
+    env.mxnzpAppId,
+    '万年历节点（MXNZP 节假日/万年历 API）应用 ID，初始来自 .env，可在本页修改',
+  ],
+  [
+    'mxnzp.app_secret',
+    env.mxnzpAppSecret,
+    '万年历节点 MXNZP 应用密钥（敏感，仅显示掩码；初始来自 .env，可在本页修改）',
+  ],
+  [
+    'mxnzp.base_url',
+    'https://www.mxnzp.com',
+    '万年历节点 MXNZP API 基础地址（一般无需修改）',
+  ],
 ];
 
 export function seedStartup(): void {
@@ -59,8 +74,8 @@ export function seedStartup(): void {
     const existing = db.select().from(appSettings).where(eq(appSettings.key, key)).get();
     if (!existing) {
       db.insert(appSettings).values({ key, value, description }).run();
-    } else if (key.startsWith('bifrost.') && value && !existing.value) {
-      // 种子回填（仅 bifrost.*）：存量值为空且种子值非空时补写，绝不覆盖非空修改
+    } else if ((key.startsWith('bifrost.') || key.startsWith('mxnzp.')) && value && !existing.value) {
+      // 种子回填（bifrost.* / mxnzp.*）：存量值为空且种子值非空时补写，绝不覆盖非空修改
       db.update(appSettings).set({ value }).where(eq(appSettings.key, key)).run();
     }
   }

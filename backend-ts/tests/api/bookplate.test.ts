@@ -144,6 +144,30 @@ describe('node-registry', () => {
     expect(body.templates.some((t: any) => t.type === 'chat')).toBe(true);
     expect(body.configs.some((c: any) => c.node_type === 'chat' && c.mode === 'llm')).toBe(true);
   });
+
+  it('内置小工具模板（万年历 / 天气查询）无需配置即可用', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/modules/bookplate/node-registry',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    const calendar = body.templates.find((t: any) => t.type === 'calendar');
+    const weather = body.templates.find((t: any) => t.type === 'weather');
+    expect(calendar).toBeDefined();
+    expect(weather).toBeDefined();
+    // 小工具类别 + 无需配置 + 文本输出（天气可接受文本输入城市）
+    expect(calendar.category).toBe('tool');
+    expect(calendar.configurable).toBe(false);
+    expect(calendar.output_type).toBe('text');
+    expect(weather.category).toBe('tool');
+    expect(weather.configurable).toBe(false);
+    expect(weather.output_type).toBe('text');
+    expect(weather.input_types).toContain('text');
+    // 模板声明即出现在「+」菜单：无需任何节点配置变体
+    expect(body.configs.some((c: any) => c.node_type === 'calendar')).toBe(false);
+  });
 });
 
 describe('chat 端点', () => {
