@@ -24,17 +24,28 @@ import type { EdgeData } from './graphTypes';
 // AI 对话单轮携带的图片上限（附件 + 上下文图片合计）：防止超大 base64 请求体拖垮传输
 const MAX_CHAT_IMAGES = 4;
 
-/** 上下文设置兜底（旧节点持久化的 settings 缺少 includeUpstreamImages，undefined 视为开启） */
+/** 上下文设置兜底（旧节点持久化的 settings 缺少 includeUpstreamImages / includeBookCover，undefined 视为开启） */
 const DEFAULT_CHAT_SETTINGS: ChatNodeSettings = {
   includeBook: false,
   includeUpstream: true,
   includeUpstreamImages: true,
+  includeBookCover: true,
 };
 
 /** ChatHost 依赖（画布注入：state setter + 端口类型查找；nodesRef/edgesRef 为模块级单例） */
 export interface ChatHostDeps {
   setNodes: Dispatch<SetStateAction<NodeData[]>>;
   portTypesRef: RefObject<PortTypesLookup>;
+}
+
+/** 图书封面在浏览器可访问的 URL：优先本地代理（同源可 fetch → data URL），兜底豆瓣/内部地址（可能跨域 fetch 失败，收集时跳过）。 */
+function bookCoverImage(data: any): string {
+  return (
+    (typeof data?.cover_image_local === 'string' && data.cover_image_local) ||
+    (typeof data?.cover_image === 'string' && data.cover_image) ||
+    (typeof data?.coverUrl === 'string' && data.coverUrl) ||
+    ''
+  );
 }
 
 /** 收集对话上下文块（按图书元数据与每个直接父节点拆分，用于顶部折叠卡片展示） */
@@ -52,11 +63,14 @@ function buildInjectedContextBlocks(
     const book = resolveNodeRunInputs(node, nodes, edges, portTypesRef.current).book;
     if (book) {
       const metaText = bookMetadataText(book.data);
+      // 图书封面：开启「加载图书封面图片」且封面可用时，随元数据注入图片上下文（镜像图片分析节点的封面传递）
+      const cover = settings.includeBookCover !== false ? bookCoverImage(book.data) : '';
       blocks.push({
         id: `book_${book.id}`,
         title: `图书元数据 · ${getNodeTitle(book)}`,
         nodeType: 'book_info',
         text: metaText.trim() || undefined,
+        ...(cover ? { images: [cover] } : {}),
       });
     }
   }

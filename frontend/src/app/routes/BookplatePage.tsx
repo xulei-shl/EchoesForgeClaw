@@ -591,7 +591,7 @@ const BookplatePage: React.FC = () => {
           isGenerating: false,
           error: null,
           agentSteps: [],
-          settings: { includeBook: !!parent, includeUpstream: true, includeUpstreamImages: true },
+          settings: { includeBook: !!parent, includeUpstream: true, includeUpstreamImages: true, includeBookCover: true },
           epoch: 0,
         };
       case 'text_aggregate':
@@ -1017,6 +1017,7 @@ const BookplatePage: React.FC = () => {
       includeBook: false,
       includeUpstream: true,
       includeUpstreamImages: true,
+      includeBookCover: true,
     };
     if (JSON.stringify(old) === JSON.stringify(settings)) return;
     recordHistory();

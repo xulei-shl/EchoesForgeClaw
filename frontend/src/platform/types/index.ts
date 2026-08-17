@@ -269,6 +269,11 @@ export interface ChatNodeSettings {
    * 默认开启：旧节点持久化的设置未含该字段，undefined 视为开启。
    */
   includeUpstreamImages?: boolean;
+  /**
+   * 随图书元数据注入封面图作为视觉上下文（镜像图片分析节点的封面传递）；
+   * 仅当 includeBook 开启且封面可用时生效。默认开启：undefined 视为开启。
+   */
+  includeBookCover?: boolean;
 }
 
 /** 可执行节点（图片分析 / 提示词生成 / 图像生成）的运行设置（节点内可开关） */

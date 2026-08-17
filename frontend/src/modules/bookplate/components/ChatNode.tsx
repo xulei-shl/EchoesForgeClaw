@@ -894,6 +894,22 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                 </div>
                 <div className="flex items-start justify-between gap-2.5">
                   <div className="min-w-0">
+                    <p className="text-xs font-sans text-ink">加载图书封面图片</p>
+                    <p className="text-[10px] text-ink-faint font-sans mt-0.5 leading-snug">
+                      {settings.includeBook
+                        ? '随图书元数据注入封面图作为视觉上下文'
+                        : '需先开启「继承图书元数据」'}
+                    </p>
+                  </div>
+                  <Toggle
+                    checked={settings.includeBookCover !== false}
+                    onChange={(v) => onUpdateSettings?.(id, { ...settings, includeBookCover: v })}
+                    label="加载图书封面图片"
+                    disabled={messages.length > 0 || !settings.includeBook}
+                  />
+                </div>
+                <div className="flex items-start justify-between gap-2.5">
+                  <div className="min-w-0">
                     <p className="text-xs font-sans text-ink">加载直接上级文本</p>
                     <p className="text-[10px] text-ink-faint font-sans mt-0.5 leading-snug">
                       仅提取紧邻相连的父节点输出的文字内容
