@@ -1,6 +1,6 @@
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { FileSearch, ImageOff, Loader2, Search, ChevronLeft, Check, Maximize2 } from 'lucide-react';
+import { FileSearch, ImageOff, Loader2, Search, Check, Maximize2 } from 'lucide-react';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
 import api from '../../../platform/services/api';
@@ -57,7 +57,6 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [q, setQ] = useState('');
-  const [detail, setDetail] = useState<BifrostPrompt | null>(null);
   // 悬停预览：跟随鼠标的浮层大图（fixed 覆盖层，portal 到 body 避免被画布 transform 裁剪）
   const [hoverPreview, setHoverPreview] = useState<{ x: number; y: number; url: string } | null>(null);
   // 请求序号：丢弃过期响应，防止快速输入时旧结果覆盖新结果
@@ -90,7 +89,6 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
   const openPicker = useCallback(() => {
     setQ('');
     setVisibleCount(20);
-    setDetail(null);
     setPrompts([]);
     // 首次加载交由下方搜索防抖 effect 触发（打开后 350ms 内完成），避免重复请求
     setLoading(true);
@@ -100,7 +98,6 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
 
   const closePicker = useCallback(() => {
     setPickerOpen(false);
-    setDetail(null);
     setHoverPreview(null);
   }, []);
 
@@ -116,7 +113,7 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
 
   // 触底自动加载更多
   useEffect(() => {
-    if (!pickerOpen || !!detail || prompts.length === 0) return;
+    if (!pickerOpen || prompts.length === 0) return;
     
     const observer = new IntersectionObserver(
       (entries) => {
@@ -132,7 +129,7 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
     }
 
     return () => observer.disconnect();
-  }, [pickerOpen, detail, prompts.length, visibleCount]);
+  }, [pickerOpen, prompts.length, visibleCount]);
 
   const handleSelect = (p: BifrostPrompt) => {
     onUpdatePrompt?.(id, {
@@ -141,11 +138,7 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
       content: p.content,
       imageUrl: p.preview_image,
     });
-    closePicker();
   };
-
-  const formatDate = (s?: string | null) =>
-    s ? new Date(s).toLocaleString('zh-CN', { hour12: false }) : '';
 
   const renderList = () => (
     <div className="space-y-1.5 max-h-[52vh] overflow-y-auto custom-scrollbar -mx-2 px-2">
@@ -173,42 +166,64 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
       )}
       {!loading &&
         !error &&
-        prompts.slice(0, visibleCount).map((p) => (
-          <div
-            key={p.id}
-            className="flex items-center gap-3 p-2.5 rounded-md cursor-pointer transition border border-transparent hover:border-paper-grid hover:bg-paper-grid/30 active:scale-[0.99]"
-            onClick={() => {
-              setHoverPreview(null);
-              setDetail(p);
-            }}
-            onMouseEnter={(e) =>
-              p.preview_image &&
-              setHoverPreview({ x: e.clientX + 18, y: e.clientY + 12, url: p.preview_image })
-            }
-            onMouseMove={(e) =>
-              p.preview_image &&
-              setHoverPreview({ x: e.clientX + 18, y: e.clientY + 12, url: p.preview_image })
-            }
-            onMouseLeave={() => setHoverPreview(null)}
-          >
-            <div className="w-11 h-11 shrink-0 rounded overflow-hidden bg-paper border border-paper-grid flex items-center justify-center">
-              {p.preview_image ? (
-                <img src={p.preview_image} alt="" className="w-full h-full object-cover" loading="lazy" />
-              ) : (
-                <ImageOff size={16} strokeWidth={1.5} className="text-ink-faint" />
-              )}
-            </div>
-            <div className="min-w-0 flex-1 py-0.5">
-              <p className="text-sm font-medium text-ink truncate">{p.name}</p>
-              <p className="text-xs text-ink-light line-clamp-2 leading-relaxed mt-1">{p.content || '（空内容）'}</p>
-            </div>
-            {p.folder_name && (
-              <span className="shrink-0 text-[10px] text-ink-faint border border-dashed border-paper-grid rounded-pill px-1.5 py-px font-mono">
-                {p.folder_name}
+        prompts.slice(0, visibleCount).map((p) => {
+          const isSelected = p.id === promptId;
+          return (
+            <div
+              key={p.id}
+              className={`flex items-center gap-3 p-2.5 rounded-md cursor-pointer transition border active:scale-[0.99] ${
+                isSelected
+                  ? 'border-accent/50 bg-accent-surface/60'
+                  : 'border-transparent hover:border-paper-grid hover:bg-paper-grid/30'
+              }`}
+              onClick={() => handleSelect(p)}
+              onMouseEnter={(e) =>
+                p.preview_image &&
+                setHoverPreview({ x: e.clientX + 18, y: e.clientY + 12, url: p.preview_image })
+              }
+              onMouseMove={(e) =>
+                p.preview_image &&
+                setHoverPreview({ x: e.clientX + 18, y: e.clientY + 12, url: p.preview_image })
+              }
+              onMouseLeave={() => setHoverPreview(null)}
+            >
+              <div className="w-11 h-11 shrink-0 rounded overflow-hidden bg-paper border border-paper-grid flex items-center justify-center">
+                {p.preview_image ? (
+                  <img src={p.preview_image} alt="" className="w-full h-full object-cover" loading="lazy" />
+                ) : (
+                  <ImageOff size={16} strokeWidth={1.5} className="text-ink-faint" />
+                )}
+              </div>
+              <div className="min-w-0 flex-1 py-0.5">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-ink truncate">{p.name}</p>
+                  {p.folder_name && (
+                    <span className="shrink-0 text-[10px] text-ink-faint border border-dashed border-paper-grid rounded-pill px-1.5 py-px font-mono">
+                      {p.folder_name}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-ink-light line-clamp-2 leading-relaxed mt-1">{p.content || '（空内容）'}</p>
+              </div>
+              <span
+                className={`shrink-0 self-center text-[10px] rounded-pill px-2 py-1 border flex items-center gap-1 transition ${
+                  isSelected
+                    ? 'text-accent border-accent/40 bg-accent-surface'
+                    : 'text-ink-light border-dashed border-paper-grid hover:text-accent hover:border-accent/30'
+                }`}
+              >
+                {isSelected ? (
+                  <>
+                    <Check size={11} strokeWidth={2.5} />
+                    已选
+                  </>
+                ) : (
+                  '选择'
+                )}
               </span>
-            )}
-          </div>
-        ))}
+            </div>
+          );
+        })}
       {!loading && !error && prompts.length > 0 && visibleCount < prompts.length && (
         <div ref={observerTarget} className="py-4 flex justify-center">
           <Loader2 className="w-4 h-4 animate-spin text-ink-faint" />
@@ -219,74 +234,6 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
       )}
     </div>
   );
-
-  const renderDetail = () => {
-    if (!detail) return null;
-    return (
-      <div className="flex flex-col h-[52vh] -mx-2 px-2">
-        <div className="flex items-center justify-between pb-3 border-b border-paper-grid/60 shrink-0">
-          <button
-            onClick={() => setDetail(null)}
-            className="flex items-center gap-1 text-sm text-ink-light hover:text-accent font-sans active:scale-95 transition"
-          >
-            <ChevronLeft size={15} strokeWidth={1.5} />
-            返回列表
-          </button>
-          <span className="text-xs text-ink-faint font-sans">提示词详情</span>
-        </div>
-        <div className="flex-1 overflow-y-auto custom-scrollbar py-4 space-y-4 pr-1.5">
-          <div className="rounded-md border border-dashed border-paper-grid bg-paper overflow-hidden">
-          {detail.preview_image ? (
-            <PhotoProvider maskOpacity={0.8} bannerVisible={false}>
-              <PhotoView src={detail.preview_image}>
-                <div className="relative group cursor-pointer" title="点击全屏查看">
-                  <img
-                    src={detail.preview_image}
-                    alt={detail.name}
-                    className="w-full max-h-56 object-contain bg-paper group-hover:opacity-95 transition"
-                  />
-                  <div className="absolute right-3 bottom-3 p-1.5 rounded bg-black/40 backdrop-blur-sm text-white/90 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-sm flex items-center justify-center">
-                    <Maximize2 size={16} strokeWidth={2} />
-                  </div>
-                </div>
-              </PhotoView>
-            </PhotoProvider>
-          ) : (
-            <div className="h-32 flex items-center justify-center">
-              <ImageOff size={28} strokeWidth={1} className="text-ink-faint" />
-            </div>
-          )}
-        </div>
-        <div>
-          <p className="font-serif text-base font-semibold text-ink">{detail.name}</p>
-          <div className="flex items-center gap-2 flex-wrap mt-1.5 text-xs text-ink-light font-sans">
-            {detail.folder_name && (
-              <span className="border border-dashed border-paper-grid rounded-pill px-2 py-px font-mono">
-                {detail.folder_name}
-              </span>
-            )}
-            {typeof detail.version_number === 'number' && (
-              <span className="font-mono">v{detail.version_number}</span>
-            )}
-            {detail.updated_at && <span>{formatDate(detail.updated_at)}</span>}
-          </div>
-        </div>
-        <pre className="text-sm text-ink font-sans whitespace-pre-wrap leading-relaxed bg-paper border border-paper-grid rounded-md p-3">
-          {detail.content || '（空内容）'}
-        </pre>
-        </div>
-        <div className="flex justify-end gap-2 pt-3 border-t border-paper-grid/60 shrink-0">
-          <Button variant="ghost" size="sm" onClick={closePicker}>
-            关闭
-          </Button>
-          <Button size="sm" onClick={() => handleSelect(detail)}>
-            <Check size={14} strokeWidth={2} className="mr-1" />
-            选用此提示词
-          </Button>
-        </div>
-      </div>
-    );
-  };
 
   const actionBar = promptId ? (
     <NodeActionBar>
@@ -362,24 +309,33 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
               title="选择提示词"
               panelClassName="max-w-2xl"
             >
-              <div>
-                {!detail && (
-                  <div className="relative mb-3">
-                    <Search
-                      size={15}
-                      strokeWidth={1.5}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint pointer-events-none"
-                    />
-                    <Input
-                      value={q}
-                      onChange={(e) => setQ(e.target.value)}
-                      placeholder="搜索提示词名称或内容…"
-                      className="pl-9"
-                      autoFocus
-                    />
-                  </div>
-                )}
-                {detail ? renderDetail() : renderList()}
+              <div className="space-y-3">
+                <div className="relative">
+                  <Search
+                    size={15}
+                    strokeWidth={1.5}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint pointer-events-none"
+                  />
+                  <Input
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    placeholder="搜索提示词名称或内容…"
+                    className="pl-9"
+                    autoFocus
+                  />
+                </div>
+                {renderList()}
+                <div className="flex items-center justify-between pt-2 border-t border-dashed border-paper-grid">
+                  <p className="text-[11px] text-ink-faint font-sans truncate max-w-[70%]">
+                    {promptId
+                      ? `已选择：${promptName || '提示词'}`
+                      : '尚未选择提示词'}
+                  </p>
+                  <Button variant="ghost" size="sm" onClick={closePicker}>
+                    <Check size={14} strokeWidth={2} className="mr-1" />
+                    完成
+                  </Button>
+                </div>
               </div>
             </Dialog>
             {hoverPreview && (
@@ -404,4 +360,5 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
 };
 
 export const PromptSearchNode = memo(PromptSearchNodeInner);
+PromptSearchNode.displayName = 'PromptSearchNode';
 export default PromptSearchNode;

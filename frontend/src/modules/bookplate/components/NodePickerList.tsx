@@ -150,10 +150,11 @@ const NodePickerListInner: React.FC<NodePickerListProps> = ({ items, onPick, pen
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="搜索节点名称、描述或 Agent..."
-            className="w-full pl-8 pr-7 py-1.5 bg-paper-grid/30 border border-paper-grid/60 focus:border-accent focus:bg-paper rounded-md text-xs text-ink outline-none transition-all placeholder:text-ink-faint shadow-inner"
+            className="w-full pl-8 pr-7 py-1.5 bg-paper-grid/20 border border-dashed border-paper-grid rounded-md text-xs text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => e.stopPropagation()}
           />
+
           {searchQuery && (
             <button
               type="button"
