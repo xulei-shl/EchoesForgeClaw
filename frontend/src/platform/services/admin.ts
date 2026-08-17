@@ -113,7 +113,8 @@ export const adminService = {
   /** all=true 时返回全部文件夹（不过滤白名单），供配置白名单多选用 */
   listBifrostFolders: (params?: { all?: boolean }): Promise<{ folders: BifrostFolder[] }> =>
     api.get<{ folders: BifrostFolder[] }, { folders: BifrostFolder[] }>('/admin/bifrost/folders', { params }),
-  listBifrostPrompts: (params?: { folder_id?: string; q?: string }): Promise<{ prompts: BifrostPrompt[] }> =>
+  /** force=true 绕过 TTL 缓存强制拉取 Bifrost（供「刷新」按钮使用） */
+  listBifrostPrompts: (params?: { folder_id?: string; q?: string; force?: boolean }): Promise<{ prompts: BifrostPrompt[] }> =>
     api.get<{ prompts: BifrostPrompt[] }, { prompts: BifrostPrompt[] }>('/admin/bifrost/prompts', { params }),
   getBifrostPrompt: (promptId: string): Promise<BifrostPrompt> =>
     api.get<BifrostPrompt, BifrostPrompt>(`/admin/bifrost/prompts/${encodeURIComponent(promptId)}`),
@@ -136,10 +137,11 @@ export const adminService = {
 
   /* ---------------- Bifrost Skills 管理 ---------------- */
 
-  /** 共享区缓存的 Bifrost Skills 列表（Bifrost 可达时富化远端版本信息） */
-  listBifrostSkills: (): Promise<{ skills: CachedBifrostSkill[] }> =>
-    api.get<{ skills: CachedBifrostSkill[] }, { skills: CachedBifrostSkill[] }>(
-      '/admin/bifrost-skills'
+  /** 共享区缓存的 Bifrost Skills 列表 + 远端未缓存 skill 合并浏览；force=true 绕过 TTL 缓存强制拉取远端 */
+  listBifrostSkills: (params?: { q?: string; force?: boolean }): Promise<{ skills: CachedBifrostSkill[]; remote_available: boolean }> =>
+    api.get<{ skills: CachedBifrostSkill[]; remote_available: boolean }, { skills: CachedBifrostSkill[]; remote_available: boolean }>(
+      '/admin/bifrost-skills',
+      { params }
     ),
   /** 强制从 Bifrost 拉取最新 zip 覆盖共享区（不触碰用户登记） */
   syncBifrostSkill: (name: string): Promise<{ skill: CachedBifrostSkill }> =>

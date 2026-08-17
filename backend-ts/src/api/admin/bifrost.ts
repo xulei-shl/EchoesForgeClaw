@@ -51,14 +51,14 @@ export async function registerBifrostAdminRouter(app: FastifyInstance): Promise<
     }
   });
 
-  // 提示词列表
+  // 提示词列表（force=1 绕过 TTL 缓存强制拉取 Bifrost，供管理页「刷新」使用）
   app.get('/api/admin/bifrost/prompts', admin, async (request, reply) => {
-    const q = (request.query ?? {}) as { folder_id?: string; q?: string; raw?: string };
+    const q = (request.query ?? {}) as { folder_id?: string; q?: string; raw?: string; force?: string };
     try {
       if (q.raw === 'true') {
         return await listPromptsRaw(getDb(), q.folder_id || null);
       }
-      const prompts = await listPrompts(getDb(), q.folder_id || null, q.q ?? '');
+      const prompts = await listPrompts(getDb(), q.folder_id || null, q.q ?? '', q.force === '1' || q.force === 'true');
       return { prompts };
     } catch (err) {
       const e = bifrostErrorHttp(err);

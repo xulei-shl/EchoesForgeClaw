@@ -291,6 +291,44 @@ export function installSkillZip(userId: number, zipBytes: Uint8Array): Record<st
   return meta;
 }
 
+/**
+ * 共享区已缓存该 Bifrost skill 时，跳过网络下载，仅在该用户登记目录建软链（对应 Python
+ * `register_existing_bifrost_skill`）。命中返回元数据；未命中返回 null，由调用方走网络下载。
+ * 用户登记已存在且有效 → 幂等返回，不重复建链。
+ */
+export function registerExistingBifrostSkill(userId: number, skillName: string): Record<string, unknown> | null {
+  const name = (skillName ?? '').trim();
+  if (
+    !name ||
+    name.length > MAX_SKILL_NAME_LEN ||
+    name.includes('/') ||
+    name.includes('\\') ||
+    name === '.' ||
+    name === '..' ||
+    [...name].some((ch) => ch.charCodeAt(0) < 32)
+  ) {
+    throw new SkillValidationError('非法 skill 名称');
+  }
+  const dest = path.join(REAL_SKILLS_ROOT, name);
+  try {
+    if (!statSync(dest).isDirectory() || !existsSync(path.join(dest, 'SKILL.md'))) return null;
+  } catch {
+    return null;
+  }
+  const registry = path.join(userSkillsRoot(userId), name);
+  if (existsSync(path.join(registry, 'SKILL.md'))) {
+    // 已登记且有效：幂等返回，不重复建链（软链或 Windows 复制退化副本均可）
+    const meta = readSkillMeta(registry);
+    meta.path = `skills/${name}`;
+    return meta;
+  }
+  removePath(registry);
+  symlinkOrCopy(dest, registry);
+  const meta = readSkillMeta(registry);
+  meta.path = `skills/${name}`;
+  return meta;
+}
+
 /** 用户上传路径：校验并真实解压到私有登记目录（用户私有数据，不跨用户共享）。 */
 export function installUserSkillZip(userId: number, zipBytes: Uint8Array): Record<string, unknown> {
   const info = validateSkillZip(zipBytes);

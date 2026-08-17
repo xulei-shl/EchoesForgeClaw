@@ -48,31 +48,47 @@ export const BifrostPromptsPage: React.FC = () => {
 
 
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const [folderRes, promptRes] = await Promise.all([
-        adminService.listBifrostFolders(),
-        adminService.listBifrostPrompts({
-          folder_id: folderId || undefined,
-          q: q || undefined,
-        }),
-      ]);
-      setFolders(folderRes.folders);
-      setPrompts(promptRes.prompts);
-    } catch (e: any) {
-      setError(e?.message || '加载失败，请重试');
-    } finally {
-      setLoading(false);
-    }
-  }, [folderId, q]);
+  /** force=true 绕过 TTL 缓存强制拉取 Bifrost（供「刷新」按钮使用） */
+  const load = useCallback(
+    async (force = false) => {
+      setLoading(true);
+      setError('');
+      try {
+        const [folderRes, promptRes] = await Promise.all([
+          adminService.listBifrostFolders(),
+          adminService.listBifrostPrompts({
+            folder_id: folderId || undefined,
+            q: q || undefined,
+            force,
+          }),
+        ]);
+        setFolders(folderRes.folders);
+        setPrompts(promptRes.prompts);
+      } catch (e: any) {
+        setError(e?.message || '加载失败，请重试');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [folderId, q]
+  );
 
+  // 挂载 + 文件夹变化：立即加载（q 变化不触发，交给下方防抖，避免每次输入发两次请求）
+  const prevFolderRef = useRef(folderId);
+  const mountedRef = useRef(false);
   useEffect(() => {
-    load();
-  }, [load]);
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      void load();
+      return;
+    }
+    if (prevFolderRef.current !== folderId) {
+      prevFolderRef.current = folderId;
+      void load();
+    }
+  }, [folderId, load]);
 
-  // 搜索防抖：仅当关键词变化时触发（文件夹变化由上方 load 依赖 effect 直接加载，避免重复请求）
+  // 搜索防抖：仅关键词变化时触发
   const loadRef = useRef(load);
   loadRef.current = load;
   const firstLoad = useRef(true);
@@ -169,7 +185,7 @@ export const BifrostPromptsPage: React.FC = () => {
         title="Bifrost 提示词"
         subtitle="浏览 / 检索 Bifrost Prompt Repository；正文编辑请在 Bifrost 后台进行，预览图在此管理"
         actions={
-          <Button size="sm" variant="ghost" onClick={() => void load()} title="刷新">
+          <Button size="sm" variant="ghost" onClick={() => void load(true)} title="刷新（强制拉取 Bifrost 最新信息）">
             <RefreshCw size={14} strokeWidth={2} className={loading ? 'animate-spin' : ''} />
           </Button>
         }
@@ -233,7 +249,7 @@ export const BifrostPromptsPage: React.FC = () => {
       {!loading && error && !notConfigured && (
         <div className="py-12 flex flex-col items-center gap-3">
           <span className="text-sm text-error font-sans">{error}</span>
-          <Button variant="ghost" size="sm" onClick={() => void load()}>
+          <Button variant="ghost" size="sm" onClick={() => void load(true)}>
             <RefreshCw size={14} strokeWidth={1.5} className="mr-1" />
             重试
           </Button>

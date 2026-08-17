@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { hashSync } from 'bcryptjs';
-import { cpSync, mkdirSync, rmSync } from 'node:fs';
+import { cpSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import AdmZip from 'adm-zip';
@@ -61,12 +61,32 @@ afterAll(async () => {
   await app.close();
   await Promise.all(openServers.splice(0).map((s) => s.close()));
   setDb(null);
-  // 清理测试产生的 runtime 目录（用户登记 + 共享区）
-  rmSync(path.join(RUNTIME_ROOT, String(TEST_UID)), { recursive: true, force: true });
-  rmSync(path.join(RUNTIME_ROOT, String(uid)), { recursive: true, force: true });
-  for (const name of ['demo-skill', 'bifrost-skill', 'admin-skill']) {
+  // 只清理测试自建的产物，绝不整体删除 runtime/{uid}（该目录在开发环境可能含真实用户数据）：
+  // - 测试安装/上传的 skill 登记目录（skills/{name}）
+  // - 测试创建的节点工作区（workspace/ws_test_1、workspace/other_ws，由 skill-files 用例的 nodeWorkspace 新建）
+  // - 共享区真实包（runtime/.agent/skills/{name}）
+  const testSkillNames = ['demo-skill', 'bifrost-skill', 'admin-skill', 'cache-skill', 'browse-skill', 'remote-only-skill'];
+  for (const name of testSkillNames) {
+    rmSync(path.join(RUNTIME_ROOT, String(uid), 'skills', name), { recursive: true, force: true });
     rmSync(path.join(RUNTIME_ROOT, '.agent', 'skills', name), { recursive: true, force: true });
   }
+  for (const ws of ['ws_test_1', 'other_ws']) {
+    rmSync(path.join(RUNTIME_ROOT, String(uid), 'workspace', ws), { recursive: true, force: true });
+  }
+  // 测试期间 mkdir 出来的空父目录：仅当确为空才删除（非空 = 含真实数据，跳过）
+  for (const p of [
+    path.join(RUNTIME_ROOT, String(uid), 'workspace'),
+    path.join(RUNTIME_ROOT, String(uid), 'skills'),
+    path.join(RUNTIME_ROOT, String(uid)),
+  ]) {
+    try {
+      if (readdirSync(p).length === 0) rmSync(p, { recursive: true, force: true });
+    } catch {
+      /* 不存在或非空：跳过 */
+    }
+  }
+  // TEST_UID（99999）是测试专用用户 id，不存在真实数据冲突，仍整体清理
+  rmSync(path.join(RUNTIME_ROOT, String(TEST_UID)), { recursive: true, force: true });
 });
 
 function uploadZip(zipBytes: Buffer) {
@@ -388,5 +408,120 @@ describe('admin bifrost-skills 管理', () => {
     });
     expect(res.statusCode).toBe(400);
     expect(res.json().detail).toContain('非法 skill 名称');
+  });
+
+  it('force=1 绕过 TTL 缓存强制拉取远端；不带 force 在 TTL 内走缓存', async () => {
+    const srv = await startMockOpenAIServer(() =>
+      JSON.stringify({ skills: [{ id: 's1', name: 'force-skill', latest_version: '1.0' }] })
+    );
+    openServers.push(srv);
+    await app.inject({
+      method: 'PUT',
+      url: '/api/admin/settings/bifrost.base_url',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { value: srv.rootURL },
+    });
+    const get = (url: string) =>
+      app.inject({ method: 'GET', url: `/api/admin/bifrost-skills${url}`, headers: { authorization: `Bearer ${token}` } });
+    const searchCalls = () => srv.requests.filter((r) => r.path === '/api/skills').length;
+
+    await get('');
+    expect(searchCalls()).toBe(1);
+    await get('');
+    expect(searchCalls()).toBe(1); // TTL 内命中缓存，不再请求 Bifrost
+    const res = await get('?force=1');
+    expect(searchCalls()).toBe(2); // force 绕过缓存强制拉取
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('列表合并远端未缓存的 skill（cached 标记 + remote_available）', async () => {
+    const zipBytes = makeSkillZip('browse-skill');
+    const srv = await startMockOpenAIServer((req) => {
+      if (req.path === '/api/skills') {
+        return JSON.stringify({
+          skills: [
+            { id: 'b1', name: 'browse-skill', latest_version: '2.0' },
+            { id: 'r1', name: 'remote-only-skill', latest_version: '1.5', description: '仅远端存在', file_count: 4 },
+          ],
+        });
+      }
+      if (req.path === '/api/skills/serve/browse-skill/download.zip') {
+        return { raw: zipBytes, contentType: 'application/zip' };
+      }
+      return { raw: '{}', status: 404 };
+    });
+    openServers.push(srv);
+    await app.inject({
+      method: 'PUT',
+      url: '/api/admin/settings/bifrost.base_url',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { value: srv.rootURL },
+    });
+
+    // 本地缓存 browse-skill
+    const install = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/skills/install',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { name: 'browse-skill' },
+    });
+    expect(install.statusCode).toBe(200);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/admin/bifrost-skills',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { skills: (Record<string, any> & { name: string })[]; remote_available: boolean };
+    expect(body.remote_available).toBe(true);
+    const local = body.skills.find((s) => s.name === 'browse-skill');
+    expect(local?.cached).toBe(true);
+    expect(local?.latest_version).toBe('2.0');
+    expect(local?.files).toContain('SKILL.md');
+    const remoteOnly = body.skills.find((s) => s.name === 'remote-only-skill');
+    expect(remoteOnly).toBeTruthy();
+    expect(remoteOnly!.cached).toBe(false);
+    expect(remoteOnly!.latest_version).toBe('1.5');
+    expect(remoteOnly!.file_count).toBe(4);
+  });
+});
+
+describe('install：本地共享缓存优先（registerExistingBifrostSkill）', () => {
+  it('共享区已有该 skill 时跳过网络下载，仅登记软链（幂等）', async () => {
+    const zipBytes = makeSkillZip('cache-skill', { 'data.txt': 'v1' });
+    const srv = await startMockOpenAIServer((req) => {
+      expect(req.path).toBe('/api/skills/serve/cache-skill/download.zip');
+      return { raw: zipBytes, contentType: 'application/zip' };
+    });
+    openServers.push(srv);
+    await app.inject({
+      method: 'PUT',
+      url: '/api/admin/settings/bifrost.base_url',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { value: srv.rootURL },
+    });
+
+    // 第一次安装：命中远端，下载 zip
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/skills/install',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { name: 'cache-skill' },
+    });
+    expect(first.statusCode).toBe(200);
+    expect((first.json() as { name: string }).name).toBe('cache-skill');
+    expect(srv.requests.filter((r) => r.path.includes('/download.zip')).length).toBe(1);
+
+    // 第二次安装：共享区缓存命中，不再请求 Bifrost
+    const second = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/skills/install',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { name: 'cache-skill' },
+    });
+    expect(second.statusCode).toBe(200);
+    expect((second.json() as { files: string[] }).files).toContain('SKILL.md');
+    expect(srv.requests.filter((r) => r.path.includes('/download.zip')).length).toBe(1); // 未再次下载
   });
 });

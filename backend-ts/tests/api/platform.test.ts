@@ -593,4 +593,29 @@ describe('管理端：Bifrost', () => {
     expect(bookplateDetail.statusCode).toBe(200);
     expect((bookplateDetail.json() as { id: string }).id).toBe('p1');
   });
+
+  it('提示词列表 force=1 绕过 TTL 缓存强制拉取远端', async () => {
+    const srv = await startMockOpenAIServer(() =>
+      JSON.stringify({ prompts: [{ id: 'pf1', name: 'force-prompt', latest_version: { version_number: 1, messages: [] } }] })
+    );
+    openServers.push(srv);
+    await app.inject({
+      method: 'PUT',
+      url: '/api/admin/settings/bifrost.base_url',
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: { value: srv.rootURL },
+    });
+    const get = (url: string) =>
+      app.inject({ method: 'GET', url: `/api/admin/bifrost/prompts${url}`, headers: { authorization: `Bearer ${adminToken}` } });
+    const promptCalls = () => srv.requests.filter((r) => r.path === '/api/prompt-repo/prompts').length;
+
+    await get('');
+    expect(promptCalls()).toBe(1);
+    await get('');
+    expect(promptCalls()).toBe(1); // TTL 内命中缓存，不再请求 Bifrost
+    const res = await get('?force=1');
+    expect(promptCalls()).toBe(2); // force 绕过缓存强制拉取
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { prompts: { id: string }[] }).prompts[0]?.id).toBe('pf1');
+  });
 });

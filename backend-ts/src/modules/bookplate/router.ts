@@ -49,6 +49,7 @@ import {
   SkillNotFoundError,
   SkillValidationError,
   installSkillZip,
+  registerExistingBifrostSkill,
   installUserSkillZip,
   listInstalledSkills,
   nodeWorkspace,
@@ -643,14 +644,14 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
 
   // ---- Bifrost 提示词检索（供「提示词检索」PromptSearchNode 节点使用） ----
 
-  // 提示词列表（支持 q 搜索与 folder_id 过滤）
+  // 提示词列表（支持 q 搜索与 folder_id 过滤；force=1 绕过 TTL 缓存，供节点打开选择器时强制刷新）
   app.get(
     '/api/modules/bookplate/bifrost/prompts',
     { preHandler: app.authenticate },
     async (request, reply) => {
-      const q = (request.query ?? {}) as { folder_id?: string; q?: string };
+      const q = (request.query ?? {}) as { folder_id?: string; q?: string; force?: string };
       try {
-        const prompts = await listPrompts(getDb(), q.folder_id || null, q.q ?? '');
+        const prompts = await listPrompts(getDb(), q.folder_id || null, q.q ?? '', q.force === '1' || q.force === 'true');
         return { prompts };
       } catch (err) {
         if (err instanceof BifrostNotFoundError) return reply.code(404).send({ detail: err.message });
@@ -716,6 +717,9 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
       const name = (payload.name ?? '').trim();
       if (!name) return reply.code(400).send({ detail: 'skill 名称不能为空' });
       try {
+        // 本地共享缓存优先：runtime/.agent/skills/{name} 已存在则跳过网络下载直接登记（毫秒级）
+        const cached = registerExistingBifrostSkill(request.authUser!.id, name);
+        if (cached) return cached;
         const zipBytes = await downloadBifrostSkillZip(getDb(), name);
         if (!zipBytes.length || zipBytes.length > 20 * 1024 * 1024) {
           return reply.code(400).send({ detail: 'skill 压缩包为空或超过 20MB 上限' });

@@ -262,25 +262,33 @@ export async function listFolders(db: DB, includeAll = false): Promise<Record<st
 const ttlCache = new Map<string, { value: unknown; expiresAt: number }>();
 const TTL_MS = 300_000;
 
-function cached<T>(key: string, compute: () => Promise<T>): Promise<T> {
+function cached<T>(key: string, compute: () => Promise<T>, force = false): Promise<T> {
   const now = Date.now();
-  const hit = ttlCache.get(key);
-  if (hit && hit.expiresAt > now) return Promise.resolve(hit.value as T);
+  if (!force) {
+    const hit = ttlCache.get(key);
+    if (hit && hit.expiresAt > now) return Promise.resolve(hit.value as T);
+  }
   return compute().then((value) => {
     ttlCache.set(key, { value, expiresAt: now + TTL_MS });
     return value;
   });
 }
 
-/** 列出提示词（可选按文件夹过滤 / 关键词 q 对名称+正文过滤），合并本地预览图。 */
+/** 列出提示词（可选按文件夹过滤 / 关键词 q 对名称+正文过滤），合并本地预览图。
+ *  force=true 时绕过 5 分钟 TTL 缓存强制拉取 Bifrost（关键词过滤在缓存全量上本地做，故 q 不进缓存 key）。 */
 export async function listPrompts(
   db: DB,
   folderId: string | null = null,
-  q = ''
+  q = '',
+  force = false
 ): Promise<Record<string, any>[]> {
   const cfg = requireConfig(db);
   const cacheKey = `list:${cfg.base_url}:${folderId ?? ''}`;
-  const payload = await cached(cacheKey, () => getJson(cfg, '/api/prompt-repo/prompts', folderId ? { folder_id: folderId } : undefined));
+  const payload = await cached(
+    cacheKey,
+    () => getJson(cfg, '/api/prompt-repo/prompts', folderId ? { folder_id: folderId } : undefined),
+    force
+  );
   const prompts = asList(payload, 'prompts');
   if (!prompts.length) return [];
   const previews = previewMap(db, prompts.map((p) => p.id).filter(Boolean));
@@ -327,13 +335,13 @@ export async function getPromptRaw(db: DB, promptId: string): Promise<unknown> {
   return getJson(cfg, `/api/prompt-repo/prompts/${promptId}`, undefined, true);
 }
 
-/** 检索 Bifrost Skills 仓库（按名称/描述）。 */
-export async function searchBifrostSkills(db: DB, q = '', limit = 50): Promise<Record<string, any>[]> {
+/** 检索 Bifrost Skills 仓库（按名称/描述）；force=true 绕过 5 分钟 TTL 缓存强制拉取远端。 */
+export async function searchBifrostSkills(db: DB, q = '', limit = 50, force = false): Promise<Record<string, any>[]> {
   const cfg = requireConfig(db);
   const params: Record<string, string> = { limit: String(Math.min(Math.max(limit, 1), 100)) };
   if (q.trim()) params.search = q.trim();
   const cacheKey = `skills:${cfg.base_url}:${params.search ?? ''}:${params.limit}`;
-  const payload = await cached(cacheKey, () => getJson(cfg, '/api/skills', params));
+  const payload = await cached(cacheKey, () => getJson(cfg, '/api/skills', params), force);
   const skills = asList(payload, 'skills');
   return skills.map((s) => ({
     id: s.id ?? '',

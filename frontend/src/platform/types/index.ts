@@ -425,14 +425,18 @@ export interface InstalledSkill {
   files: string[];
 }
 
-/** Admin 端：共享区已缓存的 Bifrost Skill（本地元数据 + Bifrost 可达时的远端富化） */
+/** Admin 端：Bifrost Skill（本地缓存 + 远端未缓存合并浏览；Bifrost 可达时富化远端版本信息） */
 export interface CachedBifrostSkill {
   name: string;
   description: string;
   body: string;
-  /** 文件树（相对路径列表） */
+  /** 文件树（相对路径列表；未缓存时为空） */
   files: string[];
-  /** 本地共享包目录修改时间（unix 秒） */
+  /** 是否已缓存到本地共享区（false = 仅存在于远端仓库，点「同步最新」即可下载缓存） */
+  cached?: boolean;
+  /** 远端文件数 */
+  file_count?: number;
+  /** 本地共享包目录修改时间（unix 秒；未缓存时为 null） */
   updated_at?: number | null;
   /** 远端最新版本（Bifrost 可达时富化） */
   latest_version?: string;

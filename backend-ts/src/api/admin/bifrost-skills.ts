@@ -16,7 +16,7 @@ import {
 
 /**
  * Admin 端 Bifrost Skills 管理（对应 Python `app/api/admin/bifrost_skills.py`）：
- * - GET /api/admin/bifrost-skills（共享区缓存列表，Bifrost 可达时富化远端版本信息）
+ * - GET /api/admin/bifrost-skills（共享区缓存列表 + 远端未缓存 skill 合并浏览；force=1 绕过 TTL）
  * - POST /api/admin/bifrost-skills/:name/sync（强制拉取最新 zip 覆盖共享区，不动用户登记）
  * - DELETE /api/admin/bifrost-skills/:name（删除共享包并清理指向它的用户登记软链）
  *
@@ -44,12 +44,20 @@ function checkSkillName(raw: string): string {
 export async function registerBifrostSkillsAdminRouter(app: FastifyInstance): Promise<void> {
   const admin = { preHandler: app.requireAdmin };
 
-  // 共享区缓存的 Bifrost Skills 列表（本地为事实来源；Bifrost 可达时用检索接口做富化）
-  app.get('/api/admin/bifrost-skills', admin, async () => {
+  // 共享区缓存的 Bifrost Skills 列表（本地为事实来源；Bifrost 可达时用检索接口做富化，
+  // 并追加「远端有、本地未缓存」的 skill 供仓库浏览）。force=1 绕过 TTL 缓存强制拉取远端。
+  app.get('/api/admin/bifrost-skills', admin, async (request) => {
+    const q = (request.query ?? {}) as { q?: string; force?: string; limit?: string };
+    const force = q.force === '1' || q.force === 'true';
+    const limit = Number(q.limit ?? 100) || 100;
     const skills = listSharedBifrostSkills();
+    const localNames = new Set<string>();
+    for (const s of skills) localNames.add(String(s.name ?? ''));
+    let remoteAvailable = false;
     let remote: Record<string, any>[] = [];
     try {
-      remote = await searchBifrostSkills(getDb());
+      remote = await searchBifrostSkills(getDb(), q.q ?? '', limit, force);
+      remoteAvailable = true;
     } catch {
       /* Bifrost 不可达：仅返回本地信息，不影响页面使用 */
     }
@@ -57,15 +65,37 @@ export async function registerBifrostSkillsAdminRouter(app: FastifyInstance): Pr
     for (const r of remote) {
       if (r?.name) remoteMap.set(String(r.name), r);
     }
+    const merged: Record<string, unknown>[] = [];
     for (const s of skills) {
       const r = remoteMap.get(String(s.name ?? ''));
-      if (!r) continue;
-      s.latest_version = r.latest_version ?? '';
-      s.license = r.license ?? '';
-      s.compatibility = r.compatibility ?? '';
-      s.remote_updated_at = r.updated_at ?? null;
+      if (r) {
+        s.latest_version = r.latest_version ?? '';
+        s.license = r.license ?? '';
+        s.compatibility = r.compatibility ?? '';
+        s.file_count = r.file_count ?? 0;
+        s.remote_updated_at = r.updated_at ?? null;
+      }
+      s.cached = true;
+      merged.push(s);
     }
-    return { skills };
+    // 追加远端有、本地未缓存的 skill（页面点「同步最新」即可一键下载并缓存）
+    for (const r of remote) {
+      const name = String(r.name ?? '');
+      if (!name || localNames.has(name)) continue;
+      merged.push({
+        cached: false,
+        name,
+        description: r.description ?? '',
+        body: r.skill_md_body ?? '',
+        files: [],
+        latest_version: r.latest_version ?? '',
+        license: r.license ?? '',
+        compatibility: r.compatibility ?? '',
+        file_count: r.file_count ?? 0,
+        remote_updated_at: r.updated_at ?? null,
+      });
+    }
+    return { skills: merged, remote_available: remoteAvailable };
   });
 
   // 强制从 Bifrost 拉取最新 zip 覆盖共享区（不触碰用户登记）

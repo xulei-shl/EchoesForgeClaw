@@ -61,18 +61,23 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
   const [hoverPreview, setHoverPreview] = useState<{ x: number; y: number; url: string } | null>(null);
   // 请求序号：丢弃过期响应，防止快速输入时旧结果覆盖新结果
   const requestSeq = useRef(0);
+  // 本次打开选择器的首次加载强制刷新（绕过 TTL 缓存），后续输入防抖走缓存
+  const forceNextLoad = useRef(true);
   const [visibleCount, setVisibleCount] = useState(20);
   const observerTarget = useRef<HTMLDivElement>(null);
 
-  const loadPrompts = useCallback(async (keyword?: string) => {
+  const loadPrompts = useCallback(async (keyword?: string, force = false) => {
     const seq = ++requestSeq.current;
     setLoading(true);
     setError('');
     try {
+      const params: Record<string, string | number> = {};
+      if (keyword?.trim()) params.q = keyword.trim();
+      if (force) params.force = 1;
       const res: { prompts: BifrostPrompt[] } = await api.get(
         '/modules/bookplate/bifrost/prompts',
         {
-          params: keyword?.trim() ? { q: keyword.trim() } : {},
+          params,
           timeout: 20000,
         }
       );
@@ -90,6 +95,7 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
     setQ('');
     setVisibleCount(20);
     setPrompts([]);
+    forceNextLoad.current = true; // 本次打开强制拉最新，避免吃 5 分钟 TTL 旧缓存
     // 首次加载交由下方搜索防抖 effect 触发（打开后 350ms 内完成），避免重复请求
     setLoading(true);
     setError('');
@@ -101,12 +107,14 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
     setHoverPreview(null);
   }, []);
 
-  // 搜索防抖：输入停止 350ms 后按关键词重新加载
+  // 搜索防抖：输入停止 350ms 后按关键词重新加载（仅打开后的首次加载带 force）
   useEffect(() => {
     if (!pickerOpen) return;
     setVisibleCount(20);
+    const force = forceNextLoad.current;
+    forceNextLoad.current = false;
     const t = window.setTimeout(() => {
-      void loadPrompts(q);
+      void loadPrompts(q, force);
     }, 350);
     return () => window.clearTimeout(t);
   }, [pickerOpen, q, loadPrompts]);
