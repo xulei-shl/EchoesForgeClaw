@@ -3,7 +3,6 @@ import generationsService from '../../platform/services/generations';
 import { flushSnapshot } from '../../platform/stores/useCanvasState';
 import type { GenerationStageResults } from '../../platform/types';
 import { findConnectedBookInfoUpstream, findRootBookInfo, resolveDirectParents } from './nodeTypes';
-import { DEFAULT_RUN_SETTINGS } from './execution';
 import type { EdgeData, NodeData } from './graphTypes';
 
 /** 历史记录组装依赖（由画布注入） */
@@ -30,19 +29,15 @@ export function useGenerationHistory(ctx: GenerationHistoryContext): GenerationH
 
       const parents = resolveDirectParents(imageNodeId, ctx.nodesRef.current, ctx.edgesRef.current);
       // 图书元数据：优先沿入边向上追溯真正参与生成的 book_info（画布可存在多个互不连通的
-      // 图书元数据节点，不能写死取根节点）；无连通 book_info 时，仅当该图片节点开启了
-      // 「包含图书元数据」（执行引擎确实注入了根节点元数据）才回退画布根节点——
-      // 与 resolveNodeRunInputs 的执行语义对齐，未被使用的根节点元数据不再写入历史记录。
-      // 提示词/分析为直接上级。
+      // 图书元数据节点，不能写死取根节点）；无连通 book_info 时回退画布根节点兜底——
+      // 与 AI 对话节点图书元数据的兜底口径一致（连线上游优先、无连通取根节点），
+      // 保证保存到 db 的历史记录始终携带图书元数据。提示词/分析为直接上级。
       const bookNode =
         findConnectedBookInfoUpstream(
           imageNodeId,
           ctx.nodesRef.current,
           ctx.edgesRef.current
-        ) ??
-        ((imageNode.data?.settings ?? DEFAULT_RUN_SETTINGS).includeBook
-          ? findRootBookInfo(ctx.nodesRef.current, ctx.edgesRef.current)
-          : undefined);
+        ) ?? findRootBookInfo(ctx.nodesRef.current, ctx.edgesRef.current);
       const promptNode = parents.find((p) => p.type === 'prompt_generation');
       const analysisNode = parents.find((p) => p.type === 'image_analysis');
 
