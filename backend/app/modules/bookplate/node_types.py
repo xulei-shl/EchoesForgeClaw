@@ -87,7 +87,7 @@ NODE_TEMPLATES = [
         "type": NODE_TEXT_AGGREGATE,
         "name": "文本聚合",
         "description": "用占位符模板把多个上级文本按自定义格式拼接（如 ## 标题 + {占位符}）",
-        "category": "generate",
+        "category": "tool",
         "configurable": False,
         "output_type": "text",
         "input_types": ["text"],
