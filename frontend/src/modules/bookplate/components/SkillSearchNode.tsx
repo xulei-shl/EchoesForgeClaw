@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom';
 import {
   Archive,
   Check,
-  FolderTree,
   Loader2,
   Search,
   Upload,

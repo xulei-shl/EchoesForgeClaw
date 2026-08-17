@@ -230,6 +230,8 @@ export interface ChatMessage {
    * 发送时经 toWireChatMessages 并入 images，随每轮完整历史重发（LLM 模式多轮可见）。
    */
   contextImages?: string[];
+  /** 注入的结构化上下文块（按上级节点分别独立展示，折叠卡片渲染） */
+  contextBlocks?: InjectedContextBlock[];
   /** 该轮回复被用户主动停止（保留已流出的部分，展示「重试」入口） */
   interrupted?: boolean;
   /**
@@ -241,6 +243,15 @@ export interface ChatMessage {
   agentSteps?: AgentStep[];
   /** Skill Agent 执行产生的文件（agent_file 事件），渲染为下载/预览卡片 */
   files?: AgentFile[];
+}
+
+/** 注入 AI 对话节点的单项上下文块（由各上级节点或图书元数据生成） */
+export interface InjectedContextBlock {
+  id: string;
+  title: string;
+  nodeType?: CanvasNodeType;
+  text?: string;
+  images?: string[];
 }
 
 /** AI 对话节点的上下文加载设置（节点内可开关） */

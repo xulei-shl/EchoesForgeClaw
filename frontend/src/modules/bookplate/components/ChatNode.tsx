@@ -9,7 +9,7 @@ import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { AgentActivity } from '../../../platform/components/agent/AgentActivity';
 import { Toggle } from '../../../platform/components/ui/Toggle';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
-import type { AgentFile, AgentStep, ChatMessage, ChatNodeSettings } from '../../../platform/types';
+import type { AgentFile, AgentStep, ChatMessage, ChatNodeSettings, InjectedContextBlock } from '../../../platform/types';
 import { NODE_COLORS } from '../nodeTypes';
 import {
   RASTER_IMAGE_TYPES,
@@ -202,6 +202,87 @@ const ReasoningBlock: React.FC<{
 });
 ReasoningBlock.displayName = 'ReasoningBlock';
 
+/** 注入上下文折叠块：与 ReasoningBlock 体验一致，弱化样式、默认收起，支持文本与图片预览 */
+const ContextInjectionBlock: React.FC<{
+  block: InjectedContextBlock;
+}> = memo(({ block }) => {
+  const [open, setOpen] = useState(false);
+  const text = block.text?.trim() || '';
+  const images = block.images || [];
+  const hasText = text.length > 0;
+  const hasImages = images.length > 0;
+
+  // 单行摘要预览
+  const tailText = hasText ? text.slice(-40).replace(/\n/g, ' ') : '';
+  const imageCountText = hasImages ? `[${images.length}张图片]` : '';
+
+  return (
+    <div className="w-full mb-1.5 rounded-lg border border-dashed border-paper-grid/80 bg-paper-grid/15 overflow-hidden msg-enter-anim">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-1.5 px-2 py-1 text-[10px] text-ink-faint hover:text-ink-light font-sans transition-colors overflow-hidden"
+        title={open ? `收起上下文：${block.title}` : `展开上下文：${block.title}`}
+      >
+        <Link2 size={11} strokeWidth={1.75} className={open ? 'text-accent shrink-0' : 'shrink-0'} />
+        <span className={`font-medium shrink-0 ${open ? 'text-ink-light' : ''}`}>
+          上下文注入 · {block.title}
+        </span>
+
+        {!open && (imageCountText || tailText) && (
+          <span className="flex-1 min-w-0 mx-1 overflow-hidden whitespace-nowrap text-right mask-gradient-left text-ink-faint/70 select-none">
+            {imageCountText} {tailText}
+          </span>
+        )}
+
+        <span className={`flex items-center gap-1 shrink-0 ${open || (!imageCountText && !tailText) ? 'ml-auto' : ''}`}>
+          {open ? (
+            <ChevronUp size={11} strokeWidth={2} />
+          ) : (
+            <ChevronDown size={11} strokeWidth={2} />
+          )}
+        </span>
+      </button>
+
+      {/* grid-rows 0fr/1fr 过渡：折叠/展开平滑动画 */}
+      <div
+        className={`grid transition-[grid-template-rows] duration-300 ease-out ${
+          open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+        }`}
+      >
+        <div className="overflow-hidden">
+          <div className="px-2.5 pb-2 pt-1 border-t border-dashed border-paper-grid/50 space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
+            {hasImages && (
+              <div className="flex flex-wrap gap-1.5">
+                {images.map((img, i) => (
+                  <PhotoView key={i} src={img}>
+                    <img
+                      src={img}
+                      alt={`上下文图片 ${i + 1}`}
+                      className="w-14 h-14 rounded-md object-cover cursor-zoom-in border border-paper-grid shadow-sm hover:opacity-90 active:scale-95 transition"
+                      loading="lazy"
+                    />
+                  </PhotoView>
+                ))}
+              </div>
+            )}
+            {hasText ? (
+              <pre className="text-[11px] text-ink-light font-sans whitespace-pre-wrap leading-relaxed">
+                {text}
+              </pre>
+            ) : !hasImages ? (
+              <p className="text-[10px] text-ink-faint font-sans italic">
+                （上级节点暂无内容）
+              </p>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+ContextInjectionBlock.displayName = 'ContextInjectionBlock';
+
 const STYLE_INJECTIONS = `
 @keyframes msg-enter {
   0% { opacity: 0; transform: translateY(8px); }
@@ -231,6 +312,8 @@ export interface ChatNodeProps {
   title?: string;
   /** 对话消息列表（含正在流式的最后一条 assistant 消息） */
   messages?: ChatMessage[];
+  /** 注入的结构化上下文块（按各上级节点分别展示） */
+  contextBlocks?: InjectedContextBlock[];
   /** Agent 名称（该节点配置为 agent 模式时展示） */
   agentName?: string;
   /**
@@ -274,6 +357,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
   initialY,
   title,
   messages = [],
+  contextBlocks = [],
   agentName,
   agentSteps = [],
   isGenerating,
@@ -489,15 +573,8 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
 
   const renderMessage = (msg: ChatMessage, idx: number) => {
     if (msg.role === 'user') {
-      const hasHiddenContext = !!(msg.context || msg.contextImages?.length);
       return (
         <div key={idx} className="flex flex-col items-end gap-0.5 msg-enter-anim">
-          {hasHiddenContext && (
-            <span className="text-[10px] text-ink-faint font-sans flex items-center gap-1">
-              <Link2 size={9} strokeWidth={2} />
-              已附带上下文
-            </span>
-          )}
           {msg.images && msg.images.length > 0 && (
             <div className="flex flex-wrap justify-end gap-1.5 max-w-[85%]">
               {msg.images.map((img, i) => (
@@ -654,8 +731,17 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
             onScroll={handleScroll}
             className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden space-y-2.5 pr-0.5"
           >
+            {/* 顶部展示各个上级节点的上下文注入折叠块 */}
+            {contextBlocks.length > 0 && (
+              <div className="space-y-1 mb-1">
+                {contextBlocks.map((block) => (
+                  <ContextInjectionBlock key={block.id} block={block} />
+                ))}
+              </div>
+            )}
+
             {messages.length === 0 ? (
-              <div className="h-full min-h-[120px] flex flex-col items-center justify-center gap-2 text-center px-4">
+              <div className={`${contextBlocks.length > 0 ? 'py-8' : 'h-full'} min-h-[120px] flex flex-col items-center justify-center gap-2 text-center px-4`}>
                 <MessageSquare size={22} strokeWidth={1.25} className="text-ink-faint/70" />
                 <p className="text-xs text-ink-faint font-sans leading-relaxed">
                   输入消息（可附带图片）开始多轮对话

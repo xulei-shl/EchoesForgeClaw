@@ -18,7 +18,8 @@ import {
 } from './chatMessages';
 import { mismatchBadgeOf, hasDownstreamOf, type NodeViewHelpers } from './CanvasNodeViews';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
-import type { AgentFile, ChatMessage, ChatNodeSettings, SkillSelection } from '../../platform/types';
+import type { AgentFile, ChatMessage, ChatNodeSettings, InjectedContextBlock, SkillSelection } from '../../platform/types';
+import type { EdgeData } from './graphTypes';
 
 // AI 对话单轮携带的图片上限（附件 + 上下文图片合计）：防止超大 base64 请求体拖垮传输
 const MAX_CHAT_IMAGES = 4;
@@ -30,56 +31,86 @@ const DEFAULT_CHAT_SETTINGS: ChatNodeSettings = {
   includeUpstreamImages: true,
 };
 
-/** ChatNodeHost 依赖（画布注入：state setter + 端口类型查找；nodesRef/edgesRef 为模块级单例） */
+/** ChatHost 依赖（画布注入：state setter + 端口类型查找；nodesRef/edgesRef 为模块级单例） */
 export interface ChatHostDeps {
   setNodes: Dispatch<SetStateAction<NodeData[]>>;
   portTypesRef: RefObject<PortTypesLookup>;
 }
 
-/** 收集对话上下文：连线上游图书元数据（无连通时回退画布根节点）+ 直接父节点输出（受节点设置控制）。 */
-function buildChatContext(node: NodeData, portTypesRef: RefObject<PortTypesLookup>): string {
+/** 收集对话上下文块（按图书元数据与每个直接父节点拆分，用于顶部折叠卡片展示） */
+function buildInjectedContextBlocks(
+  node: NodeData,
+  portTypesRef: RefObject<PortTypesLookup>,
+  nodes: NodeData[] = nodesRef.current,
+  edges: EdgeData[] = edgesRef.current
+): InjectedContextBlock[] {
   const settings: ChatNodeSettings = node.data?.settings ?? DEFAULT_CHAT_SETTINGS;
-  const blocks: { title: string; body: string }[] = [];
+  const blocks: InjectedContextBlock[] = [];
+
+  // 1. 图书元数据
   if (settings.includeBook) {
-    const book = resolveNodeRunInputs(
-      node,
-      nodesRef.current,
-      edgesRef.current,
-      portTypesRef.current
-    ).book;
-    const metaText = bookMetadataText(book?.data);
-    if (metaText.trim()) blocks.push({ title: '图书元数据', body: metaText });
-  }
-  if (settings.includeUpstream) {
-    // 「紧随的上一级节点内容」= 全部直接父节点的输出文本（支持 AI 对话节点链式串联）
-    const parents = nodesRef.current.filter((n) =>
-      edgesRef.current.some((e) => e.target === node.id && e.source === n.id)
-    );
-    for (const p of parents) {
-      const text = nodeOutputText(p).trim();
-      if (text) blocks.push({ title: '上级节点内容', body: text });
+    const book = resolveNodeRunInputs(node, nodes, edges, portTypesRef.current).book;
+    if (book) {
+      const metaText = bookMetadataText(book.data);
+      if (metaText.trim()) {
+        blocks.push({
+          id: `book_${book.id}`,
+          title: `图书元数据 · ${getNodeTitle(book)}`,
+          nodeType: 'book_info',
+          text: metaText,
+        });
+      }
     }
   }
+
+  // 2. 直接父节点
+  const includeText = settings.includeUpstream !== false;
+  const includeImages = settings.includeUpstreamImages !== false;
+
+  if (includeText || includeImages) {
+    const parents = nodes.filter((n) =>
+      edges.some((e) => e.target === node.id && e.source === n.id)
+    );
+    for (const p of parents) {
+      const text = includeText ? nodeOutputText(p).trim() : '';
+      const rawImages = includeImages ? nodeOutputImages(p) : [];
+      const images: string[] = [];
+      for (const img of rawImages) {
+        if (img && !images.includes(img)) images.push(img);
+      }
+
+      if (text || images.length > 0) {
+        blocks.push({
+          id: `parent_${p.id}`,
+          title: getNodeTitle(p),
+          nodeType: p.type,
+          text: text || undefined,
+          images: images.length > 0 ? images : undefined,
+        });
+      }
+    }
+  }
+
+  return blocks;
+}
+
+/** 从上下文块拼接送给模型的文本上下文。 */
+function buildChatContext(blocks: InjectedContextBlock[]): string {
   const seen = new Set<string>();
   const parts: string[] = [];
   for (const b of blocks) {
-    if (seen.has(b.body)) continue;
-    seen.add(b.body);
-    parts.push(`【${b.title}】\n${b.body}`);
+    if (!b.text || seen.has(b.text)) continue;
+    seen.add(b.text);
+    parts.push(`【${b.title}】\n${b.text}`);
   }
   return parts.join('\n\n');
 }
 
 /** 收集对话上下文图片：直接父节点的图片输出（受设置开关控制），本地静态路径转 data URL。 */
-async function buildChatImages(node: NodeData): Promise<string[]> {
-  const settings: ChatNodeSettings = node.data?.settings ?? DEFAULT_CHAT_SETTINGS;
-  if (settings.includeUpstreamImages === false) return [];
-  const parents = nodesRef.current.filter((n) =>
-    edgesRef.current.some((e) => e.target === node.id && e.source === n.id)
-  );
+async function buildChatImagesFromBlocks(blocks: InjectedContextBlock[]): Promise<string[]> {
   const urls: string[] = [];
-  for (const p of parents) {
-    for (const u of nodeOutputImages(p)) {
+  for (const b of blocks) {
+    for (const u of b.images ?? []) {
       if (!urls.includes(u)) urls.push(u);
     }
   }
@@ -185,22 +216,24 @@ export function ChatNodeHost({
         const cur = nodesRef.current.find((n) => n.id === nodeId) ?? null;
         let chatMsgs = uiToStore(messages);
 
-        // 上下文注入：仅首轮一次，持久在首条 user 消息（UI 不展示；清空对话后可重新注入）
+        // 上下文注入：仅首轮一次，持久在首条 user 消息（首条折叠卡片展示；清空对话后可重新注入）
         const firstUserIdx = chatMsgs.findIndex((m) => m.role === 'user');
         const alreadyHasContext = hasContextInStore(chatMsgs);
         if (!alreadyHasContext && cur) {
-          const context = buildChatContext(cur, portTypesRef);
-          const contextImages = await buildChatImages(cur);
-          if (context || contextImages.length) {
+          const blocks = buildInjectedContextBlocks(cur, portTypesRef);
+          const context = buildChatContext(blocks);
+          const contextImages = await buildChatImagesFromBlocks(blocks);
+          if (context || contextImages.length || blocks.length) {
             if (firstUserIdx >= 0) {
               chatMsgs[firstUserIdx] = {
                 ...chatMsgs[firstUserIdx],
                 ...(context ? { context } : {}),
                 ...(contextImages.length ? { contextImages } : {}),
+                ...(blocks.length ? { contextBlocks: blocks } : {}),
               };
             }
             // 同步进 useChat metadata → 镜像写入 store，后续轮次不再重复注入
-            setMessages((prev) => attachContextToFirstUser(prev, context, contextImages));
+            setMessages((prev) => attachContextToFirstUser(prev, context, contextImages, blocks));
           }
         }
 
@@ -512,12 +545,29 @@ export function ChatNodeHost({
   const settings: ChatNodeSettings =
     node.data?.settings ?? DEFAULT_CHAT_SETTINGS;
   const isStreaming = status === 'submitted' || status === 'streaming';
-  const messages =
+  const messages: ChatMessage[] =
     isStreaming && pendingPatchRef.current
       ? pendingPatchRef.current.next
       : Array.isArray(node.data?.messages)
         ? node.data.messages
         : [];
+
+  // 计算上下文块：未发消息时实时根据画布连线与配置动态重算；已发消息时从首条 user 消息获取已锁定的上下文
+  const firstUser = messages.find((m: ChatMessage) => m.role === 'user');
+  const contextBlocks: InjectedContextBlock[] =
+    messages.length > 0 && firstUser
+      ? firstUser.contextBlocks ??
+        (firstUser.context || firstUser.contextImages?.length
+          ? [
+              {
+                id: 'injected_context',
+                title: '注入上下文',
+                text: firstUser.context,
+                images: firstUser.contextImages,
+              },
+            ]
+          : [])
+      : buildInjectedContextBlocks(node, portTypesRef, h.nodes, h.edges);
 
   return (
     <ChatNode
@@ -526,6 +576,7 @@ export function ChatNodeHost({
       initialY={node.y}
       title={getNodeTitle(node)}
       messages={messages}
+      contextBlocks={contextBlocks}
       agentName={
         config?.mode === 'agent'
           ? (config.agent_name ?? undefined)
