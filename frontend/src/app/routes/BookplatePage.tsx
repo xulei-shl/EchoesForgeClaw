@@ -675,7 +675,7 @@ const BookplatePage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** 「+」菜单可选项：基础模板 + 各配置变体（无配置的模板提供「默认配置」项） */
+  /** 「+」菜单可选项：基础模板 + 各已配置变体（完全由后台配置驱动，未配置不展示） */
   const pickerItems = useMemo<NodePickerItem[]>(() => {
     const items: NodePickerItem[] = [];
     for (const t of NODE_TEMPLATES) {
@@ -684,35 +684,24 @@ const BookplatePage: React.FC = () => {
         continue;
       }
       const configs = registryConfigs.filter((c) => c.node_type === t.type);
-      if (configs.length === 0) {
+      for (const c of configs) {
         items.push({
-          key: `${t.type}-default`,
+          key: `${t.type}-${c.id}`,
           nodeType: t.type,
-          label: t.name,
-          description: t.description,
-          fallback: true,
-          mode: 'llm',
+          label: c.name,
+          description: c.agent_name
+            ? `Agent · ${c.agent_name}`
+            : c.skill_agent_config_name
+              ? `Skill Agent · ${c.skill_agent_config_name}`
+              : c.llm_config_name
+                ? `模型 · ${c.llm_config_name}`
+                : t.description,
+          configId: c.id,
+          group: c.group ?? undefined,
+          groupOrder: c.group_order ?? 0,
+          mode: c.mode,
+          agentName: c.agent_name ?? null,
         });
-      } else {
-        for (const c of configs) {
-          items.push({
-            key: `${t.type}-${c.id}`,
-            nodeType: t.type,
-            label: c.name,
-            description: c.agent_name
-              ? `Agent · ${c.agent_name}`
-              : c.skill_agent_config_name
-                ? `Skill Agent · ${c.skill_agent_config_name}`
-                : c.llm_config_name
-                  ? `模型 · ${c.llm_config_name}`
-                  : t.description,
-            configId: c.id,
-            group: c.group ?? undefined,
-            groupOrder: c.group_order ?? 0,
-            mode: c.mode,
-            agentName: c.agent_name ?? null,
-          });
-        }
       }
     }
     return items;
