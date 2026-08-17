@@ -218,11 +218,22 @@ const STYLE_INJECTIONS = `
   mask-image: linear-gradient(to right, transparent, black 16px);
   -webkit-mask-image: linear-gradient(to right, transparent, black 16px);
 }
-@keyframes thinking-dot {
-  0%, 100% { transform: translateY(0); opacity: 0.3; }
-  50% { transform: translateY(-3px); opacity: 1; }
+@keyframes thinking-wave {
+  0%, 100% { transform: translateY(0); opacity: 0.35; }
+  50% { transform: translateY(-2.5px); opacity: 1; }
 }
-.animate-thinking-dot { animation: thinking-dot 1.2s ease-in-out infinite; }
+@keyframes thinking-glow {
+  0%, 100% { opacity: 0.65; }
+  50% { opacity: 1; }
+}
+.animate-thinking-wave { animation: thinking-wave 1.3s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+.animate-thinking-glow { animation: thinking-glow 2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .animate-thinking-wave {
+    animation: thinking-glow 1.3s ease-in-out infinite;
+    transform: none !important;
+  }
+}
 `;
 
 export interface ChatNodeProps {
@@ -517,9 +528,10 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
         </div>
       );
     }
-    // 思考占位：仅当流式且正文/思考都还没有内容时显示「思考中...」；
-    // 思考一旦开始产出（reasoning 独立字段），改由 ReasoningBlock 折叠块展示
-    const isThinking = msg.streaming && !msg.content && !msg.reasoning;
+    // 判定正文是否有内容
+    const hasContent = Boolean(msg.content && msg.content.trim().length > 0);
+    // 正在等待 AI 返回正文（处于流式生成中但正文尚未开始输出，涵盖首字等待与思考过程输出阶段）
+    const isWaitingResponse = Boolean(msg.streaming && !hasContent);
 
     return (
       <div key={idx} className="flex flex-col items-start gap-1 relative group msg-enter-anim">
@@ -541,12 +553,18 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
           />
         )}
         <div className="flex items-end w-full min-w-0">
-          <div className={`max-w-[92%] px-3 py-2 rounded-2xl rounded-bl-sm bg-paper-grid/25 border border-paper-grid/60 text-[13px] leading-relaxed font-sans min-w-0 ${isThinking ? 'flex items-center text-ink-faint/80' : ''}`}>
-            {isThinking ? (
-              <div className="flex items-center gap-1.5 h-[21px] px-1">
-                <div className="w-1.5 h-1.5 rounded-full bg-current animate-thinking-dot" style={{ animationDelay: '0ms' }} />
-                <div className="w-1.5 h-1.5 rounded-full bg-current animate-thinking-dot" style={{ animationDelay: '200ms' }} />
-                <div className="w-1.5 h-1.5 rounded-full bg-current animate-thinking-dot" style={{ animationDelay: '400ms' }} />
+          <div className={`max-w-[92%] px-3 py-2 rounded-2xl rounded-bl-sm bg-paper-grid/25 border border-paper-grid/60 text-[13px] leading-relaxed font-sans min-w-0 ${isWaitingResponse ? 'flex items-center text-ink-light' : ''}`}>
+            {isWaitingResponse ? (
+              <div className="flex items-center gap-2 py-0.5 text-ink-light select-none">
+                <div className="flex items-center gap-1.5 text-accent">
+                  <Brain size={13} strokeWidth={2} className="animate-thinking-glow" />
+                  <span className="text-[12px] font-sans font-medium text-ink-light">思考中…</span>
+                </div>
+                <div className="flex items-center gap-1 h-3 pl-0.5">
+                  <div className="w-1.5 h-1.5 rounded-full bg-accent/70 animate-thinking-wave" style={{ animationDelay: '0ms' }} />
+                  <div className="w-1.5 h-1.5 rounded-full bg-accent/70 animate-thinking-wave" style={{ animationDelay: '160ms' }} />
+                  <div className="w-1.5 h-1.5 rounded-full bg-accent/70 animate-thinking-wave" style={{ animationDelay: '320ms' }} />
+                </div>
               </div>
             ) : (
               <Streamdown
@@ -555,11 +573,11 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                 caret="block"
                 linkSafety={{ enabled: false }}
               >
-                {normalizeMarkdown(msg.content) || (msg.interrupted ? '已中断' : '…')}
+                {normalizeMarkdown(msg.content) || (msg.interrupted ? '已中断' : '')}
               </Streamdown>
             )}
           </div>
-          {!msg.streaming && (
+          {!msg.streaming && hasContent && (
             <div className="ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
               <button
                 onClick={() => handleCopy(msg.content, idx)}

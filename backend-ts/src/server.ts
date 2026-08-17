@@ -74,7 +74,12 @@ function sendPublicImage(reply: FastifyReply, full: string | null): boolean {
 }
 
 export async function buildApp() {
-  const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } });
+  // bodyLimit 覆盖 Fastify 默认 1MB：AI 对话节点带图请求（base64 data URL 膨胀约 33%）
+  // 加上每轮重发的历史图片，很容易超过 1MB 导致 413（图片契约：单张 ≤8MB × 最多 4 张）。
+  const app = Fastify({
+    logger: { level: process.env.LOG_LEVEL ?? 'info' },
+    bodyLimit: 50 * 1024 * 1024,
+  });
 
   await app.register(cors, {
     // CORS 来源可用 CORS_ORIGINS 环境变量覆盖（逗号分隔），部署脚本按前端端口写入
