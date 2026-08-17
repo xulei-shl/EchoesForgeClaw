@@ -497,7 +497,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
           onClick={toggleSettings}
           disabled={isGenerating}
           active={messages.length > 0}
-          tooltip={messages.length > 0 ? "上下文设置 (已锁定)" : "上下文设置"}
+          tooltip={messages.length > 0 ? "运行设置 (已锁定)" : "运行设置"}
         />
         {messages.length > 0 && (
           <NodeActionBar.Eraser
@@ -817,7 +817,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
           <div className="w-64 pop-enter-anim">
             <div className="bg-paper border border-paper-grid rounded-xl shadow-xl overflow-hidden">
               <div className="px-3 py-2.5 border-b border-dashed border-paper-grid bg-paper-grid/10">
-                <p className="text-xs font-sans font-medium text-ink-light">上下文设置</p>
+                <p className="text-xs font-sans font-medium text-ink-light">运行设置</p>
               </div>
               <div className="p-3 space-y-3">
                 <div className="flex items-start justify-between gap-2.5">

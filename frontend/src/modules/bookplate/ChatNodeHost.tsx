@@ -25,7 +25,7 @@ import type { NodeData } from './graphTypes';
 // AI 对话单轮携带的图片上限（附件 + 上下文图片合计）：防止超大 base64 请求体拖垮传输
 const MAX_CHAT_IMAGES = 4;
 
-/** 上下文设置兜底（旧节点持久化的 settings 缺少 includeUpstreamImages / includeBookCover，undefined 视为开启） */
+/** 运行设置兜底（旧节点持久化的 settings 缺少 includeUpstreamImages / includeBookCover，undefined 视为开启） */
 const DEFAULT_CHAT_SETTINGS: ChatNodeSettings = {
   includeBook: false,
   includeUpstream: true,
