@@ -10,7 +10,9 @@ import {
 import {
   SkillValidationError,
   listSharedBifrostSkills,
+  readSkillNotes,
   removeSharedBifrostSkill,
+  setSkillNote,
   updateSharedBifrostSkill,
 } from '../../services/skill-agent-service.js';
 
@@ -18,6 +20,7 @@ import {
  * Admin 端 Bifrost Skills 管理（对应 Python `app/api/admin/bifrost_skills.py`）：
  * - GET /api/admin/bifrost-skills（共享区缓存列表 + 远端未缓存 skill 合并浏览；force=1 绕过 TTL）
  * - POST /api/admin/bifrost-skills/:name/sync（强制拉取最新 zip 覆盖共享区，不动用户登记）
+ * - PUT /api/admin/bifrost-skills/:name/note（写入/更新共享 skill 的全局备注，空串清除；独立于 skill 包）
  * - DELETE /api/admin/bifrost-skills/:name（删除共享包并清理指向它的用户登记软链）
  *
  * 与画布侧（bookplate router 的 /skills/*）互补：画布按需下载安装（共享区缓存命中），
@@ -95,6 +98,12 @@ export async function registerBifrostSkillsAdminRouter(app: FastifyInstance): Pr
         remote_updated_at: r.updated_at ?? null,
       });
     }
+    // 合并管理员全局备注（侧车 JSON，独立于 skill 包：同步/删除不触碰备注）
+    const notes = readSkillNotes();
+    for (const s of merged) {
+      const note = notes[String(s.name ?? '')];
+      if (note) s.note = note;
+    }
     return { skills: merged, remote_available: remoteAvailable };
   });
 
@@ -120,6 +129,19 @@ export async function registerBifrostSkillsAdminRouter(app: FastifyInstance): Pr
       if (err instanceof SkillValidationError) return reply.code(400).send({ detail: err.message });
       const e = bifrostErrorHttp(err);
       return reply.code(e.code).send(e.body);
+    }
+  });
+
+  // 写入/更新共享 skill 的全局备注（空串清除；不触碰 skill 包本身）
+  app.put('/api/admin/bifrost-skills/:name/note', admin, async (request, reply) => {
+    try {
+      const skillName = checkSkillName((request.params as { name: string }).name);
+      const body = (request.body ?? {}) as { note?: string };
+      const note = setSkillNote(skillName, body.note ?? '');
+      return { name: skillName, note };
+    } catch (err) {
+      if (err instanceof SkillValidationError) return reply.code(400).send({ detail: err.message });
+      return reply.code(502).send({ detail: err instanceof Error ? err.message : String(err) });
     }
   });
 

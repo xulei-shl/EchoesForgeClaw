@@ -50,6 +50,7 @@ import {
 import {
   SkillNotFoundError,
   SkillValidationError,
+  getSkillNote,
   installSkillZip,
   registerExistingBifrostSkill,
   installUserSkillZip,
@@ -745,7 +746,12 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
       const limit = Number(q.limit ?? 50) || 50;
       try {
         const skills = await searchBifrostSkills(getDb(), q.q ?? '', limit);
-        return { skills };
+        // 合并管理员全局备注（纯展示，不进入 skill 包本体）
+        const withNotes = skills.map((s) => {
+          const note = getSkillNote(String(s.name ?? ''));
+          return note ? { ...s, note } : s;
+        });
+        return { skills: withNotes };
       } catch (err) {
         if (err instanceof BifrostNotConfiguredError) return reply.code(503).send({ detail: err.message });
         if (err instanceof BifrostError) return reply.code(502).send({ detail: err.message });
@@ -764,13 +770,20 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
       if (!name) return reply.code(400).send({ detail: 'skill 名称不能为空' });
       try {
         // 本地共享缓存优先：runtime/.agent/skills/{name} 已存在则跳过网络下载直接登记（毫秒级）
+        let meta: Record<string, unknown>;
         const cached = registerExistingBifrostSkill(request.authUser!.id, name);
-        if (cached) return cached;
-        const zipBytes = await downloadBifrostSkillZip(getDb(), name);
-        if (!zipBytes.length || zipBytes.length > 20 * 1024 * 1024) {
-          return reply.code(400).send({ detail: 'skill 压缩包为空或超过 20MB 上限' });
+        if (cached) {
+          meta = cached;
+        } else {
+          const zipBytes = await downloadBifrostSkillZip(getDb(), name);
+          if (!zipBytes.length || zipBytes.length > 20 * 1024 * 1024) {
+            return reply.code(400).send({ detail: 'skill 压缩包为空或超过 20MB 上限' });
+          }
+          meta = installSkillZip(request.authUser!.id, zipBytes);
         }
-        return installSkillZip(request.authUser!.id, zipBytes);
+        const note = getSkillNote(String(meta.name ?? ''));
+        if (note) meta.note = note;
+        return meta;
       } catch (err) {
         if (err instanceof BifrostNotConfiguredError) return reply.code(503).send({ detail: err.message });
         if (err instanceof BifrostNotFoundError) return reply.code(404).send({ detail: err.message });
@@ -793,7 +806,10 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
         if (!bytes.length || bytes.length > 20 * 1024 * 1024) {
           return reply.code(400).send({ detail: '文件为空或超过 20MB 上限' });
         }
-        return installUserSkillZip(request.authUser!.id, bytes);
+        const meta = installUserSkillZip(request.authUser!.id, bytes);
+        const note = getSkillNote(String(meta.name ?? ''));
+        if (note) meta.note = note;
+        return meta;
       } catch (err) {
         if (err instanceof SkillValidationError) return reply.code(400).send({ detail: err.message });
         return reply.code(400).send({ detail: `读取上传文件失败: ${err instanceof Error ? err.message : String(err)}` });

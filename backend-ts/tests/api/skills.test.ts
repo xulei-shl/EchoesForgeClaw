@@ -7,7 +7,7 @@ import AdmZip from 'adm-zip';
 import { initDb, setDb, type DB } from '../../src/config/database.js';
 import { buildApp } from '../../src/server.js';
 import { startMockOpenAIServer, type MockOpenAIServer } from '../helpers/mock-openai-server.js';
-import { nodeWorkspace } from '../../src/services/skill-agent-service.js';
+import { nodeWorkspace, setSkillNote } from '../../src/services/skill-agent-service.js';
 
 /**
  * Skills 路由契约测试（对应 Python `app/modules/bookplate/router.py` 的 Skill 工作区部分）：
@@ -66,10 +66,12 @@ afterAll(async () => {
   // - 测试安装/上传的 skill 登记目录（skills/{name}）
   // - 测试创建的节点工作区（workspace/ws_test_1、workspace/other_ws，由 skill-files 用例的 nodeWorkspace 新建）
   // - 共享区真实包（runtime/.agent/skills/{name}）
-  const testSkillNames = ['demo-skill', 'bifrost-skill', 'admin-skill', 'cache-skill', 'browse-skill', 'remote-only-skill'];
+  const testSkillNames = ['demo-skill', 'bifrost-skill', 'admin-skill', 'cache-skill', 'browse-skill', 'remote-only-skill', 'note-skill'];
   for (const name of testSkillNames) {
     rmSync(path.join(RUNTIME_ROOT, String(uid), 'skills', name), { recursive: true, force: true });
     rmSync(path.join(RUNTIME_ROOT, '.agent', 'skills', name), { recursive: true, force: true });
+    // 清理测试写入的 skill 备注（仅移除测试用 key，保留侧车文件中的其他数据）
+    setSkillNote(name, '');
   }
   for (const ws of ['ws_test_1', 'other_ws']) {
     rmSync(path.join(RUNTIME_ROOT, String(uid), 'workspace', ws), { recursive: true, force: true });
@@ -485,6 +487,109 @@ describe('admin bifrost-skills 管理', () => {
     expect(remoteOnly!.cached).toBe(false);
     expect(remoteOnly!.latest_version).toBe('1.5');
     expect(remoteOnly!.file_count).toBe(4);
+  });
+});
+
+describe('skill 全局备注（admin 侧车存储，独立于 skill 包）', () => {
+  it('PUT note → admin 列表 / bifrost-search / install 响应可见；同步不触碰；空串清除', async () => {
+    const zipBytes = makeSkillZip('note-skill', { 'v1.txt': 'x' });
+    const srv = await startMockOpenAIServer((req) => {
+      if (req.path === '/api/skills') {
+        return JSON.stringify({
+          skills: [{ id: 'n1', name: 'note-skill', latest_version: '1.0', description: '备注测试', file_count: 2 }],
+        });
+      }
+      if (req.path === '/api/skills/serve/note-skill/download.zip') {
+        return { raw: zipBytes, contentType: 'application/zip' };
+      }
+      return { raw: '{}', status: 404 };
+    });
+    openServers.push(srv);
+    await app.inject({
+      method: 'PUT',
+      url: '/api/admin/settings/bifrost.base_url',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { value: srv.rootURL },
+    });
+
+    // 写入备注
+    const put = await app.inject({
+      method: 'PUT',
+      url: '/api/admin/bifrost-skills/note-skill/note',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { note: '团队内部备注：用于藏书票风格统一' },
+    });
+    expect(put.statusCode).toBe(200);
+    expect((put.json() as { note: string }).note).toBe('团队内部备注：用于藏书票风格统一');
+
+    // admin 列表合并备注（远端未缓存条目同样可见）
+    const list = await app.inject({
+      method: 'GET',
+      url: '/api/admin/bifrost-skills',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const found = (list.json() as { skills: (Record<string, any> & { name: string })[] }).skills.find(
+      (s) => s.name === 'note-skill'
+    );
+    expect(found).toBeTruthy();
+    expect(found!.note).toBe('团队内部备注：用于藏书票风格统一');
+
+    // 画布检索同样合并备注
+    const search = await app.inject({
+      method: 'GET',
+      url: '/api/modules/bookplate/skills/bifrost-search?q=note',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const hit = (search.json() as { skills: (Record<string, any> & { name: string })[] }).skills.find(
+      (s) => s.name === 'note-skill'
+    );
+    expect(hit?.note).toBe('团队内部备注：用于藏书票风格统一');
+
+    // 安装响应合并备注
+    const install = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/skills/install',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { name: 'note-skill' },
+    });
+    expect(install.statusCode).toBe(200);
+    expect((install.json() as { note?: string }).note).toBe('团队内部备注：用于藏书票风格统一');
+
+    // 同步最新不触碰备注（备注独立于 skill 包存储）
+    const sync = await app.inject({
+      method: 'POST',
+      url: '/api/admin/bifrost-skills/note-skill/sync',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(sync.statusCode).toBe(200);
+    const list2 = await app.inject({
+      method: 'GET',
+      url: '/api/admin/bifrost-skills',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const found2 = (list2.json() as { skills: (Record<string, any> & { name: string })[] }).skills.find(
+      (s) => s.name === 'note-skill'
+    );
+    expect(found2?.note).toBe('团队内部备注：用于藏书票风格统一');
+
+    // 空串/纯空白清除备注
+    const clear = await app.inject({
+      method: 'PUT',
+      url: '/api/admin/bifrost-skills/note-skill/note',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { note: '   ' },
+    });
+    expect(clear.statusCode).toBe(200);
+    expect((clear.json() as { note: string }).note).toBe('');
+    const list3 = await app.inject({
+      method: 'GET',
+      url: '/api/admin/bifrost-skills',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const found3 = (list3.json() as { skills: (Record<string, any> & { name: string })[] }).skills.find(
+      (s) => s.name === 'note-skill'
+    );
+    expect(found3?.note ?? '').toBe('');
   });
 });
 

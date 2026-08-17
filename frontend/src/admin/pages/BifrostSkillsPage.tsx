@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Boxes, FolderSync, Loader2, RefreshCw, Search, Trash2, FileText, FolderTree } from 'lucide-react';
+import { Boxes, FolderSync, Loader2, RefreshCw, Search, StickyNote, Trash2, FileText, FolderTree } from 'lucide-react';
 import { adminService } from '../../platform/services/admin';
 import type { CachedBifrostSkill } from '../../platform/types';
 import { Button } from '../../platform/components/ui/Button';
@@ -7,6 +7,7 @@ import { Card } from '../../platform/components/ui/Card';
 import { Badge } from '../../platform/components/ui/Badge';
 import { Dialog } from '../../platform/components/ui/Dialog';
 import { Input } from '../../platform/components/ui/Input';
+import { Textarea } from '../../platform/components/ui/Textarea';
 import { PageHeader, FieldLabel } from '../components/AdminBits';
 import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
 
@@ -19,7 +20,30 @@ export const BifrostSkillsPage: React.FC = () => {
   const [detail, setDetail] = useState<CachedBifrostSkill | null>(null);
   const [q, setQ] = useState('');
   const [remoteAvailable, setRemoteAvailable] = useState(true);
+  const [noteDraft, setNoteDraft] = useState('');
+  const [savingNote, setSavingNote] = useState(false);
   const { dialog, showToast } = useFeedback();
+
+  // 打开详情时同步备注草稿
+  useEffect(() => {
+    setNoteDraft(detail?.note ?? '');
+  }, [detail]);
+
+  /** 保存管理员全局备注（空串清除；独立于 skill 包，不影响同步/删除） */
+  const saveNote = async () => {
+    if (!detail) return;
+    setSavingNote(true);
+    try {
+      const res = await adminService.updateBifrostSkillNote(detail.name, noteDraft);
+      setDetail({ ...detail, note: res.note });
+      showToast('备注已保存', { type: 'success' });
+      await load();
+    } catch (e: any) {
+      showToast(e?.message || '保存失败，请重试', { type: 'error' });
+    } finally {
+      setSavingNote(false);
+    }
+  };
 
   /** 拉取列表（force=true 绕过后端 TTL 缓存强制刷新远端；搜索词变化自动触发） */
   const load = useCallback(
@@ -231,6 +255,12 @@ export const BifrostSkillsPage: React.FC = () => {
                         <p className="mt-1 text-xs text-ink-light font-sans line-clamp-2">
                           {s.description || '（无描述）'}
                         </p>
+                        {s.note && (
+                          <p className="mt-1 text-[11px] text-ink-light/90 font-sans line-clamp-2 flex items-start gap-1">
+                            <StickyNote size={12} strokeWidth={1.5} className="shrink-0 mt-0.5 text-ink-faint" />
+                            {s.note}
+                          </p>
+                        )}
                         <div className="flex items-center gap-3 mt-2 text-[10px] text-ink-faint font-sans tabular-nums">
                           <span>
                             {isCached
@@ -298,6 +328,35 @@ export const BifrostSkillsPage: React.FC = () => {
             {detail.description && (
               <p className="text-sm text-ink leading-relaxed">{detail.description}</p>
             )}
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <FieldLabel>
+                  <StickyNote size={14} className="inline mr-1" />
+                  备注（管理员全局备注，纯展示，不影响 Skill Agent 执行）
+                </FieldLabel>
+                <div className="flex items-center gap-1.5">
+                  {noteDraft.trim() !== (detail.note ?? '') && (
+                    <Button variant="ghost" size="sm" onClick={() => setNoteDraft(detail.note ?? '')}>
+                      撤销
+                    </Button>
+                  )}
+                  <Button size="sm" isLoading={savingNote} onClick={() => void saveNote()}>
+                    保存备注
+                  </Button>
+                </div>
+              </div>
+              <Textarea
+                value={noteDraft}
+                onChange={(e) => setNoteDraft(e.target.value)}
+                placeholder="填写适合当前项目的备注文本（如使用场景、注意事项）…"
+                rows={3}
+                maxLength={500}
+              />
+              <p className="text-[11px] text-ink-faint font-sans">
+                保存为空白即清除备注；备注独立存储，同步最新 / 删除共享包都不会影响它
+              </p>
+            </div>
 
             <div className="space-y-1.5">
               <FieldLabel>

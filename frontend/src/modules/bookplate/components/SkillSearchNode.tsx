@@ -141,6 +141,7 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
         path: meta.path,
         files: meta.files,
         source: 'bifrost',
+        note: meta.note,
       });
     } catch (e: any) {
       setError(e?.message || '安装失败，请重试');
@@ -173,6 +174,7 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
         path: meta.path,
         files: meta.files,
         source: 'upload',
+        note: meta.note,
       };
       // 已选同名 skill：视为「更新版本」，原位替换数据而非取消选择；未选则追加
       const exists = selections.some((s) => s.name === sel.name);
@@ -255,6 +257,11 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
                   )}
                 </div>
                 <p className="text-xs text-ink-light line-clamp-2 leading-relaxed mt-1">{s.description || '（无描述）'}</p>
+                {s.note && (
+                  <p className="text-[10px] text-ink-light/90 italic leading-relaxed mt-1 line-clamp-2">
+                    备注：{s.note}
+                  </p>
+                )}
                 {s.compatibility && (
                   <p className="text-[10px] text-ink-faint font-mono mt-1">兼容: {s.compatibility}</p>
                 )}
@@ -389,6 +396,11 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
                   </div>
                   {s.description && (
                     <p className="text-[11px] text-ink-light line-clamp-2 leading-relaxed mt-1">{s.description}</p>
+                  )}
+                  {s.note && (
+                    <p className="text-[10px] text-ink-light/90 italic leading-relaxed mt-1 line-clamp-2">
+                      备注：{s.note}
+                    </p>
                   )}
                 </div>
               ))}
