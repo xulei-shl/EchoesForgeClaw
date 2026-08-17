@@ -3,7 +3,7 @@ import { Loader2 } from 'lucide-react';
 import { fetchLLMModelList, type LLMModelList } from '../llmModels';
 
 /**
- * 「模型」下拉字段：拉取服务商 /models 列表（key 仅服务端使用），留空 = 节点配置默认模型。
+ * 「模型」下拉字段：候选 = admin llm-configs 已配置的模型名，留空 = 节点配置默认模型。
  * AI 对话 / 图片分析 / 提示词生成 / 图像生成节点的设置弹层共用，避免重复实现拉取/加载/失败回退逻辑。
  */
 export interface ModelOverrideFieldProps {

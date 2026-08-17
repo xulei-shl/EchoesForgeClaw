@@ -48,6 +48,20 @@ export function findLLMConfigById(db: DB, id: number): LLMConfigRow | undefined 
   return db.select().from(llmConfigs).where(eq(llmConfigs.id, id)).get();
 }
 
+/** 全部启用的 LLM 配置的模型名（节点「模型」候选列表数据源，去重由调用方做）。
+ *  kinds 非空时仅返回这些 kind 的配置（如图像生成节点只列 image 类）；空 = 不限。 */
+export function listActiveLLMConfigModelNames(db: DB, kinds?: string[]): string[] {
+  const rows = db
+    .select({ modelName: llmConfigs.modelName, kind: llmConfigs.kind })
+    .from(llmConfigs)
+    .where(eq(llmConfigs.isActive, true))
+    .all();
+  return rows
+    .filter((r) => !kinds?.length || (r.kind != null && kinds.includes(r.kind)))
+    .map((r) => r.modelName)
+    .filter((n): n is string => typeof n === 'string' && n.trim() !== '');
+}
+
 /** PromptTemplate 行。 */
 export interface PromptTemplateRow {
   id: number;

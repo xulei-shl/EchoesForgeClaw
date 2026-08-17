@@ -360,22 +360,23 @@ describe('fastclaw-agents 端点', () => {
 });
 
 describe('llm-models 端点', () => {
-  it('返回默认模型 + 服务商 /models 列表（默认模型恒在首位）', async () => {
-    const srv = await startMockOpenAIServer((req) => {
-      expect(req.path).toBe('/v1/models');
-      return JSON.stringify({
-        object: 'list',
-        data: [
-          { id: 'model-a', object: 'model' },
-          { id: 'model-b', object: 'model' },
-        ],
-      });
-    });
-    openServers.push(srv);
+  it('返回默认模型 + admin llm-configs 已配置模型列表（默认恒在首位，不调服务商 API）', async () => {
+    // baseUrl 指向不可达端口：若端点仍调服务商 /models 会失败，此处 200 即证明列表来自 DB
     const configId = await seedNode({
       nodeType: 'chat',
-      llmConfig: { baseUrl: srv.baseURL, modelName: 'model-a' },
+      llmConfig: { baseUrl: 'http://127.0.0.1:1/v1', modelName: 'model-a' },
     });
+    const schema = await import('../../src/db/schema.js');
+    db.insert(schema.llmConfigs)
+      .values({
+        name: 'llm-b',
+        kind: 'text',
+        apiKey: 'sk-b',
+        baseUrl: 'http://127.0.0.1:1/v1',
+        modelName: 'model-b',
+        isActive: true,
+      })
+      .run();
 
     const res = await app.inject({
       method: 'GET',
@@ -389,21 +390,22 @@ describe('llm-models 端点', () => {
     expect(body.models).toContain('model-b');
   });
 
-  it('prompt_generation 节点同样可拉取模型列表', async () => {
-    const srv = await startMockOpenAIServer((req) => {
-      expect(req.path).toBe('/v1/models');
-      return JSON.stringify({
-        data: [
-          { id: 'm1', object: 'model' },
-          { id: 'm2', object: 'model' },
-        ],
-      });
-    });
-    openServers.push(srv);
+  it('prompt_generation 节点同样返回 admin 已配置模型列表', async () => {
     const configId = await seedNode({
       nodeType: 'prompt_generation',
-      llmConfig: { baseUrl: srv.baseURL, modelName: 'm1' },
+      llmConfig: { baseUrl: 'http://127.0.0.1:1/v1', modelName: 'm1' },
     });
+    const schema = await import('../../src/db/schema.js');
+    db.insert(schema.llmConfigs)
+      .values({
+        name: 'llm-m2',
+        kind: 'text',
+        apiKey: 'sk-m2',
+        baseUrl: 'http://127.0.0.1:1/v1',
+        modelName: 'm2',
+        isActive: true,
+      })
+      .run();
 
     const res = await app.inject({
       method: 'GET',
@@ -429,12 +431,37 @@ describe('llm-models 端点', () => {
     expect(res.statusCode).toBe(400);
   });
 
-  it('服务商 /models 不可用时回退为仅默认模型', async () => {
-    // 端口 1 不可达：fetch 抛错 → 回退列表
+  it('图像生成节点只列 image 类配置的模型（kind 过滤）', async () => {
     const configId = await seedNode({
-      nodeType: 'chat',
-      llmConfig: { baseUrl: 'http://127.0.0.1:1/v1', modelName: 'm' },
+      nodeType: 'image_generation',
+      llmConfig: {
+        baseUrl: 'http://127.0.0.1:1/v1',
+        modelName: 'img-default',
+        kind: 'image',
+      },
     });
+    const schema = await import('../../src/db/schema.js');
+    db.insert(schema.llmConfigs)
+      .values({
+        name: 'llm-img',
+        kind: 'image',
+        apiKey: 'sk-img',
+        baseUrl: 'http://127.0.0.1:1/v1',
+        modelName: 'img-extra',
+        isActive: true,
+      })
+      .run();
+    db.insert(schema.llmConfigs)
+      .values({
+        name: 'llm-txt',
+        kind: 'text',
+        apiKey: 'sk-txt',
+        baseUrl: 'http://127.0.0.1:1/v1',
+        modelName: 'txt-not-for-image',
+        isActive: true,
+      })
+      .run();
+
     const res = await app.inject({
       method: 'GET',
       url: `/api/modules/bookplate/llm-models?config_id=${configId}`,
@@ -442,8 +469,37 @@ describe('llm-models 端点', () => {
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    expect(body.default_model).toBe('m');
-    expect(body.models).toEqual(['m']);
+    expect(body.default_model).toBe('img-default');
+    expect(body.models).toContain('img-extra');
+    expect(body.models).not.toContain('txt-not-for-image');
+  });
+
+  it('未启用配置的模型不进入候选列表', async () => {
+    const configId = await seedNode({
+      nodeType: 'chat',
+      llmConfig: { baseUrl: 'http://127.0.0.1:1/v1', modelName: 'active-model' },
+    });
+    const schema = await import('../../src/db/schema.js');
+    db.insert(schema.llmConfigs)
+      .values({
+        name: 'llm-off',
+        kind: 'text',
+        apiKey: 'sk-off',
+        baseUrl: 'http://127.0.0.1:1/v1',
+        modelName: 'ghost-model',
+        isActive: false,
+      })
+      .run();
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/modules/bookplate/llm-models?config_id=${configId}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.default_model).toBe('active-model');
+    expect(body.models).not.toContain('ghost-model');
   });
 });
 

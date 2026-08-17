@@ -191,13 +191,13 @@ const NodeSettingsPopoverInner: React.FC<NodeSettingsPopoverProps> = ({
                   </div>
                 )}
 
-                {/* 模型选择：仅 LLM 模式（图片分析 / 提示词生成 / 图像生成节点）；服务商 /models 列表，留空 = 配置默认模型 */}
+                {/* 模型选择：仅 LLM 模式（图片分析 / 提示词生成 / 图像生成节点）；候选 = admin 已配置模型，留空 = 配置默认模型 */}
                 {showModelOption && mode === 'llm' && configId != null && (
                   <div className="space-y-1.5 border-t border-dashed border-paper-grid pt-3">
                     <div>
                       <p className="text-xs font-sans text-ink">模型</p>
                       <p className="text-[10px] text-ink-faint font-sans mt-0.5 leading-snug">
-                        切换服务商模型；留空 = 节点配置的默认模型
+                        切换为后台已配置的其他模型；留空 = 节点配置的默认模型
                       </p>
                     </div>
                     <ModelOverrideField

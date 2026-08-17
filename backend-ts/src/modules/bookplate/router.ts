@@ -25,6 +25,7 @@ import {
   findLLMConfigById,
   findFastClawAgentConfigById,
   listActiveFastClawAgents,
+  listActiveLLMConfigModelNames,
   listActiveNodeConfigs,
   findBookByIsbn,
   insertBookByIsbn,
@@ -141,6 +142,22 @@ const _IMAGE_MAGIC_PREFIXES: Array<[number[], string]> = [
   [[0x47, 0x49, 0x46, 0x38, 0x39, 0x61], '.gif'],
 ];
 
+/** 节点类型 → 可用的 LLM 配置 kind（模型候选列表过滤用）；未列出的节点类型返回空 = 不限。 */
+function llmKindsForNodeType(nodeType: string): string[] {
+  switch (nodeType) {
+    case NODE_TYPES.CHAT:
+      return ['text', 'multimodal']; // 多轮对话：文本 / 多模态（可带图）
+    case NODE_TYPES.IMAGE_ANALYSIS:
+      return ['multimodal']; // 视觉分析
+    case NODE_TYPES.PROMPT:
+      return ['text']; // 提示词生成
+    case NODE_TYPES.IMAGE:
+      return ['image']; // 图像生成
+    default:
+      return [];
+  }
+}
+
 /** 通过文件头魔数判断字节是否为真实图片；是则返回扩展名，否则 null。 */
 function detectImageExt(content: Uint8Array): string | null {
   if (!content.length) return null;
@@ -250,39 +267,6 @@ function hasSkillAgentBinding(configId: number | null): boolean {
   if (configId == null) return false;
   const nc = findNodeConfigById(getDb(), configId);
   return !!nc && nc.skillAgentConfigId != null && !!nc.isActive;
-}
-
-// ---------------------------------------------------------------------------
-// 模型列表（AI 对话节点「模型」下拉数据源）
-// ---------------------------------------------------------------------------
-
-/** 模型列表缓存 TTL（毫秒）：避免每次打开设置弹层都打上游服务商。 */
-const LLM_MODELS_CACHE_TTL_MS = 5 * 60 * 1000;
-
-const llmModelsCache = new Map<
-  number,
-  { at: number; defaultModel: string; models: string[] }
->();
-
-/** GET {base_url}/models 拉取服务商模型 id 列表（key 仅服务端使用，不回传）。 */
-async function fetchLLMModelNames(baseUrl: string, apiKey: string): Promise<string[]> {
-  const url = baseUrl
-    ? `${baseUrl.replace(/\/+$/, '')}/models`
-    : 'https://api.openai.com/v1/models';
-  let resp: Response;
-  try {
-    resp = await fetch(url, {
-      headers: { Authorization: `Bearer ${apiKey}` },
-      signal: AbortSignal.timeout(10_000),
-    });
-  } catch {
-    throw new Error('无法连接模型服务');
-  }
-  if (!resp.ok) throw new Error(`模型列表拉取失败（HTTP ${resp.status}）`);
-  const data = (await resp.json().catch(() => null)) as { data?: Array<{ id?: unknown }> } | null;
-  return (data?.data ?? [])
-    .map((m) => (typeof m?.id === 'string' ? m.id : null))
-    .filter((id): id is string => id !== null && id !== '');
 }
 
 // ---------------------------------------------------------------------------
@@ -734,7 +718,7 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
     }
   );
 
-  // ---- 模型列表（AI 对话节点「模型」下拉数据源；服务商 key 仅服务端使用） ----
+  // ---- 模型列表（各节点「模型」下拉数据源：admin llm-configs 已配置的模型名，不调服务商 API） ----
   app.get(
     '/api/modules/bookplate/llm-models',
     { preHandler: app.authenticate },
@@ -753,24 +737,13 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
         return reply.code(400).send({ detail: '模型配置不可用（未启用或缺少 API Key）' });
       }
 
-      const cached = llmModelsCache.get(llm.id);
-      if (cached && Date.now() - cached.at < LLM_MODELS_CACHE_TTL_MS) {
-        return { default_model: cached.defaultModel, models: cached.models };
-      }
-
+      // 候选列表 = admin 启用配置中、与节点类型匹配 kind 的模型名（去重，默认模型恒在首位）；
+      // 覆盖仅改 model_name，保留节点自身配置的 apiKey / base_url，故不跨服务商拉全量模型
       const defaultModel = llm.modelName || '';
-      let models: string[];
-      try {
-        models = await fetchLLMModelNames(llm.baseUrl ?? '', llm.apiKey);
-      } catch (err) {
-        // 上游未实现 /models（或不可达）：回退为仅默认模型，前端展示「默认 + 手动输入」
-        request.log.warn({ config_id: configId }, '拉取模型列表失败: %s', err instanceof Error ? err.message : String(err));
-        return { default_model: defaultModel, models: defaultModel ? [defaultModel] : [] };
-      }
-      // 去重 + 保证默认模型始终在列表首位（服务商可能未列出已配置的别名模型）
-      const unique = [...new Set([defaultModel, ...models])].filter(Boolean);
-      llmModelsCache.set(llm.id, { at: Date.now(), defaultModel, models: unique });
-      return { default_model: defaultModel, models: unique };
+      const models = [
+        ...new Set([defaultModel, ...listActiveLLMConfigModelNames(db, llmKindsForNodeType(nc.nodeType))]),
+      ].filter(Boolean);
+      return { default_model: defaultModel, models };
     }
   );
 
