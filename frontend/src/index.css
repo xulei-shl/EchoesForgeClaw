@@ -282,6 +282,22 @@ body.is-connecting [data-node-id]:hover {
   }
 }
 
+/* ========== 表单错误提示便签入场动画 ========== */
+@keyframes error-banner-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.login-error-banner {
+  animation: error-banner-in 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
 /* ========== 无障碍与设备适配 ========== */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

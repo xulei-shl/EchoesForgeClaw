@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { AlertCircle } from 'lucide-react';
 import { useAuth } from '../../platform/stores/authStore';
 import { Button } from '../../platform/components/ui/Button';
 import { Input } from '../../platform/components/ui/Input';
@@ -9,6 +10,8 @@ const LoginPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const usernameInputRef = useRef<HTMLInputElement>(null);
+  const passwordInputRef = useRef<HTMLInputElement>(null);
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -19,10 +22,21 @@ const LoginPage: React.FC = () => {
     (location.state as any)?.from?.pathname ||
     '/';
 
+  const handleUsernameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setUsername(e.target.value);
+    if (error) setError('');
+  };
+
+  const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setPassword(e.target.value);
+    if (error) setError('');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username.trim()) {
       setError('请输入用户名');
+      usernameInputRef.current?.focus();
       return;
     }
     
@@ -34,7 +48,12 @@ const LoginPage: React.FC = () => {
       sessionStorage.removeItem('redirectAfterLogin');
       navigate(from, { replace: true });
     } catch (err: any) {
-      setError(err?.message || err?.detail || '登录失败，请重试');
+      setError(err?.message || err?.detail || '用户名或密码错误');
+      // 密码错误时自动聚焦并选中密码输入框，方便用户直接重新输入
+      setTimeout(() => {
+        passwordInputRef.current?.focus();
+        passwordInputRef.current?.select();
+      }, 50);
     } finally {
       setIsLoading(false);
     }
@@ -63,26 +82,39 @@ const LoginPage: React.FC = () => {
 
           <form className="space-y-6 ml-4" onSubmit={handleSubmit}>
             <Input
+              ref={usernameInputRef}
               label="用户名"
               id="username"
               type="text"
               required
               value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              onChange={handleUsernameChange}
               placeholder="例如: admin"
+              autoComplete="username"
+              className={error && !username.trim() ? '!border-error' : ''}
             />
 
             <Input
+              ref={passwordInputRef}
               label="密码"
               id="password"
               type="password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={handlePasswordChange}
               placeholder="可选"
+              autoComplete="current-password"
+              className={error ? '!border-error/80' : ''}
             />
 
             {error && (
-              <div className="text-error text-sm font-sans">{error}</div>
+              <div 
+                role="alert"
+                aria-live="polite"
+                className="login-error-banner flex items-center gap-2.5 px-3.5 py-2.5 rounded-md bg-error/10 border border-error/25 text-error text-xs font-sans"
+              >
+                <AlertCircle className="w-4 h-4 shrink-0 text-error stroke-[1.75]" />
+                <span className="leading-snug">{error}</span>
+              </div>
             )}
 
             <div>
