@@ -14,6 +14,8 @@ import {
 import type { EdgeData, NodeData } from './graphTypes';
 import { handleAgentSseMessage } from './agentSteps';
 import { makeIdleTimeout } from './idleTimeout';
+import { bookCoverImage } from './nodeTypes';
+import { urlToDataUrl } from './imageUpload';
 import type { RegistryNodeConfig } from '../../platform/types';
 
 /** 执行引擎依赖（由画布注入：全部为 ref / 稳定 setter，保证闭包不过期） */
@@ -202,7 +204,7 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
     prompt: string,
     controller: AbortController,
     configId?: number,
-    image?: string
+    images?: string[]
   ) => {
     const idle = makeIdleTimeout(controller, IMAGE_GENERATION_TIMEOUT_MS);
     idle.arm();
@@ -212,7 +214,7 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
         url: '/api/modules/bookplate/generate-image',
         body: {
           prompt,
-          image: image ? [image] : undefined,
+          image: images?.length ? images : undefined,
           config_id: configId ?? null,
           node_id: nodeId,
         },
@@ -262,10 +264,28 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
     }
   };
 
-  const runImageGeneration = async (node: NodeData, prompt: string, image?: string) => {
+  const runImageGeneration = async (
+    node: NodeData,
+    prompt: string,
+    image?: string,
+    coverUrl?: string
+  ) => {
     // 重试防抖：该节点已有进行中的生成时直接忽略（防止快速连点开启并发请求，
     // 导致孤儿流 + 历史记录重复保存）
     if (streamControllers.current.has(node.id)) return;
+    // 图书封面图（图生图参考，与 AI 对话节点同口径）：includeBookCover 开启且封面可用时，
+    // 与「图片上传」参考图一并作为多图参考（Agnes 多图合成契约）；跨域/代理失败跳过不阻断。
+    const images: string[] = [];
+    if (image) images.push(image);
+    if (coverUrl) {
+      try {
+        const coverDataUrl = await urlToDataUrl(coverUrl);
+        if (coverDataUrl) images.push(coverDataUrl);
+      } catch {
+        // 封面抓取失败（跨域 / 代理 502）跳过，不阻断生成
+      }
+    }
+    const wireImages = images.length ? images : undefined;
     // 记录本次实际使用的提示词：供分支重试（branchImageNode）与历史记录 stage3.prompt 使用
     ctx.updateNodeData(node.id, {
       prompt,
@@ -288,14 +308,14 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
           ? ctx.registryConfigsRef.current.find((c) => c.id === node.configId)
           : undefined;
       if (cfg?.mode === 'agent') {
-        await runImageGenerationAgent(node.id, prompt, controller, node.configId, image);
+        await runImageGenerationAgent(node.id, prompt, controller, node.configId, wireImages);
         return;
       }
       // 图片生成耗时较长（可达 30-120s+），超时须覆盖后端最坏耗时（见 timeouts.ts）
       const runSettings = node.data?.settings;
       const body: Record<string, unknown> = {
         prompt,
-        image: image ? [image] : undefined,
+        image: wireImages,
         config_id: node.configId ?? null,
         node_id: node.id,
       };
@@ -409,11 +429,16 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
         if (!inputs.imagePrompt.trim()) {
           return pendingReason(
             node,
-            '缺少提示词（连线「提示词生成」节点，或开启「包含图书元数据」）'
+            '缺少提示词（连线「提示词生成」/「图片分析」/文本节点，或开启「包含图书元数据」）'
           );
         }
         if (inputs.uploadNode && !inputs.refImage) return '「图片上传」节点尚未上传图片';
-        runImageGeneration(node, inputs.imagePrompt, inputs.refImage);
+        // 图书封面图：与 AI 对话节点同口径（穿透 + 兜底均由 includeBook 解析的 book 承载），
+        // includeBookCover 默认开启（旧节点 undefined 视为开启）
+        const includeCover = node.data?.settings?.includeBookCover !== false;
+        const coverUrl =
+          includeCover && inputs.book ? bookCoverImage(inputs.book.data) : '';
+        runImageGeneration(node, inputs.imagePrompt, inputs.refImage, coverUrl);
         return '';
       }
       case 'chat':

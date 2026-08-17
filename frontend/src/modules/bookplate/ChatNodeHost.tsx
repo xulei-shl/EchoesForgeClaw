@@ -3,9 +3,10 @@ import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type UIMessage } from 'ai';
 import { nodesRef, edgesRef } from '../../platform/stores/useCanvasState';
 import { ChatNode } from './components/ChatNode';
-import { getNodeTitle, bookMetadataText, nodeOutputImages, nodeOutputText } from './nodeTypes';
-import { resolveNodeRunInputs, type PortTypesLookup } from './execution';
-import { toWireChatMessages, type NodeData } from './graphTypes';
+import { getNodeTitle } from './nodeTypes';
+import type { PortTypesLookup } from './execution';
+import { buildInjectedContextBlocks } from './contextBlocks';
+import { toWireChatMessages } from './graphTypes';
 import { handleAgentSseMessage } from './agentSteps';
 import { urlToDataUrl } from './imageUpload';
 import { makeIdleTimeout } from './idleTimeout';
@@ -19,7 +20,7 @@ import {
 import { mismatchBadgeOf, hasDownstreamOf, type NodeViewHelpers } from './CanvasNodeViews';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import type { AgentFile, ChatMessage, ChatNodeSettings, InjectedContextBlock, SkillSelection } from '../../platform/types';
-import type { EdgeData } from './graphTypes';
+import type { NodeData } from './graphTypes';
 
 // AI 对话单轮携带的图片上限（附件 + 上下文图片合计）：防止超大 base64 请求体拖垮传输
 const MAX_CHAT_IMAGES = 4;
@@ -36,89 +37,6 @@ const DEFAULT_CHAT_SETTINGS: ChatNodeSettings = {
 export interface ChatHostDeps {
   setNodes: Dispatch<SetStateAction<NodeData[]>>;
   portTypesRef: RefObject<PortTypesLookup>;
-}
-
-/** 图书封面在浏览器可访问的 URL：优先本地代理（同源可 fetch → data URL），兜底豆瓣/内部地址（可能跨域 fetch 失败，收集时跳过）。 */
-function bookCoverImage(data: any): string {
-  return (
-    (typeof data?.cover_image_local === 'string' && data.cover_image_local) ||
-    (typeof data?.cover_image === 'string' && data.cover_image) ||
-    (typeof data?.coverUrl === 'string' && data.coverUrl) ||
-    ''
-  );
-}
-
-/** 收集对话上下文块（按图书元数据与每个直接父节点拆分，用于顶部折叠卡片展示） */
-function buildInjectedContextBlocks(
-  node: NodeData,
-  portTypesRef: RefObject<PortTypesLookup>,
-  nodes: NodeData[] = nodesRef.current,
-  edges: EdgeData[] = edgesRef.current
-): InjectedContextBlock[] {
-  const settings: ChatNodeSettings = node.data?.settings ?? DEFAULT_CHAT_SETTINGS;
-  const blocks: InjectedContextBlock[] = [];
-
-  // 1. 图书元数据与图书封面（拆分为独立条目注入）
-  let injectedBookId: string | null = null;
-  if (settings.includeBook) {
-    const book = resolveNodeRunInputs(node, nodes, edges, portTypesRef.current).book;
-    if (book) {
-      injectedBookId = book.id;
-      const rawTitle = getNodeTitle(book);
-      const titleSuffix = rawTitle && rawTitle !== '图书元数据' ? ` · ${rawTitle}` : '';
-
-      // (1) 图书封面图条目：开启「加载图书封面图片」且封面可用时注入
-      const cover = settings.includeBookCover !== false ? bookCoverImage(book.data) : '';
-      if (cover) {
-        blocks.push({
-          id: `book_cover_${book.id}`,
-          title: `图书封面图${titleSuffix}`,
-          nodeType: 'book_info',
-          images: [cover],
-        });
-      }
-
-      // (2) 图书元数据条目：结构化文本内容
-      const metaText = bookMetadataText(book.data).trim();
-      blocks.push({
-        id: `book_meta_${book.id}`,
-        title: `图书元数据${titleSuffix}`,
-        nodeType: 'book_info',
-        text: metaText || undefined,
-      });
-    }
-  }
-
-  // 2. 直接父节点（只要连线且开启配置，均生成对应的注入组件，不受类型与输出状态限制）
-  const includeText = settings.includeUpstream !== false;
-  const includeImages = settings.includeUpstreamImages !== false;
-
-  if (includeText || includeImages) {
-    const parents = nodes.filter((n) =>
-      edges.some((e) => e.target === node.id && e.source === n.id)
-    );
-    for (const p of parents) {
-      // 若该直连父节点已作为图书元数据/封面注入，跳过以避免重复注入
-      if (injectedBookId && p.id === injectedBookId) continue;
-
-      const text = includeText ? nodeOutputText(p).trim() : '';
-      const rawImages = includeImages ? nodeOutputImages(p) : [];
-      const images: string[] = [];
-      for (const img of rawImages) {
-        if (img && !images.includes(img)) images.push(img);
-      }
-
-      blocks.push({
-        id: `parent_${p.id}`,
-        title: getNodeTitle(p),
-        nodeType: p.type,
-        text: text || undefined,
-        images: images.length > 0 ? images : undefined,
-      });
-    }
-  }
-
-  return blocks;
 }
 
 /** 从上下文块拼接送给模型的文本上下文。 */
@@ -247,7 +165,20 @@ export function ChatNodeHost({
         const firstUserIdx = chatMsgs.findIndex((m) => m.role === 'user');
         const alreadyHasContext = hasContextInStore(chatMsgs);
         if (!alreadyHasContext && cur) {
-          const blocks = buildInjectedContextBlocks(cur, portTypesRef);
+          const chatSettings: ChatNodeSettings =
+            cur.data?.settings ?? DEFAULT_CHAT_SETTINGS;
+          const blocks = buildInjectedContextBlocks(
+            cur,
+            {
+              includeBook: chatSettings.includeBook,
+              includeBookCover: chatSettings.includeBookCover !== false,
+              includeUpstreamText: chatSettings.includeUpstream !== false,
+              includeUpstreamImages: chatSettings.includeUpstreamImages !== false,
+            },
+            nodesRef.current,
+            edgesRef.current,
+            portTypesRef.current
+          );
           const context = buildChatContext(blocks);
           const contextImages = await buildChatImagesFromBlocks(blocks);
           if (context || contextImages.length || blocks.length) {
@@ -594,7 +525,18 @@ export function ChatNodeHost({
               },
             ]
           : [])
-      : buildInjectedContextBlocks(node, portTypesRef, h.nodes, h.edges);
+      : buildInjectedContextBlocks(
+          node,
+          {
+            includeBook: settings.includeBook,
+            includeBookCover: settings.includeBookCover !== false,
+            includeUpstreamText: settings.includeUpstream !== false,
+            includeUpstreamImages: settings.includeUpstreamImages !== false,
+          },
+          h.nodes,
+          h.edges,
+          portTypesRef.current
+        );
 
   return (
     <ChatNode

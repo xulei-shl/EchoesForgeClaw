@@ -321,6 +321,19 @@ export function bookMetadataText(data: any): string {
 }
 
 /**
+ * 图书封面在浏览器可访问的 URL：优先本地代理（同源可 fetch → data URL），
+ * 兜底豆瓣/内部地址（可能跨域 fetch 失败，收集时跳过）。chat 与图像生成节点共用。
+ */
+export function bookCoverImage(data: any): string {
+  return (
+    (typeof data?.cover_image_local === 'string' && data.cover_image_local) ||
+    (typeof data?.cover_image === 'string' && data.cover_image) ||
+    (typeof data?.coverUrl === 'string' && data.coverUrl) ||
+    ''
+  );
+}
+
+/**
  * 提取任意节点的对外输出文本（供下游作为输入）：
  * - 文本节点 → content；提示词生成 → content；图片分析 → analysis；
  * - AI 对话 → 最后一轮助手回复；图像生成 → prompt；图书元数据 → 过滤图片后的元数据。

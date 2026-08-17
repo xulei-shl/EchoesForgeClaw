@@ -8,9 +8,10 @@ import { Tooltip } from '../../../platform/components/ui/Tooltip';
 import { BeamGlow } from '../../../platform/components/node/BeamGlow';
 import { AgentActivity } from '../../../platform/components/agent/AgentActivity';
 import { NodeRunPlaceholder } from '../../../platform/components/node/NodeRunPlaceholder';
-import type { AgentStep, NodeRunSettings } from '../../../platform/types';
+import type { AgentStep, InjectedContextBlock, NodeRunSettings } from '../../../platform/types';
 import { NODE_COLORS } from '../nodeTypes';
 import { NodeSettingsPopover } from './NodeSettingsPopover';
+import { ContextInjectionBlock } from './ContextInjectionBlock';
 
 export interface ImageNodeProps {
   id: string;
@@ -58,9 +59,13 @@ export interface ImageNodeProps {
   onRun?: (id: string) => void;
   /** 运行设置（包含图书元数据 / 图像尺寸与宽高比） */
   settings?: NodeRunSettings;
+  /** 注入的上下文块（提示词 / 文本上级 / 图书元数据 / 参考图，折叠卡片展示） */
+  contextBlocks?: InjectedContextBlock[];
   onUpdateSettings?: (id: string, settings: NodeRunSettings) => void;
   /** 运行设置中展示图像参数（尺寸/宽高比）区块（仅图像生成节点开启） */
   showImageParams?: boolean;
+  /** 运行设置中展示「加载图书封面图片」开关（图像生成节点开启） */
+  showBookCoverOption?: boolean;
   /** 画布是否已有图书元数据节点 */
   hasBookInfo?: boolean;
   /** 标题旁的类型不匹配提示 */
@@ -100,8 +105,10 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
   group,
   onRun,
   settings,
+  contextBlocks,
   onUpdateSettings,
   showImageParams = false,
+  showBookCoverOption = false,
   hasBookInfo,
   mismatchBadge,
   hasDownstream,
@@ -186,6 +193,7 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
               hasDownstream={hasDownstream}
               hasBookInfo={hasBookInfo}
               showImageParams={showImageParams}
+              showBookCoverOption={showBookCoverOption}
             />
           )}
           <NodeActionBar.Custom
@@ -350,6 +358,15 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
               text="点击 ▶ 运行生成图像"
               subtext={referenceNote}
             />
+          )}
+
+          {/* 顶部展示各个上级节点的上下文注入折叠块（与 AI 对话节点同一组件） */}
+          {contextBlocks && contextBlocks.length > 0 && (
+            <div className="space-y-1.5 shrink-0">
+              {contextBlocks.map((block) => (
+                <ContextInjectionBlock key={block.id} block={block} />
+              ))}
+            </div>
           )}
 
           {referenceNote && imageUrl && !isLoading && !displayError && (

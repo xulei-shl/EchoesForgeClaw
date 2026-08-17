@@ -60,7 +60,7 @@ export interface RunInputs {
   uploadNode?: NodeData;
   /** 参考图 data URL（图片上传节点已上传时） */
   refImage?: string;
-  /** 图像生成最终提示词：提示词节点优先，无则回退图书元数据；文本/AI对话直接上级并入上下文 */
+  /** 图像生成最终提示词：提示词节点优先，无则回退图书元数据；图片分析/文本/AI对话直接上级并入上下文 */
   imagePrompt: string;
 }
 
@@ -104,9 +104,13 @@ export function resolveNodeRunInputs(
   const uploadNode = parents.find((p) => p.type === 'image_upload');
   const refImage =
     typeof uploadNode?.data?.imageUrl === 'string' ? uploadNode.data.imageUrl : undefined;
+  // 图像生成提示词 = 提示词（无则回退图书元数据）+ 图片分析 + 文本上下文。
+  // 与 AI 对话节点同口径（所见即所得）：除图书元数据走 includeBook 穿透外，
+  // 任何直连上级的文本输出都并入上下文。
   const promptSource = promptValues.some((v) => v.trim()) ? promptValues : [metadataText];
   const imagePrompt = markdownSections([
     { label: '提示词', values: promptSource },
+    { label: '图片分析', values: analysisValues },
     { label: '文本上下文', values: textValues },
   ]);
   return {

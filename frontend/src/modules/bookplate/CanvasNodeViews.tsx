@@ -13,6 +13,7 @@ import { CalendarNode } from './components/CalendarNode';
 import { WeatherNode } from './components/WeatherNode';
 import { getNodeTitle, matchPortType, nodeOutputText, resolveDirectParents } from './nodeTypes';
 import { DEFAULT_RUN_SETTINGS, type PortTypesLookup } from './execution';
+import { buildInjectedContextBlocks } from './contextBlocks';
 import type { EdgeData, NodeData, NodeSize } from './graphTypes';
 import type {
   ChatNodeSettings,
@@ -191,10 +192,26 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           : '等待上传参考图（上传后点击运行）'
         : undefined;
       const hasDownstream = hasDownstreamOf(node, h.edges);
+      // 上下文注入折叠块：与 AI 对话节点共用构建逻辑，展示本次运行实际并入提示词的输入
+      // （提示词节点 / 图片分析 / 文本类上级 / 图书元数据与封面 / 参考图）。与 chat 同口径
+      // （所见即所得）：除图书元数据走 includeBook 穿透外，任何直连上级的文本/图片都并入。
+      const contextBlocks = buildInjectedContextBlocks(
+        node,
+        {
+          includeBook: settings.includeBook,
+          includeBookCover: settings.includeBookCover !== false,
+          includeUpstreamText: true,
+          includeUpstreamImages: true,
+        },
+        h.nodes,
+        h.edges,
+        h.portTypesOf
+      );
       return (
         <ImageNode
           key={node.id}
           {...common}
+          contextBlocks={contextBlocks}
           imageUrl={node.data.imageUrl}
           agentSteps={node.data.agentSteps}
           agentName={config?.mode === 'agent' ? (config.agent_name ?? undefined) : undefined}
@@ -219,6 +236,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           settings={settings}
           onUpdateSettings={h.handleUpdateRunSettingsFor}
           showImageParams
+          showBookCoverOption
           hasBookInfo={h.hasBookInfo}
         />
       );

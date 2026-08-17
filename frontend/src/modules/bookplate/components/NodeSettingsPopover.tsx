@@ -44,6 +44,8 @@ export interface NodeSettingsPopoverProps {
   hasDownstream?: boolean;
   /** 是否展示图像参数（尺寸/宽高比）区块：仅图像生成节点传入 */
   showImageParams?: boolean;
+  /** 是否展示「加载图书封面图片」开关：仅图像生成节点传入（chat 节点有独立设置弹层） */
+  showBookCoverOption?: boolean;
   /** 按钮样式（沿用各节点的 actionBtn 类） */
   className?: string;
 }
@@ -55,6 +57,7 @@ const NodeSettingsPopoverInner: React.FC<NodeSettingsPopoverProps> = ({
   hasBookInfo = true,
   hasDownstream,
   showImageParams = false,
+  showBookCoverOption = false,
   className = '',
 }) => {
   const [open, setOpen] = useState(false);
@@ -131,6 +134,25 @@ const NodeSettingsPopoverInner: React.FC<NodeSettingsPopoverProps> = ({
                     disabled={disabled || !hasBookInfo}
                   />
                 </div>
+
+                {showBookCoverOption && (
+                  <div className="flex items-start justify-between gap-2.5">
+                    <div className="min-w-0">
+                      <p className="text-xs font-sans text-ink">加载图书封面图片</p>
+                      <p className="text-[10px] text-ink-faint font-sans mt-0.5 leading-snug">
+                        {settings.includeBook
+                          ? '随图书元数据注入封面图作为图生图参考（穿透/兜底与图书元数据一致）'
+                          : '需先开启「包含图书元数据」'}
+                      </p>
+                    </div>
+                    <Toggle
+                      checked={settings.includeBookCover !== false}
+                      onChange={(v) => onChange({ ...settings, includeBookCover: v })}
+                      label="加载图书封面图片"
+                      disabled={disabled || !settings.includeBook}
+                    />
+                  </div>
+                )}
 
                 {showImageParams && (
                   <div className="space-y-2.5 border-t border-dashed border-paper-grid pt-3">
