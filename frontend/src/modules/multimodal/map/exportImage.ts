@@ -142,33 +142,12 @@ async function captureMapSnapshot(
   if (isArtistic) {
     if (!artisticMap || !artisticContainer) return null;
     try {
-      const originalWidth = artisticContainer.style.width;
-      const originalHeight = artisticContainer.style.height;
-      artisticContainer.style.width = `${state.width}px`;
-      artisticContainer.style.height = `${state.height}px`;
-      artisticMap.resize();
-
       let mapDataURL: string | null = null;
-      await new Promise<void>((resolve) => {
-        const timer = setTimeout(() => {
-          try {
-            mapDataURL = artisticMap.getCanvas().toDataURL();
-          } catch {
-            /* noop */
-          }
-          resolve();
-        }, 1500);
-        artisticMap.once('idle', () => {
-          clearTimeout(timer);
-          try {
-            mapDataURL = artisticMap.getCanvas().toDataURL();
-          } catch {
-            /* noop */
-          }
-          resolve();
-        });
-      });
-
+      try {
+        mapDataURL = artisticMap.getCanvas().toDataURL();
+      } catch {
+        /* noop */
+      }
       if (mapDataURL) {
         const mapImg = await loadImage(mapDataURL);
         if (mapImg) ctx.drawImage(mapImg, 0, 0, canvas.width, canvas.height);
@@ -189,9 +168,6 @@ async function captureMapSnapshot(
           await drawMarkerToCtx(ctx, x, y, state.markerColor || '#EF4444', state.markerIcon, state.markerSize);
         }
       }
-      artisticContainer.style.width = originalWidth;
-      artisticContainer.style.height = originalHeight;
-      artisticMap.resize();
       return canvas.toDataURL('image/png');
     } catch (e) {
       console.error('Failed to capture artistic map:', e);

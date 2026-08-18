@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { Check, Download, ImageOff, Loader2, RefreshCw, Search, X } from 'lucide-react';
+import { Check, ImageOff, Loader2, RefreshCw, Search, X } from 'lucide-react';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
 import api from '../../../platform/services/api';
@@ -71,6 +71,24 @@ const PROVIDERS = [
 /** 每页条数（网格 3 列 × 8 行） */
 const PER_PAGE = 24;
 
+type ProviderType = 'unsplash' | 'pixabay';
+
+/** 每个图库提供商的独立缓存与检索状态 */
+interface ProviderCacheState {
+  items: ImageSearchItem[];
+  query: string;
+  hasMore: boolean;
+  searchError: string;
+  loaded: boolean;
+}
+
+type ProviderCacheMap = Record<ProviderType, ProviderCacheState>;
+
+const initialProviderCache: ProviderCacheMap = {
+  unsplash: { items: [], query: '', hasMore: false, searchError: '', loaded: false },
+  pixabay: { items: [], query: '', hasMore: false, searchError: '', loaded: false },
+};
+
 const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
   id,
   initialX,
@@ -93,37 +111,58 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
 }) => {
   const { showToast } = useFeedback();
 
-  // ---- 编辑器状态（provider 持久化；query / 结果集为 UI 临时态） ----
-  const [activeProvider, setActiveProvider] = useState<'unsplash' | 'pixabay'>(provider);
-  const [query, setQuery] = useState('');
-  // ---- 检索临时态 ----
-  const [items, setItems] = useState<ImageSearchItem[]>([]);
+  // ---- 编辑器状态（provider 持久化；检索状态按 provider 隔离缓存） ----
+  const [activeProvider, setActiveProvider] = useState<ProviderType>(provider);
+  const [providerCache, setProviderCache] = useState<ProviderCacheMap>(initialProviderCache);
   const [loading, setLoading] = useState(false);
-  const [searchError, setSearchError] = useState('');
-  const [hasMore, setHasMore] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
+
   /** 请求序号：丢弃过期响应，防止快速切换/输入时旧结果覆盖新结果 */
   const requestSeq = useRef(0);
-  /** 当前结果集长度（load 追加计数用，避免闭包过期） */
-  const itemsRef = useRef<ImageSearchItem[]>([]);
-  useEffect(() => {
-    itemsRef.current = items;
-  }, [items]);
+  /** 用于对比上游关键词变更 */
+  const prevUpstreamRef = useRef(upstreamKeyword);
 
-  /** 生效关键词：连线上级文本优先，其次手动输入 */
+  const currentCache = providerCache[activeProvider];
+  const items = currentCache.items;
+  const query = currentCache.query;
+  const hasMore = currentCache.hasMore;
+  const searchError = currentCache.searchError;
+
+  /** 生效关键词：连线上级文本优先，其次当前提供商的手动输入 */
   const effectiveQuery = upstreamKeyword.trim() || query.trim();
 
+  const handleQueryChange = (val: string) => {
+    setProviderCache((prev) => ({
+      ...prev,
+      [activeProvider]: {
+        ...prev[activeProvider],
+        query: val,
+      },
+    }));
+  };
+
   const load = useCallback(
-    async (page: number, replace: boolean) => {
+    async (
+      targetProvider: 'unsplash' | 'pixabay',
+      queryText: string,
+      page: number,
+      replace: boolean
+    ) => {
       const seq = ++requestSeq.current;
       setLoading(true);
-      setSearchError('');
+      setProviderCache((prev) => ({
+        ...prev,
+        [targetProvider]: {
+          ...prev[targetProvider],
+          searchError: '',
+        },
+      }));
       try {
         const res: { items?: ImageSearchItem[]; total?: number | null } = await api.post(
           '/modules/bookplate/image-search',
           {
-            provider: activeProvider,
-            query: effectiveQuery,
+            provider: targetProvider,
+            query: queryText,
             page,
             per_page: PER_PAGE,
           },
@@ -131,24 +170,41 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
         );
         if (seq !== requestSeq.current) return;
         const list = Array.isArray(res.items) ? res.items : [];
-        const prevLen = itemsRef.current.length;
-        setItems((prev) => (replace ? list : [...prev, ...list]));
         const total = typeof res.total === 'number' ? res.total : null;
-        // 有总数：按累计条数判断；无总数（Unsplash 随机）：末页不足一页视为到底
-        setHasMore(
-          total == null ? list.length >= PER_PAGE : (replace ? list.length : prevLen + list.length) < total
-        );
+        setProviderCache((prev) => {
+          const currentItems = prev[targetProvider].items;
+          const nextItems = replace ? list : [...currentItems, ...list];
+          const hasMore =
+            total == null
+              ? list.length >= PER_PAGE
+              : (replace ? list.length : currentItems.length + list.length) < total;
+          return {
+            ...prev,
+            [targetProvider]: {
+              ...prev[targetProvider],
+              items: nextItems,
+              hasMore,
+              searchError: '',
+              loaded: true,
+            },
+          };
+        });
       } catch (e: any) {
         if (seq !== requestSeq.current) return;
-        setSearchError(e?.detail || e?.message || '图片检索失败，请重试');
-        if (replace) setItems([]);
+        setProviderCache((prev) => ({
+          ...prev,
+          [targetProvider]: {
+            ...prev[targetProvider],
+            searchError: e?.detail || e?.message || '图片检索失败，请重试',
+            items: replace ? [] : prev[targetProvider].items,
+            loaded: true,
+          },
+        }));
       } finally {
         if (seq === requestSeq.current) setLoading(false);
       }
     },
-    // activeProvider / effectiveQuery 变化时以最新值请求；items 经 itemsRef 读取
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [activeProvider, effectiveQuery]
+    []
   );
 
   // 外部恢复（撤销/重做/历史恢复/切页回来）：node.data.provider 与本地不一致时同步
@@ -157,15 +213,21 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [provider]);
 
-  // 挂载 + 来源切换：加载该来源的默认批次（无关键词 → Unsplash 随机 / Pixabay 最热）
+  // 挂载 / Provider 切换：若该来源尚未加载过，则拉取第一批（已有数据则复用缓存，不重复请求）
+  const isLoaded = providerCache[activeProvider].loaded;
   useEffect(() => {
-    setItems([]);
-    setQuery('');
-    setHasMore(false);
-    void load(1, true);
-    // 仅挂载 / provider 变化时触发
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeProvider]);
+    if (!isLoaded) {
+      void load(activeProvider, effectiveQuery, 1, true);
+    }
+  }, [activeProvider, isLoaded, load, effectiveQuery]);
+
+  // 上游连线关键词发生实质变化时，自动重新检索当前 provider
+  useEffect(() => {
+    if (prevUpstreamRef.current !== upstreamKeyword) {
+      prevUpstreamRef.current = upstreamKeyword;
+      void load(activeProvider, upstreamKeyword.trim() || query.trim(), 1, true);
+    }
+  }, [upstreamKeyword, activeProvider, query, load]);
 
   const switchProvider = (p: 'unsplash' | 'pixabay') => {
     if (p === activeProvider) return;
@@ -177,18 +239,19 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
   const handleSearch = (e?: React.FormEvent) => {
     e?.preventDefault();
     if (loading) return;
-    void load(1, true);
+    void load(activeProvider, effectiveQuery, 1, true);
   };
 
   /** 换一批：同条件重新拉取（无关键词时 Unsplash 会换一批随机图） */
   const handleRefresh = () => {
     if (loading) return;
-    void load(1, true);
+    void load(activeProvider, effectiveQuery, 1, true);
   };
 
   const handleLoadMore = () => {
     if (loading || !hasMore) return;
-    void load(Math.floor(items.length / PER_PAGE) + 1, false);
+    const nextPage = Math.floor(items.length / PER_PAGE) + 1;
+    void load(activeProvider, effectiveQuery, nextPage, false);
   };
 
   const handleSelect = async (item: ImageSearchItem) => {
@@ -242,10 +305,8 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
       actionBar={
         <NodeActionBar>
           {imageUrl && (
-            <NodeActionBar.Custom
-              icon={<Download size={16} strokeWidth={1.5} />}
+            <NodeActionBar.Download
               tooltip="下载已选图片"
-              hasDownstream={hasDownstream}
               onClick={handleDownload}
             />
           )}
@@ -293,14 +354,14 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
             />
             <input
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => handleQueryChange(e.target.value)}
               placeholder={upstreamKeyword.trim() ? `上游关键词：${upstreamKeyword.trim()}` : `搜索${providerLabel}图片…`}
               className="w-full h-9 rounded-md border border-dashed border-paper-grid bg-transparent pl-8 pr-16 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors font-mono"
             />
             {query && (
               <button
                 type="button"
-                onClick={() => setQuery('')}
+                onClick={() => handleQueryChange('')}
                 className="absolute right-9 top-1/2 -translate-y-1/2 p-0.5 rounded text-ink-faint hover:text-error hover:bg-paper-grid/40 transition-colors"
                 title="清除"
               >
@@ -353,10 +414,20 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
                 <div className="grid grid-cols-3 gap-1.5 pb-1">
                   {items.map((item) => {
                     const saving = savingId === item.id;
+                    const isSelected = !!(
+                      selectedImage &&
+                      (selectedImage.previewUrl === item.previewUrl ||
+                        (selectedImage.pageUrl && selectedImage.pageUrl === item.pageUrl) ||
+                        (selectedImage.downloadUrl && selectedImage.downloadUrl === item.downloadUrl))
+                    );
                     return (
                       <div
                         key={item.id}
-                        className="relative rounded-md overflow-hidden border border-paper-grid bg-paper/40 group"
+                        className={`relative rounded-md overflow-hidden transition-all bg-paper/40 group ${
+                          isSelected
+                            ? 'border-2 border-accent ring-1 ring-accent/30 shadow-sm'
+                            : 'border border-paper-grid'
+                        }`}
                         title={item.description || item.photographer || item.id}
                       >
                         <PhotoView src={item.previewUrl}>
@@ -373,14 +444,26 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
                             <p className="text-[9px] text-white/90 truncate">{item.photographer}</p>
                           </div>
                         )}
-                        {/* 选择按钮（hover 显示） */}
-                        {!hasDownstream && (
+                        {/* 选择 / 已选 徽章与操作按钮 */}
+                        {isSelected ? (
+                          <div
+                            title="当前已选为输出图片"
+                            className="absolute top-1 right-1 px-1.5 h-5 rounded-full flex items-center gap-0.5 bg-accent text-paper text-[10px] font-sans font-medium shadow-sm pointer-events-none"
+                          >
+                            <Check size={11} strokeWidth={2.5} />
+                            <span>已选</span>
+                          </div>
+                        ) : (
                           <button
                             type="button"
                             onClick={() => void handleSelect(item)}
-                            disabled={saving}
-                            title={hasDownstream ? '有下级节点，不可更换输出' : '选择此图作为节点输出'}
-                            className="absolute top-1 right-1 w-6 h-6 rounded-full flex items-center justify-center bg-black/45 text-white/90 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+                            disabled={saving || hasDownstream}
+                            title={
+                              hasDownstream
+                                ? '有下级节点，不可更换输出（需先断开连线）'
+                                : '选择此图作为节点输出'
+                            }
+                            className="absolute top-1 right-1 w-6 h-6 rounded-full flex items-center justify-center bg-black/45 text-white/90 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity hover:bg-accent disabled:opacity-40 disabled:hover:bg-black/45 disabled:cursor-not-allowed active:scale-95"
                           >
                             {saving ? (
                               <Loader2 size={12} strokeWidth={2} className="animate-spin" />
@@ -433,14 +516,23 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
                   </Tooltip>
                 </PhotoView>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-serif text-ink truncate">
-                    已选择图片
-                    {selectedImage?.source === 'pixabay' ? ' · Pixabay' : selectedImage?.source === 'unsplash' ? ' · Unsplash' : ''}
+                  <p className="text-[11px] font-serif text-ink truncate flex items-center gap-1.5">
+                    <span>已选择图片</span>
+                    {hasDownstream && (
+                      <span className="text-[9px] font-sans px-1 py-0.5 rounded border border-dashed border-paper-grid text-ink-faint">
+                        输出已连接
+                      </span>
+                    )}
+                    <span className="text-ink-faint text-[10px]">
+                      {selectedImage?.source === 'pixabay' ? '· Pixabay' : selectedImage?.source === 'unsplash' ? '· Unsplash' : ''}
+                    </span>
                   </p>
                   <p className="text-[10px] text-ink-faint font-sans truncate">
-                    {selectedImage?.photographer
-                      ? `摄影师：${selectedImage.photographer}`
-                      : '可作为图片输出给下游节点'}
+                    {hasDownstream
+                      ? (selectedImage?.photographer ? `摄影师：${selectedImage.photographer}（输出已连接到下游）` : '输出已连接到下游节点，如需更换请先断开连线')
+                      : (selectedImage?.photographer
+                        ? `摄影师：${selectedImage.photographer}`
+                        : '可作为图片输出给下游节点')}
                   </p>
                 </div>
               </>
