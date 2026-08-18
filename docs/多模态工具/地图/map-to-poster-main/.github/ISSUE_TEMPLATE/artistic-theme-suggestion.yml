@@ -1,0 +1,113 @@
+name: "New Artistic Theme Suggestion"
+description: "Suggest a new color palette for artistic map styles"
+title: "[Theme] "
+labels: ["enhancement", "artistic-theme"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a new artistic theme! Standardizing the colors helps us review and integrate it faster into [artistic-themes.js](https://github.com/dimartarmizi/map-to-poster/blob/main/src/core/artistic-themes.js).
+  - type: input
+    id: theme-name
+    attributes:
+      label: "Theme Name"
+      placeholder: "e.g., Ancient Woodland"
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: "Description"
+      placeholder: "A short description of the theme's vibe (e.g., Deep forest greens and mossy textures for a lush canopy feel)."
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: "### Color Palette (HEX Values)"
+  - type: input
+    id: bg-color
+    attributes:
+      label: "Background Color (bg)"
+      placeholder: "#030014"
+    validations:
+      required: true
+  - type: input
+    id: text-color
+    attributes:
+      label: "Text Color (text)"
+      placeholder: "#EAF7FF"
+    validations:
+      required: true
+  - type: input
+    id: water-color
+    attributes:
+      label: "Water Color (water)"
+      placeholder: "#062A66"
+    validations:
+      required: true
+  - type: input
+    id: parks-color
+    attributes:
+      label: "Parks Color (parks)"
+      placeholder: "#1B2B3B"
+    validations:
+      required: true
+  - type: input
+    id: road-motorway
+    attributes:
+      label: "Motorway Road Color (road_motorway)"
+      placeholder: "#00F5A0"
+    validations:
+      required: true
+  - type: input
+    id: road-primary
+    attributes:
+      label: "Primary Road Color (road_primary)"
+      placeholder: "#00E5FF"
+    validations:
+      required: true
+  - type: input
+    id: road-secondary
+    attributes:
+      label: "Secondary Road Color (road_secondary)"
+      placeholder: "#FF00C8"
+    validations:
+      required: true
+  - type: input
+    id: road-tertiary
+    attributes:
+      label: "Tertiary Road Color (road_tertiary)"
+      placeholder: "#9B7CFF"
+    validations:
+      required: true
+  - type: input
+    id: road-residential
+    attributes:
+      label: "Residential Road Color (road_residential)"
+      placeholder: "#6EE7B7"
+    validations:
+      required: true
+  - type: input
+    id: road-default
+    attributes:
+      label: "Default Road Color (road_default)"
+      placeholder: "#00E5FF"
+    validations:
+      required: true
+  - type: input
+    id: route-color
+    attributes:
+      label: "Route Color (route)"
+      placeholder: "#FFFF00"
+    validations:
+      required: true
+  - type: textarea
+    id: preview
+    attributes:
+      label: "Visual Reference / Inspiration"
+      placeholder: "Paste an image or link to a Pinterest board/Color palette that inspired this."
+  - type: textarea
+    id: comments
+    attributes:
+      label: "Additional Comments"
+      placeholder: "Anything else you'd like to add?"
