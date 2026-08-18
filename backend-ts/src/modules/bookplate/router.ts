@@ -688,7 +688,7 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
     }
   );
 
-  // ---- 多模态工具：地图海报图片落盘（客户端 html2canvas 渲染导出 → data URL → 本地静态） ----
+  // ---- 多模态工具：地图海报图片落盘（客户端渲染导出 → data URL → 独立子目录，不写历史记录） ----
   app.post(
     '/api/modules/bookplate/save-image',
     { preHandler: app.authenticate },
@@ -699,7 +699,8 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
         return reply.code(400).send({ detail: 'image 必须为 base64 data URL' });
       }
       try {
-        const imageUrl = await imageService.saveRemoteImage(image, request.authUser!.id);
+        // 中间结果目录（runtime/{userId}/map-posters），与图像生成产物（generated）分开
+        const imageUrl = imageService.saveMapPosterImage(request.authUser!.id, image);
         return { image_url: imageUrl };
       } catch (err) {
         if (err instanceof ImageGenerationError) {

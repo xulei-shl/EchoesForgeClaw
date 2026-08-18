@@ -25,6 +25,13 @@ export function userGeneratedDir(userId: number): string {
   return path.join(RUNTIME_ROOT, String(userId), 'generated');
 }
 
+/** 地图海报（多模态工具）产出目录：runtime/{userId}/map-posters/（与 generated 分开，属中间结果）。 */
+export function userMapPosterDir(userId: number): string {
+  return path.join(RUNTIME_ROOT, String(userId), 'map-posters');
+}
+
+const MAP_POSTER_STATIC_PREFIX = '/static/map-posters';
+
 const envImageApiKey = () =>
   process.env.OPENAI_IMAGE_API_KEY || process.env.OPENAI_API_KEY || '';
 
@@ -125,6 +132,29 @@ export class ImageService {
     const name = filename('png');
     writeBytes(userId, name, bytes);
     return `${STATIC_PREFIX}/${userId}/${name}`;
+  }
+
+  /**
+   * 保存地图海报图片（多模态工具节点：浏览器端渲染导出的中间结果，不写历史记录）。
+   * data URL → runtime/{userId}/map-posters/，返回 /static/map-posters/{userId}/{file}。
+   */
+  saveMapPosterImage(userId: number, dataUrl: string): string {
+    if (!dataUrl.startsWith('data:')) {
+      throw new ImageGenerationError('image 必须为 base64 data URL');
+    }
+    const b64 = dataUrl.split(',')[1] ?? '';
+    let bytes: Uint8Array;
+    try {
+      bytes = Buffer.from(b64, 'base64');
+    } catch (err) {
+      throw new ImageGenerationError(`地图海报图片 data URL 无效: ${messageOf(err)}`, undefined, err);
+    }
+    if (!bytes.length) throw new ImageGenerationError('地图海报图片为空');
+    const dir = userMapPosterDir(userId);
+    mkdirSync(dir, { recursive: true });
+    const name = filename('png');
+    writeFileSync(path.join(dir, name), bytes);
+    return `${MAP_POSTER_STATIC_PREFIX}/${userId}/${name}`;
   }
 
   /** 删除生成图片（生成历史清理用；仅 /static/generated/{userId}/{file} 新格式）。 */

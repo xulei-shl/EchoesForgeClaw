@@ -1167,7 +1167,8 @@ const BookplatePage: React.FC = () => {
       // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** 地图海报节点：导出 PNG → 落盘到后端静态目录 → 写回 node.data.imageUrl + 保存历史记录 */
+  /** 地图海报节点：导出 PNG → 落盘到后端独立子目录（map-posters）→ 写回 node.data.imageUrl。
+   *  地图海报为中间结果：不写入历史记录（db），仅在节点内展示 / 下载；recordHistory 仅记录画布撤销。 */
   const handleExportMapPosterFor = useCallback(
     async (id: string, dataUrl: string) => {
       const node = nodesRef.current.find((n) => n.id === id);
@@ -1183,8 +1184,6 @@ const BookplatePage: React.FC = () => {
         if (!imageUrl) throw new Error('保存图片失败');
         recordHistory();
         updateNodeData(id, { imageUrl, isExporting: false, error: null });
-        // 成功即自动保存一条历史记录（与图像生成节点同口径；失败不阻断导出）
-        await autoSaveGeneration(id, imageUrl).catch(() => undefined);
       } catch (error: any) {
         console.error('Failed to save map poster:', error);
         updateNodeData(id, {

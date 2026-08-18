@@ -11,7 +11,7 @@ import { seedStartup } from './config/seed.js';
 import { registerAuth } from './shared/security.js';
 import { registerAuthRouter } from './api/auth.js';
 import { registerBookplateRouter } from './modules/bookplate/router.js';
-import { userGeneratedDir } from './services/image-service.js';
+import { userGeneratedDir, userMapPosterDir } from './services/image-service.js';
 import { COVERS_DIR } from './modules/bookplate/covers.js';
 import { registerUsersRouter } from './api/users.js';
 import { registerGenerationsRouter } from './api/generations.js';
@@ -100,6 +100,14 @@ export async function buildApp() {
     const { file } = request.params as { file: string };
     if (!file || file.includes('..')) return reply.code(404).send();
     if (sendPublicImage(reply, safeJoin(COVERS_DIR, file))) return reply;
+    return reply.code(404).send();
+  });
+
+  // 地图海报（多模态工具，中间结果）：/static/map-posters/{userId}/{file} → runtime/{userId}/map-posters/{file}
+  app.get('/static/map-posters/:userId/:file', async (request, reply) => {
+    const { userId, file } = request.params as { userId: string; file: string };
+    if (!/^\d+$/.test(userId) || !file || file.includes('..')) return reply.code(404).send();
+    if (sendPublicImage(reply, safeJoin(userMapPosterDir(Number(userId)), file))) return reply;
     return reply.code(404).send();
   });
 

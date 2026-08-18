@@ -22,6 +22,10 @@ IMAGE_REQUEST_TIMEOUT = 120.0
 GENERATED_DIR = Path(__file__).resolve().parents[2] / "static" / "generated"
 STATIC_PREFIX = "/static/generated"
 
+# 地图海报（多模态工具）中间结果目录: backend/static/map-posters（与 generated 分开，不写历史记录）
+MAP_POSTER_DIR = Path(__file__).resolve().parents[2] / "static" / "map-posters"
+MAP_POSTER_PREFIX = "/static/map-posters"
+
 
 @dataclass
 class ImageModelConfig:
@@ -177,6 +181,23 @@ class ImageService:
             resp = await client.get(url)
             resp.raise_for_status()
             return resp.content
+
+    async def save_map_poster_image(self, data_url: str) -> str:
+        """保存地图海报图片（多模态工具中间结果，不写历史记录）：
+        data URL → static/map-posters/，返回本地访问 URL。"""
+        if not data_url.startswith("data:"):
+            raise ImageGenerationError("image 必须为 base64 data URL")
+        try:
+            _, _, b64 = data_url.partition(",")
+            image_bytes = base64.b64decode(b64)
+        except (ValueError, binascii.Error) as exc:
+            raise ImageGenerationError(f"地图海报图片 data URL 无效: {exc}") from exc
+        if not image_bytes:
+            raise ImageGenerationError("地图海报图片为空")
+        filename = self._filename("png")
+        MAP_POSTER_DIR.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread((MAP_POSTER_DIR / filename).write_bytes, image_bytes)
+        return f"{MAP_POSTER_PREFIX}/{filename}"
 
     async def save_remote_image(self, url: str) -> str:
         """下载外部图片 URL 并落盘到 static/generated，返回本地访问 URL。
