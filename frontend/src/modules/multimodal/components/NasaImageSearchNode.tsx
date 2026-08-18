@@ -10,6 +10,7 @@ import { Select } from '../../../platform/components/ui/Select';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
 import { SMALL_TOOL_TIMEOUT_MS } from '../../../platform/utils/timeouts';
 import { NODE_COLORS } from '../../bookplate/nodeTypes';
+import { SearchImageThumbnail } from './SearchImageThumbnail';
 
 /** 检索结果项（后端 image-search 归一化后的统一形态） */
 export interface NasaSearchItem {
@@ -124,7 +125,8 @@ const NasaImageSearchNodeInner: React.FC<NasaImageSearchNodeProps> = ({
   const [activeProvider, setActiveProvider] = useState<string>(provider);
   const [query, setQuery] = useState('');
   const [providerCache, setProviderCache] = useState<Record<string, ProviderCacheState>>(initialProviderCache);
-  const [loading, setLoading] = useState(false);
+  const [loadingType, setLoadingType] = useState<'search' | 'refresh' | 'more' | 'auto' | null>(null);
+  const loading = loadingType !== null;
   const [savingId, setSavingId] = useState<string | null>(null);
 
   /** 请求序号：丢弃过期响应，防止快速切换/输入时旧结果覆盖新结果 */
@@ -145,11 +147,17 @@ const NasaImageSearchNodeInner: React.FC<NasaImageSearchNodeProps> = ({
   };
 
   const load = useCallback(
-    async (targetProvider: string, queryText: string, replace: boolean, pageParam = 1): Promise<boolean> => {
+    async (
+      targetProvider: string,
+      queryText: string,
+      replace: boolean,
+      pageParam = 1,
+      type: 'search' | 'refresh' | 'more' | 'auto' = 'auto'
+    ): Promise<boolean> => {
       const seq = ++requestSeq.current;
       // 新检索（replace）一律从第 1 页开始；「加载更多」在缓存页码基础上翻页
       const targetPage = replace ? 1 : pageParam;
-      setLoading(true);
+      setLoadingType(type);
       setProviderCache((prev) => ({
         ...prev,
         [targetProvider]: { ...prev[targetProvider], searchError: '' },
@@ -193,7 +201,7 @@ const NasaImageSearchNodeInner: React.FC<NasaImageSearchNodeProps> = ({
         }));
         return false;
       } finally {
-        if (seq === requestSeq.current) setLoading(false);
+        if (seq === requestSeq.current) setLoadingType(null);
       }
     },
     []
@@ -207,7 +215,7 @@ const NasaImageSearchNodeInner: React.FC<NasaImageSearchNodeProps> = ({
 
   // 挂载 / 类别切换：以当前生效关键词检索该类别（检索词切换类别时保留）
   useEffect(() => {
-    void load(activeProvider, effectiveQuery, true);
+    void load(activeProvider, effectiveQuery, true, 1, 'auto');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeProvider]);
 
@@ -215,7 +223,7 @@ const NasaImageSearchNodeInner: React.FC<NasaImageSearchNodeProps> = ({
   useEffect(() => {
     if (prevUpstreamRef.current !== upstreamKeyword) {
       prevUpstreamRef.current = upstreamKeyword;
-      void load(activeProvider, upstreamKeyword.trim() || query.trim(), true);
+      void load(activeProvider, upstreamKeyword.trim() || query.trim(), true, 1, 'auto');
     }
   }, [upstreamKeyword, activeProvider, query, load]);
 
@@ -229,19 +237,19 @@ const NasaImageSearchNodeInner: React.FC<NasaImageSearchNodeProps> = ({
   const handleSearch = (e?: React.FormEvent) => {
     e?.preventDefault();
     if (loading) return;
-    void load(activeProvider, effectiveQuery, true);
+    void load(activeProvider, effectiveQuery, true, 1, 'search');
   };
 
   /** 换一批：同条件重新拉取第 1 页（留空时库内默认条目） */
   const handleRefresh = () => {
     if (loading) return;
-    void load(activeProvider, effectiveQuery, true);
+    void load(activeProvider, effectiveQuery, true, 1, 'refresh');
   };
 
   /** 加载更多：按当前缓存页码追加下一页 */
   const handleLoadMore = () => {
     if (loading) return;
-    void load(activeProvider, effectiveQuery, false, currentCache.page + 1);
+    void load(activeProvider, effectiveQuery, false, currentCache.page + 1, 'more');
   };
 
   const handleSelect = async (item: NasaSearchItem) => {
@@ -321,9 +329,9 @@ const NasaImageSearchNodeInner: React.FC<NasaImageSearchNodeProps> = ({
               onClick={handleRefresh}
               disabled={loading}
               title="换一批（留空时返回库内默认条目）"
-              className="flex items-center justify-center w-8 h-8 rounded-md border border-dashed border-paper-grid text-ink-light hover:text-ink hover:bg-paper-grid/40 transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+              className="flex items-center justify-center w-8 h-8 rounded-md border border-dashed border-paper-grid text-ink-light hover:text-ink hover:bg-paper-grid/40 active:scale-[0.96] transition-all disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
             >
-              <RefreshCw size={13} strokeWidth={2} className={loading ? 'animate-spin' : ''} />
+              <RefreshCw size={13} strokeWidth={2} className={loadingType === 'refresh' ? 'animate-spin' : ''} />
             </button>
           </div>
 
@@ -350,7 +358,7 @@ const NasaImageSearchNodeInner: React.FC<NasaImageSearchNodeProps> = ({
               <button
                 type="button"
                 onClick={() => handleQueryChange('')}
-                className="absolute right-9 top-1/2 -translate-y-1/2 p-0.5 rounded text-ink-faint hover:text-error hover:bg-paper-grid/40 transition-colors"
+                className="absolute right-9 top-1/2 -translate-y-1/2 p-0.5 rounded text-ink-faint hover:text-error hover:bg-paper-grid/40 active:scale-[0.96] transition-all"
                 title="清除"
               >
                 <X size={13} strokeWidth={2} />
@@ -359,10 +367,10 @@ const NasaImageSearchNodeInner: React.FC<NasaImageSearchNodeProps> = ({
             <button
               type="submit"
               disabled={loading}
-              className="absolute right-1 top-1/2 -translate-y-1/2 px-2 h-7 rounded-md text-xs text-ink-light hover:text-ink hover:bg-paper-grid/40 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="absolute right-1 top-1/2 -translate-y-1/2 px-2 h-7 rounded-md text-xs text-ink-light hover:text-ink hover:bg-paper-grid/40 active:scale-[0.96] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               title="检索"
             >
-              {loading ? <Loader2 size={13} strokeWidth={2} className="animate-spin" /> : '检索'}
+              {loadingType === 'search' ? <Loader2 size={13} strokeWidth={2} className="animate-spin" /> : '检索'}
             </button>
           </form>
 
@@ -419,17 +427,14 @@ const NasaImageSearchNodeInner: React.FC<NasaImageSearchNodeProps> = ({
                         }`}
                         title={item.description || item.photographer || item.id}
                       >
-                        <PhotoView src={item.previewUrl}>
-                          <img
-                            src={item.thumbUrl}
-                            alt={item.description || item.photographer || ''}
-                            loading="lazy"
-                            className="w-full aspect-square object-cover cursor-zoom-in group-hover:opacity-90 transition-opacity"
-                          />
-                        </PhotoView>
+                        <SearchImageThumbnail
+                          thumbUrl={item.thumbUrl}
+                          previewUrl={item.previewUrl}
+                          alt={item.description || item.photographer || ''}
+                        />
                         {/* 底部标题 */}
                         {item.description && (
-                          <div className="absolute inset-x-0 bottom-0 px-1 py-0.5 bg-gradient-to-t from-black/50 to-transparent pointer-events-none">
+                          <div className="absolute inset-x-0 bottom-0 px-1 py-0.5 bg-gradient-to-t from-black/50 to-transparent pointer-events-none z-10">
                             <p className="text-[9px] text-white/90 truncate">{item.description}</p>
                           </div>
                         )}
@@ -437,7 +442,7 @@ const NasaImageSearchNodeInner: React.FC<NasaImageSearchNodeProps> = ({
                         {isSelected ? (
                           <div
                             title="当前已选为输出图片"
-                            className="absolute top-1 right-1 px-1.5 h-5 rounded-full flex items-center gap-0.5 bg-accent text-paper text-[10px] font-sans font-medium shadow-sm pointer-events-none"
+                            className="absolute top-1 right-1 px-1.5 h-5 rounded-full flex items-center gap-0.5 bg-accent text-paper text-[10px] font-sans font-medium shadow-sm pointer-events-none z-10"
                           >
                             <Check size={11} strokeWidth={2.5} />
                             <span>已选</span>
@@ -452,7 +457,7 @@ const NasaImageSearchNodeInner: React.FC<NasaImageSearchNodeProps> = ({
                                 ? '有下级节点，不可更换输出（需先断开连线）'
                                 : '选择此图片作为节点输出'
                             }
-                            className="absolute top-1 right-1 w-6 h-6 rounded-full flex items-center justify-center bg-black/45 text-white/90 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity hover:bg-accent disabled:opacity-40 disabled:hover:bg-black/45 disabled:cursor-not-allowed active:scale-95"
+                            className="absolute top-1 right-1 w-6 h-6 rounded-full flex items-center justify-center bg-black/45 text-white/90 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity hover:bg-accent disabled:opacity-40 disabled:hover:bg-black/45 disabled:cursor-not-allowed active:scale-95 z-10"
                           >
                             {saving ? (
                               <Loader2 size={12} strokeWidth={2} className="animate-spin" />
@@ -472,13 +477,13 @@ const NasaImageSearchNodeInner: React.FC<NasaImageSearchNodeProps> = ({
                   <button
                     type="button"
                     onClick={handleLoadMore}
-                    className="px-4 h-8 rounded-md border border-dashed border-paper-grid text-xs text-ink-light hover:text-ink hover:bg-paper-grid/40 transition-colors"
+                    className="px-4 h-8 rounded-md border border-dashed border-paper-grid text-xs text-ink-light hover:text-ink hover:bg-paper-grid/40 active:scale-[0.96] transition-all"
                   >
                     加载更多
                   </button>
                 </div>
               )}
-              {loading && items.length > 0 && (
+              {loadingType === 'more' && items.length > 0 && (
                 <div className="py-2 flex items-center justify-center">
                   <Loader2 size={14} strokeWidth={1.5} className="text-ink-faint animate-spin" />
                 </div>
@@ -502,6 +507,8 @@ const NasaImageSearchNodeInner: React.FC<NasaImageSearchNodeProps> = ({
                     <img
                       src={imageUrl}
                       alt="已选图片"
+                      referrerPolicy="no-referrer"
+                      decoding="async"
                       className="h-12 w-12 rounded-md border border-paper-grid object-cover cursor-zoom-in hover:opacity-90 transition-opacity"
                     />
                   </Tooltip>

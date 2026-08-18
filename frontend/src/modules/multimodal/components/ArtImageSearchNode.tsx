@@ -10,6 +10,7 @@ import { Select } from '../../../platform/components/ui/Select';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
 import { SMALL_TOOL_TIMEOUT_MS } from '../../../platform/utils/timeouts';
 import { NODE_COLORS } from '../../bookplate/nodeTypes';
+import { SearchImageThumbnail } from './SearchImageThumbnail';
 
 /** 检索结果项（后端 glam-search 归一化后的统一形态） */
 export interface GlamSearchItem {
@@ -133,7 +134,8 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
   const [activeProvider, setActiveProvider] = useState<string>(provider);
   const [query, setQuery] = useState('');
   const [providerCache, setProviderCache] = useState<Record<string, ProviderCacheState>>(initialProviderCache);
-  const [loading, setLoading] = useState(false);
+  const [loadingType, setLoadingType] = useState<'search' | 'refresh' | 'more' | 'auto' | null>(null);
+  const loading = loadingType !== null;
   const [savingId, setSavingId] = useState<string | null>(null);
   /** 后端已配置的可用来源（null = 尚未加载 / 加载失败，此时展示全部） */
   const [availableProviders, setAvailableProviders] = useState<string[] | null>(null);
@@ -158,12 +160,18 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
   };
 
   const load = useCallback(
-    async (targetProvider: string, queryText: string, replace: boolean, offsetParam = 0): Promise<boolean> => {
+    async (
+      targetProvider: string,
+      queryText: string,
+      replace: boolean,
+      offsetParam = 0,
+      type: 'search' | 'refresh' | 'more' | 'auto' = 'auto'
+    ): Promise<boolean> => {
       const seq = ++requestSeq.current;
       // 新检索（replace）一律从 offset 0 开始，并重置全局偏移
       const effectiveOffset = replace ? 0 : offsetParam;
       if (replace) setOffset(0);
-      setLoading(true);
+      setLoadingType(type);
       setProviderCache((prev) => ({
         ...prev,
         [targetProvider]: { ...prev[targetProvider], searchError: '' },
@@ -207,7 +215,7 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
         }));
         return false;
       } finally {
-        if (seq === requestSeq.current) setLoading(false);
+        if (seq === requestSeq.current) setLoadingType(null);
       }
     },
     []
@@ -254,7 +262,7 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
   // 挂载 / Provider 切换：以当前生效关键词检索该来源。检索词为全局共享，切换来源时保留不清空，
   // 始终用当前关键词对新来源重新检索（替换旧结果）
   useEffect(() => {
-    void load(activeProvider, effectiveQuery, true);
+    void load(activeProvider, effectiveQuery, true, 0, 'auto');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeProvider]);
 
@@ -262,7 +270,7 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
   useEffect(() => {
     if (prevUpstreamRef.current !== upstreamKeyword) {
       prevUpstreamRef.current = upstreamKeyword;
-      void load(activeProvider, upstreamKeyword.trim() || query.trim(), true);
+      void load(activeProvider, upstreamKeyword.trim() || query.trim(), true, 0, 'auto');
     }
   }, [upstreamKeyword, activeProvider, query, load]);
 
@@ -276,19 +284,19 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
   const handleSearch = (e?: React.FormEvent) => {
     e?.preventDefault();
     if (loading) return;
-    void load(activeProvider, effectiveQuery, true);
+    void load(activeProvider, effectiveQuery, true, 0, 'search');
   };
 
   /** 换一批：同条件重新拉取（无关键词时各源返回随机一批作品） */
   const handleRefresh = () => {
     if (loading) return;
-    void load(activeProvider, effectiveQuery, true);
+    void load(activeProvider, effectiveQuery, true, 0, 'refresh');
   };
 
   /** 加载更多：按当前 offset 追加下一批（仅关键词检索且后端 has_more 时有此按钮） */
   const handleLoadMore = () => {
     if (loading) return;
-    void load(activeProvider, effectiveQuery, false, offset).then((ok) => {
+    void load(activeProvider, effectiveQuery, false, offset, 'more').then((ok) => {
       if (ok) setOffset(offset + PER_PAGE);
     });
   };
@@ -373,9 +381,9 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
               onClick={handleRefresh}
               disabled={loading}
               title="换一批（无关键词时随机浏览该馆藏品）"
-              className="flex items-center justify-center w-8 h-8 rounded-md border border-dashed border-paper-grid text-ink-light hover:text-ink hover:bg-paper-grid/40 transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+              className="flex items-center justify-center w-8 h-8 rounded-md border border-dashed border-paper-grid text-ink-light hover:text-ink hover:bg-paper-grid/40 active:scale-[0.96] transition-all disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
             >
-              <RefreshCw size={13} strokeWidth={2} className={loading ? 'animate-spin' : ''} />
+              <RefreshCw size={13} strokeWidth={2} className={loadingType === 'refresh' ? 'animate-spin' : ''} />
             </button>
           </div>
 
@@ -402,7 +410,7 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
               <button
                 type="button"
                 onClick={() => handleQueryChange('')}
-                className="absolute right-9 top-1/2 -translate-y-1/2 p-0.5 rounded text-ink-faint hover:text-error hover:bg-paper-grid/40 transition-colors"
+                className="absolute right-9 top-1/2 -translate-y-1/2 p-0.5 rounded text-ink-faint hover:text-error hover:bg-paper-grid/40 active:scale-[0.96] transition-all"
                 title="清除"
               >
                 <X size={13} strokeWidth={2} />
@@ -411,10 +419,10 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
             <button
               type="submit"
               disabled={loading}
-              className="absolute right-1 top-1/2 -translate-y-1/2 px-2 h-7 rounded-md text-xs text-ink-light hover:text-ink hover:bg-paper-grid/40 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="absolute right-1 top-1/2 -translate-y-1/2 px-2 h-7 rounded-md text-xs text-ink-light hover:text-ink hover:bg-paper-grid/40 active:scale-[0.96] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               title="检索"
             >
-              {loading ? <Loader2 size={13} strokeWidth={2} className="animate-spin" /> : '检索'}
+              {loadingType === 'search' ? <Loader2 size={13} strokeWidth={2} className="animate-spin" /> : '检索'}
             </button>
           </form>
 
@@ -473,23 +481,20 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
                         }`}
                         title={item.description || item.photographer || item.id}
                       >
-                        <PhotoView src={item.previewUrl}>
-                          <img
-                            src={item.thumbUrl}
-                            alt={item.description || item.photographer || ''}
-                            loading="lazy"
-                            className="w-full aspect-square object-cover cursor-zoom-in group-hover:opacity-90 transition-opacity"
-                          />
-                        </PhotoView>
+                        <SearchImageThumbnail
+                          thumbUrl={item.thumbUrl}
+                          previewUrl={item.previewUrl}
+                          alt={item.description || item.photographer || ''}
+                        />
                         {/* 全部来源模式：标注该图所属博物馆 */}
                         {activeProvider === 'all' && (
-                          <span className="absolute top-1 left-1 px-1 py-px rounded-sm bg-black/45 text-white/90 text-[8px] font-sans backdrop-blur-sm pointer-events-none max-w-[60%] truncate">
+                          <span className="absolute top-1 left-1 px-1 py-px rounded-sm bg-black/45 text-white/90 text-[8px] font-sans backdrop-blur-sm pointer-events-none max-w-[60%] truncate z-10">
                             {sourceShortLabel(item.source)}
                           </span>
                         )}
                         {/* 底部标题 */}
                         {item.description && (
-                          <div className="absolute inset-x-0 bottom-0 px-1 py-0.5 bg-gradient-to-t from-black/50 to-transparent pointer-events-none">
+                          <div className="absolute inset-x-0 bottom-0 px-1 py-0.5 bg-gradient-to-t from-black/50 to-transparent pointer-events-none z-10">
                             <p className="text-[9px] text-white/90 truncate">{item.description}</p>
                           </div>
                         )}
@@ -497,7 +502,7 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
                         {isSelected ? (
                           <div
                             title="当前已选为输出图片"
-                            className="absolute top-1 right-1 px-1.5 h-5 rounded-full flex items-center gap-0.5 bg-accent text-paper text-[10px] font-sans font-medium shadow-sm pointer-events-none"
+                            className="absolute top-1 right-1 px-1.5 h-5 rounded-full flex items-center gap-0.5 bg-accent text-paper text-[10px] font-sans font-medium shadow-sm pointer-events-none z-10"
                           >
                             <Check size={11} strokeWidth={2.5} />
                             <span>已选</span>
@@ -512,7 +517,7 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
                                 ? '有下级节点，不可更换输出（需先断开连线）'
                                 : '选择此作品作为节点输出'
                             }
-                            className="absolute top-1 right-1 w-6 h-6 rounded-full flex items-center justify-center bg-black/45 text-white/90 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity hover:bg-accent disabled:opacity-40 disabled:hover:bg-black/45 disabled:cursor-not-allowed active:scale-95"
+                            className="absolute top-1 right-1 w-6 h-6 rounded-full flex items-center justify-center bg-black/45 text-white/90 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity hover:bg-accent disabled:opacity-40 disabled:hover:bg-black/45 disabled:cursor-not-allowed active:scale-95 z-10"
                           >
                             {saving ? (
                               <Loader2 size={12} strokeWidth={2} className="animate-spin" />
@@ -532,13 +537,13 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
                   <button
                     type="button"
                     onClick={handleLoadMore}
-                    className="px-4 h-8 rounded-md border border-dashed border-paper-grid text-xs text-ink-light hover:text-ink hover:bg-paper-grid/40 transition-colors"
+                    className="px-4 h-8 rounded-md border border-dashed border-paper-grid text-xs text-ink-light hover:text-ink hover:bg-paper-grid/40 active:scale-[0.96] transition-all"
                   >
                     加载更多
                   </button>
                 </div>
               )}
-              {loading && items.length > 0 && (
+              {loadingType === 'more' && items.length > 0 && (
                 <div className="py-2 flex items-center justify-center">
                   <Loader2 size={14} strokeWidth={1.5} className="text-ink-faint animate-spin" />
                 </div>
@@ -562,6 +567,8 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
                     <img
                       src={imageUrl}
                       alt="已选图片"
+                      referrerPolicy="no-referrer"
+                      decoding="async"
                       className="h-12 w-12 rounded-md border border-paper-grid object-cover cursor-zoom-in hover:opacity-90 transition-opacity"
                     />
                   </Tooltip>

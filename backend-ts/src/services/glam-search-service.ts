@@ -182,14 +182,23 @@ function iiifVariant(url: string, variant: 'thumb' | 'full'): string {
   return url;
 }
 
-function toItem(source: GlamProvider, title: string, image: string, pageUrl: string, artist = ''): GlamSearchItem | null {
-  if (!title || !image) return null;
+function toItem(
+  source: GlamProvider,
+  title: string,
+  image: string,
+  pageUrl: string,
+  artist = '',
+  thumbImage?: string
+): GlamSearchItem | null {
+  if (!title || (!image && !thumbImage)) return null;
+  const primary = image || thumbImage || '';
+  const thumb = thumbImage || iiifVariant(primary, 'thumb');
   return {
-    id: `${source}-${encodeURIComponent(image)}`,
+    id: `${source}-${encodeURIComponent(primary)}`,
     source,
-    thumbUrl: iiifVariant(image, 'thumb'),
-    previewUrl: image,
-    fullUrl: iiifVariant(image, 'full'),
+    thumbUrl: thumb,
+    previewUrl: primary,
+    fullUrl: iiifVariant(primary, 'full'),
     width: 0,
     height: 0,
     photographer: artist,
@@ -214,15 +223,16 @@ async function searchMet(query: string, limit: number, offset: number): Promise<
     return objects
       .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled')
       .map((r) => r.value)
-      .filter((o) => o.isPublicDomain && o.primaryImageSmall)
+      .filter((o) => o.isPublicDomain && (o.primaryImageSmall || o.primaryImage))
       .slice(0, limit)
       .map((o) =>
         toItem(
           'met',
           o.title,
-          o.primaryImageSmall,
+          o.primaryImage || o.primaryImageSmall,
           o.objectURL,
-          o.artistDisplayName || o.artistAlphaSort || ''
+          o.artistDisplayName || o.artistAlphaSort || '',
+          o.primaryImageSmall || o.primaryImage
         )
       )
       .filter((i): i is GlamSearchItem => i !== null);
@@ -243,10 +253,17 @@ async function searchMet(query: string, limit: number, offset: number): Promise<
   return objects
     .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled')
     .map((r) => r.value)
-    .filter((o) => o.isPublicDomain && o.primaryImageSmall)
+    .filter((o) => o.isPublicDomain && (o.primaryImageSmall || o.primaryImage))
     .slice(0, limit)
     .map((o) =>
-      toItem('met', o.title, o.primaryImageSmall, o.objectURL, o.artistDisplayName || '')
+      toItem(
+        'met',
+        o.title,
+        o.primaryImage || o.primaryImageSmall,
+        o.objectURL,
+        o.artistDisplayName || o.artistAlphaSort || '',
+        o.primaryImageSmall || o.primaryImage
+      )
     )
     .filter((i): i is GlamSearchItem => i !== null);
 }
