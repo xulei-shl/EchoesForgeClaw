@@ -27,6 +27,7 @@ import {
 } from '../../services/image-search-service.js';
 import {
   GlamSearchError,
+  GLAM_ALL_LABEL,
   GLAM_PROVIDER_LABELS,
   searchGlamImages,
   type GlamProvider,
@@ -827,11 +828,13 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
       const payload = (request.body ?? {}) as {
         provider?: string;
         query?: string;
+        category?: string;
         limit?: number;
       };
-      const provider: GlamProvider = GLAM_PROVIDERS.includes(payload.provider as GlamProvider)
-        ? (payload.provider as GlamProvider)
-        : 'met';
+      const provider: GlamProvider | 'all' =
+        payload.provider === 'all' || GLAM_PROVIDERS.includes(payload.provider as GlamProvider)
+          ? (payload.provider as GlamProvider | 'all')
+          : 'met';
       const s = getAppSettingsMap(getDb());
       try {
         const items = await searchGlamImages(
@@ -843,9 +846,9 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
             parisApiKey: s['paris.api_key'] ?? '',
             europeanaApiKey: s['europeana.api_key'] ?? '',
           },
-          { query: payload.query, limit: payload.limit }
+          { query: payload.query, category: payload.category, limit: payload.limit }
         );
-        return { provider, label: GLAM_PROVIDER_LABELS[provider], items };
+        return { provider, label: provider === 'all' ? GLAM_ALL_LABEL : GLAM_PROVIDER_LABELS[provider], items };
       } catch (err) {
         if (err instanceof GlamSearchError) {
           return reply.code(502).send({ detail: err.message });

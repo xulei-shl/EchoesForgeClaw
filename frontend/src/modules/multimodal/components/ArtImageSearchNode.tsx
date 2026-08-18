@@ -48,6 +48,8 @@ export interface ArtImageSearchNodeProps {
   selectedImage?: GlamSearchSelection | null;
   /** 当前来源（持久化在 node.data.provider） */
   provider?: string;
+  /** 艺术类别（持久化在 node.data.category；空 = 不限类别） */
+  category?: string;
   /** 连线上级文本（连线即输入：优先作为检索关键词） */
   upstreamKeyword?: string;
   /** 页面级错误（选择保存失败等，写入 node.data.error） */
@@ -65,8 +67,9 @@ export interface ArtImageSearchNodeProps {
   hasDownstream?: boolean;
 }
 
-/** 12 家博物馆来源（与后端 glam-search-service 的 GlamProvider 一致） */
+/** 12 家博物馆来源（与后端 glam-search-service 的 GlamProvider 一致）；'all' = 全部来源聚合检索 */
 const PROVIDERS: { value: string; label: string; title: string }[] = [
+  { value: 'all', label: '全部来源', title: '同时检索全部已配置博物馆（未配置 Key 的源自动跳过）' },
   { value: 'met', label: 'MET', title: '大都会艺术博物馆（无需配置）' },
   { value: 'rijks', label: 'Rijksmuseum', title: '荷兰国立博物馆（无需配置）' },
   { value: 'ai-chicago', label: 'AIC', title: '芝加哥艺术学院（无需配置）' },
@@ -79,6 +82,18 @@ const PROVIDERS: { value: string; label: string; title: string }[] = [
   { value: 'smithsonian', label: 'Smithsonian', title: '史密森尼学会（需 smithsonian.api_key）' },
   { value: 'paris', label: 'Paris Musées', title: '巴黎博物馆（需 paris.api_key）' },
   { value: 'europeana', label: 'Europeana', title: 'Europeana（需 europeana.api_key）' },
+];
+
+/** 艺术类别（与后端 glam-search-service 的 GLAM_CATEGORIES 一致；空 = 不限类别） */
+const CATEGORIES: { value: string; label: string; title: string }[] = [
+  { value: '', label: '全部类别', title: '不限艺术类别' },
+  { value: 'painting', label: '绘画', title: '绘画（各源原生过滤，其余源关键词降级）' },
+  { value: 'sculpture', label: '雕塑', title: '雕塑' },
+  { value: 'photography', label: '摄影', title: '摄影' },
+  { value: 'print', label: '版画', title: '版画' },
+  { value: 'drawing', label: '素描 / 水彩', title: '素描 / 水彩' },
+  { value: 'ceramic', label: '陶瓷', title: '陶瓷' },
+  { value: 'textile', label: '纺织品', title: '纺织品' },
 ];
 
 /** 每页条数（网格 3 列） */
@@ -108,6 +123,7 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
   imageUrl = null,
   selectedImage = null,
   provider = 'met',
+  category = '',
   upstreamKeyword = '',
   error = null,
   onSelectImage,
@@ -122,8 +138,9 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
 }) => {
   const { showToast } = useFeedback();
 
-  // ---- 编辑器状态（provider 持久化；检索状态按 provider 隔离缓存） ----
+  // ---- 编辑器状态（provider / category 持久化；检索状态按 provider 隔离缓存） ----
   const [activeProvider, setActiveProvider] = useState<string>(provider);
+  const [activeCategory, setActiveCategory] = useState<string>(category);
   const [providerCache, setProviderCache] = useState<Record<string, ProviderCacheState>>(initialProviderCache);
   const [loading, setLoading] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -162,6 +179,7 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
           {
             provider: targetProvider,
             query: queryText,
+            category: activeCategory || undefined,
             limit: PER_PAGE,
           },
           { timeout: SMALL_TOOL_TIMEOUT_MS }
@@ -193,14 +211,15 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
         if (seq === requestSeq.current) setLoading(false);
       }
     },
-    []
+    [activeCategory]
   );
 
-  // 外部恢复（撤销/重做/历史恢复/切页回来）：node.data.provider 与本地不一致时同步
+  // 外部恢复（撤销/重做/历史恢复/切页回来）：node.data 与本地不一致时同步
   useEffect(() => {
     if (provider !== activeProvider) setActiveProvider(provider);
+    if (category !== activeCategory) setActiveCategory(category);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [provider]);
+  }, [provider, category]);
 
   // 挂载 / Provider 切换：若该来源尚未加载过，则拉取第一批（已有数据则复用缓存，不重复请求）
   const isLoaded = providerCache[activeProvider].loaded;
@@ -225,6 +244,14 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
     onUpdateEditor?.(id, { provider: p }, false);
   };
 
+  const switchCategory = (c: string) => {
+    if (c === activeCategory) return;
+    setActiveCategory(c);
+    onUpdateEditor?.(id, { category: c }, false);
+    // 类别变更：立即以当前关键词重新检索（无关键词时浏览该类别）
+    void load(activeProvider, effectiveQuery, true);
+  };
+
   const handleSearch = (e?: React.FormEvent) => {
     e?.preventDefault();
     if (loading) return;
@@ -243,7 +270,8 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
     try {
       await onSelectImage?.(id, item.previewUrl, {
         source: item.source,
-        sourceLabel: currentCache.sourceLabel || item.source,
+        // 全部来源模式下用该项自身的来源名；单源模式用缓存里的来源全名
+        sourceLabel: activeProvider === 'all' ? sourceShortLabel(item.source) : currentCache.sourceLabel || item.source,
         photographer: item.photographer,
         description: item.description,
         pageUrl: item.pageUrl,
@@ -267,6 +295,9 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
   };
 
   const activeProviderMeta = PROVIDERS.find((p) => p.value === activeProvider);
+
+  /** 来源短名（全部来源模式下每个结果项标注来源用） */
+  const sourceShortLabel = (source: string) => PROVIDERS.find((p) => p.value === source)?.label || source;
 
   return (
     <CanvasNode
@@ -298,7 +329,7 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
     >
       <PhotoProvider maskOpacity={0.8} bannerVisible={false}>
         <div className="h-full flex flex-col flex-1 min-h-0 gap-2">
-          {/* 来源选择 + 换一批 */}
+          {/* 来源选择 + 类别 + 换一批 */}
           <div className="shrink-0 flex items-center gap-1.5">
             <div className="flex-1 min-w-0">
               <Select
@@ -306,6 +337,14 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
                 value={activeProvider}
                 onChange={switchProvider}
                 options={PROVIDERS.map((p) => ({ value: p.value, label: p.label, title: p.title }))}
+              />
+            </div>
+            <div className="flex-1 min-w-0">
+              <Select
+                size="sm"
+                value={activeCategory}
+                onChange={switchCategory}
+                options={CATEGORIES.map((c) => ({ value: c.value, label: c.label, title: c.title }))}
               />
             </div>
             <button
@@ -323,6 +362,12 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
           <p className="shrink-0 text-[10px] font-sans text-ink-faint leading-snug truncate" title={activeProviderMeta?.title}>
             <Landmark size={10} strokeWidth={1.5} className="inline mr-1 -mt-px" />
             {currentCache.sourceLabel || activeProviderMeta?.title || activeProvider}
+            {activeCategory && (
+              <>
+                <span className="mx-1 text-ink-faint/60">·</span>
+                {CATEGORIES.find((c) => c.value === activeCategory)?.label}
+              </>
+            )}
           </p>
 
           {/* 关键词检索 */}
@@ -335,7 +380,13 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
             <input
               value={query}
               onChange={(e) => handleQueryChange(e.target.value)}
-              placeholder={upstreamKeyword.trim() ? `上游关键词：${upstreamKeyword.trim()}` : '搜索作品（留空 = 随机浏览）…'}
+              placeholder={
+                upstreamKeyword.trim()
+                  ? `上游关键词：${upstreamKeyword.trim()}`
+                  : activeCategory
+                    ? `搜索${CATEGORIES.find((c) => c.value === activeCategory)?.label ?? ''}（留空 = 浏览该类别）…`
+                    : '搜索作品（留空 = 随机浏览）…'
+              }
               className="w-full h-9 rounded-md border border-dashed border-paper-grid bg-transparent pl-8 pr-16 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors font-mono"
             />
             {query && (
@@ -364,7 +415,13 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
               <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 text-center">
                 <Loader2 size={20} strokeWidth={1.5} className="text-accent animate-spin" />
                 <p className="text-xs font-serif text-ink-light">
-                  {effectiveQuery ? `正在检索「${effectiveQuery}」…` : '正在随机浏览馆藏…'}
+                  {activeProvider === 'all'
+                    ? `正在聚合检索全部博物馆${effectiveQuery ? `：「${effectiveQuery}」` : '（随机）'}…`
+                    : effectiveQuery
+                      ? `正在检索「${effectiveQuery}」…`
+                      : activeCategory
+                        ? `正在浏览「${CATEGORIES.find((c) => c.value === activeCategory)?.label ?? ''}」类别…`
+                        : '正在随机浏览馆藏…'}
                 </p>
               </div>
             )}
@@ -386,7 +443,11 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
                 <div className="h-full flex flex-col items-center justify-center gap-2 text-center px-3">
                   <ImageOff size={24} strokeWidth={1.5} className="text-ink-faint" />
                   <p className="text-xs text-ink-light font-sans">
-                    {effectiveQuery ? `没有匹配「${effectiveQuery}」的作品` : '暂无作品，点击「换一批」试试'}
+                    {effectiveQuery
+                      ? `没有匹配「${effectiveQuery}」的作品`
+                      : activeCategory
+                        ? '该类别暂无作品，点击「换一批」试试'
+                        : '暂无作品，点击「换一批」试试'}
                   </p>
                 </div>
               )}
@@ -417,6 +478,12 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
                             className="w-full aspect-square object-cover cursor-zoom-in group-hover:opacity-90 transition-opacity"
                           />
                         </PhotoView>
+                        {/* 全部来源模式：标注该图所属博物馆 */}
+                        {activeProvider === 'all' && (
+                          <span className="absolute top-1 left-1 px-1 py-px rounded-sm bg-black/45 text-white/90 text-[8px] font-sans backdrop-blur-sm pointer-events-none max-w-[60%] truncate">
+                            {sourceShortLabel(item.source)}
+                          </span>
+                        )}
                         {/* 底部标题 */}
                         {item.description && (
                           <div className="absolute inset-x-0 bottom-0 px-1 py-0.5 bg-gradient-to-t from-black/50 to-transparent pointer-events-none">
