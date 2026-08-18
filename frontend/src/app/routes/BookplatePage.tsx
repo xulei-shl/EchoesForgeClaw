@@ -620,10 +620,11 @@ const BookplatePage: React.FC = () => {
         return {
           mode: 'zhihu',
           query: '',
-          count: 5,
-          filter: '',
-          search_db: 'all',
-          model: 'zhida-fast-1p5',
+          tabData: {
+            zhihu: { output: '', error: null, isGenerating: false, count: 5 },
+            global: { output: '', error: null, isGenerating: false, count: 5, filter: '', search_db: 'all' },
+            zhida: { output: '', error: null, isGenerating: false, model: 'zhida-fast-1p5' },
+          },
           output: '',
           isGenerating: false,
           error: null,
@@ -1178,24 +1179,48 @@ const BookplatePage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** 知乎检索节点：按模式检索 / 直答（关键词 = 连线上级文本 > 手动输入；结果写入 data.output） */
+  /** 知乎检索节点：按模式检索 / 直答（关键词 = 连线上级文本 > 手动输入；按模式隔离 tabData，对外输出当前 active mode 结果） */
   const handleFetchZhihuFor = useCallback((id: string, payload: ZhihuSearchRequest) => {
     const node = nodesRef.current.find((n) => n.id === id);
-    if (!node || node.type !== 'zhihu_search' || node.data?.isGenerating) return;
+    if (!node || node.type !== 'zhihu_search') return;
+    const curData = node.data ?? {};
+    const curTabData = curData.tabData ?? {};
+    const targetMode = payload.mode;
+    if (curTabData[targetMode]?.isGenerating) return;
+
     const parents = resolveDirectParents(id, nodesRef.current, edgesRef.current);
     const upstreamQuery = parents.map((p) => nodeOutputText(p)).find((v) => v.trim()) ?? '';
     const finalQuery = upstreamQuery || payload.query.trim();
     if (!finalQuery) return;
-    updateNodeData(id, {
-      mode: payload.mode,
-      query: payload.query,
+
+    const newTargetTabData = {
+      ...(curTabData[targetMode] || {}),
       count: payload.count,
       filter: payload.filter,
       search_db: payload.search_db,
       model: payload.model,
       isGenerating: true,
       error: null,
+    };
+
+    const nextTabData = {
+      ...curTabData,
+      [targetMode]: newTargetTabData,
+    };
+
+    const isCurrentActive = (curData.mode ?? 'zhihu') === targetMode;
+
+    updateNodeData(id, {
+      query: payload.query,
+      tabData: nextTabData,
+      ...(isCurrentActive
+        ? {
+            isGenerating: true,
+            error: null,
+          }
+        : {}),
     });
+
     api
       .post(
         '/modules/bookplate/zhihu-search',
@@ -1203,21 +1228,88 @@ const BookplatePage: React.FC = () => {
         { timeout: SMALL_TOOL_TIMEOUT_MS }
       )
       .then((res: any) => {
-        updateNodeData(id, {
-          output: typeof res?.output === 'string' ? res.output : '',
+        const latestNode = nodesRef.current.find((n) => n.id === id);
+        const latestData = latestNode?.data ?? {};
+        const latestTabData = latestData.tabData ?? nextTabData;
+        const outputText = typeof res?.output === 'string' ? res.output : '';
+
+        const finishedTargetTabData = {
+          ...(latestTabData[targetMode] || {}),
+          output: outputText,
           isGenerating: false,
           error: null,
+        };
+
+        const updatedTabData = {
+          ...latestTabData,
+          [targetMode]: finishedTargetTabData,
+        };
+
+        const isStillActive = (latestData.mode ?? 'zhihu') === targetMode;
+
+        updateNodeData(id, {
+          tabData: updatedTabData,
+          ...(isStillActive
+            ? {
+                output: outputText,
+                isGenerating: false,
+                error: null,
+              }
+            : {}),
         });
       })
       .catch((error: any) => {
         console.error('Failed to fetch zhihu:', error);
-        updateNodeData(id, {
+        const latestNode = nodesRef.current.find((n) => n.id === id);
+        const latestData = latestNode?.data ?? {};
+        const latestTabData = latestData.tabData ?? nextTabData;
+        const errDetail = error?.isTimeout ? '知乎检索超时，请重试' : error?.detail || '知乎检索失败，请重试';
+
+        const erroredTargetTabData = {
+          ...(latestTabData[targetMode] || {}),
           isGenerating: false,
-          error: error?.isTimeout ? '知乎检索超时，请重试' : error?.detail || '知乎检索失败，请重试',
+          error: errDetail,
+        };
+
+        const updatedTabData = {
+          ...latestTabData,
+          [targetMode]: erroredTargetTabData,
+        };
+
+        const isStillActive = (latestData.mode ?? 'zhihu') === targetMode;
+
+        updateNodeData(id, {
+          tabData: updatedTabData,
+          ...(isStillActive
+            ? {
+                isGenerating: false,
+                error: errDetail,
+              }
+            : {}),
         });
       });
     // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** 知乎检索节点：编辑器状态（tabData / mode / query 等）写入 node.data（仅持久化，不记撤销历史） */
+  const handleUpdateZhihuEditorFor = useCallback(
+    (id: string, patch: Record<string, any>, undoable: boolean = false) => {
+      const node = nodesRef.current.find((n) => n.id === id);
+      if (!node || node.type !== 'zhihu_search') return;
+      const cur = node.data ?? {};
+      let changed = false;
+      for (const [k, v] of Object.entries(patch)) {
+        if (cur[k] !== v) {
+          changed = true;
+          break;
+        }
+      }
+      if (!changed) return;
+      if (undoable) recordHistory();
+      updateNodeData(id, patch);
+      // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
+      // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /** 地图海报节点：编辑器状态（主题/尺寸/文字/视口）写入 node.data（画布快照持久化，切页保持）。
@@ -1718,6 +1810,7 @@ const BookplatePage: React.FC = () => {
     handleFetchCalendarFor,
     handleFetchWeatherFor,
     handleFetchZhihuFor,
+    handleUpdateZhihuEditorFor,
     handleExportMapPosterFor,
     handleUpdateMapPosterEditorFor,
     handleSelectSearchImageFor,

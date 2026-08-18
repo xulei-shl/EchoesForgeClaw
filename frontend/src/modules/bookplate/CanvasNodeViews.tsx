@@ -75,6 +75,8 @@ export interface NodeViewHelpers {
   handleFetchWeatherFor: (id: string, city: string) => void;
   /** 知乎检索节点：按模式检索 / 直答（关键词由页面合并上游文本 / 手动输入） */
   handleFetchZhihuFor: (id: string, payload: ZhihuSearchRequest) => void;
+  /** 知乎检索节点：编辑器状态写入 node.data（仅持久化，不记撤销历史） */
+  handleUpdateZhihuEditorFor: (id: string, patch: Record<string, any>, undoable?: boolean) => void;
   /** 地图海报节点：导出 PNG data URL 落盘（保存到后端 + 记历史 + 写回 node.data） */
   handleExportMapPosterFor: (id: string, dataUrl: string) => Promise<void>;
   /** 地图海报节点：编辑器状态写入 node.data（undoable=true 记撤销历史；平移缩放仅持久化） */
@@ -408,6 +410,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           {...common}
           mode={d.mode === 'global' || d.mode === 'zhida' ? d.mode : 'zhihu'}
           query={typeof d.query === 'string' ? d.query : ''}
+          tabData={d.tabData}
           count={typeof d.count === 'number' ? d.count : 5}
           filter={typeof d.filter === 'string' ? d.filter : ''}
           search_db={typeof d.search_db === 'string' ? d.search_db : 'all'}
@@ -418,6 +421,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           error={d.error ?? null}
           hasDownstream={hasDownstream}
           onFetch={h.handleFetchZhihuFor}
+          onUpdateEditor={h.handleUpdateZhihuEditorFor}
         />
       );
     }

@@ -118,7 +118,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'text_aggregate',
     name: '文本聚合',
-    description: '用占位符模板把多个上级文本按自定义格式拼接（如 ## 标题 + {占位符}）',
+    description: '用占位符模板把多个上级文本按自定义格式拼接',
     category: 'tool',
     configurable: false,
     defaultSize: NODE_DEFAULT_SIZES.text_aggregate,
@@ -142,7 +142,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'calendar',
     name: '万年历',
-    description: '查询指定日期的节假日与农历万年历（MXNZP API，无需配置）',
+    description: '查询指定日期的节假日与农历万年历',
     category: 'tool',
     configurable: false,
     defaultSize: NODE_DEFAULT_SIZES.calendar,
@@ -150,7 +150,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'weather',
     name: '天气查询',
-    description: '查询指定城市当前天气（wttr.in，可连线文本节点传入城市，无需配置）',
+    description: '查询指定城市当前天气',
     category: 'tool',
     configurable: false,
     defaultSize: NODE_DEFAULT_SIZES.weather,
@@ -190,7 +190,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'zhihu_search',
     name: '知乎检索',
-    description: '知乎开发者平台 3 类检索：站内搜索 / 全网搜索 / 直答问答，结果以文本输出（凭据在管理端「系统设置」配置，可连线文本节点传入关键词 / 问题）',
+    description: '知乎开发者平台 3 类检索：站内 / 全网 / 直答',
     category: 'tool',
     configurable: false,
     defaultSize: NODE_DEFAULT_SIZES.zhihu_search,
