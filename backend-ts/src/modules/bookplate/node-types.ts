@@ -20,7 +20,7 @@ export const NODE_TYPES = {
   MAP_POSTER: 'map_poster',
   /** 图片检索（多模态工具）：检索 Unsplash / Pixabay 免版权图片并选一张输出（凭据在系统设置配置） */
   IMAGE_SEARCH: 'image_search',
-  /** 艺术图片检索（GLAM 工具）：聚合 12 家博物馆开放图片 API，检索/随机浏览并选一张输出（部分源凭据在系统设置配置） */
+  /** 艺术图片检索（GLAM 工具）：聚合 13 家博物馆开放图片 API，检索/随机浏览并选一张输出（部分源凭据在系统设置配置） */
   ART_IMAGE_SEARCH: 'art_image_search',
   /** NASA 图片检索（多模态工具）：检索 NASA APOD 每日天文图 / EPIC 地球影像（按日期或随机浏览，APOD 凭据在系统设置配置） */
   NASA_IMAGE_SEARCH: 'nasa_image_search',

@@ -5,6 +5,7 @@ import { generateImageBytes } from '../infrastructure/ai/image/generate.js';
 import { ImageGenerationError } from '../infrastructure/ai/errors.js';
 import { mockImageSvg } from '../infrastructure/ai/mock/image.js';
 import { RUNTIME_ROOT } from './skill-agent-service.js';
+import { curlFetch, fetchWithProxy } from './http-proxy.js';
 
 /**
  * 图片生成服务（对应 Python `app/services/image_service.py`）。
@@ -167,9 +168,10 @@ export class ImageService {
   /**
    * 保存图片检索节点选中的图片（远程 URL → runtime/{userId}/search-images/，返回本地访问 URL）。
    * 选中图为中间结果：不写历史记录，仅作为节点输出供下游消费 / 下载。
+   * proxy：HTTP 代理（如 http://127.0.0.1:7890），仅对需代理出网的源（如 LoC tile.loc.gov）传入。
    */
-  async saveSearchImage(userId: number, url: string): Promise<string> {
-    const bytes = await downloadBytes(url);
+  async saveSearchImage(userId: number, url: string, proxy = ''): Promise<string> {
+    const bytes = await downloadBytes(url, proxy);
     if (!bytes.length) throw new ImageGenerationError('图片为空');
     // filename() 自动补扩展名点号，这里去掉前导点
     const ext = (extFromUrl(url) || detectExtFromBytes(bytes) || '.jpg').replace(/^\./, '');
@@ -202,11 +204,21 @@ export class ImageService {
   }
 }
 
-async function downloadBytes(url: string): Promise<Uint8Array> {
-  const resp = await fetch(url, { signal: AbortSignal.timeout(60_000) });
-  if (!resp.ok) throw new ImageGenerationError(`下载图片失败: HTTP ${resp.status}`);
-  const buf = await resp.arrayBuffer();
-  return new Uint8Array(buf);
+async function downloadBytes(url: string, proxy = ''): Promise<Uint8Array> {
+  const resp = await fetchWithProxy(url, { signal: AbortSignal.timeout(60_000) }, proxy);
+  if (resp.ok) {
+    return new Uint8Array(await resp.arrayBuffer());
+  }
+  // 疑似 Cloudflare 反爬（403/503 + HTML challenge）：undici 的 TLS 指纹被识别，
+  // 回退 curl 传输（curl 指纹可正常通过；CONNECT 代理不改变客户端指纹，代理下同样需要此回退）
+  const ct = resp.headers.get('content-type') ?? '';
+  if ((resp.status === 403 || resp.status === 503) && ct.includes('text/html')) {
+    const cr = await curlFetch(url, { proxy, timeoutMs: 60_000 });
+    if (cr.status === 200 && cr.contentType.includes('image')) {
+      return cr.body;
+    }
+  }
+  throw new ImageGenerationError(`下载图片失败: HTTP ${resp.status}`);
 }
 
 function messageOf(err: unknown): string {

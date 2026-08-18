@@ -1,7 +1,10 @@
+import { curlFetch, fetchWithProxy } from './http-proxy.js';
+
 /**
  * 博物馆图片检索服务（GLAM 工具：艺术图片检索节点）。
  *
- * 集成 museo-main（docs/GLAM/museo-main）聚合的 12 家博物馆 / 图书馆开放 API，
+ * 集成 museo-main（docs/GLAM/museo-main）聚合的 13 家博物馆 / 图书馆开放 API
+ * （含美国国会图书馆 LoC，对接说明见 docs/GLAM/loc-api），
  * 每张图均为公有领域 / CC0 作品，检索与图片均免费使用（署名来源机构更佳）。
  *
  * 凭据来源（在 /admin/settings「系统设置」配置，未配置的源自动跳过）：
@@ -12,7 +15,8 @@
  * - europeana.api_key    Europeana（https://apis.europeana.eu/en/apis）
  *
  * 无需凭据的源：大都会（MET）/ 荷兰国立（Rijksmuseum）/ 芝加哥艺术学院（AIC）/
- * 明尼阿波利斯美术馆（MIA）/ 克利夫兰美术馆 / 丹麦国立美术馆（SMK）/ Wellcome 收藏。
+ * 明尼阿波利斯美术馆（MIA）/ 克利夫兰美术馆 / 丹麦国立美术馆（SMK）/ Wellcome 收藏 /
+ * 美国国会图书馆（LoC，需在「系统设置」配置 loc.proxy 代理出网）。
  *
  * 随机检索：关键词为空时各源尽力返回随机一批作品（MET 从全量 Object ID 中随机抽样，
  * 其余源取随机页 / 浏览全量），与图片检索节点「无关键词默认随机」交互一致。
@@ -45,7 +49,8 @@ export type GlamProvider =
   | 'nypl'
   | 'smithsonian'
   | 'paris'
-  | 'europeana';
+  | 'europeana'
+  | 'loc';
 
 /** 检索结果项（与 ImageSearchItem 同形，便于前端复用交互；downloadUrl 恒为 null，博物馆无需下载追踪） */
 export interface GlamSearchItem {
@@ -94,6 +99,8 @@ export interface GlamCredentials {
   smithsonianApiKey: string;
   parisApiKey: string;
   europeanaApiKey: string;
+  /** LoC 检索 HTTP 代理（如 http://127.0.0.1:7890；空 = 直连）。 */
+  locProxy: string;
 }
 
 /** 各源展示名（前端来源下拉 / 署名展示） */
@@ -110,6 +117,7 @@ export const GLAM_PROVIDER_LABELS: Record<GlamProvider, string> = {
   smithsonian: '史密森尼学会',
   paris: '巴黎博物馆 (Paris Musées)',
   europeana: 'Europeana',
+  loc: '美国国会图书馆 (LoC)',
 };
 
 /** 需要凭据的源 → 设置键（错误提示用） */
@@ -135,10 +143,11 @@ const ALL_PROVIDERS: GlamProvider[] = [
   'smithsonian',
   'paris',
   'europeana',
+  'loc',
 ];
 
 /** 聚合检索（provider='all'）统一显示名（路由 label 用）。 */
-export const GLAM_ALL_LABEL = '全部来源（12 家博物馆聚合）';
+export const GLAM_ALL_LABEL = '全部来源（13 家博物馆聚合）';
 
 /** 取某源已配置的 API Key（无需凭据或未配置返回空串）。 */
 function apiKeyOf(provider: GlamProvider, creds: GlamCredentials): string {
@@ -520,6 +529,143 @@ async function searchEuropeana(apiKey: string, query: string, limit: number, off
     .slice(0, limit);
 }
 
+// 美国国会图书馆（LoC）：无需凭据。JSON API 官方限流 20 次/分钟（建议 ≤15），
+// 重查询（全文索引）响应可能超过 20s，超时单独放宽（前端 30s 上限内）。
+const LOC_SEARCH_TIMEOUT_MS = 28_000;
+const LOC_RATE_PER_MIN = 15;
+
+/** LoC JSON API 令牌桶限流（15 次/分钟，留 25% 余量）。 */
+class LocTokenBucket {
+  private tokens = LOC_RATE_PER_MIN;
+  private last = Date.now();
+  private readonly rate = LOC_RATE_PER_MIN / 60_000;
+
+  async take(): Promise<void> {
+    const now = Date.now();
+    this.tokens = Math.min(LOC_RATE_PER_MIN, this.tokens + (now - this.last) * this.rate);
+    this.last = now;
+    if (this.tokens < 1) {
+      await new Promise((r) => setTimeout(r, (1 - this.tokens) / this.rate));
+      return this.take();
+    }
+    this.tokens -= 1;
+  }
+}
+const locBucket = new LocTokenBucket();
+
+/**
+ * LoC 影像类原始格式过滤。只取静态影像（照片/印刷品/绘画）：
+ * 文档推荐的 OR 表达式（含胶片/视频）在 sp>1 时会把分面丢成只剩一个、且分页 total 失真
+ * （实测 page 2 偶发 404），对「艺术图片检索」节点本就不需要视频帧；单分面分页稳定。
+ */
+const LOC_FA = 'original-format:photo, print, drawing';
+/** 只请求需要的字段，减小响应体积（at 参数）。 */
+const LOC_AT =
+  'results,results.title,results.image_url,results.url,results.id,results.contributor,results.creator,results.description,results.date,pagination';
+
+/** LoC 字段取值：可能是 string / string[] / 缺失，一律取首个字符串。 */
+function locField(r: any, field: string): string {
+  const v = r?.[field];
+  if (v == null) return '';
+  if (typeof v === 'string') return v;
+  if (Array.isArray(v) && v.length > 0) return String(v[0]);
+  return '';
+}
+
+/** LoC 图片变体：image_url 数组按尺寸升序（如 150px → 640 → 1024），取最小做缩略图、最大做预览。 */
+function locImageVariants(r: any): { thumb: string; preview: string } | null {
+  const iu = r?.image_url;
+  if (iu == null) return null;
+  const urls = (Array.isArray(iu) ? iu : [iu]).filter(
+    (u: unknown): u is string => typeof u === 'string' && u.startsWith('http')
+  );
+  if (!urls.length) return null;
+  return { thumb: urls[0]!, preview: urls[urls.length - 1]! };
+}
+
+// 美国国会图书馆（LoC）：无需凭据；检索静态影像（照片/印刷品/绘画，见 LOC_FA）。
+// 随机浏览（空关键词）= 无 q 检索 + 随机页；分页：c=每页条数、sp=页（offset 换算），
+// 用「拉满整页」判断是否还有更多（与其余各源口径一致）。
+
+/** LoC 请求 UA：可识别的自定义 UA（undici 与 curl 回退共用；实测可正常通过反爬）。 */
+const LOC_UA = 'bookforge-glam/0.1 (art image search)';
+
+/**
+ * LoC JSON API 请求：undici 优先，命中 Cloudflare 反爬（403/503 + HTML challenge，
+ * undici 的 TLS 指纹被识别；CONNECT 代理不改变客户端指纹，代理下同样会命中）时回退 curl。
+ */
+async function fetchLocJson(url: string, proxy: string): Promise<any> {
+  const res = await fetchWithProxy(
+    url,
+    {
+      headers: { 'User-Agent': LOC_UA },
+      signal: AbortSignal.timeout(LOC_SEARCH_TIMEOUT_MS),
+    },
+    proxy
+  );
+  const ct = res.headers.get('content-type') ?? '';
+  if (res.ok && ct.includes('json')) {
+    return res.json();
+  }
+  if (res.status === 429) throw new GlamSearchError('LoC 检索触发限流（429），请稍后重试');
+  // 注意：不要用浏览器 UA —— curl 的 TLS 指纹与浏览器 UA 不匹配反而更易被 CF 拦截；
+  // 实测可识别的自定义 UA（如 bookforge-glam）能正常通过（与 LoC 官方建议一致）
+  const cr = await curlFetch(url, { proxy, timeoutMs: LOC_SEARCH_TIMEOUT_MS, userAgent: LOC_UA });
+  if (cr.status === 429) throw new GlamSearchError('LoC 检索触发限流（429），请稍后重试');
+  if (cr.status !== 200 || !cr.contentType.includes('json')) {
+    // 403/503 + HTML = Cloudflare 反爬 challenge；其余（302/404/500 等）多为 LoC 限流/重定向异常，提示重试
+    const hint =
+      (cr.status === 403 || cr.status === 503) && cr.contentType.includes('html')
+        ? '：疑似触发 Cloudflare 反爬，请确认服务器出口网络可访问 loc.gov（或检查系统设置 loc.proxy）'
+        : '：LoC 服务端异常或限流，请稍后重试';
+    throw new GlamSearchError(`LoC 检索失败（HTTP ${cr.status}）${hint}`);
+  }
+  const parse = (bytes: Uint8Array): any | null => {
+    try {
+      return JSON.parse(Buffer.from(bytes).toString('utf8'));
+    } catch {
+      return null;
+    }
+  };
+  const json = parse(cr.body);
+  if (json) return json;
+  // LoC 慢查询可能被 --max-time 截断（响应不完整）：同参数重试一次
+  const cr2 = await curlFetch(url, { proxy, timeoutMs: LOC_SEARCH_TIMEOUT_MS, userAgent: LOC_UA });
+  const json2 = cr2.status === 200 && cr2.contentType.includes('json') ? parse(cr2.body) : null;
+  if (json2) return json2;
+  throw new GlamSearchError('LoC 检索返回异常（响应不完整或超时），请重试');
+}
+
+async function searchLoc(query: string, limit: number, offset: number, proxy: string): Promise<GlamSearchItem[]> {
+  await locBucket.take();
+  const c = Math.min(Math.max(limit * 3, 3), 100);
+  let sp: number;
+  let within = 0;
+  if (query) {
+    sp = Math.floor(offset / c) + 1;
+    within = offset % c;
+  } else {
+    // 随机浏览：全量影像约百万级，随机页 1..500（控制在 LoC 深分页上限 10 万条内）
+    sp = 1 + Math.floor(Math.random() * 500);
+  }
+  const qs = new URLSearchParams({ fo: 'json', fa: LOC_FA, c: String(c), sp: String(sp), at: LOC_AT });
+  if (query) qs.set('q', query);
+  const json = await fetchLocJson(`https://www.loc.gov/search/?${qs.toString()}`, proxy);
+  const raw: any[] = Array.isArray(json?.results) ? json.results : [];
+  const filtered: GlamSearchItem[] = [];
+  for (const r of raw) {
+    const variants = locImageVariants(r);
+    if (!variants) continue;
+    const item = toItem('loc', locField(r, 'title'), variants.preview, locField(r, 'url'));
+    if (!item) continue;
+    // 缩略图优先用 LoC 提供的最小变体（如 150px）；IIIF 型 URL 会再被 iiifVariant 收窄
+    item.thumbUrl = variants.thumb;
+    item.photographer = locField(r, 'contributor') || locField(r, 'creator');
+    filtered.push(item);
+  }
+  return query ? filtered.slice(within, within + limit) : filtered.slice(0, limit);
+}
+
 /** 统一入口：按源分发检索（无关键词 = 随机；未配置凭据给出明确指引）。
  *  provider='all' 时并发聚合全部已配置来源，跳过未配置 Key 的源，单源失败不影响其余。
  *  关键词检索支持按 offset 继续拉取（「加载更多」）：hasMore 仅在有关键词且来源可分页时成立，
@@ -593,6 +739,9 @@ export async function searchGlamImages(
         break;
       case 'europeana':
         items = await searchEuropeana(creds.europeanaApiKey, query, limit, offset);
+        break;
+      case 'loc':
+        items = await searchLoc(query, limit, offset, creds.locProxy);
         break;
     }
     return {

@@ -186,11 +186,13 @@ const GLAM_PROVIDERS: GlamProvider[] = [
   'smithsonian',
   'paris',
   'europeana',
+  'loc',
 ];
 
 /**
- * 艺术图片检索保存接口的 SSRF 白名单：12 家博物馆图片服务器域名（主域 + 子域）。
+ * 艺术图片检索保存接口的 SSRF 白名单：13 家博物馆图片服务器域名（主域 + 子域）。
  * 与 glam-search-service 各源返回的图片 URL 一一对应；其余域名一律拒绝。
+ * loc.gov 主域覆盖 www.loc.gov / tile.loc.gov（检索 JSON 与 IIIF 图片服务）。
  */
 const GLAM_IMAGE_HOSTS = [
   'images.metmuseum.org', // MET
@@ -207,6 +209,7 @@ const GLAM_IMAGE_HOSTS = [
   'si.edu', // 史密森尼学会
   'parismuseescollections.paris.fr', // 巴黎博物馆
   'europeana.eu', // Europeana（缩略图 / data）
+  'loc.gov', // 美国国会图书馆（www.loc.gov / tile.loc.gov 图片服务）
 ];
 
 /** 通过文件头魔数判断字节是否为真实图片；是则返回扩展名，否则 null。 */
@@ -845,6 +848,7 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
           smithsonianApiKey: s['smithsonian.api_key'] ?? '',
           parisApiKey: s['paris.api_key'] ?? '',
           europeanaApiKey: s['europeana.api_key'] ?? '',
+          locProxy: s['loc.proxy'] ?? '',
         }),
       };
     }
@@ -874,6 +878,7 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
             smithsonianApiKey: s['smithsonian.api_key'] ?? '',
             parisApiKey: s['paris.api_key'] ?? '',
             europeanaApiKey: s['europeana.api_key'] ?? '',
+            locProxy: s['loc.proxy'] ?? '',
           },
           { query: payload.query, limit: payload.limit, offset: payload.offset }
         );
@@ -900,7 +905,8 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
       const payload = (request.body ?? {}) as { url?: string };
       const url = (payload.url ?? '').trim();
       if (!url) return reply.code(400).send({ detail: 'url 不能为空' });
-      // SSRF 防护：仅允许本节点检索结果来源域名（12 家博物馆图片服务器）
+      const s = getAppSettingsMap(getDb());
+      // SSRF 防护：仅允许本节点检索结果来源域名（13 家博物馆图片服务器）
       let hostname = '';
       try {
         hostname = new URL(url).hostname.toLowerCase();
@@ -911,8 +917,11 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
       if (!allowed) {
         return reply.code(400).send({ detail: '仅支持博物馆开放图片 URL' });
       }
+      // LoC 图片（loc.gov 域名）可能需代理出网（loc.proxy，如 http://127.0.0.1:7890），其余源直连
+      const isLoc = hostname === 'loc.gov' || hostname.endsWith('.loc.gov');
+      const proxy = isLoc ? (s['loc.proxy'] ?? '') : '';
       try {
-        const imageUrl = await imageService.saveSearchImage(request.authUser!.id, url);
+        const imageUrl = await imageService.saveSearchImage(request.authUser!.id, url, proxy);
         return { image_url: imageUrl };
       } catch (err) {
         if (err instanceof ImageGenerationError) {

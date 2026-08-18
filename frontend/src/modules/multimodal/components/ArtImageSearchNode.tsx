@@ -71,7 +71,7 @@ export interface ArtImageSearchNodeProps {
  * 后端对应源的检索逻辑保留不删；换到可达的网络环境后，从这里移除来源并恢复 PROVIDERS 条目即可。 */
 const HIDDEN_GLAM_SOURCES = ['ai-chicago', 'harvard'];
 
-/** 12 家博物馆来源（与后端 glam-search-service 的 GlamProvider 一致）；'all' = 全部来源聚合检索。
+/** 13 家博物馆来源（与后端 glam-search-service 的 GlamProvider 一致）；'all' = 全部来源聚合检索。
  *  ai-chicago / harvard 因图片不可达被屏蔽（见 HIDDEN_GLAM_SOURCES），不在此列出。 */
 const PROVIDERS: { value: string; label: string; title: string }[] = [
   { value: 'all', label: '全部来源', title: '同时检索全部已配置博物馆（未配置 Key 的源自动跳过）' },
@@ -85,6 +85,7 @@ const PROVIDERS: { value: string; label: string; title: string }[] = [
   { value: 'smithsonian', label: 'Smithsonian', title: '史密森尼学会（需 smithsonian.api_key）' },
   { value: 'paris', label: 'Paris Musées', title: '巴黎博物馆（需 paris.api_key）' },
   { value: 'europeana', label: 'Europeana', title: 'Europeana（需 europeana.api_key）' },
+  { value: 'loc', label: 'LoC', title: '美国国会图书馆（无需配置；需网络可达 www.loc.gov / tile.loc.gov，或配置 loc.proxy 代理）' },
 ];
 
 /** 每页条数（网格 3 列） */

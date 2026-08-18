@@ -46,6 +46,7 @@ const KNOWN_KEYS: { key: string; description: string }[] = [
   { key: 'smithsonian.api_key', description: '艺术图片检索节点 Smithsonian Open Access API Key（https://api.data.gov/signup/ 获取；敏感，仅显示掩码）' },
   { key: 'paris.api_key', description: '艺术图片检索节点 Paris Musées API Key（https://www.parismusees.paris.fr/fr/les-collections-en-ligne/lapi-collections 获取；敏感，仅显示掩码）' },
   { key: 'europeana.api_key', description: '艺术图片检索节点 Europeana API Key（https://apis.europeana.eu/en/apis 获取；敏感，仅显示掩码）' },
+  { key: 'loc.proxy', description: '艺术图片检索节点美国国会图书馆（LoC）检索/图片 HTTP 代理（如 http://127.0.0.1:7890；留空 = 直连）' },
   { key: 'nasa.api_key', description: 'NASA 图片检索节点（APOD 每日天文图）API Key（https://api.nasa.gov 注册免费获取；敏感，仅显示掩码；EPIC 地球影像为公开接口无需配置）' },
 ];
 
@@ -76,7 +77,8 @@ const CATEGORY_DEFS: CategoryDef[] = [
       key.startsWith('harvard.') ||
       key.startsWith('nypl.') ||
       key.startsWith('paris.') ||
-      key.startsWith('smithsonian.'),
+      key.startsWith('smithsonian.') ||
+      key.startsWith('loc.'),
   },
   {
     id: 'image',
