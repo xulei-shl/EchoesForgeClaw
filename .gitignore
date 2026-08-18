@@ -50,3 +50,4 @@ dist-ssr
 # 旧版 skill 工作区（已迁移到 runtime/，如不再使用一并忽略）
 /backend/workspaces/
 
+docs/GLAM等密钥.md
