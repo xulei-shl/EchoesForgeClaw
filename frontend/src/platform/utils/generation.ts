@@ -72,6 +72,7 @@ export function generationNodeTypeLabel(nodeType?: string | null): string {
     weather: '天气查询',
     map_poster: '地图海报生成',
     image_search: '图片检索',
+    art_image_search: '艺术图片检索',
   };
   return (nodeType && labels[nodeType]) || nodeType || '未知类型';
 }

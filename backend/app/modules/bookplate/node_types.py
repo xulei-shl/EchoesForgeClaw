@@ -19,6 +19,7 @@ NODE_CALENDAR = "calendar"
 NODE_WEATHER = "weather"
 NODE_MAP_POSTER = "map_poster"
 NODE_IMAGE_SEARCH = "image_search"
+NODE_ART_IMAGE_SEARCH = "art_image_search"
 
 NODE_TEMPLATES = [
     {
@@ -141,6 +142,15 @@ NODE_TEMPLATES = [
         "name": "图片检索",
         "description": "检索 Unsplash / Pixabay 免版权图片并选择一张作为图片输出（凭据在管理端「系统设置」配置）",
         "category": "multimodal",
+        "configurable": False,
+        "output_type": "image",
+        "input_types": ["text"],
+    },
+    {
+        "type": NODE_ART_IMAGE_SEARCH,
+        "name": "艺术图片检索",
+        "description": "聚合 12 家博物馆 / 图书馆开放图片 API（MET / Rijksmuseum / AIC 等），关键词检索或随机浏览并选一张作为图片输出（部分源凭据在管理端「系统设置」配置）",
+        "category": "glam",
         "configurable": False,
         "output_type": "image",
         "input_types": ["text"],

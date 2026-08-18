@@ -25,6 +25,12 @@ import {
   trackUnsplashDownload,
   type ImageSearchProvider,
 } from '../../services/image-search-service.js';
+import {
+  GlamSearchError,
+  GLAM_PROVIDER_LABELS,
+  searchGlamImages,
+  type GlamProvider,
+} from '../../services/glam-search-service.js';
 import { getDb } from '../../config/database.js';
 import {
   findNodeConfigById,
@@ -163,6 +169,43 @@ function llmKindsForNodeType(nodeType: string): string[] {
       return [];
   }
 }
+
+/** 艺术图片检索（GLAM 工具）可用源列表（与 glam-search-service 的 GlamProvider 一致）。 */
+const GLAM_PROVIDERS: GlamProvider[] = [
+  'met',
+  'rijks',
+  'ai-chicago',
+  'artsmia',
+  'cleveland',
+  'smk',
+  'wellcome',
+  'harvard',
+  'nypl',
+  'smithsonian',
+  'paris',
+  'europeana',
+];
+
+/**
+ * 艺术图片检索保存接口的 SSRF 白名单：12 家博物馆图片服务器域名（主域 + 子域）。
+ * 与 glam-search-service 各源返回的图片 URL 一一对应；其余域名一律拒绝。
+ */
+const GLAM_IMAGE_HOSTS = [
+  'images.metmuseum.org', // MET
+  'rijksmuseum.nl', // Rijksmuseum（Linked Art / IIIF）
+  'googleusercontent.com', // Rijksmuseum 部分 IIIF 图片托管
+  'artic.edu', // 芝加哥艺术学院 IIIF
+  'api.artsmia.org', // 明尼阿波利斯美术馆
+  'clevelandart.org', // 克利夫兰美术馆
+  'smk.dk', // 丹麦国立美术馆
+  'wellcomecollection.org', // Wellcome 收藏
+  'harvardartmuseums.org', // 哈佛艺术博物馆
+  'nrs.harvard.edu', // 哈佛图片（IIIF 重定向源）
+  'nypl.org', // 纽约公共图书馆
+  'si.edu', // 史密森尼学会
+  'parismuseescollections.paris.fr', // 巴黎博物馆
+  'europeana.eu', // Europeana（缩略图 / data）
+];
 
 /** 通过文件头魔数判断字节是否为真实图片；是则返回扩展名，否则 null。 */
 function detectImageExt(content: Uint8Array): string | null {
@@ -762,6 +805,74 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
         if (accessKey) {
           void trackUnsplashDownload(accessKey, payload.download_url).catch(() => {});
         }
+      }
+      try {
+        const imageUrl = await imageService.saveSearchImage(request.authUser!.id, url);
+        return { image_url: imageUrl };
+      } catch (err) {
+        if (err instanceof ImageGenerationError) {
+          return reply.code(502).send({ detail: err.message });
+        }
+        return reply.code(502).send({ detail: err instanceof Error ? err.message : String(err) });
+      }
+    }
+  );
+
+  // ---- GLAM 工具：艺术图片检索（12 家博物馆开放 API；无关键词 = 随机浏览，凭据在 /admin/settings 配置） ----
+
+  app.post(
+    '/api/modules/bookplate/glam-search',
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const payload = (request.body ?? {}) as {
+        provider?: string;
+        query?: string;
+        limit?: number;
+      };
+      const provider: GlamProvider = GLAM_PROVIDERS.includes(payload.provider as GlamProvider)
+        ? (payload.provider as GlamProvider)
+        : 'met';
+      const s = getAppSettingsMap(getDb());
+      try {
+        const items = await searchGlamImages(
+          provider,
+          {
+            harvardApiKey: s['harvard.api_key'] ?? '',
+            nyplApiKey: s['nypl.api_key'] ?? '',
+            smithsonianApiKey: s['smithsonian.api_key'] ?? '',
+            parisApiKey: s['paris.api_key'] ?? '',
+            europeanaApiKey: s['europeana.api_key'] ?? '',
+          },
+          { query: payload.query, limit: payload.limit }
+        );
+        return { provider, label: GLAM_PROVIDER_LABELS[provider], items };
+      } catch (err) {
+        if (err instanceof GlamSearchError) {
+          return reply.code(502).send({ detail: err.message });
+        }
+        return reply.code(502).send({ detail: err instanceof Error ? err.message : String(err) });
+      }
+    }
+  );
+
+  // 选中图片 → 下载到本地独立子目录（search-images，与图片检索共用），返回本地 URL 作为节点输出
+  app.post(
+    '/api/modules/bookplate/glam-search/save',
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const payload = (request.body ?? {}) as { url?: string };
+      const url = (payload.url ?? '').trim();
+      if (!url) return reply.code(400).send({ detail: 'url 不能为空' });
+      // SSRF 防护：仅允许本节点检索结果来源域名（12 家博物馆图片服务器）
+      let hostname = '';
+      try {
+        hostname = new URL(url).hostname.toLowerCase();
+      } catch {
+        return reply.code(400).send({ detail: '非法图片 URL' });
+      }
+      const allowed = GLAM_IMAGE_HOSTS.some((h) => hostname === h || hostname.endsWith(`.${h}`));
+      if (!allowed) {
+        return reply.code(400).send({ detail: '仅支持博物馆开放图片 URL' });
       }
       try {
         const imageUrl = await imageService.saveSearchImage(request.authUser!.id, url);

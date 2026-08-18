@@ -18,6 +18,7 @@ export const NODE_DEFAULT_SIZES: Record<CanvasNodeType, { width: number; height:
   weather: { width: 420, height: 460 },
   map_poster: { width: 460, height: 560 },
   image_search: { width: 440, height: 560 },
+  art_image_search: { width: 460, height: 580 },
 };
 
 /** 节点的主题色（用于左上角指示圆点） */
@@ -36,13 +37,14 @@ export const NODE_COLORS: Record<CanvasNodeType, string> = {
   weather: 'oklch(0.6 0.15 220)',
   map_poster: 'oklch(0.62 0.15 160)',
   image_search: 'oklch(0.68 0.15 300)',
+  art_image_search: 'oklch(0.7 0.14 330)',
 };
 
 export interface NodeTemplateDef {
   type: CanvasNodeType;
   name: string;
   description: string;
-  category: 'input' | 'analysis' | 'generate' | 'output' | 'tool' | 'multimodal';
+  category: 'input' | 'analysis' | 'generate' | 'output' | 'tool' | 'multimodal' | 'glam';
   configurable: boolean;
   defaultSize: { width: number; height: number };
 }
@@ -165,6 +167,14 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     configurable: false,
     defaultSize: NODE_DEFAULT_SIZES.image_search,
   },
+  {
+    type: 'art_image_search',
+    name: '艺术图片检索',
+    description: '聚合 12 家博物馆 / 图书馆开放图片 API（MET / Rijksmuseum / AIC 等），关键词检索或随机浏览并选一张作为图片输出（部分源凭据在管理端「系统设置」配置）',
+    category: 'glam',
+    configurable: false,
+    defaultSize: NODE_DEFAULT_SIZES.art_image_search,
+  },
 ];
 
 export const NODE_TEMPLATE_MAP: Record<CanvasNodeType, NodeTemplateDef> = Object.fromEntries(
@@ -179,6 +189,7 @@ export const CATEGORY_LABELS: Record<NodeTemplateDef['category'], string> = {
   output: '输出',
   tool: '文本工具',
   multimodal: '多模态工具',
+  glam: 'GLAM工具',
 };
 
 /* ===================================================================== */
@@ -221,6 +232,8 @@ export const NODE_PORT_TYPES: Record<CanvasNodeType, { output: NodePortType; inp
   map_poster: { output: 'image', inputs: [] },
   // 图片检索：输出选中图片（本地 URL）；可连线文本节点作为检索关键词（连线即输入）
   image_search: { output: 'image', inputs: ['text'] },
+  // 艺术图片检索：输出选中图片（本地 URL）；可连线文本节点作为检索关键词（连线即输入）
+  art_image_search: { output: 'image', inputs: ['text'] },
 };
 
 /** 端口类型查找（由画布提供：后端模板声明优先，前端静态镜像兜底） */

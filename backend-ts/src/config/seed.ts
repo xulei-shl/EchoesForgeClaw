@@ -61,6 +61,31 @@ const DEFAULT_SETTINGS: Array<[string, string, string]> = [
     '',
     '图片检索节点（Pixabay）API Key（https://pixabay.com/api/docs 获取；敏感，仅显示掩码）',
   ],
+  [
+    'harvard.api_key',
+    '',
+    '艺术图片检索节点（Harvard Art Museums）API Key（https://harvardartmuseums.org/collections/api 获取；敏感，仅显示掩码）',
+  ],
+  [
+    'nypl.api_key',
+    '',
+    '艺术图片检索节点（NYPL Digital Collections）API Key（https://api.repo.nypl.org/ 获取；敏感，仅显示掩码）',
+  ],
+  [
+    'smithsonian.api_key',
+    '',
+    '艺术图片检索节点（Smithsonian Open Access）API Key（https://api.data.gov/signup/ 获取；敏感，仅显示掩码）',
+  ],
+  [
+    'paris.api_key',
+    '',
+    '艺术图片检索节点（Paris Musées）API Key（https://www.parismusees.paris.fr/fr/les-collections-en-ligne/lapi-collections 获取；敏感，仅显示掩码）',
+  ],
+  [
+    'europeana.api_key',
+    '',
+    '艺术图片检索节点（Europeana）API Key（https://apis.europeana.eu/en/apis 获取；敏感，仅显示掩码）',
+  ],
 ];
 
 export function seedStartup(): void {

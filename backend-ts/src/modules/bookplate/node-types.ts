@@ -20,6 +20,8 @@ export const NODE_TYPES = {
   MAP_POSTER: 'map_poster',
   /** 图片检索（多模态工具）：检索 Unsplash / Pixabay 免版权图片并选一张输出（凭据在系统设置配置） */
   IMAGE_SEARCH: 'image_search',
+  /** 艺术图片检索（GLAM 工具）：聚合 12 家博物馆开放图片 API，检索/随机浏览并选一张输出（部分源凭据在系统设置配置） */
+  ART_IMAGE_SEARCH: 'art_image_search',
 } as const;
 
 export type NodeType = (typeof NODE_TYPES)[keyof typeof NODE_TYPES];
@@ -28,7 +30,7 @@ export interface NodeTemplate {
   type: NodeType;
   name: string;
   description: string;
-  category: 'input' | 'analysis' | 'generate' | 'output' | 'tool' | 'multimodal';
+  category: 'input' | 'analysis' | 'generate' | 'output' | 'tool' | 'multimodal' | 'glam';
   configurable: boolean;
   output_type?: 'text' | 'image' | 'document';
   input_types?: string[];
@@ -150,6 +152,15 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     name: '图片检索',
     description: '检索 Unsplash / Pixabay 免版权图片并选择一张作为图片输出（凭据在管理端「系统设置」配置）',
     category: 'multimodal',
+    configurable: false,
+    output_type: 'image',
+    input_types: ['text'],
+  },
+  {
+    type: NODE_TYPES.ART_IMAGE_SEARCH,
+    name: '艺术图片检索',
+    description: '聚合 12 家博物馆 / 图书馆开放图片 API（MET / Rijksmuseum / AIC 等），关键词检索或随机浏览并选一张作为图片输出（部分源凭据在管理端「系统设置」配置）',
+    category: 'glam',
     configurable: false,
     output_type: 'image',
     input_types: ['text'],

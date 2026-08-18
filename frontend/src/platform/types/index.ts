@@ -209,7 +209,9 @@ export type CanvasNodeType =
   /** 地图海报生成节点：搜索地点并生成地图海报图片（多模态工具，浏览器端渲染导出，无需配置） */
   | 'map_poster'
   /** 图片检索节点：检索 Unsplash / Pixabay 免版权图片并选一张作为图片输出（多模态工具，无需配置） */
-  | 'image_search';
+  | 'image_search'
+  /** 艺术图片检索节点：聚合 12 家博物馆开放图片 API，关键词检索或随机浏览并选一张作为图片输出（GLAM 工具，无需配置） */
+  | 'art_image_search';
 
 /**
  * 节点端口类型（输入/输出）：text / image 为当前实际使用的类型，
@@ -315,8 +317,8 @@ export interface NodeTemplate {
   type: CanvasNodeType;
   name: string;
   description: string;
-  /** 模板类别：input（输入）/ analysis（分析）/ generate（生成）/ output（输出）/ tool（文本工具）/ multimodal（多模态工具） */
-  category: 'input' | 'analysis' | 'generate' | 'output' | 'tool' | 'multimodal';
+  /** 模板类别：input（输入）/ analysis（分析）/ generate（生成）/ output（输出）/ tool（文本工具）/ multimodal（多模态工具）/ glam（GLAM 工具） */
+  category: 'input' | 'analysis' | 'generate' | 'output' | 'tool' | 'multimodal' | 'glam';
   /** 是否需要 llm/agent 配置（false 为基础节点，画板直接可用） */
   configurable: boolean;
   /** 输出类型：该模板产出什么（连线类型匹配校验用） */
