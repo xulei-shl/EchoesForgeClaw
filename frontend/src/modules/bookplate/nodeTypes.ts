@@ -203,6 +203,21 @@ export type PortTypesLookup = (
   type: CanvasNodeType
 ) => { output: NodePortType; inputs: NodePortType[] };
 
+/**
+ * 文本输出上级在「图像生成提示词」中的角色（仅影响提示词拼装的分桶与标注）：
+ * - book：图书元数据，走图书通道（includeBook 开关注入），不并入文本上下文；
+ * - prompt：主提示词（提示词生成节点），有则优先作为提示词来源；
+ * - analysis：图片分析结果，单独标注为「## 图片分析」并入提示词；
+ * - 未配置 = 普通文本上下文（并入「## 文本上下文」）。
+ * 约定式：后续新增文本输出节点类型时**无需改动执行引擎**——默认归入文本上下文；
+ * 若需特殊角色（主提示词 / 分析等），在此表加一行即可。
+ */
+export const TEXT_ROLE: Partial<Record<CanvasNodeType, 'book' | 'prompt' | 'analysis'>> = {
+  book_info: 'book',
+  prompt_generation: 'prompt',
+  image_analysis: 'analysis',
+};
+
 /** 连线端口匹配结果：match（匹配）/ mismatch（不匹配，红色标注）/ unknown（类型未知，不判定） */
 export type PortMatch = 'match' | 'mismatch' | 'unknown';
 
@@ -334,11 +349,9 @@ export function bookCoverImage(data: any): string {
 }
 
 /**
- * 提取任意节点的对外输出文本（供下游作为输入）：
- * - 文本节点 → content；提示词生成 → content；图片分析 → analysis；
- * - AI 对话 → 最后一轮助手回复；图书元数据 → 过滤图片后的元数据。
- * - 图像生成 → 空串：该节点对外输出仅为图片（端口类型 image），其提示词是生成过程的
- *   记录元数据（写入历史记录 stage3.prompt），不作为文本传给下游节点。
+ * 提取任意节点的对外输出文本（供下游作为输入）。
+ * 约定式（与端口类型声明配套）：产出文本的节点把对外文本存入 data.output / data.content /
+ * data.analysis 任一字段（按此优先级）；结构化数据（图书元数据 / skill 列表）走类型专属格式化。
  * 返回空串表示该节点当前无可消费的文本输出。
  */
 export function nodeOutputText(node: GraphNode | undefined): string {
@@ -387,20 +400,15 @@ export function nodeOutputText(node: GraphNode | undefined): string {
 }
 
 /**
- * 提取任意节点的对外图片输出（data URL 或可访问的图片 URL，供 AI 对话节点作为视觉上下文）。
- * 目前产出图片的节点：图片上传（data URL）、图像生成（/static/generated 本地路径）。
+ * 提取任意节点的对外图片输出（data URL 或可访问的图片 URL，供下游节点作为参考图 / 视觉上下文）。
+ * 约定式：产出图片的节点把对外图片存入 data.imageUrl（图片上传 / 图像生成即此约定），
+ * 后续新增图片输出节点类型时无需在此枚举即可被下游引用。
  * 返回空数组表示该节点当前无可用图片输出。
  */
 export function nodeOutputImages(node: GraphNode | undefined): string[] {
   if (!node || !node.data) return [];
-  const d = node.data;
-  switch (node.type) {
-    case 'image_upload':
-    case 'image_generation':
-      return typeof d.imageUrl === 'string' && d.imageUrl ? [d.imageUrl] : [];
-    default:
-      return [];
-  }
+  const url = node.data.imageUrl;
+  return typeof url === 'string' && url ? [url] : [];
 }
 
 

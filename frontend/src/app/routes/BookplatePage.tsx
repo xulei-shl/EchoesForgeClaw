@@ -38,6 +38,8 @@ import {
 } from '../../modules/bookplate/textTemplate';
 import {
   DEFAULT_RUN_SETTINGS,
+  collectNodeInputs,
+  resolveReferenceImage,
   type PortTypesLookup,
 } from '../../modules/bookplate/execution';
 import {
@@ -1268,14 +1270,11 @@ const BookplatePage: React.FC = () => {
     branchNode(node, {
       data: { prompt, imageUrl: null, isGenerating: true, agentSteps: [] },
       run: (newNode) => {
-        // 沿用同一上游链的「图片上传」参考图（分支节点共享父级上游，直接连线即输入）
-        const uploads = nodesRef.current.filter(
-          (n) =>
-            n.type === 'image_upload' &&
-            edgesRef.current.some((e) => e.source === n.id && e.target === newNode.id)
+        // 沿用同一上游链的参考图（分支节点共享父级上游，直接连线即输入）：
+        // 输出端口类型为 image 的上级（图片上传 / 图像生成…），与 resolveNodeRunInputs 同口径
+        const refImage = resolveReferenceImage(
+          collectNodeInputs(newNode, nodesRef.current, edgesRef.current, portTypesRef.current).images
         );
-        const refImage =
-          typeof uploads[0]?.data?.imageUrl === 'string' ? uploads[0].data.imageUrl : undefined;
         runImageGeneration(newNode, prompt, refImage);
       },
     });

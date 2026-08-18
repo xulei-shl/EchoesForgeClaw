@@ -1,13 +1,14 @@
-import type { NodeRunSettings } from '../../platform/types';
+import type { NodePortType, NodeRunSettings } from '../../platform/types';
 import {
+  TEXT_ROLE,
   bookMetadataText,
   findConnectedBookInfoUpstream,
   findRootBookInfo,
   matchPortType,
+  nodeOutputImages,
   nodeOutputText,
   resolveDirectParents,
 } from './nodeTypes';
-import { isTextOutputNode } from './textTemplate';
 import type { PortTypesLookup } from './nodeTypes';
 import type { EdgeData, NodeData } from './graphTypes';
 
@@ -39,7 +40,8 @@ function markdownSections(sections: { label: string; values: string[] }[]): stri
  * - 输入 = 所有直接连线的上级节点输出（画线连上即输入，1 级，不向上追溯）；
  * - 图书元数据：直接连线的 book_info 优先；未直接连线时按「包含图书元数据」开关注入——
  *   沿连线向上追溯实际连通的 book_info，无连通时才回退画布根节点；
- * - 各类型输出经 nodeOutputText 按类型提取并合并（支持多个同类上级）。
+ * - 文本/图片等上级按「输出端口类型」统一分组（collectNodeInputs），文本再按角色配置表
+ *   （TEXT_ROLE）分桶：prompt（主提示词）/ analysis（分析）/ 普通文本上下文。
  */
 export interface RunInputs {
   /** 直接上级节点列表 */
@@ -48,17 +50,17 @@ export interface RunInputs {
   book?: NodeData;
   /** 图书元数据文本（过滤图片字段） */
   metadataText: string;
-  /** 分析文本（image_analysis 直接上级合并） */
+  /** 分析文本（TEXT_ROLE 中 role=analysis 的上级，如图片分析）合并 */
   analysis: string;
-  /** 文本上下文（text / chat 直接上级合并） */
+  /** 文本上下文（TEXT_ROLE 未配置角色的文本输出上级，如文本 / AI 对话）合并 */
   text: string;
-  /** 提示词（prompt_generation 直接上级合并） */
+  /** 提示词（TEXT_ROLE 中 role=prompt 的上级，如提示词生成）合并 */
   prompt: string;
-  /** 提示词来源节点列表 */
+  /** 主提示词来源节点列表 */
   promptNodes: NodeData[];
-  /** 显式连接的「图片上传」节点 */
-  uploadNode?: NodeData;
-  /** 参考图 data URL（图片上传节点已上传时） */
+  /** 图片输出上级（output 端口类型为 image，含图片上传 / 图像生成…） */
+  imageNodes: NodeData[];
+  /** 参考图（图片上传节点 data URL；图像生成上级节点的本地图片路径，见 resolveReferenceImage） */
   refImage?: string;
   /** 图像生成最终提示词：提示词节点优先，无则回退图书元数据；图片分析/文本/AI对话直接上级并入上下文 */
   imagePrompt: string;
@@ -70,7 +72,12 @@ export function resolveNodeRunInputs(
   edges: EdgeData[],
   portTypesOf: PortTypesLookup
 ): RunInputs {
-  const parents = resolveDirectParents(node.id, nodes, edges);
+  const { parents, images, text: textOutputParents } = collectNodeInputs(
+    node,
+    nodes,
+    edges,
+    portTypesOf
+  );
   const settings: NodeRunSettings = node.data?.settings ?? DEFAULT_RUN_SETTINGS;
   // 图书元数据：直接连线的 book_info 优先；未直接连线时按「包含图书元数据」开关注入——
   // 先沿连线向上追溯实际连通的 book_info（画布可存在多个互不连通的图书元数据节点，
@@ -81,29 +88,22 @@ export function resolveNodeRunInputs(
       ? findConnectedBookInfoUpstream(node.id, nodes, edges) ?? findRootBookInfo(nodes, edges)
       : undefined);
   const metadataText = bookMetadataText(book?.data);
-  const analysisValues = parents
-    .filter((p) => p.type === 'image_analysis')
-    .map((p) => nodeOutputText(p));
-  // 文本上下文来源：按端口类型声明推导（output ∈ text/any）——文本 / AI 对话 / 文本聚合 /
-  // 以及后续新增的任何文本输出节点，无需在此逐个枚举；排除已单独分桶的
-  // 图书元数据（book）、图片分析（analysis）、提示词生成（prompt）。
-  const textValues = parents
-    .filter(
-      (p) =>
-        isTextOutputNode(p, portTypesOf) &&
-        p.type !== 'book_info' &&
-        p.type !== 'image_analysis' &&
-        p.type !== 'prompt_generation'
-    )
-    .map((p) => nodeOutputText(p));
-  const promptNodes = parents.filter((p) => p.type === 'prompt_generation');
+  // 文本输出上级按角色配置表（TEXT_ROLE）分桶：book 走图书元数据通道（不并入文本上下文）；
+  // prompt = 主提示词来源；analysis = 图片分析；其余文本输出节点（含后续新增类型）默认
+  // 并入「文本上下文」——无需逐个枚举节点类型。
+  const textOutputs = textOutputParents.filter((p) => TEXT_ROLE[p.type] !== 'book');
+  const promptNodes = textOutputs.filter((p) => TEXT_ROLE[p.type] === 'prompt');
+  const analysisNodes = textOutputs.filter((p) => TEXT_ROLE[p.type] === 'analysis');
+  const plainTextNodes = textOutputs.filter((p) => !TEXT_ROLE[p.type]);
   const promptValues = promptNodes.map((p) => nodeOutputText(p));
+  const analysisValues = analysisNodes.map((p) => nodeOutputText(p));
+  const textValues = plainTextNodes.map((p) => nodeOutputText(p));
   const analysis = markdownSections([{ label: '图片分析', values: analysisValues }]);
   const text = markdownSections([{ label: '文本上下文', values: textValues }]);
   const prompt = markdownSections([{ label: '提示词', values: promptValues }]);
-  const uploadNode = parents.find((p) => p.type === 'image_upload');
-  const refImage =
-    typeof uploadNode?.data?.imageUrl === 'string' ? uploadNode.data.imageUrl : undefined;
+  // 参考图：图片输出上级（图片上传 / 图像生成…，按端口类型推导，后续新增图片输出节点自动生效）。
+  // data URL（图片上传）优先，其次本地路径。
+  const refImage = resolveReferenceImage(images);
   // 图像生成提示词 = 提示词（无则回退图书元数据）+ 图片分析 + 文本上下文。
   // 与 AI 对话节点同口径（所见即所得）：除图书元数据走 includeBook 穿透外，
   // 任何直连上级的文本输出都并入上下文。
@@ -121,10 +121,68 @@ export function resolveNodeRunInputs(
     text,
     prompt,
     promptNodes,
-    uploadNode,
+    imageNodes: images,
     refImage,
     imagePrompt,
   };
+}
+
+/**
+ * 统一输入收集器（所有节点的「谁是我的输入」的唯一入口）：
+ * 把直接上级按「输出端口类型」分组（画线连上即输入，1 级，不向上追溯）。
+ * 端口声明来自后端 node_types.py（唯一权威，经 node-registry 下发）+ 前端 NODE_PORT_TYPES 兜底，
+ * 因此新增节点类型 / 新增输出类型（音频、视频…）时**无需改动此处**——
+ * 只要模板声明了 output_type，该节点就会自动落入对应分组供下游消费。
+ */
+export interface CollectedInputs {
+  /** 全部直接上级节点 */
+  parents: NodeData[];
+  /** 按输出端口类型分组的直接上级（key 为端口类型声明，含 any；未来 audio/video 等自动落入） */
+  byPortType: Partial<Record<NodePortType, NodeData[]>>;
+  /** 文本输出上级（output ∈ text/any，含图书元数据等） */
+  text: NodeData[];
+  /** 图片输出上级（output === image） */
+  images: NodeData[];
+  /** 文档输出上级（output === document） */
+  documents: NodeData[];
+}
+
+export function collectNodeInputs(
+  node: NodeData,
+  nodes: NodeData[],
+  edges: EdgeData[],
+  portTypesOf: PortTypesLookup
+): CollectedInputs {
+  const parents = resolveDirectParents(node.id, nodes, edges);
+  const byPortType: Partial<Record<NodePortType, NodeData[]>> = {};
+  for (const p of parents) {
+    const out = portTypesOf(p.type).output;
+    (byPortType[out] ??= []).push(p);
+  }
+  return {
+    parents,
+    byPortType,
+    text: [...(byPortType.text ?? []), ...(byPortType.any ?? [])],
+    images: byPortType.image ?? [],
+    documents: byPortType.document ?? [],
+  };
+}
+
+/**
+ * 参考图来源解析（图生图）：从「图片输出上级」分组中取第一张可用图片作为参考图。
+ * data URL（图片上传）优先——无需转换即可直接使用；本地路径（如 /static/generated）
+ * 其次，发起请求前由调用方转 data URL。返回空 = 无可用参考图。
+ */
+export function resolveReferenceImage(imageNodes: NodeData[]): string | undefined {
+  for (const p of imageNodes) {
+    const img = nodeOutputImages(p)[0];
+    if (typeof img === 'string' && img.startsWith('data:')) return img;
+  }
+  for (const p of imageNodes) {
+    const img = nodeOutputImages(p)[0];
+    if (typeof img === 'string' && img) return img;
+  }
+  return undefined;
 }
 
 /**

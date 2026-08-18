@@ -12,7 +12,12 @@ import { SkillSearchNode } from './components/SkillSearchNode';
 import { CalendarNode } from './components/CalendarNode';
 import { WeatherNode } from './components/WeatherNode';
 import { getNodeTitle, matchPortType, nodeOutputText, resolveDirectParents } from './nodeTypes';
-import { DEFAULT_RUN_SETTINGS, type PortTypesLookup } from './execution';
+import {
+  DEFAULT_RUN_SETTINGS,
+  collectNodeInputs,
+  resolveReferenceImage,
+  type PortTypesLookup,
+} from './execution';
 import { buildInjectedContextBlocks } from './contextBlocks';
 import type { EdgeData, NodeData, NodeSize } from './graphTypes';
 import type {
@@ -180,21 +185,23 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
     }
     case 'image_generation': {
       const config = h.configOf(node);
-      // 参考图状态：直接连线的「图片上传」节点图片作为图生图参考（画线连上即输入）。
+      // 参考图状态：输出端口类型为 image 的直接上级（图片上传 / 图像生成…，collectNodeInputs
+      // 按类型声明统一分组，后续新增图片输出节点自动生效），画线连上即输入。
       // LLM 模式直接进 extra_body.image（必然使用）；Agent 模式经 imageUrls 传给 FastClaw
       // （物化到 workspace 供视觉模型/图像工具使用，是否实际采用取决于 Agent 行为）。
-      const uploadNode = resolveDirectParents(node.id, h.nodes, h.edges).find(
-        (p) => p.type === 'image_upload'
-      );
-      const refImage =
-        typeof uploadNode?.data?.imageUrl === 'string' ? uploadNode.data.imageUrl : undefined;
-      const referenceNote = uploadNode
-        ? refImage
-          ? config?.mode === 'agent'
-            ? '参考图已传入 Agent'
-            : '已使用参考图 · 图生图'
-          : '等待上传参考图（上传后点击运行）'
-        : undefined;
+      const { images: imageParents } = collectNodeInputs(node, h.nodes, h.edges, h.portTypesOf);
+      const refImage = resolveReferenceImage(imageParents);
+      const uploadConnected = imageParents.some((p) => p.type === 'image_upload');
+      const referenceNote =
+        imageParents.length > 0
+          ? refImage
+            ? config?.mode === 'agent'
+              ? '参考图已传入 Agent'
+              : '已使用参考图 · 图生图'
+            : uploadConnected
+              ? '等待上传参考图（上传后点击运行）'
+              : '等待上级图片输出'
+          : undefined;
       const hasDownstream = hasDownstreamOf(node, h.edges);
       // 上下文注入折叠块：与 AI 对话节点共用构建逻辑，展示本次运行实际并入提示词的输入
       // （提示词节点 / 图片分析 / 文本类上级 / 图书元数据与封面 / 参考图）。与 chat 同口径
@@ -224,7 +231,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           hasDownstream={hasDownstream}
           referenceImageUrl={refImage ?? null}
           referenceNote={referenceNote}
-          referenceWaiting={!!uploadNode && !refImage}
+          referenceWaiting={imageParents.length > 0 && !refImage}
           isGenerating={!!node.data.isGenerating}
           error={node.data.error}
           isMock={node.data.isMock}
@@ -342,10 +349,11 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
     }
     case 'weather': {
       const hasDownstream = hasDownstreamOf(node, h.edges);
-      // 连线即输入：直接上级文本节点内容作为城市（取第一个非空），优先于手动输入
+      // 连线即输入：文本输出上级内容作为城市（collectNodeInputs 按端口类型统一分组，
+      // 取第一个非空），优先于手动输入
       const upstreamCity =
-        resolveDirectParents(node.id, h.nodes, h.edges)
-          .map((p) => nodeOutputText(p))
+        collectNodeInputs(node, h.nodes, h.edges, h.portTypesOf)
+          .text.map((p) => nodeOutputText(p))
           .find((v) => v.trim()) ?? '';
       return (
         <WeatherNode

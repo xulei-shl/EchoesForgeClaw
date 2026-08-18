@@ -5,7 +5,7 @@ import {
   nodeOutputImages,
   nodeOutputText,
 } from './nodeTypes';
-import { resolveNodeRunInputs, type PortTypesLookup } from './execution';
+import { collectNodeInputs, resolveNodeRunInputs, type PortTypesLookup } from './execution';
 import type { EdgeData, NodeData } from './graphTypes';
 import type { CanvasNodeType, InjectedContextBlock } from '../../platform/types';
 
@@ -70,21 +70,29 @@ export function buildInjectedContextBlocks(
     }
   }
 
-  // 2. 直接父节点（只要连线且开启配置，均生成对应的注入组件，不受类型与输出状态限制）
+  // 2. 直接父节点：按「输出端口类型」分类（collectNodeInputs 统一分组，画线连上即输入）。
+  //    文本上级走 nodeOutputText、图片上级走 nodeOutputImages，受各自开关控制；
+  //    后续新增输出类型（音频等）接入时在下方补对应的提取与开关即可。
   const includeText = opts.includeUpstreamText;
   const includeImages = opts.includeUpstreamImages;
 
   if (includeText || includeImages) {
-    const parents = nodes.filter((n) =>
-      edges.some((e) => e.target === node.id && e.source === n.id)
+    const { parents, text: textOutputs, images: imageOutputs } = collectNodeInputs(
+      node,
+      nodes,
+      edges,
+      portTypesOf
     );
     for (const p of parents) {
       if (opts.parentFilter && !opts.parentFilter(p.type)) continue;
       // 若该直连父节点已作为图书元数据/封面注入，跳过以避免重复注入
       if (injectedBookId && p.id === injectedBookId) continue;
+      const isText = textOutputs.includes(p);
+      const isImage = imageOutputs.includes(p);
+      if (!((includeText && isText) || (includeImages && isImage))) continue;
 
-      const text = includeText ? nodeOutputText(p).trim() : '';
-      const rawImages = includeImages ? nodeOutputImages(p) : [];
+      const text = includeText && isText ? nodeOutputText(p).trim() : '';
+      const rawImages = includeImages && isImage ? nodeOutputImages(p) : [];
       const images: string[] = [];
       for (const img of rawImages) {
         if (img && !images.includes(img)) images.push(img);

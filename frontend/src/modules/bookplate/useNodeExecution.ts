@@ -44,7 +44,7 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
   const { streamControllers, analysisUploads } = ctx;
 
   /** 图片分析节点：UI Message Stream 流式执行（LLM 一次性返回文本；Agent 透传中间步骤 + 最终文本） */
-  const runImageAnalysis = (node: NodeData, opts: { image?: string; coverUrl?: string }) => {
+  const runImageAnalysis = async (node: NodeData, opts: { image?: string; coverUrl?: string }) => {
     if (streamControllers.current.has(node.id)) return;
     const controller = new AbortController();
     streamControllers.current.set(node.id, controller);
@@ -55,13 +55,24 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
       analysis: undefined,
     });
 
+    // 参考图可能是「图像生成」上级节点的本地路径（/static/generated/...），后端分析接口
+    // 只接受 base64 data URL：先转换；读取失败则置空（回退封面，与封面抓取失败同语义）
+    let image = opts.image;
+    if (image && !image.startsWith('data:')) {
+      try {
+        image = await urlToDataUrl(image);
+      } catch {
+        image = undefined;
+      }
+    }
+
     const idle = makeIdleTimeout(controller, PROMPT_SSE_IDLE_TIMEOUT_MS);
     idle.arm();
 
     postUIStream({
       url: '/api/modules/bookplate/analyze-image',
       body: {
-        image: opts.image,
+        image,
         cover_url: opts.coverUrl,
         config_id: node.configId ?? null,
         node_id: node.id,
@@ -278,9 +289,23 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
     // 导致孤儿流 + 历史记录重复保存）
     if (streamControllers.current.has(node.id)) return;
     // 图书封面图（图生图参考，与 AI 对话节点同口径）：includeBookCover 开启且封面可用时，
-    // 与「图片上传」参考图一并作为多图参考（Agnes 多图合成契约）；跨域/代理失败跳过不阻断。
+    // 与参考图一并作为多图参考（Agnes 多图合成契约）；跨域/代理失败跳过不阻断。
     const images: string[] = [];
-    if (image) images.push(image);
+    if (image) {
+      if (image.startsWith('data:')) {
+        // 「图片上传」节点参考图：已是 data URL，直接使用
+        images.push(image);
+      } else {
+        // 「图像生成」上级节点的本地图片（/static/generated/...）：转 data URL 后再随请求发出。
+        // 图生图契约要求 base64 图片（相对路径外部模型无法访问）；读取失败跳过不阻断生成
+        try {
+          const dataUrl = await urlToDataUrl(image);
+          if (dataUrl) images.push(dataUrl);
+        } catch {
+          // 本地图片读取失败（跨域 / 文件缺失）跳过，不阻断生成
+        }
+      }
+    }
     if (coverUrl) {
       try {
         const coverDataUrl = await urlToDataUrl(coverUrl);
@@ -385,19 +410,19 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
           ctx.edgesRef.current,
           ctx.portTypesRef.current
         );
-        const { book, uploadNode, refImage } = inputs;
+        const { book, imageNodes, refImage } = inputs;
         // 注意：必须传豆瓣原始 URL（cover_image），而非本地代理 URL（cover_image_local）——
         // 后端仅接受 doubanio.com 域名做封面抓取/分析
         const coverUrl =
           book?.data?.cover_image || book?.data?.coverUrl || book?.data?.cover_image_local;
         const uploaded = analysisUploads.current.get(node.id);
-        // 图片来源优先级：节点内直接上传的参考图 > 上游图片上传节点 > 图书封面。
-        // 显式连接了「图片上传」节点时以该节点为准：尚未上传图片则保持待运行态，不回退封面
+        // 图片来源优先级：节点内直接上传的参考图 > 上游图片输出节点 > 图书封面。
+        // 显式连接了图片类节点时以该节点为准：暂无图片则保持待运行态，不回退封面
         const image = uploaded || refImage;
-        if (!image && (uploadNode || !coverUrl)) {
+        if (!image && (imageNodes.length || !coverUrl)) {
           return pendingReason(
             node,
-            '缺少可分析的图片（上传参考图，或连线「图片上传」节点 / 开启「包含图书元数据」）'
+            '缺少可分析的图片（上传参考图，或连线图片类节点 / 开启「包含图书元数据」）'
           );
         }
         // 后端同样优先解析 image 字段，cover_url 仅作兜底
@@ -438,7 +463,9 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
             '缺少提示词（连线「提示词生成」/「图片分析」/文本节点，或开启「包含图书元数据」）'
           );
         }
-        if (inputs.uploadNode && !inputs.refImage) return '「图片上传」节点尚未上传图片';
+        if (inputs.imageNodes.length && !inputs.refImage) {
+          return '图片类上级暂无可用图片（等待上传或生成完成）';
+        }
         // 图书封面图：与 AI 对话节点同口径（穿透 + 兜底均由 includeBook 解析的 book 承载），
         // includeBookCover 默认开启（旧节点 undefined 视为开启）
         const includeCover = node.data?.settings?.includeBookCover !== false;
