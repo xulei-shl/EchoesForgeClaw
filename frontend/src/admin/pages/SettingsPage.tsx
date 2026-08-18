@@ -1,15 +1,22 @@
 import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import {
+  BookOpen,
+  Calendar,
   Check,
-  ChevronDown,
-  ChevronRight,
+  HelpCircle,
+  Image as ImageIcon,
+  Landmark,
+  Layers,
   Loader2,
   Pencil,
   Plus,
   RefreshCw,
+  Search,
   Settings as SettingsIcon,
   ShieldCheck,
+  Sparkles,
   Trash2,
+  X,
 } from 'lucide-react';
 import { adminService } from '../../platform/services/admin';
 import type { AppSetting, BifrostFolder } from '../../platform/types';
@@ -41,6 +48,64 @@ const KNOWN_KEYS: { key: string; description: string }[] = [
   { key: 'europeana.api_key', description: '艺术图片检索节点 Europeana API Key（https://apis.europeana.eu/en/apis 获取；敏感，仅显示掩码）' },
 ];
 
+/** 业务分类配置定义 */
+interface CategoryDef {
+  id: string;
+  name: string;
+  icon: React.ComponentType<{ size?: number; className?: string; strokeWidth?: number }>;
+  description: string;
+  match: (key: string) => boolean;
+}
+
+const CATEGORY_DEFS: CategoryDef[] = [
+  {
+    id: 'bifrost',
+    name: 'Bifrost 网关',
+    icon: Sparkles,
+    description: 'Bifrost 提示词与 Skill 网关地址、认证账号密码及白名单文件夹配置',
+    match: (key) => key.startsWith('bifrost.'),
+  },
+  {
+    id: 'glam',
+    name: '艺术馆藏 (GLAM)',
+    icon: Landmark,
+    description: '用于画布「艺术图片检索 (GLAM)」节点的 5 大博物馆/典藏馆 API Key。未配置 Key 的馆藏仍可使用免鉴权开放接口（如 MET、Rijksmuseum、AIC、SMK 等）',
+    match: (key) =>
+      key.startsWith('europeana.') ||
+      key.startsWith('harvard.') ||
+      key.startsWith('nypl.') ||
+      key.startsWith('paris.') ||
+      key.startsWith('smithsonian.'),
+  },
+  {
+    id: 'image',
+    name: '图片检索',
+    icon: ImageIcon,
+    description: '用于画布「图片检索」节点的公共图库 API Key（Unsplash、Pixabay）',
+    match: (key) => key.startsWith('unsplash.') || key.startsWith('pixabay.'),
+  },
+  {
+    id: 'douban',
+    name: '豆瓣图书',
+    icon: BookOpen,
+    description: '豆瓣图书元数据 API 请求地址、速率限制 (QPS) 与 HTTP 代理设置',
+    match: (key) => key.startsWith('douban.'),
+  },
+  {
+    id: 'mxnzp',
+    name: '万年历',
+    icon: Calendar,
+    description: '万年历节点（MXNZP 节假日、公农历与黄历服务）的应用 ID 与密钥配置',
+    match: (key) => key.startsWith('mxnzp.'),
+  },
+];
+
+/** 判断配置项所属分类 ID */
+function resolveCategoryId(key: string): string {
+  const found = CATEGORY_DEFS.find((c) => c.match(key));
+  return found ? found.id : 'other';
+}
+
 /** 敏感设置项的值展示 / 编辑提示 */
 function SensitiveValueHint({ setting }: { setting: AppSetting }) {
   if (!setting.sensitive) return null;
@@ -66,6 +131,9 @@ export const SettingsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  const [activeTab, setActiveTab] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+
   const [showCreate, setShowCreate] = useState(false);
   const [edit, setEdit] = useState<EditState>(EMPTY_EDIT);
   const [saving, setSaving] = useState(false);
@@ -78,45 +146,6 @@ export const SettingsPage: React.FC = () => {
   const [wlSelected, setWlSelected] = useState<Set<string>>(new Set());
   const [wlSaving, setWlSaving] = useState(false);
   const [wlLoadError, setWlLoadError] = useState('');
-
-  const grouped = useMemo(() => {
-    const groups: {
-      key: string;
-      title: string;
-      configs: AppSetting[];
-    }[] = [];
-    const groupMap = new Map<string, typeof groups[number]>();
-    const ungrouped: AppSetting[] = [];
-
-    for (const s of items) {
-      const parts = s.key.split('.');
-      if (parts.length > 1) {
-        const category = parts[0];
-        let grp = groupMap.get(category);
-        if (!grp) {
-          grp = { key: `group:${category}`, title: category, configs: [] };
-          groupMap.set(category, grp);
-          groups.push(grp);
-        }
-        grp.configs.push(s);
-      } else {
-        ungrouped.push(s);
-      }
-    }
-
-    groups.sort((a, b) => a.title.localeCompare(b.title));
-    if (ungrouped.length > 0) {
-      groups.push({
-        key: 'group:other',
-        title: '其他',
-        configs: ungrouped,
-      });
-    }
-
-    return groups;
-  }, [items]);
-
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -159,6 +188,82 @@ export const SettingsPage: React.FC = () => {
   useEffect(() => {
     load();
   }, [load]);
+
+  /** 统计各 Tab 项的数量与定义列表 */
+  const tabList = useMemo(() => {
+    const counts: Record<string, number> = { all: items.length };
+    let otherCount = 0;
+
+    for (const item of items) {
+      const catId = resolveCategoryId(item.key);
+      counts[catId] = (counts[catId] || 0) + 1;
+      if (catId === 'other') otherCount++;
+    }
+
+    const list: {
+      id: string;
+      name: string;
+      icon: React.ComponentType<{ size?: number; className?: string; strokeWidth?: number }>;
+      count: number;
+      description?: string;
+    }[] = [
+      {
+        id: 'all',
+        name: '全部',
+        icon: Layers,
+        count: items.length,
+        description: '系统内全部配置项总览',
+      },
+      ...CATEGORY_DEFS.map((c) => ({
+        id: c.id,
+        name: c.name,
+        icon: c.icon,
+        count: counts[c.id] || 0,
+        description: c.description,
+      })),
+    ];
+
+    // 如果存在未归类的自定义项，增加「其他」Tab
+    if (otherCount > 0) {
+      list.push({
+        id: 'other',
+        name: '其他',
+        icon: HelpCircle,
+        count: otherCount,
+        description: '未归类的其他自定义配置项',
+      });
+    }
+
+    return list;
+  }, [items]);
+
+  /** 当前激活 Tab 的元数据 */
+  const activeTabMeta = useMemo(() => {
+    return tabList.find((t) => t.id === activeTab) || tabList[0];
+  }, [tabList, activeTab]);
+
+  /** 过滤后的显示列表 */
+  const filteredItems = useMemo(() => {
+    let list = items;
+
+    // 分类筛选
+    if (activeTab !== 'all') {
+      list = list.filter((item) => resolveCategoryId(item.key) === activeTab);
+    }
+
+    // 关键词搜索
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      list = list.filter(
+        (item) =>
+          item.key.toLowerCase().includes(q) ||
+          (item.description && item.description.toLowerCase().includes(q)) ||
+          (item.value && !item.sensitive && item.value.toLowerCase().includes(q))
+      );
+    }
+
+    return list;
+  }, [items, activeTab, searchQuery]);
 
   const resetForm = () => {
     setEdit(EMPTY_EDIT);
@@ -242,7 +347,6 @@ export const SettingsPage: React.FC = () => {
     setWlSaving(true);
     try {
       const ids = [...wlSelected];
-      // createSetting 为 upsert 语义：键不存在时创建、存在时覆盖（修复「配置项不存在」）
       await adminService.createSetting({
         key: 'bifrost.allowed_folders',
         value: ids.join(','),
@@ -278,11 +382,15 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
+  const shouldShowBifrostWhitelistCard =
+    (activeTab === 'all' || activeTab === 'bifrost') &&
+    (!searchQuery || 'bifrost.allowed_folders'.includes(searchQuery.toLowerCase()) || '白名单'.includes(searchQuery));
+
   return (
     <div>
       <PageHeader
         title="系统设置"
-        subtitle="豆瓣代理、请求速率等平台级键值配置；修改后对后续请求立即生效"
+        subtitle="平台级服务密钥、接口代理与请求速率配置；修改后对后续请求立即生效"
         actions={
           !showCreate && (
             <Button size="sm" onClick={openCreate}>
@@ -311,7 +419,7 @@ export const SettingsPage: React.FC = () => {
             <Input
               value={edit.key}
               onChange={(e) => setEdit({ ...edit, key: e.target.value })}
-              placeholder="如 douban.proxy"
+              placeholder="如 douban.proxy 或 harvard.api_key"
               list="known-setting-keys"
               disabled={edit.id !== null}
             />
@@ -381,129 +489,196 @@ export const SettingsPage: React.FC = () => {
         </div>
       )}
 
-      {/* 列表 */}
+      {/* 核心配置内容区 */}
       {!loading && !error && (
-        <div className="space-y-6">
-          {items.length === 0 ? (
-            <Card className="py-14 flex flex-col items-center gap-3 text-center">
-              <SettingsIcon size={36} strokeWidth={1} className="text-ink-faint" />
-              <p className="font-serif text-base text-ink">暂无系统设置</p>
-              <p className="text-sm text-ink-light font-sans">点击「新建设置项」添加配置</p>
-            </Card>
-          ) : (
-            grouped.map((group) => {
-              const isCollapsed = !!collapsedGroups[group.key];
-              return (
-                <div key={group.key}>
+        <div className="space-y-5">
+          {/* 二级 Tab 切换栏 + 搜索过滤栏 */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1 border-b border-dashed border-paper-grid">
+            {/* 分类 Tab 切换按钮组 */}
+            <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar py-0.5" role="tablist">
+              {tabList.map((tab) => {
+                const isActive = activeTab === tab.id;
+                const Icon = tab.icon;
+                return (
                   <button
+                    key={tab.id}
                     type="button"
-                    onClick={() =>
-                      setCollapsedGroups((prev) => ({ ...prev, [group.key]: !prev[group.key] }))
-                    }
-                    title={isCollapsed ? '展开分组' : '折叠分组'}
-                    className="w-full mb-2 flex items-center gap-2 text-left group hover:opacity-80 transition-opacity focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent rounded"
+                    role="tab"
+                    aria-selected={isActive}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-sans whitespace-nowrap transition active:scale-[0.97] border ${
+                      isActive
+                        ? 'bg-accent-surface text-accent font-medium border-dashed border-accent/40 shadow-xs'
+                        : 'text-ink-light hover:text-ink hover:bg-paper-grid/30 border-transparent'
+                    }`}
                   >
-                    {isCollapsed ? (
-                      <ChevronRight size={15} strokeWidth={1.5} className="text-ink-faint shrink-0 transition-transform" />
-                    ) : (
-                      <ChevronDown size={15} strokeWidth={1.5} className="text-ink-faint shrink-0 transition-transform" />
-                    )}
-                    <span className="font-serif text-sm font-semibold text-ink capitalize">
-                      {group.title === 'other' ? '其他' : group.title}
-                    </span>
-                    <span className="ml-auto text-xs text-ink-faint font-sans tabular-nums">
-                      {group.configs.length} 项
+                    <Icon size={14} strokeWidth={1.5} className={isActive ? 'text-accent' : 'text-ink-faint'} />
+                    <span>{tab.name}</span>
+                    <span
+                      className={`px-1.5 py-0.5 text-[10px] rounded-pill font-mono tabular-nums leading-none ${
+                        isActive
+                          ? 'bg-accent/15 text-accent font-semibold'
+                          : 'bg-paper-grid/50 text-ink-faint'
+                      }`}
+                    >
+                      {tab.count}
                     </span>
                   </button>
-                  {!isCollapsed && (
-                    <div className="space-y-3">
-                      {/* bifrost 分组：白名单文件夹专用配置卡片（普通 KV 行隐藏，避免重复） */}
-                      {group.key === 'group:bifrost' && (
-                        <Card className="p-4">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-mono text-sm text-accent border border-dashed border-accent/40 bg-accent/5 rounded-pill px-2.5 py-0.5">
-                                  bifrost.allowed_folders
-                                </span>
-                                <ShieldCheck size={14} strokeWidth={1.5} className="text-accent" />
-                              </div>
-                              <p className="mt-2 text-sm text-ink font-sans">
-                                {wlSelected.size > 0
-                                  ? `当前白名单：${bifrostFolders
-                                      .filter((f) => wlSelected.has(f.id))
-                                      .map((f) => f.name)
-                                      .join('、') || '已选择但文件夹不可用'}`
-                                  : '未配置（允许全部文件夹）'}
-                              </p>
-                              <p className="mt-1 text-xs text-ink-light font-sans">
-                                仅白名单文件夹下的提示词出现在 Bifrost 管理页与画布检索列表
-                              </p>
-                              {wlLoadError && (
-                                <p className="mt-1 text-xs text-error font-sans">{wlLoadError}</p>
-                              )}
-                            </div>
-                            <button
-                              onClick={() => void openWhitelistEditor()}
-                              title="编辑白名单"
-                              className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-95"
-                            >
-                              <Pencil size={15} strokeWidth={1.5} />
-                            </button>
-                          </div>
-                        </Card>
-                      )}
-                      {group.configs
-                        .filter((s) => !(group.key === 'group:bifrost' && s.key === 'bifrost.allowed_folders'))
-                        .map((s) => (
-                          <Card key={s.id} className="p-4">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="font-mono text-sm text-accent border border-dashed border-accent/40 bg-accent/5 rounded-pill px-2.5 py-0.5">
-                                    {s.key}
-                                  </span>
-                                  <span className="text-xs text-ink-faint font-sans tabular-nums">
-                                    {new Date(s.updated_at).toLocaleString('zh-CN', { hour12: false })}
-                                  </span>
-                                </div>
-                                <p className="mt-2 font-mono text-sm text-ink break-all">
-                                  {s.sensitive
-                                    ? s.value
-                                      ? '••••••••（已配置）'
-                                      : '（未配置）'
-                                    : s.value || '（空）'}
-                                </p>
-                                <SensitiveValueHint setting={s} />
-                                {s.description && (
-                                  <p className="mt-1 text-xs text-ink-light font-sans">{s.description}</p>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                <button
-                                  onClick={() => openEdit(s)}
-                                  title="编辑"
-                                  className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-95"
-                                >
-                                  <Pencil size={15} strokeWidth={1.5} />
-                                </button>
-                                <button
-                                  onClick={() => handleDelete(s)}
-                                  title="删除"
-                                  className="p-1.5 rounded-md text-ink-light hover:text-error hover:bg-error/5 transition-colors active:scale-95"
-                                >
-                                  <Trash2 size={15} strokeWidth={1.5} />
-                                </button>
-                              </div>
-                            </div>
-                          </Card>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })
+                );
+              })}
+            </div>
+
+            {/* 快速搜索框 */}
+            <div className="relative w-full sm:w-56 shrink-0">
+              <Search
+                size={13}
+                strokeWidth={1.5}
+                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-faint pointer-events-none"
+              />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="搜索配置键名或说明..."
+                className="w-full h-8 pl-8 pr-7 text-xs rounded-md border border-dashed border-paper-grid bg-paper text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition font-sans"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  title="清除搜索"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-faint hover:text-ink transition-colors"
+                >
+                  <X size={12} strokeWidth={2} />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* 分类说明与提示区域 */}
+          {activeTabMeta.description && (
+            <div className="px-3.5 py-2.5 rounded-md bg-paper-grid/15 border border-dashed border-paper-grid text-xs text-ink-light font-sans flex items-start gap-2">
+              <activeTabMeta.icon size={15} strokeWidth={1.5} className="text-accent shrink-0 mt-0.5" />
+              <div className="min-w-0 flex-1 leading-relaxed">
+                <span>{activeTabMeta.description}</span>
+                {activeTab === 'glam' && (
+                  <p className="mt-1 text-[11px] text-ink-faint font-mono">
+                    包含：Europeana · Harvard Art Museums · NYPL · Paris Musées · Smithsonian Open Access
+                  </p>
+                )}
+              </div>
+            </div>
           )}
+
+          {/* 配置项列表 */}
+          <div className="space-y-3">
+            {/* Bifrost 白名单文件夹专用卡片 */}
+            {shouldShowBifrostWhitelistCard && (
+              <Card className="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono text-sm text-accent border border-dashed border-accent/40 bg-accent/5 rounded-pill px-2.5 py-0.5">
+                        bifrost.allowed_folders
+                      </span>
+                      <ShieldCheck size={14} strokeWidth={1.5} className="text-accent" />
+                    </div>
+                    <p className="mt-2 text-sm text-ink font-sans">
+                      {wlSelected.size > 0
+                        ? `当前白名单：${bifrostFolders
+                            .filter((f) => wlSelected.has(f.id))
+                            .map((f) => f.name)
+                            .join('、') || '已选择但文件夹不可用'}`
+                        : '未配置（允许全部文件夹）'}
+                    </p>
+                    <p className="mt-1 text-xs text-ink-light font-sans">
+                      仅白名单文件夹下的提示词出现在 Bifrost 管理页与画布检索列表
+                    </p>
+                    {wlLoadError && (
+                      <p className="mt-1 text-xs text-error font-sans">{wlLoadError}</p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => void openWhitelistEditor()}
+                    title="编辑白名单"
+                    className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-95"
+                  >
+                    <Pencil size={15} strokeWidth={1.5} />
+                  </button>
+                </div>
+              </Card>
+            )}
+
+            {/* 普通配置项卡片 */}
+            {filteredItems
+              .filter((s) => s.key !== 'bifrost.allowed_folders')
+              .map((s) => (
+                <Card key={s.id} className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-sm text-accent border border-dashed border-accent/40 bg-accent/5 rounded-pill px-2.5 py-0.5">
+                          {s.key}
+                        </span>
+                        <span className="text-xs text-ink-faint font-sans tabular-nums">
+                          {new Date(s.updated_at).toLocaleString('zh-CN', { hour12: false })}
+                        </span>
+                      </div>
+                      <p className="mt-2 font-mono text-sm text-ink break-all">
+                        {s.sensitive
+                          ? s.value
+                            ? '••••••••（已配置）'
+                            : '（未配置）'
+                          : s.value || '（空）'}
+                      </p>
+                      <SensitiveValueHint setting={s} />
+                      {s.description && (
+                        <p className="mt-1 text-xs text-ink-light font-sans">{s.description}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        onClick={() => openEdit(s)}
+                        title="编辑"
+                        className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-95"
+                      >
+                        <Pencil size={15} strokeWidth={1.5} />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(s)}
+                        title="删除"
+                        className="p-1.5 rounded-md text-ink-light hover:text-error hover:bg-error/5 transition-colors active:scale-95"
+                      >
+                        <Trash2 size={15} strokeWidth={1.5} />
+                      </button>
+                    </div>
+                  </div>
+                </Card>
+            ))}
+
+            {/* 空状态处理 */}
+            {filteredItems.length === 0 && !shouldShowBifrostWhitelistCard && (
+              <Card className="py-14 flex flex-col items-center gap-3 text-center">
+                <SettingsIcon size={32} strokeWidth={1} className="text-ink-faint" />
+                <p className="font-serif text-base text-ink">
+                  {searchQuery ? `未找到匹配「${searchQuery}」的配置项` : '当前分类下暂无配置项'}
+                </p>
+                <p className="text-xs text-ink-light font-sans">
+                  {searchQuery ? (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="text-accent underline hover:opacity-80 transition"
+                    >
+                      清空搜索条件
+                    </button>
+                  ) : (
+                    '可点击右上角「新建设置项」进行添加'
+                  )}
+                </p>
+              </Card>
+            )}
+          </div>
         </div>
       )}
 
@@ -518,7 +693,7 @@ export const SettingsPage: React.FC = () => {
           <p className="text-xs text-ink-light font-sans">
             勾选后仅这些文件夹下的提示词会出现在 Bifrost 管理页与画布检索列表；不选 = 允许全部
           </p>
-          <div className="max-h-72 overflow-y-auto border border-dashed border-paper-grid rounded-md p-1">
+          <div className="max-h-72 overflow-y-auto border border-dashed border-paper-grid rounded-md p-1 custom-scrollbar">
             {bifrostFolders.length === 0 ? (
               <p className="py-6 text-center text-sm text-ink-faint font-sans">
                 {wlLoadError ? wlLoadError : '未获取到文件夹（请确认 Bifrost 已配置）'}
@@ -561,9 +736,9 @@ export const SettingsPage: React.FC = () => {
           </div>
         </div>
       </Dialog>
-
     </div>
   );
 };
 
 export default SettingsPage;
+
