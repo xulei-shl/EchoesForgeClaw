@@ -3,18 +3,19 @@ import L from 'leaflet';
 import * as maplibregl from 'maplibre-gl';
 import 'leaflet/dist/leaflet.css';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { Download, ImageDown, Loader2, Map as MapIcon, MapPin, Search, X } from 'lucide-react';
+import { ImageDown, Loader2, Map as MapIcon, MapPin, Search, X } from 'lucide-react';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { Tooltip } from '../../../platform/components/ui/Tooltip';
+import { Select, type SelectOption } from '../../../platform/components/ui/Select';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
 import { NODE_COLORS } from '../../bookplate/nodeTypes';
 import { themes, DEFAULT_TILE_THEME } from '../map/themes';
 import { artisticThemes, DEFAULT_ARTISTIC_THEME } from '../map/artisticThemes';
 import { generateMapLibreStyle } from '../map/artisticStyle';
-import { searchLocation, type GeocodeResult } from '../map/geocoder';
+import { searchLocation, formatCoords, type GeocodeResult } from '../map/geocoder';
 import { markerIcons } from '../map/markerIcons';
 import { exportMapPoster, type MapPosterState } from '../map/exportImage';
 import {
@@ -32,7 +33,17 @@ const SIZE_PRESETS: { name: string; width: number; height: number }[] = [
   { name: '竖版故事 1080×1920', width: 1080, height: 1920 },
 ];
 
-const OVERLAY_SIZES = [
+const RENDER_MODE_OPTIONS: SelectOption[] = [
+  { label: '瓦片', value: 'tile' },
+  { label: '艺术', value: 'artistic' },
+];
+
+const SIZE_PRESET_OPTIONS: SelectOption[] = SIZE_PRESETS.map((s, i) => ({
+  label: s.name,
+  value: String(i),
+}));
+
+const OVERLAY_SIZES: SelectOption[] = [
   { label: '小', value: 'small' },
   { label: '中', value: 'medium' },
   { label: '大', value: 'large' },
@@ -107,7 +118,6 @@ const MapPosterNodeInner: React.FC<MapPosterNodeProps> = ({
   onDrag,
   footer,
   onContextMenu,
-  hasDownstream,
   onUpdateEditor,
   onExport,
 }) => {
@@ -123,6 +133,8 @@ const MapPosterNodeInner: React.FC<MapPosterNodeProps> = ({
   /** 最新 onUpdateEditor（ref 模式：地图事件回调在渲染间始终拿到最新实现，避免重建监听） */
   const onUpdateEditorRef = useRef(onUpdateEditor);
   onUpdateEditorRef.current = onUpdateEditor;
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [stageScale, setStageScale] = useState(0.25);
   const tileContainerRef = useRef<HTMLDivElement>(null);
   const artisticContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -160,6 +172,8 @@ const MapPosterNodeInner: React.FC<MapPosterNodeProps> = ({
     if (renderMode === 'artistic') return artisticThemes[artisticTheme] ?? artisticThemes[DEFAULT_ARTISTIC_THEME];
     return themes[tileTheme] ?? themes[DEFAULT_TILE_THEME];
   }, [renderMode, tileTheme, artisticTheme]);
+
+  const currentPreset = SIZE_PRESETS[sizeIndex] ?? SIZE_PRESETS[0];
 
   // ---- 初始化地图（挂载一次；初始视口取自 node.data） ----
   useEffect(() => {
@@ -300,11 +314,43 @@ const MapPosterNodeInner: React.FC<MapPosterNodeProps> = ({
   // ---- 模式切换：显示/隐藏对应地图容器 ----
   useEffect(() => {
     if (renderMode === 'tile') {
-      mapRef.current?.invalidateSize();
+      mapRef.current?.invalidateSize({ animate: false });
     } else {
-      artisticMapRef.current?.resize();
+      // 延迟到下一帧再 resize + 强制重绘：
+      // opacity:0 期间 WebGL 渲染循环持续运行，切换时 canvas 内容已就绪，
+      // resize 保证 canvas 尺寸与容器一致，triggerRepaint 确保一次完整渲染帧。
+      requestAnimationFrame(() => {
+        artisticMapRef.current?.resize();
+        artisticMapRef.current?.triggerRepaint();
+      });
     }
   }, [renderMode]);
+
+  // ---- 舞台缩放：监听外部舞台大小，动态计算 scale 使高分辨率画框适配视口 ----
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const updateScale = () => {
+      const w = stage.clientWidth - 16;
+      const h = stage.clientHeight - 16;
+      if (w <= 0 || h <= 0) return;
+      const s = Math.min(w / currentPreset.width, h / currentPreset.height, 1);
+      setStageScale(s);
+    };
+    updateScale();
+    const ro = new ResizeObserver(updateScale);
+    ro.observe(stage);
+    return () => ro.disconnect();
+  }, [currentPreset.width, currentPreset.height]);
+
+  // ---- 尺寸预设或缩放变化：刷新地图视口以填充新的真实像素尺寸 ----
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      mapRef.current?.invalidateSize({ animate: false });
+      artisticMapRef.current?.resize();
+    }, 60);
+    return () => clearTimeout(timer);
+  }, [sizeIndex, stageScale]);
 
   // ---- 外部恢复（撤销/重做/历史恢复/切页回来）：node.data 视口与本地不一致时跳转 ----
   useEffect(() => {
@@ -448,10 +494,8 @@ const MapPosterNodeInner: React.FC<MapPosterNodeProps> = ({
       actionBar={
         <NodeActionBar>
           {imageUrl && (
-            <NodeActionBar.Custom
-              icon={<Download size={16} strokeWidth={1.5} />}
+            <NodeActionBar.Download
               tooltip="下载地图海报"
-              hasDownstream={hasDownstream}
               onClick={handleDownload}
             />
           )}
@@ -504,47 +548,35 @@ const MapPosterNodeInner: React.FC<MapPosterNodeProps> = ({
         </div>
 
         {/* 模式 / 主题 / 尺寸 */}
-        <div className="shrink-0 flex gap-1.5">
-          <select
+        <div className="shrink-0 flex gap-1.5 relative z-10">
+          <Select
+            size="sm"
             value={renderMode}
-            onChange={(e) => edit({ renderMode: e.target.value as 'tile' | 'artistic' })}
-            className="h-8 shrink-0 rounded-md border border-dashed border-paper-grid bg-transparent px-1.5 text-xs text-ink focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
-            title="渲染模式"
-          >
-            <option value="tile">瓦片</option>
-            <option value="artistic">艺术</option>
-          </select>
-          <select
+            onChange={(val) => edit({ renderMode: val as 'tile' | 'artistic' })}
+            options={RENDER_MODE_OPTIONS}
+            className="w-20 shrink-0"
+          />
+          <Select
+            size="sm"
             value={renderMode === 'artistic' ? artisticTheme : tileTheme}
-            onChange={(e) => {
-              if (renderMode === 'artistic') edit({ artisticTheme: e.target.value });
-              else edit({ tileTheme: e.target.value });
+            onChange={(val) => {
+              if (renderMode === 'artistic') edit({ artisticTheme: val });
+              else edit({ tileTheme: val });
             }}
-            className="h-8 flex-1 min-w-0 rounded-md border border-dashed border-paper-grid bg-transparent px-1.5 text-xs text-ink focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
-            title="主题"
-          >
-            {themeOptions.map((t) => (
-              <option key={t.value} value={t.value} title={t.title}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-          <select
-            value={sizeIndex}
-            onChange={(e) => edit({ sizeIndex: Number(e.target.value) })}
-            className="h-8 shrink-0 max-w-[128px] rounded-md border border-dashed border-paper-grid bg-transparent px-1.5 text-xs text-ink focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
-            title="输出尺寸"
-          >
-            {SIZE_PRESETS.map((s, i) => (
-              <option key={s.name} value={i}>
-                {s.name}
-              </option>
-            ))}
-          </select>
+            options={themeOptions}
+            className="flex-1 min-w-0"
+          />
+          <Select
+            size="sm"
+            value={String(sizeIndex)}
+            onChange={(val) => edit({ sizeIndex: Number(val) })}
+            options={SIZE_PRESET_OPTIONS}
+            className="w-36 shrink-0"
+          />
         </div>
 
         {/* 覆盖层文字 */}
-        <div className="shrink-0 flex gap-1.5">
+        <div className="shrink-0 flex gap-1.5 relative z-[5]">
           <input
             value={cityName}
             onChange={(e) => edit({ cityName: e.target.value.toUpperCase() })}
@@ -557,53 +589,96 @@ const MapPosterNodeInner: React.FC<MapPosterNodeProps> = ({
             placeholder="国家/地区"
             className="h-8 flex-1 min-w-0 rounded-md border border-dashed border-paper-grid bg-transparent px-2 text-xs text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors font-mono"
           />
-          <select
+          <Select
+            size="sm"
             value={overlaySize}
-            onChange={(e) => edit({ overlaySize: e.target.value as 'small' | 'medium' | 'large' })}
-            className="h-8 shrink-0 rounded-md border border-dashed border-paper-grid bg-transparent px-1.5 text-xs text-ink focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
-            title="覆盖层文字大小"
-          >
-            {OVERLAY_SIZES.map((s) => (
-              <option key={s.value} value={s.value}>
-                {s.label}
-              </option>
-            ))}
-          </select>
+            onChange={(val) => edit({ overlaySize: val as 'small' | 'medium' | 'large' })}
+            options={OVERLAY_SIZES}
+            className="w-16 shrink-0"
+          />
         </div>
 
-        {/* 地图区域：两套地图容器始终占布局（visibility 切换，与 map-to-poster 一致）——
-            MapLibre 在 display:none 容器里初始化会得到 0×0 WebGL canvas 且 resize 无法恢复，
-            故用 visibility + pointer-events 隐藏，保证挂载时容器尺寸正常 */}
-        <div className="relative flex-1 min-h-0 rounded-md overflow-hidden border border-dashed border-paper-grid bg-paper/40">
+        {/* 地图区域：海报舞台 + 真实高分辨率画框（通过 transform scale 适配视口） */}
+        <div
+          ref={stageRef}
+          className="relative flex-1 min-h-0 flex items-center justify-center p-2 rounded-md overflow-hidden border border-dashed border-paper-grid bg-paper/30 select-none"
+        >
           <div
-            ref={tileContainerRef}
-            className="absolute inset-0 z-0"
+            className="relative shadow-2xl rounded-sm overflow-hidden flex-shrink-0 origin-center transition-transform duration-100"
             style={{
-              visibility: renderMode === 'tile' ? 'visible' : 'hidden',
-              pointerEvents: renderMode === 'tile' ? 'auto' : 'none',
+              width: `${currentPreset.width}px`,
+              height: `${currentPreset.height}px`,
+              transform: `scale(${stageScale})`,
+              backgroundColor: (activeTheme as any)?.background ?? (activeTheme as any)?.bg ?? '#ffffff',
             }}
-          />
-          <div
-            ref={artisticContainerRef}
-            className="absolute inset-0 z-0"
-            style={{
-              visibility: renderMode === 'artistic' ? 'visible' : 'hidden',
-              pointerEvents: renderMode === 'artistic' ? 'auto' : 'none',
-            }}
-          />
-          {/* 标记开关（右上角浮层） */}
-          <button
-            type="button"
-            onClick={() => edit({ showMarker: !showMarker })}
-            title={showMarker ? '导出时显示中心标记' : '导出时隐藏中心标记'}
-            className={`absolute top-2 right-2 z-[1000] w-7 h-7 rounded-md border flex items-center justify-center transition-colors ${
-              showMarker
-                ? 'border-accent/50 bg-accent/10 text-accent'
-                : 'border-dashed border-paper-grid bg-paper/70 text-ink-faint hover:text-ink'
-            }`}
           >
-            <MapPin size={13} strokeWidth={2} />
-          </button>
+            {/* 瓦片地图容器（1080/1920 高清原生渲染） */}
+            <div
+              ref={tileContainerRef}
+              className="absolute inset-0 z-0"
+              style={{
+                opacity: renderMode === 'tile' ? 1 : 0,
+                pointerEvents: renderMode === 'tile' ? 'auto' : 'none',
+              }}
+            />
+            {/* 艺术地图容器（1080/1920 高清原生渲染） */}
+            <div
+              ref={artisticContainerRef}
+              className="absolute inset-0 z-0"
+              style={{
+                opacity: renderMode === 'artistic' ? 1 : 0,
+                pointerEvents: renderMode === 'artistic' ? 'auto' : 'none',
+              }}
+            />
+
+            {/* 实时文字覆盖层预览（真实海报字号，随 transform scale 自动等比缩放） */}
+            <div
+              className="absolute inset-x-0 bottom-[8%] flex flex-col items-center justify-center text-center pointer-events-none z-10 px-8 select-none"
+              style={{ color: (activeTheme as any)?.textColor ?? (activeTheme as any)?.text ?? '#000000' }}
+            >
+              {cityName && (
+                <h2 className="font-serif font-bold uppercase tracking-[0.2em] text-5xl md:text-6xl truncate max-w-[90%] drop-shadow-sm leading-tight">
+                  {cityName}
+                </h2>
+              )}
+              {(cityName || countryName) && (
+                <div
+                  className="my-3 w-32 h-[2px] opacity-70"
+                  style={{ backgroundColor: (activeTheme as any)?.textColor ?? (activeTheme as any)?.text ?? '#000000' }}
+                />
+              )}
+              {countryName && (
+                <p className="font-sans font-medium uppercase tracking-[0.25em] text-xl opacity-90 truncate max-w-[90%] leading-tight">
+                  {countryName}
+                </p>
+              )}
+              <p className="font-mono text-base tracking-wider opacity-75 mt-2 leading-tight">
+                {formatCoords(lat, lon)}
+              </p>
+            </div>
+
+            {/* 标记开关（右上角浮层，按物理尺寸设置，在 scale 下与 UI 比例自然） */}
+            <button
+              type="button"
+              onClick={() => edit({ showMarker: !showMarker })}
+              title={showMarker ? '导出时显示中心标记' : '导出时隐藏中心标记'}
+              className={`absolute top-6 right-6 z-20 w-12 h-12 rounded-xl border flex items-center justify-center transition-colors shadow-md ${
+                showMarker
+                  ? 'border-accent/50 bg-accent/20 text-accent'
+                  : 'border-paper-grid bg-paper/80 text-ink-faint hover:text-ink'
+              }`}
+            >
+              <MapPin size={24} strokeWidth={2} />
+            </button>
+
+            {/* 右下角归属角标预览 */}
+            <div
+              className="absolute bottom-4 right-6 text-sm opacity-35 pointer-events-none font-sans"
+              style={{ color: (activeTheme as any)?.textColor ?? (activeTheme as any)?.text ?? '#000000' }}
+            >
+              {renderMode === 'tile' ? '© OpenStreetMap contributors' : '© OpenFreeMap'}
+            </div>
+          </div>
         </div>
 
         {/* 错误提示 */}

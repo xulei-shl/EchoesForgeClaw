@@ -76,17 +76,17 @@ type ProviderType = 'unsplash' | 'pixabay';
 /** 每个图库提供商的独立缓存与检索状态 */
 interface ProviderCacheState {
   items: ImageSearchItem[];
-  query: string;
   hasMore: boolean;
   searchError: string;
   loaded: boolean;
+  lastLoadedQuery: string;
 }
 
 type ProviderCacheMap = Record<ProviderType, ProviderCacheState>;
 
 const initialProviderCache: ProviderCacheMap = {
-  unsplash: { items: [], query: '', hasMore: false, searchError: '', loaded: false },
-  pixabay: { items: [], query: '', hasMore: false, searchError: '', loaded: false },
+  unsplash: { items: [], hasMore: false, searchError: '', loaded: false, lastLoadedQuery: '' },
+  pixabay: { items: [], hasMore: false, searchError: '', loaded: false, lastLoadedQuery: '' },
 };
 
 const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
@@ -111,8 +111,9 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
 }) => {
   const { showToast } = useFeedback();
 
-  // ---- 编辑器状态（provider 持久化；检索状态按 provider 隔离缓存） ----
+  // ---- 编辑器状态（provider 持久化；query 跨 Tab 共享；结果集按 provider 隔离缓存） ----
   const [activeProvider, setActiveProvider] = useState<ProviderType>(provider);
+  const [query, setQuery] = useState('');
   const [providerCache, setProviderCache] = useState<ProviderCacheMap>(initialProviderCache);
   const [loading, setLoading] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -124,26 +125,15 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
 
   const currentCache = providerCache[activeProvider];
   const items = currentCache.items;
-  const query = currentCache.query;
   const hasMore = currentCache.hasMore;
   const searchError = currentCache.searchError;
 
-  /** 生效关键词：连线上级文本优先，其次当前提供商的手动输入 */
+  /** 生效关键词：连线上级文本优先，其次当前手动输入 */
   const effectiveQuery = upstreamKeyword.trim() || query.trim();
-
-  const handleQueryChange = (val: string) => {
-    setProviderCache((prev) => ({
-      ...prev,
-      [activeProvider]: {
-        ...prev[activeProvider],
-        query: val,
-      },
-    }));
-  };
 
   const load = useCallback(
     async (
-      targetProvider: 'unsplash' | 'pixabay',
+      targetProvider: ProviderType,
       queryText: string,
       page: number,
       replace: boolean
@@ -186,6 +176,7 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
               hasMore,
               searchError: '',
               loaded: true,
+              lastLoadedQuery: queryText,
             },
           };
         });
@@ -198,6 +189,7 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
             searchError: e?.detail || e?.message || '图片检索失败，请重试',
             items: replace ? [] : prev[targetProvider].items,
             loaded: true,
+            lastLoadedQuery: queryText,
           },
         }));
       } finally {
@@ -354,14 +346,14 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
             />
             <input
               value={query}
-              onChange={(e) => handleQueryChange(e.target.value)}
+              onChange={(e) => setQuery(e.target.value)}
               placeholder={upstreamKeyword.trim() ? `上游关键词：${upstreamKeyword.trim()}` : `搜索${providerLabel}图片…`}
               className="w-full h-9 rounded-md border border-dashed border-paper-grid bg-transparent pl-8 pr-16 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors font-mono"
             />
             {query && (
               <button
                 type="button"
-                onClick={() => handleQueryChange('')}
+                onClick={() => setQuery('')}
                 className="absolute right-9 top-1/2 -translate-y-1/2 p-0.5 rounded text-ink-faint hover:text-error hover:bg-paper-grid/40 transition-colors"
                 title="清除"
               >
