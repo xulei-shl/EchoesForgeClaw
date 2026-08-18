@@ -17,7 +17,8 @@ export type NodeType =
   | 'prompt_search'
   | 'skill_search'
   | 'calendar'
-  | 'weather';
+  | 'weather'
+  | 'map_poster';
 
 /** 各节点模板类型的默认尺寸（必须与组件 defaultSize 一致） */
 export const NODE_SIZES: Record<NodeType, { width: number; height: number }> = {
@@ -33,6 +34,7 @@ export const NODE_SIZES: Record<NodeType, { width: number; height: number }> = {
   skill_search:     { width: 440, height: 460 },
   calendar:         { width: 420, height: 480 },
   weather:          { width: 420, height: 460 },
+  map_poster:       { width: 460, height: 560 },
 };
 
 /** 节点间水平间距（px） */

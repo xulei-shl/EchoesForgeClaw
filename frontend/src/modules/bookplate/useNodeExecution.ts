@@ -487,6 +487,8 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
       case 'calendar':
       case 'weather':
         return ''; // 手动输入参数（日期 / 城市）后点查询，无需自动执行
+      case 'map_poster':
+        return ''; // 客户端渲染导出（导出按钮触发），无需自动执行
     }
   };
 

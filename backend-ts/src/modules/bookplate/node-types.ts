@@ -16,6 +16,8 @@ export const NODE_TYPES = {
   SKILL_SEARCH: 'skill_search',
   CALENDAR: 'calendar',
   WEATHER: 'weather',
+  /** 地图海报生成（多模态工具）：浏览器端渲染地图为图片（Leaflet 瓦片 / MapLibre 艺术主题） */
+  MAP_POSTER: 'map_poster',
 } as const;
 
 export type NodeType = (typeof NODE_TYPES)[keyof typeof NODE_TYPES];
@@ -24,7 +26,7 @@ export interface NodeTemplate {
   type: NodeType;
   name: string;
   description: string;
-  category: 'input' | 'analysis' | 'generate' | 'output' | 'tool';
+  category: 'input' | 'analysis' | 'generate' | 'output' | 'tool' | 'multimodal';
   configurable: boolean;
   output_type?: 'text' | 'image' | 'document';
   input_types?: string[];
@@ -132,5 +134,13 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     configurable: false,
     output_type: 'text',
     input_types: ['text'],
+  },
+  {
+    type: NODE_TYPES.MAP_POSTER,
+    name: '地图海报生成',
+    description: '搜索地点并生成地图海报图片（Leaflet 瓦片 / MapLibre 艺术主题，浏览器端渲染导出）',
+    category: 'multimodal',
+    configurable: false,
+    output_type: 'image',
   },
 ];

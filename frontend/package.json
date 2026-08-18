@@ -16,7 +16,9 @@
     "ai": "^7.0.66",
     "axios": "^1.19.0",
     "framer-motion": "^13.0.0",
+    "leaflet": "^1.9.4",
     "lucide-react": "^1.29.0",
+    "maplibre-gl": "^6.4.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-photo-view": "^1.2.7",
@@ -25,6 +27,7 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
+    "@types/leaflet": "^1.9.22",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",

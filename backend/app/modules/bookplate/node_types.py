@@ -17,6 +17,7 @@ NODE_PROMPT_SEARCH = "prompt_search"
 NODE_SKILL_SEARCH = "skill_search"
 NODE_CALENDAR = "calendar"
 NODE_WEATHER = "weather"
+NODE_MAP_POSTER = "map_poster"
 
 NODE_TEMPLATES = [
     {
@@ -125,6 +126,14 @@ NODE_TEMPLATES = [
         "configurable": False,
         "output_type": "text",
         "input_types": ["text"],
+    },
+    {
+        "type": NODE_MAP_POSTER,
+        "name": "地图海报生成",
+        "description": "搜索地点并生成地图海报图片（Leaflet 瓦片 / MapLibre 艺术主题，浏览器端渲染导出）",
+        "category": "multimodal",
+        "configurable": False,
+        "output_type": "image",
     },
 ]
 

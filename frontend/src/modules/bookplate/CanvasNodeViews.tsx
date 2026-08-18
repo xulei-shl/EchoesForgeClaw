@@ -11,6 +11,8 @@ import { PromptSearchNode } from './components/PromptSearchNode';
 import { SkillSearchNode } from './components/SkillSearchNode';
 import { CalendarNode } from './components/CalendarNode';
 import { WeatherNode } from './components/WeatherNode';
+import { MapPosterNode } from '../../modules/multimodal/components/MapPosterNode';
+import { MAP_POSTER_DEFAULTS } from '../../modules/multimodal/map/defaults';
 import { getNodeTitle, matchPortType, nodeOutputText, resolveDirectParents } from './nodeTypes';
 import {
   DEFAULT_RUN_SETTINGS,
@@ -67,6 +69,10 @@ export interface NodeViewHelpers {
   handleFetchCalendarFor: (id: string, date: string) => void;
   /** 天气查询节点：按城市查询当前天气（城市由页面合并上游文本 / 手动输入） */
   handleFetchWeatherFor: (id: string, city: string) => void;
+  /** 地图海报节点：导出 PNG data URL 落盘（保存到后端 + 记历史 + 写回 node.data） */
+  handleExportMapPosterFor: (id: string, dataUrl: string) => Promise<void>;
+  /** 地图海报节点：编辑器状态写入 node.data（undoable=true 记撤销历史；平移缩放仅持久化） */
+  handleUpdateMapPosterEditorFor: (id: string, patch: Record<string, any>, undoable: boolean) => void;
   /** 文本聚合节点：保存占位符模板 */
   handleUpdateAggregateTemplateFor: (id: string, template: string) => void;
   /** 文本聚合节点：重命名某上级节点的占位符别名 */
@@ -366,6 +372,31 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           error={node.data.error ?? null}
           hasDownstream={hasDownstream}
           onFetch={h.handleFetchWeatherFor}
+        />
+      );
+    }
+    case 'map_poster': {
+      const d = node.data ?? {};
+      return (
+        <MapPosterNode
+          key={node.id}
+          {...common}
+          imageUrl={typeof d.imageUrl === 'string' ? d.imageUrl : null}
+          error={d.error ?? null}
+          renderMode={d.renderMode ?? MAP_POSTER_DEFAULTS.renderMode}
+          tileTheme={typeof d.tileTheme === 'string' ? d.tileTheme : MAP_POSTER_DEFAULTS.tileTheme}
+          artisticTheme={typeof d.artisticTheme === 'string' ? d.artisticTheme : MAP_POSTER_DEFAULTS.artisticTheme}
+          sizeIndex={typeof d.sizeIndex === 'number' ? d.sizeIndex : MAP_POSTER_DEFAULTS.sizeIndex}
+          cityName={typeof d.cityName === 'string' ? d.cityName : MAP_POSTER_DEFAULTS.cityName}
+          countryName={typeof d.countryName === 'string' ? d.countryName : MAP_POSTER_DEFAULTS.countryName}
+          overlaySize={d.overlaySize ?? MAP_POSTER_DEFAULTS.overlaySize}
+          showMarker={typeof d.showMarker === 'boolean' ? d.showMarker : MAP_POSTER_DEFAULTS.showMarker}
+          lat={typeof d.lat === 'number' ? d.lat : MAP_POSTER_DEFAULTS.lat}
+          lon={typeof d.lon === 'number' ? d.lon : MAP_POSTER_DEFAULTS.lon}
+          zoom={typeof d.zoom === 'number' ? d.zoom : MAP_POSTER_DEFAULTS.zoom}
+          hasDownstream={hasDownstreamOf(node, h.edges)}
+          onUpdateEditor={h.handleUpdateMapPosterEditorFor}
+          onExport={h.handleExportMapPosterFor}
         />
       );
     }

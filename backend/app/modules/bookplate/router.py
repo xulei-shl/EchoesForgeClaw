@@ -360,6 +360,12 @@ class WeatherRequest(BaseModel):
     city: Optional[str] = None
 
 
+class SaveImageRequest(BaseModel):
+    """地图海报等客户端渲染图片的落盘请求：base64 data URL → 本地静态文件。"""
+
+    image: str
+
+
 class ChatRequest(BaseModel):
     """AI 对话节点请求：多轮对话。
 
@@ -1377,6 +1383,27 @@ async def weather_query(
     except ValueError:
         raise HTTPException(status_code=502, detail="未找到该城市的天气信息，请检查城市名")
     return {"output": _format_weather(city, body), "city": city}
+
+
+@router.post("/save-image")
+async def save_image(
+    payload: SaveImageRequest,
+    current_user: User = Depends(get_current_active_user),
+):
+    """多模态工具节点：把客户端渲染导出的图片（base64 data URL）落盘到 static/generated，
+    返回本地访问 URL（供下游节点 / 历史记录使用）。
+
+    复用 image_service.save_remote_image（已支持 data URL 解码 + 魔数/体积不校验场景），
+    与 Agent 模式图片落盘同一物理目录与 URL 格式。
+    """
+    image = (payload.image or "").strip()
+    if not image or not image.startswith("data:image/"):
+        raise HTTPException(status_code=400, detail="image 必须为 base64 data URL")
+    try:
+        local_url = await image_service.save_remote_image(image)
+    except ImageGenerationError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    return {"image_url": local_url}
 
 
 # ---------------------------------------------------------------------------

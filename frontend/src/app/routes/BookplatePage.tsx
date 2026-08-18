@@ -57,6 +57,7 @@ import { useNodeExecution } from '../../modules/bookplate/useNodeExecution';
 import { useManualConnection } from '../../modules/bookplate/useManualConnection';
 import ConnectionGhost from '../../modules/bookplate/ConnectionGhost';
 import { renderCanvasNode, type NodeViewHelpers } from '../../modules/bookplate/CanvasNodeViews';
+import { MAP_POSTER_DEFAULTS } from '../../modules/multimodal/map/defaults';
 import { NodeEdge, type NodeEdgeHandle } from '../../platform/components/node/NodeEdge';
 import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
 import api from '../../platform/services/api';
@@ -614,6 +615,8 @@ const BookplatePage: React.FC = () => {
         return { output: '', date: '', isGenerating: false, error: null };
       case 'weather':
         return { output: '', city: '', isGenerating: false, error: null };
+      case 'map_poster':
+        return { imageUrl: null, error: null, ...MAP_POSTER_DEFAULTS };
     }
   };
 
@@ -1141,6 +1144,59 @@ const BookplatePage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** 地图海报节点：编辑器状态（主题/尺寸/文字/视口）写入 node.data（画布快照持久化，切页保持）。
+   *  undoable=true 的离散编辑（主题/尺寸/文字/地点）记撤销历史；平移/缩放仅持久化不记历史，
+   *  避免频繁 pan 污染撤销栈（与万年历 date 字段同口径）。 */
+  const handleUpdateMapPosterEditorFor = useCallback(
+    (id: string, patch: Record<string, any>, undoable: boolean) => {
+      const node = nodesRef.current.find((n) => n.id === id);
+      if (!node || node.type !== 'map_poster') return;
+      const cur = node.data ?? {};
+      // 未变化不记历史/不写回（与文本/设置等节点口径一致）
+      let changed = false;
+      for (const [k, v] of Object.entries(patch)) {
+        if (cur[k] !== v) {
+          changed = true;
+          break;
+        }
+      }
+      if (!changed) return;
+      if (undoable) recordHistory();
+      updateNodeData(id, patch);
+      // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** 地图海报节点：导出 PNG → 落盘到后端静态目录 → 写回 node.data.imageUrl + 保存历史记录 */
+  const handleExportMapPosterFor = useCallback(
+    async (id: string, dataUrl: string) => {
+      const node = nodesRef.current.find((n) => n.id === id);
+      if (!node || node.type !== 'map_poster') return;
+      updateNodeData(id, { isExporting: true, error: null });
+      try {
+        const res: any = await api.post(
+          '/modules/bookplate/save-image',
+          { image: dataUrl },
+          { timeout: SMALL_TOOL_TIMEOUT_MS }
+        );
+        const imageUrl = typeof res?.image_url === 'string' ? res.image_url : '';
+        if (!imageUrl) throw new Error('保存图片失败');
+        recordHistory();
+        updateNodeData(id, { imageUrl, isExporting: false, error: null });
+        // 成功即自动保存一条历史记录（与图像生成节点同口径；失败不阻断导出）
+        await autoSaveGeneration(id, imageUrl).catch(() => undefined);
+      } catch (error: any) {
+        console.error('Failed to save map poster:', error);
+        updateNodeData(id, {
+          isExporting: false,
+          error: error?.isTimeout ? '图片保存超时，请重试' : error?.detail || '图片保存失败，请重试',
+        });
+        throw error;
+      }
+      // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /** 提示词检索节点：选用一条 Bifrost 提示词（正文写入 data.content；未变化不记历史） */
   const handleUpdatePromptFor = useCallback(
     (id: string, selection: PromptSelection) => {
@@ -1433,6 +1489,8 @@ const BookplatePage: React.FC = () => {
     handleUpdateSkillsFor,
     handleFetchCalendarFor,
     handleFetchWeatherFor,
+    handleExportMapPosterFor,
+    handleUpdateMapPosterEditorFor,
     handleUpdateAggregateTemplateFor,
     handleRenameAggregatePlaceholderFor,
     handleUpdateChatSettingsFor,

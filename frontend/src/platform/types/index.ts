@@ -205,7 +205,9 @@ export type CanvasNodeType =
   /** 万年历节点：查询指定日期的节假日与农历万年历（无需配置） */
   | 'calendar'
   /** 天气查询节点：查询指定城市当前天气，可连线文本节点传入城市（无需配置） */
-  | 'weather';
+  | 'weather'
+  /** 地图海报生成节点：搜索地点并生成地图海报图片（多模态工具，浏览器端渲染导出，无需配置） */
+  | 'map_poster';
 
 /**
  * 节点端口类型（输入/输出）：text / image 为当前实际使用的类型，
@@ -311,8 +313,8 @@ export interface NodeTemplate {
   type: CanvasNodeType;
   name: string;
   description: string;
-  /** 模板类别：input（输入）/ analysis（分析）/ generate（生成）/ output（输出）/ tool（文本工具） */
-  category: 'input' | 'analysis' | 'generate' | 'output' | 'tool';
+  /** 模板类别：input（输入）/ analysis（分析）/ generate（生成）/ output（输出）/ tool（文本工具）/ multimodal（多模态工具） */
+  category: 'input' | 'analysis' | 'generate' | 'output' | 'tool' | 'multimodal';
   /** 是否需要 llm/agent 配置（false 为基础节点，画板直接可用） */
   configurable: boolean;
   /** 输出类型：该模板产出什么（连线类型匹配校验用） */

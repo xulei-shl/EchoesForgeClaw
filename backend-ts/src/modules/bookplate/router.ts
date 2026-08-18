@@ -688,6 +688,28 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
     }
   );
 
+  // ---- 多模态工具：地图海报图片落盘（客户端 html2canvas 渲染导出 → data URL → 本地静态） ----
+  app.post(
+    '/api/modules/bookplate/save-image',
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const payload = (request.body ?? {}) as { image?: string };
+      const image = (payload.image ?? '').trim();
+      if (!image || !image.startsWith('data:image/')) {
+        return reply.code(400).send({ detail: 'image 必须为 base64 data URL' });
+      }
+      try {
+        const imageUrl = await imageService.saveRemoteImage(image, request.authUser!.id);
+        return { image_url: imageUrl };
+      } catch (err) {
+        if (err instanceof ImageGenerationError) {
+          return reply.code(502).send({ detail: err.message });
+        }
+        return reply.code(502).send({ detail: err instanceof Error ? err.message : String(err) });
+      }
+    }
+  );
+
   // ---- 节点注册表（画板「+」菜单数据源） ----
   app.get(
     '/api/modules/bookplate/node-registry',

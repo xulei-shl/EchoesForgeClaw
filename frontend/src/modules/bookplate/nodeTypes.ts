@@ -16,6 +16,7 @@ export const NODE_DEFAULT_SIZES: Record<CanvasNodeType, { width: number; height:
   skill_search: { width: 440, height: 460 },
   calendar: { width: 420, height: 480 },
   weather: { width: 420, height: 460 },
+  map_poster: { width: 460, height: 560 },
 };
 
 /** 节点的主题色（用于左上角指示圆点） */
@@ -32,13 +33,14 @@ export const NODE_COLORS: Record<CanvasNodeType, string> = {
   skill_search: 'oklch(0.7 0.15 310)',
   calendar: 'oklch(0.65 0.15 80)',
   weather: 'oklch(0.6 0.15 220)',
+  map_poster: 'oklch(0.62 0.15 160)',
 };
 
 export interface NodeTemplateDef {
   type: CanvasNodeType;
   name: string;
   description: string;
-  category: 'input' | 'analysis' | 'generate' | 'output' | 'tool';
+  category: 'input' | 'analysis' | 'generate' | 'output' | 'tool' | 'multimodal';
   configurable: boolean;
   defaultSize: { width: number; height: number };
 }
@@ -145,6 +147,14 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     configurable: false,
     defaultSize: NODE_DEFAULT_SIZES.weather,
   },
+  {
+    type: 'map_poster',
+    name: '地图海报生成',
+    description: '搜索地点并生成地图海报图片（Leaflet 瓦片 / MapLibre 艺术主题，浏览器端渲染导出）',
+    category: 'multimodal',
+    configurable: false,
+    defaultSize: NODE_DEFAULT_SIZES.map_poster,
+  },
 ];
 
 export const NODE_TEMPLATE_MAP: Record<CanvasNodeType, NodeTemplateDef> = Object.fromEntries(
@@ -158,6 +168,7 @@ export const CATEGORY_LABELS: Record<NodeTemplateDef['category'], string> = {
   generate: '生成',
   output: '输出',
   tool: '文本工具',
+  multimodal: '多模态工具',
 };
 
 /* ===================================================================== */
@@ -196,6 +207,8 @@ export const NODE_PORT_TYPES: Record<CanvasNodeType, { output: NodePortType; inp
   calendar: { output: 'text', inputs: [] },
   // 天气查询：可连线文本节点传入城市（连线即输入）；无连线时手动输入 / 自动定位
   weather: { output: 'text', inputs: ['text'] },
+  // 地图海报生成：客户端渲染导出图片，无上游输入
+  map_poster: { output: 'image', inputs: [] },
 };
 
 /** 端口类型查找（由画布提供：后端模板声明优先，前端静态镜像兜底） */
