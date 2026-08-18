@@ -48,8 +48,6 @@ export interface ArtImageSearchNodeProps {
   selectedImage?: GlamSearchSelection | null;
   /** 当前来源（持久化在 node.data.provider） */
   provider?: string;
-  /** 艺术类别（持久化在 node.data.category；空 = 不限类别） */
-  category?: string;
   /** 连线上级文本（连线即输入：优先作为检索关键词） */
   upstreamKeyword?: string;
   /** 页面级错误（选择保存失败等，写入 node.data.error） */
@@ -67,33 +65,26 @@ export interface ArtImageSearchNodeProps {
   hasDownstream?: boolean;
 }
 
-/** 12 家博物馆来源（与后端 glam-search-service 的 GlamProvider 一致）；'all' = 全部来源聚合检索 */
+/** 前端展示层屏蔽的来源（图片服务器在当前网络不可达，检索结果无法返回图片）：
+ *  - AIC（ai-chicago）：www.artic.edu/iiif 对国内直连与数据中心代理出口均返回 403（区域/反爬封锁）
+ *  - Harvard：nrs.harvard.edu 持续 429 限流
+ * 后端对应源的检索逻辑保留不删；换到可达的网络环境后，从这里移除来源并恢复 PROVIDERS 条目即可。 */
+const HIDDEN_GLAM_SOURCES = ['ai-chicago', 'harvard'];
+
+/** 12 家博物馆来源（与后端 glam-search-service 的 GlamProvider 一致）；'all' = 全部来源聚合检索。
+ *  ai-chicago / harvard 因图片不可达被屏蔽（见 HIDDEN_GLAM_SOURCES），不在此列出。 */
 const PROVIDERS: { value: string; label: string; title: string }[] = [
   { value: 'all', label: '全部来源', title: '同时检索全部已配置博物馆（未配置 Key 的源自动跳过）' },
   { value: 'met', label: 'MET', title: '大都会艺术博物馆（无需配置）' },
   { value: 'rijks', label: 'Rijksmuseum', title: '荷兰国立博物馆（无需配置）' },
-  { value: 'ai-chicago', label: 'AIC', title: '芝加哥艺术学院（无需配置）' },
   { value: 'artsmia', label: 'MIA', title: '明尼阿波利斯美术馆（无需配置）' },
   { value: 'cleveland', label: 'Cleveland', title: '克利夫兰美术馆（无需配置）' },
   { value: 'smk', label: 'SMK', title: '丹麦国立美术馆（无需配置）' },
   { value: 'wellcome', label: 'Wellcome', title: 'Wellcome 收藏（无需配置）' },
-  { value: 'harvard', label: 'Harvard', title: '哈佛艺术博物馆（需 harvard.api_key）' },
   { value: 'nypl', label: 'NYPL', title: '纽约公共图书馆（需 nypl.api_key）' },
   { value: 'smithsonian', label: 'Smithsonian', title: '史密森尼学会（需 smithsonian.api_key）' },
   { value: 'paris', label: 'Paris Musées', title: '巴黎博物馆（需 paris.api_key）' },
   { value: 'europeana', label: 'Europeana', title: 'Europeana（需 europeana.api_key）' },
-];
-
-/** 艺术类别（与后端 glam-search-service 的 GLAM_CATEGORIES 一致；空 = 不限类别） */
-const CATEGORIES: { value: string; label: string; title: string }[] = [
-  { value: '', label: '全部类别', title: '不限艺术类别' },
-  { value: 'painting', label: '绘画', title: '绘画（各源原生过滤，其余源关键词降级）' },
-  { value: 'sculpture', label: '雕塑', title: '雕塑' },
-  { value: 'photography', label: '摄影', title: '摄影' },
-  { value: 'print', label: '版画', title: '版画' },
-  { value: 'drawing', label: '素描 / 水彩', title: '素描 / 水彩' },
-  { value: 'ceramic', label: '陶瓷', title: '陶瓷' },
-  { value: 'textile', label: '纺织品', title: '纺织品' },
 ];
 
 /** 每页条数（网格 3 列） */
@@ -101,17 +92,17 @@ const PER_PAGE = 30;
 
 interface ProviderCacheState {
   items: GlamSearchItem[];
-  query: string;
   searchError: string;
-  loaded: boolean;
   sourceLabel: string;
+  /** 是否还有更多可加载（关键词检索下由后端 has_more 决定） */
+  hasMore: boolean;
 }
 
 const initialProviderCache = (): Record<string, ProviderCacheState> =>
   Object.fromEntries(
     PROVIDERS.map((p) => [
       p.value,
-      { items: [], query: '', searchError: '', loaded: false, sourceLabel: '' },
+      { items: [], searchError: '', sourceLabel: '', hasMore: false },
     ])
   );
 
@@ -123,7 +114,6 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
   imageUrl = null,
   selectedImage = null,
   provider = 'met',
-  category = '',
   upstreamKeyword = '',
   error = null,
   onSelectImage,
@@ -138,12 +128,16 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
 }) => {
   const { showToast } = useFeedback();
 
-  // ---- 编辑器状态（provider / category 持久化；检索状态按 provider 隔离缓存） ----
+  // ---- 编辑器状态（provider 持久化；检索词为全局共享状态，切换来源时保留不清空） ----
   const [activeProvider, setActiveProvider] = useState<string>(provider);
-  const [activeCategory, setActiveCategory] = useState<string>(category);
+  const [query, setQuery] = useState('');
   const [providerCache, setProviderCache] = useState<Record<string, ProviderCacheState>>(initialProviderCache);
   const [loading, setLoading] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
+  /** 后端已配置的可用来源（null = 尚未加载 / 加载失败，此时展示全部） */
+  const [availableProviders, setAvailableProviders] = useState<string[] | null>(null);
+  /** 「加载更多」偏移量（与 query 同为全局共享；新的检索/切换来源时重置为 0） */
+  const [offset, setOffset] = useState(0);
 
   /** 请求序号：丢弃过期响应，防止快速切换/输入时旧结果覆盖新结果 */
   const requestSeq = useRef(0);
@@ -152,82 +146,116 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
 
   const currentCache = providerCache[activeProvider];
   const items = currentCache.items;
-  const query = currentCache.query;
   const searchError = currentCache.searchError;
+  const hasMore = currentCache.hasMore;
 
   /** 生效关键词：连线上级文本优先，其次当前来源的手动输入 */
   const effectiveQuery = upstreamKeyword.trim() || query.trim();
 
   const handleQueryChange = (val: string) => {
-    setProviderCache((prev) => ({
-      ...prev,
-      [activeProvider]: { ...prev[activeProvider], query: val },
-    }));
+    setQuery(val);
   };
 
   const load = useCallback(
-    async (targetProvider: string, queryText: string, replace: boolean) => {
+    async (targetProvider: string, queryText: string, replace: boolean, offsetParam = 0): Promise<boolean> => {
       const seq = ++requestSeq.current;
+      // 新检索（replace）一律从 offset 0 开始，并重置全局偏移
+      const effectiveOffset = replace ? 0 : offsetParam;
+      if (replace) setOffset(0);
       setLoading(true);
       setProviderCache((prev) => ({
         ...prev,
         [targetProvider]: { ...prev[targetProvider], searchError: '' },
       }));
       try {
-        const res: { items?: GlamSearchItem[]; label?: string } = await api.post(
+        const res: { items?: GlamSearchItem[]; label?: string; has_more?: boolean } = await api.post(
           '/modules/bookplate/glam-search',
           {
             provider: targetProvider,
             query: queryText,
-            category: activeCategory || undefined,
             limit: PER_PAGE,
+            offset: effectiveOffset,
           },
           { timeout: SMALL_TOOL_TIMEOUT_MS }
         );
-        if (seq !== requestSeq.current) return;
-        const list = Array.isArray(res.items) ? res.items : [];
+        if (seq !== requestSeq.current) return false;
+        // 聚合模式：过滤掉被屏蔽来源（AIC / Harvard）的条目，避免展示无法加载的破图；单源模式不在此列，不会命中
+        const list = (Array.isArray(res.items) ? res.items : []).filter(
+          (it) => targetProvider !== 'all' || !HIDDEN_GLAM_SOURCES.includes(it.source)
+        );
         setProviderCache((prev) => ({
           ...prev,
           [targetProvider]: {
             ...prev[targetProvider],
             items: replace ? list : [...prev[targetProvider].items, ...list],
             searchError: '',
-            loaded: true,
             sourceLabel: typeof res.label === 'string' ? res.label : '',
+            hasMore: !!res.has_more,
           },
         }));
+        return true;
       } catch (e: any) {
-        if (seq !== requestSeq.current) return;
+        if (seq !== requestSeq.current) return false;
         setProviderCache((prev) => ({
           ...prev,
           [targetProvider]: {
             ...prev[targetProvider],
             searchError: e?.detail || e?.message || '艺术图片检索失败，请重试',
             items: replace ? [] : prev[targetProvider].items,
-            loaded: true,
           },
         }));
+        return false;
       } finally {
         if (seq === requestSeq.current) setLoading(false);
       }
     },
-    [activeCategory]
+    []
   );
 
-  // 外部恢复（撤销/重做/历史恢复/切页回来）：node.data 与本地不一致时同步
+  /** 可用来源列表（含「全部来源」；加载中/失败时回退为完整列表） */
+  const visibleProviders = availableProviders
+    ? PROVIDERS.filter((p) => p.value === 'all' || availableProviders.includes(p.value))
+    : PROVIDERS;
+
+  // 挂载时拉取可用来源（未配置 Key 的源不展示在来源下拉）
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get('/modules/bookplate/glam-providers')
+      .then((res: any) => {
+        if (cancelled) return;
+        setAvailableProviders(Array.isArray(res?.providers) ? res.providers : null);
+      })
+      .catch(() => {
+        if (!cancelled) setAvailableProviders(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // 外部恢复（撤销/重做/历史恢复/切页回来）：node.data.provider 与本地不一致时同步
   useEffect(() => {
     if (provider !== activeProvider) setActiveProvider(provider);
-    if (category !== activeCategory) setActiveCategory(category);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [provider, category]);
+  }, [provider]);
 
-  // 挂载 / Provider 切换：若该来源尚未加载过，则拉取第一批（已有数据则复用缓存，不重复请求）
-  const isLoaded = providerCache[activeProvider].loaded;
+  // 当前来源不可用（如持久化的 Key 已移除）时回退到首个可用来源
   useEffect(() => {
-    if (!isLoaded) {
-      void load(activeProvider, effectiveQuery, true);
-    }
-  }, [activeProvider, isLoaded, load, effectiveQuery]);
+    if (!availableProviders) return;
+    if (visibleProviders.some((p) => p.value === activeProvider)) return;
+    const fallback = visibleProviders.find((p) => p.value !== 'all')?.value ?? 'met';
+    setActiveProvider(fallback);
+    onUpdateEditor?.(id, { provider: fallback }, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableProviders, activeProvider]);
+
+  // 挂载 / Provider 切换：以当前生效关键词检索该来源。检索词为全局共享，切换来源时保留不清空，
+  // 始终用当前关键词对新来源重新检索（替换旧结果）
+  useEffect(() => {
+    void load(activeProvider, effectiveQuery, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeProvider]);
 
   // 上游连线关键词发生实质变化时，自动重新检索当前 provider
   useEffect(() => {
@@ -244,14 +272,6 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
     onUpdateEditor?.(id, { provider: p }, false);
   };
 
-  const switchCategory = (c: string) => {
-    if (c === activeCategory) return;
-    setActiveCategory(c);
-    onUpdateEditor?.(id, { category: c }, false);
-    // 类别变更：立即以当前关键词重新检索（无关键词时浏览该类别）
-    void load(activeProvider, effectiveQuery, true);
-  };
-
   const handleSearch = (e?: React.FormEvent) => {
     e?.preventDefault();
     if (loading) return;
@@ -262,6 +282,14 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
   const handleRefresh = () => {
     if (loading) return;
     void load(activeProvider, effectiveQuery, true);
+  };
+
+  /** 加载更多：按当前 offset 追加下一批（仅关键词检索且后端 has_more 时有此按钮） */
+  const handleLoadMore = () => {
+    if (loading) return;
+    void load(activeProvider, effectiveQuery, false, offset).then((ok) => {
+      if (ok) setOffset(offset + PER_PAGE);
+    });
   };
 
   const handleSelect = async (item: GlamSearchItem) => {
@@ -329,22 +357,14 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
     >
       <PhotoProvider maskOpacity={0.8} bannerVisible={false}>
         <div className="h-full flex flex-col flex-1 min-h-0 gap-2">
-          {/* 来源选择 + 类别 + 换一批 */}
+          {/* 来源选择 + 换一批 */}
           <div className="shrink-0 flex items-center gap-1.5">
             <div className="flex-1 min-w-0">
               <Select
                 size="sm"
                 value={activeProvider}
                 onChange={switchProvider}
-                options={PROVIDERS.map((p) => ({ value: p.value, label: p.label, title: p.title }))}
-              />
-            </div>
-            <div className="flex-1 min-w-0">
-              <Select
-                size="sm"
-                value={activeCategory}
-                onChange={switchCategory}
-                options={CATEGORIES.map((c) => ({ value: c.value, label: c.label, title: c.title }))}
+                options={visibleProviders.map((p) => ({ value: p.value, label: p.label, title: p.title }))}
               />
             </div>
             <button
@@ -362,12 +382,6 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
           <p className="shrink-0 text-[10px] font-sans text-ink-faint leading-snug truncate" title={activeProviderMeta?.title}>
             <Landmark size={10} strokeWidth={1.5} className="inline mr-1 -mt-px" />
             {currentCache.sourceLabel || activeProviderMeta?.title || activeProvider}
-            {activeCategory && (
-              <>
-                <span className="mx-1 text-ink-faint/60">·</span>
-                {CATEGORIES.find((c) => c.value === activeCategory)?.label}
-              </>
-            )}
           </p>
 
           {/* 关键词检索 */}
@@ -380,13 +394,7 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
             <input
               value={query}
               onChange={(e) => handleQueryChange(e.target.value)}
-              placeholder={
-                upstreamKeyword.trim()
-                  ? `上游关键词：${upstreamKeyword.trim()}`
-                  : activeCategory
-                    ? `搜索${CATEGORIES.find((c) => c.value === activeCategory)?.label ?? ''}（留空 = 浏览该类别）…`
-                    : '搜索作品（留空 = 随机浏览）…'
-              }
+              placeholder={upstreamKeyword.trim() ? `上游关键词：${upstreamKeyword.trim()}` : '搜索作品（留空 = 随机浏览）…'}
               className="w-full h-9 rounded-md border border-dashed border-paper-grid bg-transparent pl-8 pr-16 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors font-mono"
             />
             {query && (
@@ -419,9 +427,7 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
                     ? `正在聚合检索全部博物馆${effectiveQuery ? `：「${effectiveQuery}」` : '（随机）'}…`
                     : effectiveQuery
                       ? `正在检索「${effectiveQuery}」…`
-                      : activeCategory
-                        ? `正在浏览「${CATEGORIES.find((c) => c.value === activeCategory)?.label ?? ''}」类别…`
-                        : '正在随机浏览馆藏…'}
+                      : '正在随机浏览馆藏…'}
                 </p>
               </div>
             )}
@@ -443,11 +449,7 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
                 <div className="h-full flex flex-col items-center justify-center gap-2 text-center px-3">
                   <ImageOff size={24} strokeWidth={1.5} className="text-ink-faint" />
                   <p className="text-xs text-ink-light font-sans">
-                    {effectiveQuery
-                      ? `没有匹配「${effectiveQuery}」的作品`
-                      : activeCategory
-                        ? '该类别暂无作品，点击「换一批」试试'
-                        : '暂无作品，点击「换一批」试试'}
+                    {effectiveQuery ? `没有匹配「${effectiveQuery}」的作品` : '暂无作品，点击「换一批」试试'}
                   </p>
                 </div>
               )}
@@ -521,6 +523,18 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
                       </div>
                     );
                   })}
+                </div>
+              )}
+              {/* 滚动到底部：关键词检索且还有更多时显示加载更多（追加下一批） */}
+              {hasMore && !loading && items.length > 0 && (
+                <div className="py-2 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={handleLoadMore}
+                    className="px-4 h-8 rounded-md border border-dashed border-paper-grid text-xs text-ink-light hover:text-ink hover:bg-paper-grid/40 transition-colors"
+                  >
+                    加载更多
+                  </button>
                 </div>
               )}
               {loading && items.length > 0 && (

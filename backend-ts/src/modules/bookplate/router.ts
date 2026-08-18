@@ -29,6 +29,7 @@ import {
   GlamSearchError,
   GLAM_ALL_LABEL,
   GLAM_PROVIDER_LABELS,
+  availableGlamProviders,
   searchGlamImages,
   type GlamProvider,
 } from '../../services/glam-search-service.js';
@@ -821,6 +822,24 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
 
   // ---- GLAM 工具：艺术图片检索（12 家博物馆开放 API；无关键词 = 随机浏览，凭据在 /admin/settings 配置） ----
 
+  // 可用来源列表（节点来源下拉按配置过滤：未配置 Key 的源不展示）
+  app.get(
+    '/api/modules/bookplate/glam-providers',
+    { preHandler: app.authenticate },
+    async () => {
+      const s = getAppSettingsMap(getDb());
+      return {
+        providers: availableGlamProviders({
+          harvardApiKey: s['harvard.api_key'] ?? '',
+          nyplApiKey: s['nypl.api_key'] ?? '',
+          smithsonianApiKey: s['smithsonian.api_key'] ?? '',
+          parisApiKey: s['paris.api_key'] ?? '',
+          europeanaApiKey: s['europeana.api_key'] ?? '',
+        }),
+      };
+    }
+  );
+
   app.post(
     '/api/modules/bookplate/glam-search',
     { preHandler: app.authenticate },
@@ -828,8 +847,8 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
       const payload = (request.body ?? {}) as {
         provider?: string;
         query?: string;
-        category?: string;
         limit?: number;
+        offset?: number;
       };
       const provider: GlamProvider | 'all' =
         payload.provider === 'all' || GLAM_PROVIDERS.includes(payload.provider as GlamProvider)
@@ -837,7 +856,7 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
           : 'met';
       const s = getAppSettingsMap(getDb());
       try {
-        const items = await searchGlamImages(
+        const result = await searchGlamImages(
           provider,
           {
             harvardApiKey: s['harvard.api_key'] ?? '',
@@ -846,9 +865,14 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
             parisApiKey: s['paris.api_key'] ?? '',
             europeanaApiKey: s['europeana.api_key'] ?? '',
           },
-          { query: payload.query, category: payload.category, limit: payload.limit }
+          { query: payload.query, limit: payload.limit, offset: payload.offset }
         );
-        return { provider, label: provider === 'all' ? GLAM_ALL_LABEL : GLAM_PROVIDER_LABELS[provider], items };
+        return {
+          provider,
+          label: provider === 'all' ? GLAM_ALL_LABEL : GLAM_PROVIDER_LABELS[provider],
+          items: result.items,
+          has_more: result.hasMore,
+        };
       } catch (err) {
         if (err instanceof GlamSearchError) {
           return reply.code(502).send({ detail: err.message });

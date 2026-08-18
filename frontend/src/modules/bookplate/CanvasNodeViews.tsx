@@ -446,7 +446,6 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           imageUrl={typeof d.imageUrl === 'string' ? d.imageUrl : null}
           selectedImage={d.selectedImage ?? null}
           provider={typeof d.provider === 'string' ? d.provider : 'met'}
-          category={typeof d.category === 'string' ? d.category : ''}
           upstreamKeyword={upstreamKeyword}
           error={d.error ?? null}
           hasDownstream={hasDownstreamOf(node, h.edges)}
