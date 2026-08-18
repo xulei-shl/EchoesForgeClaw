@@ -631,6 +631,13 @@ const BookplatePage: React.FC = () => {
           selectedImage: null,
           error: null,
         };
+      case 'nasa_image_search':
+        return {
+          provider: 'nasa-apod',
+          imageUrl: null,
+          selectedImage: null,
+          error: null,
+        };
     }
   };
 
@@ -1311,6 +1318,58 @@ const BookplatePage: React.FC = () => {
       // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** NASA 图片检索节点：编辑器状态（来源等）写入 node.data（仅持久化，不记撤销历史）。与图片检索同口径。 */
+  const handleUpdateNasaEditorFor = useCallback(
+    (id: string, patch: Record<string, any>, undoable: boolean) => {
+      const node = nodesRef.current.find((n) => n.id === id);
+      if (!node || node.type !== 'nasa_image_search') return;
+      const cur = node.data ?? {};
+      let changed = false;
+      for (const [k, v] of Object.entries(patch)) {
+        if (cur[k] !== v) {
+          changed = true;
+          break;
+        }
+      }
+      if (!changed) return;
+      if (undoable) recordHistory();
+      updateNodeData(id, patch);
+      // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** NASA 图片检索节点：选中一张图片 → 下载到本地独立子目录（search-images，与图片检索共用）→ 写回 node.data.imageUrl。
+   *  选中图为中间结果：不写入历史记录（db），仅作为节点输出供下游消费 / 下载；recordHistory 记录画布撤销。 */
+  const handleSelectNasaImageFor = useCallback(
+    async (id: string, url: string, meta: any) => {
+      const node = nodesRef.current.find((n) => n.id === id);
+      if (!node || node.type !== 'nasa_image_search') return;
+      updateNodeData(id, { error: null });
+      try {
+        const res: any = await api.post(
+          '/modules/bookplate/image-search/save',
+          {
+            url,
+            source: meta?.source ?? null,
+            download_url: meta?.downloadUrl ?? null,
+          },
+          { timeout: SMALL_TOOL_TIMEOUT_MS }
+        );
+        const imageUrl = typeof res?.image_url === 'string' ? res.image_url : '';
+        if (!imageUrl) throw new Error('保存图片失败');
+        recordHistory();
+        updateNodeData(id, { imageUrl, selectedImage: meta, error: null });
+      } catch (error: any) {
+        console.error('Failed to save nasa image:', error);
+        updateNodeData(id, {
+          error: error?.isTimeout ? '图片保存超时，请重试' : error?.detail || '图片保存失败，请重试',
+        });
+        throw error;
+      }
+      // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /** 提示词检索节点：选用一条 Bifrost 提示词（正文写入 data.content；未变化不记历史） */
   const handleUpdatePromptFor = useCallback(
     (id: string, selection: PromptSelection) => {
@@ -1609,6 +1668,8 @@ const BookplatePage: React.FC = () => {
     handleUpdateImageSearchEditorFor,
     handleSelectGlamImageFor,
     handleUpdateGlamEditorFor,
+    handleSelectNasaImageFor,
+    handleUpdateNasaEditorFor,
     handleUpdateAggregateTemplateFor,
     handleRenameAggregatePlaceholderFor,
     handleUpdateChatSettingsFor,

@@ -86,6 +86,11 @@ const DEFAULT_SETTINGS: Array<[string, string, string]> = [
     '',
     '艺术图片检索节点（Europeana）API Key（https://apis.europeana.eu/en/apis 获取；敏感，仅显示掩码）',
   ],
+  [
+    'nasa.api_key',
+    '',
+    'NASA 图片检索节点（APOD 每日天文图）API Key（https://api.nasa.gov 注册免费获取；敏感，仅显示掩码；EPIC 地球影像为公开接口无需配置）',
+  ],
 ];
 
 export function seedStartup(): void {

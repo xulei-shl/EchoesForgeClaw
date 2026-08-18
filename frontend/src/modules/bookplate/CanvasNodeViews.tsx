@@ -14,6 +14,7 @@ import { WeatherNode } from './components/WeatherNode';
 import { MapPosterNode } from '../../modules/multimodal/components/MapPosterNode';
 import { ImageSearchNode, type ImageSearchSelection } from '../../modules/multimodal/components/ImageSearchNode';
 import { ArtImageSearchNode, type GlamSearchSelection } from '../../modules/multimodal/components/ArtImageSearchNode';
+import { NasaImageSearchNode, type NasaSearchSelection } from '../../modules/multimodal/components/NasaImageSearchNode';
 import { MAP_POSTER_DEFAULTS } from '../../modules/multimodal/map/defaults';
 import { getNodeTitle, matchPortType, nodeOutputText, resolveDirectParents } from './nodeTypes';
 import {
@@ -83,6 +84,10 @@ export interface NodeViewHelpers {
   handleSelectGlamImageFor: (id: string, url: string, meta: GlamSearchSelection) => Promise<void>;
   /** 艺术图片检索节点：编辑器状态（provider 等）写入 node.data（仅持久化，不记撤销历史） */
   handleUpdateGlamEditorFor: (id: string, patch: Record<string, any>, undoable: boolean) => void;
+  /** NASA 图片检索节点：选中图片 → 下载到本地 → 写回 node.data.imageUrl（作为图片输出） */
+  handleSelectNasaImageFor: (id: string, url: string, meta: NasaSearchSelection) => Promise<void>;
+  /** NASA 图片检索节点：编辑器状态（provider 等）写入 node.data（仅持久化，不记撤销历史） */
+  handleUpdateNasaEditorFor: (id: string, patch: Record<string, any>, undoable: boolean) => void;
   /** 文本聚合节点：保存占位符模板 */
   handleUpdateAggregateTemplateFor: (id: string, template: string) => void;
   /** 文本聚合节点：重命名某上级节点的占位符别名 */
@@ -451,6 +456,28 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           hasDownstream={hasDownstreamOf(node, h.edges)}
           onSelectImage={h.handleSelectGlamImageFor}
           onUpdateEditor={h.handleUpdateGlamEditorFor}
+        />
+      );
+    }
+    case 'nasa_image_search': {
+      const d = node.data ?? {};
+      // 连线即输入：文本输出上级内容作为检索关键词/日期（优先于手动输入，与天气节点同口径）
+      const upstreamKeyword =
+        collectNodeInputs(node, h.nodes, h.edges, h.portTypesOf)
+          .text.map((p) => nodeOutputText(p))
+          .find((v) => v.trim()) ?? '';
+      return (
+        <NasaImageSearchNode
+          key={node.id}
+          {...common}
+          imageUrl={typeof d.imageUrl === 'string' ? d.imageUrl : null}
+          selectedImage={d.selectedImage ?? null}
+          provider={typeof d.provider === 'string' ? d.provider : 'nasa-apod'}
+          upstreamKeyword={upstreamKeyword}
+          error={d.error ?? null}
+          hasDownstream={hasDownstreamOf(node, h.edges)}
+          onSelectImage={h.handleSelectNasaImageFor}
+          onUpdateEditor={h.handleUpdateNasaEditorFor}
         />
       );
     }

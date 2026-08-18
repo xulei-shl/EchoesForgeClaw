@@ -22,6 +22,8 @@ export const NODE_TYPES = {
   IMAGE_SEARCH: 'image_search',
   /** 艺术图片检索（GLAM 工具）：聚合 12 家博物馆开放图片 API，检索/随机浏览并选一张输出（部分源凭据在系统设置配置） */
   ART_IMAGE_SEARCH: 'art_image_search',
+  /** NASA 图片检索（多模态工具）：检索 NASA APOD 每日天文图 / EPIC 地球影像（按日期或随机浏览，APOD 凭据在系统设置配置） */
+  NASA_IMAGE_SEARCH: 'nasa_image_search',
 } as const;
 
 export type NodeType = (typeof NODE_TYPES)[keyof typeof NODE_TYPES];
@@ -161,6 +163,15 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     name: '艺术图片检索',
     description: '聚合 12 家博物馆 / 图书馆开放图片 API（MET / Rijksmuseum / AIC 等），关键词检索或随机浏览并选一张作为图片输出（部分源凭据在管理端「系统设置」配置）',
     category: 'glam',
+    configurable: false,
+    output_type: 'image',
+    input_types: ['text'],
+  },
+  {
+    type: NODE_TYPES.NASA_IMAGE_SEARCH,
+    name: 'NASA 图片检索',
+    description: '检索 NASA APOD 每日天文图 / EPIC 地球影像：按日期（YYYY-MM-DD）浏览或随机浏览，APOD 支持在近 30 天窗口内按关键词匹配（APOD 凭据在管理端「系统设置」配置，EPIC 公开接口无需凭据）',
+    category: 'multimodal',
     configurable: false,
     output_type: 'image',
     input_types: ['text'],

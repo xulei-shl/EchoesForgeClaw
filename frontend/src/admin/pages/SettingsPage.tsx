@@ -46,6 +46,7 @@ const KNOWN_KEYS: { key: string; description: string }[] = [
   { key: 'smithsonian.api_key', description: '艺术图片检索节点 Smithsonian Open Access API Key（https://api.data.gov/signup/ 获取；敏感，仅显示掩码）' },
   { key: 'paris.api_key', description: '艺术图片检索节点 Paris Musées API Key（https://www.parismusees.paris.fr/fr/les-collections-en-ligne/lapi-collections 获取；敏感，仅显示掩码）' },
   { key: 'europeana.api_key', description: '艺术图片检索节点 Europeana API Key（https://apis.europeana.eu/en/apis 获取；敏感，仅显示掩码）' },
+  { key: 'nasa.api_key', description: 'NASA 图片检索节点（APOD 每日天文图）API Key（https://api.nasa.gov 注册免费获取；敏感，仅显示掩码；EPIC 地球影像为公开接口无需配置）' },
 ];
 
 /** 业务分类配置定义 */
@@ -81,8 +82,8 @@ const CATEGORY_DEFS: CategoryDef[] = [
     id: 'image',
     name: '图片检索',
     icon: ImageIcon,
-    description: '用于画布「图片检索」节点的公共图库 API Key（Unsplash、Pixabay）',
-    match: (key) => key.startsWith('unsplash.') || key.startsWith('pixabay.'),
+    description: '用于画布「图片检索」节点的公共图库 API Key（Unsplash、Pixabay）与「NASA 图片检索」节点（APOD 每日天文图）',
+    match: (key) => key.startsWith('unsplash.') || key.startsWith('pixabay.') || key.startsWith('nasa.'),
   },
   {
     id: 'douban',

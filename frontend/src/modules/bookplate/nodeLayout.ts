@@ -20,7 +20,8 @@ export type NodeType =
   | 'weather'
   | 'map_poster'
   | 'image_search'
-  | 'art_image_search';
+  | 'art_image_search'
+  | 'nasa_image_search';
 
 /** 各节点模板类型的默认尺寸（必须与组件 defaultSize 一致） */
 export const NODE_SIZES: Record<NodeType, { width: number; height: number }> = {
@@ -39,6 +40,7 @@ export const NODE_SIZES: Record<NodeType, { width: number; height: number }> = {
   map_poster:       { width: 460, height: 560 },
   image_search:     { width: 440, height: 560 },
   art_image_search: { width: 460, height: 580 },
+  nasa_image_search:{ width: 440, height: 580 },
 };
 
 /** 节点间水平间距（px） */
