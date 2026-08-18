@@ -157,7 +157,7 @@ export const CATEGORY_LABELS: Record<NodeTemplateDef['category'], string> = {
   analysis: '分析',
   generate: '生成',
   output: '输出',
-  tool: '小工具',
+  tool: '文本工具',
 };
 
 /* ===================================================================== */

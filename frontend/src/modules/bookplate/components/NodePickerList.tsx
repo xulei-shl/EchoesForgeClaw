@@ -80,7 +80,7 @@ function buildCategories(items: NodePickerItem[]): { categories: CategoryNav[]; 
     { key: 'all', title: '全部节点', count: items.length },
   ];
 
-  // 非可配置（基础）节点按模板类别分组（如「输入」「小工具」），与可配置模板分组口径一致
+  // 非可配置（基础）节点按模板类别分组（如「输入」「文本工具」），与可配置模板分组口径一致
   const baseGroupMap = new Map<string, { title: string; items: NodePickerItem[] }>();
   for (const t of NODE_TEMPLATES) {
     if (t.configurable) continue;

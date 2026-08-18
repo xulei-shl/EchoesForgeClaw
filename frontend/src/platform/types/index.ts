@@ -311,7 +311,7 @@ export interface NodeTemplate {
   type: CanvasNodeType;
   name: string;
   description: string;
-  /** 模板类别：input（输入）/ analysis（分析）/ generate（生成）/ output（输出）/ tool（小工具） */
+  /** 模板类别：input（输入）/ analysis（分析）/ generate（生成）/ output（输出）/ tool（文本工具） */
   category: 'input' | 'analysis' | 'generate' | 'output' | 'tool';
   /** 是否需要 llm/agent 配置（false 为基础节点，画板直接可用） */
   configurable: boolean;
