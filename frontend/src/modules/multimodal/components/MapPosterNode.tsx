@@ -571,10 +571,26 @@ const MapPosterNodeInner: React.FC<MapPosterNodeProps> = ({
           </select>
         </div>
 
-        {/* 地图区域 */}
+        {/* 地图区域：两套地图容器始终占布局（visibility 切换，与 map-to-poster 一致）——
+            MapLibre 在 display:none 容器里初始化会得到 0×0 WebGL canvas 且 resize 无法恢复，
+            故用 visibility + pointer-events 隐藏，保证挂载时容器尺寸正常 */}
         <div className="relative flex-1 min-h-0 rounded-md overflow-hidden border border-dashed border-paper-grid bg-paper/40">
-          <div ref={tileContainerRef} className="absolute inset-0 z-0" style={{ display: renderMode === 'tile' ? 'block' : 'none' }} />
-          <div ref={artisticContainerRef} className="absolute inset-0 z-0" style={{ display: renderMode === 'artistic' ? 'block' : 'none' }} />
+          <div
+            ref={tileContainerRef}
+            className="absolute inset-0 z-0"
+            style={{
+              visibility: renderMode === 'tile' ? 'visible' : 'hidden',
+              pointerEvents: renderMode === 'tile' ? 'auto' : 'none',
+            }}
+          />
+          <div
+            ref={artisticContainerRef}
+            className="absolute inset-0 z-0"
+            style={{
+              visibility: renderMode === 'artistic' ? 'visible' : 'hidden',
+              pointerEvents: renderMode === 'artistic' ? 'auto' : 'none',
+            }}
+          />
           {/* 标记开关（右上角浮层） */}
           <button
             type="button"
