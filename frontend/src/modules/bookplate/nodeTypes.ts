@@ -156,7 +156,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'map_poster',
     name: '地图海报生成',
-    description: '搜索地点并生成地图海报图片（Leaflet 瓦片 / MapLibre 艺术主题，浏览器端渲染导出）',
+    description: '搜索地点并生成地图海报图片',
     category: 'multimodal',
     configurable: false,
     defaultSize: NODE_DEFAULT_SIZES.map_poster,
@@ -164,7 +164,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'image_search',
     name: '图片检索',
-    description: '检索 Unsplash / Pixabay 免版权图片并选择一张作为图片输出（凭据在管理端「系统设置」配置）',
+    description: '检索 Unsplash / Pixabay 免版权图片并选择一张作为图片输出',
     category: 'multimodal',
     configurable: false,
     defaultSize: NODE_DEFAULT_SIZES.image_search,
@@ -172,7 +172,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'art_image_search',
     name: '艺术图片检索',
-    description: '聚合 12 家博物馆 / 图书馆开放图片 API（MET / Rijksmuseum / AIC 等），关键词检索或随机浏览并选一张作为图片输出（部分源凭据在管理端「系统设置」配置）',
+    description: '聚合博物馆 / 图书馆开放图片 API，关键词检索或随机浏览并选一张作为图片输出',
     category: 'glam',
     configurable: false,
     defaultSize: NODE_DEFAULT_SIZES.art_image_search,
@@ -180,7 +180,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'nasa_image_search',
     name: 'NASA 图片检索',
-    description: '检索 NASA Images 官方公开图片库（images-api.nasa.gov）：图片 / 视频两类关键词检索，全部公有领域，无需注册与 API Key（可连线文本节点传入关键词）',
+    description: '检索 NASA Images 官方公开图片库：图片 / 视频两类关键词检索',
     category: 'multimodal',
     configurable: false,
     defaultSize: NODE_DEFAULT_SIZES.nasa_image_search,

@@ -80,12 +80,12 @@ const PROVIDERS: { value: string; label: string; title: string }[] = [
   { value: 'artsmia', label: 'MIA', title: '明尼阿波利斯美术馆（无需配置）' },
   { value: 'cleveland', label: 'Cleveland', title: '克利夫兰美术馆（无需配置）' },
   { value: 'smk', label: 'SMK', title: '丹麦国立美术馆（无需配置）' },
-  { value: 'wellcome', label: 'Wellcome', title: 'Wellcome 收藏（无需配置）' },
+  { value: 'wellcome', label: 'Wellcome', title: 'Wellcome 馆藏（无需配置）' },
   { value: 'nypl', label: 'NYPL', title: '纽约公共图书馆（需 nypl.api_key）' },
   { value: 'smithsonian', label: 'Smithsonian', title: '史密森尼学会（需 smithsonian.api_key）' },
   { value: 'paris', label: 'Paris Musées', title: '巴黎博物馆（需 paris.api_key）' },
   { value: 'europeana', label: 'Europeana', title: 'Europeana（需 europeana.api_key）' },
-  { value: 'loc', label: 'LoC', title: '美国国会图书馆（无需配置；需网络可达 www.loc.gov / tile.loc.gov，或配置 loc.proxy 代理）' },
+  { value: 'loc', label: 'LoC', title: '美国国会图书馆（无需配置；需配置 loc.proxy 代理）' },
 ];
 
 /** 每页条数（网格 3 列） */
