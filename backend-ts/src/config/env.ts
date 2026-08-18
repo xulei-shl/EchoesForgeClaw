@@ -21,6 +21,8 @@ export interface EnvConfig {
   /** 万年历节点（MXNZP 节假日/万年历 API）凭据；留空时该节点提示未配置 */
   mxnzpAppId: string;
   mxnzpAppSecret: string;
+  /** 知乎检索节点（知乎开发者平台）Access Secret；留空时该节点提示未配置 */
+  zhihuAccessSecret: string;
   /** 前端 CORS 来源（逗号分隔，默认本地开发端口 5173/5180） */
   corsOrigins: string[];
 }
@@ -40,6 +42,7 @@ export const env: EnvConfig = {
   bifrostPassword: process.env.BIFROST_PASSWORD ?? '',
   mxnzpAppId: process.env.MXNZP_APP_ID ?? '',
   mxnzpAppSecret: process.env.MXNZP_APP_SECRET ?? '',
+  zhihuAccessSecret: process.env.ZHIHU_ACCESS_SECRET ?? '',
   corsOrigins: (process.env.CORS_ORIGINS ?? 'http://localhost:5173,http://localhost:5180')
     .split(',')
     .map((s) => s.trim())

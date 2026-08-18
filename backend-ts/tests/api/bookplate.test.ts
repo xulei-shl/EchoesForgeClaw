@@ -148,7 +148,7 @@ describe('node-registry', () => {
     expect(body.configs.some((c: any) => c.node_type === 'chat' && c.mode === 'llm')).toBe(true);
   });
 
-  it('内置小工具模板（万年历 / 天气查询）无需配置即可用', async () => {
+  it('内置小工具模板（万年历 / 天气查询 / 知乎检索）无需配置即可用', async () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/modules/bookplate/node-registry',
@@ -158,9 +158,11 @@ describe('node-registry', () => {
     const body = res.json();
     const calendar = body.templates.find((t: any) => t.type === 'calendar');
     const weather = body.templates.find((t: any) => t.type === 'weather');
+    const zhihu = body.templates.find((t: any) => t.type === 'zhihu_search');
     expect(calendar).toBeDefined();
     expect(weather).toBeDefined();
-    // 小工具类别 + 无需配置 + 文本输出（天气可接受文本输入城市）
+    expect(zhihu).toBeDefined();
+    // 小工具类别 + 无需配置 + 文本输出（天气 / 知乎检索可接受文本输入关键词）
     expect(calendar.category).toBe('tool');
     expect(calendar.configurable).toBe(false);
     expect(calendar.output_type).toBe('text');
@@ -168,8 +170,23 @@ describe('node-registry', () => {
     expect(weather.configurable).toBe(false);
     expect(weather.output_type).toBe('text');
     expect(weather.input_types).toContain('text');
+    expect(zhihu.category).toBe('tool');
+    expect(zhihu.configurable).toBe(false);
+    expect(zhihu.output_type).toBe('text');
+    expect(zhihu.input_types).toContain('text');
     // 模板声明即出现在「+」菜单：无需任何节点配置变体
     expect(body.configs.some((c: any) => c.node_type === 'calendar')).toBe(false);
+  });
+
+  it('知乎检索端点：未配置 Access Secret 时返回 503 提示', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/zhihu-search',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { mode: 'zhihu', query: '测试' },
+    });
+    expect(res.statusCode).toBe(503);
+    expect(res.json().detail).toContain('zhihu.access_secret');
   });
 });
 

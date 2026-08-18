@@ -24,6 +24,8 @@ export const NODE_TYPES = {
   ART_IMAGE_SEARCH: 'art_image_search',
   /** NASA 图片检索（多模态工具）：NASA Images 官方公开图片库（images-api.nasa.gov），图片 / 视频两类关键词检索，公有领域无需凭据 */
   NASA_IMAGE_SEARCH: 'nasa_image_search',
+  /** 知乎检索（文本工具）：知乎开发者平台 3 类检索（站内搜索 / 全网搜索 / 直答），结果以文本输出（凭据在 /admin/settings 配置） */
+  ZHIHU_SEARCH: 'zhihu_search',
 } as const;
 
 export type NodeType = (typeof NODE_TYPES)[keyof typeof NODE_TYPES];
@@ -174,6 +176,15 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     category: 'multimodal',
     configurable: false,
     output_type: 'image',
+    input_types: ['text'],
+  },
+  {
+    type: NODE_TYPES.ZHIHU_SEARCH,
+    name: '知乎检索',
+    description: '知乎开发者平台 3 类检索：站内搜索 / 全网搜索 / 直答问答，结果以文本输出（凭据在管理端「系统设置」配置，可连线文本节点传入关键词 / 问题）',
+    category: 'tool',
+    configurable: false,
+    output_type: 'text',
     input_types: ['text'],
   },
 ];

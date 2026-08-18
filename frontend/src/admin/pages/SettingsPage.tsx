@@ -8,6 +8,7 @@ import {
   Landmark,
   Layers,
   Loader2,
+  MessagesSquare,
   Pencil,
   Plus,
   RefreshCw,
@@ -47,6 +48,7 @@ const KNOWN_KEYS: { key: string; description: string }[] = [
   { key: 'paris.api_key', description: '艺术图片检索节点 Paris Musées API Key（https://www.parismusees.paris.fr/fr/les-collections-en-ligne/lapi-collections 获取；敏感，仅显示掩码）' },
   { key: 'europeana.api_key', description: '艺术图片检索节点 Europeana API Key（https://apis.europeana.eu/en/apis 获取；敏感，仅显示掩码）' },
   { key: 'loc.proxy', description: '艺术图片检索节点美国国会图书馆（LoC）检索/图片 HTTP 代理（如 http://127.0.0.1:7890；留空 = 直连）' },
+  { key: 'zhihu.access_secret', description: '知乎检索节点（知乎开发者平台开放 API）Access Secret（敏感，仅显示掩码；初始来自 .env）' },
 ];
 
 /** 业务分类配置定义 */
@@ -99,6 +101,13 @@ const CATEGORY_DEFS: CategoryDef[] = [
     icon: Calendar,
     description: '万年历节点（MXNZP 节假日、公农历与黄历服务）的应用 ID 与密钥配置',
     match: (key) => key.startsWith('mxnzp.'),
+  },
+  {
+    id: 'zhihu',
+    name: '知乎检索',
+    icon: MessagesSquare,
+    description: '知乎检索节点（站内搜索 / 全网搜索 / 直答）的知乎开发者平台 Access Secret 配置',
+    match: (key) => key.startsWith('zhihu.'),
   },
 ];
 

@@ -57,6 +57,7 @@ import { useNodeExecution } from '../../modules/bookplate/useNodeExecution';
 import { useManualConnection } from '../../modules/bookplate/useManualConnection';
 import ConnectionGhost from '../../modules/bookplate/ConnectionGhost';
 import { renderCanvasNode, type NodeViewHelpers } from '../../modules/bookplate/CanvasNodeViews';
+import type { ZhihuSearchRequest } from '../../modules/bookplate/components/ZhihuSearchNode';
 import { MAP_POSTER_DEFAULTS } from '../../modules/multimodal/map/defaults';
 import { NodeEdge, type NodeEdgeHandle } from '../../platform/components/node/NodeEdge';
 import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
@@ -615,6 +616,18 @@ const BookplatePage: React.FC = () => {
         return { output: '', date: '', isGenerating: false, error: null };
       case 'weather':
         return { output: '', city: '', isGenerating: false, error: null };
+      case 'zhihu_search':
+        return {
+          mode: 'zhihu',
+          query: '',
+          count: 5,
+          filter: '',
+          search_db: 'all',
+          model: 'zhida-fast-1p5',
+          output: '',
+          isGenerating: false,
+          error: null,
+        };
       case 'map_poster':
         return { imageUrl: null, error: null, ...MAP_POSTER_DEFAULTS };
       case 'image_search':
@@ -1165,6 +1178,48 @@ const BookplatePage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** 知乎检索节点：按模式检索 / 直答（关键词 = 连线上级文本 > 手动输入；结果写入 data.output） */
+  const handleFetchZhihuFor = useCallback((id: string, payload: ZhihuSearchRequest) => {
+    const node = nodesRef.current.find((n) => n.id === id);
+    if (!node || node.type !== 'zhihu_search' || node.data?.isGenerating) return;
+    const parents = resolveDirectParents(id, nodesRef.current, edgesRef.current);
+    const upstreamQuery = parents.map((p) => nodeOutputText(p)).find((v) => v.trim()) ?? '';
+    const finalQuery = upstreamQuery || payload.query.trim();
+    if (!finalQuery) return;
+    updateNodeData(id, {
+      mode: payload.mode,
+      query: payload.query,
+      count: payload.count,
+      filter: payload.filter,
+      search_db: payload.search_db,
+      model: payload.model,
+      isGenerating: true,
+      error: null,
+    });
+    api
+      .post(
+        '/modules/bookplate/zhihu-search',
+        { ...payload, query: finalQuery },
+        { timeout: SMALL_TOOL_TIMEOUT_MS }
+      )
+      .then((res: any) => {
+        updateNodeData(id, {
+          output: typeof res?.output === 'string' ? res.output : '',
+          isGenerating: false,
+          error: null,
+        });
+      })
+      .catch((error: any) => {
+        console.error('Failed to fetch zhihu:', error);
+        updateNodeData(id, {
+          isGenerating: false,
+          error: error?.isTimeout ? '知乎检索超时，请重试' : error?.detail || '知乎检索失败，请重试',
+        });
+      });
+    // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /** 地图海报节点：编辑器状态（主题/尺寸/文字/视口）写入 node.data（画布快照持久化，切页保持）。
    *  undoable=true 的离散编辑（主题/尺寸/文字/地点）记撤销历史；平移/缩放仅持久化不记历史，
    *  避免频繁 pan 污染撤销栈（与万年历 date 字段同口径）。 */
@@ -1662,6 +1717,7 @@ const BookplatePage: React.FC = () => {
     handleUpdateSkillsFor,
     handleFetchCalendarFor,
     handleFetchWeatherFor,
+    handleFetchZhihuFor,
     handleExportMapPosterFor,
     handleUpdateMapPosterEditorFor,
     handleSelectSearchImageFor,

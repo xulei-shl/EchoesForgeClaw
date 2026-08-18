@@ -20,6 +20,12 @@ import { NODE_TEMPLATES, NODE_TYPES } from './node-types.js';
 import { env } from '../../config/env.js';
 import { fetchCalendar, fetchWeather, SmallToolError } from '../../services/tool-service.js';
 import {
+  ZhihuError,
+  globalSearch,
+  zhihuSearch,
+  zhidaAnswer,
+} from '../../services/zhihu-service.js';
+import {
   ImageSearchError,
   searchImages,
   trackUnsplashDownload,
@@ -735,6 +741,55 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
         return await fetchWeather(payload.city);
       } catch (err) {
         if (err instanceof SmallToolError) {
+          return reply.code(502).send({ detail: err.message });
+        }
+        return reply.code(502).send({ detail: err instanceof Error ? err.message : String(err) });
+      }
+    }
+  );
+
+  // ---- 文本工具：知乎检索节点（站内搜索 / 全网搜索 / 直答；Access Secret 在 /admin/settings 配置，回退 .env） ----
+
+  app.post(
+    '/api/modules/bookplate/zhihu-search',
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const payload = (request.body ?? {}) as {
+        mode?: string;
+        query?: string;
+        count?: number;
+        filter?: string;
+        search_db?: string;
+        model?: string;
+      };
+      const s = getAppSettingsMap(getDb());
+      const accessSecret = (s['zhihu.access_secret'] ?? '').trim() || env.zhihuAccessSecret;
+      if (!accessSecret) {
+        return reply.code(503).send({
+          detail: '知乎检索未配置：请在管理端「系统设置」配置 zhihu.access_secret（或设置 .env 的 ZHIHU_ACCESS_SECRET 后重启后端）',
+        });
+      }
+      const mode = payload.mode === 'global' || payload.mode === 'zhida' ? payload.mode : 'zhihu';
+      const query = (payload.query ?? '').trim();
+      if (!query) {
+        return reply.code(400).send({ detail: mode === 'zhida' ? '直答问题不能为空' : '检索关键词不能为空' });
+      }
+      try {
+        if (mode === 'zhida') {
+          return await zhidaAnswer(accessSecret, payload.model ?? 'zhida-fast-1p5', query);
+        }
+        if (mode === 'global') {
+          return await globalSearch(
+            accessSecret,
+            query,
+            payload.count ?? 5,
+            payload.filter ?? '',
+            payload.search_db ?? 'all'
+          );
+        }
+        return await zhihuSearch(accessSecret, query, payload.count ?? 5);
+      } catch (err) {
+        if (err instanceof ZhihuError) {
           return reply.code(502).send({ detail: err.message });
         }
         return reply.code(502).send({ detail: err instanceof Error ? err.message : String(err) });

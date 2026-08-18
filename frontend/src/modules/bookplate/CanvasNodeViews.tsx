@@ -11,6 +11,7 @@ import { PromptSearchNode } from './components/PromptSearchNode';
 import { SkillSearchNode } from './components/SkillSearchNode';
 import { CalendarNode } from './components/CalendarNode';
 import { WeatherNode } from './components/WeatherNode';
+import { ZhihuSearchNode, type ZhihuSearchRequest } from './components/ZhihuSearchNode';
 import { MapPosterNode } from '../../modules/multimodal/components/MapPosterNode';
 import { ImageSearchNode, type ImageSearchSelection } from '../../modules/multimodal/components/ImageSearchNode';
 import { ArtImageSearchNode, type GlamSearchSelection } from '../../modules/multimodal/components/ArtImageSearchNode';
@@ -72,6 +73,8 @@ export interface NodeViewHelpers {
   handleFetchCalendarFor: (id: string, date: string) => void;
   /** 天气查询节点：按城市查询当前天气（城市由页面合并上游文本 / 手动输入） */
   handleFetchWeatherFor: (id: string, city: string) => void;
+  /** 知乎检索节点：按模式检索 / 直答（关键词由页面合并上游文本 / 手动输入） */
+  handleFetchZhihuFor: (id: string, payload: ZhihuSearchRequest) => void;
   /** 地图海报节点：导出 PNG data URL 落盘（保存到后端 + 记历史 + 写回 node.data） */
   handleExportMapPosterFor: (id: string, dataUrl: string) => Promise<void>;
   /** 地图海报节点：编辑器状态写入 node.data（undoable=true 记撤销历史；平移缩放仅持久化） */
@@ -387,6 +390,34 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           error={node.data.error ?? null}
           hasDownstream={hasDownstream}
           onFetch={h.handleFetchWeatherFor}
+        />
+      );
+    }
+    case 'zhihu_search': {
+      const hasDownstream = hasDownstreamOf(node, h.edges);
+      const d = node.data ?? {};
+      // 连线即输入：文本输出上级内容作为检索关键词 / 直答问题（collectNodeInputs
+      // 按端口类型统一分组，取第一个非空），优先于手动输入（与天气节点同口径）
+      const upstreamQuery =
+        collectNodeInputs(node, h.nodes, h.edges, h.portTypesOf)
+          .text.map((p) => nodeOutputText(p))
+          .find((v) => v.trim()) ?? '';
+      return (
+        <ZhihuSearchNode
+          key={node.id}
+          {...common}
+          mode={d.mode === 'global' || d.mode === 'zhida' ? d.mode : 'zhihu'}
+          query={typeof d.query === 'string' ? d.query : ''}
+          count={typeof d.count === 'number' ? d.count : 5}
+          filter={typeof d.filter === 'string' ? d.filter : ''}
+          search_db={typeof d.search_db === 'string' ? d.search_db : 'all'}
+          model={typeof d.model === 'string' ? d.model : 'zhida-fast-1p5'}
+          upstreamQuery={upstreamQuery}
+          output={typeof d.output === 'string' ? d.output : ''}
+          isGenerating={!!d.isGenerating}
+          error={d.error ?? null}
+          hasDownstream={hasDownstream}
+          onFetch={h.handleFetchZhihuFor}
         />
       );
     }

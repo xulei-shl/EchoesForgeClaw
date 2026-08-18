@@ -74,6 +74,7 @@ export function generationNodeTypeLabel(nodeType?: string | null): string {
     image_search: '图片检索',
     art_image_search: '艺术图片检索',
     nasa_image_search: 'NASA 图片检索',
+    zhihu_search: '知乎检索',
   };
   return (nodeType && labels[nodeType]) || nodeType || '未知类型';
 }

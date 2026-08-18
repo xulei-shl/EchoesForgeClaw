@@ -91,6 +91,11 @@ const DEFAULT_SETTINGS: Array<[string, string, string]> = [
     '',
     '艺术图片检索节点美国国会图书馆（LoC）检索/图片 HTTP 代理，如 http://127.0.0.1:7890（留空 = 直连）',
   ],
+  [
+    'zhihu.access_secret',
+    env.zhihuAccessSecret,
+    '知乎检索节点（知乎开发者平台开放 API）Access Secret（敏感，仅显示掩码；初始来自 .env，可在本页修改）',
+  ],
 ];
 
 export function seedStartup(): void {
@@ -114,8 +119,12 @@ export function seedStartup(): void {
     const existing = db.select().from(appSettings).where(eq(appSettings.key, key)).get();
     if (!existing) {
       db.insert(appSettings).values({ key, value, description }).run();
-    } else if ((key.startsWith('bifrost.') || key.startsWith('mxnzp.')) && value && !existing.value) {
-      // 种子回填（bifrost.* / mxnzp.*）：存量值为空且种子值非空时补写，绝不覆盖非空修改
+    } else if (
+      (key.startsWith('bifrost.') || key.startsWith('mxnzp.') || key.startsWith('zhihu.')) &&
+      value &&
+      !existing.value
+    ) {
+      // 种子回填（bifrost.* / mxnzp.* / zhihu.*）：存量值为空且种子值非空时补写，绝不覆盖非空修改
       db.update(appSettings).set({ value }).where(eq(appSettings.key, key)).run();
     }
   }

@@ -20,6 +20,7 @@ export const NODE_DEFAULT_SIZES: Record<CanvasNodeType, { width: number; height:
   image_search: { width: 440, height: 560 },
   art_image_search: { width: 460, height: 580 },
   nasa_image_search: { width: 440, height: 580 },
+  zhihu_search: { width: 440, height: 560 },
 };
 
 /** 节点的主题色（用于左上角指示圆点） */
@@ -40,6 +41,7 @@ export const NODE_COLORS: Record<CanvasNodeType, string> = {
   image_search: 'oklch(0.68 0.15 300)',
   art_image_search: 'oklch(0.7 0.14 330)',
   nasa_image_search: 'oklch(0.6 0.16 250)',
+  zhihu_search: 'oklch(0.66 0.18 250)',
 };
 
 export interface NodeTemplateDef {
@@ -185,6 +187,14 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     configurable: false,
     defaultSize: NODE_DEFAULT_SIZES.nasa_image_search,
   },
+  {
+    type: 'zhihu_search',
+    name: '知乎检索',
+    description: '知乎开发者平台 3 类检索：站内搜索 / 全网搜索 / 直答问答，结果以文本输出（凭据在管理端「系统设置」配置，可连线文本节点传入关键词 / 问题）',
+    category: 'tool',
+    configurable: false,
+    defaultSize: NODE_DEFAULT_SIZES.zhihu_search,
+  },
 ];
 
 export const NODE_TEMPLATE_MAP: Record<CanvasNodeType, NodeTemplateDef> = Object.fromEntries(
@@ -246,6 +256,8 @@ export const NODE_PORT_TYPES: Record<CanvasNodeType, { output: NodePortType; inp
   art_image_search: { output: 'image', inputs: ['text'] },
   // NASA 图片检索：输出选中图片（本地 URL）；可连线文本节点作为检索关键词（连线即输入）
   nasa_image_search: { output: 'image', inputs: ['text'] },
+  // 知乎检索：输出检索/问答结果文本；可连线文本节点作为检索关键词 / 直答问题（连线即输入）
+  zhihu_search: { output: 'text', inputs: ['text'] },
 };
 
 /** 端口类型查找（由画布提供：后端模板声明优先，前端静态镜像兜底） */
