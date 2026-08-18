@@ -180,7 +180,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'nasa_image_search',
     name: 'NASA 图片检索',
-    description: '检索 NASA APOD 每日天文图 / EPIC 地球影像：按日期（YYYY-MM-DD）浏览或随机浏览，APOD 支持在近 30 天窗口内按关键词匹配（APOD 凭据在管理端「系统设置」配置，EPIC 公开接口无需凭据）',
+    description: '检索 NASA Images 官方公开图片库（images-api.nasa.gov）：图片 / 视频两类关键词检索，全部公有领域，无需注册与 API Key（可连线文本节点传入关键词）',
     category: 'multimodal',
     configurable: false,
     defaultSize: NODE_DEFAULT_SIZES.nasa_image_search,
@@ -244,7 +244,7 @@ export const NODE_PORT_TYPES: Record<CanvasNodeType, { output: NodePortType; inp
   image_search: { output: 'image', inputs: ['text'] },
   // 艺术图片检索：输出选中图片（本地 URL）；可连线文本节点作为检索关键词（连线即输入）
   art_image_search: { output: 'image', inputs: ['text'] },
-  // NASA 图片检索：输出选中图片（本地 URL）；可连线文本节点作为检索关键词/日期（连线即输入）
+  // NASA 图片检索：输出选中图片（本地 URL）；可连线文本节点作为检索关键词（连线即输入）
   nasa_image_search: { output: 'image', inputs: ['text'] },
 };
 

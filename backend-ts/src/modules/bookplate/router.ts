@@ -742,7 +742,7 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
     }
   );
 
-  // ---- 多模态工具：图片检索（Unsplash / Pixabay / NASA APOD / NASA EPIC；凭据在 /admin/settings 配置） ----
+  // ---- 多模态工具：图片检索（Unsplash / Pixabay / NASA Images 图片/视频；凭据在 /admin/settings 配置，NASA 公开接口无需凭据） ----
 
   app.post(
     '/api/modules/bookplate/image-search',
@@ -755,7 +755,7 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
         per_page?: number;
       };
       const provider: ImageSearchProvider =
-        payload.provider === 'nasa-apod' || payload.provider === 'nasa-epic' || payload.provider === 'pixabay'
+        payload.provider === 'nasa-image' || payload.provider === 'nasa-video' || payload.provider === 'pixabay'
           ? payload.provider
           : 'unsplash';
       const s = getAppSettingsMap(getDb());
@@ -765,7 +765,6 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
           {
             unsplashAccessKey: s['unsplash.access_key'] ?? '',
             pixabayApiKey: s['pixabay.api_key'] ?? '',
-            nasaApiKey: s['nasa.api_key'] ?? '',
           },
           {
             query: payload.query,
@@ -795,7 +794,7 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
       };
       const url = (payload.url ?? '').trim();
       if (!url) return reply.code(400).send({ detail: 'url 不能为空' });
-      // SSRF 防护：仅允许本节点检索结果来源域名（unsplash.com / pixabay.com / apod.nasa.gov / epic.gsfc.nasa.gov 及其子域）
+      // SSRF 防护：仅允许本节点检索结果来源域名（unsplash.com / pixabay.com / images-assets.nasa.gov 及其子域）
       let hostname = '';
       try {
         hostname = new URL(url).hostname;
@@ -804,12 +803,9 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
       }
       const isUnsplash = hostname === 'unsplash.com' || hostname.endsWith('.unsplash.com');
       const isPixabay = hostname === 'pixabay.com' || hostname.endsWith('.pixabay.com');
-      // NASA APOD（apod.nasa.gov）与 EPIC（epic.gsfc.nasa.gov）图片
+      // NASA Images 图片托管域名
       const isNasa =
-        hostname === 'apod.nasa.gov' ||
-        hostname.endsWith('.apod.nasa.gov') ||
-        hostname === 'epic.gsfc.nasa.gov' ||
-        hostname.endsWith('.epic.gsfc.nasa.gov');
+        hostname === 'images-assets.nasa.gov' || hostname.endsWith('.images-assets.nasa.gov');
       if (!isUnsplash && !isPixabay && !isNasa) {
         return reply.code(400).send({ detail: '仅支持 Unsplash / Pixabay / NASA 图片 URL' });
       }

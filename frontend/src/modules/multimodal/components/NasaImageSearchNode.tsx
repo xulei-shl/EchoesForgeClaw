@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { Check, ImageOff, Loader2, RefreshCw, Rocket, Search, X } from 'lucide-react';
+import { Check, Film, Image as ImageIcon, ImageOff, Loader2, RefreshCw, Search, X } from 'lucide-react';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
 import api from '../../../platform/services/api';
@@ -29,7 +29,7 @@ export interface NasaSearchItem {
 /** 选中图片写入 node.data.selectedImage 的元数据（持久化，供下游/展示使用） */
 export interface NasaSearchSelection {
   source: string;
-  /** 来源展示名（APOD 每日天文图 / EPIC 地球影像） */
+  /** 来源类别展示名（NASA 图片库 / NASA 视频库） */
   sourceLabel: string;
   photographer: string;
   description: string;
@@ -46,7 +46,7 @@ export interface NasaImageSearchNodeProps {
   imageUrl?: string | null;
   /** 已选图片元数据（署名等） */
   selectedImage?: NasaSearchSelection | null;
-  /** 当前来源（持久化在 node.data.provider：nasa-apod / nasa-epic） */
+  /** 当前类别（持久化在 node.data.provider：nasa-image / nasa-video） */
   provider?: string;
   /** 连线上级文本（连线即输入：优先作为检索关键词） */
   upstreamKeyword?: string;
@@ -65,26 +65,37 @@ export interface NasaImageSearchNodeProps {
   hasDownstream?: boolean;
 }
 
-/** 两个来源（与后端 image-search-service 的 provider 一致）。\n *  APOD 每日天文图：需 nasa.api_key；EPIC 地球影像：公开接口无需凭据。 */
-const PROVIDERS: { value: string; label: string; title: string }[] = [
-  { value: 'nasa-apod', label: 'APOD 每日天文图', title: 'NASA 每日天文图（需在系统设置配置 nasa.api_key；支持日期 / 关键词 / 随机）' },
-  { value: 'nasa-epic', label: 'EPIC 地球影像', title: 'NASA EPIC 地球影像（公开接口无需凭据；支持日期 / 随机）' },
+/** 两个类别（与后端 image-search-service 的 provider 一致）。\n *  NASA Images 官方公开图片库（images-api.nasa.gov）：公有领域，无需注册与 API Key。 */
+const PROVIDERS: { value: string; label: string; title: string; icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }> }[] = [
+  {
+    value: 'nasa-image',
+    label: '图片',
+    title: 'NASA 图片库 · 关键词检索（留空 = 随机浏览）· 公有领域无需凭据',
+    icon: ImageIcon,
+  },
+  {
+    value: 'nasa-video',
+    label: '视频',
+    title: 'NASA 视频库 · 以预览帧图展示（留空 = 随机浏览）· 公有领域无需凭据',
+    icon: Film,
+  },
 ];
 
 /** 每页条数（网格 3 列） */
 const PER_PAGE = 24;
 
-/** YYYY-MM-DD 日期格式（NASA 两个接口均按日期浏览） */
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
 interface ProviderCacheState {
   items: NasaSearchItem[];
   searchError: string;
+  /** 当前已加载到的页码（用于「加载更多」追加下一页） */
+  page: number;
+  /** 是否还有更多可加载（items + 已翻页数 < 后端 total_hits） */
+  hasMore: boolean;
 }
 
 const initialProviderCache = (): Record<string, ProviderCacheState> =>
   Object.fromEntries(
-    PROVIDERS.map((p) => [p.value, { items: [], searchError: '' }])
+    PROVIDERS.map((p) => [p.value, { items: [], searchError: '', page: 1, hasMore: false }])
   );
 
 const NasaImageSearchNodeInner: React.FC<NasaImageSearchNodeProps> = ({
@@ -94,7 +105,7 @@ const NasaImageSearchNodeInner: React.FC<NasaImageSearchNodeProps> = ({
   title,
   imageUrl = null,
   selectedImage = null,
-  provider = 'nasa-apod',
+  provider = 'nasa-image',
   upstreamKeyword = '',
   error = null,
   onSelectImage,
@@ -124,8 +135,9 @@ const NasaImageSearchNodeInner: React.FC<NasaImageSearchNodeProps> = ({
   const currentCache = providerCache[activeProvider];
   const items = currentCache.items;
   const searchError = currentCache.searchError;
+  const hasMore = currentCache.hasMore;
 
-  /** 生效关键词：连线上级文本优先，其次当前来源的手动输入 */
+  /** 生效关键词：连线上级文本优先，其次当前类别的手动输入 */
   const effectiveQuery = upstreamKeyword.trim() || query.trim();
 
   const handleQueryChange = (val: string) => {
@@ -133,8 +145,10 @@ const NasaImageSearchNodeInner: React.FC<NasaImageSearchNodeProps> = ({
   };
 
   const load = useCallback(
-    async (targetProvider: string, queryText: string, replace: boolean): Promise<boolean> => {
+    async (targetProvider: string, queryText: string, replace: boolean, pageParam = 1): Promise<boolean> => {
       const seq = ++requestSeq.current;
+      // 新检索（replace）一律从第 1 页开始；「加载更多」在缓存页码基础上翻页
+      const targetPage = replace ? 1 : pageParam;
       setLoading(true);
       setProviderCache((prev) => ({
         ...prev,
@@ -146,17 +160,24 @@ const NasaImageSearchNodeInner: React.FC<NasaImageSearchNodeProps> = ({
           {
             provider: targetProvider,
             query: queryText,
-            page: 1,
+            page: targetPage,
             per_page: PER_PAGE,
           },
           { timeout: SMALL_TOOL_TIMEOUT_MS }
         );
         if (seq !== requestSeq.current) return false;
+        const list = Array.isArray(res.items) ? res.items : [];
+        const total = typeof res.total === 'number' ? res.total : null;
+        // 是否还有更多：已翻到的最大页 * 每页条数 < 后端总命中数
+        const loadedCount = (targetPage - 1) * PER_PAGE + list.length;
+        const hasMore = total !== null ? loadedCount < total : false;
         setProviderCache((prev) => ({
           ...prev,
           [targetProvider]: {
-            items: replace ? (Array.isArray(res.items) ? res.items : []) : [...prev[targetProvider].items, ...(Array.isArray(res.items) ? res.items : [])],
+            items: replace ? list : [...prev[targetProvider].items, ...list],
             searchError: '',
+            page: targetPage,
+            hasMore,
           },
         }));
         return true;
@@ -184,13 +205,13 @@ const NasaImageSearchNodeInner: React.FC<NasaImageSearchNodeProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [provider]);
 
-  // 挂载 / Provider 切换：以当前生效关键词检索该来源（检索词切换来源时保留）
+  // 挂载 / 类别切换：以当前生效关键词检索该类别（检索词切换类别时保留）
   useEffect(() => {
     void load(activeProvider, effectiveQuery, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeProvider]);
 
-  // 上游连线关键词发生实质变化时，自动重新检索当前 provider
+  // 上游连线关键词发生实质变化时，自动重新检索当前类别
   useEffect(() => {
     if (prevUpstreamRef.current !== upstreamKeyword) {
       prevUpstreamRef.current = upstreamKeyword;
@@ -211,10 +232,16 @@ const NasaImageSearchNodeInner: React.FC<NasaImageSearchNodeProps> = ({
     void load(activeProvider, effectiveQuery, true);
   };
 
-  /** 换一批：同条件重新拉取（无关键词时两个来源均返回随机一批） */
+  /** 换一批：同条件重新拉取第 1 页（留空时库内默认条目） */
   const handleRefresh = () => {
     if (loading) return;
     void load(activeProvider, effectiveQuery, true);
+  };
+
+  /** 加载更多：按当前缓存页码追加下一页 */
+  const handleLoadMore = () => {
+    if (loading) return;
+    void load(activeProvider, effectiveQuery, false, currentCache.page + 1);
   };
 
   const handleSelect = async (item: NasaSearchItem) => {
@@ -223,7 +250,7 @@ const NasaImageSearchNodeInner: React.FC<NasaImageSearchNodeProps> = ({
     try {
       await onSelectImage?.(id, item.previewUrl, {
         source: item.source,
-        sourceLabel: PROVIDERS.find((p) => p.value === item.source)?.label ?? item.source,
+        sourceLabel: PROVIDERS.find((p) => p.value === item.source)?.label === '视频' ? 'NASA 视频库' : 'NASA 图片库',
         photographer: item.photographer,
         description: item.description,
         pageUrl: item.pageUrl,
@@ -247,24 +274,7 @@ const NasaImageSearchNodeInner: React.FC<NasaImageSearchNodeProps> = ({
   };
 
   const activeProviderMeta = PROVIDERS.find((p) => p.value === activeProvider);
-
-  /** 当前来源下输入框占位文案（APOD 支持关键词，EPIC 仅日期） */
-  const inputPlaceholder = () => {
-    if (upstreamKeyword.trim()) return `上游输入：${upstreamKeyword.trim()}`;
-    if (activeProvider === 'nasa-apod') return '输入 YYYY-MM-DD 日期或关键词（留空随机）…';
-    return '输入 YYYY-MM-DD 日期（留空随机）…';
-  };
-
-  /** 当前来源下日期格式提示（非日期输入时展示） */
-  const inputHint = () => {
-    if (activeProvider === 'nasa-epic') {
-      return 'EPIC 不支持关键词检索：请输入日期（YYYY-MM-DD）或留空随机浏览一天的地球影像';
-    }
-    if (effectiveQuery && !DATE_RE.test(effectiveQuery)) {
-      return 'APOD 无关键词接口：将在近 30 天内按标题 / 说明匹配';
-    }
-    return null;
-  };
+  const ProviderIcon = activeProviderMeta?.icon ?? ImageIcon;
 
   return (
     <CanvasNode
@@ -296,7 +306,7 @@ const NasaImageSearchNodeInner: React.FC<NasaImageSearchNodeProps> = ({
     >
       <PhotoProvider maskOpacity={0.8} bannerVisible={false}>
         <div className="h-full flex flex-col flex-1 min-h-0 gap-2">
-          {/* 来源选择 + 换一批 */}
+          {/* 类别选择 + 换一批 */}
           <div className="shrink-0 flex items-center gap-1.5">
             <div className="flex-1 min-w-0">
               <Select
@@ -310,20 +320,20 @@ const NasaImageSearchNodeInner: React.FC<NasaImageSearchNodeProps> = ({
               type="button"
               onClick={handleRefresh}
               disabled={loading}
-              title="换一批（无关键词时随机浏览）"
+              title="换一批（留空时返回库内默认条目）"
               className="flex items-center justify-center w-8 h-8 rounded-md border border-dashed border-paper-grid text-ink-light hover:text-ink hover:bg-paper-grid/40 transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
             >
               <RefreshCw size={13} strokeWidth={2} className={loading ? 'animate-spin' : ''} />
             </button>
           </div>
 
-          {/* 来源提示 */}
+          {/* 类别提示 */}
           <p className="shrink-0 text-[10px] font-sans text-ink-faint leading-snug truncate" title={activeProviderMeta?.title}>
-            <Rocket size={10} strokeWidth={1.5} className="inline mr-1 -mt-px" />
+            <ProviderIcon size={10} strokeWidth={1.5} className="inline mr-1 -mt-px" />
             {activeProviderMeta?.title}
           </p>
 
-          {/* 关键词 / 日期检索 */}
+          {/* 关键词检索 */}
           <form onSubmit={handleSearch} className="shrink-0 relative">
             <Search
               size={13}
@@ -333,7 +343,7 @@ const NasaImageSearchNodeInner: React.FC<NasaImageSearchNodeProps> = ({
             <input
               value={query}
               onChange={(e) => handleQueryChange(e.target.value)}
-              placeholder={inputPlaceholder()}
+              placeholder={upstreamKeyword.trim() ? `上游关键词：${upstreamKeyword.trim()}` : '搜索关键词（留空 = 随机浏览）…'}
               className="w-full h-9 rounded-md border border-dashed border-paper-grid bg-transparent pl-8 pr-16 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors font-mono"
             />
             {query && (
@@ -356,13 +366,6 @@ const NasaImageSearchNodeInner: React.FC<NasaImageSearchNodeProps> = ({
             </button>
           </form>
 
-          {/* 输入提示（EPIC 仅日期；APOD 关键词窗口说明） */}
-          {inputHint() && (
-            <p className="shrink-0 text-[10px] font-sans text-ink-faint leading-snug">
-              {inputHint()}
-            </p>
-          )}
-
           {/* 结果网格 / 加载 / 错误 */}
           <div className="relative flex-1 min-h-0">
             {loading && items.length === 0 && (
@@ -371,7 +374,7 @@ const NasaImageSearchNodeInner: React.FC<NasaImageSearchNodeProps> = ({
                 <p className="text-xs font-serif text-ink-light">
                   {effectiveQuery
                     ? `正在检索「${effectiveQuery}」…`
-                    : '正在随机浏览…'}
+                    : '正在浏览 NASA 图库…'}
                 </p>
               </div>
             )}
@@ -461,6 +464,18 @@ const NasaImageSearchNodeInner: React.FC<NasaImageSearchNodeProps> = ({
                       </div>
                     );
                   })}
+                </div>
+              )}
+              {/* 滚动到底部：还有更多时显示加载更多（追加下一页） */}
+              {hasMore && !loading && items.length > 0 && (
+                <div className="py-2 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={handleLoadMore}
+                    className="px-4 h-8 rounded-md border border-dashed border-paper-grid text-xs text-ink-light hover:text-ink hover:bg-paper-grid/40 transition-colors"
+                  >
+                    加载更多
+                  </button>
                 </div>
               )}
               {loading && items.length > 0 && (

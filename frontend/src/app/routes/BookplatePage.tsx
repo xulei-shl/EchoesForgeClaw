@@ -633,7 +633,7 @@ const BookplatePage: React.FC = () => {
         };
       case 'nasa_image_search':
         return {
-          provider: 'nasa-apod',
+          provider: 'nasa-image',
           imageUrl: null,
           selectedImage: null,
           error: null,
