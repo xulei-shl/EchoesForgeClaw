@@ -13,7 +13,7 @@ import { now, toIso } from '../../shared/datetime.js';
  * 敏感键（键名含 api_key / secret / password）：明文永不回传；空串 / 掩码保存视为不修改。
  */
 
-const SENSITIVE_MARKERS = ['api_key', 'secret', 'password'];
+const SENSITIVE_MARKERS = ['api_key', 'access_key', 'secret', 'password'];
 
 function isSensitive(key: string): boolean {
   const lowered = key.toLowerCase();

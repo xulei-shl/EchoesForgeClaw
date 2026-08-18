@@ -17,6 +17,7 @@ export const NODE_DEFAULT_SIZES: Record<CanvasNodeType, { width: number; height:
   calendar: { width: 420, height: 480 },
   weather: { width: 420, height: 460 },
   map_poster: { width: 460, height: 560 },
+  image_search: { width: 440, height: 560 },
 };
 
 /** 节点的主题色（用于左上角指示圆点） */
@@ -34,6 +35,7 @@ export const NODE_COLORS: Record<CanvasNodeType, string> = {
   calendar: 'oklch(0.65 0.15 80)',
   weather: 'oklch(0.6 0.15 220)',
   map_poster: 'oklch(0.62 0.15 160)',
+  image_search: 'oklch(0.68 0.15 300)',
 };
 
 export interface NodeTemplateDef {
@@ -155,6 +157,14 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     configurable: false,
     defaultSize: NODE_DEFAULT_SIZES.map_poster,
   },
+  {
+    type: 'image_search',
+    name: '图片检索',
+    description: '检索 Unsplash / Pixabay 免版权图片并选择一张作为图片输出（凭据在管理端「系统设置」配置）',
+    category: 'multimodal',
+    configurable: false,
+    defaultSize: NODE_DEFAULT_SIZES.image_search,
+  },
 ];
 
 export const NODE_TEMPLATE_MAP: Record<CanvasNodeType, NodeTemplateDef> = Object.fromEntries(
@@ -209,6 +219,8 @@ export const NODE_PORT_TYPES: Record<CanvasNodeType, { output: NodePortType; inp
   weather: { output: 'text', inputs: ['text'] },
   // 地图海报生成：客户端渲染导出图片，无上游输入
   map_poster: { output: 'image', inputs: [] },
+  // 图片检索：输出选中图片（本地 URL）；可连线文本节点作为检索关键词（连线即输入）
+  image_search: { output: 'image', inputs: ['text'] },
 };
 
 /** 端口类型查找（由画布提供：后端模板声明优先，前端静态镜像兜底） */

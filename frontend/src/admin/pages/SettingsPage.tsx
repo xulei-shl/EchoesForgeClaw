@@ -32,6 +32,8 @@ const KNOWN_KEYS: { key: string; description: string }[] = [
   { key: 'mxnzp.app_id', description: '万年历节点 MXNZP 应用 ID（初始来自 .env）' },
   { key: 'mxnzp.app_secret', description: '万年历节点 MXNZP 应用密钥（敏感，仅显示掩码）' },
   { key: 'mxnzp.base_url', description: '万年历节点 MXNZP API 基础地址（一般无需修改）' },
+  { key: 'unsplash.access_key', description: '图片检索节点 Unsplash Access Key（https://unsplash.com/developers 注册获取；敏感，仅显示掩码）' },
+  { key: 'pixabay.api_key', description: '图片检索节点 Pixabay API Key（https://pixabay.com/api/docs 获取；敏感，仅显示掩码）' },
 ];
 
 /** 敏感设置项的值展示 / 编辑提示 */

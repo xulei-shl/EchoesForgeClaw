@@ -12,6 +12,7 @@ import { SkillSearchNode } from './components/SkillSearchNode';
 import { CalendarNode } from './components/CalendarNode';
 import { WeatherNode } from './components/WeatherNode';
 import { MapPosterNode } from '../../modules/multimodal/components/MapPosterNode';
+import { ImageSearchNode, type ImageSearchSelection } from '../../modules/multimodal/components/ImageSearchNode';
 import { MAP_POSTER_DEFAULTS } from '../../modules/multimodal/map/defaults';
 import { getNodeTitle, matchPortType, nodeOutputText, resolveDirectParents } from './nodeTypes';
 import {
@@ -73,6 +74,10 @@ export interface NodeViewHelpers {
   handleExportMapPosterFor: (id: string, dataUrl: string) => Promise<void>;
   /** 地图海报节点：编辑器状态写入 node.data（undoable=true 记撤销历史；平移缩放仅持久化） */
   handleUpdateMapPosterEditorFor: (id: string, patch: Record<string, any>, undoable: boolean) => void;
+  /** 图片检索节点：选中图片 → 下载到本地 → 写回 node.data.imageUrl（作为图片输出） */
+  handleSelectSearchImageFor: (id: string, url: string, meta: ImageSearchSelection) => Promise<void>;
+  /** 图片检索节点：编辑器状态（provider 等）写入 node.data（仅持久化，不记撤销历史） */
+  handleUpdateImageSearchEditorFor: (id: string, patch: Record<string, any>, undoable: boolean) => void;
   /** 文本聚合节点：保存占位符模板 */
   handleUpdateAggregateTemplateFor: (id: string, template: string) => void;
   /** 文本聚合节点：重命名某上级节点的占位符别名 */
@@ -397,6 +402,28 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           hasDownstream={hasDownstreamOf(node, h.edges)}
           onUpdateEditor={h.handleUpdateMapPosterEditorFor}
           onExport={h.handleExportMapPosterFor}
+        />
+      );
+    }
+    case 'image_search': {
+      const d = node.data ?? {};
+      // 连线即输入：文本输出上级内容作为检索关键词（优先于手动输入，与天气节点同口径）
+      const upstreamKeyword =
+        collectNodeInputs(node, h.nodes, h.edges, h.portTypesOf)
+          .text.map((p) => nodeOutputText(p))
+          .find((v) => v.trim()) ?? '';
+      return (
+        <ImageSearchNode
+          key={node.id}
+          {...common}
+          imageUrl={typeof d.imageUrl === 'string' ? d.imageUrl : null}
+          selectedImage={d.selectedImage ?? null}
+          provider={d.provider === 'pixabay' ? 'pixabay' : 'unsplash'}
+          upstreamKeyword={upstreamKeyword}
+          error={d.error ?? null}
+          hasDownstream={hasDownstreamOf(node, h.edges)}
+          onSelectImage={h.handleSelectSearchImageFor}
+          onUpdateEditor={h.handleUpdateImageSearchEditorFor}
         />
       );
     }

@@ -489,6 +489,8 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
         return ''; // 手动输入参数（日期 / 城市）后点查询，无需自动执行
       case 'map_poster':
         return ''; // 客户端渲染导出（导出按钮触发），无需自动执行
+      case 'image_search':
+        return ''; // 手动检索 / 选择图片，无需自动执行
     }
   };
 

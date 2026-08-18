@@ -51,6 +51,16 @@ const DEFAULT_SETTINGS: Array<[string, string, string]> = [
     'https://www.mxnzp.com',
     '万年历节点 MXNZP API 基础地址（一般无需修改）',
   ],
+  [
+    'unsplash.access_key',
+    '',
+    '图片检索节点（Unsplash）Access Key（https://unsplash.com/developers 注册获取；敏感，仅显示掩码）',
+  ],
+  [
+    'pixabay.api_key',
+    '',
+    '图片检索节点（Pixabay）API Key（https://pixabay.com/api/docs 获取；敏感，仅显示掩码）',
+  ],
 ];
 
 export function seedStartup(): void {

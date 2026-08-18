@@ -18,6 +18,7 @@ NODE_SKILL_SEARCH = "skill_search"
 NODE_CALENDAR = "calendar"
 NODE_WEATHER = "weather"
 NODE_MAP_POSTER = "map_poster"
+NODE_IMAGE_SEARCH = "image_search"
 
 NODE_TEMPLATES = [
     {
@@ -134,6 +135,15 @@ NODE_TEMPLATES = [
         "category": "multimodal",
         "configurable": False,
         "output_type": "image",
+    },
+    {
+        "type": NODE_IMAGE_SEARCH,
+        "name": "图片检索",
+        "description": "检索 Unsplash / Pixabay 免版权图片并选择一张作为图片输出（凭据在管理端「系统设置」配置）",
+        "category": "multimodal",
+        "configurable": False,
+        "output_type": "image",
+        "input_types": ["text"],
     },
 ]
 

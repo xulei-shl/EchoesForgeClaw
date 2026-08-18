@@ -18,6 +18,8 @@ export const NODE_TYPES = {
   WEATHER: 'weather',
   /** 地图海报生成（多模态工具）：浏览器端渲染地图为图片（Leaflet 瓦片 / MapLibre 艺术主题） */
   MAP_POSTER: 'map_poster',
+  /** 图片检索（多模态工具）：检索 Unsplash / Pixabay 免版权图片并选一张输出（凭据在系统设置配置） */
+  IMAGE_SEARCH: 'image_search',
 } as const;
 
 export type NodeType = (typeof NODE_TYPES)[keyof typeof NODE_TYPES];
@@ -142,5 +144,14 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     category: 'multimodal',
     configurable: false,
     output_type: 'image',
+  },
+  {
+    type: NODE_TYPES.IMAGE_SEARCH,
+    name: '图片检索',
+    description: '检索 Unsplash / Pixabay 免版权图片并选择一张作为图片输出（凭据在管理端「系统设置」配置）',
+    category: 'multimodal',
+    configurable: false,
+    output_type: 'image',
+    input_types: ['text'],
   },
 ];

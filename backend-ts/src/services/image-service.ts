@@ -32,6 +32,13 @@ export function userMapPosterDir(userId: number): string {
 
 const MAP_POSTER_STATIC_PREFIX = '/static/map-posters';
 
+/** 图片检索（多模态工具）选中图片目录：runtime/{userId}/search-images/（中间结果，不写历史记录）。 */
+export function userSearchImageDir(userId: number): string {
+  return path.join(RUNTIME_ROOT, String(userId), 'search-images');
+}
+
+const SEARCH_IMAGE_STATIC_PREFIX = '/static/search-images';
+
 const envImageApiKey = () =>
   process.env.OPENAI_IMAGE_API_KEY || process.env.OPENAI_API_KEY || '';
 
@@ -157,6 +164,22 @@ export class ImageService {
     return `${MAP_POSTER_STATIC_PREFIX}/${userId}/${name}`;
   }
 
+  /**
+   * 保存图片检索节点选中的图片（远程 URL → runtime/{userId}/search-images/，返回本地访问 URL）。
+   * 选中图为中间结果：不写历史记录，仅作为节点输出供下游消费 / 下载。
+   */
+  async saveSearchImage(userId: number, url: string): Promise<string> {
+    const bytes = await downloadBytes(url);
+    if (!bytes.length) throw new ImageGenerationError('图片为空');
+    // filename() 自动补扩展名点号，这里去掉前导点
+    const ext = (extFromUrl(url) || detectExtFromBytes(bytes) || '.jpg').replace(/^\./, '');
+    const dir = userSearchImageDir(userId);
+    mkdirSync(dir, { recursive: true });
+    const name = filename(ext);
+    writeFileSync(path.join(dir, name), bytes);
+    return `${SEARCH_IMAGE_STATIC_PREFIX}/${userId}/${name}`;
+  }
+
   /** 删除生成图片（生成历史清理用；仅 /static/generated/{userId}/{file} 新格式）。 */
   deleteFile(urlPath: string): boolean {
     if (!urlPath || !urlPath.startsWith(STATIC_PREFIX)) return false;
@@ -188,6 +211,39 @@ async function downloadBytes(url: string): Promise<Uint8Array> {
 
 function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/** 从 URL 路径提取图片扩展名（.jpg/.png/.webp…），无法识别返回 null。 */
+function extFromUrl(url: string): string | null {
+  try {
+    const pathname = new URL(url).pathname;
+    const match = /\.(jpe?g|png|gif|webp|svg)$/i.exec(pathname);
+    return match ? match[1]!.toLowerCase().replace('jpeg', 'jpg') : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 按文件头魔数识别图片扩展名（与路由 detectImageExt 同口径，供下载 URL 无扩展名时兜底）。 */
+function detectExtFromBytes(content: Uint8Array): string | null {
+  if (!content.length) return null;
+  const prefixes: Array<[number[], string]> = [
+    [[0xff, 0xd8, 0xff], '.jpg'],
+    [[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], '.png'],
+    [[0x47, 0x49, 0x46, 0x38, 0x37, 0x61], '.gif'],
+    [[0x47, 0x49, 0x46, 0x38, 0x39, 0x61], '.gif'],
+  ];
+  for (const [magic, ext] of prefixes) {
+    if (magic.every((b, i) => content[i] === b)) return ext;
+  }
+  if (
+    content.length >= 12 &&
+    String.fromCharCode(...content.subarray(0, 4)) === 'RIFF' &&
+    String.fromCharCode(...content.subarray(8, 12)) === 'WEBP'
+  ) {
+    return '.webp';
+  }
+  return null;
 }
 
 /** 单例（对应 Python 模块级 `image_service = ImageService()`）。 */

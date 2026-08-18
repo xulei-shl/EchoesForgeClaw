@@ -11,7 +11,7 @@ import { seedStartup } from './config/seed.js';
 import { registerAuth } from './shared/security.js';
 import { registerAuthRouter } from './api/auth.js';
 import { registerBookplateRouter } from './modules/bookplate/router.js';
-import { userGeneratedDir, userMapPosterDir } from './services/image-service.js';
+import { userGeneratedDir, userMapPosterDir, userSearchImageDir } from './services/image-service.js';
 import { COVERS_DIR } from './modules/bookplate/covers.js';
 import { registerUsersRouter } from './api/users.js';
 import { registerGenerationsRouter } from './api/generations.js';
@@ -108,6 +108,14 @@ export async function buildApp() {
     const { userId, file } = request.params as { userId: string; file: string };
     if (!/^\d+$/.test(userId) || !file || file.includes('..')) return reply.code(404).send();
     if (sendPublicImage(reply, safeJoin(userMapPosterDir(Number(userId)), file))) return reply;
+    return reply.code(404).send();
+  });
+
+  // 图片检索选中图（多模态工具，中间结果）：/static/search-images/{userId}/{file} → runtime/{userId}/search-images/{file}
+  app.get('/static/search-images/:userId/:file', async (request, reply) => {
+    const { userId, file } = request.params as { userId: string; file: string };
+    if (!/^\d+$/.test(userId) || !file || file.includes('..')) return reply.code(404).send();
+    if (sendPublicImage(reply, safeJoin(userSearchImageDir(Number(userId)), file))) return reply;
     return reply.code(404).send();
   });
 

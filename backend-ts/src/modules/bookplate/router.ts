@@ -19,6 +19,12 @@ import { chatStreamToResponse, type ChatStreamEvent } from './stream.js';
 import { NODE_TEMPLATES, NODE_TYPES } from './node-types.js';
 import { env } from '../../config/env.js';
 import { fetchCalendar, fetchWeather, SmallToolError } from '../../services/tool-service.js';
+import {
+  ImageSearchError,
+  searchImages,
+  trackUnsplashDownload,
+  type ImageSearchProvider,
+} from '../../services/image-search-service.js';
 import { getDb } from '../../config/database.js';
 import {
   findNodeConfigById,
@@ -681,6 +687,87 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
         return await fetchWeather(payload.city);
       } catch (err) {
         if (err instanceof SmallToolError) {
+          return reply.code(502).send({ detail: err.message });
+        }
+        return reply.code(502).send({ detail: err instanceof Error ? err.message : String(err) });
+      }
+    }
+  );
+
+  // ---- 多模态工具：图片检索（Unsplash / Pixabay；凭据在 /admin/settings 配置） ----
+
+  app.post(
+    '/api/modules/bookplate/image-search',
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const payload = (request.body ?? {}) as {
+        provider?: string;
+        query?: string;
+        page?: number;
+        per_page?: number;
+      };
+      const provider: ImageSearchProvider = payload.provider === 'pixabay' ? 'pixabay' : 'unsplash';
+      const s = getAppSettingsMap(getDb());
+      try {
+        const { items, total } = await searchImages(
+          provider,
+          {
+            unsplashAccessKey: s['unsplash.access_key'] ?? '',
+            pixabayApiKey: s['pixabay.api_key'] ?? '',
+          },
+          {
+            query: payload.query,
+            page: payload.page,
+            perPage: payload.per_page,
+          }
+        );
+        return { provider, items, total };
+      } catch (err) {
+        if (err instanceof ImageSearchError) {
+          return reply.code(502).send({ detail: err.message });
+        }
+        return reply.code(502).send({ detail: err instanceof Error ? err.message : String(err) });
+      }
+    }
+  );
+
+  // 选中图片 → 下载到本地独立子目录（search-images），返回本地 URL 作为节点输出
+  app.post(
+    '/api/modules/bookplate/image-search/save',
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const payload = (request.body ?? {}) as {
+        url?: string;
+        source?: string;
+        download_url?: string | null;
+      };
+      const url = (payload.url ?? '').trim();
+      if (!url) return reply.code(400).send({ detail: 'url 不能为空' });
+      // SSRF 防护：仅允许本节点检索结果来源域名（unsplash.com / pixabay.com 及其子域）
+      let hostname = '';
+      try {
+        hostname = new URL(url).hostname;
+      } catch {
+        return reply.code(400).send({ detail: '非法图片 URL' });
+      }
+      const isUnsplash = hostname === 'unsplash.com' || hostname.endsWith('.unsplash.com');
+      const isPixabay = hostname === 'pixabay.com' || hostname.endsWith('.pixabay.com');
+      if (!isUnsplash && !isPixabay) {
+        return reply.code(400).send({ detail: '仅支持 Unsplash / Pixabay 图片 URL' });
+      }
+      // Unsplash 下载追踪（API Guidelines 要求；best-effort 并行触发，失败不影响主流程）
+      if (payload.source === 'unsplash' && payload.download_url) {
+        const s = getAppSettingsMap(getDb());
+        const accessKey = (s['unsplash.access_key'] ?? '').trim();
+        if (accessKey) {
+          void trackUnsplashDownload(accessKey, payload.download_url).catch(() => {});
+        }
+      }
+      try {
+        const imageUrl = await imageService.saveSearchImage(request.authUser!.id, url);
+        return { image_url: imageUrl };
+      } catch (err) {
+        if (err instanceof ImageGenerationError) {
           return reply.code(502).send({ detail: err.message });
         }
         return reply.code(502).send({ detail: err instanceof Error ? err.message : String(err) });
