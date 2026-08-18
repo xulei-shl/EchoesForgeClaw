@@ -1,0 +1,27 @@
+@font-face {
+  font-family: 'Lofi Forest';
+  src: url('/LofiForest.woff2') format('woff2');
+  font-display: block;
+}
+
+body {
+  font-family: var(--system-fonts);
+  background: #0f2021;
+  color: white;
+}
+
+a {
+  color: inherit;
+}
+
+a:hover {
+  font-style: italic;
+}
+
+input,
+textarea,
+select,
+button {
+  font: inherit;
+  border: none;
+}
