@@ -22,6 +22,7 @@ export const NODE_DEFAULT_SIZES: Record<CanvasNodeType, { width: number; height:
   
   zhihu_search: { width: 440, height: 560 },
   wikipedia_search: { width: 440, height: 560 },
+  text_translation: { width: 460, height: 520 },
 };
 
 /** 节点的主题色（用于左上角指示圆点） */
@@ -44,6 +45,7 @@ export const NODE_COLORS: Record<CanvasNodeType, string> = {
   
   zhihu_search: 'oklch(0.66 0.18 250)',
   wikipedia_search: 'oklch(0.62 0.12 45)',
+  text_translation: 'oklch(0.65 0.18 180)',
 };
 
 export interface NodeTemplateDef {
@@ -198,6 +200,14 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     configurable: false,
     defaultSize: NODE_DEFAULT_SIZES.wikipedia_search,
   },
+  {
+    type: 'text_translation',
+    name: '文本翻译',
+    description: 'Google 翻译 / DeepLX 多引擎翻译，支持随机源与自动降级',
+    category: 'tool',
+    configurable: false,
+    defaultSize: NODE_DEFAULT_SIZES.text_translation,
+  },
 ];
 
 export const NODE_TEMPLATE_MAP: Record<CanvasNodeType, NodeTemplateDef> = Object.fromEntries(
@@ -262,6 +272,8 @@ export const NODE_PORT_TYPES: Record<CanvasNodeType, { output: NodePortType; inp
   zhihu_search: { output: 'text', inputs: ['text'] },
   // Wikipedia 检索：输出文章全文文本；可连线文本节点作为检索关键词（连线即输入）
   wikipedia_search: { output: 'text', inputs: ['text'] },
+  // 文本翻译：输出翻译结果文本；可连线文本节点作为待翻译文本（连线即输入）
+  text_translation: { output: 'text', inputs: ['text'] },
 };
 
 /** 端口类型查找（由画布提供：后端模板声明优先，前端静态镜像兜底） */

@@ -58,6 +58,7 @@ import { useManualConnection } from '../../modules/bookplate/useManualConnection
 import ConnectionGhost from '../../modules/bookplate/ConnectionGhost';
 import { renderCanvasNode, type NodeViewHelpers } from '../../modules/bookplate/CanvasNodeViews';
 import type { ZhihuSearchRequest } from '../../modules/bookplate/components/ZhihuSearchNode';
+import type { TranslationRequest } from '../../modules/bookplate/components/TextTranslationNode';
 import type { WikipediaSearchRequest } from '../../modules/bookplate/components/WikipediaSearchNode';
 import { MAP_POSTER_DEFAULTS } from '../../modules/multimodal/map/defaults';
 import { NodeEdge, type NodeEdgeHandle } from '../../platform/components/node/NodeEdge';
@@ -639,6 +640,20 @@ const BookplatePage: React.FC = () => {
           results: [],
           articleTitle: '',
           summaryMode: false,
+          output: '',
+          isGenerating: false,
+          error: null,
+        };
+      case 'text_translation':
+        return {
+          from: 'auto',
+          to: 'en',
+          source: 'random',
+          tabData: {
+            random: { output: '', usedSource: '', error: null, isGenerating: false },
+            google: { output: '', usedSource: '', error: null, isGenerating: false },
+            deeplx: { output: '', usedSource: '', error: null, isGenerating: false },
+          },
           output: '',
           isGenerating: false,
           error: null,
@@ -1411,6 +1426,91 @@ const BookplatePage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** 文本翻译节点：按配置翻译上级文本（语言/翻译源由节点组件传入，合并上游文本后转发后端） */
+  const handleFetchTranslationFor = useCallback((id: string, payload: TranslationRequest) => {
+    const node = nodesRef.current.find((n) => n.id === id);
+    if (!node || node.type !== 'text_translation') return;
+    const curData = node.data ?? {};
+    const curTabData = curData.tabData ?? {};
+    const targetSource = payload.source;
+    if (curTabData[targetSource]?.isGenerating) return;
+
+    const parents = resolveDirectParents(id, nodesRef.current, edgesRef.current);
+    const upstreamText = parents.map((p) => nodeOutputText(p)).find((v) => v.trim()) ?? '';
+    const finalText = upstreamText || payload.text;
+    if (!finalText.trim()) return;
+
+    const newTargetTabData = {
+      ...(curTabData[targetSource] || {}),
+      isGenerating: true,
+      error: null,
+    };
+    const nextTabData = { ...curTabData, [targetSource]: newTargetTabData };
+    const isCurrentActive = (curData.source ?? 'random') === targetSource;
+
+    updateNodeData(id, {
+      from: payload.from,
+      to: payload.to,
+      tabData: nextTabData,
+      ...(isCurrentActive ? { isGenerating: true, error: null } : {}),
+    });
+
+    api
+      .post('/modules/bookplate/translate', { text: finalText, from: payload.from, to: payload.to, source: payload.source }, { timeout: SMALL_TOOL_TIMEOUT_MS })
+      .then((res: any) => {
+        const latestNode = nodesRef.current.find((n) => n.id === id);
+        const latestData = latestNode?.data ?? {};
+        const latestTabData = latestData.tabData ?? nextTabData;
+        const outputText = typeof res?.output === 'string' ? res.output : '';
+        const usedSrc = typeof res?.source === 'string' ? res.source : '';
+
+        const finishedTargetTabData = {
+          ...(latestTabData[targetSource] || {}),
+          output: outputText,
+          usedSource: usedSrc,
+          isGenerating: false,
+          error: null,
+        };
+        const updatedTabData = { ...latestTabData, [targetSource]: finishedTargetTabData };
+        const isStillActive = (latestData.source ?? 'random') === targetSource;
+
+        updateNodeData(id, {
+          tabData: updatedTabData,
+          ...(isStillActive ? { output: outputText, isGenerating: false, error: null } : {}),
+        });
+      })
+      .catch((error: any) => {
+        console.error('Failed to translate:', error);
+        const latestNode = nodesRef.current.find((n) => n.id === id);
+        const latestData = latestNode?.data ?? {};
+        const latestTabData = latestData.tabData ?? nextTabData;
+        const errDetail = error?.isTimeout ? '翻译超时，请重试' : error?.detail || '翻译失败，请重试';
+
+        const erroredTargetTabData = {
+          ...(latestTabData[targetSource] || {}),
+          isGenerating: false,
+          error: errDetail,
+        };
+        const updatedTabData = { ...latestTabData, [targetSource]: erroredTargetTabData };
+        const isStillActive = (latestData.source ?? 'random') === targetSource;
+
+        updateNodeData(id, {
+          tabData: updatedTabData,
+          ...(isStillActive ? { isGenerating: false, error: errDetail } : {}),
+        });
+      });
+    // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** 文本翻译节点：编辑器状态写入 node.data（仅持久化，不记撤销历史） */
+  const handleUpdateTranslationEditorFor = useCallback((id: string, patch: Record<string, any>) => {
+    const node = nodesRef.current.find((n) => n.id === id);
+    if (!node || node.type !== 'text_translation') return;
+    updateNodeData(id, patch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /** 地图海报节点：编辑器状态（主题/尺寸/文字/视口）写入 node.data（画布快照持久化，切页保持）。
    *  undoable=true 的离散编辑（主题/尺寸/文字/地点）记撤销历史；平移/缩放仅持久化不记历史，
    *  避免频繁 pan 污染撤销栈（与万年历 date 字段同口径）。 */
@@ -1862,6 +1962,8 @@ const BookplatePage: React.FC = () => {
     handleOpenWikipediaArticleFor,
     handleBackToWikipediaResultsFor,
     handleUpdateWikipediaEditorFor,
+    handleFetchTranslationFor,
+    handleUpdateTranslationEditorFor,
     handleExportMapPosterFor,
     handleUpdateMapPosterEditorFor,
     handleSelectSearchImageFor,

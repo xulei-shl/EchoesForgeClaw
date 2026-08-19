@@ -96,6 +96,16 @@ const DEFAULT_SETTINGS: Array<[string, string, string]> = [
     env.zhihuAccessSecret,
     '知乎检索节点（知乎开发者平台开放 API）Access Secret（敏感，仅显示掩码；初始来自 .env，可在本页修改）',
   ],
+  [
+    'deeplx.url',
+    '',
+    '文本翻译节点（DeepLX）服务器 URL，如 http://localhost:1188/translate（留空则仅使用 Google 免费翻译）',
+  ],
+  [
+    'http.proxy',
+    '',
+    '通用 HTTP 代理，如 http://127.0.0.1:7890。部分 API 服务（Google 翻译 / 博物馆检索等）可经此代理出网（留空 = 直连）',
+  ],
 ];
 
 export function seedStartup(): void {

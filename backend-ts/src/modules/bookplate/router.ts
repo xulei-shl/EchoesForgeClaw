@@ -32,6 +32,12 @@ import {
   searchWikipedia,
 } from '../../services/wikipedia-service.js';
 import {
+  TranslationError,
+  COMMON_LANGUAGES,
+  translateText,
+  type TranslationSource,
+} from '../../services/translation-service.js';
+import {
   ImageSearchError,
   searchImages,
   trackUnsplashDownload,
@@ -846,6 +852,46 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
         return await fetchWikipediaArticle(title, payload.language ?? 'zh');
       } catch (err) {
         if (err instanceof WikipediaError) {
+          return reply.code(502).send({ detail: err.message });
+        }
+        return reply.code(502).send({ detail: err instanceof Error ? err.message : String(err) });
+      }
+    }
+  );
+
+  // ---- 文本工具：文本翻译节点（Google 翻译 / DeepLX；DeepLX URL 在 /admin/settings 配置） ----
+
+  app.post(
+    '/api/modules/bookplate/translate',
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const payload = (request.body ?? {}) as {
+        text?: string;
+        from?: string;
+        to?: string;
+        source?: string;
+      };
+      const text = (payload.text ?? '').trim();
+      if (!text) {
+        return reply.code(400).send({ detail: '翻译文本不能为空' });
+      }
+      const from = (payload.from ?? 'auto').trim();
+      const to = (payload.to ?? '').trim();
+      if (!to) {
+        return reply.code(400).send({ detail: '目标语言不能为空' });
+      }
+      const source: TranslationSource =
+        payload.source === 'google' || payload.source === 'deeplx' ? payload.source : 'random';
+
+      const s = getAppSettingsMap(getDb());
+      const deeplxUrl = (s['deeplx.url'] ?? '').trim();
+      const proxy = (s['http.proxy'] ?? '').trim();
+
+      try {
+        const result = await translateText({ text, from, to, source, deeplxUrl, proxy });
+        return { output: result.output, source: result.source };
+      } catch (err) {
+        if (err instanceof TranslationError) {
           return reply.code(502).send({ detail: err.message });
         }
         return reply.code(502).send({ detail: err instanceof Error ? err.message : String(err) });

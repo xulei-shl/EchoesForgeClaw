@@ -439,7 +439,7 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
         if (!inputs.book?.data?.isbn && !inputs.analysis && !inputs.text) {
           return pendingReason(
             node,
-            '缺少上游输入（连线 图片分析 / 文本 / AI对话 节点，或开启「包含图书元数据」）'
+            '缺少上游输入（连线 文本输出节点 / 图片分析，或开启「包含图书元数据」）'
           );
         }
         runPromptGeneration(node, {
@@ -489,6 +489,7 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
         return ''; // 手动输入参数（日期 / 城市）后点查询，无需自动执行
       case 'zhihu_search':
       case 'wikipedia_search':
+      case 'text_translation':
         return ''; // 手动输入关键词后点检索，无需自动执行
       case 'map_poster':
         return ''; // 客户端渲染导出（导出按钮触发），无需自动执行

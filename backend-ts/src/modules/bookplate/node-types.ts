@@ -28,6 +28,8 @@ export const NODE_TYPES = {
   ZHIHU_SEARCH: 'zhihu_search',
   /** Wikipedia 检索（文本工具）：Wikipedia 官方公开 MediaWiki API 关键词检索 → 文章全文，结果以文本输出（匿名、无需密钥） */
   WIKIPEDIA_SEARCH: 'wikipedia_search',
+  /** 文本翻译（文本工具）：Google 翻译 / DeepLX 翻译引擎，支持随机源与自动降级 */
+  TEXT_TRANSLATION: 'text_translation',
 } as const;
 
 export type NodeType = (typeof NODE_TYPES)[keyof typeof NODE_TYPES];
@@ -193,6 +195,15 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     type: NODE_TYPES.WIKIPEDIA_SEARCH,
     name: 'Wikipedia 检索',
     description: '检索 Wikipedia 官方公开词条并获取全文 / 简介',
+    category: 'tool',
+    configurable: false,
+    output_type: 'text',
+    input_types: ['text'],
+  },
+  {
+    type: NODE_TYPES.TEXT_TRANSLATION,
+    name: '文本翻译',
+    description: 'Google 翻译 / DeepLX 多引擎翻译，支持随机源与自动降级（DeepLX URL 在管理端「系统设置」其他类别配置）',
     category: 'tool',
     configurable: false,
     output_type: 'text',

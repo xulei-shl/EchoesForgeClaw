@@ -13,6 +13,7 @@ import { CalendarNode } from './components/CalendarNode';
 import { WeatherNode } from './components/WeatherNode';
 import { ZhihuSearchNode, type ZhihuSearchRequest } from './components/ZhihuSearchNode';
 import { WikipediaSearchNode, type WikipediaSearchRequest } from './components/WikipediaSearchNode';
+import { TextTranslationNode, type TranslationRequest } from './components/TextTranslationNode';
 import { MapPosterNode } from '../../modules/multimodal/components/MapPosterNode';
 import { ImageSearchNode, type ImageSearchSelection } from '../../modules/multimodal/components/ImageSearchNode';
 import { ArtImageSearchNode, type GlamSearchSelection } from '../../modules/multimodal/components/ArtImageSearchNode';
@@ -85,6 +86,10 @@ export interface NodeViewHelpers {
   handleUpdateWikipediaEditorFor: (id: string, patch: Record<string, any>) => void;
   /** 知乎检索节点：编辑器状态写入 node.data（仅持久化，不记撤销历史） */
   handleUpdateZhihuEditorFor: (id: string, patch: Record<string, any>, undoable?: boolean) => void;
+  /** 文本翻译节点：按配置翻译上级文本（语言/翻译源由节点组件传入，页面合并上游文本后转发后端） */
+  handleFetchTranslationFor: (id: string, payload: TranslationRequest) => void;
+  /** 文本翻译节点：编辑器状态写入 node.data（仅持久化，不记撤销历史） */
+  handleUpdateTranslationEditorFor: (id: string, patch: Record<string, any>) => void;
   /** 地图海报节点：导出 PNG data URL 落盘（保存到后端 + 记历史 + 写回 node.data） */
   handleExportMapPosterFor: (id: string, dataUrl: string) => Promise<void>;
   /** 地图海报节点：编辑器状态写入 node.data（undoable=true 记撤销历史；平移缩放仅持久化） */
@@ -472,6 +477,31 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           onOpenArticle={h.handleOpenWikipediaArticleFor}
           onBackToResults={h.handleBackToWikipediaResultsFor}
           onUpdateEditor={h.handleUpdateWikipediaEditorFor}
+        />
+      );
+    }
+    case 'text_translation': {
+      const hasDownstream = hasDownstreamOf(node, h.edges);
+      const d = node.data ?? {};
+      const upstreamText =
+        collectNodeInputs(node, h.nodes, h.edges, h.portTypesOf)
+          .text.map((p) => nodeOutputText(p))
+          .find((v) => v.trim()) ?? '';
+      return (
+        <TextTranslationNode
+          key={node.id}
+          {...common}
+          upstreamText={upstreamText}
+          from={typeof d.from === 'string' ? d.from : 'auto'}
+          to={typeof d.to === 'string' ? d.to : 'en'}
+          source={d.source === 'google' || d.source === 'deeplx' ? d.source : 'random'}
+          tabData={d.tabData ?? {}}
+          output={typeof d.output === 'string' ? d.output : ''}
+          isGenerating={!!d.isGenerating}
+          error={d.error ?? null}
+          hasDownstream={hasDownstream}
+          onFetch={h.handleFetchTranslationFor}
+          onUpdateEditor={h.handleUpdateTranslationEditorFor}
         />
       );
     }

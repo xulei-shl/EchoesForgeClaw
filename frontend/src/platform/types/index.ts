@@ -215,7 +215,9 @@ export type CanvasNodeType =
   /** 知乎检索节点：知乎开发者平台 3 类检索（站内搜索 / 全网搜索 / 直答），结果以文本输出（文本工具，无需配置） */
   | 'zhihu_search'
   /** Wikipedia 检索节点：Wikipedia 官方公开词条检索 + 文章全文，结果以文本输出（文本工具，匿名无需密钥） */
-  | 'wikipedia_search';
+  | 'wikipedia_search'
+  /** 文本翻译节点：Google 翻译 / DeepLX 多引擎翻译，支持随机源与自动降级（文本工具） */
+  | 'text_translation';
 
 /**
  * 节点端口类型（输入/输出）：text / image 为当前实际使用的类型，

@@ -99,7 +99,11 @@ export function resolveNodeRunInputs(
   const analysisValues = analysisNodes.map((p) => nodeOutputText(p));
   const textValues = plainTextNodes.map((p) => nodeOutputText(p));
   const analysis = markdownSections([{ label: '图片分析', values: analysisValues }]);
-  const text = markdownSections([{ label: '文本上下文', values: textValues }]);
+  // 通用文本上下文：包含 promptNodes（如上游提示词生成/AI文本生成节点）与普通文本上级（text / chat / text_aggregate / 检索工具等）
+  const text = markdownSections([
+    { label: '提示词', values: promptValues },
+    { label: '文本上下文', values: textValues },
+  ]);
   const prompt = markdownSections([{ label: '提示词', values: promptValues }]);
   // 参考图：图片输出上级（图片上传 / 图像生成…，按端口类型推导，后续新增图片输出节点自动生效）。
   // data URL（图片上传）优先，其次本地路径。

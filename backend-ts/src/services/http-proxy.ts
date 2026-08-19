@@ -16,6 +16,9 @@ import { ProxyAgent } from 'undici';
  * 代理出口也未必放行；因此提供 `curlFetch`（curl 的 TLS 指纹可正常通过）作为回退传输。
  */
 
+/** 代理连接超时（ms）：代理不可达时快速失败，避免挂死 */
+const PROXY_CONNECT_TIMEOUT = 10_000;
+
 /** 各代理 URL 对应的 ProxyAgent 缓存（连接池按代理复用，避免每次请求新建）。 */
 const agents = new Map<string, ProxyAgent>();
 
@@ -25,7 +28,10 @@ export function proxyDispatcher(proxy: string): ProxyAgent | undefined {
   if (!p) return undefined;
   let agent = agents.get(p);
   if (!agent) {
-    agent = new ProxyAgent(p);
+    agent = new ProxyAgent({
+      uri: p,
+      connect: { timeout: PROXY_CONNECT_TIMEOUT },
+    });
     agents.set(p, agent);
   }
   return agent;
