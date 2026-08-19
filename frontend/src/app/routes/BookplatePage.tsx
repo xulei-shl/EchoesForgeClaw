@@ -127,9 +127,10 @@ const BookplatePage: React.FC = () => {
   const portTypesOf = useCallback(
     (type: CanvasNodeType): { output: NodePortType; inputs: NodePortType[] } => {
       const t = registry.templates.find((bt) => bt.type === type);
+      const fallback = NODE_PORT_TYPES[type];
       return {
-        output: t?.output_type ?? NODE_PORT_TYPES[type].output,
-        inputs: t?.input_types ?? NODE_PORT_TYPES[type].inputs,
+        output: t?.output_type ?? fallback?.output ?? 'text',
+        inputs: t?.input_types ?? fallback?.inputs ?? [],
       };
     },
     [registry.templates]
