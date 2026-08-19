@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { Check, Image as ImageIcon, ImageOff, Loader2, RefreshCw, Search, X } from 'lucide-react';
+import { Check, ImageOff, Loader2, RefreshCw, Search, X } from 'lucide-react';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
 import api from '../../../platform/services/api';
@@ -65,15 +65,10 @@ export interface ImageSearchNodeProps {
   hasDownstream?: boolean;
 }
 
-const PROVIDERS: { value: string; label: string; title?: string; icon?: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }> }[] = [
+const PROVIDERS: { value: string; label: string; title?: string }[] = [
   { value: 'unsplash', label: 'Unsplash', title: 'Unsplash 免版权图库' },
   { value: 'pixabay', label: 'Pixabay', title: 'Pixabay 免版权图库' },
-  {
-    value: 'nasa-image',
-    label: 'NASA',
-    title: 'NASA 图片库 · 关键词检索（留空 = 随机浏览）· 公有领域无需凭据',
-    icon: ImageIcon,
-  },
+  { value: 'nasa-image', label: 'NASA', title: 'NASA 图片库' },
 ];
 
 /** 每页条数（网格 3 列 × 8 行） */
@@ -350,14 +345,6 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
             </button>
           </div>
 
-          {/* 提供商提示（NASA 等有额外说明） */}
-          {activeProviderMeta?.icon && activeProviderMeta?.title && (
-            <p className="shrink-0 text-[10px] font-sans text-ink-faint leading-snug truncate" title={activeProviderMeta.title}>
-              <activeProviderMeta.icon size={10} strokeWidth={1.5} className="inline mr-1 -mt-px" />
-              {activeProviderMeta.title}
-            </p>
-          )}
-
           {/* 关键词检索 */}
           <form onSubmit={handleSearch} className="shrink-0 relative">
             <Search
@@ -433,56 +420,85 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
                         (selectedImage.pageUrl && selectedImage.pageUrl === item.pageUrl) ||
                         (selectedImage.downloadUrl && selectedImage.downloadUrl === item.downloadUrl))
                     );
-                    return (
-                      <div
-                        key={item.id}
-                        className={`relative rounded-md overflow-hidden transition-all bg-paper/40 group ${
-                          isSelected
-                            ? 'border-2 border-accent ring-1 ring-accent/30 shadow-sm'
-                            : 'border border-paper-grid'
-                        }`}
-                        title={item.description || item.photographer || item.id}
-                      >
-                        <SearchImageThumbnail
-                          thumbUrl={item.thumbUrl}
-                          previewUrl={item.previewUrl}
-                          alt={item.description || item.photographer || ''}
-                        />
-                        {/* 底部说明（描述优先于摄影师） */}
-                        {(item.description || item.photographer) && (
-                          <div className="absolute inset-x-0 bottom-0 px-1 py-0.5 bg-gradient-to-t from-black/50 to-transparent pointer-events-none z-10">
-                            <p className="text-[9px] text-white/90 truncate">{item.description || item.photographer}</p>
+                    const conciseLabel = (item.description || item.photographer || '图片')
+                      .split(',')[0]
+                      .trim();
+
+                    const bottomLabel = item.photographer
+                      ? (conciseLabel && conciseLabel !== item.photographer
+                        ? `@${item.photographer} · ${conciseLabel}`
+                        : `@${item.photographer}`)
+                      : conciseLabel;
+
+                    const tooltipContent = (
+                      <div className="flex flex-col gap-1 text-[11px] max-w-[240px]">
+                        {item.photographer && (
+                          <div className="font-medium text-ink flex items-center gap-1">
+                            <span className="text-ink-faint text-[10px]">摄影师:</span>
+                            <span className="truncate">@{item.photographer}</span>
                           </div>
                         )}
-                        {/* 选择 / 已选 徽章与操作按钮 */}
-                        {isSelected ? (
-                          <div
-                            title="当前已选为输出图片"
-                            className="absolute top-1 right-1 px-1.5 h-5 rounded-full flex items-center gap-0.5 bg-accent text-paper text-[10px] font-sans font-medium shadow-sm pointer-events-none z-10"
-                          >
-                            <Check size={11} strokeWidth={2.5} />
-                            <span>已选</span>
+                        {item.description && (
+                          <div className="text-ink-light text-[10px] leading-snug line-clamp-3">
+                            <span className="text-ink-faint mr-1">说明:</span>
+                            <span>{item.description}</span>
                           </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => void handleSelect(item)}
-                            disabled={saving || hasDownstream}
-                            title={
-                              hasDownstream
-                                ? '有下级节点，不可更换输出（需先断开连线）'
-                                : '选择此图作为节点输出'
-                            }
-                            className="absolute top-1 right-1 w-6 h-6 rounded-full flex items-center justify-center bg-black/45 text-white/90 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity hover:bg-accent disabled:opacity-40 disabled:hover:bg-black/45 disabled:cursor-not-allowed active:scale-95 z-10"
-                          >
-                            {saving ? (
-                              <Loader2 size={12} strokeWidth={2} className="animate-spin" />
-                            ) : (
-                              <Check size={12} strokeWidth={2.5} />
-                            )}
-                          </button>
                         )}
                       </div>
+                    );
+
+                    return (
+                      <Tooltip key={item.id} content={tooltipContent}>
+                        <div
+                          className={`relative rounded-md overflow-hidden transition-all bg-paper/40 group ${
+                            isSelected
+                              ? 'border-2 border-accent ring-1 ring-accent/30 shadow-sm'
+                              : 'border border-paper-grid'
+                          }`}
+                        >
+                          <SearchImageThumbnail
+                            thumbUrl={item.thumbUrl}
+                            previewUrl={item.previewUrl}
+                            alt={conciseLabel}
+                          />
+                          {/* 底部说明：悬停时平滑淡入，保持默认缩略图纯净 */}
+                          {bottomLabel && (
+                            <div className="absolute inset-x-0 bottom-0 px-1.5 py-1 bg-gradient-to-t from-black/75 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none z-10">
+                              <p className="text-[9px] text-white/95 truncate font-sans drop-shadow-sm">
+                                {bottomLabel}
+                              </p>
+                            </div>
+                          )}
+                          {/* 选择 / 已选 徽章与操作按钮 */}
+                          {isSelected ? (
+                            <div
+                              title="当前已选为输出图片"
+                              className="absolute top-1 right-1 px-1.5 h-5 rounded-full flex items-center gap-0.5 bg-accent text-paper text-[10px] font-sans font-medium shadow-sm pointer-events-none z-10"
+                            >
+                              <Check size={11} strokeWidth={2.5} />
+                              <span>已选</span>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => void handleSelect(item)}
+                              disabled={saving || hasDownstream}
+                              title={
+                                hasDownstream
+                                  ? '有下级节点，不可更换输出（需先断开连线）'
+                                  : '选择此图作为节点输出'
+                              }
+                              className="absolute top-1 right-1 w-6 h-6 rounded-full flex items-center justify-center bg-black/45 text-white/90 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity hover:bg-accent disabled:opacity-40 disabled:hover:bg-black/45 disabled:cursor-not-allowed active:scale-95 z-10"
+                            >
+                              {saving ? (
+                                <Loader2 size={12} strokeWidth={2} className="animate-spin" />
+                              ) : (
+                                <Check size={12} strokeWidth={2.5} />
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      </Tooltip>
                     );
                   })}
                 </div>
@@ -539,18 +555,23 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
                       {selectedImage?.sourceLabel ? `· ${selectedImage.sourceLabel}` : selectedImage?.source ? `· ${selectedImage.source}` : ''}
                     </span>
                   </p>
-                  <p className="text-[10px] text-ink-faint font-sans truncate">
-                    {hasDownstream
-                      ? (selectedImage?.description
-                        ? `${selectedImage.description}（输出已连接到下游）`
-                        : selectedImage?.photographer
-                          ? `摄影师：${selectedImage.photographer}（输出已连接到下游）`
-                          : '输出已连接到下游节点，如需更换请先断开连线')
-                      : (selectedImage?.description
-                        ? selectedImage.description
-                        : selectedImage?.photographer
-                          ? `摄影师：${selectedImage.photographer}`
-                          : '可作为图片输出给下游节点')}
+                  <p className="text-[10px] text-ink-faint font-sans truncate" title={selectedImage?.description || selectedImage?.photographer || ''}>
+                    {(() => {
+                      const metaText = selectedImage?.photographer
+                        ? (selectedImage.description
+                          ? `摄影师：${selectedImage.photographer} · ${selectedImage.description.split(',')[0].trim()}`
+                          : `摄影师：${selectedImage.photographer}`)
+                        : selectedImage?.description
+                          ? selectedImage.description.split(',').slice(0, 2).join(', ')
+                          : null;
+
+                      if (hasDownstream) {
+                        return metaText
+                          ? `${metaText}（输出已连接到下游）`
+                          : '输出已连接到下游节点，如需更换请先断开连线';
+                      }
+                      return metaText || '可作为图片输出给下游节点';
+                    })()}
                   </p>
                 </div>
               </>

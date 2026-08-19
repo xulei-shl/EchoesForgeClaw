@@ -94,8 +94,8 @@ export const SearchImageThumbnail: React.FC<SearchImageThumbnailProps> = memo(({
             referrerPolicy="no-referrer"
             onError={handleError}
             onLoad={handleLoad}
-            className={`w-full h-full object-cover cursor-zoom-in group-hover:opacity-90 transition-opacity duration-200 ${
-              status === 'loaded' ? 'opacity-100' : 'opacity-0'
+            className={`w-full h-full object-cover cursor-zoom-in group-hover:opacity-90 text-transparent select-none transition-opacity duration-200 ${
+              status === 'loaded' ? 'opacity-100' : 'opacity-0 pointer-events-none'
             }`}
           />
         </PhotoView>

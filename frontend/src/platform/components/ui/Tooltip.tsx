@@ -2,14 +2,20 @@ import React, { useState, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { createPortal } from 'react-dom';
 
-interface TooltipProps {
-  content?: string;
+export interface TooltipProps {
+  content?: React.ReactNode;
   children: React.ReactNode;
+  className?: string;
 }
 
-export const Tooltip: React.FC<TooltipProps & Record<string, any>> = ({ content, children, ...rest }) => {
+export const Tooltip: React.FC<TooltipProps & Record<string, any>> = ({
+  content,
+  children,
+  className = '',
+  ...rest
+}) => {
   const [isVisible, setIsVisible] = useState(false);
-  const [coords, setCoords] = useState({ x: 0, y: 0 });
+  const [coords, setCoords] = useState({ x: 0, y: 0, isNearTop: false });
   const triggerRef = useRef<HTMLElement>(null);
 
   if (!content) return <>{React.cloneElement(children as React.ReactElement<any>, rest)}</>;
@@ -17,9 +23,11 @@ export const Tooltip: React.FC<TooltipProps & Record<string, any>> = ({ content,
   const handleMouseEnter = () => {
     if (triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect();
+      const isNearTop = rect.top < 80;
       setCoords({
         x: rect.left + rect.width / 2,
-        y: rect.top,
+        y: isNearTop ? rect.bottom : rect.top,
+        isNearTop,
       });
       setIsVisible(true);
     }
@@ -61,11 +69,13 @@ export const Tooltip: React.FC<TooltipProps & Record<string, any>> = ({ content,
                 style={{ left: coords.x, top: coords.y }}
               >
                 <motion.div
-                  initial={{ opacity: 0, y: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, y: -4, scale: 1 }}
-                  exit={{ opacity: 0, y: 0, scale: 0.95 }}
+                  initial={{ opacity: 0, y: coords.isNearTop ? -4 : 4, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: coords.isNearTop ? -4 : 4, scale: 0.95 }}
                   transition={{ duration: 0.15 }}
-                  className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 w-max max-w-xs px-2.5 py-1.5 bg-paper border border-dashed border-paper-grid rounded-md shadow-[0_4px_12px_rgba(43,41,38,0.08)] text-xs text-ink text-center"
+                  className={`absolute ${
+                    coords.isNearTop ? 'top-full mt-1.5' : 'bottom-full mb-1.5'
+                  } left-1/2 -translate-x-1/2 w-max max-w-xs px-2.5 py-1.5 bg-paper border border-dashed border-paper-grid rounded-md shadow-[0_4px_16px_rgba(43,41,38,0.1)] text-xs text-ink text-left break-words whitespace-normal leading-relaxed ${className}`}
                 >
                   {content}
                 </motion.div>

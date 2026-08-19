@@ -471,62 +471,83 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
                       (selectedImage.previewUrl === item.previewUrl ||
                         (selectedImage.pageUrl && selectedImage.pageUrl === item.pageUrl))
                     );
-                    return (
-                      <div
-                        key={item.id}
-                        className={`relative rounded-md overflow-hidden transition-all bg-paper/40 group ${
-                          isSelected
-                            ? 'border-2 border-accent ring-1 ring-accent/30 shadow-sm'
-                            : 'border border-paper-grid'
-                        }`}
-                        title={item.description || item.photographer || item.id}
-                      >
-                        <SearchImageThumbnail
-                          thumbUrl={item.thumbUrl}
-                          previewUrl={item.previewUrl}
-                          alt={item.description || item.photographer || ''}
-                        />
-                        {/* 全部来源模式：标注该图所属博物馆 */}
-                        {activeProvider === 'all' && (
-                          <span className="absolute top-1 left-1 px-1 py-px rounded-sm bg-black/45 text-white/90 text-[8px] font-sans backdrop-blur-sm pointer-events-none max-w-[60%] truncate z-10">
+                    const conciseLabel = (item.description || item.photographer || '作品')
+                      .split(/[;,]/)[0]
+                      .trim()
+                      .slice(0, 30);
+
+                    const tooltipContent = (
+                      <div className="flex flex-col gap-1 text-[11px] max-w-[240px]">
+                        <div className="font-medium text-ink flex items-center justify-between gap-1.5">
+                          <span className="truncate">{item.photographer || '佚名 / 馆藏作品'}</span>
+                          <span className="text-[9px] text-ink-faint shrink-0 px-1 py-0.5 rounded border border-dashed border-paper-grid">
                             {sourceShortLabel(item.source)}
                           </span>
-                        )}
-                        {/* 底部标题 */}
+                        </div>
                         {item.description && (
-                          <div className="absolute inset-x-0 bottom-0 px-1 py-0.5 bg-gradient-to-t from-black/50 to-transparent pointer-events-none z-10">
-                            <p className="text-[9px] text-white/90 truncate">{item.description}</p>
+                          <div className="text-ink-light text-[10px] leading-snug line-clamp-3">
+                            {item.description}
                           </div>
-                        )}
-                        {/* 选择 / 已选 徽章与操作按钮 */}
-                        {isSelected ? (
-                          <div
-                            title="当前已选为输出图片"
-                            className="absolute top-1 right-1 px-1.5 h-5 rounded-full flex items-center gap-0.5 bg-accent text-paper text-[10px] font-sans font-medium shadow-sm pointer-events-none z-10"
-                          >
-                            <Check size={11} strokeWidth={2.5} />
-                            <span>已选</span>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => void handleSelect(item)}
-                            disabled={saving || hasDownstream}
-                            title={
-                              hasDownstream
-                                ? '有下级节点，不可更换输出（需先断开连线）'
-                                : '选择此作品作为节点输出'
-                            }
-                            className="absolute top-1 right-1 w-6 h-6 rounded-full flex items-center justify-center bg-black/45 text-white/90 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity hover:bg-accent disabled:opacity-40 disabled:hover:bg-black/45 disabled:cursor-not-allowed active:scale-95 z-10"
-                          >
-                            {saving ? (
-                              <Loader2 size={12} strokeWidth={2} className="animate-spin" />
-                            ) : (
-                              <Check size={12} strokeWidth={2.5} />
-                            )}
-                          </button>
                         )}
                       </div>
+                    );
+
+                    return (
+                      <Tooltip key={item.id} content={tooltipContent}>
+                        <div
+                          className={`relative rounded-md overflow-hidden transition-all bg-paper/40 group ${
+                            isSelected
+                              ? 'border-2 border-accent ring-1 ring-accent/30 shadow-sm'
+                              : 'border border-paper-grid'
+                          }`}
+                        >
+                          <SearchImageThumbnail
+                            thumbUrl={item.thumbUrl}
+                            previewUrl={item.previewUrl}
+                            alt={conciseLabel}
+                          />
+                          {/* 全部来源模式：标注该图所属博物馆 */}
+                          {activeProvider === 'all' && (
+                            <span className="absolute top-1 left-1 px-1 py-px rounded-sm bg-black/45 text-white/90 text-[8px] font-sans backdrop-blur-sm pointer-events-none max-w-[60%] truncate z-10">
+                              {sourceShortLabel(item.source)}
+                            </span>
+                          )}
+                          {/* 底部标题：悬停时平滑淡入，保持默认缩略图纯净 */}
+                          {item.description && (
+                            <div className="absolute inset-x-0 bottom-0 px-1.5 py-1 bg-gradient-to-t from-black/75 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none z-10">
+                              <p className="text-[9px] text-white/95 truncate font-sans drop-shadow-sm">{item.description}</p>
+                            </div>
+                          )}
+                          {/* 选择 / 已选 徽章与操作按钮 */}
+                          {isSelected ? (
+                            <div
+                              title="当前已选为输出图片"
+                              className="absolute top-1 right-1 px-1.5 h-5 rounded-full flex items-center gap-0.5 bg-accent text-paper text-[10px] font-sans font-medium shadow-sm pointer-events-none z-10"
+                            >
+                              <Check size={11} strokeWidth={2.5} />
+                              <span>已选</span>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => void handleSelect(item)}
+                              disabled={saving || hasDownstream}
+                              title={
+                                hasDownstream
+                                  ? '有下级节点，不可更换输出（需先断开连线）'
+                                  : '选择此作品作为节点输出'
+                              }
+                              className="absolute top-1 right-1 w-6 h-6 rounded-full flex items-center justify-center bg-black/45 text-white/90 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity hover:bg-accent disabled:opacity-40 disabled:hover:bg-black/45 disabled:cursor-not-allowed active:scale-95 z-10"
+                            >
+                              {saving ? (
+                                <Loader2 size={12} strokeWidth={2} className="animate-spin" />
+                              ) : (
+                                <Check size={12} strokeWidth={2.5} />
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      </Tooltip>
                     );
                   })}
                 </div>
@@ -585,7 +606,7 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
                       <span className="text-ink-faint text-[10px]">· {selectedImage.sourceLabel}</span>
                     )}
                   </p>
-                  <p className="text-[10px] text-ink-faint font-sans truncate">
+                  <p className="text-[10px] text-ink-faint font-sans truncate" title={selectedImage?.description || selectedImage?.photographer || ''}>
                     {hasDownstream
                       ? (selectedImage?.description
                         ? `${selectedImage.description}（输出已连接到下游）`
