@@ -785,31 +785,14 @@ export function useNodeHandlers({
       // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** 地图海报节点：导出 PNG → 落盘到后端独立子目录（map-posters）→ 写回 node.data.imageUrl。
+  /** 地图海报节点：后端已落盘并返回 image_url，直接写入 node.data.imageUrl。
    *  地图海报为中间结果：不写入历史记录（db），仅在节点内展示 / 下载；recordHistory 仅记录画布撤销。 */
   const handleExportMapPosterFor = useCallback(
-    async (id: string, dataUrl: string) => {
+    async (id: string, imageUrl: string) => {
       const node = nodesRef.current.find((n) => n.id === id);
       if (!node || node.type !== 'map_poster') return;
-      updateNodeData(id, { isExporting: true, error: null });
-      try {
-        const res: any = await api.post(
-          '/modules/bookplate/save-image',
-          { image: dataUrl },
-          { timeout: SMALL_TOOL_TIMEOUT_MS }
-        );
-        const imageUrl = typeof res?.image_url === 'string' ? res.image_url : '';
-        if (!imageUrl) throw new Error('保存图片失败');
-        recordHistory();
-        updateNodeData(id, { imageUrl, isExporting: false, error: null });
-      } catch (error: any) {
-        console.error('Failed to save map poster:', error);
-        updateNodeData(id, {
-          isExporting: false,
-          error: error?.isTimeout ? '图片保存超时，请重试' : error?.detail || '图片保存失败，请重试',
-        });
-        throw error;
-      }
+      recordHistory();
+      updateNodeData(id, { imageUrl, error: null });
       // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
       // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

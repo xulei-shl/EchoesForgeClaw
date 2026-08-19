@@ -206,26 +206,4 @@ export async function register(app: FastifyInstance): Promise<void> {
     }
   );
 
-  // ---- 多模态工具：地图海报图片落盘（客户端渲染导出 → data URL → 独立子目录，不写历史记录） ----
-  app.post(
-    '/api/modules/bookplate/save-image',
-    { preHandler: app.authenticate },
-    async (request, reply) => {
-      const payload = (request.body ?? {}) as { image?: string };
-      const image = (payload.image ?? '').trim();
-      if (!image || !image.startsWith('data:image/')) {
-        return reply.code(400).send({ detail: 'image 必须为 base64 data URL' });
-      }
-      try {
-        // 中间结果目录（runtime/{userId}/map-posters），与图像生成产物（generated）分开
-        const imageUrl = imageService.saveMapPosterImage(request.authUser!.id, image);
-        return { image_url: imageUrl };
-      } catch (err) {
-        if (err instanceof ImageGenerationError) {
-          return reply.code(502).send({ detail: err.message });
-        }
-        return reply.code(502).send({ detail: err instanceof Error ? err.message : String(err) });
-      }
-    }
-  );
 }

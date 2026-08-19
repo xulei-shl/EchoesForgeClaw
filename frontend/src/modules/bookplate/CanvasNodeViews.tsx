@@ -541,17 +541,13 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           {...common}
           imageUrl={typeof d.imageUrl === 'string' ? d.imageUrl : null}
           error={d.error ?? null}
-          renderMode={d.renderMode ?? MAP_POSTER_DEFAULTS.renderMode}
-          tileTheme={typeof d.tileTheme === 'string' ? d.tileTheme : MAP_POSTER_DEFAULTS.tileTheme}
-          artisticTheme={typeof d.artisticTheme === 'string' ? d.artisticTheme : MAP_POSTER_DEFAULTS.artisticTheme}
+          theme={typeof d.theme === 'string' ? d.theme : MAP_POSTER_DEFAULTS.theme}
           sizeIndex={typeof d.sizeIndex === 'number' ? d.sizeIndex : MAP_POSTER_DEFAULTS.sizeIndex}
+          distance={typeof d.distance === 'number' ? d.distance : MAP_POSTER_DEFAULTS.distance}
           cityName={typeof d.cityName === 'string' ? d.cityName : MAP_POSTER_DEFAULTS.cityName}
           countryName={typeof d.countryName === 'string' ? d.countryName : MAP_POSTER_DEFAULTS.countryName}
-          overlaySize={d.overlaySize ?? MAP_POSTER_DEFAULTS.overlaySize}
-          showMarker={typeof d.showMarker === 'boolean' ? d.showMarker : MAP_POSTER_DEFAULTS.showMarker}
           lat={typeof d.lat === 'number' ? d.lat : MAP_POSTER_DEFAULTS.lat}
           lon={typeof d.lon === 'number' ? d.lon : MAP_POSTER_DEFAULTS.lon}
-          zoom={typeof d.zoom === 'number' ? d.zoom : MAP_POSTER_DEFAULTS.zoom}
           hasDownstream={hasDownstreamOf(node, h.edges)}
           onUpdateEditor={h.handleUpdateMapPosterEditorFor}
           onExport={h.handleExportMapPosterFor}

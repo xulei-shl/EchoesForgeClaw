@@ -227,7 +227,7 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
   const switchProvider = (p: string) => {
     if (p === activeProvider) return;
     setActiveProvider(p);
-    // 离散编辑：持久化到 node.data（切页保持），不记撤销历史（与地图海报 renderMode 同口径）
+    // 仅持久化到 node.data（切页保持），不记撤销历史
     onUpdateEditor?.(id, { provider: p }, false);
   };
 
