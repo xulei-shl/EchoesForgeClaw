@@ -1,12 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   useCanvasState,
-  getCanvasEventKey,
   streamControllers,
   analysisUploads,
   nodesRef,
   edgesRef,
-  type CanvasDeleteEvent,
 } from '../../platform/stores/useCanvasState';
 import { useAuth } from '../../platform/stores/authStore';
 import { Navbar } from '../../platform/components/layout/Navbar';
@@ -28,18 +26,13 @@ import {
   NODE_PORT_TYPES,
   getNodeTitle,
   matchPortType,
-  nodeOutputText,
   resolveDirectParents,
 } from '../../modules/bookplate/nodeTypes';
 import {
-  AGGREGATE_DEFAULT_TEMPLATE,
   renderAggregateTemplate,
   syncAggregatePlaceholders,
 } from '../../modules/bookplate/textTemplate';
 import {
-  DEFAULT_RUN_SETTINGS,
-  collectNodeInputs,
-  resolveReferenceImage,
   type PortTypesLookup,
 } from '../../modules/bookplate/execution';
 import {
@@ -57,27 +50,18 @@ import { useNodeExecution } from '../../modules/bookplate/useNodeExecution';
 import { useManualConnection } from '../../modules/bookplate/useManualConnection';
 import ConnectionGhost from '../../modules/bookplate/ConnectionGhost';
 import { renderCanvasNode, type NodeViewHelpers } from '../../modules/bookplate/CanvasNodeViews';
-import type { ZhihuSearchRequest } from '../../modules/bookplate/components/ZhihuSearchNode';
-import type { TranslationRequest } from '../../modules/bookplate/components/TextTranslationNode';
-import type { WikipediaSearchRequest } from '../../modules/bookplate/components/WikipediaSearchNode';
-import { MAP_POSTER_DEFAULTS } from '../../modules/multimodal/map/defaults';
 import { seedDataFor } from '../../modules/bookplate/seedData';
 import { useFavoritesSync } from '../../modules/bookplate/useFavoritesSync';
 import { useNodeHandlers } from '../../modules/bookplate/useNodeHandlers';
 import { NodeEdge, type NodeEdgeHandle } from '../../platform/components/node/NodeEdge';
 import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
 import api from '../../platform/services/api';
-import generationsService from '../../platform/services/generations';
-import { ISBN_FETCH_TIMEOUT_MS, SMALL_TOOL_TIMEOUT_MS } from '../../platform/utils/timeouts';
+import { ISBN_FETCH_TIMEOUT_MS } from '../../platform/utils/timeouts';
 import type {
   CanvasNodeType,
-  ChatNodeSettings,
   NodePortType,
   NodeRegistry,
-  NodeRunSettings,
-  PromptSelection,
   RegistryNodeConfig,
-  SkillSelection,
 } from '../../platform/types';
 
 const BookplatePage: React.FC = () => {
@@ -229,11 +213,9 @@ const BookplatePage: React.FC = () => {
   });
 
   const {
-    invalidateGenerationLink,
     syncFavoritesFromServer,
     toggleFavoriteForImage,
     togglePublicForImage,
-    clearStaleFlag,
   } = useFavoritesSync({
     userId: String(user?.id ?? 'anon'),
     generationIds,
@@ -398,12 +380,6 @@ const BookplatePage: React.FC = () => {
 
   const handleIsbnSubmit = (isbn: string) => {
     fetchBookInfo(isbn);
-  };
-
-  const handleRetryBook = (node: NodeData) => {
-    const isbn = node.data?.isbn;
-    if (!isbn) return;
-    fetchBookInfo(isbn, node.id);
   };
 
   /** 收集节点的全部子孙节点 id（沿出边 BFS，含自身）；分支/级联删除用 */
@@ -1028,7 +1004,7 @@ const BookplatePage: React.FC = () => {
                 }}
                 onDelete={() => {
                   setCtxMenu(null);
-                  handleRemoveNode(node.id);
+                  handleRemove(node.id);
                 }}
                 onClose={closeContextMenu}
               />

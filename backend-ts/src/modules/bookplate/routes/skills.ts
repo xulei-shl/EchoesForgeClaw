@@ -3,6 +3,11 @@ import { getDb } from '../../../config/database.js';
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 import {
+  RESOURCE_TYPE_BIFROST_SKILL,
+  getUserAnnotation,
+  getUserAnnotationMap,
+} from '../../../services/annotation-service.js';
+import {
   BifrostError,
   BifrostNotConfiguredError,
   BifrostNotFoundError,
@@ -12,7 +17,6 @@ import {
 import {
   SkillNotFoundError,
   SkillValidationError,
-  getSkillNote,
   installSkillZip,
   registerExistingBifrostSkill,
   installUserSkillZip,
@@ -43,12 +47,19 @@ export async function register(app: FastifyInstance): Promise<void> {
       const limit = Number(q.limit ?? 50) || 50;
       try {
         const skills = await searchBifrostSkills(getDb(), q.q ?? '', limit);
-        // 合并管理员全局备注（纯展示，不进入 skill 包本体）
-        const withNotes = skills.map((s) => {
-          const note = getSkillNote(String(s.name ?? ''));
-          return note ? { ...s, note } : s;
+        const userId = request.authUser!.id;
+        const skillNames = skills.map((s) => String(s.name ?? '')).filter(Boolean);
+        const annotations = getUserAnnotationMap(getDb(), userId, RESOURCE_TYPE_BIFROST_SKILL, skillNames);
+        const withAnnotations = skills.map((s) => {
+          const ann = annotations.get(String(s.name ?? ''));
+          return {
+            ...s,
+            user_rating: ann?.rating ?? 0,
+            user_note: ann?.note ?? '',
+            note: ann?.note ?? '',
+          };
         });
-        return { skills: withNotes };
+        return { skills: withAnnotations };
       } catch (err) {
         if (err instanceof BifrostNotConfiguredError) return reply.code(503).send({ detail: err.message });
         if (err instanceof BifrostError) return reply.code(502).send({ detail: err.message });
@@ -78,8 +89,10 @@ export async function register(app: FastifyInstance): Promise<void> {
           }
           meta = installSkillZip(request.authUser!.id, zipBytes);
         }
-        const note = getSkillNote(String(meta.name ?? ''));
-        if (note) meta.note = note;
+        const ann = getUserAnnotation(getDb(), request.authUser!.id, RESOURCE_TYPE_BIFROST_SKILL, String(meta.name ?? ''));
+        meta.user_rating = ann.rating;
+        meta.user_note = ann.note;
+        meta.note = ann.note;
         return meta;
       } catch (err) {
         if (err instanceof BifrostNotConfiguredError) return reply.code(503).send({ detail: err.message });
@@ -104,8 +117,10 @@ export async function register(app: FastifyInstance): Promise<void> {
           return reply.code(400).send({ detail: '文件为空或超过 20MB 上限' });
         }
         const meta = installUserSkillZip(request.authUser!.id, bytes);
-        const note = getSkillNote(String(meta.name ?? ''));
-        if (note) meta.note = note;
+        const ann = getUserAnnotation(getDb(), request.authUser!.id, RESOURCE_TYPE_BIFROST_SKILL, String(meta.name ?? ''));
+        meta.user_rating = ann.rating;
+        meta.user_note = ann.note;
+        meta.note = ann.note;
         return meta;
       } catch (err) {
         if (err instanceof SkillValidationError) return reply.code(400).send({ detail: err.message });

@@ -6,6 +6,11 @@ import { getDb } from '../../config/database.js';
 import { now } from '../../shared/datetime.js';
 import { promptMetadata } from '../../db/schema.js';
 import {
+  RESOURCE_TYPE_BIFROST_PROMPT,
+  getUserAnnotation,
+  getUserAnnotationMap,
+} from '../../services/annotation-service.js';
+import {
   BifrostError,
   BifrostNotConfiguredError,
   BifrostNotFoundError,
@@ -24,8 +29,8 @@ import {
 /**
  * Bifrost 管理（对应 Python `app/api/admin/bifrost.py`）：
  * - GET /api/admin/bifrost/folders?all=（文件夹列表，白名单过滤）
- * - GET /api/admin/bifrost/prompts?folder_id&q&raw（提示词列表）
- * - GET /api/admin/bifrost/prompts/:prompt_id?raw（提示词详情）
+ * - GET /api/admin/bifrost/prompts?folder_id&q&raw（提示词列表，富化当前用户的 user_rating 与 user_note）
+ * - GET /api/admin/bifrost/prompts/:prompt_id?raw（提示词详情，富化当前用户的 user_rating 与 user_note）
  * - POST/DELETE /api/admin/bifrost/prompts/:prompt_id/preview（预览图上传/删除）
  */
 
@@ -59,6 +64,16 @@ export async function registerBifrostAdminRouter(app: FastifyInstance): Promise<
         return await listPromptsRaw(getDb(), q.folder_id || null);
       }
       const prompts = await listPrompts(getDb(), q.folder_id || null, q.q ?? '', q.force === '1' || q.force === 'true');
+      const userId = request.authUser?.id;
+      if (userId && prompts.length) {
+        const pids = prompts.map((p) => String(p.id ?? '')).filter(Boolean);
+        const annotations = getUserAnnotationMap(getDb(), userId, RESOURCE_TYPE_BIFROST_PROMPT, pids);
+        for (const p of prompts) {
+          const ann = annotations.get(String(p.id ?? ''));
+          p.user_rating = ann?.rating ?? 0;
+          p.user_note = ann?.note ?? '';
+        }
+      }
       return { prompts };
     } catch (err) {
       const e = bifrostErrorHttp(err);
@@ -74,7 +89,17 @@ export async function registerBifrostAdminRouter(app: FastifyInstance): Promise<
       if (q.raw === 'true') {
         return await getPromptRaw(getDb(), promptId);
       }
-      return await getPrompt(getDb(), promptId);
+      const prompt = await getPrompt(getDb(), promptId);
+      const userId = request.authUser?.id;
+      if (userId) {
+        const ann = getUserAnnotation(getDb(), userId, RESOURCE_TYPE_BIFROST_PROMPT, promptId);
+        prompt.user_rating = ann.rating;
+        prompt.user_note = ann.note;
+      } else {
+        prompt.user_rating = 0;
+        prompt.user_note = '';
+      }
+      return prompt;
     } catch (err) {
       const e = bifrostErrorHttp(err);
       return reply.code(e.code).send(e.body);

@@ -8,7 +8,7 @@ import type { ChatNodeSettings, NodeRunSettings, PromptSelection, SkillSelection
 import type { ZhihuSearchRequest } from './components/ZhihuSearchNode';
 import type { WikipediaSearchRequest } from './components/WikipediaSearchNode';
 import type { TranslationRequest } from './components/TextTranslationNode';
-import { resolveReferenceImage, collectNodeInputs } from './execution';
+import { resolveReferenceImage, collectNodeInputs, DEFAULT_RUN_SETTINGS } from './execution';
 
 export interface NodeHandlersDeps {
   nodesRef: React.MutableRefObject<NodeData[]>;
@@ -23,7 +23,7 @@ export interface NodeHandlersDeps {
   setFavoritedState: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   setPublishedState: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   setSelectedImageId: React.Dispatch<React.SetStateAction<string | null>>;
-  setStaleRecordIds: React.Dispatch<React.SetStateAction<Set<string>>>;
+  setStaleRecordIds?: React.Dispatch<React.SetStateAction<Set<string>>>;
   updateNodeData: (id: string, patch: Record<string, any>) => void;
   recordHistory: () => void;
   runNode: (node: NodeData) => string | undefined;
@@ -41,7 +41,7 @@ export interface NodeHandlersDeps {
 export function useNodeHandlers({
   nodesRef, edgesRef, portTypesRef, streamControllers, analysisUploads, generationIds,
   setNodes, setEdges, setNodeSizes, setFavoritedState, setPublishedState,
-  setSelectedImageId, setStaleRecordIds, updateNodeData, recordHistory,
+  setSelectedImageId, updateNodeData, recordHistory,
   runNode, runImageGeneration, addChildNode, toggleFavoriteForImage, togglePublicForImage,
   showToast, dialog, fetchBookInfo, removingRef, setCtxMenu
 }: NodeHandlersDeps) {
@@ -140,7 +140,8 @@ export function useNodeHandlers({
   const handleRemove = useCallback((id: string) => handleRemoveNode(id), []);
   const handleRetryBookFor = useCallback((id: string) => {
     const node = nodesRef.current.find((n) => n.id === id);
-    if (node) handleRetryBook(node);
+    const isbn = node?.data?.isbn;
+    if (isbn) fetchBookInfo(isbn, id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const handleFetchBookFor = useCallback((id: string, isbn: string) => {

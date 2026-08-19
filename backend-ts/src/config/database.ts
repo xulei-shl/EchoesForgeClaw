@@ -37,12 +37,9 @@ export function initDb(filePath: string): DB {
   return db;
 }
 
-/** 幂等建表：users 表不存在时执行初始迁移 DDL（对应 alembic upgrade head）。 */
+/** 幂等建表：执行初始迁移 DDL（表与索引均带 IF NOT EXISTS）。 */
 export function applyInitialSchema(db: DB): void {
   const sqlite = (db as unknown as { $client?: Database.Database }).$client;
-  const hasUsers =
-    sqlite?.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='users'").get() != null;
-  if (hasUsers) return;
   for (const ddl of INITIAL_DDL) sqlite?.exec(ddl);
 }
 
@@ -203,4 +200,17 @@ const INITIAL_DDL: string[] = [
     created_at DATETIME,
     updated_at DATETIME
   )`,
+  `CREATE TABLE IF NOT EXISTS user_annotations (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    resource_type VARCHAR(32) NOT NULL,
+    resource_id VARCHAR(128) NOT NULL,
+    rating INTEGER NOT NULL DEFAULT 0,
+    note TEXT NOT NULL DEFAULT '',
+    created_at DATETIME,
+    updated_at DATETIME,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS ix_user_annotations_unique ON user_annotations (user_id, resource_type, resource_id)`,
+  `CREATE INDEX IF NOT EXISTS ix_user_annotations_user_type ON user_annotations (user_id, resource_type)`,
 ];

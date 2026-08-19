@@ -413,47 +413,7 @@ export function removeSharedBifrostSkill(skillName: string): number {
   return cleaned;
 }
 
-/**
- * 管理员对共享 skill 包的全局备注（侧车 JSON：name → 备注文本）。
- *
- * 与 skill 包本身完全独立：
- * - 同步最新 / 重装 / 删除共享包都不会触碰备注（SKILL.md 是共享只读源，绝不回写）；
- * - 纯展示用途（admin 页 + Skill 检索节点可见），不注入 Skill Agent 执行上下文。
- */
-export const SKILL_NOTES_FILE = path.join(RUNTIME_ROOT, '.agent', 'skills-notes.json');
 
-/** 读取全部 skill 备注（文件缺失 / 损坏视为空表）。 */
-export function readSkillNotes(): Record<string, string> {
-  try {
-    const parsed: unknown = JSON.parse(readFileSync(SKILL_NOTES_FILE, 'utf-8'));
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      const out: Record<string, string> = {};
-      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
-        if (typeof v === 'string' && v) out[k] = v;
-      }
-      return out;
-    }
-    return {};
-  } catch {
-    return {};
-  }
-}
-
-/** 读取单个 skill 的备注（无则空串）。 */
-export function getSkillNote(name: string): string {
-  return readSkillNotes()[name] ?? '';
-}
-
-/** 写入 / 更新单个 skill 的备注；note 为空串或纯空白时删除该条目，返回落盘后的备注。 */
-export function setSkillNote(name: string, note: string): string {
-  const notes = readSkillNotes();
-  const trimmed = (note ?? '').trim();
-  if (trimmed) notes[name] = trimmed;
-  else delete notes[name];
-  mkdirSync(path.dirname(SKILL_NOTES_FILE), { recursive: true });
-  writeFileSync(SKILL_NOTES_FILE, JSON.stringify(notes, null, 2), 'utf-8');
-  return trimmed;
-}
 
 /**
  * 把工作区内的相对路径解析为绝对路径；越界（../ 等）返回 null。

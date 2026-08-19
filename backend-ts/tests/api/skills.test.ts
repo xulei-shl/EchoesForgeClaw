@@ -7,7 +7,7 @@ import AdmZip from 'adm-zip';
 import { initDb, setDb, type DB } from '../../src/config/database.js';
 import { buildApp } from '../../src/server.js';
 import { startMockOpenAIServer, type MockOpenAIServer } from '../helpers/mock-openai-server.js';
-import { nodeWorkspace, setSkillNote } from '../../src/services/skill-agent-service.js';
+import { nodeWorkspace } from '../../src/services/skill-agent-service.js';
 
 /**
  * Skills 路由契约测试（对应 Python `app/modules/bookplate/router.py` 的 Skill 工作区部分）：
@@ -70,8 +70,6 @@ afterAll(async () => {
   for (const name of testSkillNames) {
     rmSync(path.join(RUNTIME_ROOT, String(uid), 'skills', name), { recursive: true, force: true });
     rmSync(path.join(RUNTIME_ROOT, '.agent', 'skills', name), { recursive: true, force: true });
-    // 清理测试写入的 skill 备注（仅移除测试用 key，保留侧车文件中的其他数据）
-    setSkillNote(name, '');
   }
   for (const ws of ['ws_test_1', 'other_ws']) {
     rmSync(path.join(RUNTIME_ROOT, String(uid), 'workspace', ws), { recursive: true, force: true });

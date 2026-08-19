@@ -17,6 +17,8 @@ import type {
   SkillAgentConfig,
   SkillAgentConfigPayload,
   User,
+  UserAnnotation,
+  UserAnnotationPayload,
   UserPayload,
 } from '../types';
 
@@ -151,11 +153,13 @@ export const adminService = {
   /** 从共享区删除 skill 包（并清理指向它的用户登记软链） */
   deleteBifrostSkill: (name: string): Promise<{ message: string; cleaned_registries: number }> =>
     api.delete(`/admin/bifrost-skills/${encodeURIComponent(name)}`),
-  /** 写入/更新共享 skill 的全局备注（空串清除；纯展示，不触碰 skill 包、不影响同步） */
-  updateBifrostSkillNote: (name: string, note: string): Promise<{ name: string; note: string }> =>
-    api.put<{ name: string; note: string }, { name: string; note: string }>(
-      `/admin/bifrost-skills/${encodeURIComponent(name)}/note`,
-      { note }
+  /* ---------------- 用户通用标注（打标与私有备注） ---------------- */
+
+  setUserAnnotation: (payload: UserAnnotationPayload): Promise<UserAnnotation> =>
+    api.put<UserAnnotation, UserAnnotation>('/annotations', payload),
+  getUserAnnotation: (resourceType: string, resourceId: string): Promise<UserAnnotation> =>
+    api.get<UserAnnotation, UserAnnotation>(
+      `/annotations/${encodeURIComponent(resourceType)}/${encodeURIComponent(resourceId)}`
     ),
 
   /* ---------------- 系统设置 ---------------- */
@@ -169,5 +173,15 @@ export const adminService = {
   deleteSetting: (key: string): Promise<{ message: string }> =>
     api.delete(`/admin/settings/${encodeURIComponent(key)}`),
 };
+
+export const annotationService = {
+  setAnnotation: (payload: UserAnnotationPayload): Promise<UserAnnotation> =>
+    api.put<UserAnnotation, UserAnnotation>('/annotations', payload),
+  getAnnotation: (resourceType: string, resourceId: string): Promise<UserAnnotation> =>
+    api.get<UserAnnotation, UserAnnotation>(
+      `/annotations/${encodeURIComponent(resourceType)}/${encodeURIComponent(resourceId)}`
+    ),
+};
+
 
 export default adminService;

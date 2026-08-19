@@ -25,6 +25,7 @@ import { registerFastClawAgentsAdminRouter } from './api/admin/fastclaw-agents.j
 import { registerSkillAgentConfigsAdminRouter } from './api/admin/skill-agent-configs.js';
 import { registerBifrostAdminRouter } from './api/admin/bifrost.js';
 import { registerBifrostSkillsAdminRouter } from './api/admin/bifrost-skills.js';
+import { registerAnnotationRouter } from './api/annotation.js';
 
 /**
  * BookForge TypeScript 后端入口（对应 Python `app/main.py`）。
@@ -150,6 +151,9 @@ export async function buildApp() {
   await registerSkillAgentConfigsAdminRouter(app);
   await registerBifrostAdminRouter(app);
   await registerBifrostSkillsAdminRouter(app);
+
+  // 通用标注 API：Prompt / Skill 用户打标与私有备注
+  await registerAnnotationRouter(app);
 
   app.get('/', async () => ({ message: 'Welcome to BookForge API (TypeScript)' }));
 

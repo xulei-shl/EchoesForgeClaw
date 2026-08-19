@@ -8,19 +8,22 @@ import {
   searchBifrostSkills,
 } from '../../services/bifrost-service.js';
 import {
+  RESOURCE_TYPE_BIFROST_SKILL,
+  getUserAnnotationMap,
+  setUserAnnotation,
+} from '../../services/annotation-service.js';
+import {
   SkillValidationError,
   listSharedBifrostSkills,
-  readSkillNotes,
   removeSharedBifrostSkill,
-  setSkillNote,
   updateSharedBifrostSkill,
 } from '../../services/skill-agent-service.js';
 
 /**
  * Admin 端 Bifrost Skills 管理（对应 Python `app/api/admin/bifrost_skills.py`）：
- * - GET /api/admin/bifrost-skills（共享区缓存列表 + 远端未缓存 skill 合并浏览；force=1 绕过 TTL）
+ * - GET /api/admin/bifrost-skills（共享区缓存列表 + 远端未缓存 skill 合并浏览；富化当前用户的 user_rating 与 user_note；force=1 绕过 TTL）
  * - POST /api/admin/bifrost-skills/:name/sync（强制拉取最新 zip 覆盖共享区，不动用户登记）
- * - PUT /api/admin/bifrost-skills/:name/note（写入/更新共享 skill 的全局备注，空串清除；独立于 skill 包）
+ * - PUT /api/admin/bifrost-skills/:name/note（写入/更新当前用户的 skill 备注，空串清除；独立于 skill 包）
  * - DELETE /api/admin/bifrost-skills/:name（删除共享包并清理指向它的用户登记软链）
  *
  * 与画布侧（bookplate router 的 /skills/*）互补：画布按需下载安装（共享区缓存命中），
@@ -98,11 +101,17 @@ export async function registerBifrostSkillsAdminRouter(app: FastifyInstance): Pr
         remote_updated_at: r.updated_at ?? null,
       });
     }
-    // 合并管理员全局备注（侧车 JSON，独立于 skill 包：同步/删除不触碰备注）
-    const notes = readSkillNotes();
-    for (const s of merged) {
-      const note = notes[String(s.name ?? '')];
-      if (note) s.note = note;
+    // 合并当前用户的打标与私有备注（按用户完全隔离）
+    const userId = request.authUser?.id;
+    if (userId && merged.length) {
+      const skillNames = merged.map((s) => String(s.name ?? '')).filter(Boolean);
+      const annotations = getUserAnnotationMap(getDb(), userId, RESOURCE_TYPE_BIFROST_SKILL, skillNames);
+      for (const s of merged) {
+        const ann = annotations.get(String(s.name ?? ''));
+        s.user_rating = ann?.rating ?? 0;
+        s.user_note = ann?.note ?? '';
+        s.note = ann?.note ?? '';
+      }
     }
     return { skills: merged, remote_available: remoteAvailable };
   });
@@ -132,13 +141,17 @@ export async function registerBifrostSkillsAdminRouter(app: FastifyInstance): Pr
     }
   });
 
-  // 写入/更新共享 skill 的全局备注（空串清除；不触碰 skill 包本身）
+  // 写入/更新当前用户的 skill 私有备注（空串清除；不触碰 skill 包本身）
   app.put('/api/admin/bifrost-skills/:name/note', admin, async (request, reply) => {
     try {
       const skillName = checkSkillName((request.params as { name: string }).name);
+      const userId = request.authUser?.id;
+      if (!userId) return reply.code(401).send({ detail: '未登录用户' });
       const body = (request.body ?? {}) as { note?: string };
-      const note = setSkillNote(skillName, body.note ?? '');
-      return { name: skillName, note };
+      const res = setUserAnnotation(getDb(), userId, RESOURCE_TYPE_BIFROST_SKILL, skillName, {
+        note: body.note ?? '',
+      });
+      return { name: skillName, note: res.note, rating: res.rating };
     } catch (err) {
       if (err instanceof SkillValidationError) return reply.code(400).send({ detail: err.message });
       return reply.code(502).send({ detail: err instanceof Error ? err.message : String(err) });

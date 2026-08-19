@@ -1,13 +1,15 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Boxes, FolderSync, Loader2, RefreshCw, Search, StickyNote, Trash2, FileText, FolderTree } from 'lucide-react';
-import { adminService } from '../../platform/services/admin';
+import { adminService, annotationService } from '../../platform/services/admin';
 import type { CachedBifrostSkill } from '../../platform/types';
 import { Button } from '../../platform/components/ui/Button';
 import { Card } from '../../platform/components/ui/Card';
 import { Badge } from '../../platform/components/ui/Badge';
 import { Dialog } from '../../platform/components/ui/Dialog';
 import { Input } from '../../platform/components/ui/Input';
+import { Select } from '../../platform/components/ui/Select';
 import { Textarea } from '../../platform/components/ui/Textarea';
+import { RatingStars } from '../../platform/components/ui/RatingStars';
 import { PageHeader, FieldLabel } from '../components/AdminBits';
 import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
 
@@ -19,6 +21,7 @@ export const BifrostSkillsPage: React.FC = () => {
   const [syncingAll, setSyncingAll] = useState(false);
   const [detail, setDetail] = useState<CachedBifrostSkill | null>(null);
   const [q, setQ] = useState('');
+  const [ratingFilter, setRatingFilter] = useState('');
   const [remoteAvailable, setRemoteAvailable] = useState(true);
   const [noteDraft, setNoteDraft] = useState('');
   const [savingNote, setSavingNote] = useState(false);
@@ -26,18 +29,55 @@ export const BifrostSkillsPage: React.FC = () => {
 
   // 打开详情时同步备注草稿
   useEffect(() => {
-    setNoteDraft(detail?.note ?? '');
+    setNoteDraft(detail?.user_note ?? detail?.note ?? '');
   }, [detail]);
 
-  /** 保存管理员全局备注（空串清除；独立于 skill 包，不影响同步/删除） */
+  /** 保存用户的评分 */
+  const handleUpdateRating = async (skillName: string, nextRating: number, currentNote?: string) => {
+    try {
+      const targetSkill = skills.find((s) => s.name === skillName);
+      const res = await annotationService.setAnnotation({
+        resource_type: 'bifrost_skill',
+        resource_id: skillName,
+        rating: nextRating,
+        note: currentNote !== undefined ? currentNote : (targetSkill?.user_note ?? targetSkill?.note ?? ''),
+      });
+      setSkills((prev) =>
+        prev.map((s) =>
+          s.name === skillName
+            ? { ...s, user_rating: res.rating, user_note: res.note, note: res.note }
+            : s
+        )
+      );
+      if (detail && detail.name === skillName) {
+        setDetail({ ...detail, user_rating: res.rating, user_note: res.note, note: res.note });
+      }
+      showToast(nextRating > 0 ? `已评为 ${nextRating} 星` : '已清除评分', { type: 'success' });
+    } catch (e: any) {
+      showToast(e?.message || '评分更新失败', { type: 'error' });
+    }
+  };
+
+  /** 保存用户的私有备注 */
   const saveNote = async () => {
     if (!detail) return;
     setSavingNote(true);
     try {
-      const res = await adminService.updateBifrostSkillNote(detail.name, noteDraft);
-      setDetail({ ...detail, note: res.note });
+      const res = await annotationService.setAnnotation({
+        resource_type: 'bifrost_skill',
+        resource_id: detail.name,
+        rating: detail.user_rating ?? 0,
+        note: noteDraft.trim(),
+      });
+      setDetail({ ...detail, user_rating: res.rating, user_note: res.note, note: res.note });
+      setSkills((prev) =>
+        prev.map((s) =>
+          s.name === detail.name
+            ? { ...s, user_rating: res.rating, user_note: res.note, note: res.note }
+            : s
+        )
+      );
       showToast('备注已保存', { type: 'success' });
-      await load();
     } catch (e: any) {
       showToast(e?.message || '保存失败，请重试', { type: 'error' });
     } finally {
@@ -154,6 +194,19 @@ export const BifrostSkillsPage: React.FC = () => {
     return isNaN(d.getTime()) ? '' : d.toLocaleString('zh-CN', { hour12: false });
   };
 
+  // 客户端多维过滤
+  const filteredSkills = useMemo(() => {
+    return skills.filter((s) => {
+      if (ratingFilter === '5' && (s.user_rating ?? 0) !== 5) return false;
+      if (ratingFilter === '4+' && (s.user_rating ?? 0) < 4) return false;
+      if (ratingFilter === '3+' && (s.user_rating ?? 0) < 3) return false;
+      if (ratingFilter === 'rated' && !(s.user_rating && s.user_rating > 0)) return false;
+      if (ratingFilter === 'unrated' && (s.user_rating && s.user_rating > 0)) return false;
+      if (ratingFilter === 'noted' && !(s.user_note?.trim() || s.note?.trim())) return false;
+      return true;
+    });
+  }, [skills, ratingFilter]);
+
   const anyBusy = syncingAll || busy.size > 0;
   const remoteUnavailable = skills.length > 0 && !remoteAvailable;
 
@@ -161,7 +214,7 @@ export const BifrostSkillsPage: React.FC = () => {
     <div>
       <PageHeader
         title="Bifrost Skills"
-        subtitle="本地缓存的 skill 包（runtime/.agent/skills）+ 远端仓库浏览；「同步最新/下载并缓存」覆盖所有用户共享的同一份，画布上再次安装走本地缓存秒级完成"
+        subtitle="本地缓存的 skill 包（runtime/.agent/skills）+ 远端仓库浏览；「同步最新/下载并缓存」覆盖共享包，个人打标与备注独立存储"
         actions={
           <div className="flex items-center gap-2">
             {skills.length > 0 && (
@@ -202,63 +255,102 @@ export const BifrostSkillsPage: React.FC = () => {
 
       {!loading && !error && (
         <div>
-          {/* 搜索远端仓库（含未缓存的 skill） */}
-          <div className="relative mb-3">
-            <Search
-              size={15}
-              strokeWidth={1.5}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint pointer-events-none"
+          {/* 工具栏：搜索与星级过滤 */}
+          <div className="flex items-center gap-3 mb-3 flex-wrap">
+            <div className="relative flex-1 min-w-[200px] max-w-md">
+              <Search
+                size={15}
+                strokeWidth={1.5}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint pointer-events-none"
+              />
+              <Input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="搜索 Bifrost 仓库…（含远端未缓存的 skill）"
+                className="pl-9"
+              />
+            </div>
+            <Select
+              value={ratingFilter}
+              onChange={(val) => setRatingFilter(val)}
+              className="w-36"
+              options={[
+                { label: '全部打标', value: '' },
+                { label: '★ 5 星', value: '5' },
+                { label: '★ 4 星及以上', value: '4+' },
+                { label: '★ 3 星及以上', value: '3+' },
+                { label: '已打标', value: 'rated' },
+                { label: '未打标', value: 'unrated' },
+                { label: '仅有备注', value: 'noted' },
+              ]}
             />
-            <Input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="搜索 Bifrost 仓库…（含远端未缓存的 skill，点「下载并缓存」拉取）"
-              className="pl-9"
-            />
+            {(q || ratingFilter) && (
+              <button
+                onClick={() => {
+                  setQ('');
+                  setRatingFilter('');
+                }}
+                className="text-sm text-accent hover:text-accent-hover font-sans active:scale-95 transition"
+              >
+                清除筛选
+              </button>
+            )}
           </div>
+
           {remoteUnavailable && (
             <p className="text-xs text-ink-faint font-sans mb-3">
               Bifrost 暂不可达，远端信息未加载（本地缓存仍可管理，同步操作会实时校验）
             </p>
           )}
-          {skills.length === 0 ? (
+
+          {filteredSkills.length === 0 ? (
             <Card className="py-14 flex flex-col items-center gap-3 text-center">
               <Boxes size={36} strokeWidth={1} className="text-ink-faint" />
               <p className="font-serif text-base text-ink">
                 {remoteAvailable ? '暂无匹配的 Bifrost Skill' : '暂无缓存的 Bifrost Skill'}
               </p>
               <p className="text-sm text-ink-light font-sans">
-                {remoteAvailable
+                {q.trim() || ratingFilter
+                  ? '尝试清除筛选条件'
+                  : remoteAvailable
                   ? '在画布的 Skill 检索节点中安装过的 skill 会出现在这里；也可在上方搜索远端仓库后点「下载并缓存」'
                   : 'Bifrost 不可达时仅能管理本地已有缓存，同步操作会实时校验'}
               </p>
             </Card>
           ) : (
             <div className="space-y-3">
-              {skills.map((s) => {
+              {filteredSkills.map((s) => {
                 const isBusy = busy.has(s.name);
                 const isCached = s.cached !== false;
+                const noteText = s.user_note || s.note;
                 return (
                   <Card 
                     key={s.name} 
-                    className="p-4 cursor-pointer transition hover:shadow-md active:scale-[0.96]"
+                    className="p-4 cursor-pointer transition hover:shadow-md active:scale-[0.98]"
                     onClick={() => setDetail(s)}
                   >
                     <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-serif text-sm font-semibold text-ink">{s.name}</p>
                           {isCached ? <Badge>本地缓存</Badge> : <Badge>未缓存</Badge>}
                           {s.latest_version && <Badge>远端 v{s.latest_version}</Badge>}
                           {s.license && <Badge>{s.license}</Badge>}
+                          <div onClick={(e) => e.stopPropagation()} className="ml-1">
+                            <RatingStars
+                              value={s.user_rating || 0}
+                              onChange={(r) => void handleUpdateRating(s.name, r, noteText)}
+                              size="xs"
+                            />
+                          </div>
                         </div>
                         <p className="mt-1 text-xs text-ink-light font-sans line-clamp-2">
                           {s.description || '（无描述）'}
                         </p>
-                        {s.note && (
-                          <p className="mt-1 text-[11px] text-ink-light/90 font-sans line-clamp-2 flex items-start gap-1">
-                            <StickyNote size={12} strokeWidth={1.5} className="shrink-0 mt-0.5 text-ink-faint" />
-                            {s.note}
+                        {noteText && (
+                          <p className="mt-1.5 text-[11px] text-accent font-sans line-clamp-1 italic bg-accent-surface/50 px-2 py-0.5 rounded border border-accent/20 flex items-center gap-1 inline-flex">
+                            <StickyNote size={11} strokeWidth={1.5} className="shrink-0" />
+                            备注：{noteText}
                           </p>
                         )}
                         <div className="flex items-center gap-3 mt-2 text-[10px] text-ink-faint font-sans tabular-nums">
@@ -329,33 +421,41 @@ export const BifrostSkillsPage: React.FC = () => {
               <p className="text-sm text-ink leading-relaxed">{detail.description}</p>
             )}
 
-            <div className="space-y-2">
+            {/* 我的评分与私有备注 */}
+            <div className="rounded-lg border border-dashed border-paper-grid bg-paper-grid/20 p-3 space-y-2.5">
               <div className="flex items-center justify-between">
+                <FieldLabel>我的打标评分</FieldLabel>
+                <RatingStars
+                  value={detail.user_rating || 0}
+                  onChange={(r) => void handleUpdateRating(detail.name, r, detail.user_note ?? detail.note)}
+                  size="md"
+                  showNumber
+                />
+              </div>
+              <div className="space-y-1.5 pt-1">
                 <FieldLabel>
-                  <StickyNote size={14} className="inline mr-1" />
-                  备注（管理员全局备注，纯展示，不影响 Skill Agent 执行）
+                  <StickyNote size={13} className="inline mr-1" />
+                  我的私有备注（仅当前账户可见）
                 </FieldLabel>
-                <div className="flex items-center gap-1.5">
-                  {noteDraft.trim() !== (detail.note ?? '') && (
-                    <Button variant="ghost" size="sm" onClick={() => setNoteDraft(detail.note ?? '')}>
-                      撤销
-                    </Button>
-                  )}
-                  <Button size="sm" isLoading={savingNote} onClick={() => void saveNote()}>
+                <div className="flex gap-2 items-start">
+                  <Textarea
+                    value={noteDraft}
+                    onChange={(e) => setNoteDraft(e.target.value)}
+                    placeholder="填写当前账户对该 Skill 的私有备注（如使用场景、注意事项）…"
+                    rows={2}
+                    maxLength={500}
+                    className="text-xs font-sans flex-1"
+                  />
+                  <Button
+                    size="sm"
+                    isLoading={savingNote}
+                    disabled={noteDraft === (detail.user_note ?? detail.note ?? '')}
+                    onClick={() => void saveNote()}
+                  >
                     保存备注
                   </Button>
                 </div>
               </div>
-              <Textarea
-                value={noteDraft}
-                onChange={(e) => setNoteDraft(e.target.value)}
-                placeholder="填写适合当前项目的备注文本（如使用场景、注意事项）…"
-                rows={3}
-                maxLength={500}
-              />
-              <p className="text-[11px] text-ink-faint font-sans">
-                保存为空白即清除备注；备注独立存储，同步最新 / 删除共享包都不会影响它
-              </p>
             </div>
 
             <div className="space-y-1.5">
@@ -363,7 +463,7 @@ export const BifrostSkillsPage: React.FC = () => {
                 <FileText size={14} className="inline mr-1" />
                 SKILL.md 内容
               </FieldLabel>
-              <pre className="text-xs text-ink-light font-sans whitespace-pre-wrap bg-paper border border-paper-grid rounded-md p-3 max-h-60 overflow-y-auto custom-scrollbar">
+              <pre className="text-xs text-ink-light font-sans whitespace-pre-wrap bg-paper border border-paper-grid rounded-md p-3 max-h-48 overflow-y-auto custom-scrollbar">
                 {detail.body || '（无内容）'}
               </pre>
             </div>
@@ -374,7 +474,7 @@ export const BifrostSkillsPage: React.FC = () => {
                   <FolderTree size={14} className="inline mr-1" />
                   文件结构（<span className="tabular-nums">{detail.files.length}</span> 个）
                 </FieldLabel>
-                <div className="bg-paper border border-paper-grid rounded-md p-3 max-h-48 overflow-y-auto custom-scrollbar space-y-1">
+                <div className="bg-paper border border-paper-grid rounded-md p-3 max-h-36 overflow-y-auto custom-scrollbar space-y-1">
                   {detail.files.map((f) => (
                     <p key={f} className="text-[11px] text-ink-light font-mono truncate pl-3 border-l-2 border-paper-grid/60 hover:bg-paper-grid/20 rounded-r transition-colors px-1 py-0.5">
                       {f}
@@ -391,3 +491,4 @@ export const BifrostSkillsPage: React.FC = () => {
 };
 
 export default BifrostSkillsPage;
+

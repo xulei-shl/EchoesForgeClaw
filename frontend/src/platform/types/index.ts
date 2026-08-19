@@ -414,6 +414,24 @@ export interface UserPayload {
 }
 
 /* ===================================================================== */
+/* 用户通用标注（打标 1-5 星与私有备注）                                     */
+/* ===================================================================== */
+
+export interface UserAnnotation {
+  resource_type: 'bifrost_prompt' | 'bifrost_skill';
+  resource_id: string;
+  rating: number;
+  note: string;
+}
+
+export interface UserAnnotationPayload {
+  resource_type: 'bifrost_prompt' | 'bifrost_skill';
+  resource_id: string;
+  rating?: number;
+  note?: string;
+}
+
+/* ===================================================================== */
 /* Bifrost 提示词（Prompt Repository 代理）                               */
 /* ===================================================================== */
 
@@ -441,6 +459,10 @@ export interface BifrostPrompt {
   updated_at?: string | null;
   version_number?: number | null;
   commit_message?: string | null;
+  /** 当前用户打标星级（1-5，0 为未打标） */
+  user_rating?: number;
+  /** 当前用户私有备注 */
+  user_note?: string;
 }
 
 /** 提示词检索节点：选用一条提示词后写入节点的数据 */
@@ -449,6 +471,8 @@ export interface PromptSelection {
   name?: string;
   content?: string;
   imageUrl?: string | null;
+  userRating?: number;
+  userNote?: string;
 }
 
 /* ===================================================================== */
@@ -464,8 +488,10 @@ export interface InstalledSkill {
   path: string;
   /** 文件树（相对路径列表） */
   files: string[];
-  /** 管理员全局备注（纯展示，不注入执行上下文） */
+  /** 用户私有备注 / 全局兼容备注 */
   note?: string;
+  user_rating?: number;
+  user_note?: string;
 }
 
 /** Admin 端：Bifrost Skill（本地缓存 + 远端未缓存合并浏览；Bifrost 可达时富化远端版本信息） */
@@ -486,8 +512,10 @@ export interface CachedBifrostSkill {
   license?: string;
   compatibility?: string;
   remote_updated_at?: string | null;
-  /** 管理员全局备注（纯展示，不注入执行上下文） */
+  /** 用户私有备注 / 全局兼容备注 */
   note?: string;
+  user_rating?: number;
+  user_note?: string;
 }
 
 /** Bifrost Skills 仓库中的 skill（检索结果） */
@@ -504,8 +532,10 @@ export interface BifrostSkill {
   files?: { path: string }[];
   created_at?: string;
   updated_at?: string;
-  /** 管理员全局备注（纯展示，不注入执行上下文） */
+  /** 用户私有备注 / 全局兼容备注 */
   note?: string;
+  user_rating?: number;
+  user_note?: string;
 }
 
 /** Skill 检索节点：选用一个 skill 后写入节点的数据 */
@@ -521,8 +551,10 @@ export interface SkillSelection {
   files?: string[];
   /** 来源：bifrost / upload */
   source?: 'bifrost' | 'upload';
-  /** 管理员全局备注快照（纯展示，不注入执行上下文） */
+  /** 用户私有备注 */
   note?: string;
+  userRating?: number;
+  userNote?: string;
 }
 
 /** Skill Agent 执行产生的文件（agent_file 事件） */

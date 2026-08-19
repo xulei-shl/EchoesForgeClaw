@@ -194,3 +194,22 @@ export const nodeConfigs = sqliteTable("node_configs", {
 	index("ix_node_configs_id").on(table.id),
 ]);
 
+export const userAnnotations = sqliteTable(
+	"user_annotations",
+	{
+		id: integer().primaryKey().notNull(),
+		userId: integer("user_id").notNull().references(() => users.id),
+		resourceType: text("resource_type", { length: 32 }).notNull(),
+		resourceId: text("resource_id", { length: 128 }).notNull(),
+		rating: integer().default(0).notNull(),
+		note: text().default("").notNull(),
+		createdAt: numeric("created_at"),
+		updatedAt: numeric("updated_at"),
+	},
+	(table) => [
+		uniqueIndex("ix_user_annotations_unique").on(table.userId, table.resourceType, table.resourceId),
+		index("ix_user_annotations_user_type").on(table.userId, table.resourceType),
+	]
+);
+
+

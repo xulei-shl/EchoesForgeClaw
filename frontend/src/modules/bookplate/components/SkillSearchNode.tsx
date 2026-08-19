@@ -7,13 +7,18 @@ import {
   Search,
   Upload,
   X,
+  StickyNote,
 } from 'lucide-react';
 import api from '../../../platform/services/api';
+import { annotationService } from '../../../platform/services/admin';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { Dialog } from '../../../platform/components/ui/Dialog';
 import { Button } from '../../../platform/components/ui/Button';
 import { Input } from '../../../platform/components/ui/Input';
+import { Select } from '../../../platform/components/ui/Select';
+import { RatingStars } from '../../../platform/components/ui/RatingStars';
+import { NoteEditModal } from '../../../platform/components/ui/NoteEditModal';
 import { NODE_COLORS } from '../nodeTypes';
 import type { BifrostSkill, InstalledSkill, SkillSelection } from '../../../platform/types';
 
@@ -57,6 +62,9 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [q, setQ] = useState('');
+  const [ratingFilter, setRatingFilter] = useState('');
+  const [editingTarget, setEditingTarget] = useState<BifrostSkill | null>(null);
+
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const requestSeq = useRef(0);
@@ -89,6 +97,7 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
 
   const openPicker = useCallback(() => {
     setQ('');
+    setRatingFilter('');
     setSkills([]);
     setUploadError('');
     setLoading(true);
@@ -99,6 +108,69 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
   const closePicker = useCallback(() => {
     setPickerOpen(false);
   }, []);
+
+  /** 快捷打星 */
+  const handleUpdateRating = async (s: BifrostSkill, nextRating: number) => {
+    try {
+      const res = await annotationService.setAnnotation({
+        resource_type: 'bifrost_skill',
+        resource_id: s.name,
+        rating: nextRating,
+        note: s.user_note ?? s.note ?? '',
+      });
+      setSkills((prev) =>
+        prev.map((item) =>
+          item.name === s.name
+            ? { ...item, user_rating: res.rating, user_note: res.note, note: res.note }
+            : item
+        )
+      );
+      if (selectedNames.has(s.name)) {
+        onUpdateSkills?.(
+          id,
+          selections.map((item) =>
+            item.name === s.name
+              ? { ...item, userRating: res.rating, userNote: res.note, note: res.note }
+              : item
+          )
+        );
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+
+  /** 保存打标与备注 */
+  const handleSaveAnnotation = async (rating: number, note: string) => {
+    if (!editingTarget) return;
+    try {
+      const res = await annotationService.setAnnotation({
+        resource_type: 'bifrost_skill',
+        resource_id: editingTarget.name,
+        rating,
+        note,
+      });
+      setSkills((prev) =>
+        prev.map((item) =>
+          item.name === editingTarget.name
+            ? { ...item, user_rating: res.rating, user_note: res.note, note: res.note }
+            : item
+        )
+      );
+      if (selectedNames.has(editingTarget.name)) {
+        onUpdateSkills?.(
+          id,
+          selections.map((item) =>
+            item.name === editingTarget.name
+              ? { ...item, userRating: res.rating, userNote: res.note, note: res.note }
+              : item
+          )
+        );
+      }
+    } catch {
+      /* ignore */
+    }
+  };
 
   /** 切换某个 skill 的选择状态（已在集合中则移除，否则追加）。不触发安装/卸载。 */
   const toggleSelection = useCallback(
@@ -111,6 +183,19 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
     },
     [id, selections, onUpdateSkills]
   );
+
+  // 客户端星级过滤
+  const filteredSkills = useMemo(() => {
+    return skills.filter((s) => {
+      if (ratingFilter === '5' && (s.user_rating ?? 0) !== 5) return false;
+      if (ratingFilter === '4+' && (s.user_rating ?? 0) < 4) return false;
+      if (ratingFilter === '3+' && (s.user_rating ?? 0) < 3) return false;
+      if (ratingFilter === 'rated' && !(s.user_rating && s.user_rating > 0)) return false;
+      if (ratingFilter === 'unrated' && (s.user_rating && s.user_rating > 0)) return false;
+      if (ratingFilter === 'noted' && !(s.user_note?.trim() || s.note?.trim())) return false;
+      return true;
+    });
+  }, [skills, ratingFilter]);
 
   // 搜索防抖：输入停止 350ms 后重新加载
   useEffect(() => {
@@ -141,7 +226,9 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
         path: meta.path,
         files: meta.files,
         source: 'bifrost',
-        note: meta.note,
+        note: meta.user_note ?? meta.note,
+        userRating: meta.user_rating ?? s.user_rating,
+        userNote: meta.user_note ?? s.user_note,
       });
     } catch (e: any) {
       setError(e?.message || '安装失败，请重试');
@@ -219,18 +306,19 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
           </Button>
         </div>
       )}
-      {!loading && !error && skills.length === 0 && (
+      {!loading && !error && filteredSkills.length === 0 && (
         <div className="py-10 flex flex-col items-center gap-2 text-center">
           <Archive size={30} strokeWidth={1} className="text-ink-faint" />
           <p className="text-sm text-ink-light font-sans">
-            {q.trim() ? `没有匹配「${q.trim()}」的 skill` : 'Bifrost Skills 仓库为空（或未配置）'}
+            {q.trim() || ratingFilter ? '没有匹配筛选条件的 skill' : 'Bifrost Skills 仓库为空（或未配置）'}
           </p>
         </div>
       )}
       {!loading &&
         !error &&
-        skills.map((s) => {
+        filteredSkills.map((s) => {
           const isSelected = selectedNames.has(s.name);
+          const noteText = s.user_note || s.note;
           return (
             <div
               key={s.id}
@@ -245,7 +333,7 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
                 <Archive size={16} strokeWidth={1.5} className="text-ink-light" />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <p className="text-sm font-medium text-ink truncate">{s.name}</p>
                   {s.latest_version && (
                     <span className="shrink-0 text-[10px] text-ink-faint font-mono">v{s.latest_version}</span>
@@ -255,11 +343,28 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
                       {s.file_count} 文件
                     </span>
                   )}
+                  <div onClick={(e) => e.stopPropagation()} className="ml-auto flex items-center gap-2">
+                    <RatingStars
+                      value={s.user_rating || 0}
+                      onChange={(r) => void handleUpdateRating(s, r)}
+                      size="xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setEditingTarget(s)}
+                      title={noteText ? `备注：${noteText}` : '添加私有备注'}
+                      className={`p-1 rounded hover:bg-paper-grid transition ${
+                        noteText ? 'text-accent' : 'text-ink-faint hover:text-ink'
+                      }`}
+                    >
+                      <StickyNote size={13} />
+                    </button>
+                  </div>
                 </div>
                 <p className="text-xs text-ink-light line-clamp-2 leading-relaxed mt-1">{s.description || '（无描述）'}</p>
-                {s.note && (
-                  <p className="text-[10px] text-ink-light/90 italic leading-relaxed mt-1 line-clamp-2">
-                    备注：{s.note}
+                {noteText && (
+                  <p className="text-[11px] text-accent font-sans mt-1 line-clamp-1 italic bg-accent-surface/50 px-1.5 py-0.5 rounded border border-accent/20">
+                    备注：{noteText}
                   </p>
                 )}
                 {s.compatibility && (
@@ -267,7 +372,7 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
                 )}
               </div>
               <span
-                className={`shrink-0 self-center text-[10px] rounded-pill px-2 py-1 border flex items-center gap-1 transition-colors duration-150 ${
+                className={`shrink-0 self-center text-[10px] rounded-pill px-2 py-1 border flex items-center gap-1 transition-colors duration-150 ml-2 ${
                   isSelected
                     ? 'text-accent border-accent/40 bg-accent-surface font-medium'
                     : 'text-accent border-dashed border-accent/30'
@@ -322,6 +427,9 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
                 <Archive size={10} strokeWidth={2} />
               )}
               <span className="truncate max-w-[160px]">{s.name}</span>
+              {s.userRating ? (
+                <span className="text-[10px] text-amber-500 font-sans">★{s.userRating}</span>
+              ) : null}
               <button
                 type="button"
                 aria-label={`移除 ${s.name}`}
@@ -386,24 +494,32 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
               </div>
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto pr-1.5 custom-scrollbar space-y-2.5">
-              {selections.map((s) => (
-                <div key={s.name} className="rounded-lg border border-paper-grid bg-paper/40 p-2.5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-accent border border-dashed border-accent/30 rounded-pill px-1.5 py-px font-mono shrink-0">
-                      {s.source === 'upload' ? '上传' : 'Bifrost'}
-                    </span>
-                    <p className="text-xs font-medium text-ink truncate">{s.name}</p>
+              {selections.map((s) => {
+                const noteText = s.userNote || s.note;
+                return (
+                  <div key={s.name} className="rounded-lg border border-paper-grid bg-paper/40 p-2.5 space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-[10px] text-accent border border-dashed border-accent/30 rounded-pill px-1.5 py-px font-mono shrink-0">
+                          {s.source === 'upload' ? '上传' : 'Bifrost'}
+                        </span>
+                        <p className="text-xs font-medium text-ink truncate">{s.name}</p>
+                      </div>
+                      {s.userRating ? (
+                        <RatingStars value={s.userRating} readonly size="xs" />
+                      ) : null}
+                    </div>
+                    {s.description && (
+                      <p className="text-[11px] text-ink-light line-clamp-2 leading-relaxed">{s.description}</p>
+                    )}
+                    {noteText && (
+                      <p className="text-[10px] text-accent font-sans italic line-clamp-2 bg-accent-surface/30 px-1.5 py-0.5 rounded border border-accent/20">
+                        备注：{noteText}
+                      </p>
+                    )}
                   </div>
-                  {s.description && (
-                    <p className="text-[11px] text-ink-light line-clamp-2 leading-relaxed mt-1">{s.description}</p>
-                  )}
-                  {s.note && (
-                    <p className="text-[10px] text-ink-light/90 italic leading-relaxed mt-1 line-clamp-2">
-                      备注：{s.note}
-                    </p>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -411,81 +527,109 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
 
       {typeof document !== 'undefined' &&
         createPortal(
-          <Dialog
-            open={pickerOpen}
-            onClose={closePicker}
-            title="选择 Skill"
-            panelClassName="max-w-2xl h-[620px] max-h-[90vh] flex flex-col"
-          >
-            <div className="h-full flex flex-col gap-3">
-              {/* 上传本地 zip */}
-              <div className="shrink-0 rounded-md border border-dashed border-paper-grid bg-paper-grid/20 p-3">
-                <div className="flex items-center gap-3">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".zip,application/zip"
-                    className="hidden"
-                    onChange={handlePickFile}
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    isLoading={uploading}
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <Upload size={14} strokeWidth={1.5} className="mr-1" />
-                    上传本地 skill zip
-                  </Button>
-                  <p className="text-xs text-ink-faint font-sans">
-                    zip 根目录必须包含 SKILL.md（含 name / description 元数据）
-                  </p>
+          <>
+            <Dialog
+              open={pickerOpen}
+              onClose={closePicker}
+              title="选择 Skill"
+              panelClassName="max-w-2xl h-[620px] max-h-[90vh] flex flex-col"
+            >
+              <div className="h-full flex flex-col gap-3">
+                {/* 上传本地 zip */}
+                <div className="shrink-0 rounded-md border border-dashed border-paper-grid bg-paper-grid/20 p-3">
+                  <div className="flex items-center gap-3">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".zip,application/zip"
+                      className="hidden"
+                      onChange={handlePickFile}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      isLoading={uploading}
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <Upload size={14} strokeWidth={1.5} className="mr-1" />
+                      上传本地 skill zip
+                    </Button>
+                    <p className="text-xs text-ink-faint font-sans">
+                      zip 根目录必须包含 SKILL.md（含 name / description 元数据）
+                    </p>
+                  </div>
+                  {uploadError && (
+                    <p className="mt-2 text-xs text-error font-sans flex items-start gap-1">
+                      <X size={11} strokeWidth={2} className="shrink-0 mt-0.5" />
+                      {uploadError}
+                    </p>
+                  )}
                 </div>
-                {uploadError && (
-                  <p className="mt-2 text-xs text-error font-sans flex items-start gap-1">
-                    <X size={11} strokeWidth={2} className="shrink-0 mt-0.5" />
-                    {uploadError}
+
+                {/* Bifrost 检索输入框与星级筛选 */}
+                <div className="shrink-0 flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Search
+                      size={15}
+                      strokeWidth={1.5}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint pointer-events-none"
+                    />
+                    <Input
+                      value={q}
+                      onChange={(e) => setQ(e.target.value)}
+                      placeholder="搜索 Bifrost Skills 仓库…（点击条目切换选择）"
+                      className="pl-9"
+                      autoFocus
+                    />
+                  </div>
+                  <Select
+                    value={ratingFilter}
+                    onChange={(val) => setRatingFilter(val)}
+                    className="w-36"
+                    options={[
+                      { label: '全部打标', value: '' },
+                      { label: '★ 5 星', value: '5' },
+                      { label: '★ 4 星及以上', value: '4+' },
+                      { label: '★ 3 星及以上', value: '3+' },
+                      { label: '已打标', value: 'rated' },
+                      { label: '未打标', value: 'unrated' },
+                      { label: '仅有备注', value: 'noted' },
+                    ]}
+                  />
+                </div>
+
+                {/* 结果列表（弹性填充可用空间） */}
+                {renderBifrostList()}
+
+                {/* 已选列表（置于列表下方，零布局偏移） */}
+                {renderSelectedChips()}
+
+                {/* 底部操作与完成 */}
+                <div className="shrink-0 flex items-center justify-between pt-2.5 border-t border-dashed border-paper-grid">
+                  <p className="text-[11px] text-ink-faint font-sans tabular-nums">
+                    {selections.length > 0
+                      ? `共已选择 ${selections.length} 个 skill`
+                      : '尚未选择 skill'}
                   </p>
-                )}
+                  <Button variant="ghost" size="sm" onClick={closePicker}>
+                    <Check size={14} strokeWidth={2} className="mr-1" />
+                    完成
+                  </Button>
+                </div>
               </div>
+            </Dialog>
 
-              {/* Bifrost 检索输入框 */}
-              <div className="shrink-0 relative">
-                <Search
-                  size={15}
-                  strokeWidth={1.5}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint pointer-events-none"
-                />
-                <Input
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  placeholder="搜索 Bifrost Skills 仓库…（点击条目切换选择）"
-                  className="pl-9"
-                  autoFocus
-                />
-              </div>
-
-              {/* 结果列表（弹性填充可用空间） */}
-              {renderBifrostList()}
-
-              {/* 已选列表（置于列表下方，零布局偏移） */}
-              {renderSelectedChips()}
-
-              {/* 底部操作与完成 */}
-              <div className="shrink-0 flex items-center justify-between pt-2.5 border-t border-dashed border-paper-grid">
-                <p className="text-[11px] text-ink-faint font-sans tabular-nums">
-                  {selections.length > 0
-                    ? `共已选择 ${selections.length} 个 skill`
-                    : '尚未选择 skill'}
-                </p>
-                <Button variant="ghost" size="sm" onClick={closePicker}>
-                  <Check size={14} strokeWidth={2} className="mr-1" />
-                  完成
-                </Button>
-              </div>
-            </div>
-          </Dialog>,
+            {/* 独立备注编辑弹窗 */}
+            <NoteEditModal
+              open={Boolean(editingTarget)}
+              onClose={() => setEditingTarget(null)}
+              resourceName={editingTarget?.name || ''}
+              initialRating={editingTarget?.user_rating || 0}
+              initialNote={editingTarget?.user_note || editingTarget?.note || ''}
+              onSave={handleSaveAnnotation}
+            />
+          </>,
           document.body
         )}
     </>
@@ -495,3 +639,4 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
 export const SkillSearchNode = memo(SkillSearchNodeInner);
 SkillSearchNode.displayName = 'SkillSearchNode';
 export default SkillSearchNode;
+
