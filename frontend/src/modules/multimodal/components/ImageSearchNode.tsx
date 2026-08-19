@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { Check, ImageOff, Loader2, RefreshCw, Search, X } from 'lucide-react';
+import { Check, Image as ImageIcon, ImageOff, Loader2, RefreshCw, Search, X } from 'lucide-react';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
 import api from '../../../platform/services/api';
@@ -14,7 +14,7 @@ import { SearchImageThumbnail } from './SearchImageThumbnail';
 /** 检索结果项（后端 image-search 归一化后的统一形态） */
 export interface ImageSearchItem {
   id: string;
-  source: 'unsplash' | 'pixabay';
+  source: string;
   thumbUrl: string;
   previewUrl: string;
   fullUrl: string;
@@ -28,7 +28,8 @@ export interface ImageSearchItem {
 
 /** 选中图片写入 node.data.selectedImage 的元数据（持久化，供下游/展示使用） */
 export interface ImageSearchSelection {
-  source: 'unsplash' | 'pixabay';
+  source: string;
+  sourceLabel?: string;
   photographer: string;
   description: string;
   pageUrl: string;
@@ -45,8 +46,8 @@ export interface ImageSearchNodeProps {
   imageUrl?: string | null;
   /** 已选图片元数据（署名等） */
   selectedImage?: ImageSearchSelection | null;
-  /** 当前来源 tab（持久化在 node.data.provider） */
-  provider?: 'unsplash' | 'pixabay';
+  /** 当前来源 tab（持久化在 node.data.provider：unsplash / pixabay / nasa-image） */
+  provider?: string;
   /** 连线上级文本（连线即输入：优先作为检索关键词） */
   upstreamKeyword?: string;
   /** 页面级错误（选择保存失败等，写入 node.data.error） */
@@ -64,15 +65,19 @@ export interface ImageSearchNodeProps {
   hasDownstream?: boolean;
 }
 
-const PROVIDERS = [
-  { value: 'unsplash', label: 'Unsplash' },
-  { value: 'pixabay', label: 'Pixabay' },
-] as const;
+const PROVIDERS: { value: string; label: string; title?: string; icon?: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }> }[] = [
+  { value: 'unsplash', label: 'Unsplash', title: 'Unsplash 免版权图库' },
+  { value: 'pixabay', label: 'Pixabay', title: 'Pixabay 免版权图库' },
+  {
+    value: 'nasa-image',
+    label: 'NASA',
+    title: 'NASA 图片库 · 关键词检索（留空 = 随机浏览）· 公有领域无需凭据',
+    icon: ImageIcon,
+  },
+];
 
 /** 每页条数（网格 3 列 × 8 行） */
 const PER_PAGE = 24;
-
-type ProviderType = 'unsplash' | 'pixabay';
 
 /** 每个图库提供商的独立缓存与检索状态 */
 interface ProviderCacheState {
@@ -83,12 +88,12 @@ interface ProviderCacheState {
   lastLoadedQuery: string;
 }
 
-type ProviderCacheMap = Record<ProviderType, ProviderCacheState>;
+type ProviderCacheMap = Record<string, ProviderCacheState>;
 
-const initialProviderCache: ProviderCacheMap = {
-  unsplash: { items: [], hasMore: false, searchError: '', loaded: false, lastLoadedQuery: '' },
-  pixabay: { items: [], hasMore: false, searchError: '', loaded: false, lastLoadedQuery: '' },
-};
+const initialProviderCache = (): ProviderCacheMap =>
+  Object.fromEntries(
+    PROVIDERS.map((p) => [p.value, { items: [], hasMore: false, searchError: '', loaded: false, lastLoadedQuery: '' }])
+  );
 
 const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
   id,
@@ -113,7 +118,7 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
   const { showToast } = useFeedback();
 
   // ---- 编辑器状态（provider 持久化；query 跨 Tab 共享；结果集按 provider 隔离缓存） ----
-  const [activeProvider, setActiveProvider] = useState<ProviderType>(provider);
+  const [activeProvider, setActiveProvider] = useState<string>(provider);
   const [query, setQuery] = useState('');
   const [providerCache, setProviderCache] = useState<ProviderCacheMap>(initialProviderCache);
   const [loadingType, setLoadingType] = useState<'search' | 'refresh' | 'more' | 'auto' | null>(null);
@@ -135,7 +140,7 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
 
   const load = useCallback(
     async (
-      targetProvider: ProviderType,
+      targetProvider: string,
       queryText: string,
       page: number,
       replace: boolean,
@@ -224,7 +229,7 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
     }
   }, [upstreamKeyword, activeProvider, query, load]);
 
-  const switchProvider = (p: 'unsplash' | 'pixabay') => {
+  const switchProvider = (p: string) => {
     if (p === activeProvider) return;
     setActiveProvider(p);
     // 离散编辑：持久化到 node.data（切页保持），不记撤销历史（与地图海报 renderMode 同口径）
@@ -252,9 +257,12 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
   const handleSelect = async (item: ImageSearchItem) => {
     if (hasDownstream || savingId) return;
     setSavingId(item.id);
+    const providerMeta = PROVIDERS.find((p) => p.value === item.source);
+    const sourceLabel = providerMeta?.value === 'nasa-image' ? 'NASA 图片库' : providerMeta?.label;
     try {
       await onSelectImage?.(id, item.previewUrl, {
         source: item.source,
+        sourceLabel,
         photographer: item.photographer,
         description: item.description,
         pageUrl: item.pageUrl,
@@ -273,12 +281,14 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
     if (!imageUrl) return;
     const a = document.createElement('a');
     const ext = imageUrl.split('.').pop()?.split('?')[0]?.toLowerCase() || 'png';
+    const prefix = activeProvider === 'nasa-image' ? 'nasa-image' : 'search-image';
     a.href = imageUrl;
-    a.download = `search-image-${Date.now()}.${ext}`;
+    a.download = `${prefix}-${Date.now()}.${ext}`;
     a.click();
   };
 
-  const providerLabel = activeProvider === 'unsplash' ? 'Unsplash' : 'Pixabay';
+  const activeProviderMeta = PROVIDERS.find((p) => p.value === activeProvider);
+  const providerLabel = activeProviderMeta?.label ?? activeProvider;
 
   return (
     <CanvasNode
@@ -318,7 +328,7 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
                   key={p.value}
                   type="button"
                   onClick={() => switchProvider(p.value)}
-                  title={p.value === 'unsplash' ? 'Unsplash 免版权图库' : 'Pixabay 免版权图库'}
+                  title={p.title ?? ''}
                   className={`px-2.5 h-7 rounded text-xs font-serif transition-colors ${
                     activeProvider === p.value
                       ? 'bg-accent text-paper'
@@ -339,6 +349,14 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
               <RefreshCw size={13} strokeWidth={2} className={loadingType === 'refresh' ? 'animate-spin' : ''} />
             </button>
           </div>
+
+          {/* 提供商提示（NASA 等有额外说明） */}
+          {activeProviderMeta?.icon && activeProviderMeta?.title && (
+            <p className="shrink-0 text-[10px] font-sans text-ink-faint leading-snug truncate" title={activeProviderMeta.title}>
+              <activeProviderMeta.icon size={10} strokeWidth={1.5} className="inline mr-1 -mt-px" />
+              {activeProviderMeta.title}
+            </p>
+          )}
 
           {/* 关键词检索 */}
           <form onSubmit={handleSearch} className="shrink-0 relative">
@@ -430,10 +448,10 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
                           previewUrl={item.previewUrl}
                           alt={item.description || item.photographer || ''}
                         />
-                        {/* 底部署名 */}
-                        {item.photographer && (
+                        {/* 底部说明（描述优先于摄影师） */}
+                        {(item.description || item.photographer) && (
                           <div className="absolute inset-x-0 bottom-0 px-1 py-0.5 bg-gradient-to-t from-black/50 to-transparent pointer-events-none z-10">
-                            <p className="text-[9px] text-white/90 truncate">{item.photographer}</p>
+                            <p className="text-[9px] text-white/90 truncate">{item.description || item.photographer}</p>
                           </div>
                         )}
                         {/* 选择 / 已选 徽章与操作按钮 */}
@@ -518,15 +536,21 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
                       </span>
                     )}
                     <span className="text-ink-faint text-[10px]">
-                      {selectedImage?.source === 'pixabay' ? '· Pixabay' : selectedImage?.source === 'unsplash' ? '· Unsplash' : ''}
+                      {selectedImage?.sourceLabel ? `· ${selectedImage.sourceLabel}` : selectedImage?.source ? `· ${selectedImage.source}` : ''}
                     </span>
                   </p>
                   <p className="text-[10px] text-ink-faint font-sans truncate">
                     {hasDownstream
-                      ? (selectedImage?.photographer ? `摄影师：${selectedImage.photographer}（输出已连接到下游）` : '输出已连接到下游节点，如需更换请先断开连线')
-                      : (selectedImage?.photographer
-                        ? `摄影师：${selectedImage.photographer}`
-                        : '可作为图片输出给下游节点')}
+                      ? (selectedImage?.description
+                        ? `${selectedImage.description}（输出已连接到下游）`
+                        : selectedImage?.photographer
+                          ? `摄影师：${selectedImage.photographer}（输出已连接到下游）`
+                          : '输出已连接到下游节点，如需更换请先断开连线')
+                      : (selectedImage?.description
+                        ? selectedImage.description
+                        : selectedImage?.photographer
+                          ? `摄影师：${selectedImage.photographer}`
+                          : '可作为图片输出给下游节点')}
                   </p>
                 </div>
               </>

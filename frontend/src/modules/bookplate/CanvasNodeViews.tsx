@@ -16,7 +16,6 @@ import { WikipediaSearchNode, type WikipediaSearchRequest } from './components/W
 import { MapPosterNode } from '../../modules/multimodal/components/MapPosterNode';
 import { ImageSearchNode, type ImageSearchSelection } from '../../modules/multimodal/components/ImageSearchNode';
 import { ArtImageSearchNode, type GlamSearchSelection } from '../../modules/multimodal/components/ArtImageSearchNode';
-import { NasaImageSearchNode, type NasaSearchSelection } from '../../modules/multimodal/components/NasaImageSearchNode';
 import { MAP_POSTER_DEFAULTS } from '../../modules/multimodal/map/defaults';
 import { getNodeTitle, matchPortType, nodeOutputText, resolveDirectParents } from './nodeTypes';
 import {
@@ -99,7 +98,7 @@ export interface NodeViewHelpers {
   /** 艺术图片检索节点：编辑器状态（provider 等）写入 node.data（仅持久化，不记撤销历史） */
   handleUpdateGlamEditorFor: (id: string, patch: Record<string, any>, undoable: boolean) => void;
   /** NASA 图片检索节点：选中图片 → 下载到本地 → 写回 node.data.imageUrl（作为图片输出） */
-  handleSelectNasaImageFor: (id: string, url: string, meta: NasaSearchSelection) => Promise<void>;
+  handleSelectNasaImageFor: (id: string, url: string, meta: ImageSearchSelection) => Promise<void>;
   /** NASA 图片检索节点：编辑器状态（provider 等）写入 node.data（仅持久化，不记撤销历史） */
   handleUpdateNasaEditorFor: (id: string, patch: Record<string, any>, undoable: boolean) => void;
   /** 文本聚合节点：保存占位符模板 */
@@ -543,7 +542,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           .text.map((p) => nodeOutputText(p))
           .find((v) => v.trim()) ?? '';
       return (
-        <NasaImageSearchNode
+        <ImageSearchNode
           key={node.id}
           {...common}
           imageUrl={typeof d.imageUrl === 'string' ? d.imageUrl : null}
