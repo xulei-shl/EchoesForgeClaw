@@ -91,6 +91,26 @@ const DEFAULT_SETTINGS: Array<[string, string, string]> = [
     '艺术图片检索节点美国国会图书馆（LoC）是否使用全局代理（true = 启用，false = 直连）',
   ],
   [
+    'tavily.api_key',
+    '',
+    '网络搜索节点（Tavily）API Key（https://tavily.com 注册获取；敏感，仅显示掩码）',
+  ],
+  [
+    'exa.api_key',
+    '',
+    '网络搜索节点（Exa）API Key（https://exa.ai 注册获取；敏感，仅显示掩码）',
+  ],
+  [
+    'anysearch.api_key',
+    '',
+    '网络搜索节点（AnySearch）API Key（https://anysearch.com 注册获取；敏感，仅显示掩码；支持匿名调用）',
+  ],
+  [
+    'doubao.api_key',
+    '',
+    '网络搜索节点（豆包搜索）API Key（https://console.volcengine.com/search-infinity 获取；敏感，仅显示掩码）',
+  ],
+  [
     'zhihu.access_secret',
     env.zhihuAccessSecret,
     '知乎检索节点（知乎开发者平台开放 API）Access Secret（敏感，仅显示掩码；初始来自 .env，可在本页修改）',

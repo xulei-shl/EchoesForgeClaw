@@ -2,13 +2,11 @@ import React, { memo, useEffect, useState, useCallback, useMemo, useRef } from '
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search,
-  Globe,
   Sparkles,
   Loader2,
   AlertTriangle,
   Link2,
   X,
-  SlidersHorizontal,
   RotateCw,
 } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
@@ -20,20 +18,16 @@ import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
 import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
 import { NODE_COLORS } from '../nodeTypes';
 
-/** 知乎检索的 3 类模式：站内搜索 / 全网搜索 / 直答 */
-export type ZhihuSearchMode = 'zhihu' | 'global' | 'zhida';
+/** 知乎检索的 2 类模式：站内搜索 / 直答 */
+export type ZhihuSearchMode = 'zhihu' | 'zhida';
 
 /** 提交给页面的检索请求（页面合并上级连线文本后转发后端） */
 export interface ZhihuSearchRequest {
   mode: ZhihuSearchMode;
   /** 检索关键词 / 直答问题（页面以连线上级文本优先覆盖） */
   query: string;
-  /** 请求数量（zhihu 1-10 / global 1-20） */
+  /** 请求数量（zhihu 1-10） */
   count: number;
-  /** 全网搜索高级筛选表达式（仅 global） */
-  filter: string;
-  /** 全网搜索索引库：all / realtime / static（仅 global） */
-  search_db: string;
   /** 直答模型档位（仅 zhida） */
   model: string;
 }
@@ -46,12 +40,8 @@ export interface ZhihuSearchTabData {
   error: string | null;
   /** 是否正在生成 */
   isGenerating: boolean;
-  /** 搜索条数（zhihu 1-10 / global 1-20） */
+  /** 搜索条数（zhihu 1-10） */
   count?: number;
-  /** 全网搜索高级筛选语法（仅 global） */
-  filter?: string;
-  /** 全网搜索索引库（仅 global） */
-  search_db?: string;
   /** 直答模型档位（仅 zhida） */
   model?: string;
 }
@@ -69,10 +59,6 @@ export interface ZhihuSearchNodeProps {
   tabData?: Partial<Record<ZhihuSearchMode, ZhihuSearchTabData>>;
   /** 兼容旧字段：请求数量（写入 data.count） */
   count?: number;
-  /** 兼容旧字段：全网搜索高级筛选表达式（写入 data.filter） */
-  filter?: string;
-  /** 兼容旧字段：全网搜索索引库（写入 data.search_db） */
-  search_db?: string;
   /** 兼容旧字段：直答模型档位（写入 data.model） */
   model?: string;
   /** 连线上级文本节点提供的关键词 / 问题（连线即输入，优先于手动输入） */
@@ -98,7 +84,7 @@ export interface ZhihuSearchNodeProps {
   hasDownstream?: boolean;
 }
 
-/** 模式页签配置（交互入口：3 类检索一键切换） */
+/** 模式页签配置（交互入口：2 类检索一键切换） */
 const MODE_TABS: {
   value: ZhihuSearchMode;
   label: string;
@@ -114,13 +100,6 @@ const MODE_TABS: {
     emptyDesc: '检索知乎站内高赞回答、专栏与专业讨论',
   },
   {
-    value: 'global',
-    label: '全网搜索',
-    icon: Globe,
-    tagline: '全网多源检索',
-    emptyDesc: '全网综合信息检索，支持实时索引与条件筛选',
-  },
-  {
     value: 'zhida',
     label: '直答',
     icon: Sparkles,
@@ -129,21 +108,13 @@ const MODE_TABS: {
   },
 ];
 
-/** 各模式请求数量上限（zhihu 10 / global 20，与后端一致） */
-const MAX_COUNT: Record<ZhihuSearchMode, number> = { zhihu: 10, global: 20, zhida: 10 };
+/** 各模式请求数量上限（zhihu 10，与后端一致） */
+const MAX_COUNT: Record<ZhihuSearchMode, number> = { zhihu: 10, zhida: 10 };
 
 /** 数量下拉选项 */
 const COUNT_OPTIONS: Record<Exclude<ZhihuSearchMode, 'zhida'>, SelectOption[]> = {
   zhihu: [3, 5, 10].map((v) => ({ label: `${v} 条`, value: String(v) })),
-  global: [5, 10, 20].map((v) => ({ label: `${v} 条`, value: String(v) })),
 };
-
-/** 全网搜索索引库选项 */
-const SEARCH_DB_OPTIONS: SelectOption[] = [
-  { label: '全部索引库', value: 'all', title: '搜索全部内容（默认）' },
-  { label: '实时库', value: 'realtime', title: '仅搜索实时索引' },
-  { label: '静态库', value: 'static', title: '仅搜索静态索引' },
-];
 
 /** 直答模型档位选项 */
 const ZHIDA_MODEL_OPTIONS: SelectOption[] = [
@@ -155,7 +126,6 @@ const ZHIDA_MODEL_OPTIONS: SelectOption[] = [
 /** 默认 Tab 初始数据模板 */
 const DEFAULT_TAB_DATA: Record<ZhihuSearchMode, ZhihuSearchTabData> = {
   zhihu: { output: '', error: null, isGenerating: false, count: 5 },
-  global: { output: '', error: null, isGenerating: false, count: 5, filter: '', search_db: 'all' },
   zhida: { output: '', error: null, isGenerating: false, model: 'zhida-fast-1p5' },
 };
 
@@ -168,8 +138,6 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
   query = '',
   tabData,
   count = 5,
-  filter = '',
-  search_db = 'all',
   model = 'zhida-fast-1p5',
   upstreamQuery = '',
   output = '',
@@ -192,7 +160,7 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
   // 全局共享检索词
   const [queryInput, setQueryInput] = useState<string>(query);
 
-  // 初始化合并 3 个模式各自独立的数据状态
+  // 初始化合并 2 个模式各自独立的数据状态
   const initialMergedTabData = useMemo<Record<ZhihuSearchMode, ZhihuSearchTabData>>(() => {
     return {
       zhihu: {
@@ -204,16 +172,6 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
         error: tabData?.zhihu?.error ?? (mode === 'zhihu' ? error : null),
         isGenerating: tabData?.zhihu?.isGenerating ?? (mode === 'zhihu' ? isGenerating : false),
       },
-      global: {
-        ...DEFAULT_TAB_DATA.global,
-        count: count ?? 5,
-        filter: filter ?? '',
-        search_db: search_db ?? 'all',
-        ...(tabData?.global || {}),
-        output: tabData?.global?.output ?? (mode === 'global' ? output : ''),
-        error: tabData?.global?.error ?? (mode === 'global' ? error : null),
-        isGenerating: tabData?.global?.isGenerating ?? (mode === 'global' ? isGenerating : false),
-      },
       zhida: {
         ...DEFAULT_TAB_DATA.zhida,
         model: model ?? 'zhida-fast-1p5',
@@ -223,10 +181,9 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
         isGenerating: tabData?.zhida?.isGenerating ?? (mode === 'zhida' ? isGenerating : false),
       },
     };
-  }, [tabData, mode, count, filter, search_db, model, output, error, isGenerating]);
+  }, [tabData, mode, count, model, output, error, isGenerating]);
 
   const [localTabData, setLocalTabData] = useState<Record<ZhihuSearchMode, ZhihuSearchTabData>>(initialMergedTabData);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // 外部 Props 变化时同步更新
@@ -283,8 +240,6 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
           tabData: nextMap,
           ...(activeMode === 'zhida' && patch.model ? { model: patch.model } : {}),
           ...(activeMode !== 'zhida' && patch.count ? { count: patch.count } : {}),
-          ...(activeMode === 'global' && patch.filter !== undefined ? { filter: patch.filter } : {}),
-          ...(activeMode === 'global' && patch.search_db !== undefined ? { search_db: patch.search_db } : {}),
         },
         false
       );
@@ -299,9 +254,7 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
       const q = targetQuery !== undefined ? targetQuery.trim() : effectiveQuery;
       if (!q) return;
 
-      const requestCount = Math.min(currentTab.count ?? 5, MAX_COUNT[activeMode]);
-      const requestFilter = currentTab.filter ?? '';
-      const requestSearchDb = currentTab.search_db ?? 'all';
+      const requestCount = activeMode === 'zhida' ? 0 : Math.min(currentTab.count ?? 5, MAX_COUNT[activeMode]);
       const requestModel = currentTab.model ?? 'zhida-fast-1p5';
 
       // 乐观更新当前 Tab 为生成态
@@ -318,8 +271,6 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
         mode: activeMode,
         query: q,
         count: requestCount,
-        filter: requestFilter,
-        search_db: requestSearchDb,
         model: requestModel,
       });
     },
@@ -580,7 +531,7 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
                     <input
                       value={queryInput}
                       onChange={(e) => setQueryInput(e.target.value)}
-                      placeholder={activeMode === 'global' ? '输入关键词，全网检索…' : '输入关键词，知乎站内检索…'}
+                      placeholder="输入关键词，知乎站内检索…"
                       disabled={currentTab.isGenerating}
                       className="w-full h-8 rounded-lg border border-dashed border-paper-grid bg-transparent pl-2.5 pr-8 text-xs text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors font-mono disabled:opacity-50"
                     />
@@ -599,7 +550,7 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
                   <Select
                     value={String(currentTab.count ?? 5)}
                     onChange={(v) => updateCurrentTabConfig({ count: Number(v) })}
-                    options={COUNT_OPTIONS[activeMode as Exclude<ZhihuSearchMode, 'zhida'>]}
+                    options={COUNT_OPTIONS.zhihu}
                     disabled={currentTab.isGenerating}
                     size="sm"
                     className="w-[76px] shrink-0"
@@ -614,13 +565,12 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
                   </button>
                 </form>
               ) : (
-                /* 有上级连线时的条数选择栏 */
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[11px] font-sans text-ink-faint shrink-0">检索数量</span>
                   <Select
                     value={String(currentTab.count ?? 5)}
                     onChange={(v) => updateCurrentTabConfig({ count: Number(v) })}
-                    options={COUNT_OPTIONS[activeMode as Exclude<ZhihuSearchMode, 'zhida'>]}
+                    options={COUNT_OPTIONS.zhihu}
                     disabled={currentTab.isGenerating}
                     size="sm"
                     className="w-28"
@@ -628,55 +578,7 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
                 </div>
               )}
 
-              {/* 全网搜索专属：高级筛选折叠面板（平滑手风琴展开动效） */}
-              {activeMode === 'global' && (
-                <div className="space-y-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setAdvancedOpen((o) => !o)}
-                    disabled={currentTab.isGenerating}
-                    className="inline-flex items-center gap-1 text-[11px] font-sans text-ink-faint hover:text-accent active:scale-[0.96] transition-transform transition-colors disabled:opacity-40"
-                  >
-                    <SlidersHorizontal size={11} strokeWidth={2} />
-                    <span>高级筛选</span>
-                    <span className="text-[10px] text-ink-faint/80">
-                      {advancedOpen ? '（收起）' : currentTab.filter ? '（已设置筛选）' : '（展开）'}
-                    </span>
-                  </button>
-
-                  <AnimatePresence>
-                    {advancedOpen && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0, overflow: 'hidden' }}
-                        animate={{ opacity: 1, height: 'auto', overflow: 'visible' }}
-                        exit={{ opacity: 0, height: 0, overflow: 'hidden' }}
-                        transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-                        className="space-y-1.5 p-2 rounded-lg border border-dashed border-paper-grid bg-paper-grid/10"
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] font-sans text-ink-faint shrink-0 w-12">索引库</span>
-                          <Select
-                            value={currentTab.search_db ?? 'all'}
-                            onChange={(v) => updateCurrentTabConfig({ search_db: v })}
-                            options={SEARCH_DB_OPTIONS}
-                            disabled={currentTab.isGenerating}
-                            size="sm"
-                            className="flex-1"
-                          />
-                        </div>
-                        <input
-                          value={currentTab.filter ?? ''}
-                          onChange={(e) => updateCurrentTabConfig({ filter: e.target.value })}
-                          placeholder='Filter 语法，如 host=="zhihu.com" AND publish_time>=1778494631'
-                          disabled={currentTab.isGenerating}
-                          className="w-full h-7 rounded-md border border-dashed border-paper-grid bg-transparent px-2 text-[11px] text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors font-mono disabled:opacity-50"
-                        />
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              )}
-            </>
+              </>
           )}
         </div>
 
@@ -713,7 +615,7 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
                 </div>
                 <div className="space-y-1 max-w-[80%]">
                   <p className="text-xs font-serif text-accent font-medium">
-                    {isZhida ? '直答思考中…' : activeMode === 'global' ? '正在全网检索…' : '正在知乎站内检索…'}
+                    {isZhida ? '直答思考中…' : '正在知乎站内检索…'}
                   </p>
                   <p className="text-[11px] font-mono text-ink-faint truncate">{effectiveQuery}</p>
                 </div>
@@ -773,8 +675,6 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
                 <div className="w-12 h-12 rounded-full border border-dashed border-paper-grid bg-paper-grid/20 flex items-center justify-center text-ink-faint">
                   {isZhida ? (
                     <Sparkles size={20} strokeWidth={1.5} />
-                  ) : activeMode === 'global' ? (
-                    <Globe size={20} strokeWidth={1.5} />
                   ) : (
                     <Search size={20} strokeWidth={1.5} />
                   )}

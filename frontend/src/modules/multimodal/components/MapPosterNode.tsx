@@ -1,12 +1,11 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import * as maplibregl from 'maplibre-gl';
-import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'leaflet/dist/leaflet.css';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
-// 显式配置 MapLibre GL 矢量瓦片 Worker（避免 Vite 打包环境 Worker 丢失导致矢量图形无法解析）
-maplibregl.setWorkerUrl(maplibreWorkerUrl);
+// 显式配置 MapLibre GL 矢量瓦片 Worker（指向 public 静态资源，避免 Vite 开发环境下向 Worker 注入包含 DOM/Window 的客户端脚本导致 Worker 崩溃）
+maplibregl.setWorkerUrl('/maplibre/maplibre-gl-worker.mjs');
 import { ImageDown, Loader2, Map as MapIcon, MapPin, Search, X } from 'lucide-react';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
@@ -258,6 +257,10 @@ const MapPosterNodeInner: React.FC<MapPosterNodeProps> = ({
       } as maplibregl.MapOptions);
       amap.scrollZoom.setWheelZoomRate(1);
       amap.scrollZoom.setZoomRate(1 / 600);
+
+      amap.on('error', (e) => {
+        console.error('[MapLibre Error]', e);
+      });
 
       amap.on('style.load', () => {
         if (pendingArtisticStyleRef.current) {

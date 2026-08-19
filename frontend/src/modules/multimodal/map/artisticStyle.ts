@@ -22,11 +22,12 @@ export function generateMapLibreStyle(theme: ArtisticTheme): StyleSpecification 
         paint: { 'background-color': theme.bg },
       },
       {
-        id: 'water',
+        id: 'landcover',
         source: 'openfreemap',
-        'source-layer': 'water',
+        'source-layer': 'landcover',
         type: 'fill',
-        paint: { 'fill-color': theme.water },
+        filter: ['==', ['get', 'class'], 'grass'],
+        paint: { 'fill-color': theme.parks },
       },
       {
         id: 'park',
@@ -36,12 +37,26 @@ export function generateMapLibreStyle(theme: ArtisticTheme): StyleSpecification 
         paint: { 'fill-color': theme.parks },
       },
       {
+        id: 'water',
+        source: 'openfreemap',
+        'source-layer': 'water',
+        type: 'fill',
+        paint: { 'fill-color': theme.water },
+      },
+      {
+        id: 'waterway',
+        source: 'openfreemap',
+        'source-layer': 'waterway',
+        type: 'line',
+        paint: { 'line-color': theme.water, 'line-width': 1.2 },
+      },
+      {
         id: 'road-default',
         source: 'openfreemap',
         'source-layer': 'transportation',
         type: 'line',
-        filter: ['!', ['match', ['get', 'class'], ['motorway', 'primary', 'secondary', 'tertiary', 'residential'], true, false]],
-        paint: { 'line-color': theme.road_default, 'line-width': 0.5 },
+        filter: ['!', ['match', ['get', 'class'], ['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'residential'], true, false]],
+        paint: { 'line-color': theme.road_default, 'line-width': 0.8 },
       },
       {
         id: 'road-residential',
@@ -49,7 +64,7 @@ export function generateMapLibreStyle(theme: ArtisticTheme): StyleSpecification 
         'source-layer': 'transportation',
         type: 'line',
         filter: ['==', ['get', 'class'], 'residential'],
-        paint: { 'line-color': theme.road_residential, 'line-width': 0.5 },
+        paint: { 'line-color': theme.road_residential, 'line-width': 0.8 },
       },
       {
         id: 'road-tertiary',
@@ -57,7 +72,7 @@ export function generateMapLibreStyle(theme: ArtisticTheme): StyleSpecification 
         'source-layer': 'transportation',
         type: 'line',
         filter: ['==', ['get', 'class'], 'tertiary'],
-        paint: { 'line-color': theme.road_tertiary, 'line-width': 0.8 },
+        paint: { 'line-color': theme.road_tertiary, 'line-width': 1.2 },
       },
       {
         id: 'road-secondary',
@@ -65,7 +80,7 @@ export function generateMapLibreStyle(theme: ArtisticTheme): StyleSpecification 
         'source-layer': 'transportation',
         type: 'line',
         filter: ['==', ['get', 'class'], 'secondary'],
-        paint: { 'line-color': theme.road_secondary, 'line-width': 1.0 },
+        paint: { 'line-color': theme.road_secondary, 'line-width': 1.6 },
       },
       {
         id: 'road-primary',
@@ -73,7 +88,15 @@ export function generateMapLibreStyle(theme: ArtisticTheme): StyleSpecification 
         'source-layer': 'transportation',
         type: 'line',
         filter: ['==', ['get', 'class'], 'primary'],
-        paint: { 'line-color': theme.road_primary, 'line-width': 1.5 },
+        paint: { 'line-color': theme.road_primary, 'line-width': 2.2 },
+      },
+      {
+        id: 'road-trunk',
+        source: 'openfreemap',
+        'source-layer': 'transportation',
+        type: 'line',
+        filter: ['==', ['get', 'class'], 'trunk'],
+        paint: { 'line-color': theme.road_motorway, 'line-width': 2.8 },
       },
       {
         id: 'road-motorway',
@@ -81,7 +104,7 @@ export function generateMapLibreStyle(theme: ArtisticTheme): StyleSpecification 
         'source-layer': 'transportation',
         type: 'line',
         filter: ['==', ['get', 'class'], 'motorway'],
-        paint: { 'line-color': theme.road_motorway, 'line-width': 2.0 },
+        paint: { 'line-color': theme.road_motorway, 'line-width': 3.2 },
       },
     ],
   };

@@ -8,6 +8,7 @@ import type { ChatNodeSettings, NodeRunSettings, PromptSelection, SkillSelection
 import type { ZhihuSearchRequest } from './components/ZhihuSearchNode';
 import type { WikipediaSearchRequest } from './components/WikipediaSearchNode';
 import type { TranslationRequest } from './components/TextTranslationNode';
+import type { WebSearchRequest } from './components/WebSearchNode';
 import { resolveReferenceImage, collectNodeInputs, DEFAULT_RUN_SETTINGS } from './execution';
 
 export interface NodeHandlersDeps {
@@ -387,8 +388,6 @@ export function useNodeHandlers({
     const newTargetTabData = {
       ...(curTabData[targetMode] || {}),
       count: payload.count,
-      filter: payload.filter,
-      search_db: payload.search_db,
       model: payload.model,
       isGenerating: true,
       error: null,
@@ -676,6 +675,89 @@ export function useNodeHandlers({
   const handleUpdateTranslationEditorFor = useCallback((id: string, patch: Record<string, any>) => {
     const node = nodesRef.current.find((n) => n.id === id);
     if (!node || node.type !== 'text_translation') return;
+    updateNodeData(id, patch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** 网络搜索节点：多源检索（关键词 = 连线上级文本 > 手动输入；按源隔离 tabData，对外输出当前 active source 结果） */
+  const handleFetchWebSearchFor = useCallback((id: string, payload: WebSearchRequest) => {
+    const node = nodesRef.current.find((n) => n.id === id);
+    if (!node || node.type !== 'web_search') return;
+    const curData = node.data ?? {};
+    const curTabData = curData.tabData ?? {};
+    const targetSource = payload.source;
+    if (curTabData[targetSource]?.isGenerating) return;
+
+    const parents = resolveDirectParents(id, nodesRef.current, edgesRef.current);
+    const upstreamQuery = parents.map((p) => nodeOutputText(p)).find((v) => v.trim()) ?? '';
+    const finalQuery = upstreamQuery || payload.query.trim();
+    if (!finalQuery) return;
+
+    const newTargetTabData = {
+      ...(curTabData[targetSource] || {}),
+      isGenerating: true,
+      error: null,
+    };
+    const nextTabData = { ...curTabData, [targetSource]: newTargetTabData };
+    const isCurrentActive = (curData.source ?? 'random') === targetSource;
+
+    updateNodeData(id, {
+      tabData: nextTabData,
+      ...(isCurrentActive ? { isGenerating: true, error: null } : {}),
+    });
+
+    api
+      .post('/modules/bookplate/web-search', { query: finalQuery, count: payload.count, source: payload.source }, { timeout: SMALL_TOOL_TIMEOUT_MS })
+      .then((res: any) => {
+        const latestNode = nodesRef.current.find((n) => n.id === id);
+        const latestData = latestNode?.data ?? {};
+        const latestTabData = latestData.tabData ?? nextTabData;
+        const outputText = typeof res?.output === 'string' ? res.output : '';
+        const usedSrc = typeof res?.source === 'string' ? res.source : '';
+
+        const finishedTargetTabData = {
+          ...(latestTabData[targetSource] || {}),
+          output: outputText,
+          usedSource: usedSrc,
+          isGenerating: false,
+          error: null,
+        };
+        const updatedTabData = { ...latestTabData, [targetSource]: finishedTargetTabData };
+        const isStillActive = (latestData.source ?? 'random') === targetSource;
+
+        updateNodeData(id, {
+          tabData: updatedTabData,
+          ...(isStillActive ? { output: outputText, isGenerating: false, error: null } : {}),
+        });
+      })
+      .catch((error: any) => {
+        console.error('Failed to fetch web search:', error);
+        const latestNode = nodesRef.current.find((n) => n.id === id);
+        const latestData = latestNode?.data ?? {};
+        const latestTabData = latestData.tabData ?? nextTabData;
+        const errDetail = error?.isTimeout ? '网络搜索超时，请重试' : error?.detail || '网络搜索失败，请重试';
+
+        const erroredTargetTabData = {
+          ...(latestTabData[targetSource] || {}),
+          isGenerating: false,
+          error: errDetail,
+        };
+        const updatedTabData = { ...latestTabData, [targetSource]: erroredTargetTabData };
+        const isStillActive = (latestData.source ?? 'random') === targetSource;
+
+        updateNodeData(id, {
+          tabData: updatedTabData,
+          ...(isStillActive ? { isGenerating: false, error: errDetail } : {}),
+        });
+      });
+    // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** 网络搜索节点：编辑器状态写入 node.data（仅持久化，不记撤销历史） */
+  const handleUpdateWebSearchEditorFor = useCallback((id: string, patch: Record<string, any>) => {
+    const node = nodesRef.current.find((n) => n.id === id);
+    if (!node || node.type !== 'web_search') return;
     updateNodeData(id, patch);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -989,6 +1071,8 @@ export function useNodeHandlers({
     handleUpdateWikipediaEditorFor,
     handleFetchTranslationFor,
     handleUpdateTranslationEditorFor,
+    handleFetchWebSearchFor,
+    handleUpdateWebSearchEditorFor,
     handleUpdateMapPosterEditorFor,
     handleExportMapPosterFor,
     handleSelectSearchImageFor,

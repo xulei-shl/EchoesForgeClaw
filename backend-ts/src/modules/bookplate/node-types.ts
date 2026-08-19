@@ -30,6 +30,8 @@ export const NODE_TYPES = {
   WIKIPEDIA_SEARCH: 'wikipedia_search',
   /** 文本翻译（文本工具）：Google 翻译 / DeepLX 翻译引擎，支持随机源与自动降级 */
   TEXT_TRANSLATION: 'text_translation',
+  /** 网络搜索（文本工具）：知乎全网 / Tavily / Exa 多源检索，支持随机源与自动降级 */
+  WEB_SEARCH: 'web_search',
 } as const;
 
 export type NodeType = (typeof NODE_TYPES)[keyof typeof NODE_TYPES];
@@ -204,6 +206,15 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     type: NODE_TYPES.TEXT_TRANSLATION,
     name: '文本翻译',
     description: 'Google 翻译 / DeepLX 多引擎翻译，支持随机源与自动降级（DeepLX URL 在管理端「系统设置」其他类别配置）',
+    category: 'tool',
+    configurable: false,
+    output_type: 'text',
+    input_types: ['text'],
+  },
+  {
+    type: NODE_TYPES.WEB_SEARCH,
+    name: '网络搜索',
+    description: '知乎全网 / Tavily / Exa 多源网络检索，支持随机源与自动降级（凭据在管理端「系统设置」配置，可连线文本节点传入关键词）',
     category: 'tool',
     configurable: false,
     output_type: 'text',

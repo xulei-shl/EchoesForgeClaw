@@ -48,6 +48,10 @@ const KNOWN_KEYS: { key: string; description: string }[] = [
   { key: 'paris.api_key', description: '艺术图片检索节点 Paris Musées API Key（https://www.parismusees.paris.fr/fr/les-collections-en-ligne/lapi-collections 获取；敏感，仅显示掩码）' },
   { key: 'europeana.api_key', description: '艺术图片检索节点 Europeana API Key（https://apis.europeana.eu/en/apis 获取；敏感，仅显示掩码）' },
   { key: 'zhihu.access_secret', description: '知乎检索节点（知乎开发者平台开放 API）Access Secret（敏感，仅显示掩码；初始来自 .env）' },
+  { key: 'tavily.api_key', description: '网络搜索节点 Tavily API Key（https://tavily.com 注册获取；敏感，仅显示掩码）' },
+  { key: 'exa.api_key', description: '网络搜索节点 Exa API Key（https://exa.ai 注册获取；敏感，仅显示掩码）' },
+  { key: 'anysearch.api_key', description: '网络搜索节点 AnySearch API Key（https://anysearch.com 注册获取；敏感，仅显示掩码；支持匿名调用）' },
+  { key: 'doubao.api_key', description: '网络搜索节点豆包搜索 API Key（https://console.volcengine.com/search-infinity 获取；敏感，仅显示掩码）' },
   { key: 'http.proxy', description: '全局 HTTP 代理地址（如 http://127.0.0.1:7890；留空 = 全部直连）' },
   { key: 'loc.use_proxy', description: 'LoC 国会图书馆检索/图片是否使用全局代理（true = 启用，false = 直连）' },
   { key: 'google_translate.use_proxy', description: 'Google 翻译是否使用全局代理（true = 启用，false = 直连）' },
@@ -122,6 +126,9 @@ const CATEGORY_DEFS: CategoryDef[] = [
       key.startsWith('websearch.') ||
       key.startsWith('search.') ||
       key.startsWith('tavily.') ||
+      key.startsWith('exa.') ||
+      key.startsWith('anysearch.') ||
+      key.startsWith('doubao.') ||
       key.startsWith('serper.') ||
       key.startsWith('brave.') ||
       key.startsWith('bocha.'),

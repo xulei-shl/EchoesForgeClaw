@@ -76,6 +76,7 @@ export function generationNodeTypeLabel(nodeType?: string | null): string {
     
     zhihu_search: '知乎检索',
     wikipedia_search: 'Wikipedia 检索',
+    web_search: '网络搜索',
   };
   return (nodeType && labels[nodeType]) || nodeType || '未知类型';
 }

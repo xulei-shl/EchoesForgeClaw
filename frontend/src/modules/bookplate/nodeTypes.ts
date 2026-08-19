@@ -23,6 +23,7 @@ export const NODE_DEFAULT_SIZES: Record<CanvasNodeType, { width: number; height:
   zhihu_search: { width: 440, height: 560 },
   wikipedia_search: { width: 440, height: 560 },
   text_translation: { width: 460, height: 520 },
+  web_search: { width: 460, height: 560 },
 };
 
 /** 节点的主题色（用于左上角指示圆点） */
@@ -46,6 +47,7 @@ export const NODE_COLORS: Record<CanvasNodeType, string> = {
   zhihu_search: 'oklch(0.66 0.18 250)',
   wikipedia_search: 'oklch(0.62 0.12 45)',
   text_translation: 'oklch(0.65 0.18 180)',
+  web_search: 'oklch(0.6 0.18 130)',
 };
 
 export interface NodeTemplateDef {
@@ -208,6 +210,14 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     configurable: false,
     defaultSize: NODE_DEFAULT_SIZES.text_translation,
   },
+  {
+    type: 'web_search',
+    name: '网络搜索',
+    description: '知乎全网 / Tavily / Exa 多源网络检索，支持随机源与自动降级',
+    category: 'tool',
+    configurable: false,
+    defaultSize: NODE_DEFAULT_SIZES.web_search,
+  },
 ];
 
 export const NODE_TEMPLATE_MAP: Record<CanvasNodeType, NodeTemplateDef> = Object.fromEntries(
@@ -274,6 +284,8 @@ export const NODE_PORT_TYPES: Record<CanvasNodeType, { output: NodePortType; inp
   wikipedia_search: { output: 'text', inputs: ['text'] },
   // 文本翻译：输出翻译结果文本；可连线文本节点作为待翻译文本（连线即输入）
   text_translation: { output: 'text', inputs: ['text'] },
+  // 网络搜索：输出检索结果文本；可连线文本节点作为检索关键词（连线即输入）
+  web_search: { output: 'text', inputs: ['text'] },
 };
 
 /** 端口类型查找（由画布提供：后端模板声明优先，前端静态镜像兜底） */

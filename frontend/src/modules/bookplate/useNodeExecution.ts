@@ -490,6 +490,7 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
       case 'zhihu_search':
       case 'wikipedia_search':
       case 'text_translation':
+      case 'web_search':
         return ''; // 手动输入关键词后点检索，无需自动执行
       case 'map_poster':
         return ''; // 客户端渲染导出（导出按钮触发），无需自动执行

@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>MapLibre Diagnostic Test</title>
+  <link rel="stylesheet" href="/node_modules/maplibre-gl/dist/maplibre-gl.css">
+  <style>
+    body { margin: 0; font-family: sans-serif; }
+    #map { width: 1000px; height: 800px; border: 2px solid red; }
+    #log { background: #eee; padding: 10px; font-family: monospace; max-height: 200px; overflow: auto; }
+  </style>
+</head>
+<body>
+  <h1>MapLibre Diagnostic</h1>
+  <div id="log"></div>
+  <div id="map"></div>
+
+  <script type="module">
+    import * as maplibregl from '/node_modules/maplibre-gl/dist/maplibre-gl.mjs';
+    
+    function log(msg, type = 'info') {
+      const div = document.createElement('div');
+      div.textContent = `[${type}] ${msg}`;
+      if (type === 'error') div.style.color = 'red';
+      if (type === 'success') div.style.color = 'green';
+      document.getElementById('log').appendChild(div);
+      console.log(`[${type}]`, msg);
+    }
+
+    try {
+      maplibregl.setWorkerUrl('/maplibre/maplibre-gl-worker.mjs');
+      log('setWorkerUrl configured to /maplibre/maplibre-gl-worker.mjs');
+
+      const style = {
+        version: 8,
+        name: 'Ancient Woodland',
+        sources: {
+          openfreemap: {
+            type: 'vector',
+            url: 'https://tiles.openfreemap.org/planet',
+          },
+        },
+        layers: [
+          { id: 'background', type: 'background', paint: { 'background-color': '#064E3B' } },
+          { id: 'water', source: 'openfreemap', 'source-layer': 'water', type: 'fill', paint: { 'fill-color': '#022C22' } },
+          { id: 'park', source: 'openfreemap', 'source-layer': 'park', type: 'fill', paint: { 'fill-color': '#14532D' } },
+          {
+            id: 'road-default',
+            source: 'openfreemap',
+            'source-layer': 'transportation',
+            type: 'line',
+            filter: ['!', ['match', ['get', 'class'], ['motorway', 'primary', 'secondary', 'tertiary', 'residential'], true, false]],
+            paint: { 'line-color': '#34D399', 'line-width': 0.5 },
+          },
+          {
+            id: 'road-residential',
+            source: 'openfreemap',
+            'source-layer': 'transportation',
+            type: 'line',
+            filter: ['==', ['get', 'class'], 'residential'],
+            paint: { 'line-color': '#065F46', 'line-width': 0.5 },
+          },
+          {
+            id: 'road-tertiary',
+            source: 'openfreemap',
+            'source-layer': 'transportation',
+            type: 'line',
+            filter: ['==', ['get', 'class'], 'tertiary'],
+            paint: { 'line-color': '#10B981', 'line-width': 0.8 },
+          },
+          {
+            id: 'road-secondary',
+            source: 'openfreemap',
+            'source-layer': 'transportation',
+            type: 'line',
+            filter: ['==', ['get', 'class'], 'secondary'],
+            paint: { 'line-color': '#34D399', 'line-width': 1.0 },
+          },
+          {
+            id: 'road-primary',
+            source: 'openfreemap',
+            'source-layer': 'transportation',
+            type: 'line',
+            filter: ['==', ['get', 'class'], 'primary'],
+            paint: { 'line-color': '#A7F3D0', 'line-width': 1.5 },
+          },
+          {
+            id: 'road-motorway',
+            source: 'openfreemap',
+            'source-layer': 'transportation',
+            type: 'line',
+            filter: ['==', ['get', 'class'], 'motorway'],
+            paint: { 'line-color': '#FDE047', 'line-width': 2.0 },
+          },
+        ],
+      };
+
+      const map = new maplibregl.Map({
+        container: 'map',
+        style: style,
+        center: [116.4074, 39.9042],
+        zoom: 10,
+      });
+
+      map.on('error', (e) => {
+        log(JSON.stringify(e.error ? e.error.message : e), 'error');
+      });
+      map.on('load', () => {
+        log('Map load event fired!', 'success');
+      });
+      map.on('render', () => {
+        // log('Map render frame');
+      });
+      map.on('sourcedata', (e) => {
+        if (e.isSourceLoaded) {
+          log(`Source "${e.sourceId}" loaded (dataType: ${e.dataType})`, 'success');
+        }
+      });
+    } catch (err) {
+      log(err.message, 'error');
+    }
+  </script>
+</body>
+</html>

@@ -74,7 +74,6 @@ export function seedDataFor(type: NodeType, parent?: NodeData): any {
         query: '',
         tabData: {
           zhihu: { output: '', error: null, isGenerating: false, count: 5 },
-          global: { output: '', error: null, isGenerating: false, count: 5, filter: '', search_db: 'all' },
           zhida: { output: '', error: null, isGenerating: false, model: 'zhida-fast-1p5' },
         },
         output: '',
@@ -102,6 +101,21 @@ export function seedDataFor(type: NodeType, parent?: NodeData): any {
           random: { output: '', usedSource: '', error: null, isGenerating: false },
           google: { output: '', usedSource: '', error: null, isGenerating: false },
           deeplx: { output: '', usedSource: '', error: null, isGenerating: false },
+        },
+        output: '',
+        isGenerating: false,
+        error: null,
+      };
+    case 'web_search':
+      return {
+        source: 'random',
+        tabData: {
+          random: { output: '', usedSource: '', error: null, isGenerating: false, count: 5 },
+          zhihu_global: { output: '', usedSource: 'zhihu_global', error: null, isGenerating: false, count: 5 },
+          tavily: { output: '', usedSource: 'tavily', error: null, isGenerating: false, count: 5 },
+          exa: { output: '', usedSource: 'exa', error: null, isGenerating: false, count: 5 },
+          anysearch: { output: '', usedSource: 'anysearch', error: null, isGenerating: false, count: 5 },
+          doubao: { output: '', usedSource: 'doubao', error: null, isGenerating: false, count: 5 },
         },
         output: '',
         isGenerating: false,

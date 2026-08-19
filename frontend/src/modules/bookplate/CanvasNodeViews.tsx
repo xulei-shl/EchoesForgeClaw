@@ -14,6 +14,7 @@ import { WeatherNode } from './components/WeatherNode';
 import { ZhihuSearchNode, type ZhihuSearchRequest } from './components/ZhihuSearchNode';
 import { WikipediaSearchNode, type WikipediaSearchRequest } from './components/WikipediaSearchNode';
 import { TextTranslationNode, type TranslationRequest } from './components/TextTranslationNode';
+import { WebSearchNode, type WebSearchRequest } from './components/WebSearchNode';
 import { MapPosterNode } from '../../modules/multimodal/components/MapPosterNode';
 import { ImageSearchNode, type ImageSearchSelection } from '../../modules/multimodal/components/ImageSearchNode';
 import { ArtImageSearchNode, type GlamSearchSelection } from '../../modules/multimodal/components/ArtImageSearchNode';
@@ -84,6 +85,10 @@ export interface NodeViewHelpers {
   handleBackToWikipediaResultsFor: (id: string) => void;
   /** Wikipedia 检索节点：编辑器状态写入 node.data（如 summaryMode 切换，仅持久化，不记撤销历史） */
   handleUpdateWikipediaEditorFor: (id: string, patch: Record<string, any>) => void;
+  /** 网络搜索节点：多源检索（关键词由页面合并上游文本 / 手动输入） */
+  handleFetchWebSearchFor: (id: string, payload: WebSearchRequest) => void;
+  /** 网络搜索节点：编辑器状态写入 node.data（仅持久化，不记撤销历史） */
+  handleUpdateWebSearchEditorFor: (id: string, patch: Record<string, any>) => void;
   /** 知乎检索节点：编辑器状态写入 node.data（仅持久化，不记撤销历史） */
   handleUpdateZhihuEditorFor: (id: string, patch: Record<string, any>, undoable?: boolean) => void;
   /** 文本翻译节点：按配置翻译上级文本（语言/翻译源由节点组件传入，页面合并上游文本后转发后端） */
@@ -431,12 +436,10 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
         <ZhihuSearchNode
           key={node.id}
           {...common}
-          mode={d.mode === 'global' || d.mode === 'zhida' ? d.mode : 'zhihu'}
+          mode={d.mode === 'zhida' ? d.mode : 'zhihu'}
           query={typeof d.query === 'string' ? d.query : ''}
           tabData={d.tabData}
           count={typeof d.count === 'number' ? d.count : 5}
-          filter={typeof d.filter === 'string' ? d.filter : ''}
-          search_db={typeof d.search_db === 'string' ? d.search_db : 'all'}
           model={typeof d.model === 'string' ? d.model : 'zhida-fast-1p5'}
           upstreamQuery={upstreamQuery}
           output={typeof d.output === 'string' ? d.output : ''}
@@ -502,6 +505,29 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           hasDownstream={hasDownstream}
           onFetch={h.handleFetchTranslationFor}
           onUpdateEditor={h.handleUpdateTranslationEditorFor}
+        />
+      );
+    }
+    case 'web_search': {
+      const hasDownstream = hasDownstreamOf(node, h.edges);
+      const d = node.data ?? {};
+      const upstreamQuery =
+        collectNodeInputs(node, h.nodes, h.edges, h.portTypesOf)
+          .text.map((p) => nodeOutputText(p))
+          .find((v) => v.trim()) ?? '';
+      return (
+        <WebSearchNode
+          key={node.id}
+          {...common}
+          upstreamQuery={upstreamQuery}
+          source={d.source === 'zhihu_global' || d.source === 'tavily' || d.source === 'exa' ? d.source : 'random'}
+          tabData={d.tabData ?? {}}
+          output={typeof d.output === 'string' ? d.output : ''}
+          isGenerating={!!d.isGenerating}
+          error={d.error ?? null}
+          hasDownstream={hasDownstream}
+          onFetch={h.handleFetchWebSearchFor}
+          onUpdateEditor={h.handleUpdateWebSearchEditorFor}
         />
       );
     }
