@@ -129,17 +129,8 @@ const TextTranslationNodeInner: React.FC<TextTranslationNodeProps> = ({
   const handleTranslate = useCallback(() => {
     if (currentTab.isGenerating || hasDownstream || !effectiveText) return;
 
-    onUpdateEditor?.(id, {
-      tabData: {
-        ...tabData,
-        [activeSource]: { ...currentTab, isGenerating: true, error: null },
-      },
-      isGenerating: true,
-      error: null,
-    });
-
     onFetch?.(id, { text: effectiveText, from: fromLan, to: toLan, source: activeSource });
-  }, [activeSource, currentTab, effectiveText, fromLan, hasDownstream, id, onFetch, onUpdateEditor, tabData, toLan]);
+  }, [activeSource, currentTab.isGenerating, effectiveText, fromLan, hasDownstream, id, onFetch, toLan]);
 
   const handleSwapLanguages = () => {
     if (fromLan === 'auto') return;

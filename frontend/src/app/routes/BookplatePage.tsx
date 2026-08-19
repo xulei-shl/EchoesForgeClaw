@@ -221,6 +221,32 @@ const BookplatePage: React.FC = () => {
     setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...patch } } : n)));
   };
 
+  // ---------- 历史记录组装 / 收藏状态同步 ----------
+  const { autoSaveGeneration, ensureGeneration } = useGenerationHistory({
+    nodesRef,
+    edgesRef,
+    generationIds,
+  });
+
+  const {
+    invalidateGenerationLink,
+    syncFavoritesFromServer,
+    toggleFavoriteForImage,
+    togglePublicForImage,
+    clearStaleFlag,
+  } = useFavoritesSync({
+    userId: String(user?.id ?? 'anon'),
+    generationIds,
+    setFavoritedState,
+    setPublishedState,
+    setStaleRecordIds,
+    ensureGeneration,
+    favoritedRef,
+    publishedRef,
+    busyFav,
+    busyPub,
+  });
+
   // ---------- 撤销 / 重做 ----------
   // ctx 经 useMemo 保持稳定（内部均为模块级 ref / React setter / 稳定回调），
   // 使 useCanvasHistory 内部的 recordHistory / undo / redo 不随渲染重建
@@ -268,13 +294,6 @@ const BookplatePage: React.FC = () => {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [undo, redo]);
-
-  // ---------- 历史记录组装 / 执行引擎 ----------
-  const { autoSaveGeneration, ensureGeneration } = useGenerationHistory({
-    nodesRef,
-    edgesRef,
-    generationIds,
-  });
 
   const { runNode, runImageGeneration } = useNodeExecution({
     nodesRef,
@@ -651,24 +670,7 @@ const BookplatePage: React.FC = () => {
   }, [recordHistory, setNodes]);
 
 
-  const {
-    invalidateGenerationLink,
-    syncFavoritesFromServer,
-    toggleFavoriteForImage,
-    togglePublicForImage,
-    clearStaleFlag,
-  } = useFavoritesSync({
-    userId: String(user?.id ?? 'anon'),
-    generationIds,
-    setFavoritedState,
-    setPublishedState,
-    setStaleRecordIds,
-    ensureGeneration: ensureGeneration, // ensureGeneration is defined from useGenerationHistory
-    favoritedRef,
-    publishedRef,
-    busyFav,
-    busyPub,
-  });
+
 
   const {
     handleRemove,

@@ -20,7 +20,6 @@ const DEFAULT_SETTINGS: Array<[string, string, string]> = [
     '豆瓣 API 基础地址（一般无需修改）',
   ],
   ['douban.qps', '0.5', '豆瓣请求速率（次/秒），建议 ≤ 0.5 以防反爬'],
-  ['douban.proxy', '', '豆瓣请求 HTTP 代理，如 http://127.0.0.1:7890（留空不使用）'],
   [
     'bifrost.base_url',
     '',
@@ -87,9 +86,9 @@ const DEFAULT_SETTINGS: Array<[string, string, string]> = [
     '艺术图片检索节点（Europeana）API Key（https://apis.europeana.eu/en/apis 获取；敏感，仅显示掩码）',
   ],
   [
-    'loc.proxy',
-    '',
-    '艺术图片检索节点美国国会图书馆（LoC）检索/图片 HTTP 代理，如 http://127.0.0.1:7890（留空 = 直连）',
+    'loc.use_proxy',
+    'true',
+    '艺术图片检索节点美国国会图书馆（LoC）是否使用全局代理（true = 启用，false = 直连）',
   ],
   [
     'zhihu.access_secret',
@@ -102,11 +101,19 @@ const DEFAULT_SETTINGS: Array<[string, string, string]> = [
     '文本翻译节点（DeepLX）服务器 URL，如 http://localhost:1188/translate（留空则仅使用 Google 免费翻译）',
   ],
   [
+    'google_translate.use_proxy',
+    'true',
+    'Google 翻译是否使用全局代理（true = 启用，false = 直连）',
+  ],
+  [
     'http.proxy',
     '',
-    '通用 HTTP 代理，如 http://127.0.0.1:7890。部分 API 服务（Google 翻译 / 博物馆检索等）可经此代理出网（留空 = 直连）',
+    '全局 HTTP 代理地址，如 http://127.0.0.1:7890。各服务是否使用代理由对应的 use_proxy 开关控制（留空 = 全部直连）',
   ],
 ];
+
+/** 废弃/已删除的系统设置键（启动时自动彻底清理存量历史数据） */
+const DEPRECATED_SETTINGS = ['nasa.api_key', 'douban.proxy', 'loc.proxy', 'translation.use_proxy'];
 
 export function seedStartup(): void {
   const db = getDb();
@@ -137,6 +144,11 @@ export function seedStartup(): void {
       // 种子回填（bifrost.* / mxnzp.* / zhihu.*）：存量值为空且种子值非空时补写，绝不覆盖非空修改
       db.update(appSettings).set({ value }).where(eq(appSettings.key, key)).run();
     }
+  }
+
+  // 清理已废弃的系统设置（如 NASA 公开图库已无需 api_key）
+  for (const key of DEPRECATED_SETTINGS) {
+    db.delete(appSettings).where(eq(appSettings.key, key)).run();
   }
 
   // 默认提示词模板（按固定 key 判重）

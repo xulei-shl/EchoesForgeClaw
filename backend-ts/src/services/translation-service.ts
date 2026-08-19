@@ -68,14 +68,18 @@ const DEEPLX_LAN_MAP: Record<string, string> = {
   no: 'NB',
 };
 
-function matchSen(s1: string, s2: string): number {
-  let s = s1;
-  const chunkSize = 5;
-  for (let i = 0; i < s2.length; i += chunkSize) {
-    const t = s2.slice(i, i + chunkSize);
-    s = s.replace(t, '');
-  }
-  return (s1.length - s.length) / s2.length;
+const TRANSLATION_USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
+
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#x27;/g, "'")
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(Number(dec)));
 }
 
 async function translateGoogle(
@@ -86,18 +90,10 @@ async function translateGoogle(
 ): Promise<string> {
   const sl = GOOGLE_LAN_MAP[from] ?? from;
   const tl = GOOGLE_LAN_MAP[to] ?? to;
-  const url = new URL('https://translate.google.com/translate_a/single');
-  url.searchParams.set('client', 'gtx');
+  const url = new URL('https://translate.google.com/m');
   url.searchParams.set('sl', sl);
   url.searchParams.set('tl', tl);
   url.searchParams.set('hl', tl);
-  url.searchParams.set('dt', 't');
-  url.searchParams.set('ie', 'UTF-8');
-  url.searchParams.set('oe', 'UTF-8');
-  url.searchParams.set('otf', '1');
-  url.searchParams.set('ssel', '0');
-  url.searchParams.set('tsel', '0');
-  url.searchParams.set('kc', '7');
   url.searchParams.set('q', text);
 
   const urlStr = url.toString();
@@ -108,35 +104,21 @@ async function translateGoogle(
   try {
     const res = await fetchWithProxy(urlStr, {
       method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'User-Agent': TRANSLATION_USER_AGENT,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      },
       signal: controller.signal,
     }, effectiveProxy);
     if (!res.ok) {
       throw new TranslationError(`Google Translate HTTP ${res.status}`);
     }
-    const r = (await res.json()) as unknown[];
-    if (!Array.isArray(r) || !r[0]) {
+    const html = await res.text();
+    const match = html.match(/class="result-container">(.*?)<\/div>/s) || html.match(/class="t0">(.*?)<\/div>/s);
+    if (!match || !match[1]) {
       throw new TranslationError('Google Translate: unexpected response format');
     }
-    const firstRow = r[0] as unknown[][];
-    const matchL: Array<[string, string]> = [];
-    for (const i of firstRow) {
-      const translated = i[0] as string | undefined;
-      const source = i[1] as string | undefined;
-      if (translated != null && source != null) {
-        matchL.push([translated, source]);
-      }
-    }
-    const nT = [text];
-    let startI = 0;
-    const result: string[][] = [];
-    for (const [translated, source] of matchL) {
-      const tIndex = nT.slice(startI).findIndex((t) => matchSen(t, source) > 0.8) + startI;
-      startI = Math.max(tIndex, 0);
-      result[tIndex] = result[tIndex] || [];
-      result[tIndex].push(translated);
-    }
-    return result.map((i) => i.join('')).join('');
+    return decodeHtmlEntities(match[1]);
   } finally {
     clearTimeout(timer);
   }
@@ -189,11 +171,14 @@ export interface TranslationOptions {
   to: string;
   source: TranslationSource;
   deeplxUrl?: string;
+  /** 全局兜底代理 URL */
   proxy?: string;
+  /** 各翻译源独立代理配置（如 google: 'http://...', deeplx: ''） */
+  proxies?: Partial<Record<TranslationSource, string>>;
 }
 
 export async function translateText(opts: TranslationOptions): Promise<{ output: string; source: string }> {
-  const { text, from, to, source, deeplxUrl, proxy } = opts;
+  const { text, from, to, source, deeplxUrl, proxy, proxies } = opts;
   if (!text.trim()) return { output: '', source: 'none' };
 
   const hasDeepLX = !!deeplxUrl?.trim();
@@ -201,12 +186,13 @@ export async function translateText(opts: TranslationOptions): Promise<{ output:
   if (hasDeepLX) availableSources.push('deeplx');
 
   const trySource = async (src: TranslationSource): Promise<{ output: string; source: string }> => {
+    const effectiveProxy = proxies?.[src] ?? proxy ?? '';
     if (src === 'google') {
-      const output = await translateGoogle(text, from, to, proxy);
+      const output = await translateGoogle(text, from, to, effectiveProxy);
       return { output, source: 'google' };
     }
     if (src === 'deeplx' && deeplxUrl?.trim()) {
-      const output = await translateDeepLX(text, from, to, deeplxUrl.trim(), proxy);
+      const output = await translateDeepLX(text, from, to, deeplxUrl.trim(), effectiveProxy);
       return { output, source: 'deeplx' };
     }
     throw new TranslationError(`翻译源 ${src} 不可用`);

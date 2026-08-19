@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { getDb } from '../../../config/database.js';
-import { getAppSettingsMap } from '../../../repositories/index.js';
+import { getAppSettingsMap, getServiceProxy } from '../../../repositories/index.js';
 import { imageService } from '../../../services/image-service.js';
 import { ImageGenerationError } from '../../../infrastructure/ai/errors.js';
 import {
@@ -122,7 +122,7 @@ export async function register(app: FastifyInstance): Promise<void> {
           smithsonianApiKey: s['smithsonian.api_key'] ?? '',
           parisApiKey: s['paris.api_key'] ?? '',
           europeanaApiKey: s['europeana.api_key'] ?? '',
-          locProxy: s['loc.proxy'] ?? '',
+          locProxy: getServiceProxy(s, 'loc'),
         }),
       };
     }
@@ -152,7 +152,7 @@ export async function register(app: FastifyInstance): Promise<void> {
             smithsonianApiKey: s['smithsonian.api_key'] ?? '',
             parisApiKey: s['paris.api_key'] ?? '',
             europeanaApiKey: s['europeana.api_key'] ?? '',
-            locProxy: s['loc.proxy'] ?? '',
+            locProxy: getServiceProxy(s, 'loc'),
           },
           { query: payload.query, limit: payload.limit, offset: payload.offset }
         );
@@ -193,7 +193,7 @@ export async function register(app: FastifyInstance): Promise<void> {
       }
       // LoC 图片（loc.gov 域名）可能需代理出网（loc.proxy，如 http://127.0.0.1:7890），其余源直连
       const isLoc = hostname === 'loc.gov' || hostname.endsWith('.loc.gov');
-      const proxy = isLoc ? (s['loc.proxy'] ?? '') : '';
+      const proxy = isLoc ? getServiceProxy(s, 'loc') : '';
       try {
         const imageUrl = await imageService.saveSearchImage(request.authUser!.id, url, proxy);
         return { image_url: imageUrl };

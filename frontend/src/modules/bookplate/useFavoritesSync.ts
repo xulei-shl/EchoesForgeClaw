@@ -73,7 +73,7 @@ export function useFavoritesSync({
 
   // 跨 tab 联动：history/收藏/画廊页在其他 tab 删除记录后写入事件 key，本 tab 实时失效对应节点关联
   useEffect(() => {
-    const eventKey = getCanvasEventKey(String(user?.id ?? 'anon'));
+    const eventKey = getCanvasEventKey(userId || 'anon');
     const onStorage = (e: StorageEvent) => {
       if (e.key !== eventKey || !e.newValue) return;
       try {
@@ -88,7 +88,7 @@ export function useFavoritesSync({
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
-  }, [user?.id, invalidateGenerationLink, generationIds]);
+  }, [userId, invalidateGenerationLink, generationIds]);
 
   const clearStaleFlag = useCallback((imageNodeId: string) => {
     setStaleRecordIds((prev) => {

@@ -14,6 +14,7 @@ import {
   RefreshCw,
   Search,
   Settings as SettingsIcon,
+  Shield,
   ShieldCheck,
   Sparkles,
   Trash2,
@@ -32,7 +33,6 @@ import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
 const KNOWN_KEYS: { key: string; description: string }[] = [
   { key: 'douban.base_url', description: '豆瓣 API 基础地址' },
   { key: 'douban.qps', description: '豆瓣请求速率（次/秒）' },
-  { key: 'douban.proxy', description: '豆瓣请求 HTTP 代理' },
   { key: 'bifrost.base_url', description: 'Bifrost Gateway 基础地址' },
   { key: 'bifrost.username', description: 'Bifrost 管理账号（Basic Auth 用户名，初始来自 .env）' },
   { key: 'bifrost.password', description: 'Bifrost 管理密码（敏感，仅显示掩码）' },
@@ -47,8 +47,11 @@ const KNOWN_KEYS: { key: string; description: string }[] = [
   { key: 'smithsonian.api_key', description: '艺术图片检索节点 Smithsonian Open Access API Key（https://api.data.gov/signup/ 获取；敏感，仅显示掩码）' },
   { key: 'paris.api_key', description: '艺术图片检索节点 Paris Musées API Key（https://www.parismusees.paris.fr/fr/les-collections-en-ligne/lapi-collections 获取；敏感，仅显示掩码）' },
   { key: 'europeana.api_key', description: '艺术图片检索节点 Europeana API Key（https://apis.europeana.eu/en/apis 获取；敏感，仅显示掩码）' },
-  { key: 'loc.proxy', description: '艺术图片检索节点美国国会图书馆（LoC）检索/图片 HTTP 代理（如 http://127.0.0.1:7890；留空 = 直连）' },
   { key: 'zhihu.access_secret', description: '知乎检索节点（知乎开发者平台开放 API）Access Secret（敏感，仅显示掩码；初始来自 .env）' },
+  { key: 'http.proxy', description: '全局 HTTP 代理地址（如 http://127.0.0.1:7890；留空 = 全部直连）' },
+  { key: 'loc.use_proxy', description: 'LoC 国会图书馆检索/图片是否使用全局代理（true = 启用，false = 直连）' },
+  { key: 'google_translate.use_proxy', description: 'Google 翻译是否使用全局代理（true = 启用，false = 直连）' },
+  { key: 'deeplx.use_proxy', description: 'DeepLX 翻译是否使用全局代理（true = 启用，false = 直连；未配置默认直连）' },
 ];
 
 /** 业务分类配置定义 */
@@ -61,6 +64,13 @@ interface CategoryDef {
 }
 
 const CATEGORY_DEFS: CategoryDef[] = [
+  {
+    id: 'proxy',
+    name: '网络代理',
+    icon: Shield,
+    description: '全局 HTTP 代理地址与各服务的代理启用开关（修改后对后续网络请求立即生效）',
+    match: (key) => key === 'http.proxy' || key.endsWith('.use_proxy'),
+  },
   {
     id: 'bifrost',
     name: 'Bifrost 网关',
@@ -79,7 +89,7 @@ const CATEGORY_DEFS: CategoryDef[] = [
       key.startsWith('nypl.') ||
       key.startsWith('paris.') ||
       key.startsWith('smithsonian.') ||
-      key.startsWith('loc.'),
+      (key.startsWith('loc.') && !key.endsWith('.use_proxy')),
   },
   {
     id: 'image',
@@ -92,7 +102,7 @@ const CATEGORY_DEFS: CategoryDef[] = [
     id: 'douban',
     name: '豆瓣图书',
     icon: BookOpen,
-    description: '豆瓣图书元数据 API 请求地址、速率限制 (QPS) 与 HTTP 代理设置',
+    description: '豆瓣图书元数据 API 请求地址与速率限制 (QPS) 设置',
     match: (key) => key.startsWith('douban.'),
   },
   {
@@ -400,6 +410,18 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
+  const handleToggleSetting = async (s: AppSetting) => {
+    const isCurrentlyTrue = s.value === 'true';
+    const nextVal = isCurrentlyTrue ? 'false' : 'true';
+    try {
+      await adminService.updateSetting(s.key, { value: nextVal });
+      showToast(`已${nextVal === 'true' ? '启用' : '关闭'}代理`, { type: 'success' });
+      load();
+    } catch (err: any) {
+      showToast(err?.message || '更新失败', { type: 'error' });
+    }
+  };
+
   const shouldShowBifrostWhitelistCard =
     (activeTab === 'all' || activeTab === 'bifrost') &&
     (!searchQuery || 'bifrost.allowed_folders'.includes(searchQuery.toLowerCase()) || '白名单'.includes(searchQuery));
@@ -451,13 +473,30 @@ export const SettingsPage: React.FC = () => {
           </div>
           <div className="space-y-1.5">
             <FieldLabel>值（value）</FieldLabel>
-            <Input
-              value={edit.value}
-              onChange={(e) => setEdit({ ...edit, value: e.target.value })}
-              placeholder={
-                edit.sensitive ? '留空 / 保持 **** 不修改密钥' : '设置值'
-              }
-            />
+            {edit.key.endsWith('.use_proxy') ? (
+              <div className="flex items-center gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setEdit({ ...edit, value: edit.value === 'true' ? 'false' : 'true' })}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${
+                    edit.value === 'true'
+                      ? 'bg-accent/15 text-accent border-accent/30'
+                      : 'bg-paper-grid/40 text-ink-light border-paper-grid'
+                  }`}
+                >
+                  {edit.value === 'true' ? '✓ 已启用代理 (true)' : '✗ 已关闭代理 (false)'}
+                </button>
+                <span className="text-xs text-ink-faint font-sans">点击切换 true / false</span>
+              </div>
+            ) : (
+              <Input
+                value={edit.value}
+                onChange={(e) => setEdit({ ...edit, value: e.target.value })}
+                placeholder={
+                  edit.sensitive ? '留空 / 保持 **** 不修改密钥' : '设置值'
+                }
+              />
+            )}
             {edit.sensitive && (
               <p className="text-xs text-ink-faint font-sans">
                 敏感项：留空或保持掩码保存将不修改密钥
@@ -686,14 +725,36 @@ export const SettingsPage: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* 第二层：配置值（轻底色等宽框） */}
-                    <div className="mt-3 px-3 py-2 rounded-md bg-paper-grid/25 border border-dashed border-paper-grid/80 font-mono text-xs text-ink break-all select-all">
-                      {s.sensitive
-                        ? s.value
-                          ? '••••••••（敏感项已配置掩码保护）'
-                          : '（未配置）'
-                        : s.value || '（空值）'}
-                    </div>
+                    {/* 第二层：配置值（use_proxy 采用开关按钮，其余为轻底色等宽框） */}
+                    {s.key.endsWith('.use_proxy') ? (
+                      <div className="mt-3 flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => void handleToggleSetting(s)}
+                          className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-150 active:scale-[0.97] ${
+                            s.value === 'true'
+                              ? 'bg-accent/15 text-accent border border-accent/30 hover:bg-accent/20'
+                              : 'bg-paper-grid/40 text-ink-light border border-dashed border-paper-grid hover:text-ink'
+                          }`}
+                        >
+                          <span
+                            className={`w-2 h-2 rounded-full transition-colors ${
+                              s.value === 'true' ? 'bg-accent animate-pulse' : 'bg-ink-faint'
+                            }`}
+                          />
+                          <span>{s.value === 'true' ? '已启用（走全局代理）' : '已关闭（直连）'}</span>
+                        </button>
+                        <span className="text-[11px] text-ink-faint font-sans">点击可快速切换</span>
+                      </div>
+                    ) : (
+                      <div className="mt-3 px-3 py-2 rounded-md bg-paper-grid/25 border border-dashed border-paper-grid/80 font-mono text-xs text-ink break-all select-all">
+                        {s.sensitive
+                          ? s.value
+                            ? '••••••••（敏感项已配置掩码保护）'
+                            : '（未配置）'
+                          : s.value || '（空值）'}
+                      </div>
+                    )}
 
                     {/* 第三层：说明文本与提示 */}
                     {s.description && (

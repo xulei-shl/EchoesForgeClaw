@@ -138,6 +138,15 @@ export function getAppSettingsMap(db: DB): Record<string, string> {
   return Object.fromEntries(rows.map((r) => [r.key, r.value]));
 }
 
+/**
+ * 获取某服务的有效代理 URL：检查 `{service}.use_proxy` 开关 + 全局 `http.proxy`。
+ * 开关为 'true' 且全局代理非空时返回代理 URL，否则返回空串（直连）。
+ */
+export function getServiceProxy(settings: Record<string, string>, service: string): string {
+  if (settings[`${service}.use_proxy`] !== 'true') return '';
+  return (settings['http.proxy'] ?? '').trim();
+}
+
 /** BookCache 行 → 与豆瓣客户端一致的扁平元数据（对应 Python _row_to_book 白名单字段）。 */
 export function rowToBook(row: typeof bookCache.$inferSelect): Record<string, unknown> {
   return {

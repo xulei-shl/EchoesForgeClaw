@@ -218,7 +218,6 @@ export function doubanClientConfig(db = getDb()): Partial<DoubanClientConfig> {
   const s = getAppSettingsMap(db);
   const config: Partial<DoubanClientConfig> = {};
   if (s['douban.base_url']) config.base_url = s['douban.base_url'];
-  if (s['douban.proxy']) config.proxy = s['douban.proxy'];
   const qps = Number(s['douban.qps'] ?? '0.5');
   if (Number.isFinite(qps) && qps > 0) config.qps = Math.min(qps, 2.0);
   return config;

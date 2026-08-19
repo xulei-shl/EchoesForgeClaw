@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { env } from '../../../config/env.js';
 import { getDb } from '../../../config/database.js';
-import { getAppSettingsMap } from '../../../repositories/index.js';
+import { getAppSettingsMap, getServiceProxy } from '../../../repositories/index.js';
 import { fetchCalendar, fetchWeather, SmallToolError } from '../../../services/tool-service.js';
 import {
   ZhihuError,
@@ -191,10 +191,13 @@ export async function register(app: FastifyInstance): Promise<void> {
 
       const s = getAppSettingsMap(getDb());
       const deeplxUrl = (s['deeplx.url'] ?? '').trim();
-      const proxy = (s['http.proxy'] ?? '').trim();
+      const proxies: Partial<Record<TranslationSource, string>> = {
+        google: getServiceProxy(s, 'google_translate'),
+        deeplx: getServiceProxy(s, 'deeplx'),
+      };
 
       try {
-        const result = await translateText({ text, from, to, source, deeplxUrl, proxy });
+        const result = await translateText({ text, from, to, source, deeplxUrl, proxies });
         return { output: result.output, source: result.source };
       } catch (err) {
         if (err instanceof TranslationError) {
