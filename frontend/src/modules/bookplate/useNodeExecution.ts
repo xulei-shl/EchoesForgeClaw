@@ -494,8 +494,7 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
         return ''; // 客户端渲染导出（导出按钮触发），无需自动执行
       case 'image_search':
       case 'art_image_search':
-      case 'nasa_image_search':
-        return ''; // 手动检索 / 选择图片，无需自动执行
+      return ''; // 手动检索 / 选择图片，无需自动执行
     }
   };
 

@@ -212,8 +212,6 @@ export type CanvasNodeType =
   | 'image_search'
   /** 艺术图片检索节点：聚合 13 家博物馆开放图片 API，关键词检索或随机浏览并选一张作为图片输出（GLAM 工具，无需配置） */
   | 'art_image_search'
-  /** NASA 图片检索节点：检索 NASA APOD 每日天文图 / EPIC 地球影像，按日期或随机浏览并选一张作为图片输出（多模态工具，无需配置） */
-  | 'nasa_image_search'
   /** 知乎检索节点：知乎开发者平台 3 类检索（站内搜索 / 全网搜索 / 直答），结果以文本输出（文本工具，无需配置） */
   | 'zhihu_search'
   /** Wikipedia 检索节点：Wikipedia 官方公开词条检索 + 文章全文，结果以文本输出（文本工具，匿名无需密钥） */
