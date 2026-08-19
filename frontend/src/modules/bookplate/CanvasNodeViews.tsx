@@ -14,7 +14,7 @@ import { WeatherNode } from './components/WeatherNode';
 import { ZhihuSearchNode, type ZhihuSearchRequest } from './components/ZhihuSearchNode';
 import { WikipediaSearchNode, type WikipediaSearchRequest } from './components/WikipediaSearchNode';
 import { TextTranslationNode, type TranslationRequest } from './components/TextTranslationNode';
-import { WebSearchNode, type WebSearchRequest } from './components/WebSearchNode';
+import { WebSearchNode, type WebSearchRequest, type WebSearchSource } from './components/WebSearchNode';
 import { MapPosterNode } from '../../modules/multimodal/components/MapPosterNode';
 import { ImageSearchNode, type ImageSearchSelection } from '../../modules/multimodal/components/ImageSearchNode';
 import { ArtImageSearchNode, type GlamSearchSelection } from '../../modules/multimodal/components/ArtImageSearchNode';
@@ -515,12 +515,14 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
         collectNodeInputs(node, h.nodes, h.edges, h.portTypesOf)
           .text.map((p) => nodeOutputText(p))
           .find((v) => v.trim()) ?? '';
+      const validSources: WebSearchSource[] = ['random', 'zhihu_global', 'tavily', 'exa', 'anysearch', 'doubao'];
+      const activeSource: WebSearchSource = validSources.includes(d.source) ? d.source : 'random';
       return (
         <WebSearchNode
           key={node.id}
           {...common}
           upstreamQuery={upstreamQuery}
-          source={d.source === 'zhihu_global' || d.source === 'tavily' || d.source === 'exa' ? d.source : 'random'}
+          source={activeSource}
           tabData={d.tabData ?? {}}
           output={typeof d.output === 'string' ? d.output : ''}
           isGenerating={!!d.isGenerating}
