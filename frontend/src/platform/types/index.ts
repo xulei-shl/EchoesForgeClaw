@@ -118,7 +118,7 @@ export interface PromptTemplate {
   /** 系统种子身份标识（仅启动写入使用，用户模板为空，只读） */
   key?: string | null;
   name: string;
-  /** 所属节点模板类型（prompt_generation / image_analysis 等） */
+  /** 所属节点模板类型（text_generation / image_analysis 等） */
   node_type: string;
   content: string;
   is_active: boolean;
@@ -188,7 +188,7 @@ export interface SkillAgentConfigPayload {
 export type CanvasNodeType =
   | 'book_info'
   | 'image_analysis'
-  | 'prompt_generation'
+  | 'text_generation'
   | 'image_generation'
   /** 文本节点：手动编辑 Markdown 文本（无需配置） */
   | 'text'

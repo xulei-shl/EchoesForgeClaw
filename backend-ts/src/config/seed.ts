@@ -132,9 +132,9 @@ export function seedStartup(): void {
   // 默认提示词模板（按固定 key 判重）
   const seeds = [
     {
-      key: 'bookplate.prompt_generation.default',
+      key: 'bookplate.text_generation.default',
       name: '藏书票图像生成默认提示词',
-      nodeType: 'prompt_generation',
+      nodeType: 'text_generation',
       content: DEFAULT_SYSTEM_PROMPT,
     },
     {

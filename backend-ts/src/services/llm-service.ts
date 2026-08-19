@@ -55,8 +55,8 @@ export class LLMService {
     return analyzeCover(imageBytes, resolved);
   }
 
-  /** 提示词流式生成（提示词生成节点 LLM 模式，对应 Python `generate_prompt_stream`）。 */
-  async *generatePromptStream(
+  /** 文本流式生成（AI 文本生成节点 LLM 模式，对应 Python `generate_text_stream`）。 */
+  async *generateTextStream(
     metadata: Record<string, unknown>,
     config?: TextModelConfig | null,
     coverAnalysis = '',
@@ -131,7 +131,7 @@ function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-/** 无 API Key 时的 Mock 打字机流（与 Python `generate_prompt_stream` Mock 分支一致）。 */
+/** 无 API Key 时的 Mock 打字机流（与 Python `generate_text_stream` Mock 分支一致）。 */
 async function* mockPromptStream(
   metadata: Record<string, unknown>,
   coverAnalysis: string,

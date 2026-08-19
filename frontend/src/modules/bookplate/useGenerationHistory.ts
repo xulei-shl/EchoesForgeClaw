@@ -38,7 +38,7 @@ export function useGenerationHistory(ctx: GenerationHistoryContext): GenerationH
           ctx.nodesRef.current,
           ctx.edgesRef.current
         ) ?? findRootBookInfo(ctx.nodesRef.current, ctx.edgesRef.current);
-      const promptNode = parents.find((p) => p.type === 'prompt_generation');
+      const promptNode = parents.find((p) => p.type === 'text_generation');
       const analysisNode = parents.find((p) => p.type === 'image_analysis');
 
       // Agent 中间步骤随记录持久化：历史/收藏/画廊页与刷新后仍可见

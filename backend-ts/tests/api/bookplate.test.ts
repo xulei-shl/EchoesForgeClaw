@@ -546,9 +546,9 @@ describe('llm-models 端点', () => {
     expect(body.models).toContain('model-b');
   });
 
-  it('prompt_generation 节点同样返回 admin 已配置模型列表', async () => {
+  it('text_generation 节点同样返回 admin 已配置模型列表', async () => {
     const configId = await seedNode({
-      nodeType: 'prompt_generation',
+      nodeType: 'text_generation',
       llmConfig: { baseUrl: 'http://127.0.0.1:1/v1', modelName: 'm1' },
     });
     const schema = await import('../../src/db/schema.js');
@@ -574,9 +574,9 @@ describe('llm-models 端点', () => {
     expect(body.models).toContain('m2');
   });
 
-  it('提示词生成节点也可选多模态类配置的模型（kind 过滤含 multimodal）', async () => {
+  it('AI 文本生成节点也可选多模态类配置的模型（kind 过滤含 multimodal）', async () => {
     const configId = await seedNode({
-      nodeType: 'prompt_generation',
+      nodeType: 'text_generation',
       llmConfig: { baseUrl: 'http://127.0.0.1:1/v1', modelName: 'pt-default' },
     });
     const schema = await import('../../src/db/schema.js');
@@ -719,7 +719,7 @@ describe('analyze-image 端点', () => {
   });
 });
 
-describe('generate-prompt 端点', () => {
+describe('generate-text 端点', () => {
   it('节点内 model_name 覆盖默认模型', async () => {
     let sentModel = '';
     const srv = await startMockOpenAIServer((req, send) => {
@@ -730,13 +730,13 @@ describe('generate-prompt 端点', () => {
     });
     openServers.push(srv);
     const configId = await seedNode({
-      nodeType: 'prompt_generation',
+      nodeType: 'text_generation',
       llmConfig: { baseUrl: srv.baseURL, modelName: 'mock-model' },
     });
 
     const res = await app.inject({
       method: 'POST',
-      url: '/api/modules/bookplate/generate-prompt',
+      url: '/api/modules/bookplate/generate-text',
       headers: { authorization: `Bearer ${token}` },
       payload: { metadata: {}, config_id: configId, model_name: 'override-model' },
     });

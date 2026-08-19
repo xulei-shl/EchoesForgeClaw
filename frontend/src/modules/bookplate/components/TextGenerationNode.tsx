@@ -12,49 +12,36 @@ import type { AgentStep, NodeRunSettings } from '../../../platform/types';
 import { NODE_COLORS } from '../nodeTypes';
 import { NodeSettingsPopover } from './NodeSettingsPopover';
 
-export interface PromptNodeProps {
+export interface TextGenerationNodeProps {
   id: string;
   initialX?: number;
   initialY?: number;
   title?: string;
   content: string;
-  /** Agent 模式中间步骤（工具调用 / 思考状态） */
   agentSteps?: AgentStep[];
-  /** Agent 名称（该节点配置为 agent 模式时展示） */
   agentName?: string;
   isGenerating: boolean;
   error?: string | null;
   onRemove?: (id: string) => void;
-  /** 重新生成（基于上游图书元数据 + 图片分析结果重新流式生成） */
   onRetry?: (id: string) => void;
   onEditContent?: (id: string, content: string) => void;
   onPositionChange?: (id: string, x: number, y: number) => void;
   onSizeChange?: (id: string, width: number, height: number) => void;
   onDrag?: (id: string, x: number, y: number) => void;
-  /** 卡片底部「+」插槽 */
   footer?: React.ReactNode;
-  /** 根节点右键菜单回调 */
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
-  /** 所属自定义分组（配置了分组时在标题旁展示小标签） */
   group?: string;
-  /** 手动运行（待运行态点击「运行」触发） */
   onRun?: (id: string) => void;
-  /** 运行设置（包含图书元数据） */
   settings?: NodeRunSettings;
   onUpdateSettings?: (id: string, settings: NodeRunSettings) => void;
-  /** 画布是否已有图书元数据节点 */
   hasBookInfo?: boolean;
-  /** 标题旁的类型不匹配提示 */
   mismatchBadge?: string | null;
-  /** 是否有下级关联节点 */
   hasDownstream?: boolean;
-  /** 节点执行模式：仅 LLM 模式展示「模型」下拉（Agent 模式由 Agent 侧决定模型） */
   mode?: 'llm' | 'agent' | 'skill_agent';
-  /** 绑定的节点配置 id（拉取服务商模型列表用） */
   configId?: number | null;
 }
 
-const PromptNodeInner: React.FC<PromptNodeProps> = ({
+const TextGenerationNodeInner: React.FC<TextGenerationNodeProps> = ({
   id,
   initialX,
   initialY,
@@ -129,7 +116,6 @@ const PromptNodeInner: React.FC<PromptNodeProps> = ({
       );
     }
 
-    // 待运行态（无内容、无错误）：提供手动「运行」按钮 + 运行设置
     if (!content && !error) {
       return (
         <NodeActionBar>
@@ -183,8 +169,8 @@ const PromptNodeInner: React.FC<PromptNodeProps> = ({
       id={id}
       initialX={initialX}
       initialY={initialY}
-      title={title || "图像提示词"}
-      dotColor={NODE_COLORS.prompt_generation}
+      title={title || "AI 文本生成"}
+      dotColor={NODE_COLORS.text_generation}
       onRemove={() => onRemove?.(id)}
       onPositionChange={onPositionChange}
       onSizeChange={onSizeChange}
@@ -225,7 +211,7 @@ const PromptNodeInner: React.FC<PromptNodeProps> = ({
                 <div className="w-3 h-3 rounded-full bg-accent animate-bounce" style={{ animationDelay: '150ms' }} />
                 <div className="w-3 h-3 rounded-full bg-accent animate-bounce" style={{ animationDelay: '300ms' }} />
               </div>
-              <span className="text-sm font-serif text-accent">构思提示词中...</span>
+              <span className="text-sm font-serif text-accent">生成文本内容中...</span>
             </div>
           ) : (!content && !error) ? (
             <NodeRunPlaceholder
@@ -239,7 +225,6 @@ const PromptNodeInner: React.FC<PromptNodeProps> = ({
               subtext="支持文本 / 图片分析 / 图书元数据"
             />
           ) : (
-            /* 流式 Markdown：Streamdown（内置 GFM + CJK 插件 + 流式光标） */
             <div className="w-full min-w-0 flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
               <div className="w-full min-w-0 font-sans text-sm leading-relaxed">
                 {error && !isGenerating && (
@@ -267,6 +252,6 @@ const PromptNodeInner: React.FC<PromptNodeProps> = ({
   );
 };
 
-export const PromptNode = memo(PromptNodeInner);
-PromptNode.displayName = 'PromptNode';
-export default PromptNode;
+export const TextGenerationNode = memo(TextGenerationNodeInner);
+TextGenerationNode.displayName = 'TextGenerationNode';
+export default TextGenerationNode;

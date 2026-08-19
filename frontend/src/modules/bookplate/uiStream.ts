@@ -1,5 +1,5 @@
 /**
- * AI SDK UI Message Stream 的轻量前端消费（analyze-image / generate-prompt / generate-image(agent)）。
+ * AI SDK UI Message Stream 的轻量前端消费（analyze-image / generate-text / generate-image(agent)）。
  *
  * 后端这些端点输出 AI SDK Data Stream（每行 `data: {chunk-json}`，`[DONE]` 收尾），
  * 与旧 `postSSEStream`（`event:`/`data:`）的线格式不同。此模块把新格式解析后
@@ -17,7 +17,7 @@ export interface PostUIStreamOptions {
   url: string;
   body: unknown;
   signal?: AbortSignal;
-  /** 正文增量（text-delta），generate-prompt 逐段追加 */
+  /** 正文增量（text-delta），generate-text 逐段追加 */
   onTextDelta?: (delta: string) => void;
   /** 正文流式收尾（text-end），携带该条消息的完整文本 */
   onStreamEnd?: (text: string) => void;

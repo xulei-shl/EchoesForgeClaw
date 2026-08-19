@@ -1,7 +1,7 @@
 import React from 'react';
 import { BookInfoNode } from './components/BookInfoNode';
 import { ImageAnalysisNode } from './components/ImageAnalysisNode';
-import { PromptNode } from './components/PromptNode';
+import { TextGenerationNode } from './components/TextGenerationNode';
 import { ChatNodeHost, type ChatHostDeps } from './ChatNodeHost';
 import { ImageNode } from './components/ImageNode';
 import { TextNode } from './components/TextNode';
@@ -187,11 +187,11 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
         />
       );
     }
-    case 'prompt_generation': {
+    case 'text_generation': {
       const config = h.configOf(node);
       const hasDownstream = hasDownstreamOf(node, h.edges);
       return (
-        <PromptNode
+        <TextGenerationNode
           key={node.id}
           {...common}
           content={node.data.content}

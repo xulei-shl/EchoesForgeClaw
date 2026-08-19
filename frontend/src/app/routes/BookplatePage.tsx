@@ -568,7 +568,7 @@ const BookplatePage: React.FC = () => {
           agentSteps: [],
           settings: runSettings(),
         };
-      case 'prompt_generation':
+      case 'text_generation':
         return {
           content: '',
           isGenerating: false,
@@ -991,7 +991,7 @@ const BookplatePage: React.FC = () => {
   /** 保存编辑文本：若该提示词节点已有子图像节点，则分支新建节点保留旧分支；否则原地保存 */
   const handleEditContent = useCallback((id: string, content: string) => {
     const promptNode = nodesRef.current.find((n) => n.id === id);
-    if (!promptNode || promptNode.type !== 'prompt_generation') return;
+    if (!promptNode || promptNode.type !== 'text_generation') return;
     if (!hasChildOfType(id, 'image_generation')) {
       recordHistory();
       updateNodeData(id, { content });
@@ -1005,7 +1005,7 @@ const BookplatePage: React.FC = () => {
   /** 提示词节点重试/重新生成：从上游重新收集输入并流式生成 */
   const handleRetryPromptFor = useCallback((id: string) => {
     const node = nodesRef.current.find((n) => n.id === id);
-    if (node && node.type === 'prompt_generation') runNode(node);
+    if (node && node.type === 'text_generation') runNode(node);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   /** 图片分析节点执行/重试：已有正确结果时「再次分析」新建兄弟节点保留旧分支；失败/空态原地执行 */

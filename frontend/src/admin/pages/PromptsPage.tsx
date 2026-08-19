@@ -21,7 +21,7 @@ import { FieldLabel, PageHeader } from '../components/AdminBits';
 import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
 
 const NODE_TYPE_OPTIONS: { label: string; value: string }[] = [
-  { label: '提示词生成', value: 'prompt_generation' },
+  { label: 'AI 文本生成', value: 'text_generation' },
   { label: '图片分析', value: 'image_analysis' },
   { label: '图像生成', value: 'image_generation' },
 ];
@@ -39,7 +39,7 @@ interface FormState {
 
 const EMPTY_FORM: FormState = {
   name: '',
-  node_type: 'prompt_generation',
+  node_type: 'text_generation',
   content: '',
   is_active: true,
 };

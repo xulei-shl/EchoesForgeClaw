@@ -6,7 +6,7 @@
 export const NODE_TYPES = {
   BOOK_INFO: 'book_info',
   IMAGE_ANALYSIS: 'image_analysis',
-  PROMPT: 'prompt_generation',
+  TEXT_GENERATION: 'text_generation',
   IMAGE: 'image_generation',
   TEXT: 'text',
   IMAGE_UPLOAD: 'image_upload',
@@ -61,9 +61,9 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     input_types: ['image', 'text'],
   },
   {
-    type: NODE_TYPES.PROMPT,
-    name: '提示词生成',
-    description: '基于图书元数据与图片分析流式生成图像提示词',
+    type: NODE_TYPES.TEXT_GENERATION,
+    name: 'AI 文本生成',
+    description: '基于上游输入流式生成文本内容（支持 LLM / Agent 模式）',
     category: 'generate',
     configurable: true,
     output_type: 'text',

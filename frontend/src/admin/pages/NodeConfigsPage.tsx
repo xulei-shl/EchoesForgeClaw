@@ -66,13 +66,13 @@ interface FormState {
 
 const NODE_TYPE_LABEL: Record<string, string> = {
   image_analysis: '图片分析',
-  prompt_generation: '提示词生成',
+  text_generation: 'AI 文本生成',
   image_generation: '图像生成',
   book_info: '图书元数据',
 };
 
 const EMPTY_FORM: FormState = {
-  node_type: 'prompt_generation',
+  node_type: 'text_generation',
   name: '',
   group: '',
   mode: 'llm',

@@ -61,7 +61,7 @@ export function generationNodeTypeLabel(nodeType?: string | null): string {
   const labels: Record<string, string> = {
     book_info: '图书元数据',
     image_analysis: '图片分析',
-    prompt_generation: '提示词生成',
+    text_generation: 'AI 文本生成',
     image_generation: '图像生成',
     text: '文本',
     image_upload: '图片上传',

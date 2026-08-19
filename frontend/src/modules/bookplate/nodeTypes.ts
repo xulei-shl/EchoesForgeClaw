@@ -6,7 +6,7 @@ export type { NodePortType } from '../../platform/types';
 export const NODE_DEFAULT_SIZES: Record<CanvasNodeType, { width: number; height: number }> = {
   book_info: { width: 440, height: 540 },
   image_analysis: { width: 420, height: 460 },
-  prompt_generation: { width: 420, height: 500 },
+  text_generation: { width: 420, height: 500 },
   image_generation: { width: 420, height: 540 },
   text: { width: 420, height: 400 },
   image_upload: { width: 420, height: 420 },
@@ -32,7 +32,7 @@ export const NODE_COLORS: Record<CanvasNodeType, string> = {
   image_generation: 'oklch(0.65 0.15 240)',
   image_analysis: 'oklch(0.65 0.15 260)',
   chat: 'oklch(0.65 0.15 280)',
-  prompt_generation: 'oklch(0.65 0.15 340)',
+  text_generation: 'oklch(0.65 0.15 340)',
   text_aggregate: 'oklch(0.65 0.15 165)',
   prompt_search: 'oklch(0.65 0.15 25)',
   skill_search: 'oklch(0.7 0.15 310)',
@@ -78,12 +78,12 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     defaultSize: NODE_DEFAULT_SIZES.image_analysis,
   },
   {
-    type: 'prompt_generation',
-    name: '提示词生成',
-    description: '基于图书元数据与图片分析流式生成图像提示词',
+    type: 'text_generation',
+    name: 'AI 文本生成',
+    description: '基于上游输入流式生成文本内容（支持 LLM / Agent 模式）',
     category: 'generate',
     configurable: true,
-    defaultSize: NODE_DEFAULT_SIZES.prompt_generation,
+    defaultSize: NODE_DEFAULT_SIZES.text_generation,
   },
   {
     type: 'image_generation',
@@ -238,7 +238,7 @@ export const NODE_PORT_TYPES: Record<CanvasNodeType, { output: NodePortType; inp
   text: { output: 'text', inputs: [] },
   image_upload: { output: 'image', inputs: [] },
   image_analysis: { output: 'text', inputs: ['image', 'text'] },
-  prompt_generation: { output: 'text', inputs: ['text'] },
+  text_generation: { output: 'text', inputs: ['text'] },
   image_generation: { output: 'image', inputs: ['text', 'image'] },
   // chat 接受文本（上一级节点内容）+ 图片（图片上传 / 图像生成节点输出，作为视觉上下文）
   // + document（Skill 检索节点的 skill 包，作为 Skill Agent 的 skill 来源）
@@ -280,7 +280,7 @@ export type PortTypesLookup = (
  */
 export const TEXT_ROLE: Partial<Record<CanvasNodeType, 'book' | 'prompt' | 'analysis'>> = {
   book_info: 'book',
-  prompt_generation: 'prompt',
+  text_generation: 'prompt',
   image_analysis: 'analysis',
 };
 
@@ -426,7 +426,7 @@ export function nodeOutputText(node: GraphNode | undefined): string {
     case 'book_info':
       return bookMetadataText(node.data);
     case 'text':
-    case 'prompt_generation':
+    case 'text_generation':
       return typeof node.data.content === 'string' ? node.data.content : '';
     case 'image_analysis':
       return typeof node.data.analysis === 'string' ? node.data.analysis : '';

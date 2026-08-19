@@ -8,7 +8,7 @@
 export type NodeType =
   | 'book_info'
   | 'image_analysis'
-  | 'prompt_generation'
+  | 'text_generation'
   | 'image_generation'
   | 'text'
   | 'image_upload'
@@ -28,7 +28,7 @@ export type NodeType =
 export const NODE_SIZES: Record<NodeType, { width: number; height: number }> = {
   book_info:        { width: 440, height: 540 },
   image_analysis:   { width: 420, height: 460 },
-  prompt_generation:{ width: 420, height: 500 },
+  text_generation:{ width: 420, height: 500 },
   image_generation: { width: 420, height: 540 },
   text:             { width: 420, height: 400 },
   image_upload:     { width: 420, height: 420 },

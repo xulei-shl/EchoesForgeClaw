@@ -66,7 +66,7 @@ export async function registerPromptsAdminRouter(app: FastifyInstance): Promise<
         .insert(promptTemplates)
         .values({
           name: p.name.trim(),
-          nodeType: p.node_type ?? 'prompt_generation',
+          nodeType: p.node_type ?? 'text_generation',
           content: p.content ?? '',
           isActive: p.is_active ?? true,
           createdAt: now(),

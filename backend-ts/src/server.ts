@@ -30,7 +30,7 @@ import { registerBifrostSkillsAdminRouter } from './api/admin/bifrost-skills.js'
  * BookForge TypeScript 后端入口（对应 Python `app/main.py`）。
  *
  * 已接入：CORS、静态目录（/static）、multipart、JWT 鉴权、登录、bookplate 模块路由
- * （chat / analyze-image / generate-prompt / generate-image / node-registry / fastclaw-probe / isbn / cover）、
+ * （chat / analyze-image / generate-text / generate-image / node-registry / fastclaw-probe / isbn / cover）、
  * 平台 API（users / generations / favorites / public）、管理端 API
  * （llm-configs / prompts / node-configs / settings / fastclaw-agents / skill-agent-configs / bifrost / bifrost-skills）、
  * 启动种子（admin / 系统设置 / 默认提示词）。

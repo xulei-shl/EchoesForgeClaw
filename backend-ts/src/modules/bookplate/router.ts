@@ -97,7 +97,7 @@ import path from 'node:path';
  * bookplate 模块路由（对应 Python `app/modules/bookplate/router.py`）。
  *
  * 流式协议（AI SDK UI Message Stream，前端 useChat 消费）：
- * - chat / generate-prompt / analyze-image / generate-image(agent)：统一流式输出，
+ * - chat / generate-text / analyze-image / generate-image(agent)：统一流式输出，
  *   正文走 text parts，Agent 中间步骤走 `data-agent_*` 自定义 part；
  * - generate-image(LLM)：单结果 JSON（{ image_url, mock }）。
  *
@@ -175,8 +175,8 @@ function llmKindsForNodeType(nodeType: string): string[] {
       return ['text', 'multimodal']; // 多轮对话：文本 / 多模态（可带图）
     case NODE_TYPES.IMAGE_ANALYSIS:
       return ['multimodal']; // 视觉分析（需要视觉能力）
-    case NODE_TYPES.PROMPT:
-      return ['text', 'multimodal']; // 提示词生成：多模态模型同样可做文本生成
+    case NODE_TYPES.TEXT_GENERATION:
+      return ['text', 'multimodal']; // AI 文本生成：多模态模型同样可做文本生成
     case NODE_TYPES.IMAGE:
       return ['image']; // 图像生成
     default:
@@ -491,7 +491,7 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
 
   // ---- 提示词生成节点 ----
   app.post(
-    '/api/modules/bookplate/generate-prompt',
+    '/api/modules/bookplate/generate-text',
     { preHandler: app.authenticate },
     async (request, reply) => {
       const payload = (request.body ?? {}) as PromptRequest;
@@ -500,8 +500,8 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
       const text = payload.text ?? '';
       const configId = payload.config_id ?? null;
 
-      const agentConfig = agentConfigFrom(configId, NODE_TYPES.PROMPT, request.authUser!.id);
-      const textConfig = textConfigFrom(configId, NODE_TYPES.PROMPT);
+      const agentConfig = agentConfigFrom(configId, NODE_TYPES.TEXT_GENERATION, request.authUser!.id);
+      const textConfig = textConfigFrom(configId, NODE_TYPES.TEXT_GENERATION);
 
       if (agentConfig) {
         const cfg = agentConfig;
@@ -513,7 +513,7 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
               agentPromptMessage(metadata, analysis, text),
               sessionKey,
               undefined,
-              { module: 'bookplate', node_type: NODE_TYPES.PROMPT }
+              { module: 'bookplate', node_type: NODE_TYPES.TEXT_GENERATION }
             )) {
               yield* agentEventToStream(evt);
             }
@@ -531,7 +531,7 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
             payload.model_name && textConfig
               ? { ...textConfig, model_name: payload.model_name }
               : textConfig;
-          for await (const delta of llmService.generatePromptStream(
+          for await (const delta of llmService.generateTextStream(
             metadata,
             config,
             analysis,
@@ -1102,7 +1102,7 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
       if (configId == null) return reply.code(400).send({ detail: '缺少 config_id' });
       const db = getDb();
       const nc = findNodeConfigById(db, configId);
-      // 不限节点类型：chat / prompt_generation / image_generation 等绑定模型配置的节点通用
+      // 不限节点类型：chat / text_generation / image_generation 等绑定模型配置的节点通用
       if (!nc || nc.llmConfigId == null || !nc.isActive) {
         return reply.code(400).send({ detail: '节点未绑定可用的模型配置' });
       }

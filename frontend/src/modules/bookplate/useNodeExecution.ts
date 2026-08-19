@@ -154,7 +154,7 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
     };
 
     postUIStream({
-      url: '/api/modules/bookplate/generate-prompt',
+      url: '/api/modules/bookplate/generate-text',
       body: {
         metadata: inputs.metadata,
         analysis: inputs.analysis,
@@ -429,7 +429,7 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
         runImageAnalysis(node, { image, coverUrl: coverUrl || undefined });
         return '';
       }
-      case 'prompt_generation': {
+      case 'text_generation': {
         const inputs = resolveNodeRunInputs(
           node,
           ctx.nodesRef.current,
