@@ -104,9 +104,20 @@ export async function register(app: FastifyInstance): Promise<void> {
     '/api/modules/bookplate/fastclaw-probe',
     { preHandler: app.requireAdmin },
     async (request, reply) => {
-      const query = (request.query ?? {}) as { base_url?: string; api_key?: string };
-      const baseUrl = query.base_url ?? '';
-      const apiKey = query.api_key ?? '';
+      const query = (request.query ?? {}) as { base_url?: string; api_key?: string; config_id?: string | number };
+      let baseUrl = (query.base_url ?? '').trim();
+      let apiKey = (query.api_key ?? '').trim();
+      const configId = query.config_id != null && query.config_id !== '' ? Number(query.config_id) : null;
+
+      if (configId != null && !Number.isNaN(configId)) {
+        const cfg = findFastClawAgentConfigById(getDb(), configId);
+        if (!cfg) {
+          return reply.code(404).send({ detail: 'FastClaw Agent 配置不存在' });
+        }
+        if (!baseUrl) baseUrl = (cfg.baseUrl ?? '').trim();
+        if (!apiKey) apiKey = (cfg.apiKey ?? '').trim();
+      }
+
       if (!baseUrl || !apiKey) {
         return reply.code(400).send({ detail: '请填写 Base URL 与 API Key' });
       }

@@ -390,8 +390,26 @@ describe('管理端：FastClaw / Skill Agent', () => {
       url: `/api/admin/fastclaw-agents/${id}/duplicate`,
       headers: { authorization: `Bearer ${adminToken}` },
     });
+    const dupId = (dup.json() as { id: number }).id;
     expect(dup.statusCode).toBe(200);
     expect((dup.json() as { name: string }).name).toBe('我的 Agent (副本)');
+
+    // 探测副本配置：使用 config_id 时，即使未传 api_key / base_url，也能使用库中保存的配置探测成功
+    const probeDup = await app.inject({
+      method: 'GET',
+      url: `/api/modules/bookplate/fastclaw-probe?config_id=${dupId}`,
+      headers: { authorization: `Bearer ${adminToken}` },
+    });
+    expect(probeDup.statusCode).toBe(200);
+    expect(probeDup.json()).toEqual({ agents: [{ id: 'agt_real', name: 'Xulei' }] });
+
+    // 不存在的 config_id 返回 404
+    const probeBad = await app.inject({
+      method: 'GET',
+      url: '/api/modules/bookplate/fastclaw-probe?config_id=999999',
+      headers: { authorization: `Bearer ${adminToken}` },
+    });
+    expect(probeBad.statusCode).toBe(404);
 
     // 列表懒解析：agent_name 从 mock FastClaw 回填
     const list = await app.inject({
