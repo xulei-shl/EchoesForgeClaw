@@ -190,10 +190,24 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
     case 'text_generation': {
       const config = h.configOf(node);
       const hasDownstream = hasDownstreamOf(node, h.edges);
+      // 上下文注入折叠块：与 AI 对话 / 图像生成节点共用构建逻辑，展示本次运行并入提示词的输入
+      const contextBlocks = buildInjectedContextBlocks(
+        node,
+        {
+          includeBook: settings.includeBook,
+          includeBookCover: false,
+          includeUpstreamText: true,
+          includeUpstreamImages: false,
+        },
+        h.nodes,
+        h.edges,
+        h.portTypesOf
+      );
       return (
         <TextGenerationNode
           key={node.id}
           {...common}
+          contextBlocks={contextBlocks}
           content={node.data.content}
           agentSteps={node.data.agentSteps}
           agentName={config?.mode === 'agent' ? (config.agent_name ?? undefined) : undefined}

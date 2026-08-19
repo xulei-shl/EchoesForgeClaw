@@ -8,9 +8,10 @@ import { Textarea } from '../../../platform/components/ui/Textarea';
 import { AgentActivity } from '../../../platform/components/agent/AgentActivity';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { NodeRunPlaceholder } from '../../../platform/components/node/NodeRunPlaceholder';
-import type { AgentStep, NodeRunSettings } from '../../../platform/types';
+import type { AgentStep, InjectedContextBlock, NodeRunSettings } from '../../../platform/types';
 import { NODE_COLORS } from '../nodeTypes';
 import { NodeSettingsPopover } from './NodeSettingsPopover';
+import { ContextInjectionBlock } from './ContextInjectionBlock';
 
 export interface TextGenerationNodeProps {
   id: string;
@@ -33,6 +34,8 @@ export interface TextGenerationNodeProps {
   group?: string;
   onRun?: (id: string) => void;
   settings?: NodeRunSettings;
+  /** 注入的上下文块（文本上级 / 图书元数据 / 图片分析等，折叠卡片展示） */
+  contextBlocks?: InjectedContextBlock[];
   onUpdateSettings?: (id: string, settings: NodeRunSettings) => void;
   hasBookInfo?: boolean;
   mismatchBadge?: string | null;
@@ -62,6 +65,7 @@ const TextGenerationNodeInner: React.FC<TextGenerationNodeProps> = ({
   group,
   onRun,
   settings,
+  contextBlocks,
   onUpdateSettings,
   hasBookInfo,
   mismatchBadge,
@@ -194,6 +198,15 @@ const TextGenerationNodeInner: React.FC<TextGenerationNodeProps> = ({
           running={isGenerating && !!agentName}
         />
         <div className="relative z-10 flex flex-col h-full flex-1 min-h-0">
+          {/* 顶部展示各个上级节点的上下文注入折叠块（与 ImageNode / ChatNode 共用组件） */}
+          {contextBlocks && contextBlocks.length > 0 && (
+            <div className="space-y-1.5 shrink-0 mb-2">
+              {contextBlocks.map((block) => (
+                <ContextInjectionBlock key={block.id} block={block} />
+              ))}
+            </div>
+          )}
+
           {isEditing ? (
             <div className="flex flex-col flex-1 min-h-0 gap-2">
               <Textarea
