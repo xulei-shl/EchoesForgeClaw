@@ -1,8 +1,12 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import * as maplibregl from 'maplibre-gl';
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'leaflet/dist/leaflet.css';
 import 'maplibre-gl/dist/maplibre-gl.css';
+
+// 显式配置 MapLibre GL 矢量瓦片 Worker（避免 Vite 打包环境 Worker 丢失导致矢量图形无法解析）
+maplibregl.setWorkerUrl(maplibreWorkerUrl);
 import { ImageDown, Loader2, Map as MapIcon, MapPin, Search, X } from 'lucide-react';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
@@ -150,6 +154,12 @@ const MapPosterNodeInner: React.FC<MapPosterNodeProps> = ({
   const tilesLoadedRef = useRef(false);
   /** 双向同步中（防 moveend 互触发死循环，与 map-to-poster isSyncing 同口径） */
   const syncingRef = useRef(false);
+  /** 当前 MapLibre 已生效的主题 key */
+  const currentArtisticThemeRef = useRef<string | null>(null);
+  /** 待生效的 MapLibre 样式队列（防快速切换样式导致 setStyle 冲突） */
+  const pendingArtisticStyleRef = useRef<{ style: any; themeKey: string } | null>(null);
+  /** MapLibre 样式正在加载中 */
+  const styleChangeInProgressRef = useRef(false);
 
   const updateMarkers = useCallback((v: { lat: number; lon: number }) => {
     leafletMarkerRef.current?.setLatLng([v.lat, v.lon]);
@@ -179,7 +189,7 @@ const MapPosterNodeInner: React.FC<MapPosterNodeProps> = ({
   useEffect(() => {
     const tileContainer = tileContainerRef.current;
     const artisticContainer = artisticContainerRef.current;
-    if (!tileContainer) return;
+    if (!tileContainer || !artisticContainer) return;
     const initView = initialViewRef.current;
 
     // Leaflet 瓦片地图
@@ -231,10 +241,15 @@ const MapPosterNodeInner: React.FC<MapPosterNodeProps> = ({
 
     // MapLibre 艺术地图（隐藏，仅 artistic 模式显示）
     try {
+      const initArtisticKey = artisticThemes[artisticTheme] ? artisticTheme : DEFAULT_ARTISTIC_THEME;
+      const initArtTheme = artisticThemes[initArtisticKey];
+      currentArtisticThemeRef.current = initArtisticKey;
+      styleChangeInProgressRef.current = true;
+
       // preserveDrawingBuffer：导出时 getCanvas().toDataURL() 必需（类型未收录，运行时有效）
       const amap = new maplibregl.Map({
-        container: artisticContainer!,
-        style: generateMapLibreStyle(artisticThemes[DEFAULT_ARTISTIC_THEME]),
+        container: artisticContainer,
+        style: generateMapLibreStyle(initArtTheme),
         center: [initView.lon, initView.lat],
         zoom: initView.zoom - 1,
         interactive: true,
@@ -243,6 +258,22 @@ const MapPosterNodeInner: React.FC<MapPosterNodeProps> = ({
       } as maplibregl.MapOptions);
       amap.scrollZoom.setWheelZoomRate(1);
       amap.scrollZoom.setZoomRate(1 / 600);
+
+      amap.on('style.load', () => {
+        if (pendingArtisticStyleRef.current) {
+          const next = pendingArtisticStyleRef.current;
+          pendingArtisticStyleRef.current = null;
+          currentArtisticThemeRef.current = next.themeKey;
+          try {
+            amap.setStyle(next.style);
+          } catch {
+            styleChangeInProgressRef.current = false;
+          }
+        } else {
+          styleChangeInProgressRef.current = false;
+        }
+      });
+
       amap.on('moveend', () => {
         if (syncingRef.current) return;
         syncingRef.current = true;
@@ -256,7 +287,7 @@ const MapPosterNodeInner: React.FC<MapPosterNodeProps> = ({
         syncingRef.current = false;
       });
       const mEl = document.createElement('div');
-      mEl.innerHTML = markerHtml(artisticThemes[DEFAULT_ARTISTIC_THEME].text);
+      mEl.innerHTML = markerHtml(initArtTheme.text);
       artisticMarkerRef.current = new maplibregl.Marker({ element: mEl, anchor: 'bottom' })
         .setLngLat([initView.lon, initView.lat])
         .addTo(amap);
@@ -303,11 +334,29 @@ const MapPosterNodeInner: React.FC<MapPosterNodeProps> = ({
   useEffect(() => {
     const amap = artisticMapRef.current;
     if (!amap) return;
-    const theme = artisticThemes[artisticTheme] ?? artisticThemes[DEFAULT_ARTISTIC_THEME];
+    const targetKey = artisticThemes[artisticTheme] ? artisticTheme : DEFAULT_ARTISTIC_THEME;
+    const theme = artisticThemes[targetKey];
+
+    // 同步 Marker 颜色
+    if (artisticMarkerRef.current) {
+      const el = artisticMarkerRef.current.getElement();
+      if (el) el.innerHTML = markerHtml(theme.text);
+    }
+
+    if (currentArtisticThemeRef.current === targetKey) return;
+
+    const style = generateMapLibreStyle(theme);
+    if (styleChangeInProgressRef.current) {
+      pendingArtisticStyleRef.current = { style, themeKey: targetKey };
+      return;
+    }
+
+    styleChangeInProgressRef.current = true;
+    currentArtisticThemeRef.current = targetKey;
     try {
-      amap.setStyle(generateMapLibreStyle(theme));
-    } catch (err) {
-      console.error('Failed to apply artistic theme:', err);
+      amap.setStyle(style);
+    } catch {
+      pendingArtisticStyleRef.current = { style, themeKey: targetKey };
     }
   }, [artisticTheme]);
 
@@ -406,6 +455,25 @@ const MapPosterNodeInner: React.FC<MapPosterNodeProps> = ({
       await new Promise<void>((resolve) => {
         mapRef.current?.once('load', () => resolve());
         setTimeout(resolve, 3000);
+      });
+    }
+    // 艺术模式：等待 MapLibre 矢量瓦片渲染完毕（3s 兜底）
+    if (renderMode === 'artistic' && artisticMapRef.current) {
+      await new Promise<void>((resolve) => {
+        let resolved = false;
+        const done = () => {
+          if (!resolved) {
+            resolved = true;
+            resolve();
+          }
+        };
+        try {
+          artisticMapRef.current?.once('idle', done);
+        } catch {
+          done();
+          return;
+        }
+        setTimeout(done, 3000);
       });
     }
     const v = viewportRef.current;
