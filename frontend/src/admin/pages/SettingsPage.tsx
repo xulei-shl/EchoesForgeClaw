@@ -8,7 +8,7 @@ import {
   Landmark,
   Layers,
   Loader2,
-  MessagesSquare,
+  Globe,
   Pencil,
   Plus,
   RefreshCw,
@@ -25,7 +25,7 @@ import { Button } from '../../platform/components/ui/Button';
 import { Input } from '../../platform/components/ui/Input';
 import { Card } from '../../platform/components/ui/Card';
 import { Dialog } from '../../platform/components/ui/Dialog';
-import { FieldLabel, PageHeader } from '../components/AdminBits';
+import { FieldLabel } from '../components/AdminBits';
 import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
 
 /** 需要默认展示的设置项说明（新增时用于输入提示） */
@@ -103,11 +103,18 @@ const CATEGORY_DEFS: CategoryDef[] = [
     match: (key) => key.startsWith('mxnzp.'),
   },
   {
-    id: 'zhihu',
-    name: '知乎检索',
-    icon: MessagesSquare,
-    description: '知乎检索节点（站内搜索 / 全网搜索 / 直答）的知乎开发者平台 Access Secret 配置',
-    match: (key) => key.startsWith('zhihu.'),
+    id: 'websearch',
+    name: '网络检索',
+    icon: Globe,
+    description: '用于画布网络检索类节点（知乎检索、全网搜索等）的 API Key 与访问凭据配置',
+    match: (key) =>
+      key.startsWith('zhihu.') ||
+      key.startsWith('websearch.') ||
+      key.startsWith('search.') ||
+      key.startsWith('tavily.') ||
+      key.startsWith('serper.') ||
+      key.startsWith('brave.') ||
+      key.startsWith('bocha.'),
   },
 ];
 
@@ -398,19 +405,14 @@ export const SettingsPage: React.FC = () => {
     (!searchQuery || 'bifrost.allowed_folders'.includes(searchQuery.toLowerCase()) || '白名单'.includes(searchQuery));
 
   return (
-    <div>
-      <PageHeader
-        title="系统设置"
-        subtitle="平台级服务密钥、接口代理与请求速率配置；修改后对后续请求立即生效"
-        actions={
-          !showCreate && (
-            <Button size="sm" onClick={openCreate}>
-              <Plus size={15} strokeWidth={2} className="mr-1" />
-              新建设置项
-            </Button>
-          )
-        }
-      />
+    <div className="space-y-6">
+      {/* 页面主标题说明 */}
+      <div>
+        <h2 className="font-serif text-xl font-semibold text-ink">系统设置</h2>
+        <p className="text-sm text-ink-light font-sans mt-1">
+          平台级服务密钥、接口代理与请求速率配置；修改后对后续请求立即生效
+        </p>
+      </div>
 
       {/* 新建/编辑表单弹窗 */}
       <Dialog
@@ -500,13 +502,15 @@ export const SettingsPage: React.FC = () => {
         </div>
       )}
 
-      {/* 核心配置内容区 */}
+      {/* 核心配置两栏工作台：左侧极简 Sticky 导航 + 右侧主内容区 */}
       {!loading && !error && (
-        <div className="space-y-5">
-          {/* 二级 Tab 切换栏 + 搜索过滤栏 */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1 border-b border-dashed border-paper-grid">
-            {/* 分类 Tab 切换按钮组 */}
-            <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar py-0.5" role="tablist">
+        <div className="flex flex-col md:flex-row items-start gap-8">
+          {/* 左侧一体化极简分类侧栏 (Sticky 固定) */}
+          <aside className="w-full md:w-52 shrink-0 md:sticky md:top-6 space-y-1">
+            <div className="px-3 py-1.5 text-xs font-serif font-medium text-ink-light tracking-wide">
+              配置分类
+            </div>
+            <nav className="space-y-1" aria-label="设置分类导航" role="tablist">
               {tabList.map((tab) => {
                 const isActive = activeTab === tab.id;
                 const Icon = tab.icon;
@@ -517,19 +521,25 @@ export const SettingsPage: React.FC = () => {
                     role="tab"
                     aria-selected={isActive}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-sans whitespace-nowrap transition active:scale-[0.97] border ${
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-sans transition-all duration-150 active:scale-[0.96] text-left ${
                       isActive
-                        ? 'bg-accent-surface text-accent font-medium border-dashed border-accent/40 shadow-xs'
-                        : 'text-ink-light hover:text-ink hover:bg-paper-grid/30 border-transparent'
+                        ? 'bg-accent text-white font-medium shadow-xs'
+                        : 'text-ink-light hover:text-ink hover:bg-paper-grid/40'
                     }`}
                   >
-                    <Icon size={14} strokeWidth={1.5} className={isActive ? 'text-accent' : 'text-ink-faint'} />
-                    <span>{tab.name}</span>
+                    <div className="flex items-center gap-2.5 min-w-0 truncate">
+                      <Icon
+                        size={15}
+                        strokeWidth={1.5}
+                        className={isActive ? 'text-white shrink-0' : 'text-ink-faint shrink-0'}
+                      />
+                      <span className="truncate">{tab.name}</span>
+                    </div>
                     <span
-                      className={`px-1.5 py-0.5 text-[10px] rounded-pill font-mono tabular-nums leading-none ${
+                      className={`ml-2 px-1.5 py-0.5 text-[10px] rounded-pill font-mono tabular-nums leading-none shrink-0 ${
                         isActive
-                          ? 'bg-accent/15 text-accent font-semibold'
-                          : 'bg-paper-grid/50 text-ink-faint'
+                          ? 'bg-white/20 text-white font-semibold'
+                          : 'bg-paper-grid/60 text-ink-faint'
                       }`}
                     >
                       {tab.count}
@@ -537,158 +547,185 @@ export const SettingsPage: React.FC = () => {
                   </button>
                 );
               })}
-            </div>
+            </nav>
 
-            {/* 快速搜索框 */}
-            <div className="relative w-full sm:w-56 shrink-0">
-              <Search
-                size={13}
-                strokeWidth={1.5}
-                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-faint pointer-events-none"
-              />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="搜索配置键名或说明..."
-                className="w-full h-8 pl-8 pr-7 text-xs rounded-md border border-dashed border-paper-grid bg-paper text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition font-sans"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  title="清除搜索"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-faint hover:text-ink transition-colors"
-                >
-                  <X size={12} strokeWidth={2} />
-                </button>
-              )}
+            {/* 左侧底部概览 */}
+            <div className="pt-3 mt-4 border-t border-dashed border-paper-grid px-3 flex items-center justify-between text-[11px] text-ink-faint font-sans">
+              <span>共 {items.length} 项设置</span>
+              <span className="text-accent font-medium font-mono tabular-nums">已就绪</span>
             </div>
-          </div>
+          </aside>
 
-          {/* 分类说明与提示区域 */}
-          {activeTabMeta.description && (
-            <div className="px-3.5 py-2.5 rounded-md bg-paper-grid/15 border border-dashed border-paper-grid text-xs text-ink-light font-sans flex items-start gap-2">
-              <activeTabMeta.icon size={15} strokeWidth={1.5} className="text-accent shrink-0 mt-0.5" />
-              <div className="min-w-0 flex-1 leading-relaxed">
-                <span>{activeTabMeta.description}</span>
-                {activeTab === 'glam' && (
-                  <p className="mt-1 text-[11px] text-ink-faint font-mono">
-                    包含：Europeana · Harvard Art Museums · NYPL · Paris Musées · Smithsonian Open Access
-                  </p>
+          {/* 右侧主配置内容区 */}
+          <div className="flex-1 min-w-0 w-full space-y-4">
+            {/* 顶栏控制条：搜索过滤框 + 新建设置项按钮 */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-dashed border-paper-grid">
+              <div className="relative flex-1 max-w-sm">
+                <Search
+                  size={14}
+                  strokeWidth={1.5}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint pointer-events-none"
+                />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="搜索配置键名、值或说明..."
+                  className="w-full h-9 pl-9 pr-8 text-xs rounded-lg border border-dashed border-paper-grid bg-node-bg text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition font-sans"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    title="清除搜索"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-faint hover:text-ink transition-colors"
+                  >
+                    <X size={13} strokeWidth={2} />
+                  </button>
                 )}
               </div>
-            </div>
-          )}
 
-          {/* 配置项列表 */}
-          <div className="space-y-3">
-            {/* Bifrost 白名单文件夹专用卡片 */}
-            {shouldShowBifrostWhitelistCard && (
-              <Card className="p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono text-sm text-accent border border-dashed border-accent/40 bg-accent/5 rounded-pill px-2.5 py-0.5">
+              <Button
+                size="sm"
+                onClick={openCreate}
+                className="h-9 px-4 active:scale-[0.96] transition-transform shadow-xs shrink-0"
+              >
+                <Plus size={14} strokeWidth={2} className="mr-1" />
+                新建设置项
+              </Button>
+            </div>
+
+            {/* 分类说明与提示条 */}
+            {activeTabMeta.description && (
+              <div className="px-4 py-3 rounded-lg bg-accent-surface/30 border border-dashed border-accent/25 text-xs text-ink-light font-sans flex items-start gap-2.5">
+                <div className="min-w-0 flex-1 leading-relaxed">
+                  <div className="flex items-center gap-1.5 font-medium text-ink mb-0.5">
+                    <activeTabMeta.icon size={14} strokeWidth={1.5} className="text-accent" />
+                    <span>{activeTabMeta.name}</span>
+                    <span className="font-mono text-ink-faint text-[11px] tabular-nums">({filteredItems.length})</span>
+                  </div>
+                  <span>{activeTabMeta.description}</span>
+                  {activeTab === 'glam' && (
+                    <p className="mt-1 text-[11px] text-ink-faint font-mono">
+                      包含：Europeana · Harvard Art Museums · NYPL · Paris Musées · Smithsonian Open Access
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* 配置项卡片列表 */}
+            <div className="space-y-3">
+              {/* Bifrost 白名单文件夹专用卡片 */}
+              {shouldShowBifrostWhitelistCard && (
+                <Card className="p-5 transition-all hover:border-accent/40 shadow-xs">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 flex-wrap min-w-0">
+                      <span className="font-mono text-xs font-semibold text-accent bg-accent/8 border border-dashed border-accent/30 rounded-md px-2.5 py-1">
                         bifrost.allowed_folders
                       </span>
                       <ShieldCheck size={14} strokeWidth={1.5} className="text-accent" />
                     </div>
-                    <p className="mt-2 text-sm text-ink font-sans">
-                      {wlSelected.size > 0
-                        ? `当前白名单：${bifrostFolders
-                            .filter((f) => wlSelected.has(f.id))
-                            .map((f) => f.name)
-                            .join('、') || '已选择但文件夹不可用'}`
-                        : '未配置（允许全部文件夹）'}
-                    </p>
-                    <p className="mt-1 text-xs text-ink-light font-sans">
-                      仅白名单文件夹下的提示词出现在 Bifrost 管理页与画布检索列表
-                    </p>
-                    {wlLoadError && (
-                      <p className="mt-1 text-xs text-error font-sans">{wlLoadError}</p>
-                    )}
+                    <button
+                      onClick={() => void openWhitelistEditor()}
+                      title="编辑白名单"
+                      className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-[0.96]"
+                    >
+                      <Pencil size={15} strokeWidth={1.5} />
+                    </button>
                   </div>
-                  <button
-                    onClick={() => void openWhitelistEditor()}
-                    title="编辑白名单"
-                    className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-95"
-                  >
-                    <Pencil size={15} strokeWidth={1.5} />
-                  </button>
-                </div>
-              </Card>
-            )}
 
-            {/* 普通配置项卡片 */}
-            {filteredItems
-              .filter((s) => s.key !== 'bifrost.allowed_folders')
-              .map((s) => (
-                <Card key={s.id} className="p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-mono text-sm text-accent border border-dashed border-accent/40 bg-accent/5 rounded-pill px-2.5 py-0.5">
+                  <div className="mt-3 px-3 py-2 rounded-md bg-paper-grid/25 border border-dashed border-paper-grid/80 font-sans text-xs text-ink">
+                    {wlSelected.size > 0
+                      ? `当前白名单：${bifrostFolders
+                          .filter((f) => wlSelected.has(f.id))
+                          .map((f) => f.name)
+                          .join('、') || '已选择但文件夹不可用'}`
+                      : '未配置（允许全部文件夹）'}
+                  </div>
+
+                  <p className="mt-2 text-xs text-ink-light font-sans">
+                    仅白名单文件夹下的提示词出现在 Bifrost 管理页与画布检索列表
+                  </p>
+                  {wlLoadError && (
+                    <p className="mt-1 text-xs text-error font-sans">{wlLoadError}</p>
+                  )}
+                </Card>
+              )}
+
+              {/* 普通配置项卡片 */}
+              {filteredItems
+                .filter((s) => s.key !== 'bifrost.allowed_folders')
+                .map((s) => (
+                  <Card key={s.id} className="p-5 transition-all hover:border-accent/40 shadow-xs">
+                    {/* 第一层：Key 徽章 + 时间戳 + 操作按钮 */}
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5 flex-wrap min-w-0">
+                        <span className="font-mono text-xs font-semibold text-accent bg-accent/8 border border-dashed border-accent/30 rounded-md px-2.5 py-1">
                           {s.key}
                         </span>
-                        <span className="text-xs text-ink-faint font-sans tabular-nums">
+                        <span className="text-[11px] text-ink-faint font-mono tabular-nums">
                           {new Date(s.updated_at).toLocaleString('zh-CN', { hour12: false })}
                         </span>
                       </div>
-                      <p className="mt-2 font-mono text-sm text-ink break-all">
-                        {s.sensitive
-                          ? s.value
-                            ? '••••••••（已配置）'
-                            : '（未配置）'
-                          : s.value || '（空）'}
-                      </p>
-                      <SensitiveValueHint setting={s} />
-                      {s.description && (
-                        <p className="mt-1 text-xs text-ink-light font-sans">{s.description}</p>
-                      )}
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => openEdit(s)}
+                          title="编辑"
+                          className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-[0.96]"
+                        >
+                          <Pencil size={15} strokeWidth={1.5} />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(s)}
+                          title="删除"
+                          className="p-1.5 rounded-md text-ink-light hover:text-error hover:bg-error/10 transition-colors active:scale-[0.96]"
+                        >
+                          <Trash2 size={15} strokeWidth={1.5} />
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button
-                        onClick={() => openEdit(s)}
-                        title="编辑"
-                        className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-95"
-                      >
-                        <Pencil size={15} strokeWidth={1.5} />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(s)}
-                        title="删除"
-                        className="p-1.5 rounded-md text-ink-light hover:text-error hover:bg-error/5 transition-colors active:scale-95"
-                      >
-                        <Trash2 size={15} strokeWidth={1.5} />
-                      </button>
-                    </div>
-                  </div>
-                </Card>
-            ))}
 
-            {/* 空状态处理 */}
-            {filteredItems.length === 0 && !shouldShowBifrostWhitelistCard && (
-              <Card className="py-14 flex flex-col items-center gap-3 text-center">
-                <SettingsIcon size={32} strokeWidth={1} className="text-ink-faint" />
-                <p className="font-serif text-base text-ink">
-                  {searchQuery ? `未找到匹配「${searchQuery}」的配置项` : '当前分类下暂无配置项'}
-                </p>
-                <p className="text-xs text-ink-light font-sans">
-                  {searchQuery ? (
-                    <button
-                      type="button"
-                      onClick={() => setSearchQuery('')}
-                      className="text-accent underline hover:opacity-80 transition"
-                    >
-                      清空搜索条件
-                    </button>
-                  ) : (
-                    '可点击右上角「新建设置项」进行添加'
-                  )}
-                </p>
-              </Card>
-            )}
+                    {/* 第二层：配置值（轻底色等宽框） */}
+                    <div className="mt-3 px-3 py-2 rounded-md bg-paper-grid/25 border border-dashed border-paper-grid/80 font-mono text-xs text-ink break-all select-all">
+                      {s.sensitive
+                        ? s.value
+                          ? '••••••••（敏感项已配置掩码保护）'
+                          : '（未配置）'
+                        : s.value || '（空值）'}
+                    </div>
+
+                    {/* 第三层：说明文本与提示 */}
+                    {s.description && (
+                      <p className="mt-2 text-xs text-ink-light font-sans leading-relaxed">{s.description}</p>
+                    )}
+                    <SensitiveValueHint setting={s} />
+                  </Card>
+              ))}
+
+              {/* 空状态 */}
+              {filteredItems.length === 0 && !shouldShowBifrostWhitelistCard && (
+                <Card className="py-14 flex flex-col items-center gap-3 text-center">
+                  <SettingsIcon size={32} strokeWidth={1} className="text-ink-faint" />
+                  <p className="font-serif text-base text-ink">
+                    {searchQuery ? `未找到匹配「${searchQuery}」的配置项` : '当前分类下暂无配置项'}
+                  </p>
+                  <p className="text-xs text-ink-light font-sans">
+                    {searchQuery ? (
+                      <button
+                        type="button"
+                        onClick={() => setSearchQuery('')}
+                        className="text-accent underline hover:opacity-80 transition"
+                      >
+                        清空搜索条件
+                      </button>
+                    ) : (
+                      '可点击上方「新建设置项」进行添加'
+                    )}
+                  </p>
+                </Card>
+              )}
+            </div>
           </div>
         </div>
       )}

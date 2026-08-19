@@ -9,6 +9,7 @@ import {
   Bot,
   BookOpen,
   Sparkles,
+  Workflow,
   ArrowLeft,
 } from 'lucide-react';
 import { useAuth } from '../platform/stores/authStore';
@@ -18,7 +19,7 @@ const NAV_ITEMS = [
   { to: '/admin/llm-configs', label: '模型配置', icon: Cpu },
   { to: '/admin/prompts', label: '提示词管理', icon: FileText },
   { to: '/admin/bifrost-prompts', label: 'Bifrost 提示词', icon: BookOpen },
-  { to: '/admin/bifrost-skills', label: 'Bifrost Skills', icon: BookOpen },
+  { to: '/admin/bifrost-skills', label: 'Bifrost Skills', icon: Workflow },
   { to: '/admin/fastclaw-agents', label: 'FastClaw Agent', icon: Bot },
   { to: '/admin/skill-agent-configs', label: 'DeepSeek Agent', icon: Sparkles },
   { to: '/admin/node-configs', label: '节点管理', icon: GitBranch },
@@ -103,7 +104,7 @@ export const AdminLayout: React.FC = () => {
         <header className="h-14 border-b border-dashed border-paper-grid bg-paper/70 flex items-center px-6 sticky top-0 z-10 backdrop-blur-sm shrink-0">
           <h1 className="font-serif text-lg font-semibold text-ink">{title}</h1>
         </header>
-        <div className="flex-1 w-full max-w-[860px] mx-auto px-6 py-8">
+        <div className="flex-1 w-full max-w-6xl mx-auto px-6 py-8">
           <Outlet />
         </div>
       </main>
