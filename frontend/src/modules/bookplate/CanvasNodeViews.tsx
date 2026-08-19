@@ -12,6 +12,7 @@ import { SkillSearchNode } from './components/SkillSearchNode';
 import { CalendarNode } from './components/CalendarNode';
 import { WeatherNode } from './components/WeatherNode';
 import { ZhihuSearchNode, type ZhihuSearchRequest } from './components/ZhihuSearchNode';
+import { WikipediaSearchNode, type WikipediaSearchRequest } from './components/WikipediaSearchNode';
 import { MapPosterNode } from '../../modules/multimodal/components/MapPosterNode';
 import { ImageSearchNode, type ImageSearchSelection } from '../../modules/multimodal/components/ImageSearchNode';
 import { ArtImageSearchNode, type GlamSearchSelection } from '../../modules/multimodal/components/ArtImageSearchNode';
@@ -75,6 +76,14 @@ export interface NodeViewHelpers {
   handleFetchWeatherFor: (id: string, city: string) => void;
   /** 知乎检索节点：按模式检索 / 直答（关键词由页面合并上游文本 / 手动输入） */
   handleFetchZhihuFor: (id: string, payload: ZhihuSearchRequest) => void;
+  /** Wikipedia 检索节点：关键词检索（返回结果列表，写入 data.results） */
+  handleSearchWikipediaFor: (id: string, payload: WikipediaSearchRequest) => void;
+  /** Wikipedia 检索节点：打开一篇检索结果的文章全文（写入 data.output） */
+  handleOpenWikipediaArticleFor: (id: string, title: string) => void;
+  /** Wikipedia 检索节点：从全文视图返回检索结果列表（仅切视图，不清空输出） */
+  handleBackToWikipediaResultsFor: (id: string) => void;
+  /** Wikipedia 检索节点：编辑器状态写入 node.data（如 summaryMode 切换，仅持久化，不记撤销历史） */
+  handleUpdateWikipediaEditorFor: (id: string, patch: Record<string, any>) => void;
   /** 知乎检索节点：编辑器状态写入 node.data（仅持久化，不记撤销历史） */
   handleUpdateZhihuEditorFor: (id: string, patch: Record<string, any>, undoable?: boolean) => void;
   /** 地图海报节点：导出 PNG data URL 落盘（保存到后端 + 记历史 + 写回 node.data） */
@@ -422,6 +431,38 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           hasDownstream={hasDownstream}
           onFetch={h.handleFetchZhihuFor}
           onUpdateEditor={h.handleUpdateZhihuEditorFor}
+        />
+      );
+    }
+    case 'wikipedia_search': {
+      const hasDownstream = hasDownstreamOf(node, h.edges);
+      const d = node.data ?? {};
+      // 连线即输入：文本输出上级内容作为检索关键词（collectNodeInputs
+      // 按端口类型统一分组，取第一个非空），优先于手动输入（与天气节点同口径）
+      const upstreamKeyword =
+        collectNodeInputs(node, h.nodes, h.edges, h.portTypesOf)
+          .text.map((p) => nodeOutputText(p))
+          .find((v) => v.trim()) ?? '';
+      const results = Array.isArray(d.results) ? d.results : [];
+      return (
+        <WikipediaSearchNode
+          key={node.id}
+          {...common}
+          language={typeof d.language === 'string' ? d.language : 'zh'}
+          query={typeof d.query === 'string' ? d.query : ''}
+          limit={typeof d.limit === 'number' ? d.limit : 10}
+          results={results}
+          articleTitle={typeof d.articleTitle === 'string' ? d.articleTitle : ''}
+          output={typeof d.output === 'string' ? d.output : ''}
+          upstreamKeyword={upstreamKeyword}
+          isGenerating={!!d.isGenerating}
+          error={d.error ?? null}
+          hasDownstream={hasDownstream}
+          onSearch={h.handleSearchWikipediaFor}
+          summaryMode={typeof d.summaryMode === 'boolean' ? d.summaryMode : false}
+          onOpenArticle={h.handleOpenWikipediaArticleFor}
+          onBackToResults={h.handleBackToWikipediaResultsFor}
+          onUpdateEditor={h.handleUpdateWikipediaEditorFor}
         />
       );
     }

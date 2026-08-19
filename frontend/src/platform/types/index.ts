@@ -215,7 +215,9 @@ export type CanvasNodeType =
   /** NASA 图片检索节点：检索 NASA APOD 每日天文图 / EPIC 地球影像，按日期或随机浏览并选一张作为图片输出（多模态工具，无需配置） */
   | 'nasa_image_search'
   /** 知乎检索节点：知乎开发者平台 3 类检索（站内搜索 / 全网搜索 / 直答），结果以文本输出（文本工具，无需配置） */
-  | 'zhihu_search';
+  | 'zhihu_search'
+  /** Wikipedia 检索节点：Wikipedia 官方公开词条检索 + 文章全文，结果以文本输出（文本工具，匿名无需密钥） */
+  | 'wikipedia_search';
 
 /**
  * 节点端口类型（输入/输出）：text / image 为当前实际使用的类型，

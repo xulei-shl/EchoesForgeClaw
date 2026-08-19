@@ -22,7 +22,8 @@ export type NodeType =
   | 'image_search'
   | 'art_image_search'
   | 'nasa_image_search'
-  | 'zhihu_search';
+  | 'zhihu_search'
+  | 'wikipedia_search';
 
 /** 各节点模板类型的默认尺寸（必须与组件 defaultSize 一致） */
 export const NODE_SIZES: Record<NodeType, { width: number; height: number }> = {
@@ -43,6 +44,7 @@ export const NODE_SIZES: Record<NodeType, { width: number; height: number }> = {
   art_image_search: { width: 460, height: 580 },
   nasa_image_search:{ width: 440, height: 580 },
   zhihu_search:     { width: 440, height: 560 },
+  wikipedia_search: { width: 440, height: 560 },
 };
 
 /** 节点间水平间距（px） */

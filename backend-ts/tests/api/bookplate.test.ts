@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { hashSync } from 'bcryptjs';
 import { initDb, setDb, type DB } from '../../src/config/database.js';
 import { buildApp } from '../../src/server.js';
@@ -36,6 +36,10 @@ afterAll(async () => {
   await app.close();
   await Promise.all(openServers.splice(0).map((s) => s.close()));
   setDb(null);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 /** 在内存库中插入 LLM 配置 + 节点配置（返回节点配置 id）。 */
@@ -148,7 +152,7 @@ describe('node-registry', () => {
     expect(body.configs.some((c: any) => c.node_type === 'chat' && c.mode === 'llm')).toBe(true);
   });
 
-  it('内置小工具模板（万年历 / 天气查询 / 知乎检索）无需配置即可用', async () => {
+  it('内置小工具模板（万年历 / 天气查询 / 知乎检索 / Wikipedia 检索）无需配置即可用', async () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/modules/bookplate/node-registry',
@@ -159,10 +163,12 @@ describe('node-registry', () => {
     const calendar = body.templates.find((t: any) => t.type === 'calendar');
     const weather = body.templates.find((t: any) => t.type === 'weather');
     const zhihu = body.templates.find((t: any) => t.type === 'zhihu_search');
+    const wikipedia = body.templates.find((t: any) => t.type === 'wikipedia_search');
     expect(calendar).toBeDefined();
     expect(weather).toBeDefined();
     expect(zhihu).toBeDefined();
-    // 小工具类别 + 无需配置 + 文本输出（天气 / 知乎检索可接受文本输入关键词）
+    expect(wikipedia).toBeDefined();
+    // 小工具类别 + 无需配置 + 文本输出（天气 / 知乎 / Wikipedia 检索可接受文本输入关键词）
     expect(calendar.category).toBe('tool');
     expect(calendar.configurable).toBe(false);
     expect(calendar.output_type).toBe('text');
@@ -174,8 +180,141 @@ describe('node-registry', () => {
     expect(zhihu.configurable).toBe(false);
     expect(zhihu.output_type).toBe('text');
     expect(zhihu.input_types).toContain('text');
+    expect(wikipedia.category).toBe('tool');
+    expect(wikipedia.configurable).toBe(false);
+    expect(wikipedia.output_type).toBe('text');
+    expect(wikipedia.input_types).toContain('text');
     // 模板声明即出现在「+」菜单：无需任何节点配置变体
     expect(body.configs.some((c: any) => c.node_type === 'calendar')).toBe(false);
+  });
+
+  it('Wikipedia 检索端点：关键词检索返回标题/摘要/总命中数', async () => {
+    // stub 全局 fetch：返回 MediaWiki search 响应，不触真实网络
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            query: {
+              searchinfo: { totalhits: 2 },
+              search: [
+                {
+                  title: 'TypeScript',
+                  pageid: 1,
+                  snippet: 'TypeScript is a <span class="searchmatch">language</span> &amp; superset',
+                  wordcount: 120,
+                },
+                { title: 'TypeScript (band)', pageid: 2, snippet: 'A band', wordcount: 8 },
+              ],
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        )
+      )
+    );
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/wikipedia-search',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { query: 'TypeScript', language: 'en', limit: 5 },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.query).toBe('TypeScript');
+    expect(body.language).toBe('en');
+    expect(body.total).toBe(2);
+    expect(body.results).toHaveLength(2);
+    expect(body.results[0].title).toBe('TypeScript');
+    expect(body.results[0].pageid).toBe(1);
+    // 高亮标签剥离 + HTML 实体解码
+    expect(body.results[0].snippet).toContain('language');
+    expect(body.results[0].snippet).not.toContain('searchmatch');
+    expect(body.results[0].snippet).toContain('&');
+  });
+
+  it('Wikipedia 检索端点：缺少关键词返回 400', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/wikipedia-search',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { query: '   ' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().detail).toContain('检索关键词不能为空');
+  });
+
+  it('Wikipedia 全文端点：返回正文纯文本', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            query: {
+              pages: [{ pageid: 1, title: '北京', extract: '北京市是中华人民共和国的首都。' }],
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        )
+      )
+    );
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/wikipedia-article',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { title: '北京', language: 'zh' },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.title).toBe('北京');
+    expect(body.content).toContain('首都');
+  });
+
+  it('Wikipedia 全文端点：未收录词条返回 502 提示', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({ query: { pages: [{ title: '不存在词条XYZ', missing: '' }] } }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        )
+      )
+    );
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/wikipedia-article',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { title: '不存在词条XYZ' },
+    });
+    expect(res.statusCode).toBe(502);
+    expect(res.json().detail).toContain('未找到文章');
+  });
+
+  it('Wikipedia 全文端点：summary=true 走 REST 摘要 API', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            title: 'Beijing',
+            pageid: 1,
+            extract: 'Beijing is the capital of China.',
+            description: 'Capital city of China',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        )
+      )
+    );
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/wikipedia-article',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { title: 'Beijing', language: 'en', summary: true },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.title).toBe('Beijing');
+    expect(body.content).toContain('capital');
+    expect(body.description).toBe('Capital city of China');
   });
 
   it('知乎检索端点：未配置 Access Secret 时返回 503 提示', async () => {

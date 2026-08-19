@@ -26,6 +26,12 @@ import {
   zhidaAnswer,
 } from '../../services/zhihu-service.js';
 import {
+  WikipediaError,
+  fetchWikipediaArticle,
+  fetchWikipediaSummary,
+  searchWikipedia,
+} from '../../services/wikipedia-service.js';
+import {
   ImageSearchError,
   searchImages,
   trackUnsplashDownload,
@@ -790,6 +796,56 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
         return await zhihuSearch(accessSecret, query, payload.count ?? 5);
       } catch (err) {
         if (err instanceof ZhihuError) {
+          return reply.code(502).send({ detail: err.message });
+        }
+        return reply.code(502).send({ detail: err instanceof Error ? err.message : String(err) });
+      }
+    }
+  );
+
+  // ---- 文本工具：Wikipedia 检索节点（官方公开 MediaWiki API，匿名无需密钥） ----
+
+  // 关键词检索：返回标题 / 摘要片段 / 词数 / 总命中数（前端列表展示，选中后拉全文）
+  app.post(
+    '/api/modules/bookplate/wikipedia-search',
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const payload = (request.body ?? {}) as { query?: string; language?: string; limit?: number };
+      const query = (payload.query ?? '').trim();
+      if (!query) {
+        return reply.code(400).send({ detail: '检索关键词不能为空' });
+      }
+      try {
+        return await searchWikipedia(query, {
+          language: payload.language ?? 'zh',
+          limit: payload.limit ?? 10,
+        });
+      } catch (err) {
+        if (err instanceof WikipediaError) {
+          return reply.code(502).send({ detail: err.message });
+        }
+        return reply.code(502).send({ detail: err instanceof Error ? err.message : String(err) });
+      }
+    }
+  );
+
+  // 文章全文 / 简介：summary=true 走 REST API 精简摘要，否则返回完整正文
+  app.post(
+    '/api/modules/bookplate/wikipedia-article',
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const payload = (request.body ?? {}) as { title?: string; language?: string; summary?: boolean };
+      const title = (payload.title ?? '').trim();
+      if (!title) {
+        return reply.code(400).send({ detail: '文章标题不能为空' });
+      }
+      try {
+        if (payload.summary) {
+          return await fetchWikipediaSummary(title, payload.language ?? 'zh');
+        }
+        return await fetchWikipediaArticle(title, payload.language ?? 'zh');
+      } catch (err) {
+        if (err instanceof WikipediaError) {
           return reply.code(502).send({ detail: err.message });
         }
         return reply.code(502).send({ detail: err instanceof Error ? err.message : String(err) });

@@ -21,6 +21,7 @@ export const NODE_DEFAULT_SIZES: Record<CanvasNodeType, { width: number; height:
   art_image_search: { width: 460, height: 580 },
   nasa_image_search: { width: 440, height: 580 },
   zhihu_search: { width: 440, height: 560 },
+  wikipedia_search: { width: 440, height: 560 },
 };
 
 /** 节点的主题色（用于左上角指示圆点） */
@@ -42,6 +43,7 @@ export const NODE_COLORS: Record<CanvasNodeType, string> = {
   art_image_search: 'oklch(0.7 0.14 330)',
   nasa_image_search: 'oklch(0.6 0.16 250)',
   zhihu_search: 'oklch(0.66 0.18 250)',
+  wikipedia_search: 'oklch(0.62 0.12 45)',
 };
 
 export interface NodeTemplateDef {
@@ -195,6 +197,14 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     configurable: false,
     defaultSize: NODE_DEFAULT_SIZES.zhihu_search,
   },
+  {
+    type: 'wikipedia_search',
+    name: 'Wikipedia 检索',
+    description: '检索 Wikipedia 官方公开词条并获取文章全文（多语言，匿名无需密钥，可连线文本节点传入关键词）',
+    category: 'tool',
+    configurable: false,
+    defaultSize: NODE_DEFAULT_SIZES.wikipedia_search,
+  },
 ];
 
 export const NODE_TEMPLATE_MAP: Record<CanvasNodeType, NodeTemplateDef> = Object.fromEntries(
@@ -258,6 +268,8 @@ export const NODE_PORT_TYPES: Record<CanvasNodeType, { output: NodePortType; inp
   nasa_image_search: { output: 'image', inputs: ['text'] },
   // 知乎检索：输出检索/问答结果文本；可连线文本节点作为检索关键词 / 直答问题（连线即输入）
   zhihu_search: { output: 'text', inputs: ['text'] },
+  // Wikipedia 检索：输出文章全文文本；可连线文本节点作为检索关键词（连线即输入）
+  wikipedia_search: { output: 'text', inputs: ['text'] },
 };
 
 /** 端口类型查找（由画布提供：后端模板声明优先，前端静态镜像兜底） */

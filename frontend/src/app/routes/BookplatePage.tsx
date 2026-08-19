@@ -58,6 +58,7 @@ import { useManualConnection } from '../../modules/bookplate/useManualConnection
 import ConnectionGhost from '../../modules/bookplate/ConnectionGhost';
 import { renderCanvasNode, type NodeViewHelpers } from '../../modules/bookplate/CanvasNodeViews';
 import type { ZhihuSearchRequest } from '../../modules/bookplate/components/ZhihuSearchNode';
+import type { WikipediaSearchRequest } from '../../modules/bookplate/components/WikipediaSearchNode';
 import { MAP_POSTER_DEFAULTS } from '../../modules/multimodal/map/defaults';
 import { NodeEdge, type NodeEdgeHandle } from '../../platform/components/node/NodeEdge';
 import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
@@ -625,6 +626,18 @@ const BookplatePage: React.FC = () => {
             global: { output: '', error: null, isGenerating: false, count: 5, filter: '', search_db: 'all' },
             zhida: { output: '', error: null, isGenerating: false, model: 'zhida-fast-1p5' },
           },
+          output: '',
+          isGenerating: false,
+          error: null,
+        };
+      case 'wikipedia_search':
+        return {
+          language: 'zh',
+          query: '',
+          limit: 10,
+          results: [],
+          articleTitle: '',
+          summaryMode: false,
           output: '',
           isGenerating: false,
           error: null,
@@ -1312,6 +1325,98 @@ const BookplatePage: React.FC = () => {
       // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** Wikipedia 检索节点：关键词检索（关键词 = 连线上级文本 > 手动输入；结果列表写入 data.results） */
+  const handleSearchWikipediaFor = useCallback((id: string, payload: WikipediaSearchRequest) => {
+    const node = nodesRef.current.find((n) => n.id === id);
+    if (!node || node.type !== 'wikipedia_search' || node.data?.isGenerating) return;
+    const parents = resolveDirectParents(id, nodesRef.current, edgesRef.current);
+    const upstreamKeyword = parents.map((p) => nodeOutputText(p)).find((v) => v.trim()) ?? '';
+    const finalQuery = upstreamKeyword || payload.query.trim();
+    if (!finalQuery) return;
+    updateNodeData(id, {
+      language: payload.language,
+      query: payload.query,
+      limit: payload.limit,
+      // 新检索使旧文章全文失效
+      articleTitle: '',
+      output: '',
+      results: [],
+      isGenerating: true,
+      error: null,
+    });
+    api
+      .post(
+        '/modules/bookplate/wikipedia-search',
+        { ...payload, query: finalQuery },
+        { timeout: SMALL_TOOL_TIMEOUT_MS }
+      )
+      .then((res: any) => {
+        updateNodeData(id, {
+          results: Array.isArray(res?.results) ? res.results : [],
+          isGenerating: false,
+          error: null,
+        });
+      })
+      .catch((error: any) => {
+        console.error('Failed to search wikipedia:', error);
+        updateNodeData(id, {
+          isGenerating: false,
+          error: error?.isTimeout ? 'Wikipedia 检索超时，请重试' : error?.detail || 'Wikipedia 检索失败，请重试',
+        });
+      });
+    // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** Wikipedia 检索节点：打开一篇检索结果的文章（summary=true 走简介，false 走全文；正文写入 data.output） */
+  const handleOpenWikipediaArticleFor = useCallback((id: string, title: string, summary?: boolean) => {
+    const node = nodesRef.current.find((n) => n.id === id);
+    if (!node || node.type !== 'wikipedia_search' || node.data?.isGenerating) return;
+    const language = node.data?.language ?? 'zh';
+    updateNodeData(id, { articleTitle: title, isGenerating: true, error: null });
+    api
+      .post(
+        '/modules/bookplate/wikipedia-article',
+        { title, language, summary: !!summary },
+        { timeout: SMALL_TOOL_TIMEOUT_MS }
+      )
+      .then((res: any) => {
+        updateNodeData(id, {
+          output: typeof res?.content === 'string' ? res.content : '',
+          isGenerating: false,
+          error: null,
+        });
+      })
+      .catch((error: any) => {
+        console.error('Failed to fetch wikipedia article:', error);
+        updateNodeData(id, {
+          isGenerating: false,
+          error: error?.isTimeout ? 'Wikipedia 全文获取超时，请重试' : error?.detail || 'Wikipedia 全文获取失败，请重试',
+        });
+      });
+    // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** Wikipedia 检索节点：从全文视图返回检索结果列表（仅切视图，保留 data.output 供下游继续消费） */
+  const handleBackToWikipediaResultsFor = useCallback((id: string) => {
+    const node = nodesRef.current.find((n) => n.id === id);
+    if (!node || node.type !== 'wikipedia_search') return;
+    if (!(node.data?.articleTitle ?? '')) return;
+    updateNodeData(id, { articleTitle: '' });
+    // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** Wikipedia 检索节点：编辑器状态写入 node.data（summaryMode 等切换，仅持久化，不记撤销历史） */
+  const handleUpdateWikipediaEditorFor = useCallback((id: string, patch: Record<string, any>) => {
+    const node = nodesRef.current.find((n) => n.id === id);
+    if (!node || node.type !== 'wikipedia_search') return;
+    updateNodeData(id, patch);
+    // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /** 地图海报节点：编辑器状态（主题/尺寸/文字/视口）写入 node.data（画布快照持久化，切页保持）。
    *  undoable=true 的离散编辑（主题/尺寸/文字/地点）记撤销历史；平移/缩放仅持久化不记历史，
    *  避免频繁 pan 污染撤销栈（与万年历 date 字段同口径）。 */
@@ -1811,6 +1916,10 @@ const BookplatePage: React.FC = () => {
     handleFetchWeatherFor,
     handleFetchZhihuFor,
     handleUpdateZhihuEditorFor,
+    handleSearchWikipediaFor,
+    handleOpenWikipediaArticleFor,
+    handleBackToWikipediaResultsFor,
+    handleUpdateWikipediaEditorFor,
     handleExportMapPosterFor,
     handleUpdateMapPosterEditorFor,
     handleSelectSearchImageFor,

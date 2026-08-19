@@ -26,6 +26,8 @@ export const NODE_TYPES = {
   NASA_IMAGE_SEARCH: 'nasa_image_search',
   /** 知乎检索（文本工具）：知乎开发者平台 3 类检索（站内搜索 / 全网搜索 / 直答），结果以文本输出（凭据在 /admin/settings 配置） */
   ZHIHU_SEARCH: 'zhihu_search',
+  /** Wikipedia 检索（文本工具）：Wikipedia 官方公开 MediaWiki API 关键词检索 → 文章全文，结果以文本输出（匿名、无需密钥） */
+  WIKIPEDIA_SEARCH: 'wikipedia_search',
 } as const;
 
 export type NodeType = (typeof NODE_TYPES)[keyof typeof NODE_TYPES];
@@ -182,6 +184,15 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     type: NODE_TYPES.ZHIHU_SEARCH,
     name: '知乎检索',
     description: '知乎开发者平台 3 类检索：站内搜索 / 全网搜索 / 直答问答，结果以文本输出（凭据在管理端「系统设置」配置，可连线文本节点传入关键词 / 问题）',
+    category: 'tool',
+    configurable: false,
+    output_type: 'text',
+    input_types: ['text'],
+  },
+  {
+    type: NODE_TYPES.WIKIPEDIA_SEARCH,
+    name: 'Wikipedia 检索',
+    description: '检索 Wikipedia 官方公开词条并获取文章全文（多语言，匿名无需密钥，可连线文本节点传入关键词）',
     category: 'tool',
     configurable: false,
     output_type: 'text',
