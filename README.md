@@ -8,7 +8,7 @@
 
 ## 特性
 
-- **Platform + Module 两层架构**：平台层提供画布、节点、SSE 流式通信、认证、历史/收藏等公共能力；新增模块只需注册前端 `ModuleDefinition` + 后端 FastAPI Router，不改动平台层。
+- **Platform + Module 两层架构**：平台层提供画布、节点、SSE 流式通信、认证、历史/收藏等公共能力；新增模块只需注册前端 `ModuleDefinition` + 后端 Router，不改动平台层。
 - **藏书票三阶段流程**：
   1. ISBN → 豆瓣 API → 图书元数据 + 封面图（纯展示）
   2. AI 分析（文本 + 多模态）→ 生成藏书票图像系统提示词（Markdown 流式、可编辑）
@@ -25,10 +25,10 @@
 | 层 | 技术 |
 |----|------|
 | 前端 | React 19 · Vite · TypeScript · Tailwind CSS · React Router |
-| 后端 | Python · FastAPI · SQLAlchemy · SQLite（开发）/ PostgreSQL（生产） |
+| 后端 | TypeScript · Fastify · Drizzle ORM · SQLite（开发）/ PostgreSQL（生产） |
 | 通信 | REST API + SSE（流式输出） |
-| 认证 | JWT（PyJWT + passlib/bcrypt） |
-| 流式 Markdown | streamdown + @streamdown/cjk |
+| 认证 | JWT（@fastify/jwt + bcryptjs） |
+| 流式 Markdown | ai SDK + @streamdown/cjk |
 | 图标 | lucide-react |
 
 ---
@@ -37,17 +37,16 @@
 
 ```
 BookForge/
-├── backend/                # FastAPI 后端
-│   ├── app/
+├── backend-ts/             # Fastify 后端 (TypeScript)
+│   ├── src/
 │   │   ├── api/            # 平台层 API（auth / users / generations / favorites / public / admin）
 │   │   ├── core/           # 配置、数据库、安全、存储
-│   │   ├── models/         # SQLAlchemy 模型
+│   │   ├── db/             # Drizzle schema + migrations
 │   │   ├── modules/        # 模块层（bookplate 藏书票）
-│   │   ├── schemas/        # Pydantic 模型
 │   │   ├── services/       # LLM 调用代理、SSE 工具
-│   │   └── main.py         # 应用入口
+│   │   └── server.ts       # 应用入口
 │   ├── static/             # 生成的图片静态目录
-│   └── requirements.txt
+│   └── package.json
 ├── frontend/               # React 前端
 │   ├── src/
 │   │   ├── app/            # 入口、路由、Provider
@@ -65,19 +64,17 @@ BookForge/
 ### 后端
 
 ```bash
-cd backend
+cd backend-ts
 
-# 1. 创建虚拟环境并安装依赖
-python -m venv .venv
-.venv\Scripts\activate        # Windows
-pip install -r requirements.txt
+# 1. 安装依赖
+npm install
 
 # 2. 配置环境变量
 cp .env.example .env
 # 编辑 .env，至少设置 SECRET_KEY
 
 # 3. 启动服务（默认 http://localhost:8000）
-uvicorn app.main:app --reload
+npm run dev
 ```
 
 启动时会自动创建数据库表，并创建默认管理员账号 **admin / admin123**（登录后请尽快修改）。
@@ -94,21 +91,24 @@ npm install
 npm run dev
 ```
 
-前端通过 Vite 代理将 `/api` 与 `/static` 请求转发到 `http://localhost:8000`。
+前端通过 Vite 代理将 `/api` 与 `/static` 请求转发到 `http://localhost:8000`（后端地址）。
 
 ---
 
 ## 环境变量（后端）
 
-复制 `backend/.env.example` 为 `backend/.env` 并填写：
+复制 `backend-ts/.env.example` 为 `backend-ts/.env` 并填写：
 
 | 变量 | 说明 |
 |------|------|
 | `SECRET_KEY` | JWT 签名密钥（必填） |
-| `OPENAI_API_KEY` | 文本大模型 Key（Phase 3 回退项，留空启用 Mock） |
-| `OPENAI_IMAGE_API_KEY` | 图像生成 Key（Phase 4 回退项） |
+| `DATABASE_URL` | 数据库连接（默认 `sqlite:///./bookforge.db`） |
+| `OPENAI_API_KEY` | 文本大模型 Key（留空启用 Mock） |
+| `OPENAI_IMAGE_API_KEY` | 图像生成 Key（留空启用 Mock） |
 | `OPENAI_IMAGE_BASE_URL` | 图像生成 API 地址 |
 | `OPENAI_IMAGE_MODEL` | 图像生成模型（如 `dall-e-3`） |
+| `PORT` | 监听端口（默认 `8010`） |
+| `CORS_ORIGINS` | 前端 CORS 来源（逗号分隔） |
 
 > 模型 / 提示词 / 阶段配置优先在管理后台配置（存入数据库）。环境变量仅作为未绑定阶段配置时的回退；两者都无 Key 时启用 Mock（文本打字机流 / SVG 占位图）。
 
@@ -118,8 +118,7 @@ npm run dev
 
 **后端**
 ```bash
-uvicorn app.main:app --reload     # 开发运行
-# 交互式文档：http://localhost:8000/docs
+npm run dev        # 开发运行（http://localhost:8000）
 ```
 
 **前端**
