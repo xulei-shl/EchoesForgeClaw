@@ -1,9 +1,8 @@
 import React, { memo, useEffect, useState, useCallback } from 'react';
-import { CloudSun, Loader2, Search, AlertTriangle, Link2, Copy, Check, MapPin, X } from 'lucide-react';
+import { CloudSun, Loader2, Search, AlertTriangle, Link2, MapPin, X } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { BeamGlow } from '../../../platform/components/node/BeamGlow';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
-import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
 import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
 import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
 import { NODE_COLORS } from '../nodeTypes';
@@ -57,8 +56,6 @@ const WeatherNodeInner: React.FC<WeatherNodeProps> = ({
   hasDownstream,
 }) => {
   const [cityInput, setCityInput] = useState(city);
-  const [copied, setCopied] = useState(false);
-  const { showToast } = useFeedback();
 
   // 外部内容变化（撤销/重做/历史恢复）时同步草稿城市
   useEffect(() => {
@@ -88,18 +85,6 @@ const WeatherNodeInner: React.FC<WeatherNodeProps> = ({
     handleQuery(c);
   };
 
-  const handleCopy = async () => {
-    if (!output.trim()) return;
-    try {
-      await navigator.clipboard.writeText(output);
-      setCopied(true);
-      showToast('天气信息已复制到剪贴板', { type: 'success' });
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      showToast('复制失败，请重试', { type: 'error' });
-    }
-  };
-
   const renderActionBar = () => {
     if (isGenerating) return undefined;
     return (
@@ -113,10 +98,10 @@ const WeatherNodeInner: React.FC<WeatherNodeProps> = ({
           />
         )}
         {output.trim() && (
-          <NodeActionBar.Custom
-            icon={copied ? <Check size={16} strokeWidth={2} className="text-accent" /> : <Copy size={16} strokeWidth={1.5} />}
-            tooltip={copied ? '已复制' : '复制天气内容'}
-            onClick={handleCopy}
+          <NodeActionBar.Copy
+            text={output}
+            tooltip="复制天气内容"
+            toastMessage="天气信息已复制到剪贴板"
           />
         )}
       </NodeActionBar>

@@ -193,7 +193,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'wikipedia_search',
     name: 'Wikipedia 检索',
-    description: '检索 Wikipedia 官方公开词条并获取文章全文（多语言，匿名无需密钥，可连线文本节点传入关键词）',
+    description: '检索 Wikipedia 官方公开词条并获取全文 / 简介',
     category: 'tool',
     configurable: false,
     defaultSize: NODE_DEFAULT_SIZES.wikipedia_search,

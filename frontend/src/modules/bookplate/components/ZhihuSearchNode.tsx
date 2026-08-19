@@ -1,4 +1,5 @@
 import React, { memo, useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search,
   Globe,
@@ -6,12 +7,9 @@ import {
   Loader2,
   AlertTriangle,
   Link2,
-  Copy,
-  Check,
   X,
   SlidersHorizontal,
   RotateCw,
-  Trash2,
 } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { BeamGlow } from '../../../platform/components/node/BeamGlow';
@@ -229,7 +227,6 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
 
   const [localTabData, setLocalTabData] = useState<Record<ZhihuSearchMode, ZhihuSearchTabData>>(initialMergedTabData);
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // 外部 Props 变化时同步更新
@@ -343,20 +340,6 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
     }
   };
 
-  /** 复制当前 Tab 的 Markdown 结果 */
-  const handleCopy = async () => {
-    const textToCopy = currentTab.output?.trim();
-    if (!textToCopy) return;
-    try {
-      await navigator.clipboard.writeText(textToCopy);
-      setCopied(true);
-      showToast('检索结果已复制到剪贴板', { type: 'success' });
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      showToast('复制失败，请重试', { type: 'error' });
-    }
-  };
-
   /** 清空当前 Tab 结果 */
   const handleClearCurrentOutput = () => {
     if (hasDownstream || currentTab.isGenerating) return;
@@ -394,10 +377,17 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
           />
         )}
         {hasCurrentOutput && (
-          <NodeActionBar.Custom
-            icon={copied ? <Check size={16} strokeWidth={2} className="text-accent" /> : <Copy size={16} strokeWidth={1.5} />}
-            tooltip={copied ? '已复制' : '复制当前结果'}
-            onClick={handleCopy}
+          <NodeActionBar.Eraser
+            onClick={handleClearCurrentOutput}
+            hasDownstream={hasDownstream}
+            tooltip="清空当前 Tab 结果"
+          />
+        )}
+        {hasCurrentOutput && (
+          <NodeActionBar.Copy
+            text={currentTab.output}
+            tooltip="复制当前结果"
+            toastMessage="检索结果已复制到剪贴板"
           />
         )}
       </NodeActionBar>
@@ -426,8 +416,8 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
       actionBar={renderActionBar()}
     >
       <div className="h-full flex flex-col flex-1 min-h-0 gap-2.5">
-        {/* 模式页签 Segmented Control：知乎搜索 / 全网搜索 / 直答（带状态指示徽标） */}
-        <div className="shrink-0 flex gap-1 p-1 rounded-lg bg-paper-grid/20 border border-paper-grid select-none">
+        {/* 模式页签 Segmented Control：知乎搜索 / 全网搜索 / 直答（同心圆角 + 物理滑动胶囊） */}
+        <div className="shrink-0 flex gap-1 p-1 rounded-xl bg-paper-grid/20 border border-paper-grid select-none relative">
           {MODE_TABS.map((tab) => {
             const Icon = tab.icon;
             const active = activeMode === tab.value;
@@ -441,30 +431,43 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
                 key={tab.value}
                 type="button"
                 onClick={() => switchMode(tab.value)}
-                className={`relative flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-sans transition-all active:scale-[0.97] ${
-                  active
-                    ? 'bg-accent text-paper shadow-sm font-medium'
-                    : 'text-ink-light hover:bg-paper-grid/40 hover:text-ink'
-                }`}
+                className="relative flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-sans transition-colors active:scale-[0.96] transition-transform"
               >
-                {isGen ? (
-                  <Loader2 size={12} strokeWidth={2.5} className="animate-spin text-current" />
-                ) : (
-                  <Icon size={13} strokeWidth={2} className="shrink-0" />
-                )}
-                <span>{tab.label}</span>
-
-                {/* 状态指示点：已出结果 (小圆点) / 报错 (红点) */}
-                {!isGen && (hasResult || hasErr) && (
-                  <span
-                    className={`inline-block w-1.5 h-1.5 rounded-full transition-transform ${
-                      hasErr
-                        ? active ? 'bg-paper ring-1 ring-error' : 'bg-error'
-                        : active ? 'bg-paper' : 'bg-accent'
-                    }`}
-                    title={hasErr ? '检索出错' : '已有检索结果'}
+                {/* Framer Motion 激活滑动胶囊指示器 */}
+                {active && (
+                  <motion.div
+                    layoutId="zhihu-active-tab-pill"
+                    className="absolute inset-0 rounded-lg bg-accent shadow-sm"
+                    transition={{ type: 'spring', duration: 0.28, bounce: 0 }}
                   />
                 )}
+
+                <span
+                  className={`relative z-10 flex items-center justify-center gap-1.5 ${
+                    active ? 'text-paper font-medium' : 'text-ink-light hover:text-ink'
+                  }`}
+                >
+                  {isGen ? (
+                    <Loader2 size={12} strokeWidth={2.5} className="animate-spin text-current" />
+                  ) : (
+                    <Icon size={13} strokeWidth={2} className="shrink-0" />
+                  )}
+                  <span>{tab.label}</span>
+
+                  {/* 状态指示点：已出结果 (小圆点) / 报错 (红点) */}
+                  {!isGen && (hasResult || hasErr) && (
+                    <motion.span
+                      initial={{ scale: 0.6, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      className={`inline-block w-1.5 h-1.5 rounded-full ${
+                        hasErr
+                          ? active ? 'bg-paper ring-1 ring-error' : 'bg-error'
+                          : active ? 'bg-paper' : 'bg-accent'
+                      }`}
+                      title={hasErr ? '检索出错' : '已有检索结果'}
+                    />
+                  )}
+                </span>
               </button>
             );
           })}
@@ -472,7 +475,7 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
 
         {/* 上级连线提示卡片（当有上游连线时常驻置顶，与参数配置解耦） */}
         {hasUpstream && (
-          <div className="shrink-0 flex items-center justify-between p-2 rounded-md border border-accent/40 bg-accent/5">
+          <div className="shrink-0 flex items-center justify-between p-2 rounded-lg border border-accent/40 bg-accent/5">
             <div className="flex items-center gap-2 min-w-0 pr-2">
               <div className="w-5 h-5 rounded-full bg-accent/15 flex items-center justify-center shrink-0 text-accent">
                 <Link2 size={12} strokeWidth={2} />
@@ -489,10 +492,10 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
               onClick={() => handleQuery(upstreamQuery)}
               disabled={!canSubmit}
               title={hasDownstream ? '有下级节点，不可修改输出' : `以连线内容${isZhida ? '提问' : '检索'}`}
-              className="shrink-0 flex items-center gap-1 px-2 py-1 rounded-md bg-accent text-paper text-xs font-sans hover:bg-accent-hover active:scale-[0.96] transition-transform disabled:opacity-40 disabled:cursor-not-allowed"
+              className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-md bg-accent text-paper text-xs font-sans hover:bg-accent-hover active:scale-[0.96] transition-transform disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
             >
               {isZhida ? <Sparkles size={11} strokeWidth={2} /> : <Search size={11} strokeWidth={2} />}
-              {isZhida ? '提问' : '检索'}
+              <span>{isZhida ? '提问' : '检索'}</span>
             </button>
           </div>
         )}
@@ -500,7 +503,7 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
         {/* 查询控制区：根据当前模式自适应（无连线时展示输入框，有连线时展示参数调节） */}
         <div className="shrink-0 space-y-2">
           {isZhida ? (
-            /* 直答模式控制区：输入框在上，模型选择与提问按钮在下方同一行 */
+            /* 直答模式控制区：复合一体化输入卡片 */
             hasUpstream ? (
               /* 有连线时：单独展示模型档位选择 */
               <div className="flex items-center justify-between gap-2">
@@ -515,47 +518,54 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
                 />
               </div>
             ) : (
-              /* 无连线时：上部问题 Textarea，下部同一行展示模型下拉与提问按钮 */
-              <div className="space-y-1.5">
+              /* 无连线时：一体化内嵌底栏 Textarea 输入卡片 */
+              <div className="rounded-lg border border-dashed border-paper-grid bg-paper/40 focus-within:border-accent focus-within:ring-1 focus-within:ring-accent transition-colors p-2 space-y-1.5">
                 <div className="relative">
                   <textarea
                     ref={textareaRef}
                     value={queryInput}
                     onChange={(e) => setQueryInput(e.target.value)}
                     onKeyDown={handleTextareaKeyDown}
-                    placeholder="输入问题，直答将给出回答… (Ctrl+Enter 快捷提问)"
+                    placeholder="输入问题，直答将给出深入解答…"
                     rows={2}
                     disabled={currentTab.isGenerating}
-                    className="w-full rounded-md border border-dashed border-paper-grid bg-transparent p-2 text-xs text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors font-mono disabled:opacity-50 resize-none leading-relaxed"
+                    className="w-full bg-transparent pr-7 text-xs text-ink placeholder:text-ink-faint focus:outline-none font-mono disabled:opacity-50 resize-none leading-relaxed"
                   />
                   {queryInput && !currentTab.isGenerating && (
                     <button
                       type="button"
                       onClick={() => setQueryInput('')}
-                      className="absolute right-2 top-2 p-0.5 rounded text-ink-faint hover:text-error hover:bg-paper-grid/40 transition-colors"
+                      className="absolute right-0 top-0 w-6 h-6 flex items-center justify-center rounded text-ink-faint hover:text-error hover:bg-paper-grid/40 transition-colors"
                       title="清空输入"
+                      aria-label="清空输入"
                     >
                       <X size={12} strokeWidth={2} />
                     </button>
                   )}
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <Select
-                    value={currentTab.model ?? 'zhida-fast-1p5'}
-                    onChange={(v) => updateCurrentTabConfig({ model: v })}
-                    options={ZHIDA_MODEL_OPTIONS}
-                    disabled={currentTab.isGenerating}
-                    size="sm"
-                    className="flex-1 min-w-0"
-                  />
+
+                <div className="flex items-center justify-between gap-1.5 pt-1.5 border-t border-paper-grid/40">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Select
+                      value={currentTab.model ?? 'zhida-fast-1p5'}
+                      onChange={(v) => updateCurrentTabConfig({ model: v })}
+                      options={ZHIDA_MODEL_OPTIONS}
+                      disabled={currentTab.isGenerating}
+                      size="sm"
+                      className="w-32 shrink-0"
+                    />
+                    <span className="text-[10px] text-ink-faint font-mono hidden sm:inline-block">
+                      Ctrl/⌘ + ↵
+                    </span>
+                  </div>
                   <button
                     type="button"
                     onClick={() => handleQuery()}
                     disabled={!canSubmit}
                     title={hasDownstream ? '有下级节点，不可修改输出' : '提问直答 (Ctrl+Enter)'}
-                    className="shrink-0 flex items-center justify-center gap-1 px-3 h-8 rounded-md bg-accent text-paper text-xs font-sans hover:bg-accent-hover active:scale-[0.96] transition-transform disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="shrink-0 flex items-center justify-center gap-1 px-3 h-7 rounded-md bg-accent text-paper text-xs font-sans hover:bg-accent-hover active:scale-[0.96] transition-transform disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
                   >
-                    <Sparkles size={12} strokeWidth={2} />
+                    <Sparkles size={11} strokeWidth={2} />
                     <span>提问</span>
                   </button>
                 </div>
@@ -572,14 +582,15 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
                       onChange={(e) => setQueryInput(e.target.value)}
                       placeholder={activeMode === 'global' ? '输入关键词，全网检索…' : '输入关键词，知乎站内检索…'}
                       disabled={currentTab.isGenerating}
-                      className="w-full h-8 rounded-md border border-dashed border-paper-grid bg-transparent pl-2.5 pr-7 text-xs text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors font-mono disabled:opacity-50"
+                      className="w-full h-8 rounded-lg border border-dashed border-paper-grid bg-transparent pl-2.5 pr-8 text-xs text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors font-mono disabled:opacity-50"
                     />
                     {queryInput && !currentTab.isGenerating && (
                       <button
                         type="button"
                         onClick={() => setQueryInput('')}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded text-ink-faint hover:text-error hover:bg-paper-grid/40 transition-colors"
+                        className="absolute right-1 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded text-ink-faint hover:text-error hover:bg-paper-grid/40 transition-colors"
                         title="清空输入"
+                        aria-label="清空输入"
                       >
                         <X size={12} strokeWidth={2} />
                       </button>
@@ -597,7 +608,7 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
                     type="submit"
                     disabled={!canSubmit}
                     title={hasDownstream ? '有下级节点，不可修改输出' : '回车直接检索'}
-                    className="flex items-center justify-center w-8 h-8 shrink-0 rounded-md bg-accent text-paper hover:bg-accent-hover active:scale-[0.96] transition-transform disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                    className="flex items-center justify-center w-8 h-8 shrink-0 rounded-lg bg-accent text-paper hover:bg-accent-hover active:scale-[0.96] transition-transform disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent shadow-xs"
                   >
                     <Search size={13} strokeWidth={2} />
                   </button>
@@ -617,14 +628,14 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
                 </div>
               )}
 
-              {/* 全网搜索专属：高级筛选折叠面板（索引库 + Filter 语法） */}
+              {/* 全网搜索专属：高级筛选折叠面板（平滑手风琴展开动效） */}
               {activeMode === 'global' && (
                 <div className="space-y-1.5">
                   <button
                     type="button"
                     onClick={() => setAdvancedOpen((o) => !o)}
                     disabled={currentTab.isGenerating}
-                    className="inline-flex items-center gap-1 text-[11px] font-sans text-ink-faint hover:text-accent transition-colors disabled:opacity-40"
+                    className="inline-flex items-center gap-1 text-[11px] font-sans text-ink-faint hover:text-accent active:scale-[0.96] transition-transform transition-colors disabled:opacity-40"
                   >
                     <SlidersHorizontal size={11} strokeWidth={2} />
                     <span>高级筛选</span>
@@ -632,35 +643,44 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
                       {advancedOpen ? '（收起）' : currentTab.filter ? '（已设置筛选）' : '（展开）'}
                     </span>
                   </button>
-                  {advancedOpen && (
-                    <div className="space-y-1.5 p-2 rounded-md border border-dashed border-paper-grid bg-paper-grid/10 animate-in fade-in duration-150">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-sans text-ink-faint shrink-0 w-12">索引库</span>
-                        <Select
-                          value={currentTab.search_db ?? 'all'}
-                          onChange={(v) => updateCurrentTabConfig({ search_db: v })}
-                          options={SEARCH_DB_OPTIONS}
+
+                  <AnimatePresence>
+                    {advancedOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0, overflow: 'hidden' }}
+                        animate={{ opacity: 1, height: 'auto', overflow: 'visible' }}
+                        exit={{ opacity: 0, height: 0, overflow: 'hidden' }}
+                        transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                        className="space-y-1.5 p-2 rounded-lg border border-dashed border-paper-grid bg-paper-grid/10"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-sans text-ink-faint shrink-0 w-12">索引库</span>
+                          <Select
+                            value={currentTab.search_db ?? 'all'}
+                            onChange={(v) => updateCurrentTabConfig({ search_db: v })}
+                            options={SEARCH_DB_OPTIONS}
+                            disabled={currentTab.isGenerating}
+                            size="sm"
+                            className="flex-1"
+                          />
+                        </div>
+                        <input
+                          value={currentTab.filter ?? ''}
+                          onChange={(e) => updateCurrentTabConfig({ filter: e.target.value })}
+                          placeholder='Filter 语法，如 host=="zhihu.com" AND publish_time>=1778494631'
                           disabled={currentTab.isGenerating}
-                          size="sm"
-                          className="flex-1"
+                          className="w-full h-7 rounded-md border border-dashed border-paper-grid bg-transparent px-2 text-[11px] text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors font-mono disabled:opacity-50"
                         />
-                      </div>
-                      <input
-                        value={currentTab.filter ?? ''}
-                        onChange={(e) => updateCurrentTabConfig({ filter: e.target.value })}
-                        placeholder='Filter 语法，如 host=="zhihu.com" AND publish_time>=1778494631'
-                        disabled={currentTab.isGenerating}
-                        className="w-full h-7 rounded-md border border-dashed border-paper-grid bg-transparent px-2 text-[11px] text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors font-mono disabled:opacity-50"
-                      />
-                    </div>
-                  )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               )}
             </>
           )}
         </div>
 
-        {/* 结果区顶部工具栏（有结果时展示模式标识、重新检索与清空按钮） */}
+        {/* 结果区顶部工具栏（有结果时展示模式标识与字数） */}
         {currentTab.output?.trim() && !currentTab.isGenerating && (
           <div className="shrink-0 flex items-center justify-between px-1 text-[11px] text-ink-faint select-none">
             <div className="flex items-center gap-1.5">
@@ -668,106 +688,108 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
               <span className="font-sans font-medium text-ink-light">
                 {MODE_TABS.find((t) => t.value === activeMode)?.label}结果
               </span>
-              <span className="text-[10px] text-ink-faint font-mono">
-                ({currentTab.output.length} 字)
+              <span className="text-[10px] text-ink-faint font-mono tabular-nums">
+                ({currentTab.output.length.toLocaleString()} 字)
               </span>
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={handleCopy}
-                className="p-1 rounded text-ink-faint hover:text-ink hover:bg-paper-grid/40 transition-colors"
-                title={copied ? '已复制' : '复制 Markdown'}
-              >
-                {copied ? <Check size={12} className="text-accent" /> : <Copy size={12} />}
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuery()}
-                disabled={!canSubmit}
-                className="p-1 rounded text-ink-faint hover:text-ink hover:bg-paper-grid/40 transition-colors disabled:opacity-30"
-                title="重新检索当前 Tab"
-              >
-                <RotateCw size={12} />
-              </button>
-              <button
-                type="button"
-                onClick={handleClearCurrentOutput}
-                disabled={hasDownstream}
-                className="p-1 rounded text-ink-faint hover:text-error hover:bg-paper-grid/40 transition-colors disabled:opacity-30"
-                title="清空当前结果"
-              >
-                <Trash2 size={12} />
-              </button>
             </div>
           </div>
         )}
 
-        {/* 结果展示 / 加载中 / 错误区 */}
+        {/* 结果展示 / 加载中 / 错误 / 空状态（微位移平滑状态切换） */}
         <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 custom-scrollbar">
-          {currentTab.isGenerating ? (
-            /* 加载状态 */
-            <div className="h-full flex flex-col items-center justify-center gap-3 text-center min-h-[160px] animate-in fade-in duration-150">
-              <div className="w-11 h-11 rounded-full border border-dashed border-accent/40 bg-accent/5 flex items-center justify-center">
-                <Loader2 className="w-5 h-5 text-accent animate-spin" strokeWidth={1.5} />
-              </div>
-              <div className="space-y-1 max-w-[80%]">
-                <p className="text-xs font-serif text-accent font-medium">
-                  {isZhida ? '直答思考中…' : activeMode === 'global' ? '正在全网检索…' : '正在知乎站内检索…'}
-                </p>
-                <p className="text-[11px] font-mono text-ink-faint truncate">{effectiveQuery}</p>
-              </div>
-            </div>
-          ) : currentTab.error ? (
-            /* 错误状态 */
-            <div className="p-3.5 rounded-md border border-error/20 bg-error/5 flex items-start gap-2.5 animate-in fade-in duration-150">
-              <AlertTriangle size={15} strokeWidth={2} className="text-error shrink-0 mt-0.5" />
-              <div className="flex-1 min-w-0 space-y-1.5 font-sans">
-                <p className="text-[12px] text-error/90 leading-relaxed break-words">{currentTab.error}</p>
-                <button
-                  type="button"
-                  onClick={() => handleQuery()}
-                  className="inline-flex items-center gap-1 text-[11px] text-error font-medium hover:underline active:scale-[0.96] transition-transform"
-                >
-                  <RotateCw size={11} />
-                  <span>重试检索</span>
-                </button>
-              </div>
-            </div>
-          ) : currentTab.output?.trim() ? (
-            /* Markdown 结果渲染 */
-            <div className="w-full min-w-0 font-mono text-xs leading-relaxed p-3 rounded-md bg-paper/60 border border-dashed border-paper-grid animate-in fade-in duration-150">
-              <Streamdown
-                plugins={{ cjk, code }}
-                isAnimating={false}
-                caret="block"
-                linkSafety={{ enabled: false }}
+          <AnimatePresence mode="wait">
+            {currentTab.isGenerating ? (
+              /* 加载状态 */
+              <motion.div
+                key={`generating-${activeMode}`}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+                className="h-full flex flex-col items-center justify-center gap-3 text-center min-h-[160px]"
               >
-                {normalizeMarkdown(currentTab.output)}
-              </Streamdown>
-            </div>
-          ) : (
-            /* 针对当前 Tab 定制的空状态 */
-            <div className="h-full flex flex-col items-center justify-center gap-2.5 text-center min-h-[180px] p-4 select-none animate-in fade-in duration-150">
-              <div className="w-12 h-12 rounded-full border border-dashed border-paper-grid bg-paper-grid/20 flex items-center justify-center text-ink-faint">
-                {isZhida ? (
-                  <Sparkles size={20} strokeWidth={1.5} />
-                ) : activeMode === 'global' ? (
-                  <Globe size={20} strokeWidth={1.5} />
-                ) : (
-                  <Search size={20} strokeWidth={1.5} />
-                )}
-              </div>
-              <div className="space-y-1 max-w-[280px]">
-                <p className="text-xs font-serif text-ink-light font-medium">
-                  {MODE_TABS.find((t) => t.value === activeMode)?.tagline}
-                </p>
-                <p className="text-[11px] text-ink-faint font-sans leading-normal">
-                  {MODE_TABS.find((t) => t.value === activeMode)?.emptyDesc}
-                </p>
-              </div>
-            </div>
-          )}
+                <div className="w-11 h-11 rounded-full border border-dashed border-accent/40 bg-accent/5 flex items-center justify-center">
+                  <Loader2 className="w-5 h-5 text-accent animate-spin" strokeWidth={1.5} />
+                </div>
+                <div className="space-y-1 max-w-[80%]">
+                  <p className="text-xs font-serif text-accent font-medium">
+                    {isZhida ? '直答思考中…' : activeMode === 'global' ? '正在全网检索…' : '正在知乎站内检索…'}
+                  </p>
+                  <p className="text-[11px] font-mono text-ink-faint truncate">{effectiveQuery}</p>
+                </div>
+              </motion.div>
+            ) : currentTab.error ? (
+              /* 错误状态 */
+              <motion.div
+                key={`error-${activeMode}`}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+                className="p-3.5 rounded-lg border border-error/20 bg-error/5 flex items-start gap-2.5"
+              >
+                <AlertTriangle size={15} strokeWidth={2} className="text-error shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0 space-y-1.5 font-sans">
+                  <p className="text-[12px] text-error/90 leading-relaxed break-words">{currentTab.error}</p>
+                  <button
+                    type="button"
+                    onClick={() => handleQuery()}
+                    className="inline-flex items-center gap-1 text-[11px] text-error font-medium hover:underline active:scale-[0.96] transition-transform"
+                  >
+                    <RotateCw size={11} />
+                    <span>重试检索</span>
+                  </button>
+                </div>
+              </motion.div>
+            ) : currentTab.output?.trim() ? (
+              /* Markdown 结果渲染 */
+              <motion.div
+                key={`output-${activeMode}`}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+                className="w-full min-w-0 font-mono text-xs leading-relaxed p-3 rounded-lg bg-paper/60 border border-dashed border-paper-grid"
+              >
+                <Streamdown
+                  plugins={{ cjk, code }}
+                  isAnimating={false}
+                  caret="block"
+                  linkSafety={{ enabled: false }}
+                >
+                  {normalizeMarkdown(currentTab.output)}
+                </Streamdown>
+              </motion.div>
+            ) : (
+              /* 针对当前 Tab 定制的空状态 */
+              <motion.div
+                key={`empty-${activeMode}`}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+                className="h-full flex flex-col items-center justify-center gap-2.5 text-center min-h-[180px] p-4 select-none"
+              >
+                <div className="w-12 h-12 rounded-full border border-dashed border-paper-grid bg-paper-grid/20 flex items-center justify-center text-ink-faint">
+                  {isZhida ? (
+                    <Sparkles size={20} strokeWidth={1.5} />
+                  ) : activeMode === 'global' ? (
+                    <Globe size={20} strokeWidth={1.5} />
+                  ) : (
+                    <Search size={20} strokeWidth={1.5} />
+                  )}
+                </div>
+                <div className="space-y-1 max-w-[280px]">
+                  <p className="text-xs font-serif text-ink-light font-medium">
+                    {MODE_TABS.find((t) => t.value === activeMode)?.tagline}
+                  </p>
+                  <p className="text-[11px] text-ink-faint font-sans leading-normal">
+                    {MODE_TABS.find((t) => t.value === activeMode)?.emptyDesc}
+                  </p>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
     </CanvasNode>
@@ -777,4 +799,5 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
 export const ZhihuSearchNode = memo(ZhihuSearchNodeInner);
 ZhihuSearchNode.displayName = 'ZhihuSearchNode';
 export default ZhihuSearchNode;
+
 

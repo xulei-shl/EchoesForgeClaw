@@ -1,10 +1,9 @@
 import React, { memo, useEffect, useState, useCallback } from 'react';
-import { CalendarDays, Loader2, Search, AlertTriangle, Copy, Check, Sparkles } from 'lucide-react';
+import { CalendarDays, Loader2, Search, AlertTriangle, Sparkles } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { BeamGlow } from '../../../platform/components/node/BeamGlow';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { DatePicker } from '../../../platform/components/ui/DatePicker';
-import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
 import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
 import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
 import { NODE_COLORS } from '../nodeTypes';
@@ -78,8 +77,6 @@ const CalendarNodeInner: React.FC<CalendarNodeProps> = ({
   hasDownstream,
 }) => {
   const [dateInput, setDateInput] = useState(() => date || todayLocal());
-  const [copied, setCopied] = useState(false);
-  const { showToast } = useFeedback();
 
   // 外部内容变化（撤销/重做/历史恢复）时同步草稿日期
   useEffect(() => {
@@ -106,18 +103,6 @@ const CalendarNodeInner: React.FC<CalendarNodeProps> = ({
     handleQuery(d);
   };
 
-  const handleCopy = async () => {
-    if (!output.trim()) return;
-    try {
-      await navigator.clipboard.writeText(output);
-      setCopied(true);
-      showToast('万年历信息已复制到剪贴板', { type: 'success' });
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      showToast('复制失败，请重试', { type: 'error' });
-    }
-  };
-
   const renderActionBar = () => {
     if (isGenerating) return undefined;
     return (
@@ -131,10 +116,10 @@ const CalendarNodeInner: React.FC<CalendarNodeProps> = ({
           />
         )}
         {output.trim() && (
-          <NodeActionBar.Custom
-            icon={copied ? <Check size={16} strokeWidth={2} className="text-accent" /> : <Copy size={16} strokeWidth={1.5} />}
-            tooltip={copied ? '已复制' : '复制万年历内容'}
-            onClick={handleCopy}
+          <NodeActionBar.Copy
+            text={output}
+            tooltip="复制万年历内容"
+            toastMessage="万年历信息已复制到剪贴板"
           />
         )}
       </NodeActionBar>

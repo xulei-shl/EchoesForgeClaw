@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Tooltip } from '../ui/Tooltip';
-import { Play, RefreshCw, Pencil, Check, X, Download, Eraser, Settings2 } from 'lucide-react';
+import { useFeedback } from '../ui/FeedbackProvider';
+import { Play, RefreshCw, Pencil, Check, X, Download, Eraser, Settings2, Copy } from 'lucide-react';
 
 export const ACTION_BTN_CLASS =
   'flex items-center justify-center w-7 h-7 rounded-full ' +
@@ -111,11 +113,11 @@ NodeActionBar.Download = (props: Omit<BaseButtonProps, 'icon' | 'tooltip' | 'dow
   />
 );
 
-NodeActionBar.Eraser = (props: Omit<BaseButtonProps, 'icon' | 'tooltip' | 'downstreamTooltip'> & { hasDownstream?: boolean }) => (
+NodeActionBar.Eraser = (props: Omit<BaseButtonProps, 'icon' | 'tooltip' | 'downstreamTooltip'> & { hasDownstream?: boolean; tooltip?: string; downstreamTooltip?: string }) => (
   <BaseButton
     icon={<Eraser size={16} strokeWidth={1.5} />}
-    tooltip="清空"
-    downstreamTooltip="有下级节点，不可清空"
+    tooltip={props.tooltip || "清空"}
+    downstreamTooltip={props.downstreamTooltip || "有下级节点，不可清空"}
     {...props}
   />
 );
@@ -133,6 +135,93 @@ NodeActionBar.SettingsTrigger = React.forwardRef<HTMLButtonElement, Omit<BaseBut
   )
 );
 NodeActionBar.SettingsTrigger.displayName = 'SettingsTrigger';
+
+export interface CopyButtonProps extends Omit<BaseButtonProps, 'icon' | 'tooltip'> {
+  /** 需要复制的文本内容（与 onCopy 二选一，优先调用 onCopy） */
+  text?: string;
+  /** 自定义复制回调函数（如需特殊格式化或异步获取） */
+  onCopy?: () => Promise<void> | void;
+  /** 默认悬浮提示文案，缺省「复制」 */
+  tooltip?: string;
+  /** 复制成功后的提示文案，缺省「已复制」 */
+  copiedTooltip?: string;
+  /** 复制成功后弹出的 Toast 消息，缺省「已复制到剪贴板」，设为 null/空字符串 则不弹 */
+  toastMessage?: string | null;
+}
+
+NodeActionBar.Copy = ({
+  text,
+  onCopy,
+  tooltip = '复制',
+  copiedTooltip = '已复制',
+  toastMessage = '已复制到剪贴板',
+  onClick,
+  ...props
+}: CopyButtonProps) => {
+  const [copied, setCopied] = useState(false);
+  const { showToast } = useFeedback();
+
+  const handleCopy = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    onClick?.(e);
+    if (onCopy) {
+      try {
+        await onCopy();
+        setCopied(true);
+        if (toastMessage) showToast(toastMessage, { type: 'success' });
+        setTimeout(() => setCopied(false), 2000);
+      } catch {
+        showToast('复制失败，请重试', { type: 'error' });
+      }
+      return;
+    }
+
+    if (text) {
+      try {
+        await navigator.clipboard.writeText(text);
+        setCopied(true);
+        if (toastMessage) showToast(toastMessage, { type: 'success' });
+        setTimeout(() => setCopied(false), 2000);
+      } catch {
+        showToast('复制失败，请重试', { type: 'error' });
+      }
+    }
+  };
+
+  return (
+    <BaseButton
+      icon={
+        <AnimatePresence mode="wait" initial={false}>
+          {copied ? (
+            <motion.span
+              key="check"
+              initial={{ scale: 0.4, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.4, opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="inline-flex"
+            >
+              <Check size={16} strokeWidth={2} className="text-accent" />
+            </motion.span>
+          ) : (
+            <motion.span
+              key="copy"
+              initial={{ scale: 0.4, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.4, opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="inline-flex"
+            >
+              <Copy size={16} strokeWidth={1.5} />
+            </motion.span>
+          )}
+        </AnimatePresence>
+      }
+      tooltip={copied ? copiedTooltip : tooltip}
+      onClick={handleCopy}
+      {...props}
+    />
+  );
+};
 
 // Generic Custom Button
 NodeActionBar.Custom = (props: BaseButtonProps) => <BaseButton {...props} />;

@@ -1,22 +1,20 @@
 import React, { memo, useEffect, useState, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   BookOpen,
   Loader2,
   Search,
   AlertTriangle,
   Link2,
-  Copy,
-  Check,
   X,
   ChevronLeft,
-  Globe,
   FileText,
+  RotateCw,
 } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { BeamGlow } from '../../../platform/components/node/BeamGlow';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { Select, type SelectOption } from '../../../platform/components/ui/Select';
-import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
 import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
 import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
 import { NODE_COLORS } from '../nodeTypes';
@@ -137,8 +135,6 @@ const WikipediaSearchNodeInner: React.FC<WikipediaSearchNodeProps> = ({
   const [languageInput, setLanguageInput] = useState(language);
   const [queryInput, setQueryInput] = useState(query);
   const [limitInput, setLimitInput] = useState(limit);
-  const [copied, setCopied] = useState(false);
-  const { showToast } = useFeedback();
 
   useEffect(() => setLanguageInput(language), [language]);
   useEffect(() => setQueryInput(query), [query]);
@@ -177,23 +173,11 @@ const WikipediaSearchNodeInner: React.FC<WikipediaSearchNodeProps> = ({
   /** 重试：全文视图失败 → 重拉该文章；否则重新检索当前关键词 */
   const handleRetry = useCallback(() => {
     if (articleOpen) {
-      onOpenArticle?.(id, articleTitle);
+      onOpenArticle?.(id, articleTitle, summaryMode);
     } else {
       handleSearch();
     }
-  }, [articleOpen, articleTitle, id, onOpenArticle, handleSearch]);
-
-  const handleCopy = async () => {
-    if (!output.trim()) return;
-    try {
-      await navigator.clipboard.writeText(output);
-      setCopied(true);
-      showToast('文章内容已复制到剪贴板', { type: 'success' });
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      showToast('复制失败，请重试', { type: 'error' });
-    }
-  };
+  }, [articleOpen, articleTitle, id, onOpenArticle, summaryMode, handleSearch]);
 
   const renderActionBar = () => {
     if (isGenerating) return undefined;
@@ -208,10 +192,10 @@ const WikipediaSearchNodeInner: React.FC<WikipediaSearchNodeProps> = ({
           />
         )}
         {output.trim() && (
-          <NodeActionBar.Custom
-            icon={copied ? <Check size={16} strokeWidth={2} className="text-accent" /> : <Copy size={16} strokeWidth={1.5} />}
-            tooltip={copied ? '已复制' : '复制文章内容'}
-            onClick={handleCopy}
+          <NodeActionBar.Copy
+            text={output}
+            tooltip="复制文章内容"
+            toastMessage="文章内容已复制到剪贴板"
           />
         )}
       </NodeActionBar>
@@ -239,217 +223,296 @@ const WikipediaSearchNodeInner: React.FC<WikipediaSearchNodeProps> = ({
       footer={footer}
       actionBar={renderActionBar()}
     >
-      <div className="h-full flex flex-col flex-1 min-h-0 gap-3">
+      <div className="h-full flex flex-col flex-1 min-h-0 gap-2.5">
         {/* 查询控制区：根据是否连线自适应 */}
         <div className="shrink-0 space-y-2">
           {hasUpstream ? (
             /* 连线即输入模式：高光提示卡片 */
-            <div className="flex items-center justify-between p-2.5 rounded-md border border-accent/40 bg-accent/5">
+            <div className="flex items-center justify-between p-2 rounded-lg border border-accent/40 bg-accent/5">
               <div className="flex items-center gap-2 min-w-0 pr-2">
-                <div className="w-6 h-6 rounded-full bg-accent/15 flex items-center justify-center shrink-0 text-accent">
-                  <Link2 size={13} strokeWidth={2} />
+                <div className="w-5 h-5 rounded-full bg-accent/15 flex items-center justify-center shrink-0 text-accent">
+                  <Link2 size={12} strokeWidth={2} />
                 </div>
                 <div className="min-w-0">
                   <div className="text-[10px] font-serif text-accent uppercase tracking-wider">上级连线输入关键词</div>
-                  <div className="text-sm font-medium text-ink truncate font-mono">{upstreamKeyword}</div>
+                  <div className="text-xs font-medium text-ink truncate font-mono">{upstreamKeyword}</div>
                 </div>
               </div>
-              <div className="flex items-center gap-1.5 shrink-0">
-                <Select
-                  value={languageInput}
-                  onChange={(v) => setLanguageInput(v)}
-                  options={LANGUAGE_OPTIONS}
-                  disabled={isGenerating}
-                  size="sm"
-                  className="w-[92px]"
-                />
-                <button
-                  type="button"
-                  onClick={() => handleSearch(upstreamKeyword)}
-                  disabled={!canSubmit}
-                  title={hasDownstream ? '有下级节点，不可修改输出' : '以该关键词检索'}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-accent text-paper text-xs font-sans hover:bg-accent-hover active:scale-[0.96] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <Search size={12} strokeWidth={2} />
-                  检索
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => handleSearch(upstreamKeyword)}
+                disabled={!canSubmit}
+                title={hasDownstream ? '有下级节点，不可修改输出' : '以该关键词检索'}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-accent text-paper text-xs font-sans hover:bg-accent-hover active:scale-[0.96] transition-transform disabled:opacity-40 disabled:cursor-not-allowed shrink-0 shadow-xs"
+              >
+                <Search size={12} strokeWidth={2} />
+                <span>检索</span>
+              </button>
             </div>
           ) : (
-            /* 手动输入模式：语言 + 关键词 + 数量 + 检索按钮 */
-            <>
-              <div className="flex gap-2">
-                <Select
-                  value={languageInput}
-                  onChange={(v) => setLanguageInput(v)}
-                  options={LANGUAGE_OPTIONS}
+            /* 手动输入模式：第 1 行 语言 + 关键词输入框 + 检索按钮 复合行 */
+            <form onSubmit={handleSubmit} className="flex items-center gap-1.5">
+              <Select
+                value={languageInput}
+                onChange={(v) => {
+                  setLanguageInput(v);
+                  onUpdateEditor?.(id, { language: v });
+                }}
+                options={LANGUAGE_OPTIONS}
+                disabled={isGenerating}
+                size="sm"
+                className="w-[86px] shrink-0"
+              />
+              <div className="relative flex-1 min-w-0">
+                <input
+                  value={queryInput}
+                  onChange={(e) => setQueryInput(e.target.value)}
+                  onBlur={() => onUpdateEditor?.(id, { query: queryInput })}
+                  placeholder="输入关键词，检索词条…"
                   disabled={isGenerating}
-                  size="sm"
-                  className="w-[96px] shrink-0"
+                  className="w-full h-8 rounded-lg border border-dashed border-paper-grid bg-transparent pl-2.5 pr-8 text-xs text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors font-mono disabled:opacity-50"
                 />
-                <Select
-                  value={String(limitInput)}
-                  onChange={(v) => setLimitInput(Number(v))}
-                  options={LIMIT_OPTIONS}
-                  disabled={isGenerating}
-                  size="sm"
-                  className="w-[84px] shrink-0"
-                />
-              </div>
-              <form onSubmit={handleSubmit} className="flex gap-2">
-                <div className="relative flex-1 min-w-0">
-                  <input
-                    value={queryInput}
-                    onChange={(e) => setQueryInput(e.target.value)}
-                    placeholder="输入关键词，检索 Wikipedia 词条…"
-                    disabled={isGenerating}
-                    className="w-full h-10 rounded-md border border-dashed border-paper-grid bg-transparent pl-3 pr-8 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors font-mono disabled:opacity-50"
-                  />
-                  {queryInput && !isGenerating && (
-                    <button
-                      type="button"
-                      onClick={() => setQueryInput('')}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-ink-faint hover:text-error hover:bg-paper-grid/40 transition-colors"
-                      title="清除"
-                    >
-                      <X size={13} strokeWidth={2} />
-                    </button>
-                  )}
-                </div>
-                <button
-                  type="submit"
-                  disabled={!canSubmit}
-                  title={hasDownstream ? '有下级节点，不可修改输出' : '检索'}
-                  className="flex items-center justify-center w-10 h-10 shrink-0 rounded-md bg-accent text-paper hover:bg-accent-hover active:scale-[0.96] transition-all disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                >
-                  <Search size={15} strokeWidth={2} />
-                </button>
-              </form>
-            </>
-          )}
-        </div>
-
-        {/* 结果 / 全文 / 加载 / 错误区 */}
-        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 custom-scrollbar">
-          {isGenerating ? (
-            <div className="h-full flex flex-col items-center justify-center gap-3 text-center min-h-[160px]">
-              <div className="w-12 h-12 rounded-full border border-dashed border-accent/40 bg-accent/5 flex items-center justify-center">
-                <Loader2 className="w-5 h-5 text-accent animate-spin" strokeWidth={1.5} />
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs font-serif text-accent font-medium">
-                  {articleOpen ? '正在获取文章全文…' : `正在检索 ${LANGUAGE_LABEL[languageInput] ?? languageInput} Wikipedia…`}
-                </p>
-                <p className="text-[11px] font-mono text-ink-faint">{articleOpen ? articleTitle : effectiveQuery}</p>
-              </div>
-            </div>
-          ) : error ? (
-            <div className="p-3.5 rounded-md border border-error/20 bg-error/5 flex items-start gap-2.5">
-              <AlertTriangle size={15} strokeWidth={2} className="text-error shrink-0 mt-0.5" />
-              <div className="flex-1 min-w-0 space-y-1.5 font-sans">
-                <p className="text-[12px] text-error/90 leading-relaxed break-words">{error}</p>
-                <button
-                  type="button"
-                  onClick={handleRetry}
-                  className="inline-flex items-center text-[11px] text-error font-medium hover:underline active:scale-[0.96] transition-transform"
-                >
-                  重试
-                </button>
-              </div>
-            </div>
-          ) : articleOpen ? (
-            /* 全文视图：文章正文 + 返回结果入口 */
-            <div className="w-full min-w-0 space-y-2">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => onBackToResults?.(id)}
-                  className="inline-flex items-center gap-0.5 text-[11px] font-sans text-ink-faint hover:text-accent transition-colors shrink-0"
-                  title="返回检索结果"
-                >
-                  <ChevronLeft size={12} strokeWidth={2} />
-                  返回结果（{results.length} 条）
-                </button>
-                <span className="text-[11px] font-mono text-ink-faint truncate">{articleTitle}</span>
-              </div>
-              <div className="font-mono text-sm leading-relaxed p-3 rounded-md bg-paper/60 border border-dashed border-paper-grid">
-                <Streamdown
-                  plugins={{ cjk, code }}
-                  isAnimating={false}
-                  caret="block"
-                  linkSafety={{ enabled: false }}
-                >
-                  {normalizeMarkdown(output)}
-                </Streamdown>
-              </div>
-            </div>
-          ) : results.length > 0 ? (
-            /* 检索结果列表：点击条目拉取全文 */
-            <div className="w-full min-w-0 space-y-1.5">
-              <div className="flex items-center justify-between px-0.5">
-                <span className="text-[11px] font-serif text-ink-faint">
-                  共 {results.length} 条结果 · 点击词条查看{summaryMode ? '简介' : '全文'}
-                </span>
-                <div className="flex items-center gap-1.5">
-                  <span className="inline-flex items-center gap-1 text-[11px] font-sans text-ink-faint">
-                    <Globe size={11} strokeWidth={2} />
-                    {LANGUAGE_LABEL[languageInput] ?? languageInput}
-                  </span>
+                {queryInput && !isGenerating && (
                   <button
                     type="button"
-                    disabled={isGenerating || hasDownstream}
-                    onClick={() => onUpdateEditor?.(id, { summaryMode: !summaryMode })}
-                    className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full border transition-colors ${
-                      summaryMode
-                        ? 'border-accent bg-accent/20'
-                        : 'border-paper-grid bg-paper-grid/60'
-                    } ${isGenerating || hasDownstream ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                    title={summaryMode ? '简介模式：点击词条仅获取简介' : '全文模式：点击词条获取完整正文'}
+                    onClick={() => {
+                      setQueryInput('');
+                      onUpdateEditor?.(id, { query: '' });
+                    }}
+                    className="absolute right-1 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center rounded text-ink-faint hover:text-error hover:bg-paper-grid/40 transition-colors"
+                    title="清除"
+                    aria-label="清空输入"
                   >
-                    <span
-                      className={`inline-block h-3 w-3 rounded-full transition-transform ${
-                        summaryMode ? 'translate-x-3.5 bg-accent' : 'translate-x-0.5 bg-ink-faint/60'
-                      }`}
-                    />
+                    <X size={12} strokeWidth={2} />
                   </button>
-                  <span className="text-[10px] font-sans text-ink-faint whitespace-nowrap">
-                    {summaryMode ? '简介' : '全文'}
+                )}
+              </div>
+              <button
+                type="submit"
+                disabled={!canSubmit}
+                title={hasDownstream ? '有下级节点，不可修改输出' : '回车直接检索'}
+                className="flex items-center justify-center h-8 px-2.5 shrink-0 rounded-lg bg-accent text-paper text-xs font-sans hover:bg-accent-hover active:scale-[0.96] transition-transform disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent gap-1 shadow-xs"
+              >
+                <Search size={13} strokeWidth={2} />
+              </button>
+            </form>
+          )}
+
+          {/* 第 2 行：参数与模式工具栏（条数选择 + 结果统计 + 全文/简介分段胶囊） */}
+          <div className="flex items-center justify-between gap-2 px-0.5">
+            <div className="flex items-center gap-1.5 min-w-0">
+              {hasUpstream && (
+                <Select
+                  value={languageInput}
+                  onChange={(v) => {
+                    setLanguageInput(v);
+                    onUpdateEditor?.(id, { language: v });
+                  }}
+                  options={LANGUAGE_OPTIONS}
+                  disabled={isGenerating}
+                  size="sm"
+                  className="w-[86px] shrink-0"
+                />
+              )}
+              <Select
+                value={String(limitInput)}
+                onChange={(v) => {
+                  const num = Number(v);
+                  setLimitInput(num);
+                  onUpdateEditor?.(id, { limit: num });
+                }}
+                options={LIMIT_OPTIONS}
+                disabled={isGenerating}
+                size="sm"
+                className="w-[78px] shrink-0"
+              />
+              {results.length > 0 && !articleOpen && (
+                <span className="text-[11px] font-sans text-ink-faint truncate tabular-nums">
+                  共 {results.length} 条结果
+                </span>
+              )}
+            </div>
+
+            {/* 全文 / 简介 分段胶囊切换器（带滑动指示器） */}
+            <div className="relative flex items-center rounded-lg border border-dashed border-paper-grid p-0.5 bg-paper/40 shrink-0">
+              <button
+                type="button"
+                disabled={isGenerating || hasDownstream}
+                onClick={() => onUpdateEditor?.(id, { summaryMode: false })}
+                className="relative px-2.5 py-0.5 rounded-md text-[11px] font-sans transition-colors active:scale-[0.96] transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
+                title="全文模式：点击词条拉取完整正文"
+              >
+                {!summaryMode && (
+                  <motion.div
+                    layoutId="wikipedia-mode-pill"
+                    className="absolute inset-0 rounded-md bg-accent shadow-xs"
+                    transition={{ type: 'spring', duration: 0.28, bounce: 0 }}
+                  />
+                )}
+                <span className={`relative z-10 ${!summaryMode ? 'text-paper font-medium' : 'text-ink-faint hover:text-ink'}`}>
+                  全文
+                </span>
+              </button>
+
+              <button
+                type="button"
+                disabled={isGenerating || hasDownstream}
+                onClick={() => onUpdateEditor?.(id, { summaryMode: true })}
+                className="relative px-2.5 py-0.5 rounded-md text-[11px] font-sans transition-colors active:scale-[0.96] transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
+                title="简介模式：点击词条仅拉取摘要简介"
+              >
+                {summaryMode && (
+                  <motion.div
+                    layoutId="wikipedia-mode-pill"
+                    className="absolute inset-0 rounded-md bg-accent shadow-xs"
+                    transition={{ type: 'spring', duration: 0.28, bounce: 0 }}
+                  />
+                )}
+                <span className={`relative z-10 ${summaryMode ? 'text-paper font-medium' : 'text-ink-faint hover:text-ink'}`}>
+                  简介
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* 结果 / 全文 / 加载 / 错误 / 空状态区（微位移平滑切换） */}
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 custom-scrollbar">
+          <AnimatePresence mode="wait">
+            {isGenerating ? (
+              <motion.div
+                key="generating"
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+                className="h-full flex flex-col items-center justify-center gap-3 text-center min-h-[160px]"
+              >
+                <div className="w-12 h-12 rounded-full border border-dashed border-accent/40 bg-accent/5 flex items-center justify-center">
+                  <Loader2 className="w-5 h-5 text-accent animate-spin" strokeWidth={1.5} />
+                </div>
+                <div className="space-y-1 max-w-[80%]">
+                  <p className="text-xs font-serif text-accent font-medium">
+                    {articleOpen ? '正在获取文章正文…' : `正在检索 ${LANGUAGE_LABEL[languageInput] ?? languageInput} Wikipedia…`}
+                  </p>
+                  <p className="text-[11px] font-mono text-ink-faint truncate">{articleOpen ? articleTitle : effectiveQuery}</p>
+                </div>
+              </motion.div>
+            ) : error ? (
+              <motion.div
+                key="error"
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+                className="p-3.5 rounded-lg border border-error/20 bg-error/5 flex items-start gap-2.5"
+              >
+                <AlertTriangle size={15} strokeWidth={2} className="text-error shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0 space-y-1.5 font-sans">
+                  <p className="text-[12px] text-error/90 leading-relaxed break-words">{error}</p>
+                  <button
+                    type="button"
+                    onClick={handleRetry}
+                    className="inline-flex items-center gap-1 text-[11px] text-error font-medium hover:underline active:scale-[0.96] transition-transform"
+                  >
+                    <RotateCw size={11} />
+                    <span>重试检索</span>
+                  </button>
+                </div>
+              </motion.div>
+            ) : articleOpen ? (
+              /* 全文视图：文章正文 + 返回结果入口 */
+              <motion.div
+                key={`article-${articleTitle}`}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+                className="w-full min-w-0 space-y-2"
+              >
+                <div className="flex items-center justify-between gap-2 px-0.5">
+                  <button
+                    type="button"
+                    onClick={() => onBackToResults?.(id)}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-paper-grid/20 hover:bg-paper-grid/40 text-[11px] font-sans text-ink-light hover:text-ink active:scale-[0.96] transition-transform transition-colors shrink-0"
+                    title="返回检索结果列表"
+                  >
+                    <ChevronLeft size={12} strokeWidth={2} />
+                    <span>返回列表 ({results.length})</span>
+                  </button>
+                  <span className="text-[11px] font-mono text-ink-faint truncate" title={articleTitle}>
+                    {articleTitle}
                   </span>
                 </div>
-              </div>
-              {results.map((r) => (
-                <button
-                  key={r.pageid}
-                  type="button"
-                  disabled={isGenerating || hasDownstream}
-                  onClick={() => handleOpenArticle(r.title)}
-                  title={hasDownstream ? '有下级节点，不可修改输出' : `查看「${r.title}」全文`}
-                  className="w-full text-left p-2.5 rounded-md border border-dashed border-paper-grid bg-paper/40 hover:border-accent/50 hover:bg-accent/5 active:scale-[0.99] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <FileText size={12} strokeWidth={2} className="text-accent shrink-0" />
-                    <span className="text-[13px] font-medium text-ink truncate">{r.title}</span>
-                    <span className="text-[10px] font-sans text-ink-faint shrink-0">约 {r.wordcount} 词</span>
-                  </div>
-                  {r.snippet && (
-                    <p className="mt-1 text-[11px] leading-relaxed text-ink-light font-sans line-clamp-2">
-                      {r.snippet}
-                    </p>
-                  )}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="h-full flex flex-col items-center justify-center gap-3 text-center min-h-[180px]">
-              <div className="w-14 h-14 rounded-full border border-dashed border-paper-grid bg-paper-grid/20 flex items-center justify-center text-ink-faint">
-                <BookOpen size={24} strokeWidth={1.5} />
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm font-serif text-ink-light">检索 Wikipedia 词条并获取文章全文</p>
-                <p className="text-xs text-ink-faint font-sans">多语言支持 · 匿名无需密钥 · 可连线上级文本节点传入关键词</p>
-              </div>
-            </div>
-          )}
+                <div className="font-mono text-xs leading-relaxed p-3 rounded-lg bg-paper/60 border border-dashed border-paper-grid">
+                  <Streamdown
+                    plugins={{ cjk, code }}
+                    isAnimating={false}
+                    caret="block"
+                    linkSafety={{ enabled: false }}
+                  >
+                    {normalizeMarkdown(output)}
+                  </Streamdown>
+                </div>
+              </motion.div>
+            ) : results.length > 0 ? (
+              /* 检索结果列表：点击条目拉取全文 */
+              <motion.div
+                key="results-list"
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+                className="w-full min-w-0 space-y-1.5"
+              >
+                {results.map((r) => (
+                  <button
+                    key={r.pageid}
+                    type="button"
+                    disabled={isGenerating || hasDownstream}
+                    onClick={() => handleOpenArticle(r.title)}
+                    title={hasDownstream ? '有下级节点，不可修改输出' : `查看「${r.title}」${summaryMode ? '简介' : '全文'}`}
+                    className="w-full text-left p-2.5 rounded-lg border border-dashed border-paper-grid bg-paper/40 hover:border-accent/50 hover:bg-accent/5 active:scale-[0.98] transition-transform transition-colors disabled:opacity-40 disabled:cursor-not-allowed group"
+                  >
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <FileText size={12} strokeWidth={2} className="text-accent shrink-0" />
+                      <span className="text-[13px] font-medium text-ink group-hover:text-accent transition-colors truncate">
+                        {r.title}
+                      </span>
+                      <span className="text-[10px] font-mono text-ink-faint shrink-0 tabular-nums">
+                        约 {r.wordcount.toLocaleString()} 词
+                      </span>
+                    </div>
+                    {r.snippet && (
+                      <p className="mt-1 text-[11px] leading-relaxed text-ink-light font-sans line-clamp-2">
+                        {r.snippet}
+                      </p>
+                    )}
+                  </button>
+                ))}
+              </motion.div>
+            ) : (
+              /* 空状态 */
+              <motion.div
+                key="empty"
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+                className="h-full flex flex-col items-center justify-center gap-2.5 text-center min-h-[180px] p-4 select-none"
+              >
+                <div className="w-14 h-14 rounded-full border border-dashed border-paper-grid bg-paper-grid/20 flex items-center justify-center text-ink-faint">
+                  <BookOpen size={24} strokeWidth={1.5} />
+                </div>
+                <div className="space-y-1 max-w-[280px]">
+                  <p className="text-xs font-serif text-ink-light font-medium">检索 Wikipedia 词条并获取文章全文</p>
+                  <p className="text-[11px] text-ink-faint font-sans leading-normal">
+                    多语言支持 · 匿名无需密钥 · 支持上级连线传入
+                  </p>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
     </CanvasNode>
@@ -459,3 +522,4 @@ const WikipediaSearchNodeInner: React.FC<WikipediaSearchNodeProps> = ({
 export const WikipediaSearchNode = memo(WikipediaSearchNodeInner);
 WikipediaSearchNode.displayName = 'WikipediaSearchNode';
 export default WikipediaSearchNode;
+
