@@ -15,9 +15,9 @@ interface NodeContextMenuProps {
   onClose: () => void;
 }
 
-/** 菜单宽度（w-[460px]）与最大高度估算，用于视口边缘防溢出 */
-const MENU_WIDTH = 460;
-const MENU_MAX_HEIGHT = 490;
+/** 菜单宽度（w-[480px]）与最大高度估算，用于视口边缘防溢出 */
+const MENU_WIDTH = 480;
+const MENU_MAX_HEIGHT = 560;
 
 const NodeContextMenu: React.FC<NodeContextMenuProps> = ({
   x,
@@ -60,7 +60,7 @@ const NodeContextMenu: React.FC<NodeContextMenuProps> = ({
   return (
     <div
       ref={ref}
-      className="fixed z-[100] w-[460px] bg-paper border border-paper-grid rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-100"
+      className="fixed z-[100] w-[480px] bg-paper border border-paper-grid rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-100"
       style={{ left, top }}
       onContextMenu={(e) => e.preventDefault()}
     >

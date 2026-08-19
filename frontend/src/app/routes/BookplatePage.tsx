@@ -981,15 +981,15 @@ const BookplatePage: React.FC = () => {
         {/* 画布空白处右键菜单（添加独立节点） */}
         {standaloneMenu &&
           (() => {
-            const MENU_WIDTH = 460;
-            const MENU_MAX_HEIGHT = 440; // 预估最大高度
+            const MENU_WIDTH = 480;
+            const MENU_MAX_HEIGHT = 520; // 预估最大高度
             const left = standaloneMenu.x + MENU_WIDTH > window.innerWidth - 8 ? Math.max(8, standaloneMenu.x - MENU_WIDTH) : standaloneMenu.x;
             const top = Math.max(8, Math.min(standaloneMenu.y, window.innerHeight - MENU_MAX_HEIGHT));
 
             return (
               <div
                 data-standalone-menu
-                className="fixed z-[9999] w-[460px]"
+                className="fixed z-[9999] w-[480px]"
                 style={{ left, top }}
               >
                 <div className="bg-paper border border-paper-grid rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-100">

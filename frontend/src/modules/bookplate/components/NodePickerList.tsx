@@ -112,7 +112,7 @@ function buildCategories(items: NodePickerItem[]): { categories: CategoryNav[]; 
       groupMap.set(key, list);
       categories.push({
         key,
-        title: `${CATEGORY_LABELS[t.category]} · ${t.name}`,
+        title: t.name,
         count: list.length,
       });
     }
@@ -259,9 +259,9 @@ const NodePickerListInner: React.FC<NodePickerListProps> = ({ items, onPick, pen
       </div>
 
       {/* 主体分栏：左侧分类 + 右侧节点 */}
-      <div className="flex h-[340px] divide-x divide-dashed divide-paper-grid/70 overflow-hidden">
+      <div className="flex h-[420px] divide-x divide-dashed divide-paper-grid/70 overflow-hidden">
         {/* 左侧分类导航 (Master) */}
-        <div className="w-[126px] shrink-0 overflow-y-auto p-1.5 space-y-0.5 bg-paper-grid/10 custom-scrollbar">
+        <div className="w-[136px] shrink-0 overflow-y-auto p-1.5 space-y-0.5 bg-paper-grid/10 custom-scrollbar">
           {searchQuery.trim() ? (
             <div className="px-2 py-1.5 rounded-md bg-accent-surface text-accent text-xs font-medium flex items-center justify-between">
               <span className="truncate">搜索结果</span>

@@ -81,8 +81,8 @@ const AddNodeButtonInner: React.FC<AddNodeButtonProps> = ({ items, onPick, pendi
 
       {open && typeof document !== 'undefined' && createPortal(
         (() => {
-          const POPUP_WIDTH = 460;
-          const POPUP_HEIGHT = 440;
+          const POPUP_WIDTH = 480;
+          const POPUP_HEIGHT = 520;
           // 水平：优先右侧，右侧不够放左侧
           const isRightOverflow = coords.x + POPUP_WIDTH + 16 > window.innerWidth;
           const left = isRightOverflow ? Math.max(12, coords.x - POPUP_WIDTH - 24) : coords.x + 8;
@@ -92,7 +92,7 @@ const AddNodeButtonInner: React.FC<AddNodeButtonProps> = ({ items, onPick, pendi
           return (
             <div 
               ref={popupRef}
-              className="fixed z-[9999] w-[460px] animate-in fade-in zoom-in-95 duration-100" 
+              className="fixed z-[9999] w-[480px] animate-in fade-in zoom-in-95 duration-100" 
               style={{ left, top }}
             >
               <div className="bg-paper border border-paper-grid rounded-xl shadow-2xl overflow-hidden">

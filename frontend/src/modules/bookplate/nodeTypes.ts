@@ -170,7 +170,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'image_search',
     name: '图片检索',
-    description: '检索 Unsplash / Pixabay 免版权图片并选择一张作为图片输出',
+    description: '检索 Unsplash / Pixabay / NASA 等平台的免版权图片',
     category: 'multimodal',
     configurable: false,
     defaultSize: NODE_DEFAULT_SIZES.image_search,
@@ -178,7 +178,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'art_image_search',
     name: '艺术图片检索',
-    description: '聚合博物馆 / 图书馆开放图片 API，关键词检索或随机浏览并选一张作为图片输出',
+    description: '聚合博物馆 / 图书馆开放 API，关键词检索或随机浏览',
     category: 'glam',
     configurable: false,
     defaultSize: NODE_DEFAULT_SIZES.art_image_search,
@@ -203,7 +203,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'text_translation',
     name: '文本翻译',
-    description: 'Google 翻译 / DeepLX 多引擎翻译，支持随机源与自动降级',
+    description: 'Google 翻译 / DeepLX 多引擎翻译，支持随机源与降级',
     category: 'tool',
     configurable: false,
     defaultSize: NODE_DEFAULT_SIZES.text_translation,
