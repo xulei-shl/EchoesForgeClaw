@@ -217,12 +217,17 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
     [id, onUpdateState, effectiveUpstreamImageUrl]
   );
 
-  // 导出小票图片并保存到数据库/历史记录
+  const paperRef = useRef<HTMLDivElement>(null);
+
+  // 导出小票图片并保存到数据库/历史记录 (100% 真实 DOM 所见即所得)
   const handleExportAndSave = useCallback(async () => {
     if (!onExport) return;
     setIsExporting(true);
     try {
-      const dataUrl = await exportReceiptImage(localState, { scale: 2 });
+      const dataUrl = await exportReceiptImage(localState, {
+        targetElement: paperRef.current,
+        scale: 2,
+      });
       await onExport(id, dataUrl, localState);
       showToast('小票已生成并保存到历史记录', { type: 'success' });
     } catch (err: any) {
@@ -233,10 +238,13 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
     }
   }, [localState, id, onExport, showToast]);
 
-  // 本地直接下载 PNG
+  // 本地直接下载 PNG (100% 真实 DOM 所见即所得)
   const handleDirectDownload = useCallback(async () => {
     try {
-      const dataUrl = await exportReceiptImage(localState, { scale: 2 });
+      const dataUrl = await exportReceiptImage(localState, {
+        targetElement: paperRef.current,
+        scale: 2,
+      });
       const link = document.createElement('a');
       link.download = `${localState.storeName || 'receipt'}-${Date.now()}.png`;
       link.href = dataUrl;
@@ -345,6 +353,7 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
         {/* 主体小票预览与就地编辑区域 */}
         <div className="flex-1 min-h-0 overflow-y-auto px-1 py-1 rounded bg-paper-grid/10 border border-paper-grid/40 flex items-start justify-center">
           <ReceiptPaper
+            ref={paperRef}
             state={localState}
             onChange={handleChange}
             upstreamImageUrl={effectiveUpstreamImageUrl}

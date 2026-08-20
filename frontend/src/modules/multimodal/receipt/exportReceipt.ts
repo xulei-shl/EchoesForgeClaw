@@ -1,9 +1,15 @@
+import { toPng } from 'html-to-image';
 import { getReceiptTheme } from './themes';
 import { drawBarcodeToCanvas } from './barcode';
 import { createDitheredImage } from './dither';
 import { isChineseName } from './borrowerGenerator';
 import { urlToDataUrl } from '../../bookplate/imageUpload';
 import type { ReceiptState } from './types';
+
+export interface ExportReceiptOptions {
+  scale?: number;
+  targetElement?: HTMLElement | null;
+}
 
 /**
  * 确保外部图片安全加载并转为 HTMLImageElement
@@ -748,12 +754,38 @@ async function exportLibraryCardImage(
 }
 
 /**
- * 导出小票 / 借书卡为高清 PNG 图片
+ * 导出小票 / 借书卡为高清 PNG 图片（100% 真实 DOM 所见即所得）
  */
 export async function exportReceiptImage(
   state: ReceiptState,
-  options?: { scale?: number }
+  options?: ExportReceiptOptions
 ): Promise<string> {
+  await ensureFontsReady();
+
+  // 若传入了当前界面渲染的真实 DOM 元素，优先通过 html-to-image 导出像素级一模一样的 PNG
+  if (options?.targetElement) {
+    try {
+      const dataUrl = await toPng(options.targetElement, {
+        pixelRatio: options.scale || 2,
+        cacheBust: true,
+        filter: (node) => {
+          if (node instanceof HTMLElement) {
+            if (node.dataset.exportIgnore === 'true' || node.classList.contains('export-ignore')) {
+              return false;
+            }
+          }
+          return true;
+        },
+      });
+      if (dataUrl && dataUrl.startsWith('data:image/png')) {
+        return dataUrl;
+      }
+    } catch (domErr) {
+      console.warn('DOM 所见即所得导出失败，回退到离线 Canvas 引擎:', domErr);
+    }
+  }
+
+  // 离线/无 DOM 场景下的 Canvas 兜底
   const scale = options?.scale || 2;
   if (state.templateId === 'reading_log') {
     return exportLibraryCardImage(state, scale);
