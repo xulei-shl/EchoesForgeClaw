@@ -1,5 +1,8 @@
 import { getReceiptTheme } from '../../themes';
-import type { ReceiptState } from '../../types';
+import {
+  getAncientBookmarkWidthConfig,
+  type ReceiptState,
+} from '../../types';
 import { ensureFontsReady, loadImageSafe } from '../common/canvasUtils';
 import { parseJuDou } from '../../../../../platform/utils/judou';
 
@@ -13,7 +16,8 @@ export async function exportAncientBookmarkImage(
   await ensureFontsReady();
 
   const theme = getReceiptTheme(state.themeId || 'ancient');
-  const baseWidth = 420;
+  const widthConfig = getAncientBookmarkWidthConfig(state.bookmarkWidth);
+  const baseWidth = widthConfig.canvasWidth;
   const baseHeight = 880;
 
   const minchoFont =
@@ -177,13 +181,13 @@ export async function exportAncientBookmarkImage(
   const contentAreaX = banxinRightX;
   const actualContentW = innerW - banxinW;
   const colW = 42; // 每列乌丝栏宽度
-  const colCount = Math.max(5, Math.floor(actualContentW / colW));
+  const totalCols = Math.max(5, Math.floor(actualContentW / colW));
 
-  // 绘制乌丝栏纵向细墨线
+  // 绘制乌丝栏纵向细墨线（贯穿所有列，包含留白列）
   ctx.save();
   ctx.strokeStyle = `color-mix(in srgb, ${theme.text} 40%, transparent)`;
   ctx.lineWidth = 1;
-  for (let c = 1; c < colCount; c++) {
+  for (let c = 1; c < totalCols; c++) {
     const colX = contentAreaX + actualContentW - colW * c;
     ctx.beginPath();
     ctx.moveTo(colX, bodyY);
@@ -191,6 +195,10 @@ export async function exportAncientBookmarkImage(
     ctx.stroke();
   }
   ctx.restore();
+
+  // 版心与正文之间的固定空白留白：保留最左侧 1 栏不排布正文，消除“左密右疏”
+  const blankBufferCols = 1;
+  const colCount = Math.max(3, totalCols - blankBufferCols);
 
   const startY = bodyY + 16;
   const bottomMaxY = bodyY + bodyH - 18;
@@ -332,7 +340,7 @@ export async function exportAncientBookmarkImage(
       if (!sealImg) continue;
 
       // 计算印章在 Canvas 上的绝对 X, Y 坐标与缩放
-      const sealRatio = baseWidth / 300; // 比例因子（DOM 宽度 300px）
+      const sealRatio = baseWidth / widthConfig.domWidth;
       const sealW = (seal.width || 32) * sealRatio;
       const sealAspect = sealImg.height / sealImg.width;
       const sealH = sealW * sealAspect;

@@ -467,6 +467,7 @@ export const TEMPLATE_ANCIENT_BOOKMARK: ReceiptTemplateDef = {
     barcodeText: '9787101077759',
     footerMessage: '',
     bottomNote: '',
+    bookmarkWidth: 'standard',
     seals: generateRandomSeals(),
   }),
   mapFromBook: (book: BookMetadataInput, current = {}) => {
@@ -527,6 +528,7 @@ export const TEMPLATE_ANCIENT_BOOKMARK: ReceiptTemplateDef = {
       leafNumber,
       bookmarkExcerpt: excerpt,
       bookmarkExtra: extra,
+      bookmarkWidth: current.bookmarkWidth || 'standard',
       rating: book.rating ? String(book.rating) : current.rating || '9.8',
       barcodeText: book.isbn || current.barcodeText || '9787101077759',
       imageUrl: cover || current.imageUrl,

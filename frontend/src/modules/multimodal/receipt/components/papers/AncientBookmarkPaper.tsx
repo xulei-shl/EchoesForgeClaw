@@ -2,7 +2,12 @@ import React, { useState } from 'react';
 import { RefreshCw, Stamp } from 'lucide-react';
 import { getReceiptTheme } from '../../themes';
 import { generateRandomSeals, getRandomSealSrc } from '../../sealGenerator';
-import type { ReceiptSealItem, ReceiptState } from '../../types';
+import {
+  getAncientBookmarkWidthConfig,
+  ANCIENT_BOOKMARK_WIDTH_OPTIONS,
+  type ReceiptSealItem,
+  type ReceiptState,
+} from '../../types';
 import { stopEvent } from './common/stopEvent';
 import { AncientVerticalLayout } from '../../../../../platform/components/ui/AncientVerticalLayout';
 
@@ -20,12 +25,15 @@ export interface AncientBookmarkPaperProps {
  * 1. 材质与肌理：泛黄做旧宣纸（中亮缘暗径向渐变）+ 纸浆微颗粒噪点 + 沉稳内阴影磨损感；
  * 2. 书眉天头区（顶部）：系列丛书名 + 书名卷次 + 著者责任者；
  * 3. 版心区（左侧）：上象鼻细线 + 上鱼尾 + 竖排版心题名与叶码 + 下鱼尾 + 下象鼻细线；
- * 4. 正文区（右侧）：基于通用 AncientVerticalLayout 实现原生 vertical-rl 竖排流、乌丝栏与朱圈/朱点句读；
- * 5. 随机印章体系：从 39 枚古籍真迹印章中随机抽取分布，支持正片叠底（multiply）、旋转角度与一键「重新盖印」。
+ * 4. 版心中缝留白：版心右侧固定 1 列乌丝栏留白栏，消除“左密右疏”，提供优雅呼吸感；
+ * 5. 正文区（右侧）：基于通用 AncientVerticalLayout 实现原生 vertical-rl 竖排流、乌丝栏与朱圈/朱点句读；
+ * 6. 多规格支持：窄版(300px) / 标准版(380px) / 宽版(460px) / 长卷版(540px) 动态切换；
+ * 7. 随机印章体系：从 39 枚古籍真迹印章中随机抽取分布，支持正片叠底（multiply）、旋转角度与一键「重新盖印」。
  */
 export const AncientBookmarkPaper = React.forwardRef<HTMLDivElement, AncientBookmarkPaperProps>(
   ({ state, onChange, disabled = false }, ref) => {
     const theme = getReceiptTheme(state.themeId || 'ancient');
+    const widthConfig = getAncientBookmarkWidthConfig(state.bookmarkWidth);
     const [hoveredSealId, setHoveredSealId] = useState<string | null>(null);
     const [isEditing, setIsEditing] = useState<boolean>(false);
     const [focusTarget, setFocusTarget] = useState<'title' | 'author' | 'excerpt' | 'banxin' | 'extra' | 'all'>('all');
@@ -119,9 +127,11 @@ export const AncientBookmarkPaper = React.forwardRef<HTMLDivElement, AncientBook
       <div
         ref={ref}
         data-receipt-paper="true"
-        className="relative w-[300px] min-h-[640px] h-[640px] mx-auto my-2 select-text transition-colors duration-300 font-sans overflow-hidden group"
+        className="relative min-h-[640px] h-[640px] mx-auto my-2 select-text transition-all duration-300 font-sans overflow-hidden group shrink-0"
         style={{
           ...paperBackgroundStyle,
+          width: `${widthConfig.domWidth}px`,
+          minWidth: `${widthConfig.domWidth}px`,
           border: `4px solid ${theme.text}`,
           padding: '4px',
           boxShadow: '4px 10px 20px rgba(0, 0, 0, 0.25), inset 0 0 16px rgba(139, 69, 19, 0.15)',
@@ -216,8 +226,17 @@ export const AncientBookmarkPaper = React.forwardRef<HTMLDivElement, AncientBook
               />
             </div>
 
+            {/* ---------- 版心与正文之间的固定空白留白竖栏 (Blank Buffer Column) ---------- */}
+            <div
+              className="w-[30px] shrink-0 h-full select-none pointer-events-none"
+              style={{
+                borderRight: `1px solid color-mix(in srgb, ${theme.text} 35%, transparent)`,
+              }}
+              title="版心与正文留白栏"
+            />
+
             {/* ---------- 右侧：通用古籍竖排正文流 (Ancient Vertical Content Flow) ---------- */}
-            <div className="grow relative overflow-hidden p-2">
+            <div className="grow relative overflow-hidden py-2 pr-2 pl-0">
               <AncientVerticalLayout
                 text={excerptText}
                 bookTitle={state.storeName || '資治通鑑'}
@@ -264,6 +283,35 @@ export const AncientBookmarkPaper = React.forwardRef<HTMLDivElement, AncientBook
 
             {/* 表单内容区 */}
             <div className="grow overflow-y-auto space-y-2.5 pr-0.5 text-[11px]">
+              {/* 版式规格选择 */}
+              <div>
+                <label className="block font-semibold text-amber-900 mb-1">
+                  版式规格（宽度与容量）
+                </label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {ANCIENT_BOOKMARK_WIDTH_OPTIONS.map((opt) => {
+                    const isSelected = (state.bookmarkWidth || 'standard') === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => onChange({ bookmarkWidth: opt.id })}
+                        className={`px-2 py-1.5 text-left rounded border transition-all text-[11px] ${
+                          isSelected
+                            ? 'bg-amber-900 text-white border-amber-950 shadow-xs font-semibold'
+                            : 'bg-amber-50/80 text-amber-950 border-amber-900/20 hover:border-amber-800'
+                        }`}
+                      >
+                        <div className="font-serif leading-tight">{opt.label}</div>
+                        <div className={`text-[9px] mt-0.5 ${isSelected ? 'text-amber-200' : 'text-amber-700/75'}`}>
+                          {opt.description}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* 1. 第一栏：题名 / 书名 */}
               <div>
                 <label className="block font-semibold text-amber-900 mb-0.5">

@@ -188,8 +188,37 @@ export interface ReceiptState {
   bookmarkExcerpt?: string;
   /** 古籍书签第三列出版与责任者（如 "[著者] 加西亚·马尔克斯\n南海出版公司 · 2011"） */
   bookmarkExtra?: string;
+  /** 古籍书签排版宽度规格（'narrow' | 'standard' | 'wide' | 'extra_wide'） */
+  bookmarkWidth?: AncientBookmarkWidth;
   /** 古籍书签随机印章列表 */
   seals?: ReceiptSealItem[];
+}
+
+/** 古籍书签规格选项标识 */
+export type AncientBookmarkWidth = 'narrow' | 'standard' | 'wide' | 'extra_wide';
+
+export interface AncientBookmarkWidthOption {
+  id: AncientBookmarkWidth;
+  label: string;
+  domWidth: number;
+  canvasWidth: number;
+  description: string;
+}
+
+/** 古籍书签多规格预设列表 */
+export const ANCIENT_BOOKMARK_WIDTH_OPTIONS: AncientBookmarkWidthOption[] = [
+  { id: 'narrow', label: '窄版书签 (300px)', domWidth: 300, canvasWidth: 420, description: '短句题词 (50~90字)' },
+  { id: 'standard', label: '标准书帖 (380px)', domWidth: 380, canvasWidth: 532, description: '中篇书摘 (100~180字)' },
+  { id: 'wide', label: '宽版经页 (460px)', domWidth: 460, canvasWidth: 644, description: '详实简介 (180~280字)' },
+  { id: 'extra_wide', label: '长卷雕版 (540px)', domWidth: 540, canvasWidth: 756, description: '长篇文选 (280~400字)' },
+];
+
+/** 获取古籍书签宽度配置 */
+export function getAncientBookmarkWidthConfig(widthId?: AncientBookmarkWidth): AncientBookmarkWidthOption {
+  return (
+    ANCIENT_BOOKMARK_WIDTH_OPTIONS.find((opt) => opt.id === widthId) ||
+    ANCIENT_BOOKMARK_WIDTH_OPTIONS[1] // 默认标准版 380px
+  );
 }
 
 /** 模板规范定义接口（方便新增扩展模板） */
