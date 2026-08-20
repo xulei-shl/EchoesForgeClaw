@@ -3,7 +3,8 @@
 本文档记录 BookForge 在 Windows（Win11 64 位）环境下从零启动的完整步骤。后端已由 Python（FastAPI/uvicorn）迁移为 **TypeScript（Fastify + Drizzle + AI SDK，目录 `backend-ts/`）**，启动方式与依赖要求已随之变化。
 
 > 适用环境：Windows 11 64 位、Node.js ≥ 22.9（已在 v24.13.0 验证）、npm 11.x
-> **不再需要 Python / venv / pip / uvicorn**。项目启动前仅需准备 Node.js 环境与 `backend-ts/.env`。
+> **主后端（backend-ts）不再需要 Python / venv / pip / uvicorn**，启动前仅需准备 Node.js 环境与 `backend-ts/.env`。
+> **例外**：地图海报节点（`frontend/src/modules/multimodal`）依赖一个独立的 Python 微服务，代码位于 `services/maptoposter/`，需 Python ≥ 3.11。仅当使用该功能时才需要 Python，详见「第 4 节」。
 
 ---
 
@@ -92,7 +93,48 @@ npm run dev -- --port 5173
 
 ---
 
-## 4. 验证服务
+## 4. 地图海报 Python 服务（地图海报节点依赖）
+
+地图海报节点（`frontend/src/modules/multimodal`）依赖一个独立的 Python 微服务生成海报，它**不属于** Node.js 后端，需单独用 Python 启动。代码已迁移至仓库根目录 `services/maptoposter/`（早期版本位于 `docs/多模态工具/地图/maptoposter-main`，现已移走）。
+
+### 4.1 安装依赖（首次）
+
+```powershell
+cd services/maptoposter
+pip install -r requirements.txt
+```
+
+> 首次运行会自动安装依赖并下载 Roboto 字体。需要 Python ≥ 3.11（本机 Python 3.14 已验证）。
+
+### 4.2 启动服务
+
+```powershell
+cd services/maptoposter
+
+# 方式一：uvicorn（推荐）
+uvicorn api:app --host 0.0.0.0 --port 8100
+
+# 方式二：python 直接运行
+python api.py
+```
+
+- 启动成功标志：`Uvicorn running on http://0.0.0.0:8100`
+- 健康检查：`(Invoke-RestMethod http://127.0.0.1:8100/health).status` → `ok`
+- 端口固定 **8100**，与 `backend-ts` 读取的环境变量 `MAPTOPoster_API`（默认 `http://127.0.0.1:8100`，见 `backend-ts/src/modules/bookplate/routes/map-poster.ts`）一致，无需额外配置即可被后端代理调用
+
+### 4.3 后台常驻（PowerShell 作业）
+
+```powershell
+Start-Process -FilePath "uvicorn" -ArgumentList "api:app","--host","0.0.0.0","--port","8100" `
+  -WorkingDirectory "$PWD\services\maptoposter" `
+  -RedirectStandardOutput "$env:TEMP\map_out.log" -RedirectStandardError "$env:TEMP\map_err.log"
+```
+
+### 4.4 端口冲突
+
+若 8100 被占用（例如同时运行了 `docs/fastclaw-dev/plugins/mem0` 的 Mem0 服务，其 `plugin.json` 默认也指向 `127.0.0.1:8100`），需为其中之一换端口：改 maptoposter 启动端口时，同步修改 `backend-ts/.env` 的 `MAPTOPoster_API`（如 `http://127.0.0.1:8101`）。
+
+## 5. 验证服务
 
 ```powershell
 # 后端根路径
@@ -114,7 +156,7 @@ npm run dev -- --port 5173
 
 ---
 
-## 5. 后台常驻运行（可选）
+## 6. 后台常驻运行（可选）
 
 普通终端窗口关闭即停止服务。如需常驻，可用以下任一种方式：
 
@@ -134,7 +176,7 @@ Start-Process -FilePath "npm" -ArgumentList "run","dev","--","--port","5173" -Wo
 
 ---
 
-## 6. 踩坑记录（FIRST-RUN 必读）
+## 7. 踩坑记录（FIRST-RUN 必读）
 
 ### 坑 1：`npm run start` 直接报错 / Node 版本过低
 
@@ -169,7 +211,7 @@ npm run start
 
 ---
 
-## 7. 一键快速清单（新机器复制粘贴）
+## 8. 一键快速清单（新机器复制粘贴）
 
 ```powershell
 # 后端
@@ -183,4 +225,9 @@ npm run start
 cd frontend
 npm install
 npm run dev -- --port 5173
+
+# 地图海报 Python 服务（仅使用地图海报节点时需要，另开终端）
+cd services/maptoposter
+pip install -r requirements.txt
+uvicorn api:app --host 0.0.0.0 --port 8100
 ```

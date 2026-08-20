@@ -2,7 +2,7 @@
 
 ## 地图海报生成
 
-地图海报节点基于 [maptoposter](../../docs/多模态工具/地图/maptoposter-main/) 项目，通过 Python 后端服务生成高质量的艺术风格地图海报。
+地图海报节点基于 [maptoposter](../../../../services/maptoposter/) 项目，通过 Python 后端服务生成高质量的艺术风格地图海报。
 
 ### 架构
 
@@ -23,7 +23,7 @@ OSMnx + matplotlib → PNG 图片
 ### 启动 Python 服务
 
 ```bash
-cd docs/多模态工具/地图/maptoposter-main
+cd services/maptoposter
 
 # 方式一：uvicorn 直接启动
 uvicorn api:app --host 0.0.0.0 --port 8100

@@ -3,7 +3,8 @@
 本文档记录 BookForge（书海回响素材工坊）在 Ubuntu 服务器上的生产部署、启动与运维的完整最佳实践，汇总了真实部署过程中踩过的坑与对应的根治方案，避免每次重新部署重复排障。
 
 > 项目当前已部署于 `10.40.92.18`，后端端口 `8010`，前端端口 `5180`。
-> 后端已由 Python（FastAPI/uvicorn）迁移为 **TypeScript（Fastify + Drizzle + better-sqlite3 + AI SDK，目录 `backend-ts/`）**，**不再需要 Python / venv / pip / uvicorn / Alembic**。
+> 后端已由 Python（FastAPI/uvicorn）迁移为 **TypeScript（Fastify + Drizzle + better-sqlite3 + AI SDK，目录 `backend-ts/`）**，主后端**不再需要 Python / venv / pip / uvicorn / Alembic**。
+> **例外**：地图海报节点（`frontend/src/modules/multimodal`）依赖一个独立的 Python 微服务，代码位于 `services/maptoposter/`（早期版本在 `docs/多模态工具/地图/maptoposter-main`，已迁移），需 Python ≥ 3.11。仅当使用该功能时才需要 Python，部署方式见「第 13 节」。
 
 ---
 
@@ -349,3 +350,70 @@ sudo bash scripts/deploy.sh
 - `.env` 含 `SECRET_KEY` 与管理员密码，**不要提交到 git**（`backend-ts/.gitignore` 已忽略 `.env` 与 `*.db`）。
 - 生产环境建议将 `SECRET_KEY` 换成随机值，避免使用默认值（`scripts/deploy.sh` 会自动生成）。
 - 管理员账号首次创建后请勿在代码中硬编码，全部通过 `.env` 管理。
+
+---
+
+## 13. 地图海报 Python 服务（地图海报节点依赖）
+
+地图海报节点依赖一个独立的 Python 微服务（`services/maptoposter/`）生成艺术风格地图海报。它**不属于** Node.js 后端，需单独用 Python 启动，并由 `backend-ts` 通过环境变量 `MAPTOPoster_API`（默认 `http://127.0.0.1:8100`）代理调用。代码由 git 管理，部署时随 `git pull` 一同拉取到 `/opt/EchoesForgeClaw/services/maptoposter`。
+
+> 仅当需要使用「地图海报」功能时才需要该服务；不启动它时，点击生成会报 `Python API not running`，其余功能不受影响。
+
+### 13.1 安装依赖（首次）
+
+```bash
+cd /opt/EchoesForgeClaw/services/maptoposter
+pip install -r requirements.txt
+```
+
+> 需要 Python ≥ 3.11。首次运行会自动安装依赖并下载 Roboto 字体。
+
+### 13.2 手动启动（验证用）
+
+```bash
+cd /opt/EchoesForgeClaw/services/maptoposter
+uvicorn api:app --host 0.0.0.0 --port 8100
+```
+
+- 启动成功标志：`Uvicorn running on http://0.0.0.0:8100`
+- 健康检查：`curl -s http://localhost:8100/health` → `{"status":"ok"}`
+
+### 13.3 Systemd 服务（推荐，开机自启 + 崩溃自愈）
+
+`/etc/systemd/system/bookforge-maptoposter.service`：
+
+```ini
+[Unit]
+Description=BookForge Map Poster Python Service (maptoposter)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/EchoesForgeClaw/services/maptoposter
+ExecStart=/usr/bin/uvicorn api:app --host 0.0.0.0 --port 8100
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+```
+
+> `ExecStart` 中的 `uvicorn` 路径用 `which uvicorn` 确认（虚拟环境下替换为对应绝对路径）。
+
+启用并启动：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable bookforge-maptoposter
+sudo systemctl start bookforge-maptoposter
+systemctl is-active bookforge-maptoposter   # 期望 active
+```
+
+### 13.4 端口与集成
+
+- 端口固定 **8100**，与 `backend-ts` 的 `MAPTOPoster_API` 默认值（`backend-ts/src/modules/bookplate/routes/map-poster.ts`）一致；**同机部署无需额外配置**即可被后端代理。
+- 跨机部署时，在 `backend-ts/.env` 设置 `MAPTOPoster_API=http://<maptoposter-host>:8100` 并随 `backend-ts` 服务读取生效。
+- 端口冲突：若 8100 被占用（例如同时运行 `docs/fastclaw-dev/plugins/mem0` 的 Mem0 服务，其 `plugin.json` 默认也指向 `127.0.0.1:8100`），需为其中之一换端口，并同步 `MAPTOPoster_API` 或 Mem0 的 `config.url`。
