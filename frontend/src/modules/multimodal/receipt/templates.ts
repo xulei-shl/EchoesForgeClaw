@@ -484,9 +484,17 @@ export function buildReceiptState(
       ? options.upstreamImageUrl
       : (mergedFromBook.imageUrl || null);
 
-  // 提取用户持久化或传入的插图（兼容 coverImageUrl 与 imageUrl）
-  const explicitCoverImage =
-    savedData.coverImageUrl !== undefined ? savedData.coverImageUrl : savedData.imageUrl;
+  // 提取用户持久化或传入的插图：优先取专门的 coverImageUrl；防止落盘的大图回流污染插图
+  let explicitCoverImage = savedData.coverImageUrl;
+  if (explicitCoverImage === undefined) {
+    if (
+      typeof savedData.imageUrl === 'string' &&
+      !savedData.imageUrl.includes('/generations/') &&
+      !savedData.imageUrl.includes('/receipt_')
+    ) {
+      explicitCoverImage = savedData.imageUrl;
+    }
+  }
 
   // 4 级图片优先级解析：
   // 1. 若强制重置（切换模板 / 重置为默认 / 同步图书）：清除手动标记，回归上游图片

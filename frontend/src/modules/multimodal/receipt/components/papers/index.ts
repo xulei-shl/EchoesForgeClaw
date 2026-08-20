@@ -2,6 +2,7 @@ export * from './LibraryCardPaper';
 export * from './BookRecommendPaper';
 export * from './ItemizedReceiptPaper';
 export * from './BookExcerptPaper';
+export * from './RetroMenuPaper';
 export * from './common/ReceiptZigzagEdge';
 export * from './common/ReceiptDitherBox';
 export * from './common/ReceiptBarcodeBox';

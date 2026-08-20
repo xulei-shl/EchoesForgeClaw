@@ -2,4 +2,7 @@ export * from './common/canvasUtils';
 export * from './renderers/standardRenderer';
 export * from './renderers/libraryCardRenderer';
 export * from './renderers/bookExcerptRenderer';
+export * from './renderers/retroMenuRenderer';
+export * from './renderers/registry';
+export * from './downloadReceipt';
 export * from './domExporter';
