@@ -1,5 +1,5 @@
-import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { Download, Printer, Loader2, Sparkles } from 'lucide-react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Printer, Loader2, Heart, Globe, Sparkles } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
@@ -8,8 +8,7 @@ import {
   ReceiptPaper,
   ReceiptToolbar,
   exportReceiptImage,
-  mergeBookMetadataIntoReceipt,
-  TEMPLATE_BOOK_RECOMMEND,
+  buildReceiptState,
   type BookMetadataInput,
   type ReceiptState,
 } from '../receipt';
@@ -21,7 +20,10 @@ export interface ReceiptPrinterNodeProps {
   title?: string;
   /** 节点持久化数据 */
   data?: Partial<ReceiptState> & {
+    /** 节点输出图（生成完成的完整小票，供下游 / 画廊读取） */
     imageUrl?: string | null;
+    /** 小票内插图（图书封面 / 上游图片 / 自定义上传，与 imageUrl 输出互不覆盖） */
+    coverImageUrl?: string | null;
     error?: string | null;
     isExporting?: boolean;
   };
@@ -29,7 +31,19 @@ export interface ReceiptPrinterNodeProps {
   upstreamBookData?: BookMetadataInput | null;
   /** 上游图片输出（图片上传 / 图像生成 / 艺术检索等） */
   upstreamImageUrl?: string | null;
+  isFavorited?: boolean;
+  isPublic?: boolean;
+  /** 是否为全局操作栏当前作用目标（选中态高亮） */
+  isSelected?: boolean;
+  /** 历史记录已被删除（收藏/公开会重新生成记录）时的弱提示 */
+  recordDeleted?: boolean;
+  /** 点击节点选中（作为全局操作栏的作用目标） */
+  onSelect?: (id: string) => void;
   onRemove?: (id: string) => void;
+  /** 收藏切换，resolve 为新的收藏状态；失败时 reject */
+  onToggleFavorite?: (id: string) => Promise<boolean>;
+  /** 公开切换，resolve 为新的公开状态；失败时 reject */
+  onTogglePublic?: (id: string) => Promise<boolean>;
   onPositionChange?: (id: string, x: number, y: number) => void;
   onSizeChange?: (id: string, width: number, height: number) => void;
   onDrag?: (id: string, x: number, y: number) => void;
@@ -51,7 +65,14 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
   data = {},
   upstreamBookData,
   upstreamImageUrl,
+  isFavorited = false,
+  isPublic = false,
+  isSelected = false,
+  recordDeleted = false,
+  onSelect,
   onRemove,
+  onToggleFavorite,
+  onTogglePublic,
   onPositionChange,
   onSizeChange,
   onDrag,
@@ -64,71 +85,160 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
 }) => {
   const { showToast } = useFeedback();
   const [isExporting, setIsExporting] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const noticeTimer = useRef<number | null>(null);
 
-  // 构造小票的有效当前状态（缺省时以预设书目推荐小票为初始值）
-  const currentState: ReceiptState = {
-    ...TEMPLATE_BOOK_RECOMMEND.createInitialState(),
-    ...data,
-  } as ReceiptState;
-
-  // 跟踪图书元数据是否已完成初始同步
-  const syncedBookIsbnRef = useRef<string | null>(null);
-
-  // 自动继承：当检测到上游图书元数据接入且尚未同步过时，自动初始化小票
   useEffect(() => {
-    if (upstreamBookData && upstreamBookData.isbn && upstreamBookData.isbn !== syncedBookIsbnRef.current) {
-      syncedBookIsbnRef.current = upstreamBookData.isbn;
-      const patched = mergeBookMetadataIntoReceipt(upstreamBookData, currentState);
-      onUpdateState?.(id, patched);
+    return () => {
+      if (noticeTimer.current) window.clearTimeout(noticeTimer.current);
+    };
+  }, []);
+
+  const showNotice = (text: string) => {
+    setNotice(text);
+    if (noticeTimer.current) window.clearTimeout(noticeTimer.current);
+    noticeTimer.current = window.setTimeout(() => setNotice(null), 2600);
+  };
+
+  const runToggle = async (
+    fn: ((id: string) => Promise<boolean>) | undefined,
+    okMsg: (active: boolean) => string
+  ) => {
+    if (!fn) return;
+    try {
+      const active = await fn(id);
+      showNotice(okMsg(active));
+    } catch {
+      showNotice('操作失败，请重试');
     }
-  }, [upstreamBookData, id]);
+  };
 
-  // 手动从上游重新同步图书元数据
-  const handleManualSyncBook = useCallback(() => {
-    if (!upstreamBookData) return;
-    const patched = mergeBookMetadataIntoReceipt(upstreamBookData, currentState);
-    onUpdateState?.(id, patched);
-    showToast('已从图书元数据更新小票内容', 'success');
-  }, [upstreamBookData, currentState, id, onUpdateState, showToast]);
+  // 提取上游图书元数据特征指纹（isbn + 书名 + 作者 + 出版社 + 出品方 + 丛书 + 出版年 + 封面 + 评分）
+  const currentFingerprint = useMemo(() => {
+    if (!upstreamBookData) return '';
+    const hasValidContent = Boolean(
+      upstreamBookData.title?.trim() ||
+      upstreamBookData.isbn?.trim() ||
+      upstreamBookData.author?.trim()
+    );
+    if (!hasValidContent) return '';
+    return [
+      upstreamBookData.isbn || '',
+      upstreamBookData.title || '',
+      upstreamBookData.author || '',
+      upstreamBookData.publisher || '',
+      upstreamBookData.producer || '',
+      upstreamBookData.series || '',
+      upstreamBookData.pub_year || upstreamBookData.publishDate || '',
+      upstreamBookData.cover_image_local || upstreamBookData.cover_image || upstreamBookData.coverUrl || '',
+      upstreamBookData.rating !== undefined && upstreamBookData.rating !== null ? String(upstreamBookData.rating) : '',
+    ].join('__');
+  }, [upstreamBookData]);
 
-  // 状态变更分发
+  // 上游可用的有效图片源（优先连线上游图片节点，次之图书封面）
+  const effectiveUpstreamImageUrl = useMemo(() => {
+    return (
+      upstreamImageUrl ||
+      upstreamBookData?.cover_image_local ||
+      upstreamBookData?.cover_image ||
+      upstreamBookData?.coverUrl ||
+      null
+    );
+  }, [upstreamImageUrl, upstreamBookData]);
+
+  // 构造小票的合成状态函数（统一使用公共核心函数 buildReceiptState）
+  const computeMergedState = useCallback(
+    (overrides?: Partial<ReceiptState>) => {
+      const currentData = { ...data, ...overrides };
+      return buildReceiptState(
+        currentData.templateId,
+        upstreamBookData,
+        currentData,
+        {
+          upstreamImageUrl: effectiveUpstreamImageUrl,
+        }
+      );
+    },
+    [data, upstreamBookData, effectiveUpstreamImageUrl]
+  );
+
+  // 本地即时响应状态（保证键盘输入零延迟且不被打断）
+  const [localState, setLocalState] = useState<ReceiptState>(() => computeMergedState());
+
+  // 外部 data / upstreamBookData / 上游图片变化时同步到本地状态
+  useEffect(() => {
+    setLocalState(computeMergedState());
+  }, [computeMergedState]);
+
+  // 跟踪已同步图书元数据的特征指纹
+  const lastSyncedFingerprintRef = useRef<string>(currentFingerprint);
+
+  // 自动继承：仅当上游图书元数据或图片发生实质变更（如从无到有、异步抓取完成或切换书籍）时触发同步
+  useEffect(() => {
+    if (!currentFingerprint || !upstreamBookData) return;
+    if (currentFingerprint !== lastSyncedFingerprintRef.current) {
+      lastSyncedFingerprintRef.current = currentFingerprint;
+      const next = computeMergedState();
+      setLocalState(next);
+      onUpdateState?.(id, next);
+    }
+  }, [currentFingerprint, upstreamBookData, computeMergedState, id, onUpdateState]);
+
+  // 重置为默认：将小票所有字段完整重置到当前模板初始默认态（自动填充图书元数据与上游图片，保留选中的纸张颜色与点阵设置）
+  const handleResetToDefault = useCallback(() => {
+    lastSyncedFingerprintRef.current = currentFingerprint;
+    const freshState = buildReceiptState(
+      localState.templateId,
+      upstreamBookData,
+      {
+        themeId: localState.themeId,
+        ditherEnabled: localState.ditherEnabled,
+      },
+      {
+        overrideUserEdits: true,
+        upstreamImageUrl: effectiveUpstreamImageUrl,
+      }
+    );
+    setLocalState(freshState);
+    onUpdateState?.(id, freshState);
+    showToast('小票已重置为默认', 'success');
+  }, [upstreamBookData, currentFingerprint, localState.templateId, localState.themeId, localState.ditherEnabled, effectiveUpstreamImageUrl, id, onUpdateState, showToast]);
+
+  // 状态变更分发：本地即刻响应 + 异步写入画布持久化
   const handleChange = useCallback(
     (patch: Partial<ReceiptState>) => {
-      onUpdateState?.(id, patch);
+      const resolvedPatch = { ...patch };
+      if ('imageUrl' in patch && (patch.imageUrl === null || patch.imageUrl === undefined)) {
+        resolvedPatch.imageUrl = effectiveUpstreamImageUrl;
+      }
+      setLocalState((prev) => ({ ...prev, ...resolvedPatch }));
+      onUpdateState?.(id, resolvedPatch);
     },
-    [id, onUpdateState]
+    [id, onUpdateState, effectiveUpstreamImageUrl]
   );
 
   // 导出小票图片并保存到数据库/历史记录
   const handleExportAndSave = useCallback(async () => {
+    if (!onExport) return;
     setIsExporting(true);
     try {
-      const dataUrl = await exportReceiptImage(currentState, { scale: 2 });
-      if (onExport) {
-        await onExport(id, dataUrl, currentState);
-        showToast('小票已生成并保存到历史记录', 'success');
-      } else {
-        // 直接触发浏览器本地下载
-        const link = document.createElement('a');
-        link.download = `receipt-${Date.now()}.png`;
-        link.href = dataUrl;
-        link.click();
-        showToast('小票图片已下载', 'success');
-      }
+      const dataUrl = await exportReceiptImage(localState, { scale: 2 });
+      await onExport(id, dataUrl, localState);
+      showToast('小票已生成并保存到历史记录', 'success');
     } catch (err: any) {
       console.error('导出小票失败:', err);
-      showToast(err?.message || '生成小票失败，请重试', 'error');
+      showToast(err?.detail || err?.message || '生成小票失败，请重试', 'error');
     } finally {
       setIsExporting(false);
     }
-  }, [currentState, id, onExport, showToast]);
+  }, [localState, id, onExport, showToast]);
 
   // 本地直接下载 PNG
   const handleDirectDownload = useCallback(async () => {
     try {
-      const dataUrl = await exportReceiptImage(currentState, { scale: 2 });
+      const dataUrl = await exportReceiptImage(localState, { scale: 2 });
       const link = document.createElement('a');
-      link.download = `${currentState.storeName || 'receipt'}-${Date.now()}.png`;
+      link.download = `${localState.storeName || 'receipt'}-${Date.now()}.png`;
       link.href = dataUrl;
       link.click();
       showToast('小票图片已下载', 'success');
@@ -136,7 +246,9 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
       console.error('下载小票失败:', err);
       showToast('下载失败，请重试', 'error');
     }
-  }, [currentState, showToast]);
+  }, [localState, showToast]);
+
+  const hasGeneratedImage = Boolean(data?.imageUrl);
 
   return (
     <CanvasNode
@@ -152,55 +264,107 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
       onContextMenu={onContextMenu}
       resizable
       defaultSize={{ width: 440, height: 640 }}
+      className={`transition-[opacity,transform,box-shadow,border-color] duration-150 ease-out ${isSelected ? 'ring-2 ring-accent/70 shadow-md' : ''}`}
       showLeftAnchor={true}
       showRightAnchor={true}
+      onClick={() => onSelect?.(id)}
       footer={footer}
       mismatchBadge={mismatchBadge}
       actionBar={
         <NodeActionBar>
+          {hasGeneratedImage ? (
+            <NodeActionBar.Retry
+              onClick={handleExportAndSave}
+              disabled={isExporting}
+              hasDownstream={hasDownstream}
+              downstreamTooltip="有下级节点，不可保存"
+              tooltip="重新生成并保存小票（记录到数据库）"
+            />
+          ) : (
+            <NodeActionBar.Custom
+              icon={
+                isExporting ? (
+                  <Loader2 size={16} className="animate-spin text-accent" />
+                ) : (
+                  <Printer size={16} strokeWidth={1.5} />
+                )
+              }
+              tooltip="生成并保存小票（记录到数据库）"
+              downstreamTooltip="有下级节点，不可保存"
+              onClick={handleExportAndSave}
+              disabled={isExporting}
+              hasDownstream={hasDownstream}
+            />
+          )}
           <NodeActionBar.Custom
-            icon={
-              isExporting ? (
-                <Loader2 size={16} className="animate-spin text-accent" />
-              ) : (
-                <Printer size={16} strokeWidth={1.5} />
-              )
-            }
-            tooltip="生成并保存小票（记录到数据库）"
-            onClick={handleExportAndSave}
-            disabled={isExporting}
+            icon={<Heart size={16} strokeWidth={1.5} className={isFavorited ? 'fill-accent text-accent' : ''} />}
+            tooltip={isFavorited ? '取消收藏' : '收藏'}
+            onClick={() => runToggle(onToggleFavorite, (active) => (active ? '已收藏' : '已取消收藏'))}
+            disabled={!hasGeneratedImage || isExporting || !onToggleFavorite}
+          />
+          <NodeActionBar.Custom
+            icon={<Globe size={16} strokeWidth={1.5} className={isPublic ? 'text-accent' : ''} />}
+            tooltip={isPublic ? '从画廊撤下' : '公开到画廊'}
+            onClick={() => runToggle(onTogglePublic, (active) => (active ? '已公开' : '已撤下'))}
+            disabled={!hasGeneratedImage || isExporting || !onTogglePublic}
+          />
+          <NodeActionBar.Custom
+            icon={<Sparkles size={16} strokeWidth={1.5} />}
+            tooltip={localState.ditherEnabled ? '点阵滤镜（已开启）' : '点阵滤镜（已关闭）'}
+            downstreamTooltip="有下级节点，不可切换点阵滤镜"
+            className={localState.ditherEnabled ? 'text-accent bg-accent/10 hover:bg-accent/20' : ''}
+            onClick={() => handleChange({ ditherEnabled: !localState.ditherEnabled })}
             hasDownstream={hasDownstream}
+            disabled={isExporting}
           />
           <NodeActionBar.Download
             onClick={handleDirectDownload}
             disabled={isExporting}
             tooltip="直接下载小票 PNG"
           />
-          <NodeActionBar.Custom
-            icon={<Sparkles size={16} strokeWidth={1.5} />}
-            tooltip="切换点阵化滤镜"
-            onClick={() => handleChange({ ditherEnabled: !currentState.ditherEnabled })}
+          <NodeActionBar.Reset
+            onClick={handleResetToDefault}
+            disabled={isExporting}
+            hasDownstream={hasDownstream}
+            downstreamTooltip="有下级节点，不可重置"
+            tooltip="重置为当前模板默认内容"
           />
         </NodeActionBar>
       }
     >
       <div className="h-full flex flex-col flex-1 min-h-0 gap-2">
-        {/* 顶部控制栏（模板、纸张颜色、点阵开关、同步图书） */}
+        {/* 顶部控制栏（模板、纸张颜色） */}
         <ReceiptToolbar
-          state={currentState}
+          state={localState}
           onChange={handleChange}
-          onSyncUpstreamBook={handleManualSyncBook}
-          hasUpstreamBook={!!upstreamBookData}
+          upstreamBookData={upstreamBookData}
+          upstreamImageUrl={effectiveUpstreamImageUrl}
+          disabled={isExporting || hasDownstream}
         />
 
         {/* 主体小票预览与就地编辑区域 */}
         <div className="flex-1 min-h-0 overflow-y-auto px-1 py-1 rounded bg-paper-grid/10 border border-paper-grid/40 flex items-start justify-center">
           <ReceiptPaper
-            state={currentState}
+            state={localState}
             onChange={handleChange}
-            upstreamImageUrl={upstreamImageUrl || upstreamBookData?.coverUrl}
+            upstreamImageUrl={effectiveUpstreamImageUrl}
+            disabled={isExporting || hasDownstream}
           />
         </div>
+
+        {/* 状态与弱提示（对齐 ImageNode） */}
+        {recordDeleted && hasGeneratedImage && !isExporting && (
+          <div className="flex items-center justify-end gap-1.5 text-right text-xs text-ink-faint font-sans">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-accent/60" />
+            记录已删除 · 收藏将重新生成记录
+          </div>
+        )}
+
+        {notice && (
+          <div className="text-right text-xs text-ink-faint font-sans">
+            {notice}
+          </div>
+        )}
       </div>
     </CanvasNode>
   );
@@ -209,3 +373,4 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
 export const ReceiptPrinterNode = memo(ReceiptPrinterNodeInner);
 ReceiptPrinterNode.displayName = 'ReceiptPrinterNode';
 export default ReceiptPrinterNode;
+

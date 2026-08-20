@@ -326,4 +326,28 @@ export async function register(app: FastifyInstance): Promise<void> {
       }
     }
   );
+
+  // ---- 保存/导出图片落盘（小票等节点：base64 data URL → runtime/{userId}/generated/） ----
+  app.post(
+    '/api/modules/bookplate/save-image',
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const payload = (request.body ?? {}) as { image?: string };
+      const image = payload.image;
+      if (!image || typeof image !== 'string') {
+        return reply.code(400).send({ detail: 'image 字段不能为空' });
+      }
+      try {
+        const imageUrl = await imageService.saveRemoteImage(image, request.authUser!.id);
+        return { image_url: imageUrl };
+      } catch (err) {
+        if (err instanceof ImageGenerationError) {
+          return reply.code(400).send({ detail: err.message });
+        }
+        return reply.code(500).send({
+          detail: `保存图片失败: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+    }
+  );
 }

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Tooltip } from '../ui/Tooltip';
 import { useFeedback } from '../ui/FeedbackProvider';
-import { Play, RefreshCw, Pencil, Check, X, Download, Eraser, Settings2, Copy } from 'lucide-react';
+import { Play, RefreshCw, Pencil, Check, X, Download, Eraser, Settings2, Copy, RotateCcw } from 'lucide-react';
 
 export const ACTION_BTN_CLASS =
   'flex items-center justify-center w-7 h-7 rounded-full ' +
@@ -118,6 +118,15 @@ NodeActionBar.Eraser = (props: Omit<BaseButtonProps, 'icon' | 'tooltip' | 'downs
     icon={<Eraser size={16} strokeWidth={1.5} />}
     tooltip={props.tooltip || "清空"}
     downstreamTooltip={props.downstreamTooltip || "有下级节点，不可清空"}
+    {...props}
+  />
+);
+
+NodeActionBar.Reset = (props: Omit<BaseButtonProps, 'icon' | 'tooltip' | 'downstreamTooltip'> & { hasDownstream?: boolean; tooltip?: string; downstreamTooltip?: string }) => (
+  <BaseButton
+    icon={<RotateCcw size={16} strokeWidth={1.5} />}
+    tooltip={props.tooltip || "重置为默认"}
+    downstreamTooltip={props.downstreamTooltip || "有下级节点，不可重置"}
     {...props}
   />
 );

@@ -822,6 +822,31 @@ describe('generate-image 端点', () => {
     expect(img.headers['content-type']).toContain('image/svg+xml');
   });
 
+  it('POST /api/modules/bookplate/save-image：base64 data URL 落盘到 runtime/{userId}/generated/', async () => {
+    const png1x1 = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+      'base64'
+    );
+    const dataUrl = `data:image/png;base64,${png1x1.toString('base64')}`;
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/save-image',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { image: dataUrl },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(typeof body.image_url).toBe('string');
+    expect(body.image_url.startsWith('/static/generated/')).toBe(true);
+
+    // 验证可通过公开静态路由读取到原图
+    const img = await app.inject({ method: 'GET', url: body.image_url });
+    expect(img.statusCode).toBe(200);
+    expect(img.headers['content-type']).toContain('image/png');
+    expect(Buffer.from(img.rawPayload).equals(png1x1)).toBe(true);
+  });
+
   it('静态图片路由：非数字 userId / 目录穿越返回 404', async () => {
     const bad = [
       '/static/generated/abc/1.png',

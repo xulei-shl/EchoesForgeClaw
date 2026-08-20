@@ -47,6 +47,13 @@ export function useGenerationHistory(ctx: GenerationHistoryContext): GenerationH
         : [];
       const imageSteps = Array.isArray(imageNode.data?.agentSteps) ? imageNode.data.agentSteps : [];
 
+      const promptText =
+        imageNode.type === 'receipt_printer'
+          ? (imageNode.data?.storeName ? `${imageNode.data.storeName} - ${imageNode.data?.subtitle || '图书小票'}` : '图书小票生成')
+          : typeof imageNode.data?.prompt === 'string'
+            ? imageNode.data.prompt
+            : '';
+
       return {
         stage1: bookNode
           ? {
@@ -60,20 +67,20 @@ export function useGenerationHistory(ctx: GenerationHistoryContext): GenerationH
               prompt:
                 typeof promptNode.data?.content === 'string' && promptNode.data.content
                   ? promptNode.data.content
-                  : typeof imageNode.data?.prompt === 'string'
-                    ? imageNode.data.prompt
-                    : '',
+                  : promptText,
               analysis:
                 typeof analysisNode?.data?.analysis === 'string'
                   ? analysisNode.data.analysis
                   : undefined,
               agent_steps: promptSteps.length > 0 ? promptSteps : undefined,
             }
-          : undefined,
+          : imageNode.type === 'receipt_printer'
+            ? { prompt: promptText }
+            : undefined,
         stage3: {
           image_url:
             typeof imageNode.data?.imageUrl === 'string' ? imageNode.data.imageUrl : '',
-          prompt: typeof imageNode.data?.prompt === 'string' ? imageNode.data.prompt : '',
+          prompt: promptText,
           agent_steps: imageSteps.length > 0 ? imageSteps : undefined,
         },
       };

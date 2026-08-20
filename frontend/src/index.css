@@ -5,6 +5,8 @@
 @import url('https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css');
 /* JetBrains Mono - 等宽 */
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+/* 复古借书卡字体：Caveat, Cutive Mono, Special Elite, Zhi Mang Xing, Noto Serif SC */
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=Cutive+Mono&family=Noto+Serif+SC:wght@400;700&family=Special+Elite&family=Zhi+Mang+Xing&display=swap');
 
 @import "tailwindcss";
 
@@ -343,3 +345,24 @@ body.is-connecting [data-node-id]:hover {
   font-family: var(--font-mono) !important;
   font-variant-numeric: tabular-nums !important;
 }
+
+/* ========== 借书卡专用复古与手写字体 ========== */
+.font-shangtu {
+  font-family: 'Noto Serif SC', 'LXGW WenKai', serif;
+}
+.font-youyouyisong {
+  font-family: 'Noto Serif SC', serif;
+}
+.font-handwriting-cn {
+  font-family: 'Zhi Mang Xing', 'LXGW WenKai', cursive, serif;
+}
+.font-typewriter {
+  font-family: 'Cutive Mono', 'Courier New', monospace;
+}
+.font-stamp {
+  font-family: 'Special Elite', 'Courier New', monospace;
+}
+.font-handwriting-en {
+  font-family: 'Caveat', cursive, sans-serif;
+}
+

@@ -20,7 +20,14 @@ import { ImageSearchNode, type ImageSearchSelection } from '../../modules/multim
 import { ArtImageSearchNode, type GlamSearchSelection } from '../../modules/multimodal/components/ArtImageSearchNode';
 import { ReceiptPrinterNode } from '../../modules/multimodal/components/ReceiptPrinterNode';
 import { MAP_POSTER_DEFAULTS } from '../../modules/multimodal/map/defaults';
-import { getNodeTitle, matchPortType, nodeOutputText, resolveDirectParents } from './nodeTypes';
+import {
+  findConnectedBookInfoUpstream,
+  findRootBookInfo,
+  getNodeTitle,
+  matchPortType,
+  nodeOutputText,
+  resolveDirectParents,
+} from './nodeTypes';
 import {
   DEFAULT_RUN_SETTINGS,
   collectNodeInputs,
@@ -606,17 +613,34 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
     case 'receipt_printer': {
       const d = node.data ?? {};
       const inputs = collectNodeInputs(node, h.nodes, h.edges, h.portTypesOf);
-      // 上游图书元数据（优先直接上级，回退全图根节点）
-      const directBookNode = inputs.text.find((p) => p.type === 'book_info');
-      const rootBookNode = h.nodes.find((n) => n.type === 'book_info' && n.data?.isbn);
-      const upstreamBookData = (directBookNode?.data || rootBookNode?.data) ?? null;
 
-      // 上游图片输出（图片上传 / 图像生成 / 艺术检索等）
-      const upstreamImageNode = inputs.image[0];
-      const upstreamImageUrl =
-        typeof upstreamImageNode?.data?.imageUrl === 'string'
-          ? upstreamImageNode.data.imageUrl
-          : null;
+      // ② 紧邻上一级图片输出节点（非图书元数据：图片上传 / 图像生成 / 艺术检索等）
+      const nonBookImageParents = inputs.images.filter((p) => p.type !== 'book_info');
+      const directParentImage = resolveReferenceImage(nonBookImageParents) ?? null;
+
+      // ③ 连线穿透追溯的图书元数据封面图
+      const connectedBookNode = findConnectedBookInfoUpstream(node.id, h.nodes, h.edges);
+      const connectedBookData = connectedBookNode?.data ?? null;
+      const connectedBookCover =
+        connectedBookData?.cover_image_local ||
+        connectedBookData?.cover_image ||
+        connectedBookData?.coverUrl ||
+        null;
+
+      // ④ 画布根图书元数据封面图（兜底）
+      const rootBookNode = findRootBookInfo(h.nodes, h.edges);
+      const rootBookData = rootBookNode?.data ?? null;
+      const rootBookCover =
+        rootBookData?.cover_image_local ||
+        rootBookData?.cover_image ||
+        rootBookData?.coverUrl ||
+        null;
+
+      // 最终上游图书数据：优先连线穿透，次之根节点兜底
+      const upstreamBookData = connectedBookData || rootBookData || null;
+
+      // 上游有效图片（按优先级：② 直连图片节点 > ③ 连线穿透图书封面 > ④ 根节点图书封面）
+      const effectiveUpstreamImageUrl = directParentImage || connectedBookCover || rootBookCover || null;
 
       return (
         <ReceiptPrinterNode
@@ -624,7 +648,14 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           {...common}
           data={d}
           upstreamBookData={upstreamBookData}
-          upstreamImageUrl={upstreamImageUrl}
+          upstreamImageUrl={effectiveUpstreamImageUrl}
+          isFavorited={!!h.favoritedState[node.id]}
+          isPublic={!!h.publishedState[node.id]}
+          isSelected={node.id === h.activeImage?.id}
+          recordDeleted={h.staleRecordIds.has(node.id)}
+          onSelect={h.handleSelectImage}
+          onToggleFavorite={h.handleToggleFavoriteFor}
+          onTogglePublic={h.handleTogglePublicFor}
           hasDownstream={hasDownstreamOf(node, h.edges)}
           mismatchBadge={mismatchBadge}
           onUpdateState={h.handleUpdateReceiptStateFor}

@@ -38,11 +38,17 @@ export interface GenerationPage {
 
 /** 从 stage_results 中提取题名（按 node_type 分发；新节点类型在此登记取名字段）。 */
 export function extractGenerationName(stageResults: unknown, nodeType: string): string {
-  if (nodeType === 'image_generation') {
+  if (nodeType === 'image_generation' || nodeType === 'receipt_printer') {
     const sr = (stageResults && typeof stageResults === 'object' ? stageResults : {}) as Record<string, any>;
     const metadata = sr.stage1?.metadata;
     if (metadata && typeof metadata === 'object' && typeof metadata.title === 'string') {
       return metadata.title.trim();
+    }
+    if (nodeType === 'receipt_printer') {
+      const prompt = sr.stage3?.prompt || sr.stage2?.prompt;
+      if (typeof prompt === 'string' && prompt.trim()) {
+        return prompt.trim();
+      }
     }
   }
   return '';

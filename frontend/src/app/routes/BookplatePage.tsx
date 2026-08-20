@@ -157,15 +157,18 @@ const BookplatePage: React.FC = () => {
   // 节点右键菜单状态（视口坐标 + 目标节点）
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
 
-  // 操作栏作用目标：优先选中且已有图片的 ImageNode，否则回退到最近生成的图片节点
+  // 操作栏作用目标：优先选中且已有图片的 ImageNode / ReceiptNode，否则回退到最近生成的图片节点
+  const isImageResultNode = (n: any) =>
+    (n.type === 'image_generation' || n.type === 'receipt_printer') && Boolean(n.data?.imageUrl);
+
   const selectedImageNode =
     selectedImageId &&
-    nodes.some((n) => n.id === selectedImageId && n.type === 'image_generation' && n.data?.imageUrl)
+    nodes.some((n) => n.id === selectedImageId && isImageResultNode(n))
       ? nodes.find((n) => n.id === selectedImageId)
       : undefined;
   const activeImage =
     selectedImageNode ??
-    nodes.filter((n) => n.type === 'image_generation' && n.data?.imageUrl).pop();
+    nodes.filter((n) => isImageResultNode(n)).pop();
 
   // 收藏/公开状态的实时快照：稳定回调（memo 优化）在闭包中读取时始终拿到最新值
   const favoritedRef = useRef(favoritedState);
@@ -681,6 +684,8 @@ const BookplatePage: React.FC = () => {
     handleUpdateWebSearchEditorFor,
     handleUpdateMapPosterEditorFor,
     handleExportMapPosterFor,
+    handleExportReceiptFor,
+    handleUpdateReceiptStateFor,
     handleSelectSearchImageFor,
     handleUpdateImageSearchEditorFor,
     handleSelectGlamImageFor,
@@ -879,6 +884,8 @@ const BookplatePage: React.FC = () => {
     handleUpdateWebSearchEditorFor,
     handleExportMapPosterFor,
     handleUpdateMapPosterEditorFor,
+    handleExportReceiptFor,
+    handleUpdateReceiptStateFor,
     handleSelectSearchImageFor,
     handleUpdateImageSearchEditorFor,
     handleSelectGlamImageFor,

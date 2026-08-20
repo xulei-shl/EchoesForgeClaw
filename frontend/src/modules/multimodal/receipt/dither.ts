@@ -93,6 +93,8 @@ export function applyDitherToImageData(
   return imageData;
 }
 
+import { urlToDataUrl } from '../../bookplate/imageUpload';
+
 /**
  * 加载图片并生成热敏点阵化 PNG Data URL
  */
@@ -107,9 +109,20 @@ export async function createDitheredImage(
 ): Promise<string> {
   const { algorithm = 'atkinson', targetWidth = 360, contrast = 1.15, brightness = 5 } = options || {};
 
-  return new Promise((resolve, reject) => {
+  let safeSrc = imageSrc;
+  if (!imageSrc.startsWith('data:') && !imageSrc.startsWith('blob:')) {
+    try {
+      safeSrc = await urlToDataUrl(imageSrc);
+    } catch {
+      safeSrc = imageSrc;
+    }
+  }
+
+  return new Promise((resolve) => {
     const img = new Image();
-    img.crossOrigin = 'anonymous';
+    if (!safeSrc.startsWith('data:') && !safeSrc.startsWith('blob:')) {
+      img.crossOrigin = 'anonymous';
+    }
     img.onload = () => {
       try {
         const aspect = img.height / img.width;
@@ -121,7 +134,7 @@ export async function createDitheredImage(
         canvas.height = height;
         const ctx = canvas.getContext('2d');
         if (!ctx) {
-          resolve(imageSrc);
+          resolve(safeSrc);
           return;
         }
 
@@ -136,12 +149,12 @@ export async function createDitheredImage(
         resolve(canvas.toDataURL('image/png'));
       } catch (err) {
         console.warn('点阵化处理异常，回退原图:', err);
-        resolve(imageSrc);
+        resolve(safeSrc);
       }
     };
     img.onerror = () => {
-      resolve(imageSrc);
+      resolve(safeSrc);
     };
-    img.src = imageSrc;
+    img.src = safeSrc;
   });
 }

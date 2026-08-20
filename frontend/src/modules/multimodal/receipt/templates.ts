@@ -1,3 +1,4 @@
+import { generateRandomBorrowerRecords } from './borrowerGenerator';
 import type { BookMetadataInput, ReceiptState, ReceiptTemplateDef, ReceiptTemplateId } from './types';
 
 /**
@@ -14,6 +15,21 @@ export function formatReceiptDate(d = new Date()): string {
 }
 
 /**
+ * 根据豆瓣评分换算为馆藏推荐星级（如 ★★★★★、★★★★☆）
+ */
+export function convertRatingToStars(rating?: number | string | null): string {
+  if (!rating) return '★★★★★';
+  const num = typeof rating === 'number' ? rating : parseFloat(String(rating).trim());
+  if (isNaN(num) || num <= 0) return '★★★★★';
+
+  if (num >= 8.5) return '★★★★★';
+  if (num >= 7.5) return '★★★★☆';
+  if (num >= 6.5) return '★★★☆☆';
+  if (num >= 5.0) return '★★☆☆☆';
+  return '★☆☆☆☆';
+}
+
+/**
  * 预设 1：书目推荐小票（阅读推广、馆藏推荐、藏书凭证）
  */
 export const TEMPLATE_BOOK_RECOMMEND: ReceiptTemplateDef = {
@@ -24,17 +40,20 @@ export const TEMPLATE_BOOK_RECOMMEND: ReceiptTemplateDef = {
     templateId: 'book_recommend',
     themeId: 'white',
     ditherEnabled: true,
-    storeName: 'ECHOES LIBRARY',
+    storeName: 'SHANGHAI LIBRARY',
     subtitle: '★ BOOK RECOMMENDATION ★',
     dateTimeText: formatReceiptDate(),
     terminal: '01-DESK',
     servedBy: 'Librarian',
     callNumber: '', // 索书号默认留空
+    status: '[在馆可借]', // 馆藏状态默认在馆可借
     rating: '9.2',
     metaFields: [
       { key: 'title', label: '书名', value: '百年孤独', visible: true },
       { key: 'author', label: '作者', value: '[哥伦比亚] 加西亚·马尔克斯', visible: true },
       { key: 'publisher', label: '出版社', value: '南海出版公司', visible: true },
+      { key: 'producer', label: '出品方', value: '新经典文化', visible: true },
+      { key: 'series', label: '丛书', value: '新经典文库', visible: true },
       { key: 'pub_year', label: '出版时间', value: '2011-6', visible: true },
     ],
     items: [],
@@ -44,95 +63,154 @@ export const TEMPLATE_BOOK_RECOMMEND: ReceiptTemplateDef = {
     footerMessage: 'READ MORE, LIVE MORE',
     bottomNote: 'Echoes Reading Promotion · Keep the book warm',
   }),
-  mapFromBook: (book: BookMetadataInput, current = {}) => {
-    const title = book.title || current.storeName || '未命名书目';
+  mapFromBook: (book: BookMetadataInput, _current = {}) => {
+    const title = book.title || '未命名书目';
     const author = book.author || '';
     const publisher = book.publisher || '';
+    const producer = book.producer || '';
+    const series = book.series || '';
     const pubYear = book.pub_year || book.publishDate || '';
-    const rating = book.rating != null ? String(book.rating) : '9.0';
-    const isbn = book.isbn || '9787020002207';
+    const rating =
+      book.rating !== undefined && book.rating !== null && String(book.rating).trim() !== ''
+        ? String(book.rating)
+        : '';
+    const isbn = book.isbn || '';
     const cover = book.cover_image_local || book.cover_image || book.coverUrl || null;
 
     const metaFields = [
       { key: 'title', label: '书名', value: title, visible: true },
       { key: 'author', label: '作者', value: author, visible: !!author },
-      { key: 'publisher', label: '出版社', value: publisher, visible: !!publisher },
-      { key: 'pub_year', label: '出版年', value: pubYear, visible: !!pubYear },
     ];
 
     if (book.translator) {
       metaFields.push({ key: 'translator', label: '译者', value: book.translator, visible: true });
     }
 
+    if (publisher) {
+      metaFields.push({ key: 'publisher', label: '出版社', value: publisher, visible: true });
+    }
+
+    if (producer) {
+      metaFields.push({ key: 'producer', label: '出品方', value: producer, visible: true });
+    }
+
+    if (series) {
+      metaFields.push({ key: 'series', label: '丛书', value: series, visible: true });
+    }
+
+    if (pubYear) {
+      metaFields.push({ key: 'pub_year', label: '出版年', value: pubYear, visible: true });
+    }
+
     return {
       storeName: 'ECHOES LIBRARY',
       subtitle: '★ BOOK RECOMMENDATION ★',
-      imageUrl: cover || current.imageUrl,
+      imageUrl: cover || null,
       rating,
-      barcodeText: isbn,
+      barcodeText: isbn || '9787020002207',
       metaFields,
-      // 索书号保留现有或空
-      callNumber: current.callNumber ?? '',
+      callNumber: _current.callNumber ?? '',
+      status: _current.status ?? '[在馆可借]',
       totalLabel: '馆藏推荐指数',
-      totalValue: rating ? `★ ${rating} 分` : '★★★★★',
+      totalValue: convertRatingToStars(rating),
       footerMessage: 'READ MORE, LIVE MORE',
+      bottomNote: 'Echoes Reading Promotion · Keep the book warm',
     };
   },
 };
 
 /**
- * 预设 2：借阅通行证 / 读书打卡小票
+ * 预设 2：复古图书馆借书卡 / 借阅打卡卡片
  */
 export const TEMPLATE_READING_LOG: ReceiptTemplateDef = {
   id: 'reading_log',
   name: '借阅打卡小票',
-  description: '读者借阅凭证 / 读书打卡记录，包含借阅日期、应还日期、打卡人与阅读书摘',
+  description: '复古图书馆借书卡排版，展示作者、题名、出版年，右上角继承 ISBN 后四位，含打卡流水记录',
   createInitialState: () => ({
     templateId: 'reading_log',
     themeId: 'cream',
-    ditherEnabled: true,
-    storeName: 'READING PASSPORT',
-    subtitle: '❖ 借阅记录 & 读书打卡 ❖',
+    ditherEnabled: false,
+    storeName: '書海回响',
+    subtitle: 'SHANGHAI LIBRARY',
+    cardNumber: '5399', // 右上角 CARD_NUMBER 继承 ISBN 后 4 位
     dateTimeText: formatReceiptDate(),
     terminal: '借阅服务台',
     servedBy: '读者本人',
-    callNumber: '',
-    rating: '★ 5.0',
+    callNumber: 'I561.45/M28',
+    status: '[已借出]',
+    rating: '9.2',
     metaFields: [
-      { key: 'title', label: '书名', value: '月亮与六便士', visible: true },
-      { key: 'author', label: '作者', value: '[英] 毛姆', visible: true },
-      { key: 'location', label: '借阅馆藏', value: '总馆二楼社科区', visible: true },
+      { key: 'author', label: 'Author', value: '[英] 毛姆', visible: true },
+      { key: 'title', label: 'Title', value: '月亮与六便士', visible: true },
+      { key: 'pub_year', label: 'Year', value: '2017', visible: true },
     ],
+    borrowerRecords: generateRandomBorrowerRecords(4, '2017'),
     items: [],
-    totalLabel: '借阅期限',
-    totalValue: '30 DAYS',
-    barcodeText: '20260819001',
-    footerMessage: '满地都是六便士，他却抬头看见了月亮',
-    bottomNote: '请于应还日期前归还 · 保持书籍整洁',
+    totalLabel: '',
+    totalValue: '',
+    barcodeText: '9787544253994',
+    footerMessage:
+      '借阅须知 RULES:\n1. 请爱护书籍，如有损坏照价赔偿。\n2. 借阅期为30天，可续借一次。\n3. 此卡仅限本人使用，请妥善保管。',
+    bottomNote: 'Please return this book on or before the last date stamped.',
   }),
   mapFromBook: (book: BookMetadataInput, current = {}) => {
-    const title = book.title || '借阅书目';
+    const title = book.title || '月亮与六便士';
     const author = book.author || '';
-    const isbn = book.isbn || '20260819001';
+    const rawYear = book.pub_year || book.publishDate || '';
+    const yearMatch = rawYear.match(/\d{4}/);
+    const pubYear = yearMatch ? yearMatch[0] : (rawYear || '2024');
+
+    const ratingVal =
+      book.rating !== undefined && book.rating !== null && String(book.rating).trim() !== ''
+        ? String(book.rating)
+        : '';
+    const isbn = book.isbn || '9787544253994';
+
+    // 提取 ISBN 后 4 位数字作为借书卡号 No. {{CARD_NUMBER}}
+    let isbnLast4 = '';
+    if (book.isbn) {
+      const cleanIsbn = String(book.isbn).replace(/[^0-9X]/gi, '');
+      if (cleanIsbn.length >= 4) {
+        isbnLast4 = cleanIsbn.slice(-4);
+      } else if (cleanIsbn.length > 0) {
+        isbnLast4 = cleanIsbn;
+      }
+    }
+    const cardNumber = isbnLast4 || current.cardNumber || '5399';
     const cover = book.cover_image_local || book.cover_image || book.coverUrl || null;
 
+    // 仅保留 作者、题名、出版年 3 个字段
+    const metaFields = [
+      { key: 'author', label: 'Author', value: author, visible: true },
+      { key: 'title', label: 'Title', value: title, visible: true },
+      { key: 'pub_year', label: 'Year', value: pubYear, visible: true },
+    ];
+
+    // 如果已有借阅记录则复用，否则根据出版年份自动生成 4 条随机借阅流水
+    const borrowerRecords =
+      current.borrowerRecords && current.borrowerRecords.length > 0
+        ? current.borrowerRecords
+        : generateRandomBorrowerRecords(4, pubYear);
+
     return {
-      storeName: 'READING PASSPORT',
-      subtitle: '❖ 借阅记录 & 读书打卡 ❖',
+      storeName: current.storeName || '書海回响',
+      subtitle: current.subtitle || 'SHANGHAI LIBRARY',
+      cardNumber,
+      rating: ratingVal,
       imageUrl: cover || current.imageUrl,
       barcodeText: isbn,
-      metaFields: [
-        { key: 'title', label: '书名', value: title, visible: true },
-        { key: 'author', label: '作者', value: author, visible: !!author },
-        { key: 'location', label: '借阅馆藏', value: '文学社科借阅区', visible: true },
-      ],
+      metaFields,
       callNumber: current.callNumber ?? '',
-      totalLabel: '借阅期限',
-      totalValue: '30 DAYS',
-      footerMessage: book.summary ? book.summary.slice(0, 36) + '...' : '每一本书都是一次心灵的远行',
+      borrowerRecords,
+      footerMessage:
+        current.footerMessage ||
+        '借阅须知 RULES:\n1. 请爱护书籍，如有损坏照价赔偿。\n2. 借阅期为30天，可续借一次。\n3. 此卡仅限本人使用，请妥善保管。',
+      bottomNote: current.bottomNote || 'Please return this book on or before the last date stamped.',
     };
   },
 };
+
+
 
 /**
  * 预设 3：经典清单式小票（多品目 / 文创书单）
@@ -151,6 +229,7 @@ export const TEMPLATE_ITEMIZED: ReceiptTemplateDef = {
     terminal: '01-MAIN',
     servedBy: 'Admin',
     callNumber: '',
+    status: '',
     rating: '',
     metaFields: [],
     items: [
@@ -179,6 +258,7 @@ export const TEMPLATE_ITEMIZED: ReceiptTemplateDef = {
       items: newItems,
       totalLabel: 'TOTAL:',
       totalValue: '¥ 58.00',
+      status: current.status ?? '',
     };
   },
 };
@@ -206,6 +286,81 @@ export function getReceiptTemplate(id?: ReceiptTemplateId): ReceiptTemplateDef {
 /** 注册自定义模板（扩展机制） */
 export function registerReceiptTemplate(template: ReceiptTemplateDef): void {
   templateRegistry.set(template.id, template);
+}
+
+/**
+ * 公共核心函数：基于指定模板与图书元数据构造小票完整规范状态
+ * @param templateId 模板 ID
+ * @param book 上游图书元数据
+ * @param savedData 用户在当前模板上的局部自定义数据（如用户修改过的文字、纸张颜色、点阵开关等）
+ * @param options 可选项：overrideUserEdits（为 true 时强制重置所有用户编辑，回到纯净初始映射）、upstreamImageUrl（有效上游图片 URL）
+ */
+export function buildReceiptState(
+  templateId: ReceiptTemplateId = 'book_recommend',
+  book?: BookMetadataInput | null,
+  savedData: Partial<ReceiptState> = {},
+  options: { overrideUserEdits?: boolean; upstreamImageUrl?: string | null } = {}
+): ReceiptState {
+  const template = getReceiptTemplate(templateId);
+  const base = template.createInitialState();
+  const hasValidBook = Boolean(
+    book?.title?.trim() || book?.isbn?.trim() || book?.author?.trim()
+  );
+  const mergedFromBook = hasValidBook && book ? template.mapFromBook(book, base) : {};
+
+  // 上游候选图片（按优先级已由外部组装好：② 直连图片节点 > ③ 连通图书封面 > ④ 根节点图书封面）
+  const upstreamImage =
+    options.upstreamImageUrl !== undefined && options.upstreamImageUrl !== null
+      ? options.upstreamImageUrl
+      : (mergedFromBook.imageUrl || null);
+
+  // 提取用户持久化或传入的插图（兼容 coverImageUrl 与 imageUrl）
+  const explicitCoverImage =
+    savedData.coverImageUrl !== undefined ? savedData.coverImageUrl : savedData.imageUrl;
+
+  // 4 级图片优先级解析：
+  // 1. 若强制重置（切换模板 / 重置为默认 / 同步图书）：清除手动标记，回归上游图片
+  // 2. 若用户点击「移除图片」（explicitCoverImage === ''）：保持为空 null
+  // 3. ① 第一优先级：用户手动上传的本地图片（customImage 为 true，或 explicitCoverImage 以 data: / blob: 开头）
+  // 4. ②/③/④ 次级优先级：若无手动上传图片，自动使用上游候选图片 upstreamImage
+  let resolvedImageUrl: string | null = null;
+  let isCustom = false;
+
+  if (options.overrideUserEdits) {
+    resolvedImageUrl = upstreamImage;
+    isCustom = false;
+  } else if (explicitCoverImage === '') {
+    resolvedImageUrl = null;
+    isCustom = false;
+  } else if (
+    typeof explicitCoverImage === 'string' &&
+    explicitCoverImage.trim() !== '' &&
+    (savedData.customImage ||
+      explicitCoverImage.startsWith('data:') ||
+      explicitCoverImage.startsWith('blob:'))
+  ) {
+    resolvedImageUrl = explicitCoverImage;
+    isCustom = true;
+  } else {
+    resolvedImageUrl =
+      upstreamImage ||
+      (typeof explicitCoverImage === 'string' && explicitCoverImage.trim() !== ''
+        ? explicitCoverImage
+        : null);
+    isCustom = false;
+  }
+
+  return {
+    ...base,
+    ...mergedFromBook,
+    ...savedData,
+    imageUrl: resolvedImageUrl,
+    coverImageUrl: resolvedImageUrl,
+    customImage: isCustom,
+    templateId,
+    themeId: savedData.themeId || base.themeId,
+    ditherEnabled: savedData.ditherEnabled ?? base.ditherEnabled,
+  };
 }
 
 /**

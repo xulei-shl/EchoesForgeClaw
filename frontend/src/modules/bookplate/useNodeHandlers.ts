@@ -3,8 +3,9 @@ import type { NodeData, EdgeData, NodeType, NodeSize } from './graphTypes';
 import type { PortTypesLookup } from './execution';
 import api from '../../platform/services/api';
 import generationsService from '../../platform/services/generations';
+import { flushSnapshot } from '../../platform/stores/useCanvasState';
 import { SMALL_TOOL_TIMEOUT_MS } from '../../platform/utils/timeouts';
-import { nodeOutputText, resolveDirectParents } from './nodeTypes';
+import { findConnectedBookInfoUpstream, findRootBookInfo, nodeOutputText, resolveDirectParents } from './nodeTypes';
 import type { ChatNodeSettings, NodeRunSettings, PromptSelection, SkillSelection } from '../../platform/types';
 import type { ZhihuSearchRequest } from './components/ZhihuSearchNode';
 import type { WikipediaSearchRequest } from './components/WikipediaSearchNode';
@@ -292,7 +293,12 @@ export function useNodeHandlers({
   /** 点击图片节点选中（作为全局操作栏的作用目标）；仅已有图片的节点可选中 */
   const handleSelectImage = useCallback((id: string) => {
     const node = nodesRef.current.find((n) => n.id === id);
-    if (node?.type === 'image_generation' && node.data?.imageUrl) setSelectedImageId(id);
+    if (
+      (node?.type === 'image_generation' || node?.type === 'receipt_printer') &&
+      node.data?.imageUrl
+    ) {
+      setSelectedImageId(id);
+    }
   }, []);
 
   /** 手动「运行」：输入不足时 toast 明确原因（含类型不匹配提示） */
@@ -815,28 +821,50 @@ export function useNodeHandlers({
 
         // 组装历史记录保存到数据库 (generations 表)
         try {
-          const rootBook = nodesRef.current.find((n) => n.type === 'book_info' && n.data?.isbn);
+          const rootBook =
+            findConnectedBookInfoUpstream(id, nodesRef.current, edgesRef.current) ??
+            findRootBookInfo(nodesRef.current, edgesRef.current);
+          const promptText = state?.storeName
+            ? `${state.storeName} - ${state.subtitle || '图书小票'}`
+            : '图书小票生成';
           const gen = await generationsService.create({
             node_type: 'receipt_printer',
             stage_results: {
               stage1: rootBook
                 ? { isbn: rootBook.data?.isbn || '', metadata: rootBook.data || {} }
                 : undefined,
+              stage2: {
+                prompt: promptText,
+              },
               stage3: {
                 image_url: imageUrl,
-                prompt: state?.storeName ? `${state.storeName} - ${state.subtitle || '图书小票'}` : '图书小票生成',
+                prompt: promptText,
               },
             },
             result_url: imageUrl,
             status: 'completed',
           });
           generationIds.current[id] = gen.id;
+          flushSnapshot();
         } catch (dbErr) {
           console.warn('记录小票到历史数据库失败(不阻断导出):', dbErr);
         }
 
+        // 新图生成成功：自动选中，使全局操作栏作用于本节点（对齐 ImageNode）
+        setSelectedImageId(id);
         recordHistory();
-        updateNodeData(id, { ...state, imageUrl, isExporting: false, error: null });
+        // 插图（图书封面 / 上游图片）持久化到 coverImageUrl，imageUrl 记录生成的完整小票（供下游 / 画廊读取），两者互不覆盖
+        const coverImageUrl =
+          state && typeof state.imageUrl === 'string' && state.imageUrl.trim() !== ''
+            ? state.imageUrl
+            : null;
+        updateNodeData(id, {
+          ...state,
+          coverImageUrl,
+          imageUrl,
+          isExporting: false,
+          error: null,
+        });
       } catch (error: any) {
         console.error('Failed to export receipt:', error);
         updateNodeData(id, {
@@ -848,12 +876,20 @@ export function useNodeHandlers({
       // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** 图书小票生成节点：状态更新写入 node.data（持久化） */
+  /** 图书小票生成节点：状态更新写入 node.data（持久化）。
+   *  插图（图书封面 / 上游图片 / 本地上传）与「生成输出图」分离：
+   *  组件侧统一以 imageUrl 表达插图，此处持久化写入 coverImageUrl，
+   *  node.data.imageUrl 保留给导出生成的完整小票（下游 / 画廊读取它），避免互相覆盖。 */
   const handleUpdateReceiptStateFor = useCallback(
     (id: string, patch: Record<string, any>) => {
       const node = nodesRef.current.find((n) => n.id === id);
       if (!node || node.type !== 'receipt_printer') return;
-      updateNodeData(id, patch);
+      const stored = { ...patch };
+      if ('imageUrl' in stored) {
+        stored.coverImageUrl = stored.imageUrl;
+        delete stored.imageUrl;
+      }
+      updateNodeData(id, stored);
       // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

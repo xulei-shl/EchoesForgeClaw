@@ -57,6 +57,20 @@ export interface ReceiptMetaField {
   visible?: boolean;
 }
 
+/** 借书卡借阅打卡记录项 */
+export interface BorrowerRecordItem {
+  id: string;
+  /** 应还/借阅日期（如 "2024-03-15"） */
+  date: string;
+  /** 借阅人姓名（如 "林徽因" / "A. Doyle"） */
+  name: string;
+  /** 盖章日期轻微旋转样式（如 "rotate-1", "-rotate-2", ""） */
+  rotation?: string;
+  /** 借阅人手写字体样式（如 "font-handwriting-cn", "font-handwriting-en"） */
+  fontClass?: string;
+}
+
+
 /** 注入到小票的图书元数据契约（兼容豆瓣 API 结构） */
 export interface BookMetadataInput {
   isbn?: string;
@@ -65,6 +79,8 @@ export interface BookMetadataInput {
   author?: string;
   translator?: string;
   publisher?: string;
+  producer?: string;
+  series?: string;
   pub_year?: string;
   publishDate?: string;
   rating?: number | string;
@@ -96,10 +112,16 @@ export interface ReceiptState {
   servedBy: string;
   /** 当前选用的图片 URL（可以是上游生成图、图书封面或本地上传图） */
   imageUrl?: string | null;
+  /** 持久化插图字段（与导出的整张小票产物图分离） */
+  coverImageUrl?: string | null;
+  /** 是否为用户就地手动上传 / 指定的自定义图片（优先级高于所有上游图片） */
+  customImage?: boolean;
   /** 结构化图书元数据字段列表（题名、作者、出版社、年份等） */
   metaFields: ReceiptMetaField[];
   /** 索书号（Call Number，支持留空或自定义） */
   callNumber: string;
+  /** 馆藏状态 / 流通状态（如 [在馆可借] / 借出 / 馆内阅览） */
+  status?: string;
   /** 评分 / 推荐星级（如 9.2 或 ★★★★★） */
   rating: string;
   /** 经典明细条目列表（适用于清单模式） */
@@ -113,6 +135,10 @@ export interface ReceiptState {
   footerMessage: string;
   /** 最底部小字备注文案（如 Retain this copy for your records / 凭票入馆） */
   bottomNote: string;
+  /** 借书卡右上角卡号 / 豆瓣评分（如 "9.2"） */
+  cardNumber?: string;
+  /** 借书卡借阅打卡记录列表 */
+  borrowerRecords?: BorrowerRecordItem[];
 }
 
 /** 模板规范定义接口（方便新增扩展模板） */

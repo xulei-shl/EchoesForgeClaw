@@ -1,6 +1,5 @@
 import { AGGREGATE_DEFAULT_TEMPLATE } from './textTemplate';
 import { MAP_POSTER_DEFAULTS } from '../multimodal/map/defaults';
-import { TEMPLATE_BOOK_RECOMMEND } from '../multimodal/receipt';
 import type { NodeType, NodeData } from './graphTypes';
 import type { NodeRunSettings } from '../../platform/types';
 
@@ -140,8 +139,9 @@ export function seedDataFor(type: NodeType, parent?: NodeData): any {
       };
     case 'receipt_printer':
       return {
-        ...TEMPLATE_BOOK_RECOMMEND.createInitialState(),
-        imageUrl: null,
+        templateId: 'book_recommend',
+        themeId: 'white',
+        ditherEnabled: true,
         error: null,
       };
   }
