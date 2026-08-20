@@ -2,7 +2,7 @@
 
 ## 地图海报生成
 
-地图海报节点基于 [maptoposter](../../../../services/maptoposter/) 项目，通过 Python 后端服务生成高质量的艺术风格地图海报。
+地图海报节点基于 [maptoposter](/services/maptoposter/) 项目，通过 Python 后端服务生成高质量的艺术风格地图海报。
 
 ### 架构
 
