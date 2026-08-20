@@ -899,7 +899,7 @@ export function useNodeHandlers({
   /** 图片检索节点：编辑器状态（来源 tab 等）写入 node.data（仅持久化，不记撤销历史）。
    *  与地图海报编辑器同口径：结果集/关键词为节点内临时态，不落 node.data。 */
   const handleUpdateImageSearchEditorFor = useCallback(
-    (id: string, patch: Record<string, any>, undoable: boolean) => {
+    (id: string, patch: Record<string, any>, undoable = false) => {
       const node = nodesRef.current.find((n) => n.id === id);
       if (!node || node.type !== 'image_search') return;
       const cur = node.data ?? {};
@@ -951,7 +951,7 @@ export function useNodeHandlers({
 
   /** 艺术图片检索节点：编辑器状态（来源等）写入 node.data（仅持久化，不记撤销历史）。与图片检索同口径。 */
   const handleUpdateGlamEditorFor = useCallback(
-    (id: string, patch: Record<string, any>, undoable: boolean) => {
+    (id: string, patch: Record<string, any>, undoable = false) => {
       const node = nodesRef.current.find((n) => n.id === id);
       if (!node || node.type !== 'art_image_search') return;
       const cur = node.data ?? {};

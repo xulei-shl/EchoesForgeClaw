@@ -269,14 +269,15 @@ export const TEMPLATE_ITEMIZED: ReceiptTemplateDef = {
 export const TEMPLATE_BOOK_EXCERPT: ReceiptTemplateDef = {
   id: 'book_excerpt',
   name: '书摘小票',
-  description: '清新手账便签风格书摘小票，单一段落优美书摘、右上角豆瓣评分、右下角图书元数据',
+  description: '清新手账便签风格书摘小票，明朝体排版、单段书摘横线底纹、极简无书名号与出版信息',
   createInitialState: () => ({
     templateId: 'book_excerpt',
-    themeId: 'mint',
+    themeId: 'sage',
     ditherEnabled: false,
     storeName: '书摘分享',
     englishBanner: 'BOOK EXCERPT SHARING',
     userHandle: '@SH-LIBRARY',
+    serialNumber: '003',
     rating: '8.9',
     excerptText: '催促不会改变什么、毕竟谁都不会硬着头皮犁冬天的地。',
     dateTimeText: formatReceiptDate(),
@@ -285,10 +286,10 @@ export const TEMPLATE_BOOK_EXCERPT: ReceiptTemplateDef = {
     callNumber: '',
     status: '',
     metaFields: [
-      { key: 'title', label: '题名', value: '《明亮的夜晚》', visible: true },
+      { key: 'title', label: '题名', value: '明亮的夜晚', visible: true },
       { key: 'author', label: '作者', value: '崔恩荣', visible: true },
-      { key: 'pub_info', label: '出版信息', value: '台海出版社 · 2023', visible: true },
-      { key: 'isbn', label: 'ISBN', value: '9787516835159', visible: true },
+      { key: 'pub_info', label: '出版信息', value: '光启书局 · 2026', visible: true },
+      { key: 'isbn', label: 'ISBN', value: '9787516835159', visible: false },
     ],
     items: [],
     totalLabel: '',
@@ -298,11 +299,9 @@ export const TEMPLATE_BOOK_EXCERPT: ReceiptTemplateDef = {
     bottomNote: '',
   }),
   mapFromBook: (book: BookMetadataInput, current = {}) => {
-    // 1. 题名（确保书名号包裹）
+    // 1. 题名（不带书名号《》）
     const rawTitle = book.title?.trim() || '明亮的夜晚';
-    const formattedTitle = rawTitle.startsWith('《') && rawTitle.endsWith('》')
-      ? rawTitle
-      : `《${rawTitle}》`;
+    const formattedTitle = rawTitle.replace(/^《+|》+$/g, '').trim() || rawTitle;
 
     // 2. 作者
     const author = book.author?.trim() || '崔恩荣';
@@ -320,19 +319,13 @@ export const TEMPLATE_BOOK_EXCERPT: ReceiptTemplateDef = {
     } else if (pubYear) {
       pubInfo = pubYear;
     } else {
-      pubInfo = '台海出版社 · 2023';
+      pubInfo = '光启书局 · 2026';
     }
 
-    // 4. 豆瓣评分
-    const ratingVal =
-      book.rating !== undefined && book.rating !== null && String(book.rating).trim() !== ''
-        ? String(book.rating).trim()
-        : (current.rating || '8.9');
-
-    // 5. ISBN
+    // 4. ISBN 与 序号
     const isbn = book.isbn?.trim() || current.barcodeText || '9787516835159';
 
-    // 6. 书摘提取（若已有用户编辑则保留；否则从 summary 提取首句作为初值）
+    // 5. 书摘提取（若已有用户编辑则保留；否则从 summary 提取作为初值）
     let excerpt = current.excerptText;
     if (!excerpt) {
       const summaryText = book.summary || book.description || '';
@@ -348,7 +341,7 @@ export const TEMPLATE_BOOK_EXCERPT: ReceiptTemplateDef = {
       { key: 'title', label: '题名', value: formattedTitle, visible: true },
       { key: 'author', label: '作者', value: author, visible: true },
       { key: 'pub_info', label: '出版信息', value: pubInfo, visible: true },
-      { key: 'isbn', label: 'ISBN', value: isbn, visible: true },
+      { key: 'isbn', label: 'ISBN', value: isbn, visible: false },
     ];
 
     const cover = book.cover_image_local || book.cover_image || book.coverUrl || null;
@@ -357,7 +350,7 @@ export const TEMPLATE_BOOK_EXCERPT: ReceiptTemplateDef = {
       storeName: current.storeName || '书摘分享',
       englishBanner: current.englishBanner || 'BOOK EXCERPT SHARING',
       userHandle: current.userHandle || '@SH-LIBRARY',
-      rating: ratingVal,
+      serialNumber: current.serialNumber || '003',
       excerptText: excerpt,
       metaFields,
       barcodeText: isbn,

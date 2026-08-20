@@ -221,7 +221,7 @@ export const GenerationDetailPanel: React.FC<GenerationDetailPanelProps> = ({
             <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4 relative">
               {/* 作品大图 */}
               {meta.imageUrl ? (
-                <div className="relative group border border-dashed border-paper-grid rounded-sm p-1.5 bg-node-bg">
+                <div className="relative group border border-dashed border-paper-grid rounded-md p-1.5 bg-node-bg/60 h-64 sm:h-72 max-h-[300px] flex items-center justify-center overflow-hidden">
                   <PhotoProvider
                     maskOpacity={0.8}
                     bannerVisible={false}
@@ -230,7 +230,7 @@ export const GenerationDetailPanel: React.FC<GenerationDetailPanelProps> = ({
                       <img 
                         src={meta.imageUrl} 
                         alt={meta.title} 
-                        className="w-full rounded-[3px] cursor-pointer group-hover:opacity-95 active:scale-[0.99] transition" 
+                        className="max-h-full max-w-full object-contain rounded-sm shadow-sm cursor-pointer group-hover:opacity-95 active:scale-[0.98] transition outline outline-1 outline-[oklch(0_0_0/0.08)] outline-offset-[-1px]" 
                         title="点击全屏查看"
                         loading="lazy" 
                       />
@@ -238,12 +238,13 @@ export const GenerationDetailPanel: React.FC<GenerationDetailPanelProps> = ({
                   </PhotoProvider>
                   
                   {/* 全屏提示图标 */}
-                  <div className="absolute right-3 bottom-3 p-1.5 rounded bg-black/40 backdrop-blur-sm text-white/90 opacity-60 group-hover:opacity-100 transition-opacity pointer-events-none shadow-sm flex items-center justify-center">
-                    <Maximize2 size={16} strokeWidth={2} />
+                  <div className="absolute right-3 bottom-3 px-2 py-1 rounded bg-black/50 backdrop-blur-sm text-white/90 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-sm flex items-center gap-1 text-[11px] font-sans">
+                    <Maximize2 size={13} strokeWidth={2} />
+                    <span>查看大图</span>
                   </div>
                 </div>
               ) : (
-                <div className="h-40 border border-dashed border-paper-grid rounded-sm bg-node-bg flex items-center justify-center text-sm text-ink-faint font-sans">
+                <div className="h-40 border border-dashed border-paper-grid rounded-md bg-node-bg/60 flex items-center justify-center text-sm text-ink-faint font-sans">
                   暂无图片
                 </div>
               )}

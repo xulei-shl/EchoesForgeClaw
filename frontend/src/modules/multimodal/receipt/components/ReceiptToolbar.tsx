@@ -32,12 +32,11 @@ export const ReceiptToolbar: React.FC<ReceiptToolbarProps> = ({
           disabled={disabled}
           onChange={(e) => {
             const tmplId = e.target.value as ReceiptTemplateId;
-            // 切换模板时，使用公共核心函数 buildReceiptState 重新构建新模板下的完整状态，并自动映射当前图书元数据与图片
+            // 切换模板时，使用公共核心函数 buildReceiptState 重新构建新模板下的完整状态，并自动映射当前图书元数据与专属默认主题
             const nextState = buildReceiptState(
               tmplId,
               upstreamBookData,
               {
-                themeId: state.themeId,
                 ditherEnabled: state.ditherEnabled,
               },
               {

@@ -1,7 +1,6 @@
 import type { ReceiptState } from './types';
 import {
   ensureFontsReady,
-  exportReceiptFromDom,
   exportStandardReceiptImage,
   exportLibraryCardImage,
   exportBookExcerptImage,
@@ -27,7 +26,7 @@ const CANVAS_RENDERERS: Record<
 
 /**
  * 导出小票 / 借书卡 / 书摘小票为高清 PNG 图片
- * 优先采用 100% 真实 DOM 所见即所得截图，失败时根据 templateId 自动回退到对应的离线 Canvas 渲染器
+ * 采用高保真纯 Canvas 离屏矢量渲染引擎，实现毫秒级瞬时响应与精准的所见即所得
  */
 export async function exportReceiptImage(
   state: ReceiptState,
@@ -36,16 +35,6 @@ export async function exportReceiptImage(
   await ensureFontsReady();
 
   const scale = options?.scale || 2;
-
-  // 1. 若传入了当前界面渲染的真实 DOM 元素，优先通过 html-to-image 导出像素级一模一样的 PNG
-  if (options?.targetElement) {
-    const domPng = await exportReceiptFromDom(options.targetElement, scale);
-    if (domPng) {
-      return domPng;
-    }
-  }
-
-  // 2. 离线 / 无 DOM 场景下的 Canvas 策略查表兜底
   const renderer = CANVAS_RENDERERS[state.templateId] || exportStandardReceiptImage;
   return renderer(state, scale);
 }
@@ -55,5 +44,4 @@ export {
   exportStandardReceiptImage,
   exportLibraryCardImage,
   exportBookExcerptImage,
-  exportReceiptFromDom,
 };

@@ -139,10 +139,14 @@ export interface ReceiptState {
   cardNumber?: string;
   /** 借书卡借阅打卡记录列表 */
   borrowerRecords?: BorrowerRecordItem[];
-  /** 书摘小票书摘主体文本（单一段落） */
+  /** 书摘小票书摘主体文本（中文/首段） */
   excerptText?: string;
+  /** 书摘小票第二段/英文书摘（手账横线本排版） */
+  excerptSecondaryText?: string;
   /** 书摘小票左上角用户账号 / 署名（如 "@SH-LIBRARY"） */
   userHandle?: string;
+  /** 书摘小票右上角编号（如 "003" / "NO.01"） */
+  serialNumber?: string;
   /** 书摘小票英文胶囊横幅文案（如 "BOOK EXCERPT SHARING"） */
   englishBanner?: string;
 }

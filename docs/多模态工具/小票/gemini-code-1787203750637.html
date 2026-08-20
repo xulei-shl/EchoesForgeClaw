@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>芭蕾餐厅小票复刻 - 复古纸质版</title>
+<style>
+    :root {
+        --text-color: #1a1a1a;
+    }
+
+    body {
+        background-color: #000;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    /* 小票主体容器：实现复古纸张质感与边缘半圆齿孔裁切 */
+    .ticket {
+        width: 340px;
+        /* 复古纸质背景：暖黄色调配合 SVG 噪点纹理，模拟纸张颗粒感 */
+        background-color: #f0eadd; 
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100' height='100' filter='url(%23noise)' opacity='0.12'/%3E%3C/svg%3E");
+        
+        position: relative;
+        /* 上下边缘齿轮状镂空遮罩 */
+        -webkit-mask-image: 
+            radial-gradient(circle at 15px 0, transparent 15px, black 16px),
+            radial-gradient(circle at 15px 100%, transparent 15px, black 16px),
+            linear-gradient(black, black);
+        -webkit-mask-size: 30px 20px, 30px 20px, 100% calc(100% - 40px);
+        -webkit-mask-position: top, bottom, center;
+        -webkit-mask-repeat: repeat-x, repeat-x, no-repeat;
+        mask-image: 
+            radial-gradient(circle at 15px 0, transparent 15px, black 16px),
+            radial-gradient(circle at 15px 100%, transparent 15px, black 16px),
+            linear-gradient(black, black);
+        mask-size: 30px 20px, 30px 20px, 100% calc(100% - 40px);
+        mask-position: top, bottom, center;
+        mask-repeat: repeat-x, repeat-x, no-repeat;
+        
+        padding: 25px 20px 20px 20px;
+        box-sizing: border-box;
+        /* 添加一点轻微的内阴影，增加纸张边缘的立体感 */
+        box-shadow: inset 0 0 20px rgba(0,0,0,0.05);
+    }
+
+    /* 顶部插画区 */
+    .illustration-top {
+        width: 100%;
+        height: 240px;
+        background-color: #000;
+        /* 边框颜色与纸张底色融合 */
+        border: 2px solid #f0eadd;
+        outline: 1px solid var(--text-color);
+        margin-bottom: 20px;
+        background-image: url('https://images.unsplash.com/photo-1576717585968-8ea8166b8e08?auto=format&fit=crop&w=500&q=80');
+        background-size: cover;
+        background-position: center;
+    }
+
+    /* 标题与分割线 */
+    .title {
+        font-family: 'Songti SC', 'SimSun', '宋体', serif;
+        font-size: 28px;
+        font-weight: bold;
+        color: var(--text-color);
+        letter-spacing: 2px;
+        margin-bottom: 8px;
+    }
+
+    .divider {
+        height: 1px;
+        background-color: var(--text-color);
+        margin-bottom: 25px;
+    }
+
+    /* 菜单区域 */
+    .menu-section {
+        position: relative;
+    }
+
+    .menu-title {
+        font-family: 'Kaiti SC', 'STKaiti', '楷体', serif;
+        font-size: 24px;
+        font-style: italic;
+        margin-bottom: 20px;
+        padding-left: 10px;
+    }
+
+    .menu-item {
+        display: flex;
+        align-items: flex-end;
+        margin-bottom: 15px;
+        font-family: 'Kaiti SC', 'STKaiti', '楷体', serif;
+        font-size: 18px;
+        padding: 0 10px;
+        color: var(--text-color);
+    }
+
+    .spacer {
+        flex-grow: 1;
+        border-bottom: 1px solid #555;
+        margin: 0 8px;
+        position: relative;
+        top: -5px;
+    }
+
+    /* 撕裂虚线与侧边半圆缺口 */
+    .perforation-area {
+        position: relative;
+        margin: 35px -20px 25px -20px;
+    }
+
+    .notch-left, .notch-right {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 15px;
+        height: 30px;
+        background-color: #000;
+        z-index: 10;
+    }
+
+    .notch-left {
+        left: 0;
+        border-radius: 0 15px 15px 0;
+    }
+
+    .notch-right {
+        right: 0;
+        border-radius: 15px 0 0 15px;
+    }
+
+    .perforation-dots {
+        height: 12px;
+        background-image: radial-gradient(circle, var(--text-color) 4px, transparent 4.5px);
+        background-size: 16px 12px;
+        background-position: center;
+        background-repeat: repeat-x;
+        margin: 0 15px; /* 避开两端的缺口 */
+    }
+
+    /* 底部插画区 (票根) */
+    .illustration-bottom {
+        width: 100%;
+        height: 80px;
+        background-color: #000;
+        background-image: url('https://images.unsplash.com/photo-1516455590571-18256e5bb9ff?auto=format&fit=crop&w=500&q=80');
+        background-size: cover;
+        background-position: center 25%;
+        margin-bottom: 5px;
+    }
+</style>
+</head>
+<body>
+
+<div class="ticket">
+    <!-- 顶部插画 -->
+    <div class="illustration-top"></div>
+    
+    <!-- 餐厅名称与分割线 -->
+    <div class="title">芭蕾餐厅</div>
+    <div class="divider"></div>
+
+    <!-- 菜单列表区域 -->
+    <div class="menu-section">
+        <div class="menu-title">菜单</div>
+
+        <!-- 菜品列表 -->
+        <div class="menu-item">
+            <span>洛克菲勒生蚝</span>
+            <div class="spacer"></div>
+            <span>100</span>
+        </div>
+        <div class="menu-item">
+            <span>蟹肉与扇贝</span>
+            <div class="spacer"></div>
+            <span>210</span>
+        </div>
+        <div class="menu-item">
+            <span>巧克力柑橘慕斯</span>
+            <div class="spacer"></div>
+            <span>156</span>
+        </div>
+    </div>
+
+    <!-- 打孔虚线与两侧缺口 -->
+    <div class="perforation-area">
+        <div class="notch-left"></div>
+        <div class="perforation-dots"></div>
+        <div class="notch-right"></div>
+    </div>
+
+    <!-- 底部插画 -->
+    <div class="illustration-bottom"></div>
+</div>
+
+</body>
+</html>

@@ -3,7 +3,7 @@ import type { ReceiptState } from '../../types';
 import { ensureFontsReady, drawDashedLine } from '../common/canvasUtils';
 
 /**
- * 绘制清新文艺书摘小票 (Book Excerpt Export Engine - 所见即所得 100% 对齐)
+ * 绘制清新文艺书摘小票 (Book Excerpt Export Engine - 1:1 所见即所得像素级导出)
  */
 export async function exportBookExcerptImage(
   state: ReceiptState,
@@ -11,9 +11,12 @@ export async function exportBookExcerptImage(
 ): Promise<string> {
   await ensureFontsReady();
 
-  const theme = getReceiptTheme(state.themeId);
-  const baseWidth = 540;
-  const baseHeight = 840;
+  const theme = getReceiptTheme(state.themeId || 'sage');
+  const baseWidth = 520;
+  const baseHeight = 700;
+
+  const minchoFont =
+    "'Huiwen-mincho', 'Huiwen Mincho', 'Shippori Mincho B1', 'Shippori Mincho', 'Songti SC', 'Noto Serif SC', 'Source Han Serif SC', serif";
 
   const canvas = document.createElement('canvas');
   canvas.width = baseWidth * scale;
@@ -23,72 +26,147 @@ export async function exportBookExcerptImage(
 
   ctx.scale(scale, scale);
 
-  // 1. 绘制背景与边框
+  // 1. 绘制背景与外边框
   ctx.fillStyle = theme.bg;
   ctx.fillRect(0, 0, baseWidth, baseHeight);
+
+  // 1.1 叠加复古纸张微光晕 (Subtle Vignette)
+  ctx.save();
+  const vignetteGrad = ctx.createRadialGradient(
+    baseWidth / 2,
+    baseHeight * 0.25,
+    baseWidth * 0.15,
+    baseWidth / 2,
+    baseHeight * 0.5,
+    baseHeight * 0.75
+  );
+  vignetteGrad.addColorStop(0, 'rgba(255, 255, 255, 0.26)');
+  vignetteGrad.addColorStop(1, 'rgba(0, 0, 0, 0.035)');
+  ctx.fillStyle = vignetteGrad;
+  ctx.fillRect(0, 0, baseWidth, baseHeight);
+
+  // 1.2 注入细腻天然纸浆微颗粒噪点
+  const grainCount = Math.floor(baseWidth * baseHeight * 0.04);
+  for (let i = 0; i < grainCount; i++) {
+    const gx = Math.random() * baseWidth;
+    const gy = Math.random() * baseHeight;
+    const isDark = Math.random() > 0.5;
+    ctx.fillStyle = isDark ? 'rgba(50, 70, 50, 0.03)' : 'rgba(255, 255, 255, 0.05)';
+    ctx.fillRect(gx, gy, 1, 1);
+  }
+  ctx.restore();
+
   ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)';
   ctx.lineWidth = 1;
   ctx.strokeRect(0, 0, baseWidth, baseHeight);
 
-  // 2. 顶部行：左上角 @账号，右上角 豆瓣评分
-  let curY = 44;
+  // 2. 绘制古籍四周双边框（外粗内细文武边）
+  const outerMargin = 16;
+  ctx.save();
+  // ① 外粗线 (2.5px)
+  ctx.strokeStyle = `color-mix(in srgb, ${theme.text} 85%, transparent)`;
+  ctx.lineWidth = 2.5;
+  ctx.strokeRect(
+    outerMargin,
+    outerMargin,
+    baseWidth - outerMargin * 2,
+    baseHeight - outerMargin * 2 - 10
+  );
+
+  // ② 内细线 (0.8px，间隔 4px)
+  const innerMargin = outerMargin + 4;
+  ctx.strokeStyle = `color-mix(in srgb, ${theme.text} 45%, transparent)`;
+  ctx.lineWidth = 0.8;
+  ctx.strokeRect(
+    innerMargin,
+    innerMargin,
+    baseWidth - innerMargin * 2,
+    baseHeight - innerMargin * 2 - 10
+  );
+  ctx.restore();
+
+  const contentLeft = innerMargin + 20;
+  const contentRight = baseWidth - innerMargin - 20;
+  const maxLineW = contentRight - contentLeft;
+
+  // 3. 顶部 Header：左上角 @账号，中央 古籍鱼尾，右上角 ■ 003 编号
+  let curY = innerMargin + 28;
   ctx.textAlign = 'left';
   ctx.fillStyle = theme.text;
   ctx.font = "14px 'JetBrains Mono', 'Cutive Mono', monospace";
-  ctx.fillText(state.userHandle || '@SH-LIBRARY', 36, curY);
+  ctx.fillText(state.userHandle || '@SH-LIBRARY', contentLeft, curY);
 
-  // 右上角豆瓣评分
-  const ratingText = state.rating || '8.9';
-  ctx.font = "bold 14px 'JetBrains Mono', 'Cutive Mono', monospace";
-  const ratingW = ctx.measureText(ratingText).width + 30;
-  const ratingBoxX = baseWidth - 36 - ratingW;
-  const ratingBoxY = curY - 16;
-
+  // 中央古籍版心鱼尾
   ctx.save();
-  ctx.strokeStyle = `color-mix(in srgb, ${theme.text} 25%, transparent)`;
-  ctx.fillStyle = `color-mix(in srgb, ${theme.text} 6%, transparent)`;
-  ctx.lineWidth = 1;
+  const fishX = baseWidth / 2;
+  const fishY = curY - 10;
+  ctx.fillStyle = `color-mix(in srgb, ${theme.text} 80%, transparent)`;
   ctx.beginPath();
-  if (typeof ctx.roundRect === 'function') {
-    ctx.roundRect(ratingBoxX, ratingBoxY, ratingW, 22, 3);
-  } else {
-    ctx.rect(ratingBoxX, ratingBoxY, ratingW, 22);
-  }
+  ctx.moveTo(fishX - 11, fishY);
+  ctx.lineTo(fishX + 11, fishY);
+  ctx.lineTo(fishX + 11, fishY + 4);
+  ctx.lineTo(fishX, fishY + 9);
+  ctx.lineTo(fishX - 11, fishY + 4);
+  ctx.closePath();
   ctx.fill();
-  ctx.stroke();
 
-  // 评分小方块
-  ctx.fillStyle = theme.accent || theme.text;
-  ctx.fillRect(ratingBoxX + 6, ratingBoxY + 6, 8, 10);
-
-  // 评分数字
-  ctx.fillStyle = theme.text;
-  ctx.textAlign = 'center';
-  ctx.fillText(ratingText, ratingBoxX + 6 + 8 + (ratingW - 14) / 2, curY);
+  // 鱼尾内嵌细线
+  ctx.fillStyle = theme.bg;
+  ctx.beginPath();
+  ctx.moveTo(fishX - 7, fishY + 2);
+  ctx.lineTo(fishX + 7, fishY + 2);
+  ctx.lineTo(fishX + 7, fishY + 3.5);
+  ctx.lineTo(fishX, fishY + 7);
+  ctx.lineTo(fishX - 7, fishY + 3.5);
+  ctx.closePath();
+  ctx.fill();
   ctx.restore();
 
-  curY += 42;
+  // 右上角 ■ 003
+  const serialNo = state.serialNumber || '003';
+  ctx.font = "bold 14px 'JetBrains Mono', 'Cutive Mono', monospace";
+  const serialText = serialNo;
+  const serialTextW = ctx.measureText(serialText).width;
+  const squareSize = 9;
+  const squareX = contentRight - serialTextW - squareSize - 6;
 
-  // 3. 大标题：「书摘分享」
+  ctx.fillStyle = theme.accent || theme.text;
+  ctx.fillRect(squareX, curY - 11, squareSize, squareSize);
+
+  ctx.fillStyle = theme.text;
+  ctx.textAlign = 'right';
+  ctx.fillText(serialText, contentRight, curY);
+
+  curY += 66;
+
+  // 4. 大标题：「书摘分享」（汇文明朝体大字号）
   ctx.textAlign = 'center';
   ctx.fillStyle = theme.text;
-  ctx.font = "bold 38px 'LXGW WenKai', 'Noto Serif SC', serif";
-  ctx.fillText(state.storeName || '书摘分享', baseWidth / 2, curY);
+  ctx.font = `500 44px ${minchoFont}`;
+  // 模拟字间距
+  const titleText = state.storeName || '书摘分享';
+  const spacedTitle = titleText.split('').join('  ');
+  ctx.fillText(spacedTitle, baseWidth / 2, curY);
 
-  curY += 26;
+  curY += 22;
 
-  // 精细虚线
-  drawDashedLine(ctx, curY, baseWidth, theme.dashed || `color-mix(in srgb, ${theme.text} 30%, transparent)`);
+  // 细虚线
+  drawDashedLine(
+    ctx,
+    curY,
+    baseWidth - innerMargin * 2 - 20,
+    theme.dashed || `color-mix(in srgb, ${theme.text} 26%, transparent)`
+  );
 
   curY += 16;
 
   // 英文反白胶囊横幅：BOOK EXCERPT SHARING
   const bannerText = state.englishBanner || 'BOOK EXCERPT SHARING';
-  ctx.font = "900 13px 'JetBrains Mono', 'Courier New', sans-serif";
+  ctx.font = "900 12px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
   const bannerTextW = ctx.measureText(bannerText).width;
-  const bannerPadX = 18;
+  const bannerPadX = 16;
   const bannerBoxW = bannerTextW + bannerPadX * 2;
-  const bannerBoxH = 26;
+  const bannerBoxH = 24;
   const bannerBoxX = (baseWidth - bannerBoxW) / 2;
 
   ctx.save();
@@ -107,99 +185,102 @@ export async function exportBookExcerptImage(
   ctx.fillText(bannerText, baseWidth / 2, curY + bannerBoxH / 2 + 1);
   ctx.restore();
 
-  curY += bannerBoxH + 36;
+  const bannerBottomY = curY + bannerBoxH;
 
-  // 4. 中段书摘主体（单一段落，带横线底纹与文楷排版）
+  // 5. 中段中文书摘（单段中文 + 浅绿横线笔记本底纹，在上下两部分之间动态垂直居中）
   const excerptText = state.excerptText || '催促不会改变什么、毕竟谁都不会硬着头皮犁冬天的地。';
-  const textLeft = 40;
-  const textRight = baseWidth - 40;
-  const maxLineW = textRight - textLeft;
-  const lineHeight = 42;
+  const cnLineHeight = 40;
 
-  ctx.font = "19px 'LXGW WenKai', 'Zhi Mang Xing', 'Noto Serif SC', serif";
+  ctx.font = "21px 'Zhi Mang Xing', 'LXGW WenKai', cursive";
   ctx.fillStyle = theme.text;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
 
-  // 自动换行算法
-  const chars = Array.from(excerptText);
-  let currentLine = '';
-  const lines: string[] = [];
-
-  for (let i = 0; i < chars.length; i++) {
-    const char = chars[i];
+  // 中文自动换行
+  const cnChars = Array.from(excerptText);
+  let curCnLine = '';
+  const cnLines: string[] = [];
+  for (let i = 0; i < cnChars.length; i++) {
+    const char = cnChars[i];
     if (char === '\n') {
-      lines.push(currentLine);
-      currentLine = '';
+      cnLines.push(curCnLine);
+      curCnLine = '';
       continue;
     }
-    const testLine = currentLine + char;
+    const testLine = curCnLine + char;
     if (ctx.measureText(testLine).width > maxLineW) {
-      lines.push(currentLine);
-      currentLine = char;
+      cnLines.push(curCnLine);
+      curCnLine = char;
     } else {
-      currentLine = testLine;
+      curCnLine = testLine;
     }
   }
-  if (currentLine) {
-    lines.push(currentLine);
-  }
+  if (curCnLine) cnLines.push(curCnLine);
 
-  // 绘制 5~6 行横线本底纹并填入文字
-  const totalLinedRows = Math.max(5, lines.length + 1);
+  const totalLinedRows = Math.max(4, cnLines.length + 1);
+  const totalContentHeight = totalLinedRows * cnLineHeight;
+  const metaTopY = baseHeight - innerMargin - 90;
+
+  // 动态垂直居中起始 Y
+  const startExcerptY =
+    bannerBottomY + Math.max(16, (metaTopY - bannerBottomY - totalContentHeight) / 2);
+
   for (let r = 0; r < totalLinedRows; r++) {
-    const rowY = curY + r * lineHeight;
-    // 绘制横线底纹
+    const rowY = startExcerptY + r * cnLineHeight;
+
+    // 绘制横线笔记本底纹下划线
     ctx.save();
-    ctx.strokeStyle = `color-mix(in srgb, ${theme.text} 18%, transparent)`;
+    ctx.strokeStyle = `color-mix(in srgb, ${theme.text} 22%, transparent)`;
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(textLeft - 4, rowY + 6);
-    ctx.lineTo(textRight + 4, rowY + 6);
+    ctx.moveTo(contentLeft, rowY + 6);
+    ctx.lineTo(contentRight, rowY + 6);
     ctx.stroke();
     ctx.restore();
 
-    // 绘制该行文字
-    if (r < lines.length) {
-      ctx.fillText(lines[r], textLeft, rowY);
+    // 绘制该行中文文字
+    if (r < cnLines.length) {
+      ctx.fillStyle = theme.text;
+      ctx.fillText(cnLines[r], contentLeft, rowY);
     }
   }
 
-  // 5. 底部右下角图书元数据（题名、作者、出版社·出版年、ISBN）
+  // 6. 底部右下角图书元数据（题名 + 作者 + 出版社·出版年，汇文明朝体风格）
   const metaFields = state.metaFields || [];
-  const titleVal = metaFields.find((f) => f.key === 'title')?.value || '《明亮的夜晚》';
+  const rawTitle = metaFields.find((f) => f.key === 'title')?.value || '明亮的夜晚';
+  const titleVal = rawTitle.replace(/^《+|》+$/g, '').trim() || rawTitle;
   const authorVal = metaFields.find((f) => f.key === 'author')?.value || '崔恩荣';
-  const pubInfoVal = metaFields.find((f) => f.key === 'pub_info')?.value || '台海出版社 · 2023';
-  const isbnVal = metaFields.find((f) => f.key === 'isbn')?.value || state.barcodeText || '9787516835159';
+  const pubInfoVal = metaFields.find((f) => f.key === 'pub_info')?.value || '光启书局 · 2026';
 
-  let metaY = baseHeight - 160;
+  let metaY = baseHeight - innerMargin - 88;
   ctx.textAlign = 'right';
 
-  // ① 题名（大字号《书名》）
+  // ① 题名（明朝体，无书名号）
+  ctx.save();
+  ctx.font = `500 28px ${minchoFont}`;
   ctx.fillStyle = theme.text;
-  ctx.font = "bold 32px 'LXGW WenKai', 'Noto Serif SC', serif";
-  ctx.fillText(titleVal, textRight, metaY);
+  ctx.fillText(titleVal, contentRight, metaY);
+  ctx.restore();
 
-  metaY += 34;
+  metaY += 28;
 
-  // ② 作者
-  ctx.font = "18px 'LXGW WenKai', 'Noto Serif SC', serif";
-  ctx.fillText(authorVal, textRight, metaY);
-
-  metaY += 26;
-
-  // ③ 出版社 · 出版年
-  ctx.fillStyle = theme.faint;
-  ctx.font = "14px 'LXGW WenKai', 'Noto Serif SC', sans-serif";
-  ctx.fillText(pubInfoVal, textRight, metaY);
+  // ② 作者署名（明朝体）
+  ctx.save();
+  ctx.fillStyle = theme.text;
+  ctx.font = `400 16px ${minchoFont}`;
+  ctx.fillText(authorVal, contentRight, metaY);
+  ctx.restore();
 
   metaY += 22;
 
-  // ④ ISBN
-  ctx.font = "13px 'JetBrains Mono', 'Cutive Mono', monospace";
-  ctx.fillText(`ISBN ${isbnVal}`, textRight, metaY);
+  // ③ 出版社 · 出版年（明朝体）
+  ctx.save();
+  ctx.fillStyle = theme.faint;
+  ctx.font = `400 13px ${minchoFont}`;
+  ctx.fillText(pubInfoVal, contentRight, metaY);
+  ctx.restore();
 
-  // 6. 底部锯齿撕纸边
+  // 7. 底部锯齿撕纸边
   const toothSize = 8;
   const teethCount = Math.floor(baseWidth / (toothSize * 2));
   const step = baseWidth / teethCount;
@@ -220,3 +301,4 @@ export async function exportBookExcerptImage(
 
   return canvas.toDataURL('image/png', 1.0);
 }
+

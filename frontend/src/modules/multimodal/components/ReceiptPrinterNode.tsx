@@ -219,15 +219,12 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
 
   const paperRef = useRef<HTMLDivElement>(null);
 
-  // 导出小票图片并保存到数据库/历史记录 (100% 真实 DOM 所见即所得)
+  // 导出小票图片并保存到数据库/历史记录（极速 Canvas 离线矢量引擎，毫秒级所见即所得）
   const handleExportAndSave = useCallback(async () => {
     if (!onExport) return;
     setIsExporting(true);
     try {
-      const dataUrl = await exportReceiptImage(localState, {
-        targetElement: paperRef.current,
-        scale: 2,
-      });
+      const dataUrl = await exportReceiptImage(localState, { scale: 2 });
       await onExport(id, dataUrl, localState);
       showToast('小票已生成并保存到历史记录', { type: 'success' });
     } catch (err: any) {
@@ -238,13 +235,21 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
     }
   }, [localState, id, onExport, showToast]);
 
-  // 本地直接下载 PNG (100% 真实 DOM 所见即所得)
+  // 本地直接下载 PNG（极速所见即所得，复用已落盘或瞬时生成）
   const handleDirectDownload = useCallback(async () => {
     try {
-      const dataUrl = await exportReceiptImage(localState, {
-        targetElement: paperRef.current,
-        scale: 2,
-      });
+      // 1. 若已有落盘图片地址，优先直接下载该文件
+      if (data?.imageUrl && typeof data.imageUrl === 'string' && data.imageUrl.startsWith('/')) {
+        const link = document.createElement('a');
+        link.download = `${localState.storeName || 'receipt'}-${Date.now()}.png`;
+        link.href = data.imageUrl;
+        link.click();
+        showToast('小票图片已下载', { type: 'success' });
+        return;
+      }
+
+      // 2. 否则通过 Canvas 极速引擎实时生成并下载
+      const dataUrl = await exportReceiptImage(localState, { scale: 2 });
       const link = document.createElement('a');
       link.download = `${localState.storeName || 'receipt'}-${Date.now()}.png`;
       link.href = dataUrl;
@@ -254,7 +259,7 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
       console.error('下载小票失败:', err);
       showToast('下载失败，请重试', { type: 'error' });
     }
-  }, [localState, showToast]);
+  }, [data?.imageUrl, localState, showToast]);
 
   const hasGeneratedImage = Boolean(data?.imageUrl);
 

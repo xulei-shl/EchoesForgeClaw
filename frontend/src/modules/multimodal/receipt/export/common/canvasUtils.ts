@@ -1,4 +1,4 @@
-import { urlToDataUrl } from '../../../bookplate/imageUpload';
+import { urlToDataUrl } from '../../../../bookplate/imageUpload';
 
 /**
  * 确保外部图片安全加载并转为 HTMLImageElement

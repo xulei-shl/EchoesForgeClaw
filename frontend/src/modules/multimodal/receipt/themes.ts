@@ -47,6 +47,16 @@ export const DEFAULT_RECEIPT_THEMES: ReceiptTheme[] = [
     previewColor: '#E2F4EA',
   },
   {
+    id: 'sage',
+    name: '草木青绿',
+    bg: '#E2E6C4',
+    text: '#49704C',
+    faint: '#7D9B80',
+    dashed: '#B6CBB1',
+    accent: '#49704C',
+    previewColor: '#E2E6C4',
+  },
+  {
     id: 'purple',
     name: '梦幻浅紫',
     bg: '#EDE7F6',
