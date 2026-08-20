@@ -47,6 +47,8 @@ export interface StampCutterState {
   imageUrl?: string | null;
   /** 用户本地直接上传/替换的图片 (Base64 Data URL) */
   uploadedImage?: string | null;
+  /** 是否已保存到数据库 (generations 表) */
+  isSaved?: boolean;
   /** 错误信息 */
   error?: string | null;
 }

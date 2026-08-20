@@ -184,8 +184,6 @@ export interface ReceiptState {
   leafNumber?: string;
   /** 古籍书签版心文字（如 "資治通鑑卷一" / "百年孤独"） */
   banxinTitle?: string;
-  /** 古籍书签第一列卷号/副标题（如 "卷第一"） */
-  bookmarkVolume?: string;
   /** 古籍书签第二列文摘提要（如 "起著雍摄提格\n尽玄黓困敦"） */
   bookmarkExcerpt?: string;
   /** 古籍书签第三列出版与责任者（如 "[著者] 加西亚·马尔克斯\n南海出版公司 · 2011"） */

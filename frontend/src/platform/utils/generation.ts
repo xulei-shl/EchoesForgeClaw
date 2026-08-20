@@ -73,6 +73,8 @@ export function generationNodeTypeLabel(nodeType?: string | null): string {
     map_poster: '地图海报生成',
     image_search: '图片检索',
     art_image_search: '艺术图片检索',
+    receipt_printer: '图书小票生成',
+    stamp_cutter: '邮票截图框',
     
     zhihu_search: '知乎检索',
     wikipedia_search: 'Wikipedia 检索',

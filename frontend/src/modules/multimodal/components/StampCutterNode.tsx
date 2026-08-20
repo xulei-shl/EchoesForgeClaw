@@ -9,6 +9,7 @@ import {
   Sparkles,
   Loader2,
   Pencil,
+  Check,
 } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
@@ -341,7 +342,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
     showToast('已恢复上级输入图片', { type: 'success' });
   };
 
-  // 执行截取与动效
+  // 执行纯前端离线截取（不写数据库，毫秒级所见即所得）
   const handleExecuteCrop = useCallback(async () => {
     if (!activeImageSrc || isExporting) return;
     setIsAnimatingCrop(true);
@@ -356,31 +357,54 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
       });
 
       // 3. 优雅过渡延迟让动画自然展现
-      await new Promise((resolve) => setTimeout(resolve, 380));
+      await new Promise((resolve) => setTimeout(resolve, 360));
 
-      // 4. 落盘并记录到历史数据库
-      setIsExporting(true);
-      if (onExport) {
-        await onExport(id, resultDataUrl, {
-          withMargin,
-          aspectRatio,
-          cropBox,
-          uploadedImage: data.uploadedImage || null,
-        });
-      }
+      // 4. 更新节点数据（此时为未保存到数据库状态）
+      onUpdateState?.(id, {
+        imageUrl: resultDataUrl,
+        isSaved: false,
+        withMargin,
+        aspectRatio,
+        cropBox,
+        uploadedImage: data.uploadedImage || null,
+      });
 
       setIsEditing(false);
-      showToast('邮票生成成功并保存到历史记录', { type: 'success' });
+      showToast('邮票截取完成（可点击保存按钮写入数据库）', { type: 'success' });
     } catch (err: any) {
       console.error('截取邮票失败:', err);
       showToast(err?.message || '生成邮票失败，请重试', { type: 'error' });
     } finally {
       setIsAnimatingCrop(false);
+    }
+  }, [activeImageSrc, isExporting, cropBox, withMargin, id, aspectRatio, data.uploadedImage, onUpdateState, showToast]);
+
+  // 独立保存到数据库
+  const handleSaveToDatabase = useCallback(async () => {
+    const imgUrl = data?.imageUrl;
+    if (!imgUrl || isExporting || !onExport) return;
+    setIsExporting(true);
+
+    try {
+      await onExport(id, imgUrl, {
+        withMargin,
+        aspectRatio,
+        cropBox,
+        uploadedImage: data.uploadedImage || null,
+        isSaved: true,
+      });
+      onUpdateState?.(id, { isSaved: true });
+      onSelect?.(id);
+      showToast('邮票已保存到数据库，已解锁公开与收藏', { type: 'success' });
+    } catch (err: any) {
+      console.error('保存到数据库失败:', err);
+      showToast(err?.detail || err?.message || '保存失败，请重试', { type: 'error' });
+    } finally {
       setIsExporting(false);
     }
-  }, [activeImageSrc, isExporting, cropBox, withMargin, onExport, id, aspectRatio, data.uploadedImage, showToast]);
+  }, [data?.imageUrl, isExporting, onExport, id, withMargin, aspectRatio, cropBox, data?.uploadedImage, onUpdateState, onSelect, showToast]);
 
-  // 本地直接下载 PNG
+  // 本地直接下载 PNG（随时可用，不影响下载）
   const handleDownload = useCallback(() => {
     const url = data?.imageUrl;
     if (!url) return;
@@ -403,6 +427,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
   };
 
   const hasGenerated = Boolean(data?.imageUrl && !isEditing);
+  const isSaved = Boolean(data?.isSaved);
 
   return (
     <CanvasNode
@@ -435,7 +460,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
                 disabled={isExporting}
                 hasDownstream={hasDownstream}
                 downstreamTooltip="有下级节点，不可重新裁剪"
-                tooltip="重新调整选框并生成邮票"
+                tooltip="重新调整选框"
               />
               <NodeActionBar.Custom
                 icon={<Upload size={16} strokeWidth={1.5} />}
@@ -455,34 +480,59 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
                   hasDownstream={hasDownstream}
                 />
               )}
+              {/* 独立保存到数据库按钮 */}
+              <NodeActionBar.Custom
+                icon={<Check size={16} strokeWidth={isSaved ? 2.5 : 1.5} className={isSaved ? 'text-accent' : ''} />}
+                onClick={handleSaveToDatabase}
+                disabled={isExporting || isSaved}
+                hasDownstream={hasDownstream}
+                downstreamTooltip="有下级节点，不可保存"
+                tooltip={isSaved ? '已保存到数据库' : '保存到数据库（保存后可公开/收藏）'}
+                className={isSaved ? 'text-accent opacity-70' : 'text-ink-light hover:text-accent'}
+              />
+              {/* 收藏按钮（未保存时禁用并提示） */}
               <NodeActionBar.Custom
                 icon={
                   <Heart
                     size={16}
                     strokeWidth={1.5}
-                    className={isFavorited ? 'fill-accent text-accent' : ''}
+                    className={isSaved && isFavorited ? 'fill-accent text-accent' : ''}
                   />
                 }
-                tooltip={isFavorited ? '取消收藏' : '收藏'}
-                onClick={() =>
-                  runToggle(onToggleFavorite, (act) => (act ? '已收藏' : '已取消收藏'))
+                tooltip={
+                  !isSaved
+                    ? '请先保存到数据库后再收藏'
+                    : isFavorited
+                      ? '取消收藏'
+                      : '收藏'
                 }
-                disabled={isExporting || !onToggleFavorite}
+                onClick={() =>
+                  isSaved && runToggle(onToggleFavorite, (act) => (act ? '已收藏' : '已取消收藏'))
+                }
+                disabled={!isSaved || isExporting || !onToggleFavorite}
               />
+              {/* 公开按钮（未保存时禁用并提示） */}
               <NodeActionBar.Custom
                 icon={
                   <Globe
                     size={16}
                     strokeWidth={1.5}
-                    className={isPublic ? 'text-accent' : ''}
+                    className={isSaved && isPublic ? 'text-accent' : ''}
                   />
                 }
-                tooltip={isPublic ? '从画廊撤下' : '公开到画廊'}
-                onClick={() =>
-                  runToggle(onTogglePublic, (act) => (act ? '已公开' : '已撤下'))
+                tooltip={
+                  !isSaved
+                    ? '请先保存到数据库后再公开'
+                    : isPublic
+                      ? '从画廊撤下'
+                      : '公开到画廊'
                 }
-                disabled={isExporting || !onTogglePublic}
+                onClick={() =>
+                  isSaved && runToggle(onTogglePublic, (act) => (act ? '已公开' : '已撤下'))
+                }
+                disabled={!isSaved || isExporting || !onTogglePublic}
               />
+              {/* 下载按钮（随时可用，不影响下载） */}
               <NodeActionBar.Download
                 onClick={handleDownload}
                 disabled={isExporting}
