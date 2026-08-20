@@ -153,9 +153,6 @@ export const ReceiptDitherBox: React.FC<ReceiptDitherBoxProps> = ({
               )}
             </div>
           )}
-          {ditherEnabled && (
-            <div className="text-[10px] mt-1 opacity-60 tracking-wider">[ LO-FI DITHERED PRINT ]</div>
-          )}
         </div>
       ) : (
         <div className="py-6 flex flex-col items-center justify-center gap-2">

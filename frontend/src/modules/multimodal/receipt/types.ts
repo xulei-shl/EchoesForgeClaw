@@ -9,7 +9,7 @@
 export type ReceiptThemeId = 'white' | 'cream' | 'pink' | 'mint' | 'purple' | string;
 
 /** 预设模板标识（支持扩展自定义模板 key） */
-export type ReceiptTemplateId = 'book_recommend' | 'reading_log' | 'itemized' | 'book_excerpt' | string;
+export type ReceiptTemplateId = 'book_recommend' | 'reading_log' | 'itemized' | 'book_excerpt' | 'retro_menu' | string;
 
 /** 热敏纸主题配色定义 */
 export interface ReceiptTheme {
@@ -116,6 +116,10 @@ export interface ReceiptState {
   coverImageUrl?: string | null;
   /** 是否为用户就地手动上传 / 指定的自定义图片（优先级高于所有上游图片） */
   customImage?: boolean;
+  /** 底部图片 URL */
+  bottomImageUrl?: string | null;
+  /** 底部图片是否为用户自定义 */
+  bottomCustomImage?: boolean;
   /** 结构化图书元数据字段列表（题名、作者、出版社、年份等） */
   metaFields: ReceiptMetaField[];
   /** 索书号（Call Number，支持留空或自定义） */

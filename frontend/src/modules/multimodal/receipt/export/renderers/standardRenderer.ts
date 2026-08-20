@@ -40,7 +40,7 @@ export async function exportStandardReceiptImage(
   curY += 60; // 标题 + 副标题
   curY += 130; // Date / Terminal / Served by / CallNumber / Status / Rating
   if (processedImage) {
-    curY += 280 + (state.ditherEnabled ? 30 : 10) + 30;
+    curY += 280 + 10 + 30;
   }
   if (state.metaFields && state.metaFields.length > 0) {
     curY += state.metaFields.filter((f) => f.visible !== false).length * 28 + 20;
@@ -151,17 +151,7 @@ export async function exportStandardReceiptImage(
 
     ctx.drawImage(processedImage, drawX, drawY, drawW, drawH);
 
-    let boxContentBottom = drawY + drawH;
-    if (state.ditherEnabled) {
-      const textY = boxContentBottom + 12;
-      ctx.font = "10px 'Courier New', monospace";
-      ctx.textAlign = 'center';
-      ctx.fillStyle = theme.faint;
-      ctx.fillText('[ LO-FI DITHERED PRINT ]', baseWidth / 2, textY);
-      boxContentBottom = textY + 14;
-    } else {
-      boxContentBottom += 8;
-    }
+    let boxContentBottom = drawY + drawH + 8;
 
     const boxHeight = boxContentBottom - y;
     drawDashedRect(ctx, boxX, y, boxWidth, boxHeight, theme.dashed, 4);

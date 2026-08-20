@@ -24,6 +24,8 @@ const CANVAS_RENDERERS: Record<
   book_excerpt: exportBookExcerptImage,
 };
 
+import { exportReceiptFromDom } from './export/domExporter';
+
 /**
  * 导出小票 / 借书卡 / 书摘小票为高清 PNG 图片
  * 采用高保真纯 Canvas 离屏矢量渲染引擎，实现毫秒级瞬时响应与精准的所见即所得
@@ -35,6 +37,13 @@ export async function exportReceiptImage(
   await ensureFontsReady();
 
   const scale = options?.scale || 2;
+
+  // 对于没有实现纯 Canvas 画布导出的复杂 DOM 模板（如带有 CSS 镂空 mask 属性的复古菜单），降级使用 domExporter
+  if (state.templateId === 'retro_menu' && options?.targetElement) {
+    const domUrl = await exportReceiptFromDom(options.targetElement, scale);
+    if (domUrl) return domUrl;
+  }
+
   const renderer = CANVAS_RENDERERS[state.templateId] || exportStandardReceiptImage;
   return renderer(state, scale);
 }

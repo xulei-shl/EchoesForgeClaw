@@ -224,7 +224,7 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
     if (!onExport) return;
     setIsExporting(true);
     try {
-      const dataUrl = await exportReceiptImage(localState, { scale: 2 });
+      const dataUrl = await exportReceiptImage(localState, { scale: 2, targetElement: paperRef.current });
       await onExport(id, dataUrl, localState);
       showToast('小票已生成并保存到历史记录', { type: 'success' });
     } catch (err: any) {
@@ -248,8 +248,8 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
         return;
       }
 
-      // 2. 否则通过 Canvas 极速引擎实时生成并下载
-      const dataUrl = await exportReceiptImage(localState, { scale: 2 });
+      // 2. 否则通过 Canvas/DOM 极速引擎实时生成并下载
+      const dataUrl = await exportReceiptImage(localState, { scale: 2, targetElement: paperRef.current });
       const link = document.createElement('a');
       link.download = `${localState.storeName || 'receipt'}-${Date.now()}.png`;
       link.href = dataUrl;

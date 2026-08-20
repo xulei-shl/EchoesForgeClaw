@@ -48,10 +48,11 @@ frontend/src/modules/multimodal/receipt/
 * **顶部工具栏「重置为默认」与「点阵滤镜」**：内聚在小票卡片顶部工具栏，随时一键将小票重置回当前模板初始态或切换黑白热敏点阵。
 
 ### 3. 灵活的预设模板与主题配色
-* **3 套预设场景模板**：
+* **4 套预设场景模板**：
   1. `book_recommend`：**书目推荐小票**（阅读推广、馆藏推荐、图书凭证）；
   2. `reading_log`：**借阅打卡小票**（借阅记录、打卡心得、阅读星级）；
-  3. `itemized`：**经典清单小票**（品名、数量、价格、TOTAL 总计）。
+  3. `itemized`：**经典清单小票**（品名、数量、价格、TOTAL 总计）；
+  4. `retro_menu`：**复古菜单**（复刻复古纸质菜单排版，上下双图并支持点阵滤镜，具备锯齿边框缺口样式，文本映射图书元数据为菜品）。
 * **5 套热敏纸配色**：
   * 经典素白 (`#FDFDFC`)
   * 复古米黄 (`#F6EFE1`)
@@ -86,6 +87,7 @@ frontend/src/modules/multimodal/receipt/
 | **NEW** | [`frontend/src/modules/multimodal/receipt/exportReceipt.ts`](file:///f:/Github/EchoesForgeClaw/frontend/src/modules/multimodal/receipt/exportReceipt.ts) | 高清小票 Canvas 离屏导出引擎 |
 | **NEW** | [`frontend/src/modules/multimodal/receipt/index.ts`](file:///f:/Github/EchoesForgeClaw/frontend/src/modules/multimodal/receipt/index.ts) | 模块统一导出入口 |
 | **NEW** | [`frontend/src/modules/multimodal/receipt/components/ReceiptPaper.tsx`](file:///f:/Github/EchoesForgeClaw/frontend/src/modules/multimodal/receipt/components/ReceiptPaper.tsx) | 小票纸张渲染与内联编辑组件 |
+| **NEW** | [`frontend/src/modules/multimodal/receipt/components/papers/RetroMenuPaper.tsx`](file:///f:/Github/EchoesForgeClaw/frontend/src/modules/multimodal/receipt/components/papers/RetroMenuPaper.tsx) | 复古菜单模板 |
 | **NEW** | [`frontend/src/modules/multimodal/receipt/components/ReceiptToolbar.tsx`](file:///f:/Github/EchoesForgeClaw/frontend/src/modules/multimodal/receipt/components/ReceiptToolbar.tsx) | 模板、配色、点阵滤镜与重置快捷切换工具栏 |
 | **NEW** | [`frontend/src/modules/multimodal/components/ReceiptPrinterNode.tsx`](file:///f:/Github/EchoesForgeClaw/frontend/src/modules/multimodal/components/ReceiptPrinterNode.tsx) | 节点主容器组件（对齐 ImageNode 的操作栏、收藏/公开与全局联动） |
 | **MODIFY** | [`backend-ts/src/modules/bookplate/node-types.ts`](file:///f:/Github/EchoesForgeClaw/backend-ts/src/modules/bookplate/node-types.ts) | 注册 `receipt_printer` 模板与端口声明 |

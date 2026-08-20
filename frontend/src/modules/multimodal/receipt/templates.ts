@@ -359,12 +359,85 @@ export const TEMPLATE_BOOK_EXCERPT: ReceiptTemplateDef = {
   },
 };
 
+
+/**
+ * 预设 5：芭蕾餐厅小票复刻 - 复古纸质版
+ */
+export const TEMPLATE_RETRO_MENU: ReceiptTemplateDef = {
+  id: 'retro_menu',
+  name: '复古菜单',
+  description: '复刻经典芭蕾餐厅菜单，带上下图片与边缘镂空齿孔',
+  createInitialState: () => ({
+    templateId: 'retro_menu',
+    themeId: 'cream',
+    ditherEnabled: true,
+    storeName: '芭蕾餐厅',
+    subtitle: 'MENU',
+    dateTimeText: formatReceiptDate(),
+    terminal: '',
+    servedBy: '',
+    callNumber: '',
+    status: '',
+    rating: '',
+    metaFields: [],
+    items: [
+      { id: '1', label: '洛克菲勒生蚝', value: '100' },
+      { id: '2', label: '蟹肉与扇贝', value: '210' },
+      { id: '3', label: '巧克力柑橘慕斯', value: '156' },
+    ],
+    totalLabel: '',
+    totalValue: '',
+    barcodeText: '',
+    footerMessage: '',
+    bottomNote: '',
+  }),
+  mapFromBook: (book: BookMetadataInput, current = {}) => {
+    const title = book.title || '书目精选';
+    const author = book.author || 'AUTHOR';
+    const publisher = book.publisher || '';
+    const pubYear = book.pub_year || book.publishDate || '';
+    const series = book.series || '';
+    const producer = book.producer || '';
+    const rating =
+      book.rating !== undefined && book.rating !== null && String(book.rating).trim() !== ''
+        ? String(book.rating)
+        : '';
+
+    const newItems = [];
+    if (publisher) newItems.push({ id: 'publisher', label: '出版社', value: publisher });
+    if (pubYear) newItems.push({ id: 'year', label: '出版时间', value: pubYear });
+    if (series) newItems.push({ id: 'series', label: '丛书', value: series });
+    if (producer) newItems.push({ id: 'producer', label: '出品方', value: producer });
+    if (rating) newItems.push({ id: 'rating', label: '豆瓣评分', value: rating });
+
+    // Fallback if no metadata
+    if (newItems.length === 0) {
+      newItems.push(
+        { id: '1', label: '洛克菲勒生蚝', value: '100' },
+        { id: '2', label: '蟹肉与扇贝', value: '210' },
+        { id: '3', label: '巧克力柑橘慕斯', value: '156' }
+      );
+    }
+
+    const cover = book.cover_image_local || book.cover_image || book.coverUrl || null;
+
+    return {
+      storeName: title,
+      subtitle: author,
+      imageUrl: cover || current.imageUrl,
+      bottomImageUrl: cover || current.bottomImageUrl,
+      items: newItems,
+    };
+  },
+};
+
 /** 模板注册表（支持动态扩展） */
 const templateRegistry = new Map<string, ReceiptTemplateDef>([
   [TEMPLATE_BOOK_RECOMMEND.id, TEMPLATE_BOOK_RECOMMEND],
   [TEMPLATE_READING_LOG.id, TEMPLATE_READING_LOG],
   [TEMPLATE_ITEMIZED.id, TEMPLATE_ITEMIZED],
   [TEMPLATE_BOOK_EXCERPT.id, TEMPLATE_BOOK_EXCERPT],
+  [TEMPLATE_RETRO_MENU.id, TEMPLATE_RETRO_MENU],
 ]);
 
 /** 获取所有可用模板 */
@@ -447,6 +520,35 @@ export function buildReceiptState(
     isCustom = false;
   }
 
+  // 底部图片处理（与顶部图片同等逻辑，用于 Retro Menu 双图片场景）
+  const explicitBottomImage = savedData.bottomImageUrl;
+  let resolvedBottomImageUrl: string | null = null;
+  let isBottomCustom = false;
+
+  if (options.overrideUserEdits) {
+    resolvedBottomImageUrl = upstreamImage;
+    isBottomCustom = false;
+  } else if (explicitBottomImage === '') {
+    resolvedBottomImageUrl = null;
+    isBottomCustom = false;
+  } else if (
+    typeof explicitBottomImage === 'string' &&
+    explicitBottomImage.trim() !== '' &&
+    (savedData.bottomCustomImage ||
+      explicitBottomImage.startsWith('data:') ||
+      explicitBottomImage.startsWith('blob:'))
+  ) {
+    resolvedBottomImageUrl = explicitBottomImage;
+    isBottomCustom = true;
+  } else {
+    resolvedBottomImageUrl =
+      upstreamImage ||
+      (typeof explicitBottomImage === 'string' && explicitBottomImage.trim() !== ''
+        ? explicitBottomImage
+        : null);
+    isBottomCustom = false;
+  }
+
   return {
     ...base,
     ...mergedFromBook,
@@ -454,6 +556,8 @@ export function buildReceiptState(
     imageUrl: resolvedImageUrl,
     coverImageUrl: resolvedImageUrl,
     customImage: isCustom,
+    bottomImageUrl: resolvedBottomImageUrl,
+    bottomCustomImage: isBottomCustom,
     templateId,
     themeId: (savedData.themeId || base.themeId || 'white') as ReceiptThemeId,
     ditherEnabled: savedData.ditherEnabled ?? base.ditherEnabled ?? false,
