@@ -16,7 +16,7 @@ export const NODE_TYPES = {
   SKILL_SEARCH: 'skill_search',
   CALENDAR: 'calendar',
   WEATHER: 'weather',
-  /** 地图海报生成（多模态工具）：浏览器端渲染地图为图片（Leaflet 瓦片 / MapLibre 艺术主题） */
+  /** 城市地图海报（多模态工具）：浏览器端渲染地图为图片（Leaflet 瓦片 / MapLibre 艺术主题） */
   MAP_POSTER: 'map_poster',
   /** 图片检索（多模态工具）：检索 Unsplash / Pixabay 免版权图片并选一张输出（凭据在系统设置配置） */
   IMAGE_SEARCH: 'image_search',
@@ -157,7 +157,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
   },
   {
     type: NODE_TYPES.MAP_POSTER,
-    name: '地图海报生成',
+    name: '城市地图海报',
     description: '搜索地点并生成地图海报图片（Leaflet 瓦片 / MapLibre 艺术主题，浏览器端渲染导出）',
     category: 'multimodal',
     configurable: false,

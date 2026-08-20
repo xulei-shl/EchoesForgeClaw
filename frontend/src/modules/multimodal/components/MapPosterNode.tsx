@@ -186,7 +186,7 @@ const MapPosterNodeInner: React.FC<MapPosterNodeProps> = ({
       const imageUrl = typeof res?.image_url === 'string' ? res.image_url : '';
       if (!imageUrl) throw new Error('生成海报失败：未返回图片');
       onExport?.(id, imageUrl);
-      showToast('地图海报生成成功', { type: 'success' });
+      showToast('城市地图海报成功', { type: 'success' });
     } catch (err: any) {
       const msg = err?.isTimeout
         ? '生成超时，请缩小距离或稍后重试'
@@ -213,7 +213,7 @@ const MapPosterNodeInner: React.FC<MapPosterNodeProps> = ({
       id={id}
       initialX={initialX}
       initialY={initialY}
-      title={title || '地图海报生成'}
+      title={title || '城市地图海报'}
       dotColor={NODE_COLORS.map_poster}
       onRemove={() => onRemove?.(id)}
       onPositionChange={onPositionChange}

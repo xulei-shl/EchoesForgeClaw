@@ -57,7 +57,7 @@ export async function register(app: FastifyInstance): Promise<void> {
       } catch (err: any) {
         // Python 服务未启动或网络错误
         const msg = err?.cause?.code === 'ECONNREFUSED'
-          ? '地图海报生成服务未启动（Python API not running）'
+          ? '城市地图海报服务未启动（Python API not running）'
           : err?.message || String(err);
         return reply.code(502).send({ detail: msg });
       }
@@ -79,7 +79,7 @@ export async function register(app: FastifyInstance): Promise<void> {
         }
         return await resp.json();
       } catch (err: any) {
-        return reply.code(502).send({ detail: '地图海报生成服务未启动' });
+        return reply.code(502).send({ detail: '城市地图海报服务未启动' });
       }
     }
   );

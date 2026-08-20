@@ -70,7 +70,7 @@ export function generationNodeTypeLabel(nodeType?: string | null): string {
     prompt_search: '提示词检索',
     calendar: '万年历',
     weather: '天气查询',
-    map_poster: '地图海报生成',
+    map_poster: '城市地图海报',
     image_search: '图片检索',
     art_image_search: '艺术图片检索',
     receipt_printer: '图书小票生成',

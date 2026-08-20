@@ -1,6 +1,6 @@
 # Lessons Learned
 
-## 2026-08-20: 地图海报生成失败 — 错误被吞掉
+## 2026-08-20: 城市地图海报失败 — 错误被吞掉
 
 **问题：** `create_map_poster.py` 中 `fetch_graph()` 的 `except Exception` 只 `print` 了原始错误并返回 `None`，导致调用方只能看到"Failed to retrieve street network data."，看不到根本原因（如网络不通、Overpass API 超时、代理问题等）。
 

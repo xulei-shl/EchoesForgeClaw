@@ -169,7 +169,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   },
   {
     type: 'map_poster',
-    name: '地图海报生成',
+    name: '城市地图海报',
     description: '搜索地点并生成地图海报图片',
     category: 'multimodal',
     configurable: false,
@@ -301,7 +301,7 @@ export const NODE_PORT_TYPES: Record<CanvasNodeType, { output: NodePortType; inp
   calendar: { output: 'text', inputs: [] },
   // 天气查询：可连线文本节点传入城市（连线即输入）；无连线时手动输入 / 自动定位
   weather: { output: 'text', inputs: ['text'] },
-  // 地图海报生成：客户端渲染导出图片，无上游输入
+  // 城市地图海报：客户端渲染导出图片，无上游输入
   map_poster: { output: 'image', inputs: [] },
   // 图片检索：输出选中图片（本地 URL）；可连线文本节点作为检索关键词（连线即输入）
   image_search: { output: 'image', inputs: ['text'] },
