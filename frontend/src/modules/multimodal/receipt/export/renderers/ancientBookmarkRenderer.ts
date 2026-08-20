@@ -1,6 +1,7 @@
 import { getReceiptTheme } from '../../themes';
 import type { ReceiptState } from '../../types';
 import { ensureFontsReady, loadImageSafe } from '../common/canvasUtils';
+import { parseJuDou } from '../../../../../platform/utils/judou';
 
 /**
  * 绘制古籍版心书签 (Ancient Bookmark Export Engine - 1:1 所见即所得矢量与正片叠底印章导出)
@@ -212,18 +213,18 @@ export async function exportAncientBookmarkImage(
   ctx.stroke();
   ctx.restore();
 
-  // ---------- 5 栏通栏乌丝栏正文流 (Ruled Columns) ----------
+  // ---------- 乌丝栏与通用古籍竖排正文流 (Ruled Columns & Vertical Flow) ----------
   const contentAreaX = banxinRightX;
   const actualContentW = innerW - banxinW;
-  const colCount = 5;
-  const colW = actualContentW / colCount;
+  const colW = 42; // 每列乌丝栏宽度
+  const colCount = Math.max(5, Math.floor(actualContentW / colW));
 
-  // 绘制 4 条乌丝栏纵向细墨线
+  // 绘制乌丝栏纵向细墨线
   ctx.save();
   ctx.strokeStyle = `color-mix(in srgb, ${theme.text} 40%, transparent)`;
   ctx.lineWidth = 1;
   for (let c = 1; c < colCount; c++) {
-    const colX = contentAreaX + colW * c;
+    const colX = contentAreaX + actualContentW - colW * c;
     ctx.beginPath();
     ctx.moveTo(colX, bodyY);
     ctx.lineTo(colX, bodyY + bodyH);
@@ -231,123 +232,109 @@ export async function exportAncientBookmarkImage(
   }
   ctx.restore();
 
-  // 解析全文为字符 + 句读 token 序列
-  interface JudouToken {
-    char: string;
-    judou?: 'circle' | 'dot';
-  }
+  // 解析全文为规范古籍 Token 序列（包含数字转汉字、朱圈朱点等）
+  const rawExcerpt =
+    state.bookmarkExcerpt ||
+    '起著雍摄提格，尽玄黓困敦。初命晋大夫魏斯、赵籍、韩虔为诸侯。臣光曰：臣闻天子之职莫大于礼，礼莫大于分，分莫大于名。';
+  const allTokens = parseJuDou(rawExcerpt, { convertNumbers: true, preserveLineBreaks: true });
 
-  const rawExcerpt = state.bookmarkExcerpt || '起著雍摄提格，尽玄黓困敦。初命晋大夫魏斯、赵籍、韩虔为诸侯。臣光曰：臣闻天子之职莫大于礼，礼莫大于分，分莫大于名。';
-  const rawChars = Array.from(rawExcerpt.trim());
-  const allTokens: JudouToken[] = [];
-
-  for (const c of rawChars) {
-    if (c === '\n' || c === '\r' || c === ' ') continue;
-    if (/[。！？!?]/.test(c)) {
-      if (allTokens.length > 0) {
-        allTokens[allTokens.length - 1].judou = 'circle';
-      }
-    } else if (/[，、；：,;:]/.test(c)) {
-      if (allTokens.length > 0) {
-        allTokens[allTokens.length - 1].judou = 'dot';
-      }
-    } else {
-      allTokens.push({ char: c });
-    }
-  }
-
-  // 流式分入 5 栏
-  const columns: JudouToken[][] = [[], [], [], [], []];
-  const col0Capacity = 18;
-  const regularCapacity = 24;
-
-  let tokenIdx = 0;
-  for (let cIdx = 0; cIdx < colCount; cIdx++) {
-    const cap = cIdx === 0 ? col0Capacity : regularCapacity;
-    for (let i = 0; i < cap && tokenIdx < allTokens.length; i++) {
-      columns[cIdx].push(allTokens[tokenIdx++]);
-    }
-  }
-
-  // 绘制 5 栏文字（自右向左）
   const startY = bodyY + 16;
+  const bottomMaxY = bodyY + bodyH - 18;
   const charFontSize = 18;
-  const charSpacing = 7;
+  const charSpacing = 6;
+  const stepY = charFontSize + charSpacing;
 
-  for (let cIdx = 0; cIdx < colCount; cIdx++) {
-    // 从右向左：cIdx 0 在最右栏
-    const colCenterX = contentAreaX + actualContentW - colW * cIdx - colW / 2;
-    let y = startY;
+  let currentColIdx = 0;
+  let currentY = startY;
 
-    // 首栏（最右栏）：先绘制篇目大字
-    if (cIdx === 0) {
-      ctx.save();
-      ctx.font = `bold 21px ${minchoFont}`;
-      ctx.fillStyle = theme.text;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      const volChars = Array.from(volumeText);
-      for (const char of volChars) {
-        ctx.fillText(char, colCenterX, y + 21 / 2);
-        y += 21 + 8;
-      }
-      y += 14;
-      ctx.restore();
+  // 首栏（最右栏）：先绘制篇目大字
+  const colCenterX = (colIdx: number) =>
+    contentAreaX + actualContentW - colW * colIdx - colW / 2;
+
+  ctx.save();
+  ctx.font = `bold 21px ${minchoFont}`;
+  ctx.fillStyle = theme.text;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  const volChars = Array.from(volumeText);
+  for (const char of volChars) {
+    ctx.fillText(char, colCenterX(0), currentY + 21 / 2);
+    currentY += 21 + 8;
+  }
+  currentY += 12; // 篇目与后续正文间隔
+  ctx.restore();
+
+  // 绘制流式正文字符与朱笔句读
+  for (const token of allTokens) {
+    if (token.isBreak) {
+      // 显式换行：换到下一列
+      currentColIdx++;
+      currentY = startY;
+      if (currentColIdx >= colCount) break;
+      continue;
     }
 
-    // 绘制该栏正文字符与朱笔句读
-    const colTokens = columns[cIdx];
+    // 检查当前列是否已满
+    if (currentY + charFontSize > bottomMaxY) {
+      currentColIdx++;
+      currentY = startY;
+      if (currentColIdx >= colCount) break;
+    }
+
+    const cX = colCenterX(currentColIdx);
+    const cY = currentY + charFontSize / 2;
+
+    // 绘制汉字
     ctx.save();
     ctx.font = `normal ${charFontSize}px ${minchoFont}`;
     ctx.fillStyle = theme.text;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-
-    for (const token of colTokens) {
-      const charCenterY = y + charFontSize / 2;
-      ctx.fillText(token.char, colCenterX, charCenterY);
-
-      if (token.judou) {
-        const judouX = colCenterX + charFontSize * 0.46;
-        const judouY = charCenterY + charFontSize * 0.36;
-        ctx.save();
-        if (token.judou === 'circle') {
-          ctx.strokeStyle = '#b82828';
-          ctx.lineWidth = 1.6;
-          ctx.beginPath();
-          ctx.arc(judouX, judouY, 3.6, 0, Math.PI * 2);
-          ctx.stroke();
-        } else {
-          ctx.fillStyle = '#b82828';
-          ctx.beginPath();
-          ctx.arc(judouX, judouY, 2.6, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        ctx.restore();
-      }
-
-      y += charFontSize + charSpacing;
-    }
+    ctx.fillText(token.char, cX, cY);
     ctx.restore();
 
-    // 末栏（最左栏）：底部校刊题跋
-    if (cIdx === 4) {
-      const extraText = state.bookmarkExtra || '中华书局 谨印';
-      const extraChars = Array.from(extraText.replace(/\n/g, '  '));
+    // 绘制朱笔句读（朱圈/朱点）
+    if (token.judou) {
+      const judouX = cX + charFontSize * 0.48;
+      const judouY = cY - charFontSize * 0.32;
       ctx.save();
-      ctx.font = `normal 14px ${kaitiFont}`;
-      ctx.fillStyle = theme.text;
-      ctx.globalAlpha = 0.8;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      let extraY = bodyY + bodyH - (extraChars.length * 18 + 12);
-      for (const char of extraChars) {
-        ctx.fillText(char, colCenterX, extraY + 14 / 2);
-        extraY += 14 + 5;
+      if (token.judou === 'circle') {
+        ctx.strokeStyle = '#b82828';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.arc(judouX, judouY, 3.2, 0, Math.PI * 2);
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = '#b82828';
+        ctx.beginPath();
+        ctx.arc(judouX, judouY, 2.4, 0, Math.PI * 2);
+        ctx.fill();
       }
       ctx.restore();
     }
+
+    currentY += stepY;
   }
+
+  // 末尾列（最左或当前最末列）：底部校刊题跋
+  const extraText = state.bookmarkExtra || '中华书局 谨印';
+  const extraChars = Array.from(extraText.replace(/\n/g, '  '));
+  const footerColIdx = Math.min(colCount - 1, Math.max(currentColIdx + 1, colCount - 1));
+  const footerCenterX = colCenterX(footerColIdx);
+
+  ctx.save();
+  ctx.font = `normal 14px ${kaitiFont}`;
+  ctx.fillStyle = theme.text;
+  ctx.globalAlpha = 0.8;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  let extraY = bodyY + bodyH - (extraChars.length * 18 + 14);
+  for (const char of extraChars) {
+    ctx.fillText(char, footerCenterX, extraY + 14 / 2);
+    extraY += 14 + 5;
+  }
+  ctx.restore();
 
   // -------------------------------------------------------------
   // 5. 异步加载并以正片叠底（multiply）绘制多印章

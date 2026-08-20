@@ -4,6 +4,7 @@ import { getReceiptTheme } from '../../themes';
 import { generateRandomSeals, getRandomSealSrc } from '../../sealGenerator';
 import type { ReceiptSealItem, ReceiptState } from '../../types';
 import { stopEvent } from './common/stopEvent';
+import { AncientVerticalLayout } from '../../../../../platform/components/ui/AncientVerticalLayout';
 
 export interface AncientBookmarkPaperProps {
   state: ReceiptState;
@@ -17,12 +18,10 @@ export interface AncientBookmarkPaperProps {
  *
  * 经典古籍雕版与版心书签排版：
  * 1. 材质与肌理：泛黄做旧宣纸（中亮缘暗径向渐变）+ 纸浆微颗粒噪点 + 沉稳内阴影磨损感；
- * 2. 版心区（左侧）：上象鼻细线 + 上鱼尾 + 竖排版心题名 + 下鱼尾 + 下象鼻细线；
- * 3. 正文区（右侧）：从右向左多列排布（row-reverse），乌丝栏细线分割；
- *    - 第一列（最右侧）：汇文明朝体大字号竖排题名 + 卷号 / 副标题；
- *    - 第二列（中间）：竖排精彩文摘 / 提要精句；
- *    - 第三列（最左侧）：著者署名 + 出版社 · 出版年；
- * 4. 随机印章体系：从 39 枚古籍真迹印章中随机抽取分布，支持正片叠底（multiply）、旋转角度与一键「重新盖印」。
+ * 2. 书眉天头区（顶部）：系列丛书名 + 书名卷次 + 著者责任者；
+ * 3. 版心区（左侧）：上象鼻细线 + 上鱼尾 + 竖排版心题名与叶码 + 下鱼尾 + 下象鼻细线；
+ * 4. 正文区（右侧）：基于通用 AncientVerticalLayout 实现原生 vertical-rl 竖排流、乌丝栏与朱圈/朱点句读；
+ * 5. 随机印章体系：从 39 枚古籍真迹印章中随机抽取分布，支持正片叠底（multiply）、旋转角度与一键「重新盖印」。
  */
 export const AncientBookmarkPaper = React.forwardRef<HTMLDivElement, AncientBookmarkPaperProps>(
   ({ state, onChange, disabled = false }, ref) => {
@@ -33,46 +32,10 @@ export const AncientBookmarkPaper = React.forwardRef<HTMLDivElement, AncientBook
     // 字体栈：优先汇文明朝体与又又意宋
     const minchoFontFamily =
       "'Huiwen-mincho', 'Huiwen Mincho', '又又意宋', 'Shippori Mincho B1', 'Shippori Mincho', 'Songti SC', 'Noto Serif SC', 'Source Han Serif SC', serif";
-    const kaitiFontFamily =
-      "'Kaiti SC', 'STKaiti', 'KaiTi', '楷体', 'LXGW WenKai', serif";
 
-    // 解析文摘标点符号为古籍朱笔句读并按 5 栏流式分栏
-    const excerptText = state.bookmarkExcerpt || '起著雍摄提格，尽玄黓困敦。初命晋大夫魏斯、赵籍、韩虔为诸侯。臣光曰：臣闻天子之职莫大于礼，礼莫大于分，分莫大于名。';
-    const parsedExcerptLines = React.useMemo(() => {
-      // 1. 将全文解析为字符 + 句读 token 序列
-      const chars = Array.from(excerptText.trim());
-      const allTokens: Array<{ char: string; judou?: 'circle' | 'dot' }> = [];
-
-      for (const c of chars) {
-        if (c === '\n' || c === '\r' || c === ' ') continue;
-        if (/[。！？!?]/.test(c)) {
-          if (allTokens.length > 0) {
-            allTokens[allTokens.length - 1].judou = 'circle';
-          }
-        } else if (/[，、；：,;:]/.test(c)) {
-          if (allTokens.length > 0) {
-            allTokens[allTokens.length - 1].judou = 'dot';
-          }
-        } else {
-          allTokens.push({ char: c });
-        }
-      }
-
-      // 2. 流式分入 5 栏（第 0 栏为篇目大字 + 正文，其余栏各容纳 ~24 字）
-      const columns: Array<Array<{ char: string; judou?: 'circle' | 'dot' }>> = [[], [], [], [], []];
-      const col0Capacity = 18; // 首栏有大字篇目，正文容量略小
-      const regularCapacity = 24; // 其余栏容量
-
-      let tokenIdx = 0;
-      for (let cIdx = 0; cIdx < 5; cIdx++) {
-        const cap = cIdx === 0 ? col0Capacity : regularCapacity;
-        for (let i = 0; i < cap && tokenIdx < allTokens.length; i++) {
-          columns[cIdx].push(allTokens[tokenIdx++]);
-        }
-      }
-
-      return columns;
-    }, [excerptText]);
+    const excerptText =
+      state.bookmarkExcerpt ||
+      '起著雍摄提格，尽玄黓困敦。初命晋大夫魏斯、赵籍、韩虔为诸侯。臣光曰：臣闻天子之职莫大于礼，礼莫大于分，分莫大于名。';
 
     // 确保有印章数据
     const seals = state.seals && state.seals.length > 0 ? state.seals : generateRandomSeals();
@@ -291,15 +254,10 @@ export const AncientBookmarkPaper = React.forwardRef<HTMLDivElement, AncientBook
               />
             </div>
 
-            {/* ---------- 右侧：5 栏通栏乌丝栏正文流 (Ruled Columns Flow) ---------- */}
-            <div
-              className="grow flex flex-row-reverse relative overflow-hidden"
-              style={{
-                fontFamily: minchoFontFamily,
-              }}
-            >
+            {/* ---------- 右侧：通用古籍竖排正文流 (Ancient Vertical Content Flow) ---------- */}
+            <div className="grow relative overflow-hidden p-2">
               {isEditingExcerpt && !disabled ? (
-                <div className="absolute inset-0 z-20 bg-amber-50/95 p-3 flex flex-col gap-2">
+                <div className="absolute inset-0 z-30 bg-amber-50/95 p-3 flex flex-col gap-2">
                   <div className="flex items-center justify-between text-[11px] text-amber-900 border-b border-amber-200 pb-1">
                     <span>编辑古籍正文与文摘（标点自动转换为朱笔句读）</span>
                     <button
@@ -324,78 +282,20 @@ export const AncientBookmarkPaper = React.forwardRef<HTMLDivElement, AncientBook
                 </div>
               ) : null}
 
-              {/* 5 道乌丝栏（纵向墨线分割，文字从右向左流式排布） */}
-              {Array.from({ length: 5 }).map((_, colIdx) => {
-                // colIdx: 0 最右栏 (篇目大字与首段), 1,2,3 正文流, 4 最左栏 (出版题跋)
-                const isRightmost = colIdx === 0;
-                const isLeftmost = colIdx === 4;
-
-                return (
-                  <div
-                    key={colIdx}
-                    onClick={() => !disabled && setIsEditingExcerpt(true)}
-                    className="grow basis-0 flex flex-col items-center justify-start py-2 px-1 relative cursor-pointer group/col select-text"
-                    style={{
-                      borderLeft: colIdx < 4 ? `1px solid color-mix(in srgb, ${theme.text} 40%, transparent)` : undefined,
-                      writingMode: 'vertical-rl',
-                    }}
-                    title={disabled ? undefined : '点击编辑正文与文摘（自动转换为古籍朱批句读）'}
-                  >
-                    {isRightmost && (
-                      <div className="flex flex-col items-center justify-start">
-                        {/* 篇目大字 */}
-                        <div className="text-[16px] font-bold tracking-[6px] mb-2" style={{ color: theme.text }}>
-                          {state.bookmarkVolume || '卷第一'}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 正文各列文字与朱笔句读 */}
-                    <div className="flex flex-col items-center justify-start">
-                      {(parsedExcerptLines[colIdx] || []).map((token, charIdx) => (
-                        <div
-                          key={charIdx}
-                          className="relative flex items-center justify-center"
-                          style={{
-                            height: '18px',
-                            width: '15px',
-                          }}
-                        >
-                          <span
-                            className="text-[14px] leading-none select-text"
-                            style={{
-                              fontFamily: minchoFontFamily,
-                              color: theme.text,
-                            }}
-                          >
-                            {token.char}
-                          </span>
-                          {/* 古籍朱圈（句号/问号/感叹号） */}
-                          {token.judou === 'circle' && (
-                            <span
-                              className="absolute -right-2 bottom-0 w-[4.5px] h-[4.5px] rounded-full border-[1.2px] border-[#b82828] bg-transparent pointer-events-none"
-                              title="朱圈"
-                            />
-                          )}
-                          {/* 古籍朱点（逗号/顿号/分号） */}
-                          {token.judou === 'dot' && (
-                            <span
-                              className="absolute -right-1.5 bottom-0.5 w-[3px] h-[3px] rounded-full bg-[#b82828] pointer-events-none"
-                              title="朱点"
-                            />
-                          )}
-                        </div>
-                      ))}
-                    </div>
-
-                    {isLeftmost && (
-                      <div className="mt-auto pt-2 flex flex-col items-center justify-end text-[11px] opacity-75" style={{ fontFamily: kaitiFontFamily }}>
-                        <span>{state.bookmarkExtra || '中华书局 谨印'}</span>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+              <AncientVerticalLayout
+                text={excerptText}
+                headerTitle={state.bookmarkVolume || '卷第一'}
+                footerNote={state.bookmarkExtra || '中华书局 谨印'}
+                fontSize={13}
+                columnWidth={30}
+                letterSpacing={3.5}
+                textColor={theme.text}
+                puncColor="#b82828"
+                showRuledLines={true}
+                onClick={() => !disabled && setIsEditingExcerpt(true)}
+                className="cursor-pointer"
+                title={disabled ? undefined : '点击编辑正文与文摘（自动转换为古籍朱批句读）'}
+              />
             </div>
           </div>
         </div>
