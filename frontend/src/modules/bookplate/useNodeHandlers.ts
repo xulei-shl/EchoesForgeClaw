@@ -39,6 +39,7 @@ export interface NodeHandlersDeps {
   fetchBookInfo: (isbn: string, nodeId?: string, opts?: { force?: boolean }) => Promise<void>;
   removingRef: React.MutableRefObject<boolean>;
   setCtxMenu: React.Dispatch<React.SetStateAction<{ x: number; y: number; nodeId: string } | null>>;
+  autoSaveGeneration: (imageNodeId: string, imageUrl: string) => Promise<number | null>;
 }
 
 export function useNodeHandlers({
@@ -46,7 +47,7 @@ export function useNodeHandlers({
   setNodes, setEdges, setNodeSizes, setFavoritedState, setPublishedState,
   setSelectedImageId, setStaleRecordIds, updateNodeData, recordHistory,
   runNode, runImageGeneration, addChildNode, toggleFavoriteForImage, togglePublicForImage,
-  showToast, dialog, fetchBookInfo, removingRef, setCtxMenu
+  showToast, dialog, fetchBookInfo, removingRef, setCtxMenu, autoSaveGeneration
 }: NodeHandlersDeps) {
   /** 收集节点的全部子孙节点 id（沿出边 BFS，含自身）；分支/级联删除用 */
   const collectDescendantIds = (id: string): string[] => {
@@ -222,6 +223,32 @@ export function useNodeHandlers({
   const handleToggleFavoriteFor = useCallback((id: string) => toggleFavoriteForImage(id), []);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const handleTogglePublicFor = useCallback((id: string) => togglePublicForImage(id), []);
+  /** 藏书票图像节点：手动保存到数据库历史记录表 */
+  const handleSaveImageFor = useCallback(
+    async (id: string) => {
+      const node = nodesRef.current.find((n) => n.id === id);
+      if (!node || node.type !== 'image_generation') return;
+      const imageUrl = node.data?.imageUrl;
+      if (!imageUrl) return;
+
+      try {
+        const genId = await autoSaveGeneration(id, imageUrl);
+        if (!genId) {
+          throw new Error('保存历史记录失败');
+        }
+        updateNodeData(id, { isSaved: true });
+        setSelectedImageId(id);
+        recordHistory();
+        showToast('藏书票图像已保存到数据库，已解锁公开与收藏', { type: 'success' });
+      } catch (error: any) {
+        console.error('Failed to save image to database:', error);
+        showToast(error?.message || '保存失败，请重试', { type: 'error' });
+        throw error;
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
   /** 文本节点保存编辑内容（无需分支，原地保存；内容未变化不记历史） */
   const handleEditTextFor = useCallback((id: string, content: string) => {
     const node = nodesRef.current.find((n) => n.id === id);
@@ -1267,6 +1294,7 @@ export function useNodeHandlers({
     handleRetryPromptFor,
     handleRunAnalysisFor,
     handleRetryImageFor,
+    handleSaveImageFor,
     handleToggleFavoriteFor,
     handleTogglePublicFor,
     handleEditTextFor,

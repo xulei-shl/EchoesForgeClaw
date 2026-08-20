@@ -71,6 +71,8 @@ export interface NodeViewHelpers {
   handleRunFor: (id: string) => void;
   handleUpdateRunSettingsFor: (id: string, settings: NodeRunSettings) => void;
   handleRetryImageFor: (id: string) => void;
+  /** 藏书票图像节点：手动保存到数据库历史记录表 */
+  handleSaveImageFor: (id: string) => Promise<void>;
   handleSelectImage: (id: string) => void;
   handleToggleFavoriteFor: (id: string) => Promise<boolean>;
   handleTogglePublicFor: (id: string) => Promise<boolean>;
@@ -314,11 +316,13 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           isMock={node.data.isMock}
           isFavorited={!!h.favoritedState[node.id]}
           isPublic={!!h.publishedState[node.id]}
+          isSaved={Boolean(node.data?.isSaved)}
           isSelected={node.id === h.activeImage?.id}
           recordDeleted={h.staleRecordIds.has(node.id)}
           onSelect={h.handleSelectImage}
           onRetry={h.handleRetryImageFor}
           onRun={h.handleRunFor}
+          onSave={h.handleSaveImageFor}
           onToggleFavorite={h.handleToggleFavoriteFor}
           onTogglePublic={h.handleTogglePublicFor}
           settings={settings}

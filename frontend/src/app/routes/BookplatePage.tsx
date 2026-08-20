@@ -686,10 +686,13 @@ const BookplatePage: React.FC = () => {
     handleUpdateWebSearchEditorFor,
     handleUpdateMapPosterEditorFor,
     handleExportMapPosterFor,
+    handleUpdateMapArtEditorFor,
+    handleExportMapArtFor,
     handleExportReceiptFor,
     handleUpdateReceiptStateFor,
     handleExportStampFor,
     handleUpdateStampStateFor,
+    handleSaveImageFor,
     handleSelectSearchImageFor,
     handleUpdateImageSearchEditorFor,
     handleSelectGlamImageFor,
@@ -705,13 +708,17 @@ const BookplatePage: React.FC = () => {
     setNodes, setEdges, setNodeSizes, setFavoritedState, setPublishedState,
     setSelectedImageId, setStaleRecordIds, updateNodeData, recordHistory,
     runNode, runImageGeneration, addChildNode, toggleFavoriteForImage, togglePublicForImage,
-    showToast, dialog, fetchBookInfo, removingRef, setCtxMenu
+    showToast, dialog, fetchBookInfo, removingRef, setCtxMenu, autoSaveGeneration
   });
 
   // ---------- 侧边操作栏 ----------
   const handleBarFavorite = async () => {
     const target = activeImage;
     if (!target) return;
+    if (target.data?.imageUrl && !target.data?.isSaved) {
+      showToast('请先保存到数据库后再收藏', { type: 'warning', position: 'top-right' });
+      return;
+    }
     try {
       const next = await toggleFavoriteForImage(target.id);
       showToast(next ? '已收藏到「我的收藏」' : '已取消收藏', { type: 'success', position: 'top-right' });
@@ -723,6 +730,10 @@ const BookplatePage: React.FC = () => {
   const handleBarPublic = async () => {
     const target = activeImage;
     if (!target) return;
+    if (target.data?.imageUrl && !target.data?.isSaved) {
+      showToast('请先保存到数据库后再公开', { type: 'warning', position: 'top-right' });
+      return;
+    }
     try {
       const next = await togglePublicForImage(target.id);
       showToast(next ? '已公开到画廊' : '已从画廊撤下', { type: 'success', position: 'top-right' });
@@ -866,6 +877,7 @@ const BookplatePage: React.FC = () => {
     handleRunFor,
     handleUpdateRunSettingsFor,
     handleRetryImageFor,
+    handleSaveImageFor,
     handleSelectImage,
     handleToggleFavoriteFor,
     handleTogglePublicFor,
@@ -888,6 +900,8 @@ const BookplatePage: React.FC = () => {
     handleUpdateWebSearchEditorFor,
     handleExportMapPosterFor,
     handleUpdateMapPosterEditorFor,
+    handleExportMapArtFor,
+    handleUpdateMapArtEditorFor,
     handleExportReceiptFor,
     handleUpdateReceiptStateFor,
     handleExportStampFor,

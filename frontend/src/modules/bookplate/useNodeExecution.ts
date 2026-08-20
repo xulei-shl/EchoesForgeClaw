@@ -253,11 +253,9 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
                 isGenerating: false,
                 error: payload?.mock ? 'API 配置缺失，当前为演示占位图' : null,
                 isMock: payload?.mock,
+                isSaved: false,
               });
               ctx.setSelectedImageId(nodeId);
-              if (!payload?.mock) {
-                void ctx.autoSaveGeneration(nodeId, url).catch(() => undefined);
-              }
             }
             return;
           }
@@ -322,6 +320,7 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
       imageUrl: null,
       error: null,
       agentSteps: [],
+      isSaved: false,
     });
     // 重新生成后，旧的保存快照/收藏状态失效
     delete ctx.generationIds.current[node.id];
@@ -362,13 +361,10 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
         isGenerating: false,
         error: res.mock ? 'API 配置缺失，当前为演示占位图' : null,
         isMock: res.mock,
+        isSaved: false,
       });
       // 新图生成成功：自动选中，使全局操作栏作用于本节点
       ctx.setSelectedImageId(node.id);
-      // 成功即自动保存一条历史记录（失败不保存），重试会新建而非覆盖
-      if (!res.mock) {
-        await ctx.autoSaveGeneration(node.id, res.image_url).catch(() => undefined);
-      }
     } catch (error: any) {
       if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') return;
       console.error('Failed to generate image:', error);

@@ -66,7 +66,7 @@ const MapArtNodeInner: React.FC<MapArtNodeProps> = ({
   lat = MAP_ART_DEFAULTS.lat,
   lon = MAP_ART_DEFAULTS.lon,
   cityName = MAP_ART_DEFAULTS.cityName,
-  countryName = MAP_ART_DEFAULTS.countryName,
+  countryName: _countryName = MAP_ART_DEFAULTS.countryName,
   onRemove,
   onPositionChange,
   onSizeChange,

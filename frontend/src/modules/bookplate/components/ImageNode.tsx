@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
-import { Globe, Heart, RefreshCw, Trash2, AlertTriangle, Maximize2 } from 'lucide-react';
+import { Globe, Heart, RefreshCw, Trash2, AlertTriangle, Maximize2, Check, Loader2 } from 'lucide-react';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
@@ -28,8 +28,12 @@ export interface ImageNodeProps {
   isFavorited?: boolean;
   isPublic?: boolean;
   isMock?: boolean;
+  /** 是否已保存到数据库 */
+  isSaved?: boolean;
   onRemove?: (id: string) => void;
   onRetry?: (id: string) => void;
+  /** 手动保存到数据库（generations 历史记录表） */
+  onSave?: (id: string) => Promise<void>;
   /** 收藏切换，resolve 为新的收藏状态；失败时 reject */
   onToggleFavorite?: (id: string) => Promise<boolean>;
   /** 公开切换，resolve 为新的公开状态；失败时 reject */
@@ -91,6 +95,7 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
   isFavorited = false,
   isPublic = false,
   isMock = false,
+  isSaved = false,
   isSelected = false,
   referenceImageUrl,
   referenceNote,
@@ -99,6 +104,7 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
   onSelect,
   onRemove,
   onRetry,
+  onSave,
   onToggleFavorite,
   onTogglePublic,
   onPositionChange,
@@ -120,6 +126,7 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
   configId,
 }) => {
   const [notice, setNotice] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const noticeTimer = useRef<number | null>(null);
 
   useEffect(() => {
@@ -132,6 +139,16 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
     setNotice(text);
     if (noticeTimer.current) window.clearTimeout(noticeTimer.current);
     noticeTimer.current = window.setTimeout(() => setNotice(null), 2600);
+  };
+
+  const handleSave = async () => {
+    if (!imageUrl || isSaving || !onSave || isSaved) return;
+    setIsSaving(true);
+    try {
+      await onSave(id);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const runToggle = async (
@@ -206,17 +223,47 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
               configId={configId}
             />
           )}
+          {/* 独立保存到数据库按钮 */}
           <NodeActionBar.Custom
-            icon={<Heart size={16} strokeWidth={1.5} className={isFavorited ? 'fill-accent text-accent' : ''} />}
-            tooltip={isFavorited ? '取消收藏' : '收藏'}
-            onClick={() => runToggle(onToggleFavorite, (active) => (active ? '已收藏' : '已取消收藏'))}
-            disabled={!imageUrl || isGenerating || !onToggleFavorite || isMock}
+            icon={
+              isSaving ? (
+                <Loader2 size={16} className="animate-spin text-accent" />
+              ) : (
+                <Check size={16} strokeWidth={isSaved ? 2.5 : 1.5} className={isSaved ? 'text-accent' : ''} />
+              )
+            }
+            onClick={handleSave}
+            disabled={!imageUrl || isGenerating || isSaved || isMock || isSaving}
+            hasDownstream={hasDownstream}
+            downstreamTooltip="有下级节点，不可保存"
+            tooltip={isSaved ? '已保存到数据库' : '保存到数据库（保存后可公开/收藏）'}
+            className={isSaved ? 'text-accent opacity-70' : 'text-ink-light hover:text-accent'}
           />
+          {/* 收藏按钮（未保存时禁用并提示） */}
           <NodeActionBar.Custom
-            icon={<Globe size={16} strokeWidth={1.5} className={isPublic ? 'text-accent' : ''} />}
-            tooltip={isPublic ? '从画廊撤下' : '公开到画廊'}
-            onClick={() => runToggle(onTogglePublic, (active) => (active ? '已公开' : '已撤下'))}
-            disabled={!imageUrl || isGenerating || !onTogglePublic || isMock}
+            icon={<Heart size={16} strokeWidth={1.5} className={isSaved && isFavorited ? 'fill-accent text-accent' : ''} />}
+            tooltip={
+              !isSaved
+                ? '请先保存到数据库后再收藏'
+                : isFavorited
+                  ? '取消收藏'
+                  : '收藏'
+            }
+            onClick={() => isSaved && runToggle(onToggleFavorite, (active) => (active ? '已收藏' : '已取消收藏'))}
+            disabled={!isSaved || !imageUrl || isGenerating || !onToggleFavorite || isMock}
+          />
+          {/* 公开按钮（未保存时禁用并提示） */}
+          <NodeActionBar.Custom
+            icon={<Globe size={16} strokeWidth={1.5} className={isSaved && isPublic ? 'text-accent' : ''} />}
+            tooltip={
+              !isSaved
+                ? '请先保存到数据库后再公开'
+                : isPublic
+                  ? '从画廊撤下'
+                  : '公开到画廊'
+            }
+            onClick={() => isSaved && runToggle(onTogglePublic, (active) => (active ? '已公开' : '已撤下'))}
+            disabled={!isSaved || !imageUrl || isGenerating || !onTogglePublic || isMock}
           />
           <NodeActionBar.Custom
             icon={<Trash2 size={16} strokeWidth={1.5} />}
