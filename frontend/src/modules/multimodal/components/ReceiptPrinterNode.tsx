@@ -179,11 +179,23 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
     if (!currentFingerprint || !upstreamBookData) return;
     if (currentFingerprint !== lastSyncedFingerprintRef.current) {
       lastSyncedFingerprintRef.current = currentFingerprint;
-      const next = computeMergedState();
+      const next = buildReceiptState(
+        localState.templateId,
+        upstreamBookData,
+        {
+          themeId: localState.themeId,
+          ditherEnabled: localState.ditherEnabled,
+          seals: localState.seals,
+        },
+        {
+          overrideUserEdits: true,
+          upstreamImageUrl: effectiveUpstreamImageUrl,
+        }
+      );
       setLocalState(next);
       onUpdateState?.(id, next);
     }
-  }, [currentFingerprint, upstreamBookData, computeMergedState, id, onUpdateState]);
+  }, [currentFingerprint, upstreamBookData, localState.templateId, localState.themeId, localState.ditherEnabled, localState.seals, effectiveUpstreamImageUrl, id, onUpdateState]);
 
   // 重置为默认：将小票所有字段完整重置到当前模板初始默认态（自动填充图书元数据与上游图片，保留选中的纸张颜色与点阵设置）
   const handleResetToDefault = useCallback(() => {

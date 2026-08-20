@@ -82,11 +82,12 @@ export interface ReceiptSealItem {
   id: string;
   src: string;
   name?: string;
-  positionPreset?: 'top-right' | 'bottom-left' | 'middle-cross' | 'top-left' | 'custom';
+  positionPreset?: string;
   width?: number;
   height?: number;
-  top?: number;
+  leftPercent?: number;
   topPercent?: number;
+  top?: number;
   left?: number;
   right?: number;
   bottom?: number;
@@ -177,7 +178,11 @@ export interface ReceiptState {
   serialNumber?: string;
   /** 书摘小票英文胶囊横幅文案（如 "BOOK EXCERPT SHARING"） */
   englishBanner?: string;
-  /** 古籍书签版心文字（如 "資治通鑑" / "百年孤独"） */
+  /** 古籍书签书眉丛书名（如 "欽定四庫全書" / "典藏精選"） */
+  seriesTitle?: string;
+  /** 古籍书签版心叶码（如 "一" / "葉一"） */
+  leafNumber?: string;
+  /** 古籍书签版心文字（如 "資治通鑑卷一" / "百年孤独"） */
   banxinTitle?: string;
   /** 古籍书签第一列卷号/副标题（如 "卷第一"） */
   bookmarkVolume?: string;

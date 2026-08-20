@@ -12,8 +12,8 @@ export async function exportAncientBookmarkImage(
   await ensureFontsReady();
 
   const theme = getReceiptTheme(state.themeId || 'ancient');
-  const baseWidth = 360;
-  const baseHeight = 840;
+  const baseWidth = 420;
+  const baseHeight = 880;
 
   const minchoFont =
     "'Huiwen-mincho', 'Huiwen Mincho', '又又意宋', 'Shippori Mincho B1', 'Shippori Mincho', 'Songti SC', 'Noto Serif SC', 'Source Han Serif SC', serif";
@@ -29,31 +29,27 @@ export async function exportAncientBookmarkImage(
   ctx.scale(scale, scale);
 
   // -------------------------------------------------------------
-  // 1. 绘制做旧纸张背景（径向渐变模拟纸张老化：中亮缘暗）
+  // 1. 绘制固定宣纸肌理背景图 (/assets/receipt/paper.jpg)
   // -------------------------------------------------------------
   ctx.save();
-  const bgGrad = ctx.createRadialGradient(
-    baseWidth * 0.5,
-    baseHeight * 0.42,
-    baseWidth * 0.1,
-    baseWidth * 0.5,
-    baseHeight * 0.5,
-    baseHeight * 0.65
-  );
-  bgGrad.addColorStop(0, '#ebdcb8');
-  bgGrad.addColorStop(0.7, theme.bg || '#e4d1a9');
-  bgGrad.addColorStop(1, '#cca972');
-  ctx.fillStyle = bgGrad;
-  ctx.fillRect(0, 0, baseWidth, baseHeight);
-
-  // 叠加细腻天然纸浆微颗粒噪点
-  const grainCount = Math.floor(baseWidth * baseHeight * 0.035);
-  for (let i = 0; i < grainCount; i++) {
-    const gx = Math.random() * baseWidth;
-    const gy = Math.random() * baseHeight;
-    const isDark = Math.random() > 0.5;
-    ctx.fillStyle = isDark ? 'rgba(90, 60, 20, 0.04)' : 'rgba(255, 255, 255, 0.06)';
-    ctx.fillRect(gx, gy, 1, 1);
+  const bgImg = await loadImageSafe('/assets/receipt/paper.jpg');
+  if (bgImg) {
+    ctx.drawImage(bgImg, 0, 0, baseWidth, baseHeight);
+  } else {
+    // 降级兜底：做旧宣纸渐变
+    const bgGrad = ctx.createRadialGradient(
+      baseWidth * 0.5,
+      baseHeight * 0.42,
+      baseWidth * 0.1,
+      baseWidth * 0.5,
+      baseHeight * 0.5,
+      baseHeight * 0.65
+    );
+    bgGrad.addColorStop(0, '#f9f5ed');
+    bgGrad.addColorStop(0.7, theme.bg || '#e4d1a9');
+    bgGrad.addColorStop(1, '#cca972');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, baseWidth, baseHeight);
   }
   ctx.restore();
 
@@ -86,9 +82,49 @@ export async function exportAncientBookmarkImage(
   ctx.restore();
 
   // -------------------------------------------------------------
-  // 3. 绘制左侧版心区 (Banxin Area)
+  // 3. 绘制顶部古籍书眉天头区 (Top Shumei Header Bar)
   // -------------------------------------------------------------
-  const banxinW = 56;
+  const shumeiH = 44;
+  const shumeiBottomY = innerY + shumeiH;
+
+  ctx.save();
+  ctx.strokeStyle = `color-mix(in srgb, ${theme.text} 65%, transparent)`;
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(innerX, shumeiBottomY);
+  ctx.lineTo(innerX + innerW, shumeiBottomY);
+  ctx.stroke();
+
+  // ① 书眉左侧：丛书系列名
+  const seriesName = state.seriesTitle || '欽定四庫全書';
+  ctx.font = `500 15px ${minchoFont}`;
+  ctx.fillStyle = theme.text;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(seriesName, innerX + 16, innerY + shumeiH / 2);
+
+  // ② 书眉中间：书名与卷次
+  const bookTitle = state.storeName || '資治通鑑';
+  const volumeText = state.bookmarkVolume || '卷第一';
+  ctx.font = `bold 17px ${minchoFont}`;
+  ctx.textAlign = 'center';
+  ctx.fillText(`${bookTitle}  ${volumeText}`, innerX + innerW / 2, innerY + shumeiH / 2);
+
+  // ③ 书眉右侧：责任者
+  const authorField = state.metaFields?.find((f) => f.key === 'author')?.value || '司马光';
+  ctx.font = `normal 14px ${minchoFont}`;
+  ctx.textAlign = 'right';
+  ctx.fillText(`${authorField} 撰`, innerX + innerW - 16, innerY + shumeiH / 2);
+  ctx.restore();
+
+  // -------------------------------------------------------------
+  // 4. 绘制雕版正文与左侧版心区 (Body Area)
+  // -------------------------------------------------------------
+  const bodyY = shumeiBottomY;
+  const bodyH = innerH - shumeiH;
+
+  // ---------- 左侧版心区 (Banxin Area) ----------
+  const banxinW = 50;
   const banxinRightX = innerX + banxinW;
 
   // 版心右分割线
@@ -96,43 +132,43 @@ export async function exportAncientBookmarkImage(
   ctx.strokeStyle = theme.text;
   ctx.lineWidth = 1.2;
   ctx.beginPath();
-  ctx.moveTo(banxinRightX, innerY);
-  ctx.lineTo(banxinRightX, innerY + innerH);
+  ctx.moveTo(banxinRightX, bodyY);
+  ctx.lineTo(banxinRightX, bodyY + bodyH);
   ctx.stroke();
   ctx.restore();
 
   // 版心中轴 X
   const banxinCenterX = innerX + banxinW / 2;
-  const banxinPadY = 24;
-  const banxinTopY = innerY + banxinPadY;
-  const banxinBottomY = innerY + innerH - banxinPadY;
+  const banxinPadY = 16;
+  const banxinTopY = bodyY + banxinPadY;
+  const banxinBottomY = bodyY + bodyH - banxinPadY;
 
   // 版心题名文字
-  const banxinTitle = state.banxinTitle || state.storeName || '資治通鑑';
-  const banxinFontSize = 18;
-  const banxinLetterSpacing = 7;
+  const banxinTitle = state.banxinTitle || `${bookTitle}${volumeText}`;
+  const banxinFontSize = 14;
+  const banxinLetterSpacing = 5;
   const banxinChars = Array.from(banxinTitle);
   const banxinTitleHeight =
     banxinChars.length * banxinFontSize + (banxinChars.length - 1) * banxinLetterSpacing;
 
-  const fishtailH = 38;
-  const fishtailW = 24;
+  const fishtailH = 28;
+  const fishtailW = 20;
   const banxinCenterY = (banxinTopY + banxinBottomY) / 2;
-  const banxinTitleStartY = banxinCenterY - banxinTitleHeight / 2;
+  const banxinTitleStartY = banxinCenterY - banxinTitleHeight / 2 - 10;
 
-  const fishtailTopY = banxinTitleStartY - fishtailH - 12;
-  const fishtailBottomY = banxinTitleStartY + banxinTitleHeight + 12;
+  const fishtailTopY = banxinTitleStartY - fishtailH - 10;
+  const fishtailBottomY = banxinTitleStartY + banxinTitleHeight + 24;
 
   // ① 上象鼻线
   ctx.save();
   ctx.strokeStyle = theme.text;
-  ctx.lineWidth = 1.6;
+  ctx.lineWidth = 1.4;
   ctx.beginPath();
   ctx.moveTo(banxinCenterX, banxinTopY);
   ctx.lineTo(banxinCenterX, fishtailTopY);
   ctx.stroke();
 
-  // ② 上鱼尾 (clipPath: 0 0, 100% 0, 100% 100%, 50% 65%, 0 100%)
+  // ② 上鱼尾 (黑鱼尾)
   ctx.fillStyle = theme.text;
   ctx.beginPath();
   ctx.moveTo(banxinCenterX - fishtailW / 2, fishtailTopY);
@@ -154,7 +190,12 @@ export async function exportAncientBookmarkImage(
     curBanxinY += banxinFontSize + banxinLetterSpacing;
   }
 
-  // ④ 下鱼尾 (clipPath: 0 0, 50% 35%, 100% 0, 100% 100%, 0 100%)
+  // 版心叶码
+  const leafNumber = state.leafNumber || '一';
+  ctx.font = `normal 13px ${minchoFont}`;
+  ctx.fillText(leafNumber, banxinCenterX, curBanxinY + 12);
+
+  // ④ 下鱼尾 (黑鱼尾)
   ctx.beginPath();
   ctx.moveTo(banxinCenterX - fishtailW / 2, fishtailBottomY);
   ctx.lineTo(banxinCenterX, fishtailBottomY + fishtailH * 0.35);
@@ -171,164 +212,140 @@ export async function exportAncientBookmarkImage(
   ctx.stroke();
   ctx.restore();
 
-  // -------------------------------------------------------------
-  // 4. 绘制右侧正文区乌丝栏与竖排文字
-  // -------------------------------------------------------------
+  // ---------- 5 栏通栏乌丝栏正文流 (Ruled Columns) ----------
   const contentAreaX = banxinRightX;
   const actualContentW = innerW - banxinW;
-  const colW = actualContentW / 3;
+  const colCount = 5;
+  const colW = actualContentW / colCount;
 
-  // 乌丝栏分割线（两道垂直墨线，将正文分为 3 列）
+  // 绘制 4 条乌丝栏纵向细墨线
   ctx.save();
-  ctx.strokeStyle = `color-mix(in srgb, ${theme.text} 55%, transparent)`;
+  ctx.strokeStyle = `color-mix(in srgb, ${theme.text} 40%, transparent)`;
   ctx.lineWidth = 1;
-  const colLine1X = contentAreaX + colW;
-  const colLine2X = contentAreaX + colW * 2;
-
-  ctx.beginPath();
-  ctx.moveTo(colLine1X, innerY);
-  ctx.lineTo(colLine1X, innerY + innerH);
-  ctx.moveTo(colLine2X, innerY);
-  ctx.lineTo(colLine2X, innerY + innerH);
-  ctx.stroke();
+  for (let c = 1; c < colCount; c++) {
+    const colX = contentAreaX + colW * c;
+    ctx.beginPath();
+    ctx.moveTo(colX, bodyY);
+    ctx.lineTo(colX, bodyY + bodyH);
+    ctx.stroke();
+  }
   ctx.restore();
 
-  // 辅助函数：绘制竖排文字
-  const drawVerticalColumnText = (
-    text: string,
-    centerX: number,
-    startY: number,
-    fontSize: number,
-    letterSpacing: number,
-    fontFamily: string,
-    fontWeight = 'normal',
-    color = theme.text
-  ) => {
-    ctx.save();
-    ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
-    ctx.fillStyle = color;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
+  // 解析全文为字符 + 句读 token 序列
+  interface JudouToken {
+    char: string;
+    judou?: 'circle' | 'dot';
+  }
 
-    const chars = Array.from(text);
-    let y = startY;
-    for (const char of chars) {
-      if (char === '\n') {
-        continue;
+  const rawExcerpt = state.bookmarkExcerpt || '起著雍摄提格，尽玄黓困敦。初命晋大夫魏斯、赵籍、韩虔为诸侯。臣光曰：臣闻天子之职莫大于礼，礼莫大于分，分莫大于名。';
+  const rawChars = Array.from(rawExcerpt.trim());
+  const allTokens: JudouToken[] = [];
+
+  for (const c of rawChars) {
+    if (c === '\n' || c === '\r' || c === ' ') continue;
+    if (/[。！？!?]/.test(c)) {
+      if (allTokens.length > 0) {
+        allTokens[allTokens.length - 1].judou = 'circle';
       }
-      ctx.fillText(char, centerX, y + fontSize / 2);
-      y += fontSize + letterSpacing;
-    }
-    ctx.restore();
-    return y;
-  };
-
-  // ---------- 第一列（最右侧）：书名 + 卷号 ----------
-  const col1CenterX = contentAreaX + colW * 2 + colW / 2;
-  const bookTitle = state.storeName || '资治通鉴';
-  const volumeText = state.bookmarkVolume || '卷第一';
-
-  const col1StartY = innerY + 36;
-  const afterTitleY = drawVerticalColumnText(
-    bookTitle,
-    col1CenterX,
-    col1StartY,
-    34,
-    11,
-    minchoFont,
-    'bold'
-  );
-
-  drawVerticalColumnText(
-    volumeText,
-    col1CenterX,
-    afterTitleY + 28,
-    20,
-    6,
-    kaitiFont,
-    '500'
-  );
-
-  // ---------- 第二列（中间）：精彩文摘 / 提要 ----------
-  const col2CenterX = contentAreaX + colW + colW / 2;
-  const rawExcerpt = state.bookmarkExcerpt || '起著雍摄提格\n尽玄黓困敦';
-  const excerptLines = rawExcerpt.split('\n').filter(Boolean);
-
-  if (excerptLines.length === 1) {
-    drawVerticalColumnText(
-      excerptLines[0],
-      col2CenterX,
-      innerY + 110,
-      19,
-      5,
-      kaitiFont,
-      'normal'
-    );
-  } else {
-    // 若有多行，微移分两小列渲染
-    const subOffset = 14;
-    if (excerptLines[0]) {
-      drawVerticalColumnText(
-        excerptLines[0],
-        col2CenterX + subOffset,
-        innerY + 80,
-        18,
-        5,
-        kaitiFont,
-        'normal'
-      );
-    }
-    if (excerptLines[1]) {
-      drawVerticalColumnText(
-        excerptLines[1],
-        col2CenterX - subOffset,
-        innerY + 100,
-        18,
-        5,
-        kaitiFont,
-        'normal'
-      );
+    } else if (/[，、；：,;:]/.test(c)) {
+      if (allTokens.length > 0) {
+        allTokens[allTokens.length - 1].judou = 'dot';
+      }
+    } else {
+      allTokens.push({ char: c });
     }
   }
 
-  // ---------- 第三列（最左侧）：著者署名 + 出版社/年份 ----------
-  const col3CenterX = contentAreaX + colW / 2;
-  const rawExtra = state.bookmarkExtra || '司马光 著\n中华书局 · 2011';
-  const extraLines = rawExtra.split('\n').filter(Boolean);
+  // 流式分入 5 栏
+  const columns: JudouToken[][] = [[], [], [], [], []];
+  const col0Capacity = 18;
+  const regularCapacity = 24;
 
-  if (extraLines.length === 1) {
-    drawVerticalColumnText(
-      extraLines[0],
-      col3CenterX,
-      innerY + innerH - 180,
-      16,
-      4,
-      kaitiFont,
-      'normal'
-    );
-  } else {
-    const subOffset = 12;
-    if (extraLines[0]) {
-      drawVerticalColumnText(
-        extraLines[0],
-        col3CenterX + subOffset,
-        innerY + innerH - 240,
-        16,
-        4,
-        kaitiFont,
-        'normal'
-      );
+  let tokenIdx = 0;
+  for (let cIdx = 0; cIdx < colCount; cIdx++) {
+    const cap = cIdx === 0 ? col0Capacity : regularCapacity;
+    for (let i = 0; i < cap && tokenIdx < allTokens.length; i++) {
+      columns[cIdx].push(allTokens[tokenIdx++]);
     }
-    if (extraLines[1]) {
-      drawVerticalColumnText(
-        extraLines[1],
-        col3CenterX - subOffset,
-        innerY + innerH - 210,
-        14,
-        3.5,
-        kaitiFont,
-        'normal'
-      );
+  }
+
+  // 绘制 5 栏文字（自右向左）
+  const startY = bodyY + 16;
+  const charFontSize = 18;
+  const charSpacing = 7;
+
+  for (let cIdx = 0; cIdx < colCount; cIdx++) {
+    // 从右向左：cIdx 0 在最右栏
+    const colCenterX = contentAreaX + actualContentW - colW * cIdx - colW / 2;
+    let y = startY;
+
+    // 首栏（最右栏）：先绘制篇目大字
+    if (cIdx === 0) {
+      ctx.save();
+      ctx.font = `bold 21px ${minchoFont}`;
+      ctx.fillStyle = theme.text;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const volChars = Array.from(volumeText);
+      for (const char of volChars) {
+        ctx.fillText(char, colCenterX, y + 21 / 2);
+        y += 21 + 8;
+      }
+      y += 14;
+      ctx.restore();
+    }
+
+    // 绘制该栏正文字符与朱笔句读
+    const colTokens = columns[cIdx];
+    ctx.save();
+    ctx.font = `normal ${charFontSize}px ${minchoFont}`;
+    ctx.fillStyle = theme.text;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    for (const token of colTokens) {
+      const charCenterY = y + charFontSize / 2;
+      ctx.fillText(token.char, colCenterX, charCenterY);
+
+      if (token.judou) {
+        const judouX = colCenterX + charFontSize * 0.46;
+        const judouY = charCenterY + charFontSize * 0.36;
+        ctx.save();
+        if (token.judou === 'circle') {
+          ctx.strokeStyle = '#b82828';
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          ctx.arc(judouX, judouY, 3.6, 0, Math.PI * 2);
+          ctx.stroke();
+        } else {
+          ctx.fillStyle = '#b82828';
+          ctx.beginPath();
+          ctx.arc(judouX, judouY, 2.6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      y += charFontSize + charSpacing;
+    }
+    ctx.restore();
+
+    // 末栏（最左栏）：底部校刊题跋
+    if (cIdx === 4) {
+      const extraText = state.bookmarkExtra || '中华书局 谨印';
+      const extraChars = Array.from(extraText.replace(/\n/g, '  '));
+      ctx.save();
+      ctx.font = `normal 14px ${kaitiFont}`;
+      ctx.fillStyle = theme.text;
+      ctx.globalAlpha = 0.8;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      let extraY = bodyY + bodyH - (extraChars.length * 18 + 12);
+      for (const char of extraChars) {
+        ctx.fillText(char, colCenterX, extraY + 14 / 2);
+        extraY += 14 + 5;
+      }
+      ctx.restore();
     }
   }
 
@@ -343,37 +360,50 @@ export async function exportAncientBookmarkImage(
       if (!sealImg) continue;
 
       // 计算印章在 Canvas 上的绝对 X, Y 坐标与缩放
-      const sealRatio = baseWidth / 260; // 比例因子
+      const sealRatio = baseWidth / 300; // 比例因子（DOM 宽度 300px）
       const sealW = (seal.width || 32) * sealRatio;
       const sealAspect = sealImg.height / sealImg.width;
       const sealH = sealW * sealAspect;
 
-      let posX = 0;
-      let posY = 0;
+      let centerX = 0;
+      let centerY = 0;
 
-      if (seal.positionPreset === 'top-right' || seal.id === 'seal-1') {
+      if (seal.leftPercent !== undefined && seal.topPercent !== undefined) {
+        centerX = contentAreaX + (seal.leftPercent / 100) * actualContentW;
+        centerY = innerY + (seal.topPercent / 100) * innerH;
+      } else if (seal.positionPreset === 'top-right' || seal.id === 'seal-1') {
         const rOffset = (seal.right ?? 8) * sealRatio;
         const tOffset = (seal.top ?? 24) * sealRatio;
-        posX = baseWidth - outerBorderWidth - outerPadding - rOffset - sealW;
-        posY = innerY + tOffset;
+        const posX = baseWidth - outerBorderWidth - outerPadding - rOffset - sealW;
+        const posY = innerY + tOffset;
+        centerX = posX + sealW / 2;
+        centerY = posY + sealH / 2;
       } else if (seal.positionPreset === 'bottom-left' || seal.id === 'seal-2') {
         const lOffset = (seal.left ?? 6) * sealRatio;
         const bOffset = (seal.bottom ?? 28) * sealRatio;
-        posX = contentAreaX + lOffset;
-        posY = innerY + innerH - bOffset - sealH;
+        const posX = contentAreaX + lOffset;
+        const posY = innerY + innerH - bOffset - sealH;
+        centerX = posX + sealW / 2;
+        centerY = posY + sealH / 2;
       } else if (seal.positionPreset === 'middle-cross' || seal.id === 'seal-3') {
         const topPercent = (seal.topPercent ?? 46) / 100;
         const crossOffset = (seal.left ?? -16) * sealRatio;
-        posX = contentAreaX + colW * 2 + crossOffset - sealW / 2;
-        posY = innerY + innerH * topPercent - sealH / 2;
+        const posX = contentAreaX + colW * 2 + crossOffset - sealW / 2;
+        const posY = innerY + innerH * topPercent - sealH / 2;
+        centerX = posX + sealW / 2;
+        centerY = posY + sealH / 2;
       } else if (seal.positionPreset === 'top-left' || seal.id === 'seal-4') {
         const lOffset = (seal.left ?? 8) * sealRatio;
         const tOffset = (seal.top ?? 72) * sealRatio;
-        posX = contentAreaX + lOffset;
-        posY = innerY + tOffset;
+        const posX = contentAreaX + lOffset;
+        const posY = innerY + tOffset;
+        centerX = posX + sealW / 2;
+        centerY = posY + sealH / 2;
       } else {
-        posX = ((seal.left ?? 20) * sealRatio);
-        posY = ((seal.top ?? 20) * sealRatio);
+        const posX = (seal.left ?? 20) * sealRatio;
+        const posY = (seal.top ?? 20) * sealRatio;
+        centerX = posX + sealW / 2;
+        centerY = posY + sealH / 2;
       }
 
       ctx.save();
@@ -381,8 +411,6 @@ export async function exportAncientBookmarkImage(
       ctx.globalAlpha = seal.opacity ?? 0.85;
 
       // 旋转与绘制中心对齐
-      const centerX = posX + sealW / 2;
-      const centerY = posY + sealH / 2;
       ctx.translate(centerX, centerY);
       if (seal.rotate) {
         ctx.rotate((seal.rotate * Math.PI) / 180);

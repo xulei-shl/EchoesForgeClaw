@@ -433,21 +433,23 @@ export const TEMPLATE_RETRO_MENU: ReceiptTemplateDef = {
 };
 
 /**
- * 预设 6：古籍版心书签（古风雕版、版心鱼尾、乌丝栏竖排与随机印章）
+ * 预设 6：古籍版心书签（严格对照四库全书/资治通鉴雕版式样，含书眉天头、乌丝栏流式字排、朱批句读、版心鱼尾与多印章体系）
  */
 export const TEMPLATE_ANCIENT_BOOKMARK: ReceiptTemplateDef = {
   id: 'ancient_bookmark',
   name: '古籍书签',
-  description: '古籍雕版与版心书签排版，含鱼尾纹、乌丝栏竖排文字、汇文明朝体与随机印章体系',
+  description: '严格对照古籍雕版原貌（四库全书/资治通鉴体例），含书眉天头、乌丝栏流式字排、朱批句读、版心鱼尾与多印章体系',
   createInitialState: () => ({
     templateId: 'ancient_bookmark',
     themeId: 'ancient',
     ditherEnabled: false,
-    storeName: '资治通鉴',
-    banxinTitle: '資治通鑑',
+    seriesTitle: '欽定四庫全書',
+    storeName: '資治通鑑',
+    banxinTitle: '資治通鑑卷一',
+    leafNumber: '一',
     bookmarkVolume: '卷第一',
-    bookmarkExcerpt: '起著雍摄提格\n尽玄黓困敦',
-    bookmarkExtra: '司马光 著\n中华书局 · 2011',
+    bookmarkExcerpt: '起著雍摄提格，尽玄黓困敦。初命晋大夫魏斯、赵籍、韩虔为诸侯。臣光曰：臣闻天子之职莫大于礼，礼莫大于分，分莫大于名。',
+    bookmarkExtra: '宋 · 司马光 撰\n中华书局 · 2011年校刊',
     dateTimeText: formatReceiptDate(),
     terminal: '',
     servedBy: '',
@@ -466,7 +468,7 @@ export const TEMPLATE_ANCIENT_BOOKMARK: ReceiptTemplateDef = {
     barcodeText: '9787101077759',
     footerMessage: '',
     bottomNote: '',
-    seals: generateRandomSeals(4),
+    seals: generateRandomSeals(),
   }),
   mapFromBook: (book: BookMetadataInput, current = {}) => {
     const rawTitle = book.title?.trim() || '资治通鉴';
@@ -483,38 +485,53 @@ export const TEMPLATE_ANCIENT_BOOKMARK: ReceiptTemplateDef = {
         ? current.bookmarkVolume
         : '卷第一');
 
-    let excerpt = current.bookmarkExcerpt;
-    if (!excerpt) {
-      const summaryText = book.summary || book.description || '';
-      if (summaryText.trim()) {
-        const sentences = summaryText
-          .split(/(?<=[。！？\n])/)
-          .map((s) => s.trim())
-          .filter(Boolean);
-        excerpt = sentences.slice(0, 2).join('\n') || summaryText.slice(0, 24);
-      } else {
-        excerpt = '起著雍摄提格\n尽玄黓困敦';
-      }
+    const seriesTitle = book.series?.trim() || current.seriesTitle || '欽定四庫全書';
+    const leafNumber = current.leafNumber || '一';
+    const banxin = `${cleanTitle}${volume ? ' ' + volume : '卷一'}`;
+
+    // 智能提取摘要精粹
+    let excerpt = '';
+    const summaryText = (book.summary || book.description || '').replace(/\r\n/g, '\n').trim();
+    if (summaryText) {
+      excerpt = summaryText;
+    } else {
+      excerpt = current.bookmarkExcerpt || '起著雍摄提格，尽玄黓困敦。初命晋大夫魏斯、赵籍、韩虔为诸侯。臣光曰：臣闻天子之职莫大于礼，礼莫大于分，分莫大于名。';
     }
 
+    // 格式化著者署名与出版刊印信息（符合古籍校刻体例）
     let extra = '';
-    if (author && (publisher || pubYear)) {
-      extra = `${author}\n${publisher}${pubYear ? ' · ' + pubYear : ''}`.trim();
-    } else if (author) {
-      extra = `${author}`;
-    } else if (publisher || pubYear) {
-      extra = `${publisher}${pubYear ? ' · ' + pubYear : ''}`.trim();
+    const authorFormatted = author
+      ? (author.includes('撰') || author.includes('著') ? author : `${author} 撰`)
+      : '';
+    const pubFormatted = `${publisher ? publisher : ''}${pubYear ? (publisher ? ' · ' + pubYear + '年谨印' : pubYear + '年校刊') : '校刊'}`.trim();
+
+    if (authorFormatted && pubFormatted) {
+      extra = `${authorFormatted}\n${pubFormatted}`;
+    } else if (authorFormatted) {
+      extra = authorFormatted;
+    } else if (pubFormatted) {
+      extra = pubFormatted;
     } else {
-      extra = '司马光 著\n中华书局 · 2011';
+      extra = current.bookmarkExtra || '宋 · 司马光 撰\n中华书局 · 2011年校刊';
     }
 
     const cover = book.cover_image_local || book.cover_image || book.coverUrl || null;
     const seals =
-      current.seals && current.seals.length > 0 ? current.seals : generateRandomSeals(4);
+      current.seals && current.seals.length > 0 ? current.seals : generateRandomSeals();
+
+    const metaFields = [
+      { key: 'title', label: '题名', value: cleanTitle, visible: true },
+      { key: 'author', label: '作者', value: author, visible: !!author },
+      { key: 'publisher', label: '出版社', value: publisher, visible: !!publisher },
+      { key: 'pub_year', label: '出版年', value: pubYear, visible: !!pubYear },
+      { key: 'summary', label: '摘要', value: summaryText, visible: !!summaryText },
+    ];
 
     return {
+      seriesTitle,
       storeName: cleanTitle,
-      banxinTitle: cleanTitle,
+      banxinTitle: banxin,
+      leafNumber,
       bookmarkVolume: volume,
       bookmarkExcerpt: excerpt,
       bookmarkExtra: extra,
@@ -522,6 +539,7 @@ export const TEMPLATE_ANCIENT_BOOKMARK: ReceiptTemplateDef = {
       barcodeText: book.isbn || current.barcodeText || '9787101077759',
       imageUrl: cover || current.imageUrl,
       seals,
+      metaFields,
     };
   },
 };
