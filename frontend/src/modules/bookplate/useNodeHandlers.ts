@@ -44,7 +44,7 @@ export interface NodeHandlersDeps {
 export function useNodeHandlers({
   nodesRef, edgesRef, portTypesRef, streamControllers, analysisUploads, generationIds,
   setNodes, setEdges, setNodeSizes, setFavoritedState, setPublishedState,
-  setSelectedImageId, updateNodeData, recordHistory,
+  setSelectedImageId, setStaleRecordIds, updateNodeData, recordHistory,
   runNode, runImageGeneration, addChildNode, toggleFavoriteForImage, togglePublicForImage,
   showToast, dialog, fetchBookInfo, removingRef, setCtxMenu
 }: NodeHandlersDeps) {
@@ -849,6 +849,13 @@ export function useNodeHandlers({
           // 新记录默认 is_favorited=false, is_public=false，重置 UI 态避免旧记录残留
           setFavoritedState((prev) => ({ ...prev, [id]: false }));
           setPublishedState((prev) => ({ ...prev, [id]: false }));
+          // 新记录就绪：清除此前「记录已删除」弱提示（如切换模板后留下的陈旧关联）
+          setStaleRecordIds?.((prev) => {
+            if (!prev.has(id)) return prev;
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+          });
         } catch (dbErr) {
           console.warn('记录小票到历史数据库失败(不阻断导出):', dbErr);
         }
@@ -887,6 +894,29 @@ export function useNodeHandlers({
     (id: string, patch: Record<string, any>) => {
       const node = nodesRef.current.find((n) => n.id === id);
       if (!node || node.type !== 'receipt_printer') return;
+      // 内容变更（模板 / 纸色 / 文字 / 图片 / 点阵等任一影响渲染的字段）后，当前预览不再对应
+      // 「生成保存到数据库」的结果：若该节点已有保存记录，解除收藏/公开关联并重置高亮
+      // （节点角标与画板右侧操作栏同步失效），避免旧结果按钮高亮残留误导；
+      // 下次收藏/公开将按当前内容重新生成记录。
+      const cur = node.data ?? {};
+      let changed = false;
+      for (const [k, v] of Object.entries(patch)) {
+        if (cur[k] !== v) {
+          changed = true;
+          break;
+        }
+      }
+      if (changed && generationIds.current[id] !== undefined) {
+        delete generationIds.current[id];
+        setFavoritedState((prev) => ({ ...prev, [id]: false }));
+        setPublishedState((prev) => ({ ...prev, [id]: false }));
+        setStaleRecordIds?.((prev) => {
+          if (prev.has(id)) return prev;
+          const next = new Set(prev);
+          next.add(id);
+          return next;
+        });
+      }
       const stored = { ...patch };
       if ('imageUrl' in stored) {
         stored.coverImageUrl = stored.imageUrl;
