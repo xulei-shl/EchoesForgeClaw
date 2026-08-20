@@ -179,7 +179,7 @@ const MapPosterNodeInner: React.FC<MapPosterNodeProps> = ({
           width: currentPreset.width,
           height: currentPreset.height,
         },
-        { timeout: 120000 }
+        { timeout: 300000 }
       );
       const imageUrl = typeof res?.image_url === 'string' ? res.image_url : '';
       if (!imageUrl) throw new Error('生成海报失败：未返回图片');

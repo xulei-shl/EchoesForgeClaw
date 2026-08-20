@@ -28,6 +28,7 @@ export async function register(app: FastifyInstance): Promise<void> {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
+          signal: AbortSignal.timeout(300000),
         });
 
         if (!resp.ok) {
