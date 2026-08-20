@@ -138,7 +138,7 @@ export const CanvasActionBar: React.FC<CanvasActionBarProps> = ({
             <Globe size={18} strokeWidth={1.5} className={isPublic ? 'text-accent' : ''} />
           </button>
         </Tooltip>
-        <Tooltip content="导出藏书票图片（选中节点）">
+        <Tooltip content="导出结果（选中节点）">
           <button
             className={btnClass(!hasImage)}
             disabled={!hasImage}
