@@ -15,3 +15,11 @@
 **规则：** 大范围数据查询需要匹配的超时时间。前端、后端代理、Python 服务三层的超时设置需保持一致。
 
 **修复：** 前端超时 120s → 300s（`MapPosterNode.tsx:182`），后端 fetch 增加 `AbortSignal.timeout(300000)`（`map-poster.ts:31`）。
+
+## 2026-08-20: 图书小票纸色主题不一致 — 硬编码颜色导致主题失效
+
+**问题：** `LibraryCardPaper.tsx` 大量硬编码 Tailwind 颜色类（`text-gray-800`、`text-blue-800`、`border-blue-200` 等），切换纸色时只有借阅人姓名响应 `theme.text`；`libraryCardRenderer.ts` 同样硬编码 Canvas 颜色（`#1f2937`、`#1e40af`、`#1e3a8a` 等），导致导出 PNG 与预览不一致。
+
+**规则：** 所有模板组件必须统一使用 `theme.text`、`theme.faint`、`theme.dashed`、`theme.accent` 四个语义变量，禁止硬编码颜色类。Canvas 导出渲染器必须与前端组件使用相同的主题变量，保证所见即所得。
+
+**修复：** `LibraryCardPaper.tsx` 中所有 `text-gray-*` → `theme.text` / `theme.faint`，`text-blue-*` → `theme.accent`，`border-blue-*` / `border-gray-*` → `theme.dashed`；`libraryCardRenderer.ts` 中 `#1f2937` → `theme.text`，`#1e40af` / `#1e3a8a` → `theme.accent`，`#bfdbfe` → `theme.dashed`，`#4b5563` → `theme.faint`。

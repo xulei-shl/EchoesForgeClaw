@@ -118,8 +118,8 @@ export const LibraryCardPaper = React.forwardRef<HTMLDivElement, LibraryCardPape
       <div
         ref={ref}
         data-receipt-paper="true"
-        className="relative w-full max-w-[380px] min-h-[720px] mx-auto my-2 rounded-sm shadow-xl overflow-hidden flex flex-col border border-[#d1d5db] select-text transition-colors duration-300"
-        style={{ backgroundColor: theme.bg }}
+        className="relative w-full max-w-[380px] min-h-[720px] mx-auto my-2 rounded-sm shadow-xl overflow-hidden flex flex-col border select-text transition-colors duration-300"
+        style={{ backgroundColor: theme.bg, borderColor: theme.dashed }}
       >
         <input
           type="file"
@@ -198,7 +198,8 @@ export const LibraryCardPaper = React.forwardRef<HTMLDivElement, LibraryCardPape
           style={{ backgroundColor: theme.bg }}
         >
           {/* 卡片右上角 No. CARD_NUMBER（继承 ISBN 后 4 位） */}
-          <div className="absolute top-4 right-4 flex items-center gap-1 text-gray-400 font-typewriter text-xs tracking-widest border border-gray-300 px-1.5 py-0.5 rounded bg-white/60 shadow-2xs">
+          <div className="absolute top-4 right-4 flex items-center gap-1 font-typewriter text-xs tracking-widest border px-1.5 py-0.5 rounded bg-white/60 shadow-2xs"
+              style={{ color: theme.faint, borderColor: theme.dashed }}>
             <span>No.</span>
             <input
               type="text"
@@ -209,7 +210,8 @@ export const LibraryCardPaper = React.forwardRef<HTMLDivElement, LibraryCardPape
               onPointerDown={stopEvent}
               placeholder="5399"
               title={disabled ? '有下级节点，不可修改' : '卡片编号（默认继承 ISBN 后四位）'}
-              className="w-12 bg-transparent outline-none font-bold text-gray-600 hover:border-b hover:border-gray-400 focus:border-b focus:border-gray-600 disabled:cursor-not-allowed disabled:hover:border-transparent"
+              className="w-12 bg-transparent outline-none font-bold hover:border-b hover:border-current focus:border-b disabled:cursor-not-allowed disabled:hover:border-transparent"
+              style={{ color: theme.faint }}
             />
           </div>
 
@@ -223,10 +225,11 @@ export const LibraryCardPaper = React.forwardRef<HTMLDivElement, LibraryCardPape
               onMouseDown={stopEvent}
               onPointerDown={stopEvent}
               placeholder="書海回响"
-              className="w-full text-center text-3xl font-shangtu text-gray-800 tracking-[0.2em] font-bold mb-1 bg-transparent outline-none border-b border-transparent hover:border-dashed hover:border-gray-300 disabled:cursor-not-allowed disabled:hover:border-transparent"
+              className="w-full text-center text-3xl font-shangtu tracking-[0.2em] font-bold mb-1 bg-transparent outline-none border-b border-transparent hover:border-dashed hover:border-current disabled:cursor-not-allowed disabled:hover:border-transparent"
+              style={{ color: theme.text }}
             />
             <div className="flex items-center justify-center gap-2 opacity-60">
-              <div className="h-[1px] w-8 bg-gray-400" />
+              <div className="h-[1px] w-8" style={{ backgroundColor: theme.faint }} />
               <input
                 type="text"
                 value={state.subtitle || 'SHANGHAI LIBRARY'}
@@ -235,17 +238,18 @@ export const LibraryCardPaper = React.forwardRef<HTMLDivElement, LibraryCardPape
                 onMouseDown={stopEvent}
                 onPointerDown={stopEvent}
                 placeholder="SHANGHAI LIBRARY"
-                className="text-[10px] font-shangtu text-gray-600 uppercase tracking-widest bg-transparent outline-none text-center w-36 border-b border-transparent hover:border-dashed hover:border-gray-300 disabled:cursor-not-allowed disabled:hover:border-transparent"
+                className="text-[10px] font-shangtu uppercase tracking-widest bg-transparent outline-none text-center w-36 border-b border-transparent hover:border-dashed hover:border-current disabled:cursor-not-allowed disabled:hover:border-transparent"
+                style={{ color: theme.faint }}
               />
-              <div className="h-[1px] w-8 bg-gray-400" />
+              <div className="h-[1px] w-8" style={{ backgroundColor: theme.faint }} />
             </div>
           </div>
 
           {/* 元数据字段区：Author, Title, Call No., Year */}
           <div className="space-y-2 text-xs">
             {/* Author */}
-            <div className="flex items-baseline border-b border-blue-200 pb-1">
-              <label className="w-12 text-[10px] text-blue-800 font-typewriter uppercase tracking-wider shrink-0">
+            <div className="flex items-baseline border-b pb-1" style={{ borderColor: theme.dashed }}>
+              <label className="w-12 text-[10px] font-typewriter uppercase tracking-wider shrink-0" style={{ color: theme.accent }}>
                 Author
               </label>
               <input
@@ -256,13 +260,14 @@ export const LibraryCardPaper = React.forwardRef<HTMLDivElement, LibraryCardPape
                 onMouseDown={stopEvent}
                 onPointerDown={stopEvent}
                 placeholder="[作者]"
-                className="flex-1 text-base font-youyouyisong text-gray-800 bg-transparent outline-none border-b border-transparent hover:border-dashed hover:border-blue-300 disabled:cursor-not-allowed disabled:hover:border-transparent"
+                className="flex-1 text-base font-youyouyisong bg-transparent outline-none border-b border-transparent hover:border-dashed hover:border-current disabled:cursor-not-allowed disabled:hover:border-transparent"
+                style={{ color: theme.text }}
               />
             </div>
 
             {/* Title */}
-            <div className="flex items-baseline border-b border-blue-200 pb-1">
-              <label className="w-12 text-[10px] text-blue-800 font-typewriter uppercase tracking-wider shrink-0">
+            <div className="flex items-baseline border-b pb-1" style={{ borderColor: theme.dashed }}>
+              <label className="w-12 text-[10px] font-typewriter uppercase tracking-wider shrink-0" style={{ color: theme.accent }}>
                 Title
               </label>
               <input
@@ -273,14 +278,15 @@ export const LibraryCardPaper = React.forwardRef<HTMLDivElement, LibraryCardPape
                 onMouseDown={stopEvent}
                 onPointerDown={stopEvent}
                 placeholder="[题名]"
-                className="flex-1 text-lg font-youyouyisong font-bold text-gray-900 bg-transparent outline-none tracking-wide border-b border-transparent hover:border-dashed hover:border-blue-300 disabled:cursor-not-allowed disabled:hover:border-transparent"
+                className="flex-1 text-lg font-youyouyisong font-bold bg-transparent outline-none tracking-wide border-b border-transparent hover:border-dashed hover:border-current disabled:cursor-not-allowed disabled:hover:border-transparent"
+                style={{ color: theme.text }}
               />
             </div>
 
             {/* Call No. & Year */}
             <div className="flex gap-4 pt-1">
               <div className="flex-1 px-2 py-0.5">
-                <label className="block text-[9px] text-blue-800 font-typewriter uppercase opacity-70">
+                <label className="block text-[9px] font-typewriter uppercase opacity-70" style={{ color: theme.accent }}>
                   Call No.
                 </label>
                 <input
@@ -291,12 +297,13 @@ export const LibraryCardPaper = React.forwardRef<HTMLDivElement, LibraryCardPape
                   onMouseDown={stopEvent}
                   onPointerDown={stopEvent}
                   placeholder="[索书号留空/自定义]"
-                  className="w-full text-sm font-typewriter text-gray-600 font-bold bg-transparent outline-none border-b border-transparent hover:border-dashed hover:border-blue-300 disabled:cursor-not-allowed disabled:hover:border-transparent"
+                  className="w-full text-sm font-typewriter font-bold bg-transparent outline-none border-b border-transparent hover:border-dashed hover:border-current disabled:cursor-not-allowed disabled:hover:border-transparent"
+                  style={{ color: theme.text }}
                 />
               </div>
 
               <div className="w-24 px-2 py-0.5">
-                <label className="block text-[9px] text-blue-800 font-typewriter uppercase opacity-70">
+                <label className="block text-[9px] font-typewriter uppercase opacity-70" style={{ color: theme.accent }}>
                   Year
                 </label>
                 <input
@@ -307,27 +314,29 @@ export const LibraryCardPaper = React.forwardRef<HTMLDivElement, LibraryCardPape
                   onMouseDown={stopEvent}
                   onPointerDown={stopEvent}
                   placeholder="2024"
-                  className="w-full text-sm font-typewriter text-gray-600 font-bold bg-transparent outline-none border-b border-transparent hover:border-dashed hover:border-blue-300 disabled:cursor-not-allowed disabled:hover:border-transparent"
+                  className="w-full text-sm font-typewriter font-bold bg-transparent outline-none border-b border-transparent hover:border-dashed hover:border-current disabled:cursor-not-allowed disabled:hover:border-transparent"
+                  style={{ color: theme.text }}
                 />
               </div>
             </div>
           </div>
         </div>
 
-        {/* 3. 中段表头（背景色自适应当前纸色，分割线固定深蓝色） */}
+        {/* 3. 中段表头（背景色自适应当前纸色，分割线自适应主题） */}
         <div
-          className="border-y-2 border-blue-800 h-9 flex items-center relative z-20 shadow-2xs transition-colors duration-300"
+          className="border-y-2 h-9 flex items-center relative z-20 shadow-2xs transition-colors duration-300"
           style={{
             backgroundColor: `color-mix(in srgb, ${theme.text} 7%, ${theme.bg})`,
+            borderColor: theme.accent,
           }}
         >
           <div className="w-[32%] flex items-center justify-center">
-            <span className="text-[10px] font-bold text-blue-900 font-typewriter uppercase">
+            <span className="text-[10px] font-bold font-typewriter uppercase" style={{ color: theme.accent }}>
               Date Due
             </span>
           </div>
           <div className="w-[68%] flex items-center justify-between px-3">
-            <span className="text-[10px] font-bold text-blue-900 font-typewriter uppercase">
+            <span className="text-[10px] font-bold font-typewriter uppercase" style={{ color: theme.accent }}>
               Borrower's Name
             </span>
             {!disabled && (
@@ -335,7 +344,8 @@ export const LibraryCardPaper = React.forwardRef<HTMLDivElement, LibraryCardPape
                 <button
                   type="button"
                   onClick={handleRefreshRandomBorrowers}
-                  className="p-1 rounded hover:bg-black/10 text-[10px] flex items-center gap-0.5 cursor-pointer font-sans text-blue-900"
+                  className="p-1 rounded hover:bg-black/10 text-[10px] flex items-center gap-0.5 cursor-pointer font-sans"
+                  style={{ color: theme.accent }}
                   title="随机刷新借阅人和日期"
                 >
                   <Dices size={12} /> 随机
@@ -343,7 +353,8 @@ export const LibraryCardPaper = React.forwardRef<HTMLDivElement, LibraryCardPape
                 <button
                   type="button"
                   onClick={handleAddRecord}
-                  className="p-1 rounded hover:bg-black/10 text-[10px] flex items-center gap-0.5 cursor-pointer font-sans text-blue-900"
+                  className="p-1 rounded hover:bg-black/10 text-[10px] flex items-center gap-0.5 cursor-pointer font-sans"
+                  style={{ color: theme.accent }}
                   title="添加借阅记录"
                 >
                   <Plus size={12} /> 添加
@@ -372,7 +383,8 @@ export const LibraryCardPaper = React.forwardRef<HTMLDivElement, LibraryCardPape
             return (
               <div
                 key={record.id}
-                className="group/row flex border-b border-blue-200/80 h-11 relative items-center hover:bg-blue-50/20 transition-colors"
+                className="group/row flex border-b h-11 relative items-center transition-colors"
+                style={{ borderColor: `color-mix(in srgb, ${theme.dashed} 80%, transparent)` }}
               >
                 {/* 左侧：Date Due */}
                 <div className="w-[32%] px-2 flex items-center justify-center">
@@ -383,9 +395,10 @@ export const LibraryCardPaper = React.forwardRef<HTMLDivElement, LibraryCardPape
                     onChange={(e) => handleUpdateRecord(record.id, { date: e.target.value })}
                     onMouseDown={stopEvent}
                     onPointerDown={stopEvent}
-                    className={`font-stamp text-xs text-blue-900 text-center w-full bg-transparent outline-none font-bold ${
+                    className={`font-stamp text-xs text-center w-full bg-transparent outline-none font-bold ${
                       record.rotation || ''
-                    } border-b border-transparent hover:border-dashed hover:border-blue-400 disabled:cursor-not-allowed disabled:hover:border-transparent`}
+                    } border-b border-transparent hover:border-dashed hover:border-current disabled:cursor-not-allowed disabled:hover:border-transparent`}
+                    style={{ color: theme.accent }}
                   />
                 </div>
 
@@ -423,17 +436,16 @@ export const LibraryCardPaper = React.forwardRef<HTMLDivElement, LibraryCardPape
           {Array.from({ length: emptyRowsCount }).map((_, idx) => (
             <div
               key={`empty-${idx}`}
-              className="flex border-b border-blue-200/80 h-11 relative"
+              className="flex border-b h-11 relative"
+              style={{ borderColor: `color-mix(in srgb, ${theme.dashed} 80%, transparent)` }}
             />
           ))}
         </div>
 
         {/* 5. 底部区域 */}
         <div
-          className="relative p-5 pb-8 border-t-[3px] border-double border-[#1e3a8a] z-20 transition-colors duration-300"
-          style={{
-            background: `linear-gradient(to bottom, ${theme.bg}bf, ${theme.bg})`,
-          }}
+          className="relative p-5 pb-8 border-t-[3px] border-double z-20 transition-colors duration-300"
+          style={{ borderColor: theme.accent, background: `linear-gradient(to bottom, ${theme.bg}bf, ${theme.bg})` }}
         >
           {/* 上半部分：借阅须知（中文） + 图书馆 Logo 并排 */}
           <div className="flex justify-between items-center gap-2">
@@ -446,7 +458,8 @@ export const LibraryCardPaper = React.forwardRef<HTMLDivElement, LibraryCardPape
                 onMouseDown={stopEvent}
                 onPointerDown={stopEvent}
                 rows={4}
-                className="w-full text-[10px] leading-relaxed text-[#4b5563] font-youyouyisong font-medium bg-transparent outline-none resize-none border-b border-transparent hover:border-dashed hover:border-gray-300 disabled:cursor-not-allowed disabled:hover:border-transparent"
+                className="w-full text-[10px] leading-relaxed font-youyouyisong font-medium bg-transparent outline-none resize-none border-b border-transparent hover:border-dashed hover:border-current disabled:cursor-not-allowed disabled:hover:border-transparent"
+                style={{ color: theme.text }}
               />
             </div>
 
@@ -469,7 +482,8 @@ export const LibraryCardPaper = React.forwardRef<HTMLDivElement, LibraryCardPape
               onChange={(e) => onChange({ bottomNote: e.target.value })}
               onMouseDown={stopEvent}
               onPointerDown={stopEvent}
-              className="w-full text-[8px] uppercase tracking-wider text-[#1e3a8a]/70 font-typewriter bg-transparent outline-none border-b border-transparent hover:border-dashed hover:border-gray-300 disabled:cursor-not-allowed disabled:hover:border-transparent"
+              className="w-full text-[8px] uppercase tracking-wider font-typewriter bg-transparent outline-none border-b border-transparent hover:border-dashed hover:border-current disabled:cursor-not-allowed disabled:hover:border-transparent"
+              style={{ color: `color-mix(in srgb, ${theme.accent} 70%, transparent)` }}
             />
           </div>
         </div>
