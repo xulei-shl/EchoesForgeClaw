@@ -144,6 +144,17 @@ def is_latin_script(text):
     return (latin_count / total_alpha) > 0.8
 
 
+def has_cjk(text):
+    """Check if text contains CJK (Chinese/Japanese/Korean) characters."""
+    if not text:
+        return False
+    for char in text:
+        cp = ord(char)
+        if 0x4E00 <= cp <= 0x9FFF or 0x3400 <= cp <= 0x4DBF or 0xF900 <= cp <= 0xFAFF:
+            return True
+    return False
+
+
 def generate_output_filename(city, theme_name, output_format):
     """
     Generate unique output filename with city, theme, and datetime.
@@ -438,7 +449,7 @@ def fetch_graph(point, dist) -> MultiDiGraph | None:
         return g
     except Exception as e:
         print(f"OSMnx error while fetching graph: {e}")
-        return None
+        raise RuntimeError(f"Failed to retrieve street network data: {e}") from e
 
 
 def fetch_features(point, dist, tags, name) -> GeoDataFrame | None:
@@ -627,6 +638,12 @@ def create_poster(
 
     # 4. Typography - use custom fonts if provided, otherwise use default FONTS
     active_fonts = fonts or FONTS
+    # Auto-detect CJK and load Noto Sans SC if no custom font specified
+    if has_cjk(display_city) and fonts is None:
+        cjk_font = load_fonts("Noto Sans SC")
+        if cjk_font:
+            print("✓ CJK detected, using Noto Sans SC")
+            active_fonts = cjk_font
     if active_fonts:
         # font_main is calculated dynamically later based on length
         font_sub = FontProperties(
