@@ -87,10 +87,10 @@ export const AncientBookmarkPaper = React.forwardRef<HTMLDivElement, AncientBook
           color: theme.text,
         }}
       >
-        {/* 顶部悬浮「重置印谱」快捷按钮（导出时自动过滤；有下级节点时不可操作） */}
+        {/* 顶部悬浮「重置印谱」快捷按钮（下移至天头下方，不遮挡书眉文字；导出时自动过滤） */}
         <div
           data-export-ignore="true"
-          className={`absolute top-2 right-2 z-30 transition-opacity flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded shadow backdrop-blur-xs select-none ${
+          className={`absolute top-10 right-2 z-30 transition-opacity flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded shadow backdrop-blur-xs select-none ${
             disabled
               ? 'opacity-40 bg-black/40 text-white/50 cursor-not-allowed pointer-events-none'
               : 'opacity-0 group-hover:opacity-100 bg-black/70 hover:bg-black/85 text-white/90 cursor-pointer'
@@ -284,7 +284,8 @@ export const AncientBookmarkPaper = React.forwardRef<HTMLDivElement, AncientBook
 
               <AncientVerticalLayout
                 text={excerptText}
-                headerTitle={state.bookmarkVolume || '卷第一'}
+                bookTitle={`${state.storeName || '資治通鑑'}  ${state.bookmarkVolume || '卷第一'}`}
+                authorName={`${state.metaFields?.find((f) => f.key === 'author')?.value || '司马光'} 撰`}
                 footerNote={state.bookmarkExtra || '中华书局 谨印'}
                 fontSize={13}
                 columnWidth={30}

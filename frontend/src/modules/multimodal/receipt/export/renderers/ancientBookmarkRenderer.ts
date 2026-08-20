@@ -232,40 +232,65 @@ export async function exportAncientBookmarkImage(
   }
   ctx.restore();
 
-  // 解析全文为规范古籍 Token 序列（包含数字转汉字、朱圈朱点等）
+  const startY = bodyY + 16;
+  const bottomMaxY = bodyY + bodyH - 18;
+  const charFontSize = 17;
+  const charSpacing = 6;
+  const stepY = charFontSize + charSpacing;
+
+  const colCenterX = (colIdx: number) =>
+    contentAreaX + actualContentW - colW * colIdx - colW / 2;
+
+  // ① 第 0 列（最右栏）：书名与卷次大字顶格书写
+  const fullTitle = `${state.storeName || '資治通鑑'}  ${state.bookmarkVolume || '卷第一'}`;
+  const titleChars = Array.from(fullTitle);
+  let titleY = startY;
+  ctx.save();
+  ctx.font = `bold 20px ${minchoFont}`;
+  ctx.fillStyle = theme.text;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const char of titleChars) {
+    if (char === ' ') {
+      titleY += 10;
+      continue;
+    }
+    if (titleY + 20 > bottomMaxY) break;
+    ctx.fillText(char, colCenterX(0), titleY + 20 / 2);
+    titleY += 20 + 7;
+  }
+  ctx.restore();
+
+  // ② 第 1 列（右起第二栏）：作者责任者，古籍规范低两格书写
+  const authorNameVal = state.metaFields?.find((f) => f.key === 'author')?.value || '司马光';
+  const authorFullText = `${authorNameVal} 撰`;
+  const authorChars = Array.from(authorFullText);
+  let authorY = startY + stepY * 2; // 低两格
+  ctx.save();
+  ctx.font = `normal ${charFontSize}px ${kaitiFont}`;
+  ctx.fillStyle = theme.text;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const char of authorChars) {
+    if (char === ' ') {
+      authorY += 8;
+      continue;
+    }
+    if (authorY + charFontSize > bottomMaxY) break;
+    ctx.fillText(char, colCenterX(1), authorY + charFontSize / 2);
+    authorY += stepY;
+  }
+  ctx.restore();
+
+  // ③ 第 2 列及之后（右起第三栏起）：文摘正文与朱笔句读流式排布
   const rawExcerpt =
     state.bookmarkExcerpt ||
     '起著雍摄提格，尽玄黓困敦。初命晋大夫魏斯、赵籍、韩虔为诸侯。臣光曰：臣闻天子之职莫大于礼，礼莫大于分，分莫大于名。';
   const allTokens = parseJuDou(rawExcerpt, { convertNumbers: true, preserveLineBreaks: true });
 
-  const startY = bodyY + 16;
-  const bottomMaxY = bodyY + bodyH - 18;
-  const charFontSize = 18;
-  const charSpacing = 6;
-  const stepY = charFontSize + charSpacing;
-
-  let currentColIdx = 0;
+  let currentColIdx = 2; // 从第 3 栏开始
   let currentY = startY;
 
-  // 首栏（最右栏）：先绘制篇目大字
-  const colCenterX = (colIdx: number) =>
-    contentAreaX + actualContentW - colW * colIdx - colW / 2;
-
-  ctx.save();
-  ctx.font = `bold 21px ${minchoFont}`;
-  ctx.fillStyle = theme.text;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-
-  const volChars = Array.from(volumeText);
-  for (const char of volChars) {
-    ctx.fillText(char, colCenterX(0), currentY + 21 / 2);
-    currentY += 21 + 8;
-  }
-  currentY += 12; // 篇目与后续正文间隔
-  ctx.restore();
-
-  // 绘制流式正文字符与朱笔句读
   for (const token of allTokens) {
     if (token.isBreak) {
       // 显式换行：换到下一列
@@ -317,7 +342,7 @@ export async function exportAncientBookmarkImage(
     currentY += stepY;
   }
 
-  // 末尾列（最左或当前最末列）：底部校刊题跋
+  // ④ 末尾列：底部校刊题跋
   const extraText = state.bookmarkExtra || '中华书局 谨印';
   const extraChars = Array.from(extraText.replace(/\n/g, '  '));
   const footerColIdx = Math.min(colCount - 1, Math.max(currentColIdx + 1, colCount - 1));

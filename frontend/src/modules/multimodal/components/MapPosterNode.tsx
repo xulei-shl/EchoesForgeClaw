@@ -3,6 +3,7 @@ import { ImageDown, Loader2, Map as MapIcon, MapPin, Search, X } from 'lucide-re
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
+import { BeamGlow } from '../../../platform/components/node/BeamGlow';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { Select, type SelectOption } from '../../../platform/components/ui/Select';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
@@ -105,6 +106,7 @@ const MapPosterNodeInner: React.FC<MapPosterNodeProps> = ({
   onDrag,
   footer,
   onContextMenu,
+  hasDownstream,
   onUpdateEditor,
   onExport,
 }) => {
@@ -220,15 +222,41 @@ const MapPosterNodeInner: React.FC<MapPosterNodeProps> = ({
       onContextMenu={onContextMenu}
       resizable
       defaultSize={{ width: 460, height: 560 }}
+      glowOverlay={generating ? <BeamGlow /> : undefined}
       showLeftAnchor={false}
       showRightAnchor={true}
       footer={footer}
       actionBar={
         <NodeActionBar>
-          {imageUrl && (
-            <NodeActionBar.Download
-              tooltip="下载地图海报"
-              onClick={handleDownload}
+          {imageUrl ? (
+            <>
+              <NodeActionBar.Retry
+                onClick={handleGenerate}
+                disabled={generating}
+                hasDownstream={hasDownstream}
+                downstreamTooltip="有下级节点，不可重新生成"
+                tooltip="重新生成地图海报"
+                error={!!error}
+              />
+              <NodeActionBar.Download
+                tooltip="下载地图海报"
+                onClick={handleDownload}
+              />
+            </>
+          ) : (
+            <NodeActionBar.Custom
+              icon={
+                generating ? (
+                  <Loader2 size={16} className="animate-spin text-accent" />
+                ) : (
+                  <ImageDown size={16} strokeWidth={1.5} />
+                )
+              }
+              tooltip="生成地图海报"
+              downstreamTooltip="有下级节点，不可生成"
+              onClick={handleGenerate}
+              disabled={generating}
+              hasDownstream={hasDownstream}
             />
           )}
         </NodeActionBar>
@@ -315,9 +343,23 @@ const MapPosterNodeInner: React.FC<MapPosterNodeProps> = ({
           />
         </div>
 
-        {/* 地图预览区域 */}
+        {/* 错误提示 */}
+        {error && (
+          <div className="shrink-0 px-2.5 py-1.5 rounded-md border border-error/20 bg-error/5 text-[11px] text-error break-words">
+            {error}
+          </div>
+        )}
+
+        {/* 地图预览区域（充分占满可用垂直空间） */}
         <div className="relative flex-1 min-h-0 flex items-center justify-center p-2 rounded-md overflow-hidden border border-dashed border-paper-grid bg-paper/30 select-none">
-          {imageUrl ? (
+          {generating ? (
+            <div className="flex flex-col items-center justify-center gap-3 text-accent">
+              <div className="w-10 h-10 rounded-full border border-dashed border-accent/40 bg-accent/5 flex items-center justify-center">
+                <Loader2 size={20} strokeWidth={1.75} className="animate-spin" />
+              </div>
+              <p className="text-xs font-serif">正在生成并绘制地图海报…</p>
+            </div>
+          ) : imageUrl ? (
             <PhotoProvider maskOpacity={0.8} bannerVisible={false}>
               <PhotoView src={imageUrl}>
                 <img
@@ -330,36 +372,11 @@ const MapPosterNodeInner: React.FC<MapPosterNodeProps> = ({
           ) : (
             <div className="flex flex-col items-center justify-center gap-3 text-ink-faint">
               <MapIcon size={48} strokeWidth={1} className="opacity-30" />
-              <p className="text-xs text-center leading-relaxed">
-                选择地点和主题后<br />点击下方按钮生成海报
+              <p className="text-xs text-center leading-relaxed font-serif text-ink-light">
+                配置地点与主题后<br />
+                <span className="text-[11px] font-sans text-ink-faint">点击右下角操作栏按钮生成海报</span>
               </p>
             </div>
-          )}
-        </div>
-
-        {/* 错误提示 */}
-        {error && (
-          <div className="shrink-0 px-2.5 py-1.5 rounded-md border border-error/20 bg-error/5 text-[11px] text-error break-words">
-            {error}
-          </div>
-        )}
-
-        {/* 底部操作：生成 + 已生成缩略图 */}
-        <div className="shrink-0 flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleGenerate}
-            disabled={generating}
-            className="flex items-center gap-1.5 h-9 px-3 rounded-md bg-accent text-paper text-xs font-serif hover:bg-accent-hover active:scale-[0.96] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {generating ? <Loader2 size={14} strokeWidth={2} className="animate-spin" /> : <ImageDown size={14} strokeWidth={2} />}
-            {generating ? '生成中…' : imageUrl ? '重新生成' : '生成海报'}
-          </button>
-          {imageUrl && (
-            <span className="text-[10px] font-sans text-ink-faint flex items-center gap-1">
-              <MapIcon size={11} strokeWidth={1.5} />
-              点击图片可放大查看
-            </span>
           )}
         </div>
       </div>

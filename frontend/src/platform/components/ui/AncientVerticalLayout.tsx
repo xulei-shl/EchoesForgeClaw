@@ -2,17 +2,21 @@ import React from 'react';
 import { parseJuDou, type JudouToken } from '../../utils/judou';
 
 export interface AncientVerticalLayoutProps {
-  /** 正文原始文本 */
+  /** 正文原始文摘文本 */
   text: string;
-  /** 篇目大字（首列大字卷号/标题，可选） */
+  /** 第一竖栏：题名大字（顶格书写，如《資治通鑑 卷第一》/《大作家写给孩子们》） */
+  bookTitle?: string;
+  /** 第二竖栏：作者/责任者（古籍规范低两格书写，如《[俄] 列夫·托尔斯泰 著》/《宋 司马光 撰》） */
+  authorName?: string;
+  /** 兼容别名：篇目大字（若未传 bookTitle 时降级读取） */
   headerTitle?: string;
-  /** 尾列小字（校勘/出品署名，可选） */
+  /** 尾列小字：校勘跋文/出品题跋（如《中华书局 谨印》） */
   footerNote?: string;
-  /** 字体大小，默认 14px */
+  /** 字体大小，默认 13px */
   fontSize?: number;
   /** 乌丝栏列宽（行高），默认 30px */
   columnWidth?: number;
-  /** 字符纵向间距，默认 4px */
+  /** 字符纵向间距，默认 3.5px */
   letterSpacing?: number;
   /** 字体栈，默认汇文明朝体/宋体 */
   fontFamily?: string;
@@ -41,19 +45,22 @@ const DEFAULT_KAITI_FONT =
 /**
  * 全平台通用古籍竖向排版组件 (Ancient Vertical Layout)
  *
- * 特性：
- * 1. 原生 CSS `writing-mode: vertical-rl` 流式排版，文字自上而下、写满自右向左自然折列；
- * 2. 标点符号自动转化为古籍朱笔句读（朱圈/朱点），以角标形态精准附着在字右上角；
- * 3. 纵向乌丝栏栅格底纹与文字流精准贴合；
- * 4. 支持篇目大字、尾列校勘小字，适用于古籍书签、藏书票、文摘卡等全平台节点。
+ * 核心古籍排版规范：
+ * 1. 第一竖栏（最右）：题名大字顶格排列；
+ * 2. 第二竖栏：作者/责任者低两格排列；
+ * 3. 第三竖栏及之后：正文文摘流式排布，自上而下自右向左自然折列；
+ * 4. 标点符号自动转换为朱笔句读（朱圈/朱点），以角标形态附着于文字右上角；
+ * 5. 纵向乌丝栏栅格与各列精准贴合。
  */
 export const AncientVerticalLayout: React.FC<AncientVerticalLayoutProps> = ({
   text,
+  bookTitle,
+  authorName,
   headerTitle,
   footerNote,
-  fontSize = 14,
+  fontSize = 13,
   columnWidth = 30,
-  letterSpacing = 4,
+  letterSpacing = 3.5,
   fontFamily = DEFAULT_MINCHO_FONT,
   textColor = 'currentColor',
   puncColor = '#b82828',
@@ -71,6 +78,7 @@ export const AncientVerticalLayout: React.FC<AncientVerticalLayoutProps> = ({
   }, [text, convertNumbers]);
 
   const defaultRuledColor = ruledLineColor || `color-mix(in srgb, ${textColor} 35%, transparent)`;
+  const effectiveTitle = bookTitle || headerTitle;
 
   // 乌丝栏栅格背景
   const ruledBackgroundStyle: React.CSSProperties = showRuledLines
@@ -96,88 +104,113 @@ export const AncientVerticalLayout: React.FC<AncientVerticalLayoutProps> = ({
         ...style,
       }}
     >
-      {/* 1. 首列篇目大字（自右向左流的首部） */}
-      {headerTitle ? (
-        <span
-          className="inline-block font-bold text-center select-text"
+      {/* 1. 第一竖栏（最右侧）：题名 / 书名卷次大字，顶格书写 */}
+      {effectiveTitle ? (
+        <div
+          className="inline-block h-full align-top font-bold select-text"
           style={{
+            width: `${columnWidth}px`,
             fontSize: `${Math.round(fontSize * 1.25)}px`,
-            letterSpacing: `${letterSpacing * 1.5}px`,
-            marginRight: '2px',
-            marginLeft: `${columnWidth * 0.15}px`,
-            marginBottom: '16px',
+            letterSpacing: `${letterSpacing * 1.4}px`,
+            lineHeight: `${columnWidth}px`,
+            paddingBottom: '16px',
           }}
         >
-          {headerTitle}
-        </span>
+          {effectiveTitle}
+        </div>
       ) : null}
 
-      {/* 2. 流式正文字符与朱批句读 */}
-      {tokens.map((token: JudouToken, idx: number) => {
-        if (token.isBreak) {
-          return <br key={`br-${idx}`} className="select-none" />;
-        }
+      {/* 2. 第二竖栏：作者 / 责任者，古籍规范低两格书写 */}
+      {authorName ? (
+        <div
+          className="inline-block h-full align-top select-text opacity-90"
+          style={{
+            width: `${columnWidth}px`,
+            fontFamily: DEFAULT_KAITI_FONT,
+            fontSize: `${fontSize}px`,
+            letterSpacing: `${letterSpacing}px`,
+            lineHeight: `${columnWidth}px`,
+            paddingTop: `${fontSize * 2.4}px`, // 低两格
+            paddingBottom: '16px',
+          }}
+        >
+          {authorName}
+        </div>
+      ) : null}
 
-        return (
+      {/* 3. 第三竖栏及后续：流式正文字符与朱批句读 */}
+      <div
+        className="inline-block h-full align-top select-text"
+        style={{
+          lineHeight: `${columnWidth}px`,
+        }}
+      >
+        {tokens.map((token: JudouToken, idx: number) => {
+          if (token.isBreak) {
+            return <br key={`br-${idx}`} className="select-none" />;
+          }
+
+          return (
+            <span
+              key={`char-${idx}`}
+              className="inline-block relative select-text"
+              style={{
+                letterSpacing: `${letterSpacing}px`,
+                lineHeight: '1.2',
+              }}
+            >
+              {token.char}
+              {/* 朱圈 (句号/叹号/问号) */}
+              {token.judou === 'circle' && (
+                <span
+                  className="absolute pointer-events-none select-none"
+                  style={{
+                    top: '-2px',
+                    right: '-5px',
+                    width: '5px',
+                    height: '5px',
+                    borderRadius: '50%',
+                    border: `1.2px solid ${puncColor}`,
+                    boxSizing: 'border-box',
+                  }}
+                  title="朱圈"
+                />
+              )}
+              {/* 朱点 (逗号/顿号/分号) */}
+              {token.judou === 'dot' && (
+                <span
+                  className="absolute pointer-events-none select-none"
+                  style={{
+                    top: '0px',
+                    right: '-4px',
+                    width: '3.5px',
+                    height: '3.5px',
+                    borderRadius: '50%',
+                    backgroundColor: puncColor,
+                  }}
+                  title="朱点"
+                />
+              )}
+            </span>
+          );
+        })}
+
+        {/* 尾列小字署名/校勘跋文 */}
+        {footerNote ? (
           <span
-            key={`char-${idx}`}
-            className="inline-block relative select-text"
+            className="inline-block opacity-80 select-text"
             style={{
+              fontFamily: DEFAULT_KAITI_FONT,
+              fontSize: `${Math.max(10, Math.round(fontSize * 0.82))}px`,
               letterSpacing: `${letterSpacing}px`,
-              lineHeight: '1.2',
+              marginLeft: `${columnWidth * 0.3}px`,
+              marginTop: 'auto',
             }}
           >
-            {token.char}
-            {/* 朱圈 (句号/叹号/问号) */}
-            {token.judou === 'circle' && (
-              <span
-                className="absolute pointer-events-none select-none"
-                style={{
-                  top: '-2px',
-                  right: '-5px',
-                  width: '5px',
-                  height: '5px',
-                  borderRadius: '50%',
-                  border: `1.2px solid ${puncColor}`,
-                  boxSizing: 'border-box',
-                }}
-                title="朱圈"
-              />
-            )}
-            {/* 朱点 (逗号/顿号/分号) */}
-            {token.judou === 'dot' && (
-              <span
-                className="absolute pointer-events-none select-none"
-                style={{
-                  top: '0px',
-                  right: '-4px',
-                  width: '3.5px',
-                  height: '3.5px',
-                  borderRadius: '50%',
-                  backgroundColor: puncColor,
-                }}
-                title="朱点"
-              />
-            )}
+            {footerNote}
           </span>
-        );
-      })}
-
-      {/* 3. 尾列小字署名/校勘跋文 */}
-      {footerNote ? (
-        <span
-          className="inline-block opacity-80 select-text"
-          style={{
-            fontFamily: DEFAULT_KAITI_FONT,
-            fontSize: `${Math.max(10, Math.round(fontSize * 0.82))}px`,
-            letterSpacing: `${letterSpacing}px`,
-            marginRight: `${columnWidth * 0.2}px`,
-            marginTop: 'auto',
-          }}
-        >
-          {footerNote}
-        </span>
-      ) : null}
+        ) : null}
+      </div>
     </div>
   );
 };
