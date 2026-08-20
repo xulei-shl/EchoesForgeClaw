@@ -235,15 +235,15 @@ const MapPosterNodeInner: React.FC<MapPosterNodeProps> = ({
       }
     >
       <div className="h-full flex flex-col flex-1 min-h-0 gap-2">
-        {/* 地点搜索 */}
-        <div className="shrink-0 relative z-20">
-          <div className="relative">
+        {/* 第 1 行：地点搜索与标头文字定制 */}
+        <div className="shrink-0 flex gap-1.5 relative z-30">
+          <div className="relative flex-1 min-w-0">
             <Search size={13} strokeWidth={2} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-faint pointer-events-none" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="搜索地点（Nominatim）"
-              className="w-full h-9 rounded-md border border-dashed border-paper-grid bg-transparent pl-8 pr-7 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors font-mono"
+              className="w-full h-8 rounded-md border border-dashed border-paper-grid bg-transparent pl-8 pr-7 text-xs text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors font-mono"
             />
             {query && !searching && (
               <button
@@ -258,26 +258,40 @@ const MapPosterNodeInner: React.FC<MapPosterNodeProps> = ({
             {searching && (
               <Loader2 size={13} strokeWidth={2} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-faint animate-spin" />
             )}
+            {results.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-paper border border-dashed border-paper-grid rounded-md shadow-lg z-40 max-h-48 overflow-y-auto custom-scrollbar">
+                {results.map((r, i) => (
+                  <button
+                    key={`${r.lat}-${r.lon}-${i}`}
+                    type="button"
+                    onClick={() => handlePickLocation(r)}
+                    className="flex w-full text-left px-3 py-2 text-xs text-ink hover:bg-paper-grid/50 transition-colors border-b border-paper-grid/40 last:border-b-0"
+                  >
+                    <MapPin size={12} strokeWidth={2} className="text-accent shrink-0 mr-2 mt-0.5" />
+                    <span className="min-w-0 truncate">{r.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-          {results.length > 0 && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-paper border border-dashed border-paper-grid rounded-md shadow-md z-30 max-h-44 overflow-y-auto custom-scrollbar">
-              {results.map((r, i) => (
-                <button
-                  key={`${r.lat}-${r.lon}-${i}`}
-                  type="button"
-                  onClick={() => handlePickLocation(r)}
-                  className="flex w-full text-left px-3 py-2 text-xs text-ink hover:bg-paper-grid/50 transition-colors border-b border-paper-grid/40 last:border-b-0"
-                >
-                  <MapPin size={12} strokeWidth={2} className="text-accent shrink-0 mr-2 mt-0.5" />
-                  <span className="min-w-0 truncate">{r.name}</span>
-                </button>
-              ))}
-            </div>
-          )}
+          <input
+            value={cityName}
+            onChange={(e) => edit({ cityName: e.target.value.toUpperCase() })}
+            placeholder="城市名"
+            className="h-8 w-28 shrink-0 rounded-md border border-dashed border-paper-grid bg-transparent px-2.5 text-xs text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors font-mono"
+            title="海报主标题城市名"
+          />
+          <input
+            value={countryName}
+            onChange={(e) => edit({ countryName: e.target.value.toUpperCase() })}
+            placeholder="国家/地区"
+            className="h-8 w-24 shrink-0 rounded-md border border-dashed border-paper-grid bg-transparent px-2.5 text-xs text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors font-mono"
+            title="海报副标题国家/地区"
+          />
         </div>
 
-        {/* 主题 / 尺寸 / 距离 */}
-        <div className="shrink-0 flex gap-1.5 relative z-10">
+        {/* 第 2 行：主题风格 / 画幅尺寸 / 视野范围 */}
+        <div className="shrink-0 flex gap-1.5 relative z-20">
           <Select
             size="sm"
             value={theme}
@@ -292,32 +306,12 @@ const MapPosterNodeInner: React.FC<MapPosterNodeProps> = ({
             options={SIZE_PRESET_OPTIONS}
             className="w-36 shrink-0"
           />
-        </div>
-
-        {/* 距离选择 */}
-        <div className="shrink-0 flex gap-1.5 relative z-[5]">
           <Select
             size="sm"
             value={String(distance)}
             onChange={(val) => edit({ distance: Number(val) })}
             options={DISTANCE_OPTIONS}
-            className="flex-1"
-          />
-        </div>
-
-        {/* 覆盖层文字 */}
-        <div className="shrink-0 flex gap-1.5 relative z-[5]">
-          <input
-            value={cityName}
-            onChange={(e) => edit({ cityName: e.target.value.toUpperCase() })}
-            placeholder="城市名"
-            className="h-8 flex-1 min-w-0 rounded-md border border-dashed border-paper-grid bg-transparent px-2 text-xs text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors font-mono"
-          />
-          <input
-            value={countryName}
-            onChange={(e) => edit({ countryName: e.target.value.toUpperCase() })}
-            placeholder="国家/地区"
-            className="h-8 flex-1 min-w-0 rounded-md border border-dashed border-paper-grid bg-transparent px-2 text-xs text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors font-mono"
+            className="w-28 shrink-0"
           />
         </div>
 
@@ -359,7 +353,7 @@ const MapPosterNodeInner: React.FC<MapPosterNodeProps> = ({
             className="flex items-center gap-1.5 h-9 px-3 rounded-md bg-accent text-paper text-xs font-serif hover:bg-accent-hover active:scale-[0.96] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {generating ? <Loader2 size={14} strokeWidth={2} className="animate-spin" /> : <ImageDown size={14} strokeWidth={2} />}
-            {generating ? '生成中…' : imageUrl ? '重新生成' : '生成地图海报'}
+            {generating ? '生成中…' : imageUrl ? '重新生成' : '生成海报'}
           </button>
           {imageUrl && (
             <span className="text-[10px] font-sans text-ink-faint flex items-center gap-1">
