@@ -103,7 +103,7 @@ export const TEMPLATE_BOOK_RECOMMEND: ReceiptTemplateDef = {
     }
 
     return {
-      storeName: 'ECHOES LIBRARY',
+      storeName: 'SHANGHAI LIBRARY',
       subtitle: '★ BOOK RECOMMENDATION ★',
       imageUrl: cover || null,
       rating,
