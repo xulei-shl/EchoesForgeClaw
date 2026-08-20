@@ -5,6 +5,7 @@ import { LibraryCardPaper } from './papers/LibraryCardPaper';
 import { ItemizedReceiptPaper } from './papers/ItemizedReceiptPaper';
 import { BookExcerptPaper } from './papers/BookExcerptPaper';
 import { RetroMenuPaper } from './papers/RetroMenuPaper';
+import { AncientBookmarkPaper } from './papers/AncientBookmarkPaper';
 
 export interface ReceiptPaperProps {
   state: ReceiptState;
@@ -26,6 +27,7 @@ const TEMPLATE_COMPONENTS: Record<
   itemized: ItemizedReceiptPaper,
   book_excerpt: BookExcerptPaper,
   retro_menu: RetroMenuPaper,
+  ancient_bookmark: AncientBookmarkPaper,
 };
 
 /**
@@ -39,4 +41,11 @@ export const ReceiptPaper = React.forwardRef<HTMLDivElement, ReceiptPaperProps>(
 
 ReceiptPaper.displayName = 'ReceiptPaper';
 
-export { BookRecommendPaper, LibraryCardPaper, ItemizedReceiptPaper, BookExcerptPaper, RetroMenuPaper };
+export {
+  BookRecommendPaper,
+  LibraryCardPaper,
+  ItemizedReceiptPaper,
+  BookExcerptPaper,
+  RetroMenuPaper,
+  AncientBookmarkPaper,
+};

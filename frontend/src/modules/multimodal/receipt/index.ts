@@ -3,6 +3,7 @@ export * from './themes';
 export * from './dither';
 export * from './barcode';
 export * from './borrowerGenerator';
+export * from './sealGenerator';
 export * from './templates';
 export * from './exportReceipt';
 export * from './components/ReceiptPaper';

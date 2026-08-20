@@ -57,6 +57,16 @@ export const DEFAULT_RECEIPT_THEMES: ReceiptTheme[] = [
     previewColor: '#E2E6C4',
   },
   {
+    id: 'ancient',
+    name: '古籍泛黄',
+    bg: '#E4D1A9',
+    text: '#262626',
+    faint: '#6E604C',
+    dashed: '#C4A878',
+    accent: '#A63A2B',
+    previewColor: '#E4D1A9',
+  },
+  {
     id: 'purple',
     name: '梦幻浅紫',
     bg: '#EDE7F6',

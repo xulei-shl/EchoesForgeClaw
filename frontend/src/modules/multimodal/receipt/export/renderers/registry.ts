@@ -3,6 +3,7 @@ import { exportStandardReceiptImage } from './standardRenderer';
 import { exportLibraryCardImage } from './libraryCardRenderer';
 import { exportBookExcerptImage } from './bookExcerptRenderer';
 import { exportRetroMenuImage } from './retroMenuRenderer';
+import { exportAncientBookmarkImage } from './ancientBookmarkRenderer';
 
 export type ReceiptCanvasRenderer = (
   state: ReceiptState,
@@ -19,6 +20,7 @@ export const RECEIPT_RENDERER_REGISTRY: Record<string, ReceiptCanvasRenderer> = 
   reading_log: exportLibraryCardImage,
   book_excerpt: exportBookExcerptImage,
   retro_menu: exportRetroMenuImage,
+  ancient_bookmark: exportAncientBookmarkImage,
 };
 
 /**

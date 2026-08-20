@@ -6,10 +6,17 @@
  */
 
 /** 预设主题标识（支持扩展自定义主题 key） */
-export type ReceiptThemeId = 'white' | 'cream' | 'pink' | 'mint' | 'purple' | string;
+export type ReceiptThemeId = 'white' | 'cream' | 'pink' | 'mint' | 'sage' | 'ancient' | 'purple' | string;
 
 /** 预设模板标识（支持扩展自定义模板 key） */
-export type ReceiptTemplateId = 'book_recommend' | 'reading_log' | 'itemized' | 'book_excerpt' | 'retro_menu' | string;
+export type ReceiptTemplateId =
+  | 'book_recommend'
+  | 'reading_log'
+  | 'itemized'
+  | 'book_excerpt'
+  | 'retro_menu'
+  | 'ancient_bookmark'
+  | string;
 
 /** 热敏纸主题配色定义 */
 export interface ReceiptTheme {
@@ -68,6 +75,23 @@ export interface BorrowerRecordItem {
   rotation?: string;
   /** 借阅人手写字体样式（如 "font-handwriting-cn", "font-handwriting-en"） */
   fontClass?: string;
+}
+
+/** 古籍书签多印章项 */
+export interface ReceiptSealItem {
+  id: string;
+  src: string;
+  name?: string;
+  positionPreset?: 'top-right' | 'bottom-left' | 'middle-cross' | 'top-left' | 'custom';
+  width?: number;
+  height?: number;
+  top?: number;
+  topPercent?: number;
+  left?: number;
+  right?: number;
+  bottom?: number;
+  rotate?: number;
+  opacity?: number;
 }
 
 
@@ -153,6 +177,16 @@ export interface ReceiptState {
   serialNumber?: string;
   /** 书摘小票英文胶囊横幅文案（如 "BOOK EXCERPT SHARING"） */
   englishBanner?: string;
+  /** 古籍书签版心文字（如 "資治通鑑" / "百年孤独"） */
+  banxinTitle?: string;
+  /** 古籍书签第一列卷号/副标题（如 "卷第一"） */
+  bookmarkVolume?: string;
+  /** 古籍书签第二列文摘提要（如 "起著雍摄提格\n尽玄黓困敦"） */
+  bookmarkExcerpt?: string;
+  /** 古籍书签第三列出版与责任者（如 "[著者] 加西亚·马尔克斯\n南海出版公司 · 2011"） */
+  bookmarkExtra?: string;
+  /** 古籍书签随机印章列表 */
+  seals?: ReceiptSealItem[];
 }
 
 /** 模板规范定义接口（方便新增扩展模板） */

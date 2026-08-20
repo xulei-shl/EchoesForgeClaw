@@ -7,6 +7,7 @@ import {
   exportLibraryCardImage,
   exportBookExcerptImage,
   exportRetroMenuImage,
+  exportAncientBookmarkImage,
 } from './export';
 
 export interface ExportReceiptOptions {
@@ -15,7 +16,7 @@ export interface ExportReceiptOptions {
 }
 
 /**
- * 导出小票 / 借书卡 / 书摘小票 / 复古菜单为高清 PNG 图片
+ * 导出小票 / 借书卡 / 书摘小票 / 复古菜单 / 古籍书签为高清 PNG 图片
  * 采用高保真纯 Canvas 离屏矢量渲染引擎，实现全模板毫秒级瞬时响应（< 30ms）与精准的所见即所得
  */
 export async function exportReceiptImage(
@@ -36,4 +37,5 @@ export {
   exportLibraryCardImage,
   exportBookExcerptImage,
   exportRetroMenuImage,
+  exportAncientBookmarkImage,
 };

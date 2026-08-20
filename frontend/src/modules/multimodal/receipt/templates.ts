@@ -1,4 +1,5 @@
 import { generateRandomBorrowerRecords } from './borrowerGenerator';
+import { generateRandomSeals } from './sealGenerator';
 import type { BookMetadataInput, ReceiptState, ReceiptTemplateDef, ReceiptTemplateId, ReceiptThemeId } from './types';
 
 /**
@@ -431,6 +432,100 @@ export const TEMPLATE_RETRO_MENU: ReceiptTemplateDef = {
   },
 };
 
+/**
+ * 预设 6：古籍版心书签（古风雕版、版心鱼尾、乌丝栏竖排与随机印章）
+ */
+export const TEMPLATE_ANCIENT_BOOKMARK: ReceiptTemplateDef = {
+  id: 'ancient_bookmark',
+  name: '古籍书签',
+  description: '古籍雕版与版心书签排版，含鱼尾纹、乌丝栏竖排文字、汇文明朝体与随机印章体系',
+  createInitialState: () => ({
+    templateId: 'ancient_bookmark',
+    themeId: 'ancient',
+    ditherEnabled: false,
+    storeName: '资治通鉴',
+    banxinTitle: '資治通鑑',
+    bookmarkVolume: '卷第一',
+    bookmarkExcerpt: '起著雍摄提格\n尽玄黓困敦',
+    bookmarkExtra: '司马光 著\n中华书局 · 2011',
+    dateTimeText: formatReceiptDate(),
+    terminal: '',
+    servedBy: '',
+    callNumber: '',
+    status: '',
+    rating: '9.8',
+    metaFields: [
+      { key: 'title', label: '书名', value: '资治通鉴', visible: true },
+      { key: 'author', label: '作者', value: '司马光', visible: true },
+      { key: 'publisher', label: '出版社', value: '中华书局', visible: true },
+      { key: 'pub_year', label: '出版年', value: '2011', visible: true },
+    ],
+    items: [],
+    totalLabel: '',
+    totalValue: '',
+    barcodeText: '9787101077759',
+    footerMessage: '',
+    bottomNote: '',
+    seals: generateRandomSeals(4),
+  }),
+  mapFromBook: (book: BookMetadataInput, current = {}) => {
+    const rawTitle = book.title?.trim() || '资治通鉴';
+    const cleanTitle = rawTitle.replace(/^《+|》+$/g, '').trim() || rawTitle;
+    const author = book.author?.trim() || '';
+    const publisher = book.publisher?.trim() || '';
+    const rawYear = book.pub_year || book.publishDate || '';
+    const yearMatch = rawYear.match(/\d{4}/);
+    const pubYear = yearMatch ? yearMatch[0] : rawYear.trim();
+
+    const volume =
+      book.subtitle?.trim() ||
+      (current.bookmarkVolume && current.bookmarkVolume !== '卷第一'
+        ? current.bookmarkVolume
+        : '卷第一');
+
+    let excerpt = current.bookmarkExcerpt;
+    if (!excerpt) {
+      const summaryText = book.summary || book.description || '';
+      if (summaryText.trim()) {
+        const sentences = summaryText
+          .split(/(?<=[。！？\n])/)
+          .map((s) => s.trim())
+          .filter(Boolean);
+        excerpt = sentences.slice(0, 2).join('\n') || summaryText.slice(0, 24);
+      } else {
+        excerpt = '起著雍摄提格\n尽玄黓困敦';
+      }
+    }
+
+    let extra = '';
+    if (author && (publisher || pubYear)) {
+      extra = `${author}\n${publisher}${pubYear ? ' · ' + pubYear : ''}`.trim();
+    } else if (author) {
+      extra = `${author}`;
+    } else if (publisher || pubYear) {
+      extra = `${publisher}${pubYear ? ' · ' + pubYear : ''}`.trim();
+    } else {
+      extra = '司马光 著\n中华书局 · 2011';
+    }
+
+    const cover = book.cover_image_local || book.cover_image || book.coverUrl || null;
+    const seals =
+      current.seals && current.seals.length > 0 ? current.seals : generateRandomSeals(4);
+
+    return {
+      storeName: cleanTitle,
+      banxinTitle: cleanTitle,
+      bookmarkVolume: volume,
+      bookmarkExcerpt: excerpt,
+      bookmarkExtra: extra,
+      rating: book.rating ? String(book.rating) : current.rating || '9.8',
+      barcodeText: book.isbn || current.barcodeText || '9787101077759',
+      imageUrl: cover || current.imageUrl,
+      seals,
+    };
+  },
+};
+
 /** 模板注册表（支持动态扩展） */
 const templateRegistry = new Map<string, ReceiptTemplateDef>([
   [TEMPLATE_BOOK_RECOMMEND.id, TEMPLATE_BOOK_RECOMMEND],
@@ -438,6 +533,7 @@ const templateRegistry = new Map<string, ReceiptTemplateDef>([
   [TEMPLATE_ITEMIZED.id, TEMPLATE_ITEMIZED],
   [TEMPLATE_BOOK_EXCERPT.id, TEMPLATE_BOOK_EXCERPT],
   [TEMPLATE_RETRO_MENU.id, TEMPLATE_RETRO_MENU],
+  [TEMPLATE_ANCIENT_BOOKMARK.id, TEMPLATE_ANCIENT_BOOKMARK],
 ]);
 
 /** 获取所有可用模板 */
