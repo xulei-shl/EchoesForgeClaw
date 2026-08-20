@@ -83,46 +83,10 @@ export async function exportAncientBookmarkImage(
   ctx.restore();
 
   // -------------------------------------------------------------
-  // 3. 绘制顶部古籍书眉天头区 (Top Shumei Header Bar)
+  // 3. 绘制雕版正文与左侧版心区 (Body Area)
   // -------------------------------------------------------------
-  const shumeiH = 44;
-  const shumeiBottomY = innerY + shumeiH;
-
-  ctx.save();
-  ctx.strokeStyle = `color-mix(in srgb, ${theme.text} 65%, transparent)`;
-  ctx.lineWidth = 1.2;
-  ctx.beginPath();
-  ctx.moveTo(innerX, shumeiBottomY);
-  ctx.lineTo(innerX + innerW, shumeiBottomY);
-  ctx.stroke();
-
-  // ① 书眉左侧：丛书系列名
-  const seriesName = state.seriesTitle || '欽定四庫全書';
-  ctx.font = `500 15px ${minchoFont}`;
-  ctx.fillStyle = theme.text;
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(seriesName, innerX + 16, innerY + shumeiH / 2);
-
-  // ② 书眉中间：书名与卷次
-  const bookTitle = state.storeName || '資治通鑑';
-  const volumeText = state.bookmarkVolume || '卷第一';
-  ctx.font = `bold 17px ${minchoFont}`;
-  ctx.textAlign = 'center';
-  ctx.fillText(`${bookTitle}  ${volumeText}`, innerX + innerW / 2, innerY + shumeiH / 2);
-
-  // ③ 书眉右侧：责任者
-  const authorField = state.metaFields?.find((f) => f.key === 'author')?.value || '司马光';
-  ctx.font = `normal 14px ${minchoFont}`;
-  ctx.textAlign = 'right';
-  ctx.fillText(`${authorField} 撰`, innerX + innerW - 16, innerY + shumeiH / 2);
-  ctx.restore();
-
-  // -------------------------------------------------------------
-  // 4. 绘制雕版正文与左侧版心区 (Body Area)
-  // -------------------------------------------------------------
-  const bodyY = shumeiBottomY;
-  const bodyH = innerH - shumeiH;
+  const bodyY = innerY;
+  const bodyH = innerH;
 
   // ---------- 左侧版心区 (Banxin Area) ----------
   const banxinW = 50;
@@ -145,7 +109,8 @@ export async function exportAncientBookmarkImage(
   const banxinBottomY = bodyY + bodyH - banxinPadY;
 
   // 版心题名文字
-  const banxinTitle = state.banxinTitle || `${bookTitle}${volumeText}`;
+  const bookTitle = state.storeName || '資治通鑑';
+  const banxinTitle = state.banxinTitle || bookTitle;
   const banxinFontSize = 14;
   const banxinLetterSpacing = 5;
   const banxinChars = Array.from(banxinTitle);
@@ -155,10 +120,10 @@ export async function exportAncientBookmarkImage(
   const fishtailH = 28;
   const fishtailW = 20;
   const banxinCenterY = (banxinTopY + banxinBottomY) / 2;
-  const banxinTitleStartY = banxinCenterY - banxinTitleHeight / 2 - 10;
+  const banxinTitleStartY = banxinCenterY - banxinTitleHeight / 2;
 
   const fishtailTopY = banxinTitleStartY - fishtailH - 10;
-  const fishtailBottomY = banxinTitleStartY + banxinTitleHeight + 24;
+  const fishtailBottomY = banxinTitleStartY + banxinTitleHeight + 10;
 
   // ① 上象鼻线
   ctx.save();
@@ -190,11 +155,6 @@ export async function exportAncientBookmarkImage(
     ctx.fillText(char, banxinCenterX, curBanxinY + banxinFontSize / 2);
     curBanxinY += banxinFontSize + banxinLetterSpacing;
   }
-
-  // 版心叶码
-  const leafNumber = state.leafNumber || '一';
-  ctx.font = `normal 13px ${minchoFont}`;
-  ctx.fillText(leafNumber, banxinCenterX, curBanxinY + 12);
 
   // ④ 下鱼尾 (黑鱼尾)
   ctx.beginPath();
@@ -241,8 +201,8 @@ export async function exportAncientBookmarkImage(
   const colCenterX = (colIdx: number) =>
     contentAreaX + actualContentW - colW * colIdx - colW / 2;
 
-  // ① 第 0 列（最右栏）：书名与卷次大字顶格书写
-  const fullTitle = `${state.storeName || '資治通鑑'}  ${state.bookmarkVolume || '卷第一'}`;
+  // ① 第 0 列（最右栏）：书名大字顶格书写
+  const fullTitle = state.storeName || '資治通鑑';
   const titleChars = Array.from(fullTitle);
   let titleY = startY;
   ctx.save();

@@ -30,8 +30,24 @@ export interface AncientVerticalLayoutProps {
   ruledLineColor?: string;
   /** 是否自动将阿拉伯数字转为中文，默认 true */
   convertNumbers?: boolean;
-  /** 点击编辑触发 */
-  onClick?: (e: React.MouseEvent<HTMLDivElement>) => void;
+  /** 点击整个排版区域触发 */
+  onClick?: (e: React.MouseEvent<HTMLElement>) => void;
+  /** 第一栏题名点击回调 */
+  onTitleClick?: (e: React.MouseEvent<HTMLElement>) => void;
+  /** 第二栏作者点击回调 */
+  onAuthorClick?: (e: React.MouseEvent<HTMLElement>) => void;
+  /** 正文流点击回调 */
+  onTextClick?: (e: React.MouseEvent<HTMLElement>) => void;
+  /** 尾列题跋点击回调 */
+  onFooterClick?: (e: React.MouseEvent<HTMLElement>) => void;
+  /** 题名悬浮提示 */
+  titleTooltip?: string;
+  /** 作者悬浮提示 */
+  authorTooltip?: string;
+  /** 正文悬浮提示 */
+  textTooltip?: string;
+  /** 题跋悬浮提示 */
+  footerTooltip?: string;
   className?: string;
   style?: React.CSSProperties;
   title?: string;
@@ -68,6 +84,14 @@ export const AncientVerticalLayout: React.FC<AncientVerticalLayoutProps> = ({
   ruledLineColor,
   convertNumbers = true,
   onClick,
+  onTitleClick,
+  onAuthorClick,
+  onTextClick,
+  onFooterClick,
+  titleTooltip,
+  authorTooltip,
+  textTooltip,
+  footerTooltip,
   className = '',
   style = {},
   title,
@@ -107,7 +131,18 @@ export const AncientVerticalLayout: React.FC<AncientVerticalLayoutProps> = ({
       {/* 1. 第一竖栏（最右侧）：题名 / 书名卷次大字，顶格书写 */}
       {effectiveTitle ? (
         <div
-          className="inline-block h-full align-top font-bold select-text"
+          onClick={
+            onTitleClick
+              ? (e) => {
+                  e.stopPropagation();
+                  onTitleClick(e);
+                }
+              : undefined
+          }
+          title={titleTooltip || (onTitleClick ? '点击编辑题名/书名' : undefined)}
+          className={`inline-block h-full align-top font-bold select-text ${
+            onTitleClick ? 'cursor-pointer hover:opacity-75 transition-opacity' : ''
+          }`}
           style={{
             width: `${columnWidth}px`,
             fontSize: `${Math.round(fontSize * 1.25)}px`,
@@ -123,7 +158,18 @@ export const AncientVerticalLayout: React.FC<AncientVerticalLayoutProps> = ({
       {/* 2. 第二竖栏：作者 / 责任者，古籍规范低两格书写 */}
       {authorName ? (
         <div
-          className="inline-block h-full align-top select-text opacity-90"
+          onClick={
+            onAuthorClick
+              ? (e) => {
+                  e.stopPropagation();
+                  onAuthorClick(e);
+                }
+              : undefined
+          }
+          title={authorTooltip || (onAuthorClick ? '点击编辑作者/责任者' : undefined)}
+          className={`inline-block h-full align-top select-text opacity-90 ${
+            onAuthorClick ? 'cursor-pointer hover:opacity-100 hover:text-amber-900 transition-all' : ''
+          }`}
           style={{
             width: `${columnWidth}px`,
             fontFamily: DEFAULT_KAITI_FONT,
@@ -140,7 +186,18 @@ export const AncientVerticalLayout: React.FC<AncientVerticalLayoutProps> = ({
 
       {/* 3. 第三竖栏及后续：流式正文字符与朱批句读 */}
       <div
-        className="inline-block h-full align-top select-text"
+        onClick={
+          onTextClick
+            ? (e) => {
+                e.stopPropagation();
+                onTextClick(e);
+              }
+            : undefined
+        }
+        title={textTooltip || (onTextClick ? '点击编辑正文文摘（朱笔句读）' : undefined)}
+        className={`inline-block h-full align-top select-text ${
+          onTextClick ? 'cursor-pointer hover:opacity-85 transition-opacity' : ''
+        }`}
         style={{
           lineHeight: `${columnWidth}px`,
         }}
@@ -198,7 +255,18 @@ export const AncientVerticalLayout: React.FC<AncientVerticalLayoutProps> = ({
         {/* 尾列小字署名/校勘跋文 */}
         {footerNote ? (
           <span
-            className="inline-block opacity-80 select-text"
+            onClick={
+              onFooterClick
+                ? (e) => {
+                    e.stopPropagation();
+                    onFooterClick(e);
+                  }
+                : undefined
+            }
+            title={footerTooltip || (onFooterClick ? '点击编辑跋文印记' : undefined)}
+            className={`inline-block opacity-80 select-text ${
+              onFooterClick ? 'cursor-pointer hover:opacity-100 hover:underline transition-opacity' : ''
+            }`}
             style={{
               fontFamily: DEFAULT_KAITI_FONT,
               fontSize: `${Math.max(10, Math.round(fontSize * 0.82))}px`,

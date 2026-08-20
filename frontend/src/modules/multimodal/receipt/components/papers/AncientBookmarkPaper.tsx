@@ -27,7 +27,8 @@ export const AncientBookmarkPaper = React.forwardRef<HTMLDivElement, AncientBook
   ({ state, onChange, disabled = false }, ref) => {
     const theme = getReceiptTheme(state.themeId || 'ancient');
     const [hoveredSealId, setHoveredSealId] = useState<string | null>(null);
-    const [isEditingExcerpt, setIsEditingExcerpt] = useState<boolean>(false);
+    const [isEditing, setIsEditing] = useState<boolean>(false);
+    const [focusTarget, setFocusTarget] = useState<'title' | 'author' | 'excerpt' | 'banxin' | 'extra' | 'all'>('all');
 
     // 字体栈：优先汇文明朝体与又又意宋
     const minchoFontFamily =
@@ -37,8 +38,48 @@ export const AncientBookmarkPaper = React.forwardRef<HTMLDivElement, AncientBook
       state.bookmarkExcerpt ||
       '起著雍摄提格，尽玄黓困敦。初命晋大夫魏斯、赵籍、韩虔为诸侯。臣光曰：臣闻天子之职莫大于礼，礼莫大于分，分莫大于名。';
 
+    const authorValue = state.metaFields?.find((f) => f.key === 'author')?.value || '司马光';
+    const authorDisplay = authorValue.includes('撰') || authorValue.includes('著') ? authorValue : `${authorValue} 撰`;
+
     // 确保有印章数据
     const seals = state.seals && state.seals.length > 0 ? state.seals : generateRandomSeals();
+
+    // 开启指定字段的编辑浮层并聚焦
+    const handleOpenEdit = (target: 'title' | 'author' | 'excerpt' | 'banxin' | 'extra' | 'all' = 'all') => {
+      if (disabled) return;
+      setFocusTarget(target);
+      setIsEditing(true);
+    };
+
+    // 更新责任者/作者
+    const handleUpdateAuthor = (newAuthor: string) => {
+      if (disabled) return;
+      const metaFields = [...(state.metaFields || [])];
+      const idx = metaFields.findIndex((f) => f.key === 'author');
+      if (idx >= 0) {
+        metaFields[idx] = { ...metaFields[idx], value: newAuthor };
+      } else {
+        metaFields.push({ key: 'author', label: '作者', value: newAuthor, visible: true });
+      }
+      onChange({ metaFields });
+    };
+
+    // 更新书名/题名
+    const handleUpdateTitle = (newTitle: string) => {
+      if (disabled) return;
+      const metaFields = [...(state.metaFields || [])];
+      const idx = metaFields.findIndex((f) => f.key === 'title');
+      if (idx >= 0) {
+        metaFields[idx] = { ...metaFields[idx], value: newTitle };
+      } else {
+        metaFields.push({ key: 'title', label: '书名', value: newTitle, visible: true });
+      }
+      const patch: Partial<ReceiptState> = { storeName: newTitle, metaFields };
+      if (!state.banxinTitle || state.banxinTitle === (state.storeName || '資治通鑑')) {
+        patch.banxinTitle = newTitle;
+      }
+      onChange(patch);
+    };
 
     // 重新生成整组随机印章
     const handleRerollAllSeals = (e: React.MouseEvent) => {
@@ -87,7 +128,7 @@ export const AncientBookmarkPaper = React.forwardRef<HTMLDivElement, AncientBook
           color: theme.text,
         }}
       >
-        {/* 顶部悬浮「重置印谱」快捷按钮（下移至天头下方，不遮挡书眉文字；导出时自动过滤） */}
+        {/* 顶部悬浮「重置印谱」快捷按钮（导出时自动过滤） */}
         <div
           data-export-ignore="true"
           className={`absolute top-10 right-2 z-30 transition-opacity flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded shadow backdrop-blur-xs select-none ${
@@ -110,69 +151,7 @@ export const AncientBookmarkPaper = React.forwardRef<HTMLDivElement, AncientBook
             border: `1.2px solid ${theme.text}`,
           }}
         >
-          {/* ========== 1. 古籍书眉天头区 (Top Shumei Header Bar) ========== */}
-          <div
-            className="w-full h-[32px] shrink-0 flex flex-row items-center justify-between px-3 select-none relative z-10"
-            style={{
-              borderBottom: `1px solid color-mix(in srgb, ${theme.text} 65%, transparent)`,
-              fontFamily: minchoFontFamily,
-            }}
-          >
-            {/* 左侧：丛书/系列名（如 欽定四庫全書） */}
-            <input
-              type="text"
-              value={state.seriesTitle || '欽定四庫全書'}
-              disabled={disabled}
-              onChange={(e) => onChange({ seriesTitle: e.target.value })}
-              onMouseDown={stopEvent}
-              onPointerDown={stopEvent}
-              placeholder="系列丛书"
-              style={{ color: theme.text }}
-              className="text-[12px] font-medium tracking-[3px] bg-transparent outline-none border-b border-transparent hover:border-dashed hover:border-current disabled:cursor-not-allowed max-w-[100px]"
-              title="书眉系列名（点击编辑）"
-            />
-
-            {/* 中间：书名与卷次 */}
-            <div className="flex items-center gap-1">
-              <input
-                type="text"
-                value={state.storeName || '資治通鑑'}
-                disabled={disabled}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  onChange({ storeName: val, banxinTitle: `${val}${state.bookmarkVolume || '卷一'}` });
-                }}
-                onMouseDown={stopEvent}
-                onPointerDown={stopEvent}
-                placeholder="书名"
-                style={{ color: theme.text }}
-                className="text-[13px] font-bold tracking-[2px] text-center bg-transparent outline-none border-b border-transparent hover:border-dashed hover:border-current disabled:cursor-not-allowed max-w-[100px]"
-                title="书名（点击编辑）"
-              />
-              <input
-                type="text"
-                value={state.bookmarkVolume || '卷第一'}
-                disabled={disabled}
-                onChange={(e) => onChange({ bookmarkVolume: e.target.value })}
-                onMouseDown={stopEvent}
-                onPointerDown={stopEvent}
-                placeholder="卷次"
-                style={{ color: theme.text }}
-                className="text-[12px] font-medium tracking-wider text-center bg-transparent outline-none border-b border-transparent hover:border-dashed hover:border-current disabled:cursor-not-allowed max-w-[50px] opacity-90"
-                title="卷次（点击编辑）"
-              />
-            </div>
-
-            {/* 右侧：责任者署名 */}
-            <span
-              className="text-[11px] opacity-80 tracking-widest truncate max-w-[70px]"
-              title="著者责任者"
-            >
-              {state.metaFields?.find((f) => f.key === 'author')?.value || '司马光'} 撰
-            </span>
-          </div>
-
-          {/* ========== 2. 雕版正文与版心区 (Body Area) ========== */}
+          {/* ========== 雕版正文与版心区 (Body Area) ========== */}
           <div className="grow flex flex-row overflow-hidden relative">
             {/* ---------- 左侧：版心与中缝 (Banxin Area) ---------- */}
             <div
@@ -202,7 +181,7 @@ export const AncientBookmarkPaper = React.forwardRef<HTMLDivElement, AncientBook
               <div className="my-1 py-0.5 flex flex-col items-center justify-center">
                 <input
                   type="text"
-                  value={state.banxinTitle || `${state.storeName || '資治通鑑'}${state.bookmarkVolume || '卷一'}`}
+                  value={state.banxinTitle || state.storeName || '資治通鑑'}
                   disabled={disabled}
                   onChange={(e) => onChange({ banxinTitle: e.target.value })}
                   onMouseDown={stopEvent}
@@ -215,24 +194,7 @@ export const AncientBookmarkPaper = React.forwardRef<HTMLDivElement, AncientBook
                     letterSpacing: '3px',
                   }}
                   className="text-[12px] font-medium text-center bg-transparent outline-none border-r border-transparent hover:border-dashed hover:border-current disabled:cursor-not-allowed max-h-[140px]"
-                  title="版心书名（点击编辑）"
-                />
-                {/* 古代叶码 */}
-                <input
-                  type="text"
-                  value={state.leafNumber || '一'}
-                  disabled={disabled}
-                  onChange={(e) => onChange({ leafNumber: e.target.value })}
-                  onMouseDown={stopEvent}
-                  onPointerDown={stopEvent}
-                  placeholder="叶码"
-                  style={{
-                    fontFamily: minchoFontFamily,
-                    color: theme.text,
-                    writingMode: 'vertical-lr',
-                  }}
-                  className="text-[11px] text-center bg-transparent outline-none border-r border-transparent hover:border-dashed hover:border-current disabled:cursor-not-allowed mt-1 opacity-80"
-                  title="版心叶码（点击编辑）"
+                  title="版心书名（点击就地编辑，或点击右侧进入全元素面板）"
                 />
               </div>
 
@@ -256,36 +218,10 @@ export const AncientBookmarkPaper = React.forwardRef<HTMLDivElement, AncientBook
 
             {/* ---------- 右侧：通用古籍竖排正文流 (Ancient Vertical Content Flow) ---------- */}
             <div className="grow relative overflow-hidden p-2">
-              {isEditingExcerpt && !disabled ? (
-                <div className="absolute inset-0 z-30 bg-amber-50/95 p-3 flex flex-col gap-2">
-                  <div className="flex items-center justify-between text-[11px] text-amber-900 border-b border-amber-200 pb-1">
-                    <span>编辑古籍正文与文摘（标点自动转换为朱笔句读）</span>
-                    <button
-                      type="button"
-                      onClick={() => setIsEditingExcerpt(false)}
-                      className="px-2 py-0.5 bg-amber-800 text-white rounded text-[10px]"
-                    >
-                      完成
-                    </button>
-                  </div>
-                  <textarea
-                    autoFocus
-                    value={state.bookmarkExcerpt || ''}
-                    onBlur={() => setIsEditingExcerpt(false)}
-                    onChange={(e) => onChange({ bookmarkExcerpt: e.target.value })}
-                    onMouseDown={stopEvent}
-                    onPointerDown={stopEvent}
-                    rows={12}
-                    className="w-full grow bg-transparent outline-none resize-none text-[13px] leading-relaxed font-serif"
-                    placeholder="输入古籍文摘或图书简介正文..."
-                  />
-                </div>
-              ) : null}
-
               <AncientVerticalLayout
                 text={excerptText}
-                bookTitle={`${state.storeName || '資治通鑑'}  ${state.bookmarkVolume || '卷第一'}`}
-                authorName={`${state.metaFields?.find((f) => f.key === 'author')?.value || '司马光'} 撰`}
+                bookTitle={state.storeName || '資治通鑑'}
+                authorName={authorDisplay}
                 footerNote={state.bookmarkExtra || '中华书局 谨印'}
                 fontSize={13}
                 columnWidth={30}
@@ -293,13 +229,131 @@ export const AncientBookmarkPaper = React.forwardRef<HTMLDivElement, AncientBook
                 textColor={theme.text}
                 puncColor="#b82828"
                 showRuledLines={true}
-                onClick={() => !disabled && setIsEditingExcerpt(true)}
-                className="cursor-pointer"
-                title={disabled ? undefined : '点击编辑正文与文摘（自动转换为古籍朱批句读）'}
+                onTitleClick={() => handleOpenEdit('title')}
+                onAuthorClick={() => handleOpenEdit('author')}
+                onTextClick={() => handleOpenEdit('excerpt')}
+                onFooterClick={() => handleOpenEdit('extra')}
+                titleTooltip="点击编辑古籍题名"
+                authorTooltip="点击编辑著者责任者"
+                textTooltip="点击编辑正文文摘（自动朱批句读）"
+                footerTooltip="点击编辑校勘跋文印记"
               />
             </div>
           </div>
         </div>
+
+        {/* ========== 4. 全元素结构化编辑浮层 (Full-Element Drawer / Modal) ========== */}
+        {isEditing && !disabled && (
+          <div
+            data-export-ignore="true"
+            className="absolute inset-1 z-30 bg-[#fdfbf6]/98 backdrop-blur-md p-3 flex flex-col rounded shadow-2xl border border-amber-900/30 overflow-hidden text-amber-950 select-text"
+          >
+            {/* 顶栏：标题与完成按钮 */}
+            <div className="flex items-center justify-between border-b border-amber-900/20 pb-2 mb-2 shrink-0">
+              <span className="text-[12px] font-bold text-amber-950 flex items-center gap-1">
+                <span>编辑古籍排版元素</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsEditing(false)}
+                className="px-2.5 py-0.5 bg-amber-900 hover:bg-amber-800 active:bg-amber-950 text-white rounded text-[11px] font-medium shadow-xs transition-colors"
+              >
+                完成
+              </button>
+            </div>
+
+            {/* 表单内容区 */}
+            <div className="grow overflow-y-auto space-y-2.5 pr-0.5 text-[11px]">
+              {/* 1. 第一栏：题名 / 书名 */}
+              <div>
+                <label className="block font-semibold text-amber-900 mb-0.5">
+                  第一栏：题名 / 书名
+                </label>
+                <input
+                  type="text"
+                  autoFocus={focusTarget === 'title'}
+                  value={state.storeName || ''}
+                  onChange={(e) => handleUpdateTitle(e.target.value)}
+                  onMouseDown={stopEvent}
+                  onPointerDown={stopEvent}
+                  placeholder="输入古籍题名（如：資治通鑑）"
+                  className="w-full px-2 py-1 bg-amber-50/80 border border-amber-900/20 focus:border-amber-800 focus:bg-white focus:ring-1 focus:ring-amber-800/30 rounded outline-none text-[12px] font-serif transition-all"
+                />
+              </div>
+
+              {/* 2. 第二栏：著者 / 责任者 */}
+              <div>
+                <label className="block font-semibold text-amber-900 mb-0.5">
+                  第二栏：著者 / 责任者
+                </label>
+                <input
+                  type="text"
+                  autoFocus={focusTarget === 'author'}
+                  value={state.metaFields?.find((f) => f.key === 'author')?.value || ''}
+                  onChange={(e) => handleUpdateAuthor(e.target.value)}
+                  onMouseDown={stopEvent}
+                  onPointerDown={stopEvent}
+                  placeholder="著者署名（如：司马光 或 [俄] 列夫·托尔斯泰）"
+                  className="w-full px-2 py-1 bg-amber-50/80 border border-amber-900/20 focus:border-amber-800 focus:bg-white focus:ring-1 focus:ring-amber-800/30 rounded outline-none text-[12px] font-serif transition-all"
+                />
+              </div>
+
+              {/* 3. 左侧：版心题名 */}
+              <div>
+                <label className="block font-semibold text-amber-900 mb-0.5">
+                  左侧：版心题名
+                </label>
+                <input
+                  type="text"
+                  autoFocus={focusTarget === 'banxin'}
+                  value={state.banxinTitle || ''}
+                  onChange={(e) => onChange({ banxinTitle: e.target.value })}
+                  onMouseDown={stopEvent}
+                  onPointerDown={stopEvent}
+                  placeholder="中缝版心文字（留空默认同书名）"
+                  className="w-full px-2 py-1 bg-amber-50/80 border border-amber-900/20 focus:border-amber-800 focus:bg-white focus:ring-1 focus:ring-amber-800/30 rounded outline-none text-[12px] font-serif transition-all"
+                />
+              </div>
+
+              {/* 4. 第三栏起：正文与文摘 */}
+              <div>
+                <div className="flex items-center justify-between mb-0.5">
+                  <label className="font-semibold text-amber-900">
+                    第三栏起：正文文摘
+                  </label>
+                  <span className="text-[10px] text-amber-700/80">标点自动朱批句读</span>
+                </div>
+                <textarea
+                  autoFocus={focusTarget === 'excerpt'}
+                  rows={6}
+                  value={state.bookmarkExcerpt || ''}
+                  onChange={(e) => onChange({ bookmarkExcerpt: e.target.value })}
+                  onMouseDown={stopEvent}
+                  onPointerDown={stopEvent}
+                  placeholder="输入古籍正文或图书文摘..."
+                  className="w-full p-2 bg-amber-50/80 border border-amber-900/20 focus:border-amber-800 focus:bg-white focus:ring-1 focus:ring-amber-800/30 rounded outline-none text-[12px] leading-relaxed resize-none font-serif transition-all"
+                />
+              </div>
+
+              {/* 5. 尾列：校勘跋文 / 出品印记 */}
+              <div>
+                <label className="block font-semibold text-amber-900 mb-0.5">
+                  尾列：校勘跋文 / 印记
+                </label>
+                <input
+                  type="text"
+                  autoFocus={focusTarget === 'extra'}
+                  value={state.bookmarkExtra || ''}
+                  onChange={(e) => onChange({ bookmarkExtra: e.target.value })}
+                  onMouseDown={stopEvent}
+                  onPointerDown={stopEvent}
+                  placeholder="尾列小字题跋（如：中华书局 谨印）"
+                  className="w-full px-2 py-1 bg-amber-50/80 border border-amber-900/20 focus:border-amber-800 focus:bg-white focus:ring-1 focus:ring-amber-800/30 rounded outline-none text-[12px] font-serif transition-all"
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
             {/* ========== 3. 动态印章渲染图层（绝对定位 + 正片叠底） ========== */}
             {seals.map((seal: ReceiptSealItem) => {
