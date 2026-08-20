@@ -9,7 +9,7 @@
 export type ReceiptThemeId = 'white' | 'cream' | 'pink' | 'mint' | 'purple' | string;
 
 /** 预设模板标识（支持扩展自定义模板 key） */
-export type ReceiptTemplateId = 'book_recommend' | 'reading_log' | 'itemized' | string;
+export type ReceiptTemplateId = 'book_recommend' | 'reading_log' | 'itemized' | 'book_excerpt' | string;
 
 /** 热敏纸主题配色定义 */
 export interface ReceiptTheme {
@@ -139,6 +139,12 @@ export interface ReceiptState {
   cardNumber?: string;
   /** 借书卡借阅打卡记录列表 */
   borrowerRecords?: BorrowerRecordItem[];
+  /** 书摘小票书摘主体文本（单一段落） */
+  excerptText?: string;
+  /** 书摘小票左上角用户账号 / 署名（如 "@Dieforella"） */
+  userHandle?: string;
+  /** 书摘小票英文胶囊横幅文案（如 "BOOK EXCERPT SHARING"） */
+  englishBanner?: string;
 }
 
 /** 模板规范定义接口（方便新增扩展模板） */

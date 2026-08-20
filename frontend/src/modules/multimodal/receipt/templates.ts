@@ -263,11 +263,115 @@ export const TEMPLATE_ITEMIZED: ReceiptTemplateDef = {
   },
 };
 
+/**
+ * 预设 4：清新文艺书摘小票（便签手账风格）
+ */
+export const TEMPLATE_BOOK_EXCERPT: ReceiptTemplateDef = {
+  id: 'book_excerpt',
+  name: '书摘小票',
+  description: '清新手账便签风格书摘小票，单一段落优美书摘、右上角豆瓣评分、右下角图书元数据',
+  createInitialState: () => ({
+    templateId: 'book_excerpt',
+    themeId: 'mint',
+    ditherEnabled: false,
+    storeName: '书摘分享',
+    englishBanner: 'BOOK EXCERPT SHARING',
+    userHandle: '@Dieforella',
+    rating: '8.9',
+    excerptText: '催促不会改变什么、毕竟谁都不会硬着头皮犁冬天的地。',
+    dateTimeText: formatReceiptDate(),
+    terminal: '',
+    servedBy: '',
+    callNumber: '',
+    status: '',
+    metaFields: [
+      { key: 'title', label: '题名', value: '《明亮的夜晚》', visible: true },
+      { key: 'author', label: '作者', value: '崔恩荣', visible: true },
+      { key: 'pub_info', label: '出版信息', value: '台海出版社 · 2023', visible: true },
+      { key: 'isbn', label: 'ISBN', value: '9787516835159', visible: true },
+    ],
+    items: [],
+    totalLabel: '',
+    totalValue: '',
+    barcodeText: '9787516835159',
+    footerMessage: '',
+    bottomNote: '',
+  }),
+  mapFromBook: (book: BookMetadataInput, current = {}) => {
+    // 1. 题名（确保书名号包裹）
+    const rawTitle = book.title?.trim() || '明亮的夜晚';
+    const formattedTitle = rawTitle.startsWith('《') && rawTitle.endsWith('》')
+      ? rawTitle
+      : `《${rawTitle}》`;
+
+    // 2. 作者
+    const author = book.author?.trim() || '崔恩荣';
+
+    // 3. 出版社与出版年（格式：出版社 · 出版年）
+    const publisher = book.publisher?.trim() || '';
+    const rawYear = book.pub_year || book.publishDate || '';
+    const yearMatch = rawYear.match(/\d{4}/);
+    const pubYear = yearMatch ? yearMatch[0] : rawYear.trim();
+    let pubInfo = '';
+    if (publisher && pubYear) {
+      pubInfo = `${publisher} · ${pubYear}`;
+    } else if (publisher) {
+      pubInfo = publisher;
+    } else if (pubYear) {
+      pubInfo = pubYear;
+    } else {
+      pubInfo = '台海出版社 · 2023';
+    }
+
+    // 4. 豆瓣评分
+    const ratingVal =
+      book.rating !== undefined && book.rating !== null && String(book.rating).trim() !== ''
+        ? String(book.rating).trim()
+        : (current.rating || '8.9');
+
+    // 5. ISBN
+    const isbn = book.isbn?.trim() || current.barcodeText || '9787516835159';
+
+    // 6. 书摘提取（若已有用户编辑则保留；否则从 summary 提取首句作为初值）
+    let excerpt = current.excerptText;
+    if (!excerpt) {
+      const summaryText = book.summary || book.description || '';
+      if (summaryText.trim()) {
+        const sentences = summaryText.split(/(?<=[。！？\n])/);
+        excerpt = sentences.slice(0, 2).join('').trim() || summaryText.slice(0, 80);
+      } else {
+        excerpt = '催促不会改变什么、毕竟谁都不会硬着头皮犁冬天的地。';
+      }
+    }
+
+    const metaFields = [
+      { key: 'title', label: '题名', value: formattedTitle, visible: true },
+      { key: 'author', label: '作者', value: author, visible: true },
+      { key: 'pub_info', label: '出版信息', value: pubInfo, visible: true },
+      { key: 'isbn', label: 'ISBN', value: isbn, visible: true },
+    ];
+
+    const cover = book.cover_image_local || book.cover_image || book.coverUrl || null;
+
+    return {
+      storeName: current.storeName || '书摘分享',
+      englishBanner: current.englishBanner || 'BOOK EXCERPT SHARING',
+      userHandle: current.userHandle || '@Dieforella',
+      rating: ratingVal,
+      excerptText: excerpt,
+      metaFields,
+      barcodeText: isbn,
+      imageUrl: cover || current.imageUrl,
+    };
+  },
+};
+
 /** 模板注册表（支持动态扩展） */
 const templateRegistry = new Map<string, ReceiptTemplateDef>([
   [TEMPLATE_BOOK_RECOMMEND.id, TEMPLATE_BOOK_RECOMMEND],
   [TEMPLATE_READING_LOG.id, TEMPLATE_READING_LOG],
   [TEMPLATE_ITEMIZED.id, TEMPLATE_ITEMIZED],
+  [TEMPLATE_BOOK_EXCERPT.id, TEMPLATE_BOOK_EXCERPT],
 ]);
 
 /** 获取所有可用模板 */

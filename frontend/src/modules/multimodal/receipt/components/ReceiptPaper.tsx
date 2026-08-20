@@ -3,6 +3,7 @@ import type { ReceiptState, ReceiptTemplateId } from '../types';
 import { BookRecommendPaper } from './papers/BookRecommendPaper';
 import { LibraryCardPaper } from './papers/LibraryCardPaper';
 import { ItemizedReceiptPaper } from './papers/ItemizedReceiptPaper';
+import { BookExcerptPaper } from './papers/BookExcerptPaper';
 
 export interface ReceiptPaperProps {
   state: ReceiptState;
@@ -22,6 +23,7 @@ const TEMPLATE_COMPONENTS: Record<
   book_recommend: BookRecommendPaper,
   reading_log: LibraryCardPaper,
   itemized: ItemizedReceiptPaper,
+  book_excerpt: BookExcerptPaper,
 };
 
 /**
@@ -35,4 +37,4 @@ export const ReceiptPaper = React.forwardRef<HTMLDivElement, ReceiptPaperProps>(
 
 ReceiptPaper.displayName = 'ReceiptPaper';
 
-export { BookRecommendPaper, LibraryCardPaper, ItemizedReceiptPaper };
+export { BookRecommendPaper, LibraryCardPaper, ItemizedReceiptPaper, BookExcerptPaper };
