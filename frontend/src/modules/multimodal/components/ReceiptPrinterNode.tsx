@@ -201,7 +201,7 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
     );
     setLocalState(freshState);
     onUpdateState?.(id, freshState);
-    showToast('小票已重置为默认', 'success');
+    showToast('小票已重置为默认', { type: 'success' });
   }, [upstreamBookData, currentFingerprint, localState.templateId, localState.themeId, localState.ditherEnabled, effectiveUpstreamImageUrl, id, onUpdateState, showToast]);
 
   // 状态变更分发：本地即刻响应 + 异步写入画布持久化
@@ -224,10 +224,10 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
     try {
       const dataUrl = await exportReceiptImage(localState, { scale: 2 });
       await onExport(id, dataUrl, localState);
-      showToast('小票已生成并保存到历史记录', 'success');
+      showToast('小票已生成并保存到历史记录', { type: 'success' });
     } catch (err: any) {
       console.error('导出小票失败:', err);
-      showToast(err?.detail || err?.message || '生成小票失败，请重试', 'error');
+      showToast(err?.detail || err?.message || '生成小票失败，请重试', { type: 'error' });
     } finally {
       setIsExporting(false);
     }
@@ -241,10 +241,10 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
       link.download = `${localState.storeName || 'receipt'}-${Date.now()}.png`;
       link.href = dataUrl;
       link.click();
-      showToast('小票图片已下载', 'success');
+      showToast('小票图片已下载', { type: 'success' });
     } catch (err: any) {
       console.error('下载小票失败:', err);
-      showToast('下载失败，请重试', 'error');
+      showToast('下载失败，请重试', { type: 'error' });
     }
   }, [localState, showToast]);
 

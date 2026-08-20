@@ -1,4 +1,4 @@
-import { useCallback, type RefObject } from 'react';
+import { useCallback, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import generationsService from '../../platform/services/generations';
 import { flushSnapshot } from '../../platform/stores/useCanvasState';
 import type { GenerationStageResults } from '../../platform/types';
@@ -10,6 +10,8 @@ export interface GenerationHistoryContext {
   nodesRef: RefObject<NodeData[]>;
   edgesRef: RefObject<EdgeData[]>;
   generationIds: RefObject<Record<string, number>>;
+  setFavoritedState?: Dispatch<SetStateAction<Record<string, boolean>>>;
+  setPublishedState?: Dispatch<SetStateAction<Record<string, boolean>>>;
 }
 
 export interface GenerationHistory {
@@ -115,6 +117,9 @@ export function useGenerationHistory(ctx: GenerationHistoryContext): GenerationH
         });
         ctx.generationIds.current[imageNodeId] = gen.id;
         flushSnapshot(); // 映射写入后立即落盘：后台完成 / 刷新后不丢映射，避免 ensureGeneration 重复建记录
+        // 新记录默认 is_favorited=false, is_public=false，重置 UI 态避免旧记录残留
+        ctx.setFavoritedState?.((prev) => ({ ...prev, [imageNodeId]: false }));
+        ctx.setPublishedState?.((prev) => ({ ...prev, [imageNodeId]: false }));
         return gen.id;
       } catch (e) {
         console.error('自动保存历史记录失败:', e);

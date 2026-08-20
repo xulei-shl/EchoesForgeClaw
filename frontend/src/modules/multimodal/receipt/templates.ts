@@ -1,5 +1,5 @@
 import { generateRandomBorrowerRecords } from './borrowerGenerator';
-import type { BookMetadataInput, ReceiptState, ReceiptTemplateDef, ReceiptTemplateId } from './types';
+import type { BookMetadataInput, ReceiptState, ReceiptTemplateDef, ReceiptTemplateId, ReceiptThemeId } from './types';
 
 /**
  * 格式化当前日期时间（YYYY-MM-DD HH:mm）
@@ -358,9 +358,9 @@ export function buildReceiptState(
     coverImageUrl: resolvedImageUrl,
     customImage: isCustom,
     templateId,
-    themeId: savedData.themeId || base.themeId,
-    ditherEnabled: savedData.ditherEnabled ?? base.ditherEnabled,
-  };
+    themeId: (savedData.themeId || base.themeId || 'white') as ReceiptThemeId,
+    ditherEnabled: savedData.ditherEnabled ?? base.ditherEnabled ?? false,
+  } as ReceiptState;
 }
 
 /**

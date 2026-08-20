@@ -193,7 +193,7 @@ const LibraryCardPaper: React.FC<ReceiptPaperProps> = ({
         style={{ backgroundColor: theme.bg }}
       >
         {/* 卡片右上角 No. CARD_NUMBER（继承 ISBN 后 4 位） */}
-        <div className="absolute top-4 right-4 flex items-center gap-1 text-gray-500 font-typewriter text-xs tracking-widest border border-gray-300 px-1.5 py-0.5 rounded bg-white/60 shadow-2xs">
+        <div className="absolute top-4 right-4 flex items-center gap-1 text-gray-400 font-typewriter text-xs tracking-widest border border-gray-300 px-1.5 py-0.5 rounded bg-white/60 shadow-2xs">
           <span>No.</span>
           <input
             type="text"
@@ -204,7 +204,7 @@ const LibraryCardPaper: React.FC<ReceiptPaperProps> = ({
             onPointerDown={stopEvent}
             placeholder="5399"
             title={disabled ? '有下级节点，不可修改' : '卡片编号（默认继承 ISBN 后四位）'}
-            className="w-12 bg-transparent outline-none font-bold text-gray-700 hover:border-b hover:border-gray-400 focus:border-b focus:border-gray-600 disabled:cursor-not-allowed disabled:hover:border-transparent"
+            className="w-12 bg-transparent outline-none font-bold text-gray-600 hover:border-b hover:border-gray-400 focus:border-b focus:border-gray-600 disabled:cursor-not-allowed disabled:hover:border-transparent"
           />
         </div>
 
@@ -240,7 +240,7 @@ const LibraryCardPaper: React.FC<ReceiptPaperProps> = ({
         <div className="space-y-2 text-xs">
           {/* Author */}
           <div className="flex items-baseline border-b border-blue-200 pb-1">
-            <label className="w-14 text-[10px] text-blue-800 font-typewriter uppercase tracking-wider shrink-0 font-bold">
+            <label className="w-12 text-[10px] text-blue-800 font-typewriter uppercase tracking-wider shrink-0">
               Author
             </label>
             <input
@@ -257,7 +257,7 @@ const LibraryCardPaper: React.FC<ReceiptPaperProps> = ({
 
           {/* Title */}
           <div className="flex items-baseline border-b border-blue-200 pb-1">
-            <label className="w-14 text-[10px] text-blue-800 font-typewriter uppercase tracking-wider shrink-0 font-bold">
+            <label className="w-12 text-[10px] text-blue-800 font-typewriter uppercase tracking-wider shrink-0">
               Title
             </label>
             <input
@@ -268,14 +268,14 @@ const LibraryCardPaper: React.FC<ReceiptPaperProps> = ({
               onMouseDown={stopEvent}
               onPointerDown={stopEvent}
               placeholder="[题名]"
-              className="flex-1 text-lg font-youyouyisong font-semibold text-gray-900 bg-transparent outline-none tracking-wide border-b border-transparent hover:border-dashed hover:border-blue-300 disabled:cursor-not-allowed disabled:hover:border-transparent"
+              className="flex-1 text-lg font-youyouyisong font-bold text-gray-900 bg-transparent outline-none tracking-wide border-b border-transparent hover:border-dashed hover:border-blue-300 disabled:cursor-not-allowed disabled:hover:border-transparent"
             />
           </div>
 
           {/* Call No. & Year */}
           <div className="flex gap-4 pt-1">
-            <div className="flex-1 px-1 py-0.5 border-b border-blue-100">
-              <label className="block text-[9px] text-blue-800 font-typewriter uppercase opacity-70 font-bold">
+            <div className="flex-1 px-2 py-0.5">
+              <label className="block text-[9px] text-blue-800 font-typewriter uppercase opacity-70">
                 Call No.
               </label>
               <input
@@ -286,11 +286,11 @@ const LibraryCardPaper: React.FC<ReceiptPaperProps> = ({
                 onMouseDown={stopEvent}
                 onPointerDown={stopEvent}
                 placeholder="[索书号留空/自定义]"
-                className="w-full text-sm font-typewriter text-gray-700 font-bold bg-transparent outline-none border-b border-transparent hover:border-dashed hover:border-blue-300 disabled:cursor-not-allowed disabled:hover:border-transparent"
+                className="w-full text-sm font-typewriter text-gray-600 font-bold bg-transparent outline-none border-b border-transparent hover:border-dashed hover:border-blue-300 disabled:cursor-not-allowed disabled:hover:border-transparent"
               />
             </div>
-            <div className="w-24 px-1 py-0.5 border-b border-blue-100">
-              <label className="block text-[9px] text-blue-800 font-typewriter uppercase opacity-70 font-bold">
+            <div className="w-24 px-2 py-0.5">
+              <label className="block text-[9px] text-blue-800 font-typewriter uppercase opacity-70">
                 Year
               </label>
               <input
@@ -301,34 +301,27 @@ const LibraryCardPaper: React.FC<ReceiptPaperProps> = ({
                 onMouseDown={stopEvent}
                 onPointerDown={stopEvent}
                 placeholder="2024"
-                className="w-full text-sm font-typewriter text-gray-700 font-bold bg-transparent outline-none border-b border-transparent hover:border-dashed hover:border-blue-300 disabled:cursor-not-allowed disabled:hover:border-transparent"
+                className="w-full text-sm font-typewriter text-gray-600 font-bold bg-transparent outline-none border-b border-transparent hover:border-dashed hover:border-blue-300 disabled:cursor-not-allowed disabled:hover:border-transparent"
               />
             </div>
           </div>
         </div>
       </div>
 
-      {/* 3. 中段表头 */}
+      {/* 3. 中段表头（背景色自适应当前纸色，分割线固定深蓝色） */}
       <div
-        className="border-y-2 h-9 flex items-center relative z-20 shadow-2xs transition-colors duration-300"
+        className="border-y-2 border-blue-800 h-9 flex items-center relative z-20 shadow-2xs transition-colors duration-300"
         style={{
-          backgroundColor: `color-mix(in srgb, ${theme.text} 8%, ${theme.bg})`,
-          borderColor: `color-mix(in srgb, ${theme.text} 80%, #1e3a8a 20%)`,
+          backgroundColor: `color-mix(in srgb, ${theme.text} 7%, ${theme.bg})`,
         }}
       >
         <div className="w-[32%] flex items-center justify-center">
-          <span
-            className="text-[11px] font-bold font-typewriter uppercase tracking-wider"
-            style={{ color: `color-mix(in srgb, ${theme.text} 90%, #1e3a8a 10%)` }}
-          >
+          <span className="text-[10px] font-bold text-blue-900 font-typewriter uppercase">
             Date Due
           </span>
         </div>
         <div className="w-[68%] flex items-center justify-between px-3">
-          <span
-            className="text-[11px] font-bold font-typewriter uppercase tracking-wider"
-            style={{ color: `color-mix(in srgb, ${theme.text} 90%, #1e3a8a 10%)` }}
-          >
+          <span className="text-[10px] font-bold text-blue-900 font-typewriter uppercase">
             Borrower's Name
           </span>
           {!disabled && (
@@ -336,8 +329,7 @@ const LibraryCardPaper: React.FC<ReceiptPaperProps> = ({
               <button
                 type="button"
                 onClick={handleRefreshRandomBorrowers}
-                className="p-1 rounded hover:bg-black/10 text-[10px] flex items-center gap-0.5 cursor-pointer font-sans"
-                style={{ color: theme.text }}
+                className="p-1 rounded hover:bg-black/10 text-[10px] flex items-center gap-0.5 cursor-pointer font-sans text-blue-900"
                 title="随机刷新借阅人和日期"
               >
                 <Dices size={12} /> 随机
@@ -345,8 +337,7 @@ const LibraryCardPaper: React.FC<ReceiptPaperProps> = ({
               <button
                 type="button"
                 onClick={handleAddRecord}
-                className="p-1 rounded hover:bg-black/10 text-[10px] flex items-center gap-0.5 cursor-pointer font-sans"
-                style={{ color: theme.text }}
+                className="p-1 rounded hover:bg-black/10 text-[10px] flex items-center gap-0.5 cursor-pointer font-sans text-blue-900"
                 title="添加借阅记录"
               >
                 <Plus size={12} /> 添加
@@ -375,10 +366,7 @@ const LibraryCardPaper: React.FC<ReceiptPaperProps> = ({
           return (
             <div
               key={record.id}
-              className="group/row flex border-b h-11 relative items-center hover:bg-black/5 transition-colors"
-              style={{
-                borderColor: `color-mix(in srgb, ${theme.text} 15%, transparent)`,
-              }}
+              className="group/row flex border-b border-blue-200/80 h-11 relative items-center hover:bg-blue-50/20 transition-colors"
             >
               {/* 左侧：Date Due */}
               <div className="w-[32%] px-2 flex items-center justify-center">
@@ -389,10 +377,9 @@ const LibraryCardPaper: React.FC<ReceiptPaperProps> = ({
                   onChange={(e) => handleUpdateRecord(record.id, { date: e.target.value })}
                   onMouseDown={stopEvent}
                   onPointerDown={stopEvent}
-                  style={{ color: `color-mix(in srgb, ${theme.text} 90%, #1e3a8a 10%)` }}
-                  className={`font-stamp text-xs text-center w-full bg-transparent outline-none font-bold ${
+                  className={`font-stamp text-xs text-blue-900 text-center w-full bg-transparent outline-none font-bold ${
                     record.rotation || ''
-                  } border-b border-transparent hover:border-dashed hover:border-current disabled:cursor-not-allowed disabled:hover:border-transparent`}
+                  } border-b border-transparent hover:border-dashed hover:border-blue-400 disabled:cursor-not-allowed disabled:hover:border-transparent`}
                 />
               </div>
 
@@ -429,32 +416,45 @@ const LibraryCardPaper: React.FC<ReceiptPaperProps> = ({
         {Array.from({ length: emptyRowsCount }).map((_, idx) => (
           <div
             key={`empty-${idx}`}
-            className="flex border-b h-11 relative"
-            style={{
-              borderColor: `color-mix(in srgb, ${theme.text} 15%, transparent)`,
-            }}
+            className="flex border-b border-blue-200/80 h-11 relative"
           />
         ))}
       </div>
 
       {/* 5. 底部区域 */}
       <div
-        className="relative p-4 pb-7 border-t-[3px] border-double border-blue-900 z-20 flex justify-between items-end transition-colors duration-300"
+        className="relative p-5 pb-8 border-t-[3px] border-double border-[#1e3a8a] z-20 transition-colors duration-300"
         style={{
-          background: `linear-gradient(to bottom, ${theme.bg}d9, ${theme.bg})`,
+          background: `linear-gradient(to bottom, ${theme.bg}bf, ${theme.bg})`,
         }}
       >
-        {/* 左侧借阅须知 */}
-        <div className="w-[65%] text-justify space-y-1">
-          <textarea
-            value={state.footerMessage || ''}
-            disabled={disabled}
-            onChange={(e) => onChange({ footerMessage: e.target.value })}
-            onMouseDown={stopEvent}
-            onPointerDown={stopEvent}
-            rows={4}
-            className="w-full text-[10px] leading-relaxed text-gray-600 font-youyouyisong bg-transparent outline-none resize-none border-b border-transparent hover:border-dashed hover:border-gray-300 disabled:cursor-not-allowed disabled:hover:border-transparent"
-          />
+        {/* 上半部分：借阅须知（中文） + 图书馆 Logo 并排 */}
+        <div className="flex justify-between items-center gap-2">
+          {/* 左侧中文须知 */}
+          <div className="w-[64%] text-justify">
+            <textarea
+              value={state.footerMessage || ''}
+              disabled={disabled}
+              onChange={(e) => onChange({ footerMessage: e.target.value })}
+              onMouseDown={stopEvent}
+              onPointerDown={stopEvent}
+              rows={4}
+              className="w-full text-[10px] leading-relaxed text-[#4b5563] font-youyouyisong font-medium bg-transparent outline-none resize-none border-b border-transparent hover:border-dashed hover:border-gray-300 disabled:cursor-not-allowed disabled:hover:border-transparent"
+            />
+          </div>
+
+          {/* 右侧图书馆 Logo 印章图（位于中文须知右侧，位置舒适居中） */}
+          <div className="w-28 opacity-85 mix-blend-multiply flex items-center justify-end shrink-0 pointer-events-none pr-1">
+            <img
+              src="/assets/receipt/logozi_shl.jpg"
+              alt="Logo"
+              className="w-full h-auto mix-blend-multiply filter contrast-125 brightness-105 saturate-50"
+            />
+          </div>
+        </div>
+
+        {/* 下半部分：英文借阅归还提示（横向延展） */}
+        <div className="mt-1">
           <input
             type="text"
             value={state.bottomNote || ''}
@@ -462,16 +462,7 @@ const LibraryCardPaper: React.FC<ReceiptPaperProps> = ({
             onChange={(e) => onChange({ bottomNote: e.target.value })}
             onMouseDown={stopEvent}
             onPointerDown={stopEvent}
-            className="w-full text-[8px] uppercase tracking-wider text-blue-900/80 font-typewriter bg-transparent outline-none border-b border-transparent hover:border-dashed hover:border-gray-300 disabled:cursor-not-allowed disabled:hover:border-transparent"
-          />
-        </div>
-
-        {/* 右侧图书馆 Logo 印章图 */}
-        <div className="w-28 opacity-85 mix-blend-multiply flex items-center justify-end pointer-events-none relative -bottom-2 right-0">
-          <img
-            src="/assets/receipt/logozi_shl.jpg"
-            alt="Logo"
-            className="w-full h-auto mix-blend-multiply filter contrast-125 brightness-105"
+            className="w-full text-[8px] uppercase tracking-wider text-[#1e3a8a]/70 font-typewriter bg-transparent outline-none border-b border-transparent hover:border-dashed hover:border-gray-300 disabled:cursor-not-allowed disabled:hover:border-transparent"
           />
         </div>
       </div>

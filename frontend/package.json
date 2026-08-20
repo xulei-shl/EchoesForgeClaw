@@ -16,6 +16,7 @@
     "ai": "^7.0.66",
     "axios": "^1.19.0",
     "framer-motion": "^13.0.0",
+    "html-to-image": "^1.11.13",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.29.0",
     "maplibre-gl": "^6.4.0",

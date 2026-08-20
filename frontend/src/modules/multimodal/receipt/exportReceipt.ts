@@ -472,7 +472,7 @@ async function exportLibraryCardImage(
   let curY = 52;
   ctx.textAlign = 'center';
   ctx.fillStyle = '#1f2937';
-  ctx.font = "bold 36px 'Noto Serif SC', 'LXGW WenKai', serif";
+  ctx.font = "bold 36px '上图东观体', 'Noto Serif SC', 'LXGW WenKai', serif";
   ctx.fillText(state.storeName || '書海回响', baseWidth / 2, curY);
 
   curY += 26;
@@ -487,7 +487,7 @@ async function exportLibraryCardImage(
   ctx.stroke();
 
   ctx.fillStyle = '#4b5563';
-  ctx.font = "11px 'Noto Serif SC', 'Cutive Mono', monospace";
+  ctx.font = "10px '上图东观体', 'Noto Serif SC', 'Cutive Mono', monospace";
   ctx.fillText((state.subtitle || 'SHANGHAI LIBRARY').toUpperCase(), baseWidth / 2, curY + 4);
 
   curY += 32;
@@ -501,17 +501,16 @@ async function exportLibraryCardImage(
   // Author 行
   ctx.textAlign = 'left';
   ctx.fillStyle = '#1e40af'; // 蓝字标签
-  ctx.font = "bold 13px 'Cutive Mono', 'Courier New', monospace";
-  ctx.fillText('Author', 36, curY + 16);
+  ctx.font = "11px 'Cutive Mono', 'Courier New', monospace";
+  ctx.fillText('AUTHOR', 36, curY + 16);
 
   ctx.fillStyle = '#1f2937';
-  ctx.font = "20px 'Noto Serif SC', serif";
-  ctx.fillText(authorVal, 120, curY + 17);
+  ctx.font = "18px '又又意宋', 'Noto Serif SC', serif";
+  ctx.fillText(authorVal, 110, curY + 17);
 
-  // 浅下划线
+  // 蓝色浅下划线
   ctx.save();
-  ctx.strokeStyle = theme.text;
-  ctx.globalAlpha = 0.15;
+  ctx.strokeStyle = '#bfdbfe';
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(36, curY + 26);
@@ -523,16 +522,16 @@ async function exportLibraryCardImage(
 
   // Title 行
   ctx.fillStyle = '#1e40af';
-  ctx.font = "bold 13px 'Cutive Mono', 'Courier New', monospace";
-  ctx.fillText('Title', 36, curY + 16);
+  ctx.font = "11px 'Cutive Mono', 'Courier New', monospace";
+  ctx.fillText('TITLE', 36, curY + 16);
 
   ctx.fillStyle = '#111827';
-  ctx.font = "bold 22px 'Noto Serif SC', serif";
-  ctx.fillText(titleVal, 120, curY + 17);
+  ctx.font = "bold 20px '又又意宋', 'Noto Serif SC', serif";
+  ctx.fillText(titleVal, 110, curY + 17);
 
   ctx.save();
-  ctx.strokeStyle = theme.text;
-  ctx.globalAlpha = 0.15;
+  ctx.strokeStyle = '#bfdbfe';
+  ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(36, curY + 26);
   ctx.lineTo(baseWidth - 36, curY + 26);
@@ -543,35 +542,35 @@ async function exportLibraryCardImage(
 
   // Call No. & Year 行
   ctx.fillStyle = '#1e40af';
-  ctx.font = "bold 11px 'Cutive Mono', 'Courier New', monospace";
-  ctx.fillText('Call No.', 36, curY + 12);
-  ctx.fillStyle = '#374151';
-  ctx.font = "bold 16px 'Cutive Mono', 'Courier New', monospace";
+  ctx.font = "10px 'Cutive Mono', 'Courier New', monospace";
+  ctx.fillText('CALL NO.', 36, curY + 12);
+  ctx.fillStyle = '#4b5563';
+  ctx.font = "bold 15px 'Cutive Mono', 'Courier New', monospace";
   ctx.fillText(callNoVal, 36, curY + 30);
 
   ctx.fillStyle = '#1e40af';
-  ctx.font = "bold 11px 'Cutive Mono', 'Courier New', monospace";
-  ctx.fillText('Year', baseWidth - 120, curY + 12);
-  ctx.fillStyle = '#374151';
-  ctx.font = "bold 16px 'Cutive Mono', 'Courier New', monospace";
-  ctx.fillText(yearVal, baseWidth - 120, curY + 30);
+  ctx.font = "10px 'Cutive Mono', 'Courier New', monospace";
+  ctx.fillText('YEAR', baseWidth - 110, curY + 12);
+  ctx.fillStyle = '#4b5563';
+  ctx.font = "bold 15px 'Cutive Mono', 'Courier New', monospace";
+  ctx.fillText(yearVal, baseWidth - 110, curY + 30);
 
   curY += 46;
 
-  // 5. 中段表头 (Date Due | Borrower's Name - 自适应混墨)
+  // 5. 中段表头 (背景色自适应纸色，分割线固定深蓝色)
   const tableHeaderY = curY;
-  const tableHeaderH = 44;
+  const tableHeaderH = 40;
 
   ctx.save();
   ctx.fillStyle = theme.bg;
   ctx.fillRect(0, tableHeaderY, baseWidth, tableHeaderH);
   ctx.fillStyle = theme.text;
-  ctx.globalAlpha = 0.08;
+  ctx.globalAlpha = 0.07;
   ctx.fillRect(0, tableHeaderY, baseWidth, tableHeaderH);
   ctx.restore();
 
-  ctx.strokeStyle = theme.text;
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = '#1e40af';
+  ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(0, tableHeaderY);
   ctx.lineTo(baseWidth, tableHeaderY);
@@ -581,16 +580,16 @@ async function exportLibraryCardImage(
 
   const splitX = baseWidth * 0.32; // 172.8
 
-  ctx.fillStyle = theme.text;
-  ctx.font = "bold 13px 'Cutive Mono', 'Courier New', monospace";
+  ctx.fillStyle = '#1e3a8a';
+  ctx.font = "bold 12px 'Cutive Mono', 'Courier New', monospace";
   ctx.textAlign = 'center';
-  ctx.fillText('Date Due', splitX / 2, tableHeaderY + 27);
-  ctx.fillText("Borrower's Name", splitX + (baseWidth - splitX) / 2, tableHeaderY + 27);
+  ctx.fillText('DATE DUE', splitX / 2, tableHeaderY + 25);
+  ctx.fillText("BORROWER'S NAME", splitX + (baseWidth - splitX) / 2, tableHeaderY + 25);
 
   curY += tableHeaderH;
 
-  // 6. 借阅记录网格区 (7 行)
-  const rowHeight = 52;
+  // 6. 借阅记录网格区 (7 行，固定浅蓝横线)
+  const rowHeight = 50;
   const gridStartY = curY;
   const records = state.borrowerRecords || [];
   const totalRows = 7;
@@ -610,10 +609,9 @@ async function exportLibraryCardImage(
     const rowY = gridStartY + i * rowHeight;
     const record = records[i];
 
-    // 水平分割线（自适应浅墨色）
+    // 水平分割线（固定浅蓝色线条）
     ctx.save();
-    ctx.strokeStyle = theme.text;
-    ctx.globalAlpha = 0.15;
+    ctx.strokeStyle = 'rgba(147, 197, 253, 0.8)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(0, rowY + rowHeight);
@@ -635,8 +633,8 @@ async function exportLibraryCardImage(
       else if (record.rotation?.includes('-rotate-1')) angle = -0.02;
 
       ctx.rotate(angle);
-      ctx.fillStyle = theme.text;
-      ctx.font = "bold 15px 'Special Elite', 'Courier New', monospace";
+      ctx.fillStyle = '#1e3a8a';
+      ctx.font = "bold 15px 'Special Elite', cursive, monospace";
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(record.date, 0, 0);
@@ -644,11 +642,11 @@ async function exportLibraryCardImage(
 
       // Borrower's Name（中英文区分手写字体：中文 Zhi Mang Xing，英文 Caveat）
       ctx.save();
-      ctx.fillStyle = theme.text;
+      ctx.fillStyle = '#1f2937';
       const isCn = isChineseName(record.name);
       ctx.font = isCn
-        ? "26px 'Zhi Mang Xing', 'LXGW WenKai', cursive, serif"
-        : "bold 26px 'Caveat', 'Zhi Mang Xing', cursive, sans-serif";
+        ? "26px 'Zhi Mang Xing', cursive, serif"
+        : "bold 26px 'Caveat', cursive, sans-serif";
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       ctx.fillText(record.name, splitX + 24, rowY + rowHeight / 2 + 2);
@@ -662,13 +660,14 @@ async function exportLibraryCardImage(
   const bottomStartY = curY;
   const bottomHeight = baseHeight - bottomStartY;
 
-  // 底部渐变背景遮罩（对齐 DOM：遮盖背景插图，保证借阅须知与 Logo 清晰可读）
+  // 底部渐变背景遮罩
   ctx.save();
   ctx.fillStyle = theme.bg;
   ctx.fillRect(0, bottomStartY, baseWidth, bottomHeight);
   ctx.restore();
 
-  ctx.strokeStyle = theme.text;
+  // 底部深蓝双线
+  ctx.strokeStyle = '#1e3a8a';
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(0, bottomStartY);
@@ -681,10 +680,9 @@ async function exportLibraryCardImage(
   ctx.lineTo(baseWidth, bottomStartY + 3);
   ctx.stroke();
 
-  curY = bottomStartY + 18;
+  curY = bottomStartY + 14;
 
-
-  // 借阅须知文案
+  // 借阅须知文案（中文 3 条细则）
   ctx.textAlign = 'left';
   const rulesLines = [
     '借阅须知 RULES:',
@@ -692,39 +690,39 @@ async function exportLibraryCardImage(
     '2. 借阅期为30天，可续借一次。',
     '3. 此卡仅限本人使用，请妥善保管。',
   ];
-  let ruleY = curY + 6;
+  let ruleY = curY + 4;
   for (let idx = 0; idx < rulesLines.length; idx++) {
     if (idx === 0) {
-      ctx.fillStyle = '#1e40af';
-      ctx.font = "bold 12px 'Noto Serif SC', serif";
+      ctx.fillStyle = '#1e3a8a';
+      ctx.font = "bold 12px '又又意宋', 'Noto Serif SC', serif";
     } else {
       ctx.fillStyle = '#4b5563';
-      ctx.font = "12px 'Noto Serif SC', serif";
+      ctx.font = "11px '又又意宋', 'Noto Serif SC', serif";
     }
     ctx.fillText(rulesLines[idx], 36, ruleY);
-    ruleY += 18;
+    ruleY += 16;
   }
 
-  // 英文须知
-  ctx.fillStyle = '#1e40af';
-  ctx.font = "10px 'Cutive Mono', 'Courier New', monospace";
+  // 英文须知（展平在下方）
+  ctx.fillStyle = 'rgba(30, 58, 138, 0.7)';
+  ctx.font = "9px 'Cutive Mono', 'Courier New', monospace";
   ctx.fillText(
-    state.bottomNote || 'Please return this book on or before the last date stamped.',
+    (state.bottomNote || 'Please return this book on or before the last date stamped.').toUpperCase(),
     36,
-    ruleY + 4
+    ruleY + 8
   );
 
-  // 右侧图书馆 Logo 印章图
+  // 右侧图书馆 Logo 印章图（与中文须知并排）
   try {
     const logoImg = await loadImageSafe('/assets/receipt/logozi_shl.jpg');
     if (logoImg) {
       ctx.save();
       ctx.globalAlpha = 0.85;
       ctx.globalCompositeOperation = 'multiply';
-      const logoW = 125;
+      const logoW = 120;
       const logoH = (logoW / logoImg.width) * logoImg.height;
       const logoX = baseWidth - 36 - logoW;
-      const logoY = curY + 2;
+      const logoY = curY + 6;
       ctx.drawImage(logoImg, logoX, logoY, logoW, logoH);
       ctx.restore();
     }

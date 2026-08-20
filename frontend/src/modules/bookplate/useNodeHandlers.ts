@@ -846,6 +846,9 @@ export function useNodeHandlers({
           });
           generationIds.current[id] = gen.id;
           flushSnapshot();
+          // 新记录默认 is_favorited=false, is_public=false，重置 UI 态避免旧记录残留
+          setFavoritedState((prev) => ({ ...prev, [id]: false }));
+          setPublishedState((prev) => ({ ...prev, [id]: false }));
         } catch (dbErr) {
           console.warn('记录小票到历史数据库失败(不阻断导出):', dbErr);
         }

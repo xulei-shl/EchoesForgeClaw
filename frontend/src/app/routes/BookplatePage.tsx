@@ -213,6 +213,8 @@ const BookplatePage: React.FC = () => {
     nodesRef,
     edgesRef,
     generationIds,
+    setFavoritedState,
+    setPublishedState,
   });
 
   const {
