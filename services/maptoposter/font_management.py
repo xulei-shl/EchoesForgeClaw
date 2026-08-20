@@ -13,6 +13,16 @@ import requests
 FONTS_DIR = "fonts"
 FONTS_CACHE_DIR = Path(FONTS_DIR) / "cache"
 
+# Known local CJK font file names (Windows), checked in order
+CJK_LOCAL_FONTS = [
+    {
+        "name": "上图东观体",
+        "bold": "上图东观体-粗体.ttf",
+        "regular": "上图东观体-常规.ttf",
+        "light": "上图东观体-细体.ttf",
+    },
+]
+
 
 def download_google_font(font_family: str, weights: list = None) -> Optional[dict]:
     """
@@ -132,6 +142,29 @@ def download_google_font(font_family: str, weights: list = None) -> Optional[dic
     except Exception as e:
         print(f"⚠ Error downloading Google Font '{font_family}': {e}")
         return None
+
+
+def _find_local_font_path(filename: str) -> Optional[str]:
+    paths = [
+        os.path.join(os.environ.get("LOCALAPPDATA", ""), "Microsoft", "Windows", "Fonts", filename),
+        os.path.join(os.environ.get("WINDIR", ""), "Fonts", filename),
+        os.path.join(FONTS_DIR, filename),
+    ]
+    for p in paths:
+        if os.path.exists(p):
+            return p
+    return None
+
+
+def load_local_cjk_font() -> Optional[dict]:
+    for entry in CJK_LOCAL_FONTS:
+        bold = _find_local_font_path(entry["bold"])
+        regular = _find_local_font_path(entry["regular"])
+        light = _find_local_font_path(entry["light"])
+        if bold and regular and light:
+            print(f"✓ Using local CJK font: {entry['name']}")
+            return {"bold": bold, "regular": regular, "light": light}
+    return None
 
 
 def load_fonts(font_family: Optional[str] = None) -> Optional[dict]:

@@ -30,7 +30,7 @@ from networkx import MultiDiGraph
 from shapely.geometry import Point
 from tqdm import tqdm
 
-from font_management import load_fonts
+from font_management import load_fonts, load_local_cjk_font
 
 
 class CacheError(Exception):
@@ -638,11 +638,10 @@ def create_poster(
 
     # 4. Typography - use custom fonts if provided, otherwise use default FONTS
     active_fonts = fonts or FONTS
-    # Auto-detect CJK and load Noto Sans SC if no custom font specified
+    # Auto-detect CJK and load CJK font if no custom font specified
     if has_cjk(display_city) and fonts is None:
-        cjk_font = load_fonts("Noto Sans SC")
+        cjk_font = load_local_cjk_font() or load_fonts("Noto Sans SC")
         if cjk_font:
-            print("✓ CJK detected, using Noto Sans SC")
             active_fonts = cjk_font
     if active_fonts:
         # font_main is calculated dynamically later based on length
