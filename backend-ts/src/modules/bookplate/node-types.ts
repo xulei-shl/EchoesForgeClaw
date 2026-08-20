@@ -158,7 +158,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
   {
     type: NODE_TYPES.MAP_POSTER,
     name: '城市地图海报',
-    description: '搜索地点并生成地图海报图片（Leaflet 瓦片 / MapLibre 艺术主题，浏览器端渲染导出）',
+    description: '搜索城市并生成地图海报图片',
     category: 'multimodal',
     configurable: false,
     output_type: 'image',

@@ -170,7 +170,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'map_poster',
     name: '城市地图海报',
-    description: '搜索地点并生成地图海报图片',
+    description: '搜索城市并生成地图海报图片',
     category: 'multimodal',
     configurable: false,
     defaultSize: NODE_DEFAULT_SIZES.map_poster,
