@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>古籍版心书签 - 泛黄做旧多印章版</title>
+    <style>
+        :root {
+            /* 调整为更深沉的墨色 */
+            --ink-color: #262626; 
+            --font-main: "Kaiti SC", "STKaiti", "KaiTi", "Songti SC", serif; 
+        }
+
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #dcdcdc;
+            margin: 0;
+            font-family: var(--font-main);
+        }
+
+        /* 1. 书签外框：强化做旧纸张质感 */
+        .bookmark-wrapper {
+            width: 240px;
+            height: 600px;
+            /* 核心：使用径向渐变模拟纸张老化（中间亮，边缘暗黄） */
+            background-color: #e4d1a9;
+            background-image: radial-gradient(circle at 50% 40%, #ebdcb8 0%, #d9be8e 80%, #cca972 100%);
+            border: 4px solid var(--ink-color);
+            padding: 4px;
+            /* 增加外阴影，同时加入细微的内阴影模拟纸张边缘的磨损 */
+            box-shadow: 4px 10px 20px rgba(0, 0, 0, 0.25), inset 0 0 15px rgba(139, 69, 19, 0.15);
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* 2. 内部布局：版心(左) + 正文(右) */
+        .inner-frame {
+            border: 1px solid var(--ink-color); 
+            height: 100%;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: row; 
+        }
+
+        /* 3. 版心区（左侧） */
+        .banxin-area {
+            width: 38px; 
+            border-right: 1px solid var(--ink-color); 
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px 0;
+            box-sizing: border-box;
+        }
+
+        .xiangbi {
+            width: 1.5px;
+            background-color: var(--ink-color);
+            flex-grow: 1;
+        }
+
+        .fishtail-top, .fishtail-bottom {
+            width: 18px;
+            height: 30px;
+            background-color: var(--ink-color);
+            margin: 6px 0;
+            opacity: 0.9; /* 墨色微褪 */
+        }
+        .fishtail-top {
+            clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 65%, 0 100%);
+        }
+        .fishtail-bottom {
+            clip-path: polygon(0 0, 50% 35%, 100% 0, 100% 100%, 0 100%);
+        }
+
+        .banxin-title {
+            writing-mode: vertical-lr; 
+            font-size: 15px; 
+            letter-spacing: 5px;
+            color: var(--ink-color);
+            margin: 15px 0;
+            opacity: 0.9;
+        }
+
+        /* 4. 正文区（右侧） */
+        .content-area {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: row-reverse; /* 列从右向左排布 */
+        }
+
+        .column {
+            writing-mode: vertical-rl; 
+            border-left: 1px solid rgba(38, 38, 38, 0.6); /* 乌丝栏颜色稍微减弱，增加年代感 */
+            padding: 40px 18px;
+            display: flex;
+            align-items: center;
+            position: relative;
+        }
+
+        .column:last-child {
+            border-left: none; 
+        }
+
+        .text-large {
+            font-size: 32px; 
+            font-weight: bold;
+            letter-spacing: 12px;
+            color: var(--ink-color);
+            opacity: 0.9;
+        }
+        
+        .text-small {
+            font-size: 18px; 
+            letter-spacing: 5px;
+            color: var(--ink-color);
+            margin-top: 25px;
+            opacity: 0.9;
+        }
+
+        /* 5. 多印章样式体系 */
+        .seal {
+            position: absolute;
+            mix-blend-mode: multiply; /* 正片叠底 */
+            z-index: 10;
+        }
+        
+        /* ① 引首章（第一列右上） */
+        .seal-1 {
+            width: 30px; 
+            top: 25px;
+            right: 8px;
+            opacity: 0.85;
+        }
+
+        /* ② 压角章（第三列左下，大印章） */
+        .seal-2 {
+            width: 45px; 
+            bottom: 30px;
+            left: 5px;
+            opacity: 0.8;
+        }
+
+        /* ③ 鉴赏章（第一列中部，故意跨越栏线，模拟随意加盖） */
+        .seal-3 {
+            width: 38px;
+            top: 45%;
+            left: -18px; /* 负数使其跨到第二列的界限 */
+            opacity: 0.65; /* 假设是年代久远的印，褪色更严重 */
+            transform: rotate(-3deg); /* 微微倾斜 */
+        }
+
+        /* ④ 藏书小章（第三列上方空白处） */
+        .seal-4 {
+            width: 22px;
+            top: 80px;
+            left: 10px;
+            opacity: 0.9;
+            transform: rotate(2deg);
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="bookmark-wrapper">
+        <div class="inner-frame">
+            
+            <!-- 版心区 -->
+            <div class="banxin-area">
+                <div class="xiangbi"></div>
+                <div class="fishtail-top"></div>
+                <div class="banxin-title">資治通鑑</div>
+                <div class="fishtail-bottom"></div>
+                <div class="xiangbi"></div>
+            </div>
+
+            <!-- 正文区 -->
+            <div class="content-area">
+                
+                <!-- 第一列（最右侧） -->
+                <div class="column">
+                    <img id="seal-1" class="seal seal-1" src="" alt="引首章">
+                    <span class="text-large">资治通鉴</span>
+                    <span class="text-small" style="margin-top: 30px;">卷第一</span>
+                    <!-- 跨栏的鉴赏章 -->
+                    <img id="seal-3" class="seal seal-3" src="" alt="鉴赏章">
+                </div>
+                
+                <!-- 第二列（中间） -->
+                <div class="column">
+                    <span class="text-small">起著雍摄提格</span>
+                    <span class="text-small">尽玄黓困敦</span>
+                </div>
+
+                <!-- 第三列（最左侧） -->
+                <div class="column">
+                    <!-- 上方藏书小章 -->
+                    <img id="seal-4" class="seal seal-4" src="" alt="藏书章">
+                    <!-- 下方压角章 -->
+                    <img id="seal-2" class="seal seal-2" src="" alt="压角章">
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 你可以放入更多的印章图片到 yin 文件夹中以增加随机性
+        const seals = ['m_1467-3-11A-6.jpg', 'm_0640-2-1B-2.jpg']; 
+
+        function getRandomSeal() {
+            const randomIndex = Math.floor(Math.random() * seals.length);
+            return `yin/${seals[randomIndex]}`;
+        }
+
+        function setSealSafely(elementId) {
+            const el = document.getElementById(elementId);
+            if(el) {
+                el.src = getRandomSeal();
+                // 图片加载失败时隐藏，防止出现破碎图标破坏美感
+                el.onerror = () => el.style.display = 'none';
+            }
+        }
+
+        // 加载4个不同位置的印章
+        setSealSafely('seal-1');
+        setSealSafely('seal-2');
+        setSealSafely('seal-3');
+        setSealSafely('seal-4');
+    </script>
+</body>
+</html>

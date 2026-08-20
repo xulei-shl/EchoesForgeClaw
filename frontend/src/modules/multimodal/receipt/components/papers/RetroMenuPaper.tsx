@@ -76,7 +76,7 @@ export const RetroMenuPaper = React.forwardRef<HTMLDivElement, RetroMenuPaperPro
           </div>
 
           {/* 标题 */}
-          <div className="mb-1">
+          <div className="mb-3">
             <textarea
               value={state.storeName || ''}
               disabled={disabled}
@@ -101,11 +101,11 @@ export const RetroMenuPaper = React.forwardRef<HTMLDivElement, RetroMenuPaperPro
           </div>
 
           {/* 分割线 */}
-          <div className="h-[1px] mb-3" style={{ backgroundColor: theme.text }}></div>
+          <div className="h-[1px] mb-5" style={{ backgroundColor: theme.text }}></div>
 
           {/* 菜单区域 */}
           <div className="relative mb-2">
-            <div className="mb-3 pl-1">
+            <div className="mb-6 pl-1">
               <textarea
                 value={state.subtitle || ''}
                 disabled={disabled}
@@ -129,7 +129,7 @@ export const RetroMenuPaper = React.forwardRef<HTMLDivElement, RetroMenuPaperPro
               />
             </div>
 
-            <div className="space-y-1.5 px-2 font-mono">
+            <div className="space-y-2.5 px-2 font-mono">
               {(state.items || []).map((item) => (
                 <div key={item.id} className="flex justify-between items-start gap-2 text-[12px]">
                   <span className="shrink-0 opacity-70" style={{ color: theme.faint || theme.text }}>
