@@ -497,6 +497,8 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
       case 'image_search':
       case 'art_image_search':
         return ''; // 手动检索 / 选择图片，无需自动执行
+      case 'map_art':
+        return ''; // 手动点击生成，无需自动执行
     }
     return '';
   };

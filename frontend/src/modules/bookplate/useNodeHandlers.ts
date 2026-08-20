@@ -804,6 +804,35 @@ export function useNodeHandlers({
       // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** 艺术地图生成节点：编辑器状态写入 node.data */
+  const handleUpdateMapArtEditorFor = useCallback(
+    (id: string, patch: Record<string, any>, undoable: boolean) => {
+      const node = nodesRef.current.find((n) => n.id === id);
+      if (!node || node.type !== 'map_art') return;
+      const cur = node.data ?? {};
+      let changed = false;
+      for (const [k, v] of Object.entries(patch)) {
+        if (cur[k] !== v) {
+          changed = true;
+          break;
+        }
+      }
+      if (!changed) return;
+      if (undoable) recordHistory();
+      updateNodeData(id, patch);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** 艺术地图生成节点：后端已落盘并返回 image_url，直接写入 node.data.imageUrl */
+  const handleExportMapArtFor = useCallback(
+    async (id: string, imageUrl: string) => {
+      const node = nodesRef.current.find((n) => n.id === id);
+      if (!node || node.type !== 'map_art') return;
+      recordHistory();
+      updateNodeData(id, { imageUrl, error: null });
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /** 图书小票生成节点：导出 PNG → 落盘保存到后端 → 写入数据库历史记录表 → 写回 node.data.imageUrl */
   const handleExportReceiptFor = useCallback(
     async (id: string, dataUrl: string, state: any) => {
@@ -1261,6 +1290,8 @@ export function useNodeHandlers({
     handleUpdateWebSearchEditorFor,
     handleUpdateMapPosterEditorFor,
     handleExportMapPosterFor,
+    handleUpdateMapArtEditorFor,
+    handleExportMapArtFor,
     handleExportReceiptFor,
     handleUpdateReceiptStateFor,
     handleExportStampFor,

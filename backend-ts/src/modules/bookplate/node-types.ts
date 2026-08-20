@@ -36,6 +36,8 @@ export const NODE_TYPES = {
   RECEIPT_PRINTER: 'receipt_printer',
   /** 邮票截图框（多模态工具）：在图片上移动锯齿邮票框自由截取，生成带打孔边缘与柔和投影的复古邮票图片 */
   STAMP_CUTTER: 'stamp_cutter',
+  /** 艺术地图生成（多模态工具）：基于 prettymaps 服务端生成艺术风格地图图片（OSM 数据 + matplotlib 渲染） */
+  MAP_ART: 'map_art',
 } as const;
 
 export type NodeType = (typeof NODE_TYPES)[keyof typeof NODE_TYPES];
@@ -241,5 +243,14 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     configurable: false,
     output_type: 'image',
     input_types: ['image', 'text'],
+  },
+  {
+    type: NODE_TYPES.MAP_ART,
+    name: '艺术地图生成',
+    description: '基于 prettymaps 服务端生成艺术风格地图图片（OSM 数据 + matplotlib 渲染）',
+    category: 'multimodal',
+    configurable: false,
+    output_type: 'image',
+    input_types: ['text'],
   },
 ];

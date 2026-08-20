@@ -235,6 +235,31 @@ fi
 info "构建前端生产产物（npm run build）..."
 ( cd "$FRONTEND_DIR" && "$NPM_BIN" run build )
 
+# ---------------- Python prettymaps 服务（艺术地图生成） ----------------
+PRETTYMAPS_DIR="$PROJECT_DIR/services/prettymaps"
+PRETTYMAPS_PORT=8101
+if [[ "$INSTALL" == "yes" ]]; then
+  if command -v python3 &>/dev/null; then
+    info "安装 prettymaps 依赖..."
+    pip3 install prettymaps 2>/dev/null && info "prettymaps 安装成功" || warn "prettymaps 安装失败（可手动 pip3 install prettymaps）"
+    # 系统级依赖（libgl1 等）
+    if command -v apt-get &>/dev/null; then
+      apt-get install -y libgl1 2>/dev/null || true
+    fi
+  else
+    warn "未找到 python3，跳过 prettymaps 安装（艺术地图生成节点不可用）"
+  fi
+fi
+
+# 检查 prettymaps 是否可用
+if python3 -c "import prettymaps" 2>/dev/null; then
+  info "prettymaps 可用，将启动服务（端口 $PRETTYMAPS_PORT）"
+  HAS_PRETTYMAPS=1
+else
+  HAS_PRETTYMAPS=0
+  warn "prettymaps 未安装，艺术地图生成节点不可用（需 pip3 install prettymaps）"
+fi
+
 # ---------------- systemd 服务 ----------------
 info "生成 systemd 服务..."
 NODE_PREFIX="$(dirname "$(dirname "$NPM_BIN")")"          # /root/.nvm/versions/node/v22.23.1
@@ -279,6 +304,30 @@ StandardError=journal
 WantedBy=multi-user.target
 EOF
 
+# prettymaps 服务（可选）
+if [[ "$HAS_PRETTYMAPS" == "1" ]]; then
+cat > /etc/systemd/system/prettymaps.service <<EOF
+[Unit]
+Description=Prettymaps Map Art Generation API
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=$PRETTYMAPS_DIR
+ExecStart=$(command -v python3) -m uvicorn api:app --host 0.0.0.0 --port $PRETTYMAPS_PORT
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+Environment=PRETTYMAPS_PORT=$PRETTYMAPS_PORT
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  systemctl enable prettymaps 2>/dev/null || true
+fi
+
 systemctl daemon-reload
 systemctl enable bookforge-backend bookforge-frontend
 
@@ -287,6 +336,9 @@ if [[ "$HAS_UFW" == "1" ]]; then
   info "配置防火墙放行端口 $BACKEND_PORT / $FRONTEND_PORT ..."
   ufw allow "$BACKEND_PORT/tcp" comment 'BookForge Backend' >/dev/null 2>&1 || true
   ufw allow "$FRONTEND_PORT/tcp" comment 'BookForge Frontend' >/dev/null 2>&1 || true
+  if [[ "$HAS_PRETTYMAPS" == "1" ]]; then
+    ufw allow "$PRETTYMAPS_PORT/tcp" comment 'Prettymaps API' >/dev/null 2>&1 || true
+  fi
   ufw reload >/dev/null 2>&1 || true
 else
   warn "未安装 ufw，跳过防火墙放行（局域网访问可能受限）"
@@ -298,6 +350,9 @@ backup_sqlite_db
 
 info "启动服务..."
 systemctl restart bookforge-backend bookforge-frontend
+if [[ "$HAS_PRETTYMAPS" == "1" ]]; then
+  systemctl restart prettymaps 2>/dev/null || true
+fi
 
 echo
 echo "等待后端启动..."
@@ -316,8 +371,15 @@ echo
 echo "==================== 部署结果 ===================="
 echo -e "后端 service (${GREEN}$BACKEND_STATUS${NC})\t: http://<服务器IP>:$BACKEND_PORT"
 echo -e "前端 service (${GREEN}$FRONTEND_STATUS${NC})\t: http://<服务器IP>:$FRONTEND_PORT"
+if [[ "$HAS_PRETTYMAPS" == "1" ]]; then
+  PRETTY_STATUS=$(systemctl is-active prettymaps 2>/dev/null || echo "inactive")
+  echo -e "艺术地图 (${GREEN}$PRETTY_STATUS${NC})\t: http://<服务器IP>:$PRETTYMAPS_PORT"
+fi
 echo "管理员账号  : admin / $ADMIN_PASSWORD"
 echo "防火墙已放行: $BACKEND_PORT/tcp, $FRONTEND_PORT/tcp"
+if [[ "$HAS_PRETTYMAPS" == "1" ]]; then
+  echo "              $PRETTYMAPS_PORT/tcp (Prettymaps)"
+fi
 echo "日志        : journalctl -u bookforge-backend -f"
 echo "=================================================="
 
@@ -331,4 +393,11 @@ if curl -sf -o /dev/null --max-time 3 "http://localhost:$FRONTEND_PORT/"; then
   info "前端自检通过"
 else
   warn "前端自检失败，查看日志排查"
+fi
+if [[ "$HAS_PRETTYMAPS" == "1" ]]; then
+  if curl -sf -o /dev/null --max-time 3 "http://localhost:$PRETTYMAPS_PORT/health"; then
+    info "艺术地图服务自检通过（/health）"
+  else
+    warn "艺术地图服务自检失败，查看日志: journalctl -u prettymaps -n 50"
+  fi
 fi

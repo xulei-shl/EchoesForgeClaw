@@ -8,6 +8,7 @@ import { register as registerRegistry } from './routes/registry.js';
 import { register as registerBifrost } from './routes/bifrost.js';
 import { register as registerSkills } from './routes/skills.js';
 import { register as registerMapPoster } from './routes/map-poster.js';
+import { register as registerMapArt } from './routes/map-art.js';
 
 /**
  * bookplate 模块路由（对应 Python `app/modules/bookplate/router.py`）。
@@ -31,4 +32,5 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
   await registerBifrost(app);
   await registerSkills(app);
   await registerMapPoster(app);
+  await registerMapArt(app);
 }

@@ -40,6 +40,13 @@ export function userSearchImageDir(userId: number): string {
 
 const SEARCH_IMAGE_STATIC_PREFIX = '/static/search-images';
 
+/** 艺术地图（多模态工具）产出目录：runtime/{userId}/map-arts/（属中间结果）。 */
+export function userMapArtDir(userId: number): string {
+  return path.join(RUNTIME_ROOT, String(userId), 'map-arts');
+}
+
+const MAP_ART_STATIC_PREFIX = '/static/map-arts';
+
 const envImageApiKey = () =>
   process.env.OPENAI_IMAGE_API_KEY || process.env.OPENAI_API_KEY || '';
 
@@ -163,6 +170,23 @@ export class ImageService {
     const name = filename('png');
     writeFileSync(path.join(dir, name), bytes);
     return `${MAP_POSTER_STATIC_PREFIX}/${userId}/${name}`;
+  }
+
+  /**
+   * 保存艺术地图图片（多模态工具节点：服务端 Python prettymaps 生成，不写历史记录）。
+   * PNG 字节 → runtime/{userId}/map-arts/，返回 /static/map-arts/{userId}/{file}。
+   */
+  saveMapArtImage(userId: number, buffer: Buffer): string {
+    if (!buffer.length) throw new ImageGenerationError('艺术地图图片为空');
+    const dir = userMapArtDir(userId);
+    mkdirSync(dir, { recursive: true });
+    const ts = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const timestamp = `${ts.getFullYear()}${pad(ts.getMonth() + 1)}${pad(ts.getDate())}-${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}`;
+    const rand = Date.now() % 100000;
+    const name = `map_art_${timestamp}_${rand}.png`;
+    writeFileSync(path.join(dir, name), buffer);
+    return `${MAP_ART_STATIC_PREFIX}/${userId}/${name}`;
   }
 
   /**

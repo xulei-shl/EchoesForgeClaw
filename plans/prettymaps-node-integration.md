@@ -3,7 +3,7 @@
 ## 已确认决策
 
 - **新建独立节点** `map_art`，不在 `map_poster` 或其他节点内增加逻辑。
-- **方案 A**：服务器系统级 `pip install prettymaps`，仓库不包含库代码。
+- **方案 B**：FastAPI 服务模式（与 `maptoposter` 一致），在 `services/prettymaps/api.py` 启动独立服务。
 - 现有 `map_poster`（浏览器端瓦片渲染）与 `map_art`（服务端 Python 生成式艺术地图）互补并存。
 
 ## 架构
@@ -11,8 +11,7 @@
 ```
 前端 MapArtNode → POST /api/modules/bookplate/generate-map-art
   → backend-ts (Fastify)
-    → spawn python backend-ts/scripts/prettymaps-runner.py (stdio JSON)
-      → prettymaps.plot() → PNG
+    → fetch(Python FastAPI :8101) → PNG bytes
     → imageService.saveMapArtImage() → 返回 { image_url }
   → 前端 updateNodeData({ imageUrl })
 ```
@@ -30,62 +29,74 @@
 
 ## 待实现文件清单
 
-### 后端（backend-ts）
+### 1. Python FastAPI 服务
 
-1. `backend-ts/scripts/prettymaps-runner.py`
-   - 读 stdin JSON：`{ query, radius, circle, preset, style? }`
-   - 调用 `prettymaps.plot(..., show=False)` 渲染到临时 PNG
-   - 写 stdout JSON：`{ image_path, error? }`
-   - 头部设置 `matplotlib.use('Agg')`
+`services/prettymaps/api.py`
+- FastAPI 应用，端口 8101
+- `POST /generate`：接受 JSON `{ lat, lon, radius, circle, preset, figsize }`，
+  调用 `prettymaps.plot(query=(lon,lat), ...)`，返回 PNG 字节
+- `GET /presets`：返回可用预设列表
+- `GET /health`：健康检查
 
-2. `backend-ts/src/modules/bookplate/routes/map-art.ts`
-   - `POST /api/modules/bookplate/generate-map-art`（auth 中间件）
-   - 校验参数 → spawn python wrapper → 读结果 → `imageService.saveMapArtImage()` → `{ image_url }`
+### 2. 后端 TS 路由
 
-3. `backend-ts/src/modules/bookplate/router.ts`
-   - `import { register as registerMapArt } from './routes/map-art.js';`
-   - `await registerMapArt(app);`
+`backend-ts/src/modules/bookplate/routes/map-art.ts`
+- `POST /api/modules/bookplate/generate-map-art`（auth 中间件）
+  校验参数 → fetch prettymaps API → imageService.saveMapArtImage() → { image_url }
+- `GET /api/modules/bookplate/map-art/presets`（auth 中间件）
+  代理到 prettymaps API 获取预设列表
 
-4. `backend-ts/src/modules/bookplate/services/image-service.ts`
-   - 新增 `saveMapArtImage(userId, buffer)` 方法，落盘到 `runtime/{userId}/map-arts/`
+### 3. 后端图片落盘
 
-5. `scripts/deploy.sh`
-   - `--install` 分支增加：`pip3 install prettymaps` + 依赖检查
-   - 若 `python3` 或 `prettymaps` 缺失，打印明确错误并退出
+`backend-ts/src/services/image-service.ts`
+- 新增 `userMapArtDir(userId)` → `runtime/{userId}/map-arts/`
+- 新增 `saveMapArtImage(userId, buffer)` → 返回 `/static/map-arts/{userId}/{file}`
 
-### 前端
+### 4. 后端静态路由
 
-6. `frontend/src/modules/bookplate/nodeTypes.ts`
-   - `NODE_DEFAULT_SIZES.map_art`
-   - `NODE_COLORS.map_art`
-   - `NODE_TEMPLATES` 加条目
-   - `NODE_PORT_TYPES.map_art: { output: 'image', inputs: ['text'] }`
+`backend-ts/src/server.ts`
+- 新增 `/static/map-arts/:userId/:file` → `runtime/{userId}/map-arts/{file}`
 
-7. `frontend/src/modules/bookplate/nodeLayout.ts`
-   - `NodeType` 联合类型加 `'map_art'`
-   - `NODE_SIZES.map_art`
+### 5. 后端节点模板 + 路由注册
 
-8. `frontend/src/modules/multimodal/components/MapArtNode.tsx`（新建）
-   - 地点输入（文本）
-   - 半径滑块（km）
-   - 圆形/方形切换
-   - 预设选择器（default / minimal / macao / tijuca 等，本地静态镜像）
-   - 「生成」按钮 → POST → 展示结果 + 下载 PNG
-   - 生成中 spinner + 错误展示
+`backend-ts/src/modules/bookplate/node-types.ts`
+- 定义 `MAP_ART = "map_art"` 常量
+- `NODE_TEMPLATES` 加条目（category: multimodal, output_type: image, input_types: ['text']）
 
-9. `frontend/src/modules/bookplate/CanvasNodeViews.tsx`
-   - `case 'map_art'` 渲染 `MapArtNode`
+`backend-ts/src/modules/bookplate/router.ts`
+- 注册 `map-art` 路由
 
-10. `frontend/src/modules/bookplate/seedData.ts`
-    - `case 'map_art'` 默认 data
+### 6. 前端类型 + 元数据
 
-11. `frontend/src/modules/bookplate/useNodeExecution.ts`
-    - `case 'map_art': return '';`
+`frontend/src/platform/types/index.ts` — `CanvasNodeType` 加 `'map_art'`
+`frontend/src/modules/bookplate/nodeTypes.ts` — `NODE_DEFAULT_SIZES` / `NODE_COLORS` / `NODE_TEMPLATES` / `NODE_PORT_TYPES`
+`frontend/src/modules/bookplate/nodeLayout.ts` — `NodeType` + `NODE_SIZES`
 
-### 文档
+### 7. 前端节点组件
 
-12. `docs/多模态工具/地图/地图艺术生成节点.md`（新建）
-    - 节点说明、参数、接线示例、依赖安装说明
+`frontend/src/modules/multimodal/map/art-defaults.ts` — 默认值
+`frontend/src/modules/multimodal/components/MapArtNode.tsx`（新建）
+- 地点输入（文本，Nominatim 搜索）
+- 半径滑块（km）
+- 圆形/方形切换
+- 预设选择器（本地静态镜像）
+- 「生成」按钮 → POST → 展示结果 + 下载 PNG
+- 生成中 spinner + 错误展示
+
+### 8. 前端画板集成
+
+`frontend/src/modules/bookplate/CanvasNodeViews.tsx` — `case 'map_art'` 渲染 `MapArtNode`
+`frontend/src/modules/bookplate/seedData.ts` — `case 'map_art'` 默认 data
+`frontend/src/modules/bookplate/useNodeExecution.ts` — `case 'map_art': return ''`
+`frontend/src/modules/bookplate/useNodeHandlers.ts` — `handleGenerateMapArtFor` + `handleUpdateMapArtEditorFor`
+
+### 9. 部署脚本
+
+`scripts/deploy.sh` — `--install` 分支增加 `pip3 install prettymaps`
+
+### 10. 文档
+
+`docs/多模态工具/地图/艺术地图生成节点.md`
 
 ## API 契约
 
@@ -93,8 +104,9 @@
 
 ```json
 {
-  "node_id": "abc123",
-  "query": "Stad van de Zon, Heerhugowaard, Netherlands",
+  "lat": 48.8566,
+  "lon": 2.3522,
+  "query": "Paris, France",
   "radius": 0.75,
   "circle": false,
   "preset": "default"
@@ -104,7 +116,7 @@
 **响应** `200`
 
 ```json
-{ "image_url": "/static/runtime/123/map-arts/abc123.png" }
+{ "image_url": "/static/map-arts/123/map_art_20260819-143000_12345.png" }
 ```
 
 **错误** `4xx/5xx`
@@ -113,36 +125,25 @@
 { "detail": "prettymaps 生成失败: ..." }
 ```
 
-## Python 调用约定
+## Python 服务调用约定
 
-- backend-ts 通过 `child_process.spawn` 调用 `python3 backend-ts/scripts/prettymaps-runner.py`
-- 超时：60s（OSM 请求 + matplotlib 渲染）
-- 临时文件清理：wrapper 执行完后删除临时 PNG（前端已通过 `imageService.saveMapArtImage` 持久化到独立目录）
-- 错误处理：python 异常 → stderr → backend-ts 返回 502
-
-## 部署要求
-
-- Ubuntu 服务器需安装：`python3.12+`、`pip3`、`python3-pil`、`python3-cairo`（若 prettymaps 依赖）
-- `scripts/deploy.sh --install` 时执行：`pip3 install prettymaps`
-- 验证命令：`python3 -c "import prettymaps; print(prettymaps.__version__)"`
+- backend-ts 通过 `fetch` 调用 `http://127.0.0.1:8101/generate`
+- 超时：120s（OSM 请求 + matplotlib 渲染）
+- 环境变量：`PRETTYMAPS_API`（默认 `http://127.0.0.1:8101`）
 
 ## 前端 MapArtNode 交互设计
 
 ### 地点输入方式
 
-支持**城市名/地址文本输入**，但不在前端做预览地图（那是 `map_poster` 的职责）。
+支持**城市名/地址文本输入**，复用 `MapPosterNode` 的 Nominatim 搜索模式。
 
 **交互流程**：
-1. 用户在城市输入框输入名称（如「巴黎」/「Stad van de Zon, Heerhugowaard, Netherlands」）
-2. 前端调用现有 `searchLocation(query)`（Nominatim，`geocoder.ts`）做即时搜索
-3. 下拉展示候选结果（名称 + 国家）
+1. 用户在城市输入框输入名称
+2. 前端调用 Nominatim（`searchLocation`）做即时搜索
+3. 下拉展示候选结果
 4. 用户选中某一项 → 前端记录 `{ lat, lon, name }`
-5. 点击「生成」时，将 `lat/lon` 以 `[lon, lat]` 元组传给 prettymaps（`plot()` 接受 `Tuple[float, float]`），同时传递 `radius` / `circle` / `preset`
-6. prettymaps 直接用坐标生成，**不再做二次地理编码**
-
-**为什么传坐标而非字符串**：
-- prettymaps 内部用 osmnx，也会调 Nominatim；避免前端 + osmnx 两次请求同一服务
-- 坐标确定性更强（同名地点歧义由用户选择消除）
+5. 点击「生成」时，将 `lat/lon` 传给 prettymaps `plot()` 的 `query` 参数
+6. prettmaps 直接用坐标生成，**不再做二次地理编码**
 
 **参数**：
 - `query`：保留字段（用户输入的原始文本，用于展示/调试）
@@ -153,27 +154,25 @@
 
 若用户未选搜索结果，则回退为传 `query` 字符串给 prettymaps（由其自行 geocode）。
 
-**数据流**：
-```
-用户输入城市名
-    ↓
-searchLocation() → 下拉候选
-    ↓
-用户选中 → 记录 lat/lon
-    ↓
-点击「生成」
-    ↓
-POST /generate-map-art
-  { query, lat, lon, radius, circle, preset }
-    ↓
-backend-ts 构造 prettymaps kwargs：
-  query = (lat, lon) 或 原始字符串
-    ↓
-prettymaps.plot() → PNG
-```
+### 预设列表（本地静态镜像）
+
+| 预设 | 说明 |
+|------|------|
+| `default` | 默认暖色（10 个图层） |
+| `minimal` | 黑白极简 |
+| `macao` | 澳门风格（圆形容器） |
+| `tijuca` | 提居卡风格 |
+
+## 部署要求
+
+- Ubuntu 服务器需安装：`python3.12+`、`pip3`、`libgl1`、`libgdal-dev`
+- `scripts/deploy.sh --install` 时执行：`pip3 install prettymaps`
+- 验证命令：`python3 -c "import prettymaps; print(prettymaps.__version__)"`
+
+## 许可证
 
 prettymaps 为 **AGPL v3**。网络服务场景需披露源码。处理方式：
-- 在 `docs/多模态工具/prettymaps-main/LICENSE` 保留原始 LICENSE
+- 在 `services/prettymaps/LICENSE` 保留原始 LICENSE
 - 在输出图片中保留 OSM 致谢（prettymaps 默认行为）
 - 在节点文档中注明 prettymaps 版权归属
 
@@ -181,5 +180,5 @@ prettymaps 为 **AGPL v3**。网络服务场景需披露源码。处理方式：
 
 - 不修改 `map_poster` 节点
 - 不实现 prettymaps 流式输出
-- 不实现 multiplot / hillshade / keypoints 高级参数
+- 不实现 hillshade / keypoints / GPX 等高级参数
 - 不迁移 prettymaps 到纯前端

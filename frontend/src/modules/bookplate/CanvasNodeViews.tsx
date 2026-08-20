@@ -20,7 +20,9 @@ import { ImageSearchNode, type ImageSearchSelection } from '../../modules/multim
 import { ArtImageSearchNode, type GlamSearchSelection } from '../../modules/multimodal/components/ArtImageSearchNode';
 import { ReceiptPrinterNode } from '../../modules/multimodal/components/ReceiptPrinterNode';
 import { StampCutterNode } from '../../modules/multimodal/components/StampCutterNode';
+import { MapArtNode } from '../../modules/multimodal/components/MapArtNode';
 import { MAP_POSTER_DEFAULTS } from '../../modules/multimodal/map/defaults';
+import { MAP_ART_DEFAULTS } from '../../modules/multimodal/map/art-defaults';
 import {
   findConnectedBookInfoUpstream,
   findRootBookInfo,
@@ -108,6 +110,10 @@ export interface NodeViewHelpers {
   handleExportMapPosterFor: (id: string, dataUrl: string) => Promise<void>;
   /** 地图海报节点：编辑器状态写入 node.data（undoable=true 记撤销历史；平移缩放仅持久化） */
   handleUpdateMapPosterEditorFor: (id: string, patch: Record<string, any>, undoable: boolean) => void;
+  /** 艺术地图生成节点：后端已落盘并返回 image_url，直接写入 node.data.imageUrl */
+  handleExportMapArtFor: (id: string, imageUrl: string) => Promise<void>;
+  /** 艺术地图生成节点：编辑器状态写入 node.data（undoable=true 记撤销历史） */
+  handleUpdateMapArtEditorFor: (id: string, patch: Record<string, any>, undoable: boolean) => void;
   /** 图片检索节点：选中图片 → 下载到本地 → 写回 node.data.imageUrl（作为图片输出） */
   handleSelectSearchImageFor: (id: string, url: string, meta: ImageSearchSelection) => Promise<void>;
   /** 图片检索节点：编辑器状态（provider 等）写入 node.data（仅持久化，不记撤销历史） */
@@ -665,6 +671,29 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           mismatchBadge={mismatchBadge}
           onUpdateState={h.handleUpdateReceiptStateFor}
           onExport={h.handleExportReceiptFor}
+        />
+      );
+    }
+
+    case 'map_art': {
+      const d = node.data ?? {};
+      return (
+        <MapArtNode
+          key={node.id}
+          {...common}
+          imageUrl={typeof d.imageUrl === 'string' ? d.imageUrl : null}
+          error={d.error ?? null}
+          preset={typeof d.preset === 'string' ? d.preset : MAP_ART_DEFAULTS.preset}
+          radius={typeof d.radius === 'number' ? d.radius : MAP_ART_DEFAULTS.radius}
+          circle={typeof d.circle === 'boolean' ? d.circle : MAP_ART_DEFAULTS.circle}
+          query={typeof d.query === 'string' ? d.query : ''}
+          lat={typeof d.lat === 'number' ? d.lat : MAP_ART_DEFAULTS.lat}
+          lon={typeof d.lon === 'number' ? d.lon : MAP_ART_DEFAULTS.lon}
+          cityName={typeof d.cityName === 'string' ? d.cityName : MAP_ART_DEFAULTS.cityName}
+          countryName={typeof d.countryName === 'string' ? d.countryName : MAP_ART_DEFAULTS.countryName}
+          hasDownstream={hasDownstreamOf(node, h.edges)}
+          onUpdateEditor={h.handleUpdateMapArtEditorFor}
+          onExport={h.handleExportMapArtFor}
         />
       );
     }

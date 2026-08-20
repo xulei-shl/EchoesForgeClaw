@@ -1,5 +1,6 @@
 import { AGGREGATE_DEFAULT_TEMPLATE } from './textTemplate';
 import { MAP_POSTER_DEFAULTS } from '../multimodal/map/defaults';
+import { MAP_ART_DEFAULTS } from '../multimodal/map/art-defaults';
 import type { NodeType, NodeData } from './graphTypes';
 import type { NodeRunSettings } from '../../platform/types';
 
@@ -153,5 +154,7 @@ export function seedDataFor(type: NodeType, parent?: NodeData): any {
         uploadedImage: null,
         error: null,
       };
+    case 'map_art':
+      return { imageUrl: null, error: null, ...MAP_ART_DEFAULTS };
   }
 }
