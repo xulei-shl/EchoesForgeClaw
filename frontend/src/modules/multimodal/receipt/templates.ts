@@ -447,7 +447,6 @@ export const TEMPLATE_ANCIENT_BOOKMARK: ReceiptTemplateDef = {
     storeName: '資治通鑑',
     banxinTitle: '資治通鑑卷一',
     leafNumber: '一',
-    bookmarkVolume: '卷第一',
     bookmarkExcerpt: '起著雍摄提格，尽玄黓困敦。初命晋大夫魏斯、赵籍、韩虔为诸侯。臣光曰：臣闻天子之职莫大于礼，礼莫大于分，分莫大于名。',
     bookmarkExtra: '宋 · 司马光 撰\n中华书局 · 2011年校刊',
     dateTimeText: formatReceiptDate(),
@@ -479,15 +478,9 @@ export const TEMPLATE_ANCIENT_BOOKMARK: ReceiptTemplateDef = {
     const yearMatch = rawYear.match(/\d{4}/);
     const pubYear = yearMatch ? yearMatch[0] : rawYear.trim();
 
-    const volume =
-      book.subtitle?.trim() ||
-      (current.bookmarkVolume && current.bookmarkVolume !== '卷第一'
-        ? current.bookmarkVolume
-        : '卷第一');
-
     const seriesTitle = book.series?.trim() || current.seriesTitle || '欽定四庫全書';
     const leafNumber = current.leafNumber || '一';
-    const banxin = `${cleanTitle}${volume ? ' ' + volume : '卷一'}`;
+    const banxin = `${cleanTitle}${book.subtitle?.trim() ? ' ' + book.subtitle.trim() : ''}`;
 
     // 智能提取摘要精粹
     let excerpt = '';
@@ -532,7 +525,6 @@ export const TEMPLATE_ANCIENT_BOOKMARK: ReceiptTemplateDef = {
       storeName: cleanTitle,
       banxinTitle: banxin,
       leafNumber,
-      bookmarkVolume: volume,
       bookmarkExcerpt: excerpt,
       bookmarkExtra: extra,
       rating: book.rating ? String(book.rating) : current.rating || '9.8',
