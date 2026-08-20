@@ -90,12 +90,12 @@ export const BookExcerptPaper = React.forwardRef<HTMLDivElement, BookExcerptPape
               <div className="flex items-center gap-0.5 opacity-80 hover:opacity-100 transition-opacity">
                 <input
                   type="text"
-                  value={state.userHandle || '@Dieforella'}
+                  value={state.userHandle || '@SH-LIBRARY'}
                   disabled={disabled}
                   onChange={(e) => onChange({ userHandle: e.target.value })}
                   onMouseDown={stopEvent}
                   onPointerDown={stopEvent}
-                  placeholder="@Dieforella"
+                  placeholder="@SH-LIBRARY"
                   style={{ color: theme.text }}
                   className="font-mono text-xs bg-transparent outline-none border-b border-transparent hover:border-dashed hover:border-current disabled:cursor-not-allowed disabled:hover:border-transparent w-28"
                 />

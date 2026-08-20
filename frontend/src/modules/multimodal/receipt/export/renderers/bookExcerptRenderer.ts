@@ -35,7 +35,7 @@ export async function exportBookExcerptImage(
   ctx.textAlign = 'left';
   ctx.fillStyle = theme.text;
   ctx.font = "14px 'JetBrains Mono', 'Cutive Mono', monospace";
-  ctx.fillText(state.userHandle || '@Dieforella', 36, curY);
+  ctx.fillText(state.userHandle || '@SH-LIBRARY', 36, curY);
 
   // 右上角豆瓣评分
   const ratingText = state.rating || '8.9';

@@ -276,7 +276,7 @@ export const TEMPLATE_BOOK_EXCERPT: ReceiptTemplateDef = {
     ditherEnabled: false,
     storeName: '书摘分享',
     englishBanner: 'BOOK EXCERPT SHARING',
-    userHandle: '@Dieforella',
+    userHandle: '@SH-LIBRARY',
     rating: '8.9',
     excerptText: '催促不会改变什么、毕竟谁都不会硬着头皮犁冬天的地。',
     dateTimeText: formatReceiptDate(),
@@ -356,7 +356,7 @@ export const TEMPLATE_BOOK_EXCERPT: ReceiptTemplateDef = {
     return {
       storeName: current.storeName || '书摘分享',
       englishBanner: current.englishBanner || 'BOOK EXCERPT SHARING',
-      userHandle: current.userHandle || '@Dieforella',
+      userHandle: current.userHandle || '@SH-LIBRARY',
       rating: ratingVal,
       excerptText: excerpt,
       metaFields,

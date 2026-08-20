@@ -141,7 +141,7 @@ export interface ReceiptState {
   borrowerRecords?: BorrowerRecordItem[];
   /** 书摘小票书摘主体文本（单一段落） */
   excerptText?: string;
-  /** 书摘小票左上角用户账号 / 署名（如 "@Dieforella"） */
+  /** 书摘小票左上角用户账号 / 署名（如 "@SH-LIBRARY"） */
   userHandle?: string;
   /** 书摘小票英文胶囊横幅文案（如 "BOOK EXCERPT SHARING"） */
   englishBanner?: string;
