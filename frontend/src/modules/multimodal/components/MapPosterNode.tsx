@@ -8,7 +8,7 @@ import { Tooltip } from '../../../platform/components/ui/Tooltip';
 import { Select, type SelectOption } from '../../../platform/components/ui/Select';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
 import { NODE_COLORS } from '../../bookplate/nodeTypes';
-import { api } from '../../../platform/api';
+import api from '../../../platform/services/api';
 import {
   MAP_POSTER_DEFAULTS,
   MAP_POSTER_DEFAULT_CITY,

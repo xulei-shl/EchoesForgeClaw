@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import type { NodeData, EdgeData, NodeType, NodeSize } from './graphTypes';
 import type { PortTypesLookup } from './execution';
 import api from '../../platform/services/api';
+import generationsService from '../../platform/services/generations';
 import { SMALL_TOOL_TIMEOUT_MS } from '../../platform/utils/timeouts';
 import { nodeOutputText, resolveDirectParents } from './nodeTypes';
 import type { ChatNodeSettings, NodeRunSettings, PromptSelection, SkillSelection } from '../../platform/types';
@@ -797,6 +798,65 @@ export function useNodeHandlers({
       // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** 图书小票生成节点：导出 PNG → 落盘保存到后端 → 写入数据库历史记录表 → 写回 node.data.imageUrl */
+  const handleExportReceiptFor = useCallback(
+    async (id: string, dataUrl: string, state: any) => {
+      const node = nodesRef.current.find((n) => n.id === id);
+      if (!node || node.type !== 'receipt_printer') return;
+      updateNodeData(id, { isExporting: true, error: null });
+      try {
+        const res: any = await api.post(
+          '/modules/bookplate/save-image',
+          { image: dataUrl },
+          { timeout: SMALL_TOOL_TIMEOUT_MS }
+        );
+        const imageUrl = typeof res?.image_url === 'string' ? res.image_url : '';
+        if (!imageUrl) throw new Error('保存小票图片失败');
+
+        // 组装历史记录保存到数据库 (generations 表)
+        try {
+          const rootBook = nodesRef.current.find((n) => n.type === 'book_info' && n.data?.isbn);
+          const gen = await generationsService.create({
+            node_type: 'receipt_printer',
+            stage_results: {
+              stage1: rootBook
+                ? { isbn: rootBook.data?.isbn || '', metadata: rootBook.data || {} }
+                : undefined,
+              stage3: {
+                image_url: imageUrl,
+                prompt: state?.storeName ? `${state.storeName} - ${state.subtitle || '图书小票'}` : '图书小票生成',
+              },
+            },
+            result_url: imageUrl,
+            status: 'completed',
+          });
+          generationIds.current[id] = gen.id;
+        } catch (dbErr) {
+          console.warn('记录小票到历史数据库失败(不阻断导出):', dbErr);
+        }
+
+        recordHistory();
+        updateNodeData(id, { ...state, imageUrl, isExporting: false, error: null });
+      } catch (error: any) {
+        console.error('Failed to export receipt:', error);
+        updateNodeData(id, {
+          isExporting: false,
+          error: error?.isTimeout ? '小票图片保存超时，请重试' : error?.detail || '小票图片保存失败，请重试',
+        });
+        throw error;
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** 图书小票生成节点：状态更新写入 node.data（持久化） */
+  const handleUpdateReceiptStateFor = useCallback(
+    (id: string, patch: Record<string, any>) => {
+      const node = nodesRef.current.find((n) => n.id === id);
+      if (!node || node.type !== 'receipt_printer') return;
+      updateNodeData(id, patch);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /** 图片检索节点：编辑器状态（来源 tab 等）写入 node.data（仅持久化，不记撤销历史）。
    *  与地图海报编辑器同口径：结果集/关键词为节点内临时态，不落 node.data。 */
   const handleUpdateImageSearchEditorFor = useCallback(
@@ -1058,6 +1118,8 @@ export function useNodeHandlers({
     handleUpdateWebSearchEditorFor,
     handleUpdateMapPosterEditorFor,
     handleExportMapPosterFor,
+    handleExportReceiptFor,
+    handleUpdateReceiptStateFor,
     handleSelectSearchImageFor,
     handleUpdateImageSearchEditorFor,
     handleSelectGlamImageFor,

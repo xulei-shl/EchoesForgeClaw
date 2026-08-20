@@ -18,6 +18,7 @@ import { WebSearchNode, type WebSearchRequest, type WebSearchSource } from './co
 import { MapPosterNode } from '../../modules/multimodal/components/MapPosterNode';
 import { ImageSearchNode, type ImageSearchSelection } from '../../modules/multimodal/components/ImageSearchNode';
 import { ArtImageSearchNode, type GlamSearchSelection } from '../../modules/multimodal/components/ArtImageSearchNode';
+import { ReceiptPrinterNode } from '../../modules/multimodal/components/ReceiptPrinterNode';
 import { MAP_POSTER_DEFAULTS } from '../../modules/multimodal/map/defaults';
 import { getNodeTitle, matchPortType, nodeOutputText, resolveDirectParents } from './nodeTypes';
 import {
@@ -106,7 +107,11 @@ export interface NodeViewHelpers {
   /** 艺术图片检索节点：选中图片 → 下载到本地 → 写回 node.data.imageUrl（作为图片输出） */
   handleSelectGlamImageFor: (id: string, url: string, meta: GlamSearchSelection) => Promise<void>;
   /** 艺术图片检索节点：编辑器状态（provider 等）写入 node.data（仅持久化，不记撤销历史） */
-  handleUpdateGlamEditorFor: (id: string, patch: Record<string, any>, undoable: boolean) => void;
+  handleUpdateGlamEditorFor: (id: string, patch: Record<string, any>, undoable?: boolean) => void;
+  /** 图书小票生成节点：导出 PNG data URL 落盘（保存到后端 + 记录数据库历史 + 写回 node.data） */
+  handleExportReceiptFor: (id: string, dataUrl: string, state: any) => Promise<void>;
+  /** 图书小票生成节点：状态更新写入 node.data（持久化） */
+  handleUpdateReceiptStateFor: (id: string, patch: Record<string, any>) => void;
   /** 文本聚合节点：保存占位符模板 */
   handleUpdateAggregateTemplateFor: (id: string, template: string) => void;
   /** 文本聚合节点：重命名某上级节点的占位符别名 */
@@ -598,7 +603,36 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
         />
       );
     }
-    
+    case 'receipt_printer': {
+      const d = node.data ?? {};
+      const inputs = collectNodeInputs(node, h.nodes, h.edges, h.portTypesOf);
+      // 上游图书元数据（优先直接上级，回退全图根节点）
+      const directBookNode = inputs.text.find((p) => p.type === 'book_info');
+      const rootBookNode = h.nodes.find((n) => n.type === 'book_info' && n.data?.isbn);
+      const upstreamBookData = (directBookNode?.data || rootBookNode?.data) ?? null;
+
+      // 上游图片输出（图片上传 / 图像生成 / 艺术检索等）
+      const upstreamImageNode = inputs.image[0];
+      const upstreamImageUrl =
+        typeof upstreamImageNode?.data?.imageUrl === 'string'
+          ? upstreamImageNode.data.imageUrl
+          : null;
+
+      return (
+        <ReceiptPrinterNode
+          key={node.id}
+          {...common}
+          data={d}
+          upstreamBookData={upstreamBookData}
+          upstreamImageUrl={upstreamImageUrl}
+          hasDownstream={hasDownstreamOf(node, h.edges)}
+          mismatchBadge={mismatchBadge}
+          onUpdateState={h.handleUpdateReceiptStateFor}
+          onExport={h.handleExportReceiptFor}
+        />
+      );
+    }
+
     default:
       return null;
   }

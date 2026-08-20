@@ -1,5 +1,6 @@
 import { AGGREGATE_DEFAULT_TEMPLATE } from './textTemplate';
 import { MAP_POSTER_DEFAULTS } from '../multimodal/map/defaults';
+import { TEMPLATE_BOOK_RECOMMEND } from '../multimodal/receipt';
 import type { NodeType, NodeData } from './graphTypes';
 import type { NodeRunSettings } from '../../platform/types';
 
@@ -135,6 +136,12 @@ export function seedDataFor(type: NodeType, parent?: NodeData): any {
         provider: 'met',
         imageUrl: null,
         selectedImage: null,
+        error: null,
+      };
+    case 'receipt_printer':
+      return {
+        ...TEMPLATE_BOOK_RECOMMEND.createInitialState(),
+        imageUrl: null,
         error: null,
       };
   }

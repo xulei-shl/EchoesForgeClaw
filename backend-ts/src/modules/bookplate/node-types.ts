@@ -30,8 +30,10 @@ export const NODE_TYPES = {
   WIKIPEDIA_SEARCH: 'wikipedia_search',
   /** 文本翻译（文本工具）：Google 翻译 / DeepLX 翻译引擎，支持随机源与自动降级 */
   TEXT_TRANSLATION: 'text_translation',
-  /** 网络搜索（文本工具）：知乎全网 / Tavily / Exa 多源检索，支持随机源与自动降级 */
+  /** 网络搜索（文本工具）：知乎全网 / Tavily / Exa 多源检索，支持随机源与自动降级（凭据在管理端「系统设置」配置，可连线文本节点传入关键词） */
   WEB_SEARCH: 'web_search',
+  /** 图书小票生成（多模态工具）：生成复古热敏纸风格图书小票/书目推荐凭证（支持图书元数据继承、封面点阵化、索书号自定义与导出） */
+  RECEIPT_PRINTER: 'receipt_printer',
 } as const;
 
 export type NodeType = (typeof NODE_TYPES)[keyof typeof NODE_TYPES];
@@ -219,5 +221,14 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     configurable: false,
     output_type: 'text',
     input_types: ['text'],
+  },
+  {
+    type: NODE_TYPES.RECEIPT_PRINTER,
+    name: '图书小票生成',
+    description: '生成复古热敏纸风格图书小票 / 书目推荐凭证（支持图书元数据继承、封面点阵化、索书号自定义与导出）',
+    category: 'multimodal',
+    configurable: false,
+    output_type: 'image',
+    input_types: ['text', 'image'],
   },
 ];

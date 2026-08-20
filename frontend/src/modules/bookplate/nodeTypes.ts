@@ -24,6 +24,7 @@ export const NODE_DEFAULT_SIZES: Record<CanvasNodeType, { width: number; height:
   wikipedia_search: { width: 440, height: 560 },
   text_translation: { width: 460, height: 520 },
   web_search: { width: 460, height: 560 },
+  receipt_printer: { width: 440, height: 640 },
 };
 
 /** 节点的主题色（用于左上角指示圆点） */
@@ -48,6 +49,7 @@ export const NODE_COLORS: Record<CanvasNodeType, string> = {
   wikipedia_search: 'oklch(0.62 0.12 45)',
   text_translation: 'oklch(0.65 0.18 180)',
   web_search: 'oklch(0.6 0.18 130)',
+  receipt_printer: 'oklch(0.68 0.15 40)',
 };
 
 export interface NodeTemplateDef {
@@ -218,6 +220,14 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     configurable: false,
     defaultSize: NODE_DEFAULT_SIZES.web_search,
   },
+  {
+    type: 'receipt_printer',
+    name: '图书小票生成',
+    description: '生成复古热敏纸风格图书小票 / 书目推荐凭证（支持图书元数据继承、封面点阵化、索书号自定义与导出）',
+    category: 'multimodal',
+    configurable: false,
+    defaultSize: NODE_DEFAULT_SIZES.receipt_printer,
+  },
 ];
 
 export const NODE_TEMPLATE_MAP: Record<CanvasNodeType, NodeTemplateDef> = Object.fromEntries(
@@ -286,6 +296,8 @@ export const NODE_PORT_TYPES: Record<CanvasNodeType, { output: NodePortType; inp
   text_translation: { output: 'text', inputs: ['text'] },
   // 网络搜索：输出检索结果文本；可连线文本节点作为检索关键词（连线即输入）
   web_search: { output: 'text', inputs: ['text'] },
+  // 图书小票生成：输出生成的小票图片；可连线图书元数据/文本作为内容输入，图片作为插图输入（连线即输入）
+  receipt_printer: { output: 'image', inputs: ['text', 'image'] },
 };
 
 /** 端口类型查找（由画布提供：后端模板声明优先，前端静态镜像兜底） */
