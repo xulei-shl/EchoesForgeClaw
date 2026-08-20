@@ -1,0 +1,52 @@
+/**
+ * 邮票截图框（Stamp Cutter）类型定义
+ */
+
+/** 邮票常用长宽比 */
+export type StampAspectRatio = '3:4' | '4:3' | '1:1' | 'free';
+
+/** 归一化选框坐标 (0 ~ 1 范围) */
+export interface StampCropBox {
+  /** 选框左上角 X 轴归一化坐标 (0 ~ 1) */
+  x: number;
+  /** 选框左上角 Y 轴归一化坐标 (0 ~ 1) */
+  y: number;
+  /** 选框归一化宽度 (0 ~ 1) */
+  width: number;
+  /** 选框归一化高度 (0 ~ 1) */
+  height: number;
+}
+
+/** 邮票齿孔打孔与柔和投影渲染参数 */
+export interface StampEffectOptions {
+  /** 是否包含白色纸边（默认 true，内容四周留白） */
+  withMargin?: boolean;
+  /** 内容到锯齿边的白边宽度 (px)，默认 46 */
+  margin?: number;
+  /** 半圆打孔半径 (px)，默认 14 */
+  holeRadius?: number;
+  /** 打孔间距 (px)，默认 holeRadius * 2 + 18 */
+  pitch?: number;
+  /** 邮票外留白 (px，给立体投影空间)，默认 90 */
+  outerPad?: number;
+  /** 投影不透明度 (0 ~ 255)，默认 70 */
+  shadowAlpha?: number;
+  /** 背景色（默认 null 为真透明 RGBA，传颜色字符串则为填充底色） */
+  bgColor?: string | null;
+}
+
+/** 邮票截图框节点内部持久化状态 */
+export interface StampCutterState {
+  /** 是否带白边 */
+  withMargin: boolean;
+  /** 长宽比设置 */
+  aspectRatio: StampAspectRatio;
+  /** 选框归一化坐标 */
+  cropBox: StampCropBox | null;
+  /** 导出的最终高清邮票图片 URL (PNG) */
+  imageUrl?: string | null;
+  /** 用户本地直接上传/替换的图片 (Base64 Data URL) */
+  uploadedImage?: string | null;
+  /** 错误信息 */
+  error?: string | null;
+}

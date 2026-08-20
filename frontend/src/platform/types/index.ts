@@ -221,7 +221,9 @@ export type CanvasNodeType =
   /** 网络搜索节点：知乎全网 / Tavily / Exa 多源网络检索，支持随机源与自动降级（文本工具） */
   | 'web_search'
   /** 图书小票生成节点：复古热敏纸风格小票 / 书目推荐凭证生成（多模态工具） */
-  | 'receipt_printer';
+  | 'receipt_printer'
+  /** 邮票截图框节点：在图片上移动锯齿邮票框自由截取，生成带打孔边缘与柔和投影的复古邮票图片（多模态工具） */
+  | 'stamp_cutter';
 
 /**
  * 节点端口类型（输入/输出）：text / image 为当前实际使用的类型，

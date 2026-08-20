@@ -52,9 +52,11 @@ export function useGenerationHistory(ctx: GenerationHistoryContext): GenerationH
       const promptText =
         imageNode.type === 'receipt_printer'
           ? (imageNode.data?.storeName ? `${imageNode.data.storeName} - ${imageNode.data?.subtitle || '图书小票'}` : '图书小票生成')
-          : typeof imageNode.data?.prompt === 'string'
-            ? imageNode.data.prompt
-            : '';
+          : imageNode.type === 'stamp_cutter'
+            ? '邮票截图'
+            : typeof imageNode.data?.prompt === 'string'
+              ? imageNode.data.prompt
+              : '';
 
       return {
         stage1: bookNode
@@ -76,7 +78,7 @@ export function useGenerationHistory(ctx: GenerationHistoryContext): GenerationH
                   : undefined,
               agent_steps: promptSteps.length > 0 ? promptSteps : undefined,
             }
-          : imageNode.type === 'receipt_printer'
+          : (imageNode.type === 'receipt_printer' || imageNode.type === 'stamp_cutter')
             ? { prompt: promptText }
             : undefined,
         stage3: {

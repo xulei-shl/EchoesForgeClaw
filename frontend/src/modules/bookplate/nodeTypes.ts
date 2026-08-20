@@ -25,6 +25,7 @@ export const NODE_DEFAULT_SIZES: Record<CanvasNodeType, { width: number; height:
   text_translation: { width: 460, height: 520 },
   web_search: { width: 460, height: 560 },
   receipt_printer: { width: 440, height: 640 },
+  stamp_cutter: { width: 440, height: 560 },
 };
 
 /** 节点的主题色（用于左上角指示圆点） */
@@ -50,6 +51,7 @@ export const NODE_COLORS: Record<CanvasNodeType, string> = {
   text_translation: 'oklch(0.65 0.18 180)',
   web_search: 'oklch(0.6 0.18 130)',
   receipt_printer: 'oklch(0.68 0.15 40)',
+  stamp_cutter: 'oklch(0.68 0.16 25)',
 };
 
 export interface NodeTemplateDef {
@@ -228,6 +230,14 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     configurable: false,
     defaultSize: NODE_DEFAULT_SIZES.receipt_printer,
   },
+  {
+    type: 'stamp_cutter',
+    name: '邮票截图框',
+    description: '在图片上移动锯齿邮票框自由截取，生成带打孔边缘与柔和投影的复古邮票图片',
+    category: 'multimodal',
+    configurable: false,
+    defaultSize: NODE_DEFAULT_SIZES.stamp_cutter,
+  },
 ];
 
 export const NODE_TEMPLATE_MAP: Record<CanvasNodeType, NodeTemplateDef> = Object.fromEntries(
@@ -298,6 +308,8 @@ export const NODE_PORT_TYPES: Record<CanvasNodeType, { output: NodePortType; inp
   web_search: { output: 'text', inputs: ['text'] },
   // 图书小票生成：输出生成的小票图片；可连线图书元数据/文本作为内容输入，图片作为插图输入（连线即输入）
   receipt_printer: { output: 'image', inputs: ['text', 'image'] },
+  // 邮票截图框：输出生成的邮票图片；可连线图片或图书元数据作为输入源（连线即输入）
+  stamp_cutter: { output: 'image', inputs: ['image', 'text'] },
 };
 
 /** 端口类型查找（由画布提供：后端模板声明优先，前端静态镜像兜底） */

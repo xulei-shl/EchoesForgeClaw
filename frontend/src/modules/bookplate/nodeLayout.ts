@@ -25,7 +25,8 @@ export type NodeType =
   | 'wikipedia_search'
   | 'text_translation'
   | 'web_search'
-  | 'receipt_printer';
+  | 'receipt_printer'
+  | 'stamp_cutter';
 
 /** 各节点模板类型的默认尺寸（必须与组件 defaultSize 一致） */
 export const NODE_SIZES: Record<NodeType, { width: number; height: number }> = {
@@ -50,6 +51,7 @@ export const NODE_SIZES: Record<NodeType, { width: number; height: number }> = {
   text_translation: { width: 460, height: 520 },
   web_search:       { width: 460, height: 560 },
   receipt_printer:  { width: 440, height: 640 },
+  stamp_cutter:     { width: 440, height: 560 },
 };
 
 /** 节点间水平间距（px） */

@@ -896,6 +896,80 @@ export function useNodeHandlers({
       // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** 邮票截图框节点：导出 PNG → 落盘保存到后端 → 写入数据库历史记录表 → 写回 node.data.imageUrl */
+  const handleExportStampFor = useCallback(
+    async (id: string, dataUrl: string, state: any) => {
+      const node = nodesRef.current.find((n) => n.id === id);
+      if (!node || node.type !== 'stamp_cutter') return;
+      updateNodeData(id, { isExporting: true, error: null });
+      try {
+        const res: any = await api.post(
+          '/modules/bookplate/save-image',
+          { image: dataUrl },
+          { timeout: SMALL_TOOL_TIMEOUT_MS }
+        );
+        const imageUrl = typeof res?.image_url === 'string' ? res.image_url : '';
+        if (!imageUrl) throw new Error('保存邮票图片失败');
+
+        // 组装历史记录保存到数据库 (generations 表)
+        try {
+          const rootBook =
+            findConnectedBookInfoUpstream(id, nodesRef.current, edgesRef.current) ??
+            findRootBookInfo(nodesRef.current, edgesRef.current);
+          const promptText = '邮票截图';
+          const gen = await generationsService.create({
+            node_type: 'stamp_cutter',
+            stage_results: {
+              stage1: rootBook
+                ? { isbn: rootBook.data?.isbn || '', metadata: rootBook.data || {} }
+                : undefined,
+              stage2: {
+                prompt: promptText,
+              },
+              stage3: {
+                image_url: imageUrl,
+                prompt: promptText,
+              },
+            },
+            result_url: imageUrl,
+            status: 'completed',
+          });
+          generationIds.current[id] = gen.id;
+          flushSnapshot();
+          setFavoritedState((prev) => ({ ...prev, [id]: false }));
+          setPublishedState((prev) => ({ ...prev, [id]: false }));
+        } catch (dbErr) {
+          console.warn('记录邮票到历史数据库失败(不阻断导出):', dbErr);
+        }
+
+        setSelectedImageId(id);
+        recordHistory();
+        updateNodeData(id, {
+          ...state,
+          imageUrl,
+          isExporting: false,
+          error: null,
+        });
+      } catch (error: any) {
+        console.error('Failed to export stamp:', error);
+        updateNodeData(id, {
+          isExporting: false,
+          error: error?.isTimeout ? '邮票图片保存超时，请重试' : error?.detail || '邮票图片保存失败，请重试',
+        });
+        throw error;
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** 邮票截图框节点：状态更新写入 node.data（持久化） */
+  const handleUpdateStampStateFor = useCallback(
+    (id: string, patch: Record<string, any>) => {
+      const node = nodesRef.current.find((n) => n.id === id);
+      if (!node || node.type !== 'stamp_cutter') return;
+      updateNodeData(id, patch);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /** 图片检索节点：编辑器状态（来源 tab 等）写入 node.data（仅持久化，不记撤销历史）。
    *  与地图海报编辑器同口径：结果集/关键词为节点内临时态，不落 node.data。 */
   const handleUpdateImageSearchEditorFor = useCallback(
@@ -1159,6 +1233,8 @@ export function useNodeHandlers({
     handleExportMapPosterFor,
     handleExportReceiptFor,
     handleUpdateReceiptStateFor,
+    handleExportStampFor,
+    handleUpdateStampStateFor,
     handleSelectSearchImageFor,
     handleUpdateImageSearchEditorFor,
     handleSelectGlamImageFor,

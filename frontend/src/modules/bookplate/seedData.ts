@@ -144,5 +144,14 @@ export function seedDataFor(type: NodeType, parent?: NodeData): any {
         ditherEnabled: true,
         error: null,
       };
+    case 'stamp_cutter':
+      return {
+        withMargin: true,
+        aspectRatio: '3:4',
+        cropBox: null,
+        imageUrl: null,
+        uploadedImage: null,
+        error: null,
+      };
   }
 }

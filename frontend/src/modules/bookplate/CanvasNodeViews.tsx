@@ -19,6 +19,7 @@ import { MapPosterNode } from '../../modules/multimodal/components/MapPosterNode
 import { ImageSearchNode, type ImageSearchSelection } from '../../modules/multimodal/components/ImageSearchNode';
 import { ArtImageSearchNode, type GlamSearchSelection } from '../../modules/multimodal/components/ArtImageSearchNode';
 import { ReceiptPrinterNode } from '../../modules/multimodal/components/ReceiptPrinterNode';
+import { StampCutterNode } from '../../modules/multimodal/components/StampCutterNode';
 import { MAP_POSTER_DEFAULTS } from '../../modules/multimodal/map/defaults';
 import {
   findConnectedBookInfoUpstream,
@@ -119,6 +120,10 @@ export interface NodeViewHelpers {
   handleExportReceiptFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   /** 图书小票生成节点：状态更新写入 node.data（持久化） */
   handleUpdateReceiptStateFor: (id: string, patch: Record<string, any>) => void;
+  /** 邮票截图框节点：导出 PNG data URL 落盘（保存到后端 + 记录数据库历史 + 写回 node.data） */
+  handleExportStampFor: (id: string, dataUrl: string, state: any) => Promise<void>;
+  /** 邮票截图框节点：状态更新写入 node.data（持久化） */
+  handleUpdateStampStateFor: (id: string, patch: Record<string, any>) => void;
   /** 文本聚合节点：保存占位符模板 */
   handleUpdateAggregateTemplateFor: (id: string, template: string) => void;
   /** 文本聚合节点：重命名某上级节点的占位符别名 */
@@ -660,6 +665,56 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           mismatchBadge={mismatchBadge}
           onUpdateState={h.handleUpdateReceiptStateFor}
           onExport={h.handleExportReceiptFor}
+        />
+      );
+    }
+
+    case 'stamp_cutter': {
+      const d = node.data ?? {};
+      const inputs = collectNodeInputs(node, h.nodes, h.edges, h.portTypesOf);
+
+      // ② 紧邻上一级图片输出节点（非图书元数据：图片上传 / 图像生成 / 艺术检索等）
+      const nonBookImageParents = inputs.images.filter((p) => p.type !== 'book_info');
+      const directParentImage = resolveReferenceImage(nonBookImageParents) ?? null;
+
+      // ③ 连线穿透追溯的图书元数据封面图
+      const connectedBookNode = findConnectedBookInfoUpstream(node.id, h.nodes, h.edges);
+      const connectedBookData = connectedBookNode?.data ?? null;
+      const connectedBookCover =
+        connectedBookData?.cover_image_local ||
+        connectedBookData?.cover_image ||
+        connectedBookData?.coverUrl ||
+        null;
+
+      // ④ 画布根图书元数据封面图（兜底）
+      const rootBookNode = findRootBookInfo(h.nodes, h.edges);
+      const rootBookData = rootBookNode?.data ?? null;
+      const rootBookCover =
+        rootBookData?.cover_image_local ||
+        rootBookData?.cover_image ||
+        rootBookData?.coverUrl ||
+        null;
+
+      // 上游有效图片（按优先级：② 直连图片节点 > ③ 连线穿透图书封面 > ④ 根节点图书封面）
+      const effectiveUpstreamImageUrl = directParentImage || connectedBookCover || rootBookCover || null;
+
+      return (
+        <StampCutterNode
+          key={node.id}
+          {...common}
+          data={d}
+          upstreamImageUrl={effectiveUpstreamImageUrl}
+          isFavorited={!!h.favoritedState[node.id]}
+          isPublic={!!h.publishedState[node.id]}
+          isSelected={node.id === h.activeImage?.id}
+          recordDeleted={h.staleRecordIds.has(node.id)}
+          onSelect={h.handleSelectImage}
+          onToggleFavorite={h.handleToggleFavoriteFor}
+          onTogglePublic={h.handleTogglePublicFor}
+          hasDownstream={hasDownstreamOf(node, h.edges)}
+          mismatchBadge={mismatchBadge}
+          onUpdateState={h.handleUpdateStampStateFor}
+          onExport={h.handleExportStampFor}
         />
       );
     }

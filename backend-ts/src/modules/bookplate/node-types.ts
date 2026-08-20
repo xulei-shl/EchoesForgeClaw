@@ -34,6 +34,8 @@ export const NODE_TYPES = {
   WEB_SEARCH: 'web_search',
   /** 图书小票生成（多模态工具）：生成复古热敏纸风格图书小票/书目推荐凭证（支持图书元数据继承、封面点阵化、索书号自定义与导出） */
   RECEIPT_PRINTER: 'receipt_printer',
+  /** 邮票截图框（多模态工具）：在图片上移动锯齿邮票框自由截取，生成带打孔边缘与柔和投影的复古邮票图片 */
+  STAMP_CUTTER: 'stamp_cutter',
 } as const;
 
 export type NodeType = (typeof NODE_TYPES)[keyof typeof NODE_TYPES];
@@ -230,5 +232,14 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     configurable: false,
     output_type: 'image',
     input_types: ['text', 'image'],
+  },
+  {
+    type: NODE_TYPES.STAMP_CUTTER,
+    name: '邮票截图框',
+    description: '在图片上移动锯齿邮票框自由截取，生成带打孔边缘与柔和投影的复古邮票图片',
+    category: 'multimodal',
+    configurable: false,
+    output_type: 'image',
+    input_types: ['image', 'text'],
   },
 ];
