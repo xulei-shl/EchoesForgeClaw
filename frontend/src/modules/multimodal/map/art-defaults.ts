@@ -6,8 +6,6 @@ export const MAP_ART_DEFAULTS = {
   query: '',
   lat: 48.8566,
   lon: 2.3522,
-  cityName: 'PARIS',
-  countryName: 'FRANCE',
 };
 
 export type MapArtDefaults = typeof MAP_ART_DEFAULTS;

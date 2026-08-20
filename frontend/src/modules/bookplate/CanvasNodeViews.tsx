@@ -693,8 +693,6 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           query={typeof d.query === 'string' ? d.query : ''}
           lat={typeof d.lat === 'number' ? d.lat : MAP_ART_DEFAULTS.lat}
           lon={typeof d.lon === 'number' ? d.lon : MAP_ART_DEFAULTS.lon}
-          cityName={typeof d.cityName === 'string' ? d.cityName : MAP_ART_DEFAULTS.cityName}
-          countryName={typeof d.countryName === 'string' ? d.countryName : MAP_ART_DEFAULTS.countryName}
           hasDownstream={hasDownstreamOf(node, h.edges)}
           onUpdateEditor={h.handleUpdateMapArtEditorFor}
           onExport={h.handleExportMapArtFor}

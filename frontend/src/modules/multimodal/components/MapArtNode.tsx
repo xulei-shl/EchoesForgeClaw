@@ -39,8 +39,6 @@ export interface MapArtNodeProps {
   query?: string;
   lat?: number;
   lon?: number;
-  cityName?: string;
-  countryName?: string;
   onRemove?: (id: string) => void;
   onPositionChange?: (id: string, x: number, y: number) => void;
   onSizeChange?: (id: string, width: number, height: number) => void;
@@ -65,8 +63,6 @@ const MapArtNodeInner: React.FC<MapArtNodeProps> = ({
   query: queryText = '',
   lat = MAP_ART_DEFAULTS.lat,
   lon = MAP_ART_DEFAULTS.lon,
-  cityName = MAP_ART_DEFAULTS.cityName,
-  countryName: _countryName = MAP_ART_DEFAULTS.countryName,
   onRemove,
   onPositionChange,
   onSizeChange,
@@ -122,14 +118,10 @@ const MapArtNodeInner: React.FC<MapArtNodeProps> = ({
   const handlePickLocation = (r: any) => {
     setResults([]);
     setSearchQuery(r.shortName);
-    const city = (r.shortName || 'LOCATION').toUpperCase();
-    const country = (r.country || '').toUpperCase();
     onUpdateEditor?.(id, {
       lat: r.lat,
       lon: r.lon,
       query: r.name,
-      cityName: city,
-      countryName: country,
     }, true);
   };
 
@@ -142,7 +134,7 @@ const MapArtNodeInner: React.FC<MapArtNodeProps> = ({
         {
           lat,
           lon,
-          query: queryText || searchQuery || cityName,
+          query: queryText || searchQuery,
           radius,
           circle,
           preset,
@@ -236,7 +228,7 @@ const MapArtNodeInner: React.FC<MapArtNodeProps> = ({
             <input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="搜索地点（Nominatim）"
+              placeholder="搜索具体地点，如「卢浮宫, 巴黎」"
               className="w-full h-8 rounded-md border border-dashed border-paper-grid bg-transparent pl-8 pr-7 text-xs text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors font-mono"
             />
             {searchQuery && !searching && (
@@ -268,13 +260,6 @@ const MapArtNodeInner: React.FC<MapArtNodeProps> = ({
               </div>
             )}
           </div>
-          <input
-            value={cityName}
-            onChange={(e) => edit({ cityName: e.target.value.toUpperCase() })}
-            placeholder="城市名"
-            className="h-8 w-28 shrink-0 rounded-md border border-dashed border-paper-grid bg-transparent px-2.5 text-xs text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors font-mono"
-            title="地图显示名称"
-          />
         </div>
 
         <div className="shrink-0 flex gap-1.5 relative z-20">
