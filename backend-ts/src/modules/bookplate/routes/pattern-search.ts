@@ -10,22 +10,24 @@ const PATTERNS_API = process.env.PATTERNS_API ?? 'http://127.0.0.1:8102';
 
 /** 动态查找 services/chinese-traditional-patterns 真实路径 */
 function findPatternsDir(): string {
-  let curr = path.dirname(fileURLToPath(import.meta.url));
-  for (let i = 0; i < 7; i++) {
-    const candidate = path.join(curr, 'services', 'chinese-traditional-patterns');
-    if (existsSync(path.join(candidate, 'data', 'patterns.json'))) return candidate;
-    curr = path.dirname(curr);
-  }
-  const cwd1 = path.resolve(process.cwd(), '../services/chinese-traditional-patterns');
-  if (existsSync(path.join(cwd1, 'data', 'patterns.json'))) return cwd1;
-  const cwd2 = path.resolve(process.cwd(), 'services/chinese-traditional-patterns');
-  if (existsSync(path.join(cwd2, 'data', 'patterns.json'))) return cwd2;
-  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../../services/chinese-traditional-patterns');
+  const tryStart = (dir: string) => {
+    let curr = dir;
+    for (let i = 0; i < 7; i++) {
+      const candidate = path.join(curr, 'services', 'chinese-traditional-patterns');
+      if (existsSync(path.join(candidate, 'data', 'patterns.json'))) return candidate;
+      const parent = path.dirname(curr);
+      if (parent === curr) break;
+      curr = parent;
+    }
+    return '';
+  };
+
+  return tryStart(path.dirname(fileURLToPath(import.meta.url))) || tryStart(process.cwd()) || '';
 }
 
 /** 本地传统纹样数据目录 */
 const BASE_DIR = findPatternsDir();
-const DATA_FILE = path.join(BASE_DIR, 'data', 'patterns.json');
+const DATA_FILE = BASE_DIR ? path.join(BASE_DIR, 'data', 'patterns.json') : '';
 
 interface RawPatternItem {
   id: string;
@@ -37,6 +39,7 @@ interface RawPatternItem {
   visual_keywords: string[];
   batch?: string;
   card_image?: string;
+  card_image_thumb?: string;
   detail_page?: string;
   meta_json?: string;
   image_size?: string;
@@ -48,7 +51,10 @@ let _localPatterns: RawPatternItem[] = [];
 let _localCategories: string[] = [];
 
 function loadLocalData(): void {
-  if (!existsSync(DATA_FILE)) return;
+  if (!DATA_FILE || !existsSync(DATA_FILE)) {
+    console.warn('[PatternSearch] Patterns data file not found at:', DATA_FILE);
+    return;
+  }
   try {
     const raw = readFileSync(DATA_FILE, 'utf-8');
     const data = JSON.parse(raw) as RawPatternItem[];
@@ -60,6 +66,7 @@ function loadLocalData(): void {
       }
     }
     _localCategories = cats;
+    console.info(`[PatternSearch] Loaded ${_localPatterns.length} patterns and ${_localCategories.length} categories from ${DATA_FILE}`);
   } catch (err) {
     console.error('Failed to load local patterns data:', err);
   }
@@ -70,12 +77,16 @@ loadLocalData();
 
 function formatPatternItem(item: RawPatternItem) {
   const cardImg = item.card_image ? item.card_image.replace(/^\//, '') : '';
-  const staticUrl = cardImg ? `/static/${cardImg}` : '';
+  const fullStaticUrl = cardImg ? `/static/${cardImg}` : '';
+
+  const thumbRel = item.card_image_thumb ? item.card_image_thumb.replace(/^\//, '') : '';
+  const thumbStaticUrl = thumbRel ? `/static/${thumbRel}` : fullStaticUrl;
+
   return {
     ...item,
-    full_image_url: staticUrl,
-    thumb_url: staticUrl,
-    preview_url: staticUrl,
+    full_image_url: fullStaticUrl,
+    thumb_url: thumbStaticUrl,
+    preview_url: fullStaticUrl,
   };
 }
 

@@ -339,6 +339,11 @@ export interface NodeTemplate {
   configurable: boolean;
   /** 输出类型：该模板产出什么（连线类型匹配校验用） */
   output_type?: NodePortType;
+  /**
+   * 复合输出类型：一个模板可同时产出多种类型（如纹样节点同时输出图片与文本），
+   * 连线类型匹配按「命中任一」判断；缺省时等于 [output_type]。
+   */
+  output_types?: NodePortType[];
   /** 接受的输入类型列表：连线类型匹配校验用（空 = 不接受上游输入） */
   input_types?: NodePortType[];
 }

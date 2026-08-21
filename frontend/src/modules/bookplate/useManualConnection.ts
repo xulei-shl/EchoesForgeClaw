@@ -81,7 +81,7 @@ export function useManualConnection(ctx: ManualConnectionContext): ManualConnect
       if (!source || !target) return true;
       return (
         matchPortType(
-          portTypesRef.current(source.type as CanvasNodeType).output,
+          portTypesRef.current(source.type as CanvasNodeType).outputs,
           portTypesRef.current(target.type as CanvasNodeType).inputs
         ) !== 'mismatch'
       );

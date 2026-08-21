@@ -18,7 +18,8 @@
     "meta_json": "patterns/001-020_植物花卉纹/001_缠枝莲纹/001_缠枝莲纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "4984244a6dfaf52b4e970232bb865825866b5d50eae167e721735d89fcabfa6f",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/001-020_植物花卉纹/001_缠枝莲纹/001_缠枝莲纹_卡片图_thumb.webp"
   },
   {
     "id": "002",
@@ -38,7 +39,8 @@
     "meta_json": "patterns/001-020_植物花卉纹/002_宝相花纹/002_宝相花纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "813408e02e62dc2597bc042c2d9d61e87466d15834cac226d702c747591e4daa",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/001-020_植物花卉纹/002_宝相花纹/002_宝相花纹_卡片图_thumb.webp"
   },
   {
     "id": "003",
@@ -58,7 +60,8 @@
     "meta_json": "patterns/001-020_植物花卉纹/003_牡丹纹/003_牡丹纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "688ea05afe40acb075a5d74c3f2dfccd8d09c87fce2e0806600d8fef337f82ee",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/001-020_植物花卉纹/003_牡丹纹/003_牡丹纹_卡片图_thumb.webp"
   },
   {
     "id": "004",
@@ -78,7 +81,8 @@
     "meta_json": "patterns/001-020_植物花卉纹/004_菊花纹/004_菊花纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "5a29ecace0214e45cd1a694e19fdba2f3c4af7a99ac9dfa4293e5cda9fad3683",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/001-020_植物花卉纹/004_菊花纹/004_菊花纹_卡片图_thumb.webp"
   },
   {
     "id": "005",
@@ -98,7 +102,8 @@
     "meta_json": "patterns/001-020_植物花卉纹/005_莲瓣纹/005_莲瓣纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "33f9b7618138c56b4fe586d4ee96a3d60e103ffaf383b7e4a09d60f0663d4da2",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/001-020_植物花卉纹/005_莲瓣纹/005_莲瓣纹_卡片图_thumb.webp"
   },
   {
     "id": "006",
@@ -118,7 +123,8 @@
     "meta_json": "patterns/001-020_植物花卉纹/006_卷草纹/006_卷草纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "eb709d544e706e3fa9473d058432e80fc18c61ac8608079f544af0dfb3131e83",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/001-020_植物花卉纹/006_卷草纹/006_卷草纹_卡片图_thumb.webp"
   },
   {
     "id": "007",
@@ -138,7 +144,8 @@
     "meta_json": "patterns/001-020_植物花卉纹/007_忍冬纹/007_忍冬纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "d3001e1a9fecb2491ffe8f3006017b4508467d40c31b4b9e970d8b3a58a798a1",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/001-020_植物花卉纹/007_忍冬纹/007_忍冬纹_卡片图_thumb.webp"
   },
   {
     "id": "008",
@@ -158,7 +165,8 @@
     "meta_json": "patterns/001-020_植物花卉纹/008_唐草纹/008_唐草纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "6111ffc7147f54d08e6579122e0c396cbe90e43e19dcd92e2b441b2c95b681d4",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/001-020_植物花卉纹/008_唐草纹/008_唐草纹_卡片图_thumb.webp"
   },
   {
     "id": "009",
@@ -178,7 +186,8 @@
     "meta_json": "patterns/001-020_植物花卉纹/009_石榴纹/009_石榴纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "fbee9c3bdf860962219e54df041abd6cccd6de258bd0286575f124fc5aaed6c9",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/001-020_植物花卉纹/009_石榴纹/009_石榴纹_卡片图_thumb.webp"
   },
   {
     "id": "010",
@@ -199,7 +208,8 @@
     "meta_json": "patterns/001-020_植物花卉纹/010_梅花纹/010_梅花纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "dd9d8ab5b1a996e411dafed8cb4ff52421a361876ce2f8f9409b8f4eb6a419f9",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/001-020_植物花卉纹/010_梅花纹/010_梅花纹_卡片图_thumb.webp"
   },
   {
     "id": "011",
@@ -219,7 +229,8 @@
     "meta_json": "patterns/001-020_植物花卉纹/011_兰草纹/011_兰草纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "6a1d18a2ac65f00c9e0836e4efbe8edb6125cf446bf827afa474582c53129dd4",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/001-020_植物花卉纹/011_兰草纹/011_兰草纹_卡片图_thumb.webp"
   },
   {
     "id": "012",
@@ -239,7 +250,8 @@
     "meta_json": "patterns/001-020_植物花卉纹/012_竹叶纹/012_竹叶纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "6d11df41586999992ef8943d602d4da60760e722a272ab3efddb2073a1e5883a",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/001-020_植物花卉纹/012_竹叶纹/012_竹叶纹_卡片图_thumb.webp"
   },
   {
     "id": "013",
@@ -259,7 +271,8 @@
     "meta_json": "patterns/001-020_植物花卉纹/013_松针纹/013_松针纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "2cc428e7bc1984c5f61bc4cdfc1825fbcce157cd12e4af824cc0581c581cc5ae",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/001-020_植物花卉纹/013_松针纹/013_松针纹_卡片图_thumb.webp"
   },
   {
     "id": "014",
@@ -279,7 +292,8 @@
     "meta_json": "patterns/001-020_植物花卉纹/014_桃花纹/014_桃花纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "da8da9024f999092bc84aa46ac60e3da8810c356c5232662c6112371503b40d6",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/001-020_植物花卉纹/014_桃花纹/014_桃花纹_卡片图_thumb.webp"
   },
   {
     "id": "015",
@@ -299,7 +313,8 @@
     "meta_json": "patterns/001-020_植物花卉纹/015_海棠纹/015_海棠纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "ca5211bc76a02cad45b3a64b9a6455f61446ff075e524da3f0a2fde4580c0fcb",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/001-020_植物花卉纹/015_海棠纹/015_海棠纹_卡片图_thumb.webp"
   },
   {
     "id": "016",
@@ -319,7 +334,8 @@
     "meta_json": "patterns/001-020_植物花卉纹/016_荷叶纹/016_荷叶纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "c3bc982178c60b8ef5077db201ec70f53c3e81cd4e497721da4d106dccd53285",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/001-020_植物花卉纹/016_荷叶纹/016_荷叶纹_卡片图_thumb.webp"
   },
   {
     "id": "017",
@@ -339,7 +355,8 @@
     "meta_json": "patterns/001-020_植物花卉纹/017_葡萄藤纹/017_葡萄藤纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "b99629ded0333c383ee14a7149755aff1d0fb93992acf3e1ad73992238f0f9b9",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/001-020_植物花卉纹/017_葡萄藤纹/017_葡萄藤纹_卡片图_thumb.webp"
   },
   {
     "id": "018",
@@ -360,7 +377,8 @@
     "meta_json": "patterns/001-020_植物花卉纹/018_葫芦藤纹/018_葫芦藤纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "0efb728a4c8397f78cc8ece0986fa115554cff4601e7403e292f0d3130bf4818",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/001-020_植物花卉纹/018_葫芦藤纹/018_葫芦藤纹_卡片图_thumb.webp"
   },
   {
     "id": "019",
@@ -380,7 +398,8 @@
     "meta_json": "patterns/001-020_植物花卉纹/019_折枝花纹/019_折枝花纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "281fb1bee18dcee0332a988ca21113e523da5952104219ea9ae6cb0f7c4de0dd",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/001-020_植物花卉纹/019_折枝花纹/019_折枝花纹_卡片图_thumb.webp"
   },
   {
     "id": "020",
@@ -400,7 +419,8 @@
     "meta_json": "patterns/001-020_植物花卉纹/020_团花纹/020_团花纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "b5fd3f284aea3de1d777bbeaf9c5cd36e22ba6e276e6806e9cc2a43f30c93e4e",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/001-020_植物花卉纹/020_团花纹/020_团花纹_卡片图_thumb.webp"
   },
   {
     "id": "021",
@@ -421,7 +441,8 @@
     "meta_json": "patterns/021-040_动物瑞兽纹/021_龙纹/021_龙纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "f1636491ba0853895469406bb02457e0dedf00ba06c44a61307f10cf1828737d",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/021-040_动物瑞兽纹/021_龙纹/021_龙纹_卡片图_thumb.webp"
   },
   {
     "id": "022",
@@ -441,7 +462,8 @@
     "meta_json": "patterns/021-040_动物瑞兽纹/022_夔龙纹/022_夔龙纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "73e2652629634b167fe6c7ae418705f6c7a708c6d2bb26210882245d2494a2a7",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/021-040_动物瑞兽纹/022_夔龙纹/022_夔龙纹_卡片图_thumb.webp"
   },
   {
     "id": "023",
@@ -461,7 +483,8 @@
     "meta_json": "patterns/021-040_动物瑞兽纹/023_螭龙纹/023_螭龙纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "1788b183609f7117b5022b127f429c9a1b1e2cd66fbce3ff86813dc6b92c095f",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/021-040_动物瑞兽纹/023_螭龙纹/023_螭龙纹_卡片图_thumb.webp"
   },
   {
     "id": "024",
@@ -482,7 +505,8 @@
     "meta_json": "patterns/021-040_动物瑞兽纹/024_凤鸟纹/024_凤鸟纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "95718f92e39295a68128aae2d82191e4b1525b46b21f372182523be2fbaac9d8",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/021-040_动物瑞兽纹/024_凤鸟纹/024_凤鸟纹_卡片图_thumb.webp"
   },
   {
     "id": "025",
@@ -502,7 +526,8 @@
     "meta_json": "patterns/021-040_动物瑞兽纹/025_夔凤纹/025_夔凤纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "a55842d78effac5363e9ca0680bb0344af3bac954a8ec188227a2f612c86d3f4",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/021-040_动物瑞兽纹/025_夔凤纹/025_夔凤纹_卡片图_thumb.webp"
   },
   {
     "id": "026",
@@ -523,7 +548,8 @@
     "meta_json": "patterns/021-040_动物瑞兽纹/026_麒麟纹/026_麒麟纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "ab8efdd90eb379596a1f98286ad52741e019a7efa29239fa80484f398543703f",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/021-040_动物瑞兽纹/026_麒麟纹/026_麒麟纹_卡片图_thumb.webp"
   },
   {
     "id": "027",
@@ -544,7 +570,8 @@
     "meta_json": "patterns/021-040_动物瑞兽纹/027_瑞狮纹/027_瑞狮纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "76c28581220313c93d09ae736c904ecb4c8d1c73e4d41fb2790642ae9eb6d3c0",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/021-040_动物瑞兽纹/027_瑞狮纹/027_瑞狮纹_卡片图_thumb.webp"
   },
   {
     "id": "028",
@@ -564,7 +591,8 @@
     "meta_json": "patterns/021-040_动物瑞兽纹/028_饕餮纹/028_饕餮纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "2050f5c29d256335287774e5e122a8456e62a5fbc3368b239c2f3287ceb38a12",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/021-040_动物瑞兽纹/028_饕餮纹/028_饕餮纹_卡片图_thumb.webp"
   },
   {
     "id": "029",
@@ -584,7 +612,8 @@
     "meta_json": "patterns/021-040_动物瑞兽纹/029_兽面纹/029_兽面纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "59c95876aec3a1cd89dff1a56af5be8932d68ae50622dc447c5114ce1b92ae19",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/021-040_动物瑞兽纹/029_兽面纹/029_兽面纹_卡片图_thumb.webp"
   },
   {
     "id": "030",
@@ -604,7 +633,8 @@
     "meta_json": "patterns/021-040_动物瑞兽纹/030_蝙蝠纹/030_蝙蝠纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "c07f4861fa5d0fc34e2b99b248f874d1c4221c62dca15860096695c350d05b02",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/021-040_动物瑞兽纹/030_蝙蝠纹/030_蝙蝠纹_卡片图_thumb.webp"
   },
   {
     "id": "031",
@@ -625,7 +655,8 @@
     "meta_json": "patterns/021-040_动物瑞兽纹/031_鹤纹/031_鹤纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "a97d0923306493738e9848d34c6d875c7e2d2b50bf71090b220997043aba0cb1",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/021-040_动物瑞兽纹/031_鹤纹/031_鹤纹_卡片图_thumb.webp"
   },
   {
     "id": "032",
@@ -646,7 +677,8 @@
     "meta_json": "patterns/021-040_动物瑞兽纹/032_鹿纹/032_鹿纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "eba72f8eba7f66f92e05443581fbb34eae643a0eeed8f81e708c6074bc868884",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/021-040_动物瑞兽纹/032_鹿纹/032_鹿纹_卡片图_thumb.webp"
   },
   {
     "id": "033",
@@ -667,7 +699,8 @@
     "meta_json": "patterns/021-040_动物瑞兽纹/033_鱼纹/033_鱼纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "a18b11aaa8ddc1c95a38bfe38d213d8672ce4e2de8be6efacf1a1eb5255d181e",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/021-040_动物瑞兽纹/033_鱼纹/033_鱼纹_卡片图_thumb.webp"
   },
   {
     "id": "034",
@@ -687,7 +720,8 @@
     "meta_json": "patterns/021-040_动物瑞兽纹/034_鲤鱼纹/034_鲤鱼纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "4f911f4989d73639ec15de1167406fda15f097ba2823bc519d5c5d69cba007de",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/021-040_动物瑞兽纹/034_鲤鱼纹/034_鲤鱼纹_卡片图_thumb.webp"
   },
   {
     "id": "035",
@@ -707,7 +741,8 @@
     "meta_json": "patterns/021-040_动物瑞兽纹/035_鸳鸯纹/035_鸳鸯纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "50eb61820f5a6616791d84041f6f1a8eaa95c81ed4949033ba71b1489cfa5bd2",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/021-040_动物瑞兽纹/035_鸳鸯纹/035_鸳鸯纹_卡片图_thumb.webp"
   },
   {
     "id": "036",
@@ -727,7 +762,8 @@
     "meta_json": "patterns/021-040_动物瑞兽纹/036_喜鹊纹/036_喜鹊纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "7df072418cb812816a6df5df29af2eeb027b96da416e2332a3f61ea3661bf598",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/021-040_动物瑞兽纹/036_喜鹊纹/036_喜鹊纹_卡片图_thumb.webp"
   },
   {
     "id": "037",
@@ -748,7 +784,8 @@
     "meta_json": "patterns/021-040_动物瑞兽纹/037_马纹/037_马纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "9d3f2169a9c2749b551c33437a127f2d890b1b7c405f8338bb396153d58de7a0",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/021-040_动物瑞兽纹/037_马纹/037_马纹_卡片图_thumb.webp"
   },
   {
     "id": "038",
@@ -768,7 +805,8 @@
     "meta_json": "patterns/021-040_动物瑞兽纹/038_龟纹/038_龟纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "0a3337f4db1f41dfdbc47edc5d0767d4a6654d005aeb2051972bd617055eb1d7",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/021-040_动物瑞兽纹/038_龟纹/038_龟纹_卡片图_thumb.webp"
   },
   {
     "id": "039",
@@ -788,7 +826,8 @@
     "meta_json": "patterns/021-040_动物瑞兽纹/039_蝴蝶纹/039_蝴蝶纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "56df627ce12d25c45d8050b1da8c28f000365d202e231fc6a4fd015db9ac58f6",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/021-040_动物瑞兽纹/039_蝴蝶纹/039_蝴蝶纹_卡片图_thumb.webp"
   },
   {
     "id": "040",
@@ -808,7 +847,8 @@
     "meta_json": "patterns/021-040_动物瑞兽纹/040_金蟾纹/040_金蟾纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "4708aded8dc1a69d949d1b6457b88cdd3a8a5257b66192ebe8c9eb50fb76ea37",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/021-040_动物瑞兽纹/040_金蟾纹/040_金蟾纹_卡片图_thumb.webp"
   },
   {
     "id": "041",
@@ -828,7 +868,8 @@
     "meta_json": "patterns/041-060_几何锦纹/041_回纹/041_回纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "3b520d77307f21e70dc4276455bb3803c21e0aea91ebebc1af93e072674ff078",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/041-060_几何锦纹/041_回纹/041_回纹_卡片图_thumb.webp"
   },
   {
     "id": "042",
@@ -848,7 +889,8 @@
     "meta_json": "patterns/041-060_几何锦纹/042_雷纹/042_雷纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "c9b793d4f82c0a3399712d474a0838d864412833f0a7cd78db647684aeed82c3",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/041-060_几何锦纹/042_雷纹/042_雷纹_卡片图_thumb.webp"
   },
   {
     "id": "043",
@@ -868,7 +910,8 @@
     "meta_json": "patterns/041-060_几何锦纹/043_云雷纹/043_云雷纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "e3086cd7bdfe50fa7e062ffc760bff4a695bc9622dae5e1a7c826ad9154b8ba9",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/041-060_几何锦纹/043_云雷纹/043_云雷纹_卡片图_thumb.webp"
   },
   {
     "id": "044",
@@ -887,7 +930,8 @@
     "meta_json": "patterns/041-060_几何锦纹/044_龟背纹/044_龟背纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "a3c1d8dc1405357219f43198ef4e5ef406b41e125753c164cf0101f26886a1f9",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/041-060_几何锦纹/044_龟背纹/044_龟背纹_卡片图_thumb.webp"
   },
   {
     "id": "045",
@@ -907,7 +951,8 @@
     "meta_json": "patterns/041-060_几何锦纹/045_菱格纹/045_菱格纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "2309b47e06ead645cde888d7cc14bbe0cc74e45c2ded1eec5e87faadd72dcbb1",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/041-060_几何锦纹/045_菱格纹/045_菱格纹_卡片图_thumb.webp"
   },
   {
     "id": "046",
@@ -927,7 +972,8 @@
     "meta_json": "patterns/041-060_几何锦纹/046_连珠纹/046_连珠纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "067be08953cf8b7a6b6d9a1c55826dd29b956aaeb888c185a630ddc83bdf4826",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/041-060_几何锦纹/046_连珠纹/046_连珠纹_卡片图_thumb.webp"
   },
   {
     "id": "047",
@@ -947,7 +993,8 @@
     "meta_json": "patterns/041-060_几何锦纹/047_方胜纹/047_方胜纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "a648261a6cedffbe9b146030043fd75dab8bda511f753138470bc97494c39a06",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/041-060_几何锦纹/047_方胜纹/047_方胜纹_卡片图_thumb.webp"
   },
   {
     "id": "048",
@@ -967,7 +1014,8 @@
     "meta_json": "patterns/041-060_几何锦纹/048_盘长纹/048_盘长纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "1db6dea9a9d6a47238ee2b2977a462a4d2430be1783b29313245227692eec1c6",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/041-060_几何锦纹/048_盘长纹/048_盘长纹_卡片图_thumb.webp"
   },
   {
     "id": "049",
@@ -987,7 +1035,8 @@
     "meta_json": "patterns/041-060_几何锦纹/049_万字锦纹/049_万字锦纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "4cf367669b7b8eab62f05481bbac620c03befb679ebdd6fadca7f45aede8a813",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/041-060_几何锦纹/049_万字锦纹/049_万字锦纹_卡片图_thumb.webp"
   },
   {
     "id": "050",
@@ -1007,7 +1056,8 @@
     "meta_json": "patterns/041-060_几何锦纹/050_锁子纹/050_锁子纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "2005f357bf76ec5c807d3e2d6041cd8510d03438fbb1a0463ef00d9bed672831",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/041-060_几何锦纹/050_锁子纹/050_锁子纹_卡片图_thumb.webp"
   },
   {
     "id": "051",
@@ -1026,7 +1076,8 @@
     "meta_json": "patterns/041-060_几何锦纹/051_冰裂纹/051_冰裂纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "2610bd1cec3af64425feb63e12105032444bff7b02418667977c8587e9e65e26",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/041-060_几何锦纹/051_冰裂纹/051_冰裂纹_卡片图_thumb.webp"
   },
   {
     "id": "052",
@@ -1045,7 +1096,8 @@
     "meta_json": "patterns/041-060_几何锦纹/052_锦地纹/052_锦地纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "5f61cef044934264d242c58bac658a25e37b38580679094e9ed14cbc8c0f0878",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/041-060_几何锦纹/052_锦地纹/052_锦地纹_卡片图_thumb.webp"
   },
   {
     "id": "053",
@@ -1065,7 +1117,8 @@
     "meta_json": "patterns/041-060_几何锦纹/053_十字花纹/053_十字花纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "9fe4e745763a3394a9cf3801b80bac81c6730159fef8bb633f7a95b9bfb55b63",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/041-060_几何锦纹/053_十字花纹/053_十字花纹_卡片图_thumb.webp"
   },
   {
     "id": "054",
@@ -1085,7 +1138,8 @@
     "meta_json": "patterns/041-060_几何锦纹/054_六角花纹/054_六角花纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "3f4b78f583ed73579c244492c3441e1f89037a41f1798c618ded7c3a0995ad22",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/041-060_几何锦纹/054_六角花纹/054_六角花纹_卡片图_thumb.webp"
   },
   {
     "id": "055",
@@ -1105,7 +1159,8 @@
     "meta_json": "patterns/041-060_几何锦纹/055_八角星纹/055_八角星纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "2bd23bd7c67fa1d03cd7769a89c06505255e2da7581f6f5a02899f195eb7517b",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/041-060_几何锦纹/055_八角星纹/055_八角星纹_卡片图_thumb.webp"
   },
   {
     "id": "056",
@@ -1125,7 +1180,8 @@
     "meta_json": "patterns/041-060_几何锦纹/056_波折纹/056_波折纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "70f01897a3315fa4b59800e53036aee6995726854913d06dc0a630738a65b1f5",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/041-060_几何锦纹/056_波折纹/056_波折纹_卡片图_thumb.webp"
   },
   {
     "id": "057",
@@ -1145,7 +1201,8 @@
     "meta_json": "patterns/041-060_几何锦纹/057_曲尺纹/057_曲尺纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "419c649392d67dbfa336fedf1d9b3b0bdb7c409b2eb7f3a793e806cc587d58f0",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/041-060_几何锦纹/057_曲尺纹/057_曲尺纹_卡片图_thumb.webp"
   },
   {
     "id": "058",
@@ -1165,7 +1222,8 @@
     "meta_json": "patterns/041-060_几何锦纹/058_格锦纹/058_格锦纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "e67607ff4288d1092a13c586fce8414e45469305d45acbcafa0d23a1ec430343",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/041-060_几何锦纹/058_格锦纹/058_格锦纹_卡片图_thumb.webp"
   },
   {
     "id": "059",
@@ -1184,7 +1242,8 @@
     "meta_json": "patterns/041-060_几何锦纹/059_菱花锦纹/059_菱花锦纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "288207fc1911ea0e495154db11ebdd9a5355410fff199c1d733c1fd453660b3b",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/041-060_几何锦纹/059_菱花锦纹/059_菱花锦纹_卡片图_thumb.webp"
   },
   {
     "id": "060",
@@ -1204,7 +1263,8 @@
     "meta_json": "patterns/041-060_几何锦纹/060_连环纹/060_连环纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "bfefbbbd46571714abce54c44db806498db5692df1ebaeaf70eebbf0a4b3f763",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/041-060_几何锦纹/060_连环纹/060_连环纹_卡片图_thumb.webp"
   },
   {
     "id": "061",
@@ -1224,7 +1284,8 @@
     "meta_json": "patterns/061-075_云水山石纹/061_祥云纹/061_祥云纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "1def082329a2284f928c25181885d315a2cf43b3b7afa7da59e73ad65ee96a3b",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/061-075_云水山石纹/061_祥云纹/061_祥云纹_卡片图_thumb.webp"
   },
   {
     "id": "062",
@@ -1244,7 +1305,8 @@
     "meta_json": "patterns/061-075_云水山石纹/062_如意云纹/062_如意云纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "78d4ed845b8e1794dacb5817fb917d416716eaa38a141c71e7435ec6c3166954",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/061-075_云水山石纹/062_如意云纹/062_如意云纹_卡片图_thumb.webp"
   },
   {
     "id": "063",
@@ -1263,7 +1325,8 @@
     "meta_json": "patterns/061-075_云水山石纹/063_卷云纹/063_卷云纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "0f610a0ff9c0533570ae24ea27c326bea3cf32aa046b24f30474852cf1237fe0",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/061-075_云水山石纹/063_卷云纹/063_卷云纹_卡片图_thumb.webp"
   },
   {
     "id": "064",
@@ -1283,7 +1346,8 @@
     "meta_json": "patterns/061-075_云水山石纹/064_海水江崖纹/064_海水江崖纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "9275ae87d1cf157d8ab3c209d4fad479012211f0670540915318f33d890d5ee5",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/061-075_云水山石纹/064_海水江崖纹/064_海水江崖纹_卡片图_thumb.webp"
   },
   {
     "id": "065",
@@ -1303,7 +1367,8 @@
     "meta_json": "patterns/061-075_云水山石纹/065_水波纹/065_水波纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "5555a9d114ee80ff90806b84bff52ecd89ec28ec3f91d1810c051e43b5522419",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/061-075_云水山石纹/065_水波纹/065_水波纹_卡片图_thumb.webp"
   },
   {
     "id": "066",
@@ -1323,7 +1388,8 @@
     "meta_json": "patterns/061-075_云水山石纹/066_浪花纹/066_浪花纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "e5220b387c464a75e3b2058bc10105bf91fd7ad20836426ac409115b12161be9",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/061-075_云水山石纹/066_浪花纹/066_浪花纹_卡片图_thumb.webp"
   },
   {
     "id": "067",
@@ -1343,7 +1409,8 @@
     "meta_json": "patterns/061-075_云水山石纹/067_山纹/067_山纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "70be6a881bc02b2f00d33d7d439a6f2c506b8785e72a38eeae3e0f899a937c6e",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/061-075_云水山石纹/067_山纹/067_山纹_卡片图_thumb.webp"
   },
   {
     "id": "068",
@@ -1364,7 +1431,8 @@
     "meta_json": "patterns/061-075_云水山石纹/068_山水纹/068_山水纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "304970725d594bf7bb7b60fc97b4ea4cc555488bba8f644d97c9ec840c6b9163",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/061-075_云水山石纹/068_山水纹/068_山水纹_卡片图_thumb.webp"
   },
   {
     "id": "069",
@@ -1385,7 +1453,8 @@
     "meta_json": "patterns/061-075_云水山石纹/069_太湖石纹/069_太湖石纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "f66979edd6e4fea6c5e29df1de4474e9aa715edbbff4b35c86edfbeeb136ba59",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/061-075_云水山石纹/069_太湖石纹/069_太湖石纹_卡片图_thumb.webp"
   },
   {
     "id": "070",
@@ -1404,7 +1473,8 @@
     "meta_json": "patterns/061-075_云水山石纹/070_火焰纹/070_火焰纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "1b3e934537c11e933ddf2add994b4cdd0d5979059413f91599846d1fd610a74f",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/061-075_云水山石纹/070_火焰纹/070_火焰纹_卡片图_thumb.webp"
   },
   {
     "id": "071",
@@ -1423,7 +1493,8 @@
     "meta_json": "patterns/061-075_云水山石纹/071_流云纹/071_流云纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "a936ae186e46388609be7a53e7547f62303cb5bf078c5fbefaa72468cdb62551",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/061-075_云水山石纹/071_流云纹/071_流云纹_卡片图_thumb.webp"
   },
   {
     "id": "072",
@@ -1443,7 +1514,8 @@
     "meta_json": "patterns/061-075_云水山石纹/072_云气纹/072_云气纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "900ec941044d0a96bd26a13247a13b6d924e24ba9f046fd4a22d5280c930d89d",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/061-075_云水山石纹/072_云气纹/072_云气纹_卡片图_thumb.webp"
   },
   {
     "id": "073",
@@ -1463,7 +1535,8 @@
     "meta_json": "patterns/061-075_云水山石纹/073_涡纹/073_涡纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "2a90a983298e108a2487e32fdda8503cfcbe6a04847cc729ab18b361ab322be4",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/061-075_云水山石纹/073_涡纹/073_涡纹_卡片图_thumb.webp"
   },
   {
     "id": "074",
@@ -1483,7 +1556,8 @@
     "meta_json": "patterns/061-075_云水山石纹/074_雨点纹/074_雨点纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "e207302db25403daef9b1e6db98bb65e94fe02d05abe2cce01e8c59a6e9b94b3",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/061-075_云水山石纹/074_雨点纹/074_雨点纹_卡片图_thumb.webp"
   },
   {
     "id": "075",
@@ -1503,7 +1577,8 @@
     "meta_json": "patterns/061-075_云水山石纹/075_星宿纹/075_星宿纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "fe6f311651091c3f6ff2bbf8f6cd8dfa534dcf98f2b814b8bbfaa5e7073e081e",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/061-075_云水山石纹/075_星宿纹/075_星宿纹_卡片图_thumb.webp"
   },
   {
     "id": "076",
@@ -1523,7 +1598,8 @@
     "meta_json": "patterns/076-090_吉祥器物纹/076_如意纹/076_如意纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "be7e54fc217dcf66297bc3912d9d57b51a7624a57cd77a7b53e9e09a34a10143",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/076-090_吉祥器物纹/076_如意纹/076_如意纹_卡片图_thumb.webp"
   },
   {
     "id": "077",
@@ -1543,7 +1619,8 @@
     "meta_json": "patterns/076-090_吉祥器物纹/077_宝瓶纹/077_宝瓶纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "a11737f2f571e33ea2615b87baa855502132e0f85733afff043d170bcd2cb25e",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/076-090_吉祥器物纹/077_宝瓶纹/077_宝瓶纹_卡片图_thumb.webp"
   },
   {
     "id": "078",
@@ -1563,7 +1640,8 @@
     "meta_json": "patterns/076-090_吉祥器物纹/078_双钱纹/078_双钱纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "8cbdef3e338a87677fe0756e2be73301ad5141c80e6e5b0d515b4c6dda796c28",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/076-090_吉祥器物纹/078_双钱纹/078_双钱纹_卡片图_thumb.webp"
   },
   {
     "id": "079",
@@ -1583,7 +1661,8 @@
     "meta_json": "patterns/076-090_吉祥器物纹/079_铜钱纹/079_铜钱纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "73a809ddf33bdf1695ac45e6debe4cfdb93f818ec99d3d44ffc5bf5f5ed5bd19",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/076-090_吉祥器物纹/079_铜钱纹/079_铜钱纹_卡片图_thumb.webp"
   },
   {
     "id": "080",
@@ -1604,7 +1683,8 @@
     "meta_json": "patterns/076-090_吉祥器物纹/080_花篮纹/080_花篮纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "71e59bdfbaa1c857d35af56a11154641477b03a3e3d11b55665aeb185622cdbc",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/076-090_吉祥器物纹/080_花篮纹/080_花篮纹_卡片图_thumb.webp"
   },
   {
     "id": "081",
@@ -1623,7 +1703,8 @@
     "meta_json": "patterns/076-090_吉祥器物纹/081_八宝纹/081_八宝纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "59719aa36bde30674fd85028bf7e740f22856b615b5711dc68fc91e980b94552",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/076-090_吉祥器物纹/081_八宝纹/081_八宝纹_卡片图_thumb.webp"
   },
   {
     "id": "082",
@@ -1644,7 +1725,8 @@
     "meta_json": "patterns/076-090_吉祥器物纹/082_暗八仙纹/082_暗八仙纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "d336cc1169a59530275a42420fa6569b9b42c58117e45cd8056eb7ba9151c097",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/076-090_吉祥器物纹/082_暗八仙纹/082_暗八仙纹_卡片图_thumb.webp"
   },
   {
     "id": "083",
@@ -1664,7 +1746,8 @@
     "meta_json": "patterns/076-090_吉祥器物纹/083_灵芝纹/083_灵芝纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "24b6be9d747057090754a6f892bfb11bb2e02d5c82e3e9ca3854df1237bc9873",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/076-090_吉祥器物纹/083_灵芝纹/083_灵芝纹_卡片图_thumb.webp"
   },
   {
     "id": "084",
@@ -1684,7 +1767,8 @@
     "meta_json": "patterns/076-090_吉祥器物纹/084_珊瑚纹/084_珊瑚纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "85e1359973995b4a5bf1e592cf3cfaf8f6484b0650c427b6e340055a9542e2f2",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/076-090_吉祥器物纹/084_珊瑚纹/084_珊瑚纹_卡片图_thumb.webp"
   },
   {
     "id": "085",
@@ -1704,7 +1788,8 @@
     "meta_json": "patterns/076-090_吉祥器物纹/085_书卷纹/085_书卷纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "6ac10a9c650e118ad51ca6a10a3545081230c3d033a15e68a5023fb1f333f849",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/076-090_吉祥器物纹/085_书卷纹/085_书卷纹_卡片图_thumb.webp"
   },
   {
     "id": "086",
@@ -1724,7 +1809,8 @@
     "meta_json": "patterns/076-090_吉祥器物纹/086_灯笼纹/086_灯笼纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "5a8e167618b14e5c7fd8b0e55179821c37f5cf1362ac3bfe32be43cdf86f0374",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/076-090_吉祥器物纹/086_灯笼纹/086_灯笼纹_卡片图_thumb.webp"
   },
   {
     "id": "087",
@@ -1744,7 +1830,8 @@
     "meta_json": "patterns/076-090_吉祥器物纹/087_香炉纹/087_香炉纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "406ac7429e3c2f1c656042f8238e0d5b5068cff3791a2d5489e225aba58e6bfb",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/076-090_吉祥器物纹/087_香炉纹/087_香炉纹_卡片图_thumb.webp"
   },
   {
     "id": "088",
@@ -1764,7 +1851,8 @@
     "meta_json": "patterns/076-090_吉祥器物纹/088_玉璧纹/088_玉璧纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "14930def7e3e9465af4d5c161b0785d4d258ddc3168a2300235e31dee500f6e3",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/076-090_吉祥器物纹/088_玉璧纹/088_玉璧纹_卡片图_thumb.webp"
   },
   {
     "id": "089",
@@ -1784,7 +1872,8 @@
     "meta_json": "patterns/076-090_吉祥器物纹/089_扇面纹/089_扇面纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "2c2fd540ef9d07b27e6e4133db85a2e144e46b0b095a94a779414d1f82b51cc3",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/076-090_吉祥器物纹/089_扇面纹/089_扇面纹_卡片图_thumb.webp"
   },
   {
     "id": "090",
@@ -1804,7 +1893,8 @@
     "meta_json": "patterns/076-090_吉祥器物纹/090_编磬纹/090_编磬纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "ce12146cb601b9466c7ae5e60453613f75161cbd41b536b6979b8fe580a494b5",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/076-090_吉祥器物纹/090_编磬纹/090_编磬纹_卡片图_thumb.webp"
   },
   {
     "id": "091",
@@ -1824,7 +1914,8 @@
     "meta_json": "patterns/091-100_文字福寿与组合纹/091_寿字纹/091_寿字纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "139927a957017cb63b19fe27418ecd04a5de8e639c896c78528702363a08d9e2",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/091-100_文字福寿与组合纹/091_寿字纹/091_寿字纹_卡片图_thumb.webp"
   },
   {
     "id": "092",
@@ -1843,7 +1934,8 @@
     "meta_json": "patterns/091-100_文字福寿与组合纹/092_团寿纹/092_团寿纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "22cc1b5a0fda7b52366432a6000d17a06d6a74eed50aa5010dfb3cfe4d2d6010",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/091-100_文字福寿与组合纹/092_团寿纹/092_团寿纹_卡片图_thumb.webp"
   },
   {
     "id": "093",
@@ -1863,7 +1955,8 @@
     "meta_json": "patterns/091-100_文字福寿与组合纹/093_福字纹/093_福字纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "be54c028cfc5e8994af8d7cbbec39adac25e18d442b4c2b2e7894a515112a6cb",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/091-100_文字福寿与组合纹/093_福字纹/093_福字纹_卡片图_thumb.webp"
   },
   {
     "id": "094",
@@ -1883,7 +1976,8 @@
     "meta_json": "patterns/091-100_文字福寿与组合纹/094_喜字纹/094_喜字纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "f225f0e7c7269bc14566b424ed313311c62823c0660270bd3989d1570ce0f076",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/091-100_文字福寿与组合纹/094_喜字纹/094_喜字纹_卡片图_thumb.webp"
   },
   {
     "id": "095",
@@ -1904,7 +1998,8 @@
     "meta_json": "patterns/091-100_文字福寿与组合纹/095_福寿纹/095_福寿纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "e75460d73241e01f088ab92bf430d1d13670058801c6c0ad37dfe99cbba7a297",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/091-100_文字福寿与组合纹/095_福寿纹/095_福寿纹_卡片图_thumb.webp"
   },
   {
     "id": "096",
@@ -1924,7 +2019,8 @@
     "meta_json": "patterns/091-100_文字福寿与组合纹/096_五福捧寿纹/096_五福捧寿纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "5aafd711d4ad8f1e776dd0d8c5619fca9c702b39970337d0ca62bbe0e91789a5",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/091-100_文字福寿与组合纹/096_五福捧寿纹/096_五福捧寿纹_卡片图_thumb.webp"
   },
   {
     "id": "097",
@@ -1945,7 +2041,8 @@
     "meta_json": "patterns/091-100_文字福寿与组合纹/097_双鱼莲花纹/097_双鱼莲花纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "cc9211e2ba1adbcb76e4bb691f3177958ed887f986f44cea301ee793f5c7e5a9",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/091-100_文字福寿与组合纹/097_双鱼莲花纹/097_双鱼莲花纹_卡片图_thumb.webp"
   },
   {
     "id": "098",
@@ -1966,7 +2063,8 @@
     "meta_json": "patterns/091-100_文字福寿与组合纹/098_鹿鹤同春纹/098_鹿鹤同春纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "7e2b5ec27d771a657f4fbb8e7c436764e521b5bda767f102c5fca81a7ab0e331",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/091-100_文字福寿与组合纹/098_鹿鹤同春纹/098_鹿鹤同春纹_卡片图_thumb.webp"
   },
   {
     "id": "099",
@@ -1985,7 +2083,8 @@
     "meta_json": "patterns/091-100_文字福寿与组合纹/099_岁寒三友纹/099_岁寒三友纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "737535a549eb3ef6cff69304c4daac31ff98c969828d8cec50f9ed81cfe40cd6",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/091-100_文字福寿与组合纹/099_岁寒三友纹/099_岁寒三友纹_卡片图_thumb.webp"
   },
   {
     "id": "100",
@@ -2005,6 +2104,7 @@
     "meta_json": "patterns/091-100_文字福寿与组合纹/100_方圆合璧纹/100_方圆合璧纹_meta.json",
     "image_size": "1086x1448",
     "image_sha256": "d7681a70ecadb16ac89415d8b46d4ea17cf27cca180ff2c89be8d7a5139eea40",
-    "source_note": "原创生成与再设计，不直接复制具体文物图案。"
+    "source_note": "原创生成与再设计，不直接复制具体文物图案。",
+    "card_image_thumb": "patterns/091-100_文字福寿与组合纹/100_方圆合璧纹/100_方圆合璧纹_卡片图_thumb.webp"
   }
 ]

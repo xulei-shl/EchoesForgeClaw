@@ -27,6 +27,7 @@ import {
   getNodeTitle,
   matchPortType,
   resolveDirectParents,
+  type NodePortDeclaration,
 } from '../../modules/bookplate/nodeTypes';
 import {
   renderAggregateTemplate,
@@ -113,11 +114,13 @@ const BookplatePage: React.FC = () => {
   // 端口类型（输出/输入）：后端 node_types.py 模板声明（唯一权威），经 node-registry 下发；
   // 前端 NODE_PORT_TYPES 静态镜像兜底（注册表异步加载期间 + 管理页展示），驱动连线类型匹配校验
   const portTypesOf = useCallback(
-    (type: CanvasNodeType): { output: NodePortType; inputs: NodePortType[] } => {
+    (type: CanvasNodeType): NodePortDeclaration => {
       const t = registry.templates.find((bt) => bt.type === type);
       const fallback = NODE_PORT_TYPES[type];
+      const primary = t?.output_type ?? fallback?.output ?? 'text';
       return {
-        output: t?.output_type ?? fallback?.output ?? 'text',
+        output: primary,
+        outputs: t?.output_types ?? fallback?.outputs ?? [primary],
         inputs: t?.input_types ?? fallback?.inputs ?? [],
       };
     },
@@ -945,7 +948,7 @@ const BookplatePage: React.FC = () => {
             const targetSize = nodeSizes[target.id] ?? DEFAULT_SIZES[target.type];
             // 端口类型匹配校验：不匹配的连线以红色渲染（软提示，不禁止连接）
             const compatible =
-              matchPortType(portTypesOf(source.type).output, portTypesOf(target.type).inputs) !==
+              matchPortType(portTypesOf(source.type).outputs, portTypesOf(target.type).inputs) !==
               'mismatch';
 
             return (

@@ -67,8 +67,14 @@ def load_data():
             # 补齐 static URL
             card_image = item.get("card_image", "")
             card_image_url = f"/static/{card_image.lstrip('/')}" if card_image else ""
+            card_thumb = item.get("card_image_thumb", "")
+            card_thumb_url = f"/static/{card_thumb.lstrip('/')}" if card_thumb else card_image_url
+
             item_copy = dict(item)
             item_copy["card_image_url"] = card_image_url
+            item_copy["full_image_url"] = card_image_url
+            item_copy["preview_url"] = card_image_url
+            item_copy["thumb_url"] = card_thumb_url
             patterns.append(item_copy)
 
             cat = item.get("category")

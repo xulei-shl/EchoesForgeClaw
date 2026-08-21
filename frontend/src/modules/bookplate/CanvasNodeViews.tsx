@@ -156,7 +156,7 @@ export function mismatchBadgeOf(node: NodeData, h: NodeViewHelpers): string | nu
     if (e.target !== node.id) continue;
     const src = h.nodes.find((n) => n.id === e.source);
     if (!src) continue;
-    const m = matchPortType(h.portTypesOf(src.type).output, h.portTypesOf(node.type).inputs);
+    const m = matchPortType(h.portTypesOf(src.type).outputs, h.portTypesOf(node.type).inputs);
     if (m === 'mismatch') count++;
   }
   return count > 0 ? `类型不匹配 ×${count}` : null;

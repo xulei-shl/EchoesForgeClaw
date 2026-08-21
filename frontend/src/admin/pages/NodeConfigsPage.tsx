@@ -47,7 +47,8 @@ const portSummary = (type: string): string => {
   const pt = NODE_PORT_TYPES[type as keyof typeof NODE_PORT_TYPES];
   if (!pt) return '';
   const inputs = pt.inputs.length > 0 ? pt.inputs.map((t) => PORT_TYPE_LABELS[t]).join('/') : '无';
-  return `输入：${inputs} · 输出：${PORT_TYPE_LABELS[pt.output]}`;
+  const outputs = (pt.outputs ?? [pt.output]).map((t) => PORT_TYPE_LABELS[t]).join('/');
+  return `输入：${inputs} · 输出：${outputs}`;
 };
 
 interface FormState {

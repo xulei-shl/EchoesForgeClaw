@@ -10,8 +10,8 @@ export function isTextOutputNode(
   node: GraphNode,
   portTypesOf: PortTypesLookup
 ): boolean {
-  const output = portTypesOf(node.type).output;
-  return output === 'text' || output === 'any';
+  const outputs = portTypesOf(node.type).outputs;
+  return outputs.includes('text') || outputs.includes('any');
 }
 
 /**

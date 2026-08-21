@@ -44,13 +44,21 @@ export const NODE_TYPES = {
 
 export type NodeType = (typeof NODE_TYPES)[keyof typeof NODE_TYPES];
 
+/** 端口类型：text / image / document 为当前实际使用的类型，audio / video 预留，any 表示任意 */
+export type NodeOutputPortType = 'text' | 'image' | 'document' | 'audio' | 'video' | 'any';
+
 export interface NodeTemplate {
   type: NodeType;
   name: string;
   description: string;
   category: 'input' | 'analysis' | 'generate' | 'output' | 'tool' | 'multimodal' | 'glam';
   configurable: boolean;
-  output_type?: 'text' | 'image' | 'document';
+  output_type?: NodeOutputPortType;
+  /**
+   * 复合输出类型（一个节点可同时产出多种类型，如纹样节点同时输出图片与文本）；
+   * 缺省时等于 [output_type]。下游按自身接受的输入类型取用对应输出。
+   */
+  output_types?: NodeOutputPortType[];
   input_types?: string[];
 }
 
@@ -262,6 +270,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     category: 'multimodal',
     configurable: false,
     output_type: 'image',
+    output_types: ['image', 'text'],
     input_types: ['text'],
   },
 ];

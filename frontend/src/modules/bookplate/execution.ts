@@ -160,18 +160,29 @@ export function collectNodeInputs(
   const parents = resolveDirectParents(node.id, nodes, edges);
   const byPortType: Partial<Record<NodePortType, NodeData[]>> = {};
   for (const p of parents) {
-    const out = portTypesOf(p.type).output;
-    (byPortType[out] ??= []).push(p);
+    // 复合输出节点（如纹样节点同时输出图片与文本）按声明的每个类型分别入桶
+    for (const out of portTypesOf(p.type).outputs) {
+      (byPortType[out] ??= []).push(p);
+    }
   }
-  // 文本输出直接上级：声明为 text/any 的节点，或具备文本输出的 pattern_search
+  /**
+   * 文本/图片输出直接上级：按「声明的全部输出类型」推导（outputs 含 text/any 或 image/any）。
+   * 复合节点（如纹样）对文本与图片消费者都算上级；但节点尚未产出实际输出时
+   * （如纹样未选中，imageUrl 与 output 均为空）不参与，避免给下游注入空内容。
+   */
   const textParents = parents.filter((p) => {
-    const out = portTypesOf(p.type).output;
-    return out === 'text' || out === 'any' || (p.type === 'pattern_search' && !!nodeOutputText(p));
+    const outs = portTypesOf(p.type).outputs;
+    return (
+      (outs.includes('text') || outs.includes('any')) &&
+      !(p.type === 'pattern_search' && !nodeOutputText(p))
+    );
   });
-  // 图片输出直接上级：声明为 image/any 的节点，或具备图片输出的 pattern_search
   const imageParents = parents.filter((p) => {
-    const out = portTypesOf(p.type).output;
-    return out === 'image' || out === 'any' || (p.type === 'pattern_search' && nodeOutputImages(p).length > 0);
+    const outs = portTypesOf(p.type).outputs;
+    return (
+      (outs.includes('image') || outs.includes('any')) &&
+      !(p.type === 'pattern_search' && nodeOutputImages(p).length === 0)
+    );
   });
 
   return {
@@ -211,7 +222,7 @@ export function collectMismatchParents(
   portTypes: PortTypesLookup
 ): NodeData[] {
   return resolveDirectParents(node.id, nodes, edges).filter((p) => {
-    const m = matchPortType(portTypes(p.type).output, portTypes(node.type).inputs);
+    const m = matchPortType(portTypes(p.type).outputs, portTypes(node.type).inputs);
     return m === 'mismatch';
   });
 }

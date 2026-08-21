@@ -291,9 +291,14 @@ export const PORT_TYPE_LABELS: Record<NodePortType, string> = {
 
 /**
  * 节点输入/输出端口类型（前端静态镜像，与后端 node_types.py 声明保持一致；
- * 注册表到达后用后端权威值覆盖）。output = 该节点产出什么；inputs = 接受哪些类型的上级输入。
+ * 注册表到达后用后端权威值覆盖）。output = 主输出类型（展示标签）；outputs = 全部输出类型
+ * （复合节点可同时产出多种，如纹样节点输出图片 + 文本，缺省 = [output]）；
+ * inputs = 接受哪些类型的上级输入。
  */
-export const NODE_PORT_TYPES: Record<CanvasNodeType, { output: NodePortType; inputs: NodePortType[] }> = {
+export const NODE_PORT_TYPES: Record<
+  CanvasNodeType,
+  { output: NodePortType; outputs?: NodePortType[]; inputs: NodePortType[] }
+> = {
   book_info: { output: 'text', inputs: [] },
   text: { output: 'text', inputs: [] },
   image_upload: { output: 'image', inputs: [] },
@@ -331,13 +336,23 @@ export const NODE_PORT_TYPES: Record<CanvasNodeType, { output: NodePortType; inp
   // 邮票截图框：输出生成的邮票图片；可连线图片或图书元数据作为输入源（连线即输入）
   stamp_cutter: { output: 'image', inputs: ['image', 'text'] },
   map_art: { output: 'image', inputs: ['text'] },
-  pattern_search: { output: 'image', inputs: ['text'] },
+  // 中国传统纹样：复合输出——主输出为图片（纹样卡片图），同时产出详情说明文本；
+  // 下游按自身接受的输入类型取用（图片分析/图像生成拿图片，文本聚合/AI对话拿文本或两者都拿）
+  pattern_search: { output: 'image', outputs: ['image', 'text'], inputs: ['text'] },
 };
 
+/** 节点端口声明：主输出 + 全部输出类型 + 接受的上游输入类型列表 */
+export interface NodePortDeclaration {
+  /** 主输出类型（展示标签用；复合节点的首要产出） */
+  output: NodePortType;
+  /** 全部输出类型（复合节点可同时产出多种；缺省 = [output]） */
+  outputs: NodePortType[];
+  /** 接受的输入类型列表 */
+  inputs: NodePortType[];
+}
+
 /** 端口类型查找（由画布提供：后端模板声明优先，前端静态镜像兜底） */
-export type PortTypesLookup = (
-  type: CanvasNodeType
-) => { output: NodePortType; inputs: NodePortType[] };
+export type PortTypesLookup = (type: CanvasNodeType) => NodePortDeclaration;
 
 /**
  * 文本输出上级在「图像生成提示词」中的角色（仅影响提示词拼装的分桶与标注）：
@@ -359,17 +374,19 @@ export type PortMatch = 'match' | 'mismatch' | 'unknown';
 
 /**
  * 判断「源节点输出类型」是否能被「目标节点输入类型列表」接受：
+ * - 源可为单类型或复合输出的类型列表（复合节点命中任一即匹配）；
  * - any 匹配任意；目标输入列表为空 = 不接受任何上游输入；
  * - 任一侧类型未知（如注册表未加载）返回 unknown，不判为不匹配，避免误报。
  */
 export function matchPortType(
-  source: NodePortType | undefined,
+  source: NodePortType | NodePortType[] | undefined,
   targetTypes: NodePortType[] | undefined
 ): PortMatch {
   if (!source || !targetTypes) return 'unknown';
   if (targetTypes.length === 0) return 'mismatch';
-  if (source === 'any' || targetTypes.includes('any')) return 'match';
-  return targetTypes.includes(source) ? 'match' : 'mismatch';
+  const sources = Array.isArray(source) ? source : [source];
+  if (sources.includes('any') || targetTypes.includes('any')) return 'match';
+  return sources.some((s) => targetTypes.includes(s)) ? 'match' : 'mismatch';
 }
 
 /**
