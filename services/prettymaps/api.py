@@ -92,6 +92,7 @@ async def generate_map(req: GenerateRequest):
             radius=radius_m,
             circle=req.circle,
             preset=req.preset,
+            credit=False,
             show=False,
             figsize=figsize,
             save_as=tmp_path,
