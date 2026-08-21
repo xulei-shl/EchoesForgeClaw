@@ -141,7 +141,7 @@ export async function register(app: FastifyInstance): Promise<void> {
       const provider: GlamProvider | 'all' =
         payload.provider === 'all' || GLAM_PROVIDERS.includes(payload.provider as GlamProvider)
           ? (payload.provider as GlamProvider | 'all')
-          : 'met';
+          : 'all';
       const s = getAppSettingsMap(getDb());
       try {
         const result = await searchGlamImages(

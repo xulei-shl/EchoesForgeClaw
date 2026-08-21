@@ -133,7 +133,7 @@ export function seedDataFor(type: NodeType, parent?: NodeData): any {
       };
     case 'art_image_search':
       return {
-        provider: 'met',
+        provider: 'all',
         imageUrl: null,
         selectedImage: null,
         error: null,

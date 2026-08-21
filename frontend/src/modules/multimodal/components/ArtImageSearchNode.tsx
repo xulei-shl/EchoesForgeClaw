@@ -115,7 +115,7 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
   title,
   imageUrl = null,
   selectedImage = null,
-  provider = 'met',
+  provider = 'all',
   upstreamKeyword = '',
   error = null,
   onSelectImage,
