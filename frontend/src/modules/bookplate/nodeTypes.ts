@@ -512,6 +512,8 @@ export function nodeOutputText(node: GraphNode | undefined): string {
       return typeof node.data.output === 'string' ? node.data.output : '';
     case 'prompt_search':
       return typeof node.data.content === 'string' ? node.data.content : '';
+    case 'pattern_search':
+      return typeof node.data.output === 'string' ? node.data.output : '';
     case 'skill_search': {
       const selections = Array.isArray(node.data.skillSelections) ? node.data.skillSelections : [];
       if (selections.length === 0) return '';

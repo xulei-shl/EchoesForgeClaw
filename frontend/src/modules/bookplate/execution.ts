@@ -163,11 +163,22 @@ export function collectNodeInputs(
     const out = portTypesOf(p.type).output;
     (byPortType[out] ??= []).push(p);
   }
+  // 文本输出直接上级：声明为 text/any 的节点，或具备文本输出的 pattern_search
+  const textParents = parents.filter((p) => {
+    const out = portTypesOf(p.type).output;
+    return out === 'text' || out === 'any' || (p.type === 'pattern_search' && !!nodeOutputText(p));
+  });
+  // 图片输出直接上级：声明为 image/any 的节点，或具备图片输出的 pattern_search
+  const imageParents = parents.filter((p) => {
+    const out = portTypesOf(p.type).output;
+    return out === 'image' || out === 'any' || (p.type === 'pattern_search' && nodeOutputImages(p).length > 0);
+  });
+
   return {
     parents,
     byPortType,
-    text: [...(byPortType.text ?? []), ...(byPortType.any ?? [])],
-    images: byPortType.image ?? [],
+    text: textParents,
+    images: imageParents,
     documents: byPortType.document ?? [],
   };
 }

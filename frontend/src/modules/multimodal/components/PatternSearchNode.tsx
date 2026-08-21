@@ -227,8 +227,11 @@ const PatternSearchNodeInner: React.FC<PatternSearchNodeProps> = ({
     void load(activeCategory, effectiveQuery, 'refresh', true);
   };
 
+  /** 仅当已选图且有下游连线时才锁定，未选图时始终允许用户选择 */
+  const isLocked = Boolean(hasDownstream && imageUrl);
+
   const handleSelect = async (item: PatternItem) => {
-    if (hasDownstream || savingId) return;
+    if (isLocked || savingId) return;
     setSavingId(item.id);
     try {
       await onSelectPattern?.(id, item);
@@ -398,9 +401,12 @@ const PatternSearchNodeInner: React.FC<PatternSearchNodeProps> = ({
                   {items.map((item) => {
                     const saving = savingId === item.id;
                     const isSelected = !!(
-                      selectedPattern &&
-                      (selectedPattern.id === item.id ||
-                        selectedPattern.full_image_url === item.full_image_url)
+                      (selectedPattern &&
+                        (selectedPattern.id === item.id ||
+                          selectedPattern.full_image_url === item.full_image_url)) ||
+                      (imageUrl &&
+                        (imageUrl.includes(`pattern_${item.id}`) ||
+                          (item.card_image && imageUrl.includes(item.card_image.split('/').pop() || ''))))
                     );
 
                     const tooltipContent = (
@@ -457,9 +463,9 @@ const PatternSearchNodeInner: React.FC<PatternSearchNodeProps> = ({
                             <button
                               type="button"
                               onClick={() => void handleSelect(item)}
-                              disabled={saving || hasDownstream}
+                              disabled={saving || isLocked}
                               title={
-                                hasDownstream
+                                isLocked
                                   ? '有下级节点，不可更换输出（需先断开连线）'
                                   : '选择此纹样作为节点输出'
                               }
@@ -490,13 +496,13 @@ const PatternSearchNodeInner: React.FC<PatternSearchNodeProps> = ({
 
           {/* 已选纹样（对外输出展示） */}
           <div className="shrink-0 flex items-center gap-2.5 pt-2 border-t border-dashed border-paper-grid">
-            {imageUrl && selectedPattern ? (
+            {imageUrl ? (
               <>
                 <PhotoView src={imageUrl}>
                   <Tooltip content="点击查看纹样高清大图">
                     <img
                       src={imageUrl}
-                      alt={selectedPattern.name_cn || '已选纹样'}
+                      alt={selectedPattern?.name_cn || '已选纹样'}
                       referrerPolicy="no-referrer"
                       decoding="async"
                       className="h-12 w-12 rounded-md border border-paper-grid object-cover cursor-zoom-in hover:opacity-90 transition-opacity shrink-0"
@@ -505,10 +511,12 @@ const PatternSearchNodeInner: React.FC<PatternSearchNodeProps> = ({
                 </PhotoView>
                 <div className="min-w-0 flex-1">
                   <p className="text-[11px] font-serif text-ink truncate flex items-center gap-1.5">
-                    <span className="font-medium text-accent">{selectedPattern.name_cn}</span>
-                    <span className="text-[10px] text-ink-faint">
-                      {selectedPattern.category ? `· ${selectedPattern.category}` : ''}
-                    </span>
+                    <span className="font-medium text-accent">{selectedPattern?.name_cn || '已选择纹样'}</span>
+                    {selectedPattern?.category && (
+                      <span className="text-[10px] text-ink-faint">
+                        · {selectedPattern.category}
+                      </span>
+                    )}
                     {hasDownstream && (
                       <span className="text-[9px] font-sans px-1 py-0.5 rounded border border-dashed border-paper-grid text-ink-faint">
                         输出已连接
@@ -517,11 +525,20 @@ const PatternSearchNodeInner: React.FC<PatternSearchNodeProps> = ({
                   </p>
                   <p
                     className="text-[10px] text-ink-faint font-sans truncate"
-                    title={selectedPattern.summary || selectedPattern.meaning || ''}
+                    title={selectedPattern?.summary || selectedPattern?.meaning || ''}
                   >
-                    {selectedPattern.meaning
-                      ? `寓意：${selectedPattern.meaning}`
-                      : selectedPattern.summary || '已输出纹样图片与详情说明文本'}
+                    {(() => {
+                      if (selectedPattern?.meaning) {
+                        return `寓意：${selectedPattern.meaning}`;
+                      }
+                      if (selectedPattern?.summary) {
+                        return selectedPattern.summary;
+                      }
+                      if (hasDownstream) {
+                        return '输出已连接到下游节点，如需更换请先断开连线';
+                      }
+                      return '已输出纹样图片与详情说明文本';
+                    })()}
                   </p>
                 </div>
               </>

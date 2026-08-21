@@ -128,6 +128,15 @@ export async function buildApp() {
     return reply.code(404).send();
   });
 
+  // 中国传统纹样（多模态工具）：/static/patterns/* → services/chinese-traditional-patterns/patterns/*
+  const TRADITIONAL_PATTERNS_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../services/chinese-traditional-patterns/patterns');
+  app.get('/static/patterns/*', async (request, reply) => {
+    const relPath = (request.params as any)['*'];
+    if (!relPath || relPath.includes('..')) return reply.code(404).send();
+    if (sendPublicImage(reply, safeJoin(TRADITIONAL_PATTERNS_DIR, relPath))) return reply;
+    return reply.code(404).send();
+  });
+
   // 其余 /static 资源（如 bifrost 提示词预览图 prompt-previews）仍由 backend-ts/static/ 提供
   await app.register(fastifyStatic, { root: STATIC_DIR, prefix: '/static/' });
 

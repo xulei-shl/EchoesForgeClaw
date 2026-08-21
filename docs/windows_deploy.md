@@ -4,7 +4,9 @@
 
 > 适用环境：Windows 11 64 位、Node.js ≥ 22.9（已在 v24.13.0 验证）、npm 11.x
 > **主后端（backend-ts）不再需要 Python / venv / pip / uvicorn**，启动前仅需准备 Node.js 环境与 `backend-ts/.env`。
-> **例外**：地图海报节点（`frontend/src/modules/multimodal`）依赖一个独立的 Python 微服务，代码位于 `services/maptoposter/`，需 Python ≥ 3.11。仅当使用该功能时才需要 Python，详见「第 4 节」。
+> **例外**：以下两个功能依赖独立的 Python 微服务，需 Python ≥ 3.10，仅当使用对应功能时才需要 Python：
+> - **地图海报节点**（`frontend/src/modules/multimodal`）：代码位于 `services/maptoposter/`，详见「第 4 节」。
+> - **中国传统纹样检索节点**（画布节点 `PatternSearchNode`）：代码位于 `services/chinese-traditional-patterns/`，详见「第 5 节」。
 
 ---
 
@@ -134,7 +136,54 @@ Start-Process -FilePath "uvicorn" -ArgumentList "api:app","--host","0.0.0.0","--
 
 若 8100 被占用（例如同时运行了 `docs/fastclaw-dev/plugins/mem0` 的 Mem0 服务，其 `plugin.json` 默认也指向 `127.0.0.1:8100`），需为其中之一换端口：改 maptoposter 启动端口时，同步修改 `backend-ts/.env` 的 `MAPTOPoster_API`（如 `http://127.0.0.1:8101`）。
 
-## 5. 验证服务
+## 5. 中国传统纹样检索 API 服务（纹样检索节点依赖）
+
+画布节点「中国传统纹样检索」（`PatternSearchNode`）依赖一个独立的 Python（FastAPI/Uvicorn）微服务，提供纹样检索、详情读取与高清卡片原图的静态文件服务。它**不属于** Node.js 后端，需单独用 Python 启动，并由 `backend-ts` 通过环境变量 `PATTERNS_API`（默认 `http://127.0.0.1:8102`）代理调用。完整规范见仓库 `services/中国传统纹样API.md`。
+
+> 仅当需要使用「中国传统纹样检索」节点时才需要该服务；不启动它时，节点检索会提示「纹样检索服务未启动」，其余功能不受影响。
+
+### 5.1 安装依赖（首次）
+
+```powershell
+cd services\chinese-traditional-patterns
+pip install -r requirements.txt
+```
+
+> 需要 Python ≥ 3.10。依赖仅 `fastapi`、`uvicorn`。
+
+### 5.2 启动服务
+
+```powershell
+cd services\chinese-traditional-patterns
+
+# 方式一：直接运行脚本（默认 0.0.0.0:8102）
+python api.py
+
+# 方式二：uvicorn（推荐，支持热重载）
+uvicorn api:app --host 0.0.0.0 --port 8102 --reload
+```
+
+- 启动成功标志：`Uvicorn running on http://0.0.0.0:8102`
+- 健康检查：`(Invoke-RestMethod http://127.0.0.1:8102/health).status` → `ok`
+- 交互式 API 文档：`http://localhost:8102/docs`
+
+### 5.3 后台常驻（PowerShell 作业）
+
+```powershell
+Start-Process -FilePath "uvicorn" -ArgumentList "api:app","--host","127.0.0.1","--port","8102" `
+  -WorkingDirectory "$PWD\services\chinese-traditional-patterns" `
+  -RedirectStandardOutput "$env:TEMP\patterns_out.log" -RedirectStandardError "$env:TEMP\patterns_err.log"
+```
+
+### 5.4 端口与集成
+
+- 端口固定 **8102**，与 `backend-ts` 的 `PATTERNS_API` 默认值（`backend-ts/src/modules/bookplate/routes/pattern-search.ts`）一致，**同机部署无需额外配置**即可被后端代理调用（路由 `/api/modules/bookplate/pattern-search/*`）。
+- 跨机部署时，在 `backend-ts/.env` 设置 `PATTERNS_API=http://<patterns-host>:8102` 后重启 `backend-ts` 生效。
+- 端口冲突：若 8102 被占用，启动时换端口（如 `8109`），并同步 `PATTERNS_API=http://127.0.0.1:8109` 与 `backend-ts` 重启。
+
+---
+
+## 6. 验证服务
 
 ```powershell
 # 后端根路径
@@ -152,11 +201,15 @@ Start-Process -FilePath "uvicorn" -ArgumentList "api:app","--host","0.0.0.0","--
 # 前端
 (Invoke-WebRequest http://127.0.0.1:5173/ -UseBasicParsing).StatusCode
 # 期望：200
+
+# 中国传统纹样检索 API 服务（使用纹样检索节点时需要）
+(Invoke-RestMethod http://127.0.0.1:8102/health).status
+# 期望：ok
 ```
 
 ---
 
-## 6. 后台常驻运行（可选）
+## 7. 后台常驻运行（可选）
 
 普通终端窗口关闭即停止服务。如需常驻，可用以下任一种方式：
 
@@ -176,7 +229,7 @@ Start-Process -FilePath "npm" -ArgumentList "run","dev","--","--port","5173" -Wo
 
 ---
 
-## 7. 踩坑记录（FIRST-RUN 必读）
+## 8. 踩坑记录（FIRST-RUN 必读）
 
 ### 坑 1：`npm run start` 直接报错 / Node 版本过低
 
@@ -211,7 +264,7 @@ npm run start
 
 ---
 
-## 8. 一键快速清单（新机器复制粘贴）
+## 9. 一键快速清单（新机器复制粘贴）
 
 ```powershell
 # 后端
@@ -230,4 +283,9 @@ npm run dev -- --port 5173
 cd services/maptoposter
 pip install -r requirements.txt
 uvicorn api:app --host 0.0.0.0 --port 8100
+
+# 中国传统纹样检索 API 服务（仅使用纹样检索节点时需要，另开终端）
+cd services/chinese-traditional-patterns
+pip install -r requirements.txt
+uvicorn api:app --host 0.0.0.0 --port 8102
 ```

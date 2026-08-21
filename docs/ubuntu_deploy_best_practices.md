@@ -4,7 +4,9 @@
 
 > 项目当前已部署于 `10.40.92.18`，后端端口 `8010`，前端端口 `5180`。
 > 后端已由 Python（FastAPI/uvicorn）迁移为 **TypeScript（Fastify + Drizzle + better-sqlite3 + AI SDK，目录 `backend-ts/`）**，主后端**不再需要 Python / venv / pip / uvicorn / Alembic**。
-> **例外**：地图海报节点（`frontend/src/modules/multimodal`）依赖一个独立的 Python 微服务，代码位于 `services/maptoposter/`（早期版本在 `docs/多模态工具/地图/maptoposter-main`，已迁移），需 Python ≥ 3.11。仅当使用该功能时才需要 Python，部署方式见「第 13 节」。
+> **例外**：以下两个功能依赖独立的 Python 微服务，需 Python ≥ 3.11，仅当使用对应功能时才需要启动：
+> - **地图海报节点**（`frontend/src/modules/multimodal`）：代码位于 `services/maptoposter/`，部署方式见「第 13 节」。
+> - **中国传统纹样检索节点**（画布节点 `PatternSearchNode`）：代码位于 `services/chinese-traditional-patterns/`，部署方式见「第 14 节」。
 
 ---
 
@@ -44,7 +46,7 @@ sudo apt install -y ufw
 ss -tuln
 
 # 确认目标端口空闲
-ss -tuln | grep -E ':(8000|5173|8010|5180)\b' || echo "端口空闲"
+ss -tuln | grep -E ':(8000|5173|8010|5180|8100|8102)\b' || echo "端口空闲"
 ```
 
 本项目默认端口存在冲突风险，因此生产环境使用**自定义端口**：后端 `8010`、前端 `5180`（均需确认空闲）。
@@ -416,4 +418,78 @@ systemctl is-active bookforge-maptoposter   # 期望 active
 
 - 端口固定 **8100**，与 `backend-ts` 的 `MAPTOPoster_API` 默认值（`backend-ts/src/modules/bookplate/routes/map-poster.ts`）一致；**同机部署无需额外配置**即可被后端代理。
 - 跨机部署时，在 `backend-ts/.env` 设置 `MAPTOPoster_API=http://<maptoposter-host>:8100` 并随 `backend-ts` 服务读取生效。
+
+---
+
+## 14. 中国传统纹样检索 Python 服务（纹样检索节点依赖）
+
+画布节点「中国传统纹样检索」（`PatternSearchNode`）依赖一个独立的 Python（FastAPI/Uvicorn）微服务，提供纹样检索、详情读取与高清卡片原图的静态文件服务。它**不属于** Node.js 后端，需单独用 Python 启动，并由 `backend-ts` 通过环境变量 `PATTERNS_API`（默认 `http://127.0.0.1:8102`）代理调用。代码由 git 管理，部署时随 `git pull` 一同拉取到 `/opt/EchoesForgeClaw/services/chinese-traditional-patterns`。完整规范见仓库 `services/中国传统纹样API.md`。
+
+> 仅当需要使用「中国传统纹样检索」节点时才需要该服务；不启动它时，节点检索会提示「纹样检索服务未启动」，其余功能不受影响。
+
+### 14.1 安装依赖（首次）
+
+```bash
+cd /opt/EchoesForgeClaw/services/chinese-traditional-patterns
+pip install -r requirements.txt
+```
+
+> 需要 Python ≥ 3.10。依赖仅 `fastapi`、`uvicorn`。
+
+### 14.2 手动启动（验证用）
+
+```bash
+cd /opt/EchoesForgeClaw/services/chinese-traditional-patterns
+
+# 方式一：直接运行脚本（默认 0.0.0.0:8102）
+python api.py
+
+# 方式二：uvicorn（支持热重载）
+uvicorn api:app --host 0.0.0.0 --port 8102 --reload
+```
+
+- 启动成功标志：`Uvicorn running on http://0.0.0.0:8102`
+- 健康检查：`curl -s http://localhost:8102/health` → `{"status":"ok","total_patterns":100}`
+- 交互式 API 文档：`http://localhost:8102/docs`
+
+### 14.3 Systemd 服务（推荐，开机自启 + 崩溃自愈）
+
+`/etc/systemd/system/chinese-traditional-patterns.service`：
+
+```ini
+[Unit]
+Description=Chinese Traditional Patterns FastAPI Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/EchoesForgeClaw/services/chinese-traditional-patterns
+ExecStart=/usr/bin/python3 -m uvicorn api:app --host 127.0.0.1 --port 8102 --workers 2
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+```
+
+> `ExecStart` 中的 `python3` / `uvicorn` 路径用 `which python3` / `which uvicorn` 确认（虚拟环境下替换为对应绝对路径）。
+
+启用并启动：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable chinese-traditional-patterns
+sudo systemctl start chinese-traditional-patterns
+systemctl is-active chinese-traditional-patterns   # 期望 active
+```
+
+### 14.4 端口与集成
+
+- 端口固定 **8102**，与 `backend-ts` 的 `PATTERNS_API` 默认值（`backend-ts/src/modules/bookplate/routes/pattern-search.ts`）一致；**同机部署无需额外配置**即可被后端代理调用（路由 `/api/modules/bookplate/pattern-search/*`）。
+- 跨机部署时，在 `backend-ts/.env` 设置 `PATTERNS_API=http://<patterns-host>:8102` 后重启 `backend-ts` 服务生效。
+- 端口冲突：若 8102 被占用，启动时换端口（如 `8109`），并同步 `PATTERNS_API=http://127.0.0.1:8109` 与后端重启。
 - 端口冲突：若 8100 被占用（例如同时运行 `docs/fastclaw-dev/plugins/mem0` 的 Mem0 服务，其 `plugin.json` 默认也指向 `127.0.0.1:8100`），需为其中之一换端口，并同步 `MAPTOPoster_API` 或 Mem0 的 `config.url`。
