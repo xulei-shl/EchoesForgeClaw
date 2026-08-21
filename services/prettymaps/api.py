@@ -9,7 +9,7 @@ Usage:
   uvicorn api:app --host 0.0.0.0 --port 8101
 """
 
-import io
+import tempfile
 import os
 import sys
 import logging
@@ -81,9 +81,11 @@ async def generate_map(req: GenerateRequest):
                 query, req.radius, req.circle, req.preset, figsize)
 
     try:
-        from matplotlib import pyplot as plt
-
-        fig, ax = plt.subplots(figsize=figsize, dpi=150)
+        # prettymaps.plot(show=False) 会在返回前 plt.close()，
+        # 因此不能在调用后再 plt.savefig —— 必须通过 save_as 让它在 close 前保存。
+        tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+        tmp_path = tmp.name
+        tmp.close()
 
         prettymaps.plot(
             query,
@@ -91,16 +93,14 @@ async def generate_map(req: GenerateRequest):
             circle=req.circle,
             preset=req.preset,
             show=False,
-            ax=ax,
-            fig=fig,
+            figsize=figsize,
+            save_as=tmp_path,
         )
 
-        buf = io.BytesIO()
-        plt.savefig(buf, format="png", bbox_inches="tight", dpi=150)
-        buf.seek(0)
-        plt.close(fig)
+        with open(tmp_path, 'rb') as f:
+            image_bytes = f.read()
+        os.unlink(tmp_path)
 
-        image_bytes = buf.getvalue()
         if not image_bytes:
             raise HTTPException(status_code=500, detail="Generated image is empty")
 

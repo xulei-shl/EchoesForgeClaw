@@ -16,14 +16,20 @@ const PRETTYMAPS_PRESETS: SelectOption[] = [
   { label: 'Minimal', value: 'minimal' },
   { label: 'Macao', value: 'macao' },
   { label: 'Tijuca', value: 'tijuca' },
+  { label: 'Barcelona', value: 'barcelona' },
+  { label: 'Heerhugowaard', value: 'heerhugowaard' },
+  { label: 'Abraca Redençāo', value: 'abraca-redencao' },
+  { label: 'CB-BF-F', value: 'cb-bf-f' },
 ];
 
 const RADIUS_OPTIONS: SelectOption[] = [
+  { label: '0.25 km', value: '0.25' },
   { label: '0.5 km', value: '0.5' },
   { label: '0.75 km', value: '0.75' },
   { label: '1.0 km', value: '1.0' },
   { label: '1.25 km', value: '1.25' },
   { label: '1.5 km', value: '1.5' },
+  { label: '2.0 km', value: '2.0' },
 ];
 
 export interface MapArtNodeProps {
