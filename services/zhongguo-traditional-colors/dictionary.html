@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="中国传统色 742 色彩字典，按色名、编号、HEX 和红橙黄绿青蓝紫等色系检索中华传统色，进入每个颜色的色值与配色详情页。">
+    <meta name="theme-color" content="#f7f7f4" data-theme-color>
+    <title>色彩字典 - 中国传统配色</title>
+    <link rel="canonical" href="https://colors.xiaoxiaodong.ai/dictionary.html">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="中国传统配色">
+    <meta property="og:title" content="色彩字典 - 中国传统配色">
+    <meta property="og:description" content="中国传统色 742 色彩字典，按色名、编号、HEX 和色系检索中华传统色，进入每个颜色的色值与配色详情页。">
+    <meta property="og:url" content="https://colors.xiaoxiaodong.ai/dictionary.html">
+    <meta property="og:image" content="https://colors.xiaoxiaodong.ai/docs/screenshots/home-gallery.png">
+    <meta property="og:locale" content="zh_CN">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:site" content="@xiaoxiaodong01">
+    <meta name="twitter:title" content="色彩字典 - 中国传统配色">
+    <meta name="twitter:description" content="中国传统色 742 色彩字典，按色名、编号、HEX 和色系检索中华传统色。">
+    <meta name="twitter:image" content="https://colors.xiaoxiaodong.ai/docs/screenshots/home-gallery.png">
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"CollectionPage","name":"中国传统色 742 色彩字典","url":"https://colors.xiaoxiaodong.ai/dictionary.html","inLanguage":"zh-CN","description":"按色名、编号、HEX 和色系检索 742 个中国传统色，进入每个颜色的色值与配色详情页。","isPartOf":{"@type":"WebSite","name":"中国传统配色","url":"https://colors.xiaoxiaodong.ai/"},"mainEntity":{"@type":"ItemList","name":"中国传统色 742 色索引","numberOfItems":742,"url":"https://colors.xiaoxiaodong.ai/colors/"},"about":{"@type":"DefinedTermSet","@id":"https://colors.xiaoxiaodong.ai/dictionary.html#termset","name":"中国传统色 742 色","url":"https://colors.xiaoxiaodong.ai/dictionary.html"}}</script>
+    <link rel="icon" href="favicon.svg?v=20260610-6" type="image/svg+xml">
+    <script>
+      (() => {
+        try {
+          const theme = localStorage.getItem('theme');
+          if (theme === 'dark' || theme === 'light') {
+            document.documentElement.dataset.theme = theme;
+          }
+        } catch (error) {
+          document.documentElement.dataset.theme = 'light';
+        }
+      })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;500;700&family=Noto+Serif+SC:wght@600;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/css/styles.css?v=20260616-9">
+    <link rel="stylesheet" href="assets/css/color-suggestions.css?v=20260616-3">
+    <script src="https://code.iconify.design/iconify-icon/3.0.0/iconify-icon.min.js" defer></script>
+    <script defer data-domain="colors.xiaoxiaodong.ai" src="https://plausible.io/js/script.js"></script>
+  </head>
+  <body data-current-page="dictionary">
+    <a class="skip-link" href="#dictionary">跳到色彩字典</a>
+
+    <div data-shared-header></div>
+
+    <main id="top" class="dictionary-page">
+      <section class="dictionary-section" id="dictionary" aria-labelledby="dictionary-title">
+        <header class="style-lab-intro">
+          <span class="section-kicker">中国传统色 · 742 色</span>
+          <h1 id="dictionary-title">中国传统色 742 色彩字典</h1>
+          <p>按色名、编号、HEX 和色系检索中华传统色。每个颜色都可进入独立详情页，查看 HEX、RGB、HSL、CMYK 色值、配色关系和可下载色卡。</p>
+        </header>
+
+        <div class="dictionary-toolbar" aria-label="色彩字典工具">
+          <label class="dictionary-search">
+            <span class="sr-only">检索色彩字典</span>
+            <iconify-icon icon="lucide:search" aria-hidden="true"></iconify-icon>
+            <input type="search" data-dictionary-search data-color-suggest placeholder="搜索色名 / 编号 / HEX" autocomplete="off">
+          </label>
+          <label class="dictionary-filter dictionary-filter--hidden">
+            <span class="sr-only">按色系筛选</span>
+            <select data-dictionary-hue aria-label="按色系筛选">
+              <option value="all">全部色系</option>
+              <option value="red">红色系</option>
+              <option value="orange">橙色系</option>
+              <option value="yellow">黄色系</option>
+              <option value="green">绿色系</option>
+              <option value="cyan">青色系</option>
+              <option value="blue">蓝色系</option>
+              <option value="purple">紫色系</option>
+              <option value="neutral">中性色</option>
+            </select>
+          </label>
+          <div class="dictionary-huebar" data-dictionary-hue-list aria-label="按色相筛选"></div>
+          <button class="dictionary-random" type="button" data-dictionary-random>
+            <iconify-icon icon="lucide:shuffle" aria-hidden="true"></iconify-icon>
+            随机一色
+          </button>
+        </div>
+
+        <article class="dictionary-color-story" data-dictionary-color-story hidden></article>
+
+        <div class="dictionary-count" data-dictionary-count aria-live="polite"></div>
+        <div class="dictionary-grid" data-dictionary-grid></div>
+
+        <p class="dictionary-index-foot" style="margin-top:2rem; text-align:center;">
+          <a class="button button-secondary" href="colors/">
+            <iconify-icon icon="lucide:list-tree" aria-hidden="true"></iconify-icon>
+            浏览全部 742 色 · 完整色卡索引
+          </a>
+        </p>
+      </section>
+    </main>
+
+    <dialog class="color-detail-dialog" data-color-detail-dialog>
+      <button class="dialog-close color-detail-close" type="button" data-color-detail-close aria-label="关闭颜色信息">
+        <iconify-icon icon="lucide:x" aria-hidden="true"></iconify-icon>
+      </button>
+      <div class="color-detail-hero">
+        <span class="color-detail-swatch" data-color-detail-swatch aria-hidden="true"></span>
+        <div>
+          <span class="section-kicker" data-color-detail-kicker></span>
+          <h2 data-color-detail-title></h2>
+          <p data-color-detail-note></p>
+        </div>
+      </div>
+      <div class="color-detail-body">
+        <section class="color-detail-panel" aria-labelledby="color-values-title">
+          <h3 id="color-values-title">色值</h3>
+          <dl class="color-value-list" data-color-detail-values></dl>
+        </section>
+        <section class="color-detail-panel" aria-labelledby="color-profile-title">
+          <h3 id="color-profile-title">信息</h3>
+          <dl class="color-profile-list" data-color-detail-profile></dl>
+        </section>
+        <section class="color-detail-panel color-detail-panel-wide" aria-labelledby="color-related-title">
+          <h3 id="color-related-title">配色关系</h3>
+          <div class="color-related-list" data-color-detail-related></div>
+        </section>
+      </div>
+      <div class="color-detail-actions">
+        <span data-color-detail-status aria-live="polite"></span>
+        <a class="button button-secondary" data-color-detail-download href="#" download>
+          <iconify-icon icon="lucide:download" aria-hidden="true"></iconify-icon>
+          下载色卡
+        </a>
+        <a class="button button-secondary" data-color-detail-page href="#">
+          <iconify-icon icon="lucide:external-link" aria-hidden="true"></iconify-icon>
+          详情页
+        </a>
+        <a class="button button-primary" data-color-detail-style href="#">
+          <iconify-icon icon="lucide:panel-top" aria-hidden="true"></iconify-icon>
+          场景试色
+        </a>
+      </div>
+    </dialog>
+
+    <div data-shared-footer></div>
+
+    <script src="assets/js/shared-chrome.js?v=20260616-1" defer></script>
+    <script src="assets/data/images.js?v=20260610-6" defer></script>
+    <script src="assets/data/harmonies.js?v=20260610-6" defer></script>
+    <script src="assets/js/color-search-suggestions.js?v=20260616-3" defer></script>
+    <script src="assets/js/dictionary.js?v=20260616-4" defer></script>
+  </body>
+</html>

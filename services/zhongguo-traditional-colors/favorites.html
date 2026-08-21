@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="集中查看收藏的中国传统色、配色方案、用途卡片、生成器方案和场景试色。">
+    <meta name="theme-color" content="#f7f7f4" data-theme-color>
+    <title>收藏 - 中国传统配色</title>
+    <link rel="canonical" href="https://colors.xiaoxiaodong.ai/favorites.html">
+    <meta name="robots" content="noindex, follow">
+    <link rel="icon" href="favicon.svg?v=20260611-1" type="image/svg+xml">
+    <script>
+      (() => {
+        try {
+          const theme = localStorage.getItem('theme');
+          if (theme === 'dark' || theme === 'light') document.documentElement.dataset.theme = theme;
+        } catch (error) {
+          document.documentElement.dataset.theme = 'light';
+        }
+      })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;500;700&family=Noto+Serif+SC:wght@600;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/css/styles.css?v=20260616-9">
+    <link rel="stylesheet" href="assets/css/palettes.css?v=20260616-1">
+    <link rel="stylesheet" href="assets/css/favorites.css?v=20260612-1">
+    <script src="https://code.iconify.design/iconify-icon/3.0.0/iconify-icon.min.js" defer></script>
+    <script defer data-domain="colors.xiaoxiaodong.ai" src="https://plausible.io/js/script.js"></script>
+  </head>
+  <body data-current-page="favorites">
+    <a class="skip-link" href="#favorites-grid">跳到收藏列表</a>
+    <div data-shared-header></div>
+
+    <main class="favorites-shell">
+      <section class="favorites-head" aria-labelledby="favorites-title">
+        <span class="section-kicker">本机收藏</span>
+        <h1 id="favorites-title">收藏</h1>
+        <p>集中查看你收藏过的色卡、配色方案、用途卡片、生成器方案和场景试色。</p>
+      </section>
+
+      <section class="favorites-toolbar" aria-label="收藏筛选">
+        <div class="favorites-tabs" data-favorite-tabs></div>
+        <button class="favorites-clear" type="button" data-favorites-clear>
+          <iconify-icon icon="lucide:trash-2" aria-hidden="true"></iconify-icon>
+          清空当前类型
+        </button>
+      </section>
+
+      <section class="favorites-meta" aria-live="polite">
+        <span data-favorites-count>正在读取收藏</span>
+      </section>
+
+      <section class="favorites-grid" id="favorites-grid" data-favorites-grid></section>
+    </main>
+
+    <div data-shared-footer></div>
+    <div class="palette-toast" data-toast role="status" aria-live="polite"></div>
+
+    <script src="assets/js/shared-chrome.js?v=20260616-1" defer></script>
+    <script src="assets/js/favorites-store.js?v=20260612-1" defer></script>
+    <script src="assets/js/favorites.js?v=20260612-2" defer></script>
+  </body>
+</html>

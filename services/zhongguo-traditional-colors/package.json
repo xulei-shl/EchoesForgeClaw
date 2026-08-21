@@ -1,0 +1,33 @@
+{
+  "name": "zhongguo-traditional-colors",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Chinese traditional color cards, palette inspiration, and interactive design tools.",
+  "type": "module",
+  "scripts": {
+    "start": "python3 -m http.server 5173",
+    "manifest": "node scripts/build-manifest.mjs",
+    "verify:manifest": "node scripts/verify-manifest-join.mjs",
+    "readme": "node scripts/build-readme.mjs",
+    "harmonies": "node scripts/build-color-harmonies.mjs",
+    "harmony:audit": "node scripts/audit-color-harmonies.mjs",
+    "harmony:uses": "node scripts/build-harmony-use-cases.mjs",
+    "colorpages": "node scripts/build-color-pages.mjs",
+    "verify:colorpages": "node scripts/verify-color-pages.mjs",
+    "verify:contrast": "node scripts/verify-contrast.mjs",
+    "verify:palette-context": "node scripts/verify-palette-context-structure.mjs && node scripts/verify-palette-context-role-model.mjs && node scripts/verify-palette-context-scenes.mjs && node scripts/verify-palette-context-copy-export.mjs && node scripts/verify-palette-context-responsive.mjs",
+    "submit:indexnow": "node scripts/submit-indexnow.mjs",
+    "preview:syntax": "node scripts/build-preview-syntax.mjs",
+    "terminal:audit": "node scripts/verify-terminal-palette.mjs",
+    "package:images": "node scripts/package-images.mjs",
+    "prepare:release": "npm run manifest && npm run verify:manifest && npm run harmonies && npm run harmony:uses && npm run harmony:audit && npm run preview:syntax && npm run colorpages && npm run verify:colorpages && npm run terminal:audit && npm run readme && npm run package:images"
+  },
+  "keywords": [
+    "traditional-colors",
+    "chinese-colors",
+    "color-palette",
+    "design",
+    "中华传统色"
+  ],
+  "license": "MIT"
+}

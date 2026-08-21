@@ -1,0 +1,667 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="把 742 个中国传统色转成设计可用的配色工作台，覆盖选色、落版、Token、品牌、图表和印刷。">
+    <meta name="theme-color" content="#f7f7f4" data-theme-color>
+    <title>中国传统色 Studio - 设计工作台</title>
+    <link rel="canonical" href="https://colors.xiaoxiaodong.ai/skills.html">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="中国传统配色">
+    <meta property="og:title" content="中国传统色 Studio - 设计工作台">
+    <meta property="og:description" content="把 742 个中国传统色转成设计可用的配色工作台，覆盖选色、落版、Token、品牌、图表和印刷。">
+    <meta property="og:url" content="https://colors.xiaoxiaodong.ai/skills.html">
+    <meta property="og:image" content="https://colors.xiaoxiaodong.ai/docs/screenshots/skills.png">
+    <meta property="og:locale" content="zh_CN">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:site" content="@xiaoxiaodong01">
+    <meta name="twitter:title" content="中国传统色 Studio - 设计工作台">
+    <meta name="twitter:description" content="把 742 个中国传统色转成设计可用的配色工作台，覆盖选色、落版、Token、品牌、图表和印刷。">
+    <meta name="twitter:image" content="https://colors.xiaoxiaodong.ai/docs/screenshots/skills.png">
+    <link rel="icon" href="favicon.svg?v=20260610-6" type="image/svg+xml">
+    <script>
+      (() => {
+        try {
+          const theme = localStorage.getItem('theme');
+          if (theme === 'dark' || theme === 'light') {
+            document.documentElement.dataset.theme = theme;
+          }
+        } catch (error) {
+          document.documentElement.dataset.theme = 'light';
+        }
+      })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;500;700&family=Noto+Serif+SC:wght@600;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/css/styles.css?v=20260616-9">
+    <script src="https://code.iconify.design/iconify-icon/3.0.0/iconify-icon.min.js" defer></script>
+    <script defer data-domain="colors.xiaoxiaodong.ai" src="https://plausible.io/js/script.js"></script>
+  </head>
+  <body data-no-gradient-logic data-current-page="skills">
+    <a class="skip-link" href="#skills">跳到 Studio 列表</a>
+
+    <div data-shared-header></div>
+
+    <main id="top">
+      <section class="skills-section" id="skills" aria-labelledby="skills-title">
+        <h1 class="sr-only" id="skills-title">中国传统色 Skills</h1>
+        <nav class="skills-strip" aria-label="Skills 快速索引">
+          <a href="#skill-xxd-color-brief" data-skill-anchor><span>01</span>定方向</a>
+          <a href="#skill-xxd-palette-builder" data-skill-anchor><span>02</span>组色板</a>
+          <a href="#skill-xxd-palette-applier" data-skill-anchor><span>03</span>放版面</a>
+          <a href="#skill-xxd-ui-token" data-skill-anchor><span>04</span>交 token</a>
+          <a href="#skill-xxd-accessible-color" data-skill-anchor><span>05</span>查可读</a>
+          <a href="#skill-xxd-brand-system" data-skill-anchor><span>06</span>定品牌</a>
+          <a href="#skill-xxd-data-viz" data-skill-anchor><span>07</span>做图表</a>
+          <a href="#skill-xxd-existing-design-audit" data-skill-anchor><span>08</span>修旧稿</a>
+          <a href="#skill-xxd-content-series" data-skill-anchor><span>09</span>做系列</a>
+          <a href="#skill-xxd-print-packaging" data-skill-anchor><span>10</span>进生产</a>
+        </nav>
+
+        <details class="skills-install" style="margin:0 auto 1.5rem;max-width:760px;border:1px solid rgba(128,128,128,.35);padding:1rem 1.25rem;">
+          <summary style="cursor:pointer;font-weight:600;">把这些 skill 装进 Claude Code 使用</summary>
+          <p style="margin:.75rem 0 .5rem;opacity:.85;line-height:1.6;">每个 <code>xxd-*</code> 都是 Claude Code 原生 skill（带 frontmatter 的 <code>SKILL.md</code>），复制到个人 skills 目录即可使用。每个 skill 自带完整 <code>references/</code>，无需联网取数据。</p>
+          <pre style="overflow:auto;padding:.85rem 1rem;background:rgba(128,128,128,.12);border:1px solid rgba(128,128,128,.25);font-size:.85rem;line-height:1.6;margin:.5rem 0;"><code># 克隆仓库后，复制需要的 skill（或用 xxd-* 一次全装上）
+git clone https://github.com/nevertoday/zhongguo-traditional-colors.git
+cp -r zhongguo-traditional-colors/skills/xxd-* ~/.claude/skills/</code></pre>
+          <p style="margin:.5rem 0 0;opacity:.85;line-height:1.6;">装好后在 Claude Code 里直接描述任务（例如“用朱砂做一套 UI token”），或调用对应 skill 即可触发。</p>
+        </details>
+
+        <div class="skills-stage">
+          <div class="skills-list" aria-label="中国传统色实战 skills">
+            <article class="skill-item" id="skill-xxd-color-brief" tabindex="-1" data-open="false">
+              <div class="skill-index">01</div>
+              <div class="skill-body">
+                <div class="skill-head">
+                  <iconify-icon icon="lucide:compass" aria-hidden="true"></iconify-icon>
+                  <div>
+                    <span class="skill-phase">定方向</span>
+                    <h3>xxd-color-brief</h3>
+                    <p>把“高级、东方、年轻、不要俗”翻译成冷暖、明度、饱和度、对比和风险边界。</p>
+                    <div class="skill-snapshot">
+                      <span>卡点：只有情绪词和参考图</span>
+                      <span>交付：方向简报 + 起始色</span>
+                      <span>适合：项目启动 / 提案前</span>
+                    </div>
+                    <p class="skill-value">价值：先把“感觉”变成可讨论的判断标准，避免后面所有人拿主观形容词反复拉扯。</p>
+                  </div>
+                </div>
+                <div class="skill-actions">
+                  <button class="skill-toggle" type="button" data-skill-toggle aria-expanded="false" aria-controls="skill-detail-brief">
+                    <span data-skill-toggle-label>展开说明</span>
+                    <iconify-icon icon="lucide:plus" aria-hidden="true"></iconify-icon>
+                  </button>
+                  <a class="skill-doc-link" href="https://github.com/nevertoday/zhongguo-traditional-colors/tree/main/skills/xxd-color-brief" target="_blank" rel="noopener">
+                    GitHub 目录
+                    <iconify-icon icon="lucide:arrow-up-right" aria-hidden="true"></iconify-icon>
+                  </a>
+                </div>
+                <div class="skill-detail" id="skill-detail-brief">
+                  <div class="skill-detail-grid">
+                    <section class="skill-benefit">
+                      <strong>价值</strong>
+                      <p>让客户、设计师和执行者先共享同一套色彩语言，再进入具体色板。</p>
+                    </section>
+                    <section>
+                      <strong>痛点</strong>
+                      <p>项目只有 moodboard、竞品、口头反馈或“高级一点”这类模糊词，直接选色会越选越散。</p>
+                    </section>
+                    <section>
+                      <strong>适合</strong>
+                      <p>品牌启动、活动视觉、课程封面、内容栏目、网站改版的配色方向阶段。</p>
+                    </section>
+                    <section>
+                      <strong>输入</strong>
+                      <p>`/xxd-color-brief` + 项目载体、目标人群、希望气质、必须避开的感觉、参考图或竞品。</p>
+                    </section>
+                    <section>
+                      <strong>产出</strong>
+                      <p>方向决策、约束表、3 到 5 个起始传统色、避坑清单和下一步 Studio。</p>
+                    </section>
+                    <div class="skill-command">
+                      <span>示例触发</span>
+                      <code>/xxd-color-brief 为新中式茶饮品牌做年轻但不俗的配色方向，受众是 20-35 岁女性，避免廉价国潮感</code>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article class="skill-item" id="skill-xxd-palette-builder" tabindex="-1" data-open="false">
+              <div class="skill-index">02</div>
+              <div class="skill-body">
+                <div class="skill-head">
+                  <iconify-icon icon="lucide:palette" aria-hidden="true"></iconify-icon>
+                  <div>
+                    <span class="skill-phase">组色板</span>
+                    <h3>xxd-palette-builder</h3>
+                    <p>从 742 色里筛出能落地的主色、辅色、背景、强调色和替代方案。</p>
+                    <div class="skill-snapshot">
+                      <span>卡点：锚点有了但组合难</span>
+                      <span>交付：主辅点缀 + 比例</span>
+                      <span>适合：官网 / 封面 / PPT / UI</span>
+                    </div>
+                    <p class="skill-value">价值：把“再试几个颜色”变成少量可比较方案，每个颜色都有角色，不只是漂亮 swatch。</p>
+                  </div>
+                </div>
+                <div class="skill-actions">
+                  <button class="skill-toggle" type="button" data-skill-toggle aria-expanded="false" aria-controls="skill-detail-builder">
+                    <span data-skill-toggle-label>展开说明</span>
+                    <iconify-icon icon="lucide:plus" aria-hidden="true"></iconify-icon>
+                  </button>
+                  <a class="skill-doc-link" href="https://github.com/nevertoday/zhongguo-traditional-colors/tree/main/skills/xxd-palette-builder" target="_blank" rel="noopener">
+                    GitHub 目录
+                    <iconify-icon icon="lucide:arrow-up-right" aria-hidden="true"></iconify-icon>
+                  </a>
+                </div>
+                <div class="skill-detail" id="skill-detail-builder">
+                  <div class="skill-detail-grid">
+                    <section class="skill-benefit">
+                      <strong>价值</strong>
+                      <p>让团队不用在几百个传统色里反复试错，直接拿到能比较、能落版的色板。</p>
+                    </section>
+                    <section>
+                      <strong>痛点</strong>
+                      <p>已有色名、HEX 或情绪方向，但不知道哪些颜色能组合，比例和层级也不清楚。</p>
+                    </section>
+                    <section>
+                      <strong>适合</strong>
+                      <p>文化网站、课程封面、品牌提案、PPT、包装、产品 UI 的色板生成。</p>
+                    </section>
+                    <section>
+                      <strong>输入</strong>
+                      <p>`/xxd-palette-builder` + 锚点色、用途、稳妥/醒目倾向、浅深偏好、禁用色或品牌限制。</p>
+                    </section>
+                    <section>
+                      <strong>产出</strong>
+                      <p>主色、辅色、背景、强调、推荐比例、替代色、使用风险和下一步落版建议。</p>
+                    </section>
+                    <div class="skill-command">
+                      <span>示例触发</span>
+                      <code>/xxd-palette-builder 以月白为锚点，为文化类网站首页生成主辅点缀色板，要求安静、有层次、适合长文阅读</code>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article class="skill-item" id="skill-xxd-palette-applier" tabindex="-1" data-open="false">
+              <div class="skill-index">03</div>
+              <div class="skill-body">
+                <div class="skill-head">
+                  <iconify-icon icon="lucide:layout-template" aria-hidden="true"></iconify-icon>
+                  <div>
+                    <span class="skill-phase">放版面</span>
+                    <h3>xxd-palette-applier</h3>
+                    <p>把色板放进真实版面，决定背景、标题、正文、CTA、结构线和装饰色的落点。</p>
+                    <div class="skill-snapshot">
+                      <span>卡点：颜色一上版就互相抢</span>
+                      <span>交付：版面用色地图</span>
+                      <span>适合：首屏 / 长图 / 包装 / PPT</span>
+                    </div>
+                    <p class="skill-value">价值：让颜色服务阅读路径和信息层级，而不是让每个颜色都同时争抢注意力。</p>
+                  </div>
+                </div>
+                <div class="skill-actions">
+                  <button class="skill-toggle" type="button" data-skill-toggle aria-expanded="false" aria-controls="skill-detail-applier">
+                    <span data-skill-toggle-label>展开说明</span>
+                    <iconify-icon icon="lucide:plus" aria-hidden="true"></iconify-icon>
+                  </button>
+                  <a class="skill-doc-link" href="https://github.com/nevertoday/zhongguo-traditional-colors/tree/main/skills/xxd-palette-applier" target="_blank" rel="noopener">
+                    GitHub 目录
+                    <iconify-icon icon="lucide:arrow-up-right" aria-hidden="true"></iconify-icon>
+                  </a>
+                </div>
+                <div class="skill-detail" id="skill-detail-applier">
+                  <div class="skill-detail-grid">
+                    <section class="skill-benefit">
+                      <strong>价值</strong>
+                      <p>把好看的色板翻译成具体版面规则，知道每个颜色该占多大面积、放在哪个层级。</p>
+                    </section>
+                    <section>
+                      <strong>痛点</strong>
+                      <p>swatch 看着高级，一进网页、封面或包装，标题、按钮、背景和装饰就互相抢。</p>
+                    </section>
+                    <section>
+                      <strong>适合</strong>
+                      <p>网页首屏、PPT 封面、课程详情页、文章长图、包装正反面和社媒模板。</p>
+                    </section>
+                    <section>
+                      <strong>输入</strong>
+                      <p>`/xxd-palette-applier` + 已有色板、页面结构、主要信息层级、用户最应该先看到什么。</p>
+                    </section>
+                    <section>
+                      <strong>产出</strong>
+                      <p>背景/内容/行动/结构/细节五类角色、面积比例、版面落点、错误用法和替代建议。</p>
+                    </section>
+                    <div class="skill-command">
+                      <span>示例触发</span>
+                      <code>/xxd-palette-applier 把月白、黛蓝、绛紫、银朱这组传统色用到课程封面和详情页首屏，重点突出报名按钮</code>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article class="skill-item" id="skill-xxd-ui-token" tabindex="-1" data-open="false">
+              <div class="skill-index">04</div>
+              <div class="skill-body">
+                <div class="skill-head">
+                  <iconify-icon icon="lucide:code-2" aria-hidden="true"></iconify-icon>
+                  <div>
+                    <span class="skill-phase">交 token</span>
+                    <h3>xxd-ui-token</h3>
+                    <p>把传统色变成 primitive、semantic、component、mode 四层 UI token。</p>
+                    <div class="skill-snapshot">
+                      <span>卡点：只交 HEX 会失控</span>
+                      <span>交付：CSS / Tailwind / Figma token</span>
+                      <span>适合：网站 / App / 设计系统</span>
+                    </div>
+                    <p class="skill-value">价值：让设计、开发和后续维护共用同一套命名，避免硬编码、状态遗漏和深色模式返工。</p>
+                  </div>
+                </div>
+                <div class="skill-actions">
+                  <button class="skill-toggle" type="button" data-skill-toggle aria-expanded="false" aria-controls="skill-detail-token">
+                    <span data-skill-toggle-label>展开说明</span>
+                    <iconify-icon icon="lucide:plus" aria-hidden="true"></iconify-icon>
+                  </button>
+                  <a class="skill-doc-link" href="https://github.com/nevertoday/zhongguo-traditional-colors/tree/main/skills/xxd-ui-token" target="_blank" rel="noopener">
+                    GitHub 目录
+                    <iconify-icon icon="lucide:arrow-up-right" aria-hidden="true"></iconify-icon>
+                  </a>
+                </div>
+                <div class="skill-detail" id="skill-detail-token">
+                  <div class="skill-detail-grid">
+                    <section class="skill-benefit">
+                      <strong>价值</strong>
+                      <p>把一次配色转成可维护的团队资产，让组件、状态、模式和品牌色共用同一套规则。</p>
+                    </section>
+                    <section>
+                      <strong>痛点</strong>
+                      <p>只给开发一组 HEX，按钮态、边框、背景、焦点、暗色模式很快各写各的。</p>
+                    </section>
+                    <section>
+                      <strong>适合</strong>
+                      <p>网站、App、后台工具、设计系统、Figma variables、Tailwind 主题和组件库。</p>
+                    </section>
+                    <section>
+                      <strong>输入</strong>
+                      <p>`/xxd-ui-token` + 产品类型、已有色板、组件类型、浅深色模式要求、输出格式。</p>
+                    </section>
+                    <section>
+                      <strong>产出</strong>
+                      <p>primitive、semantic、component、mode-aware token，默认 CSS variables，也可转 Tailwind 或 Figma 结构。</p>
+                    </section>
+                    <div class="skill-command">
+                      <span>示例触发</span>
+                      <code>/xxd-ui-token 把这组中国传统色转成官网浅色和暗色模式 CSS variables，包含按钮、边框、背景、文本和焦点态</code>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article class="skill-item" id="skill-xxd-accessible-color" tabindex="-1" data-open="false">
+              <div class="skill-index">05</div>
+              <div class="skill-body">
+                <div class="skill-head">
+                  <iconify-icon icon="lucide:shield-check" aria-hidden="true"></iconify-icon>
+                  <div>
+                    <span class="skill-phase">查可读</span>
+                    <h3>xxd-accessible-color</h3>
+                    <p>检查传统色压在文字、按钮、状态和图表上是否真的读得清。</p>
+                    <div class="skill-snapshot">
+                      <span>卡点：漂亮但不够清晰</span>
+                      <span>交付：对比度 + 同库替代色</span>
+                      <span>适合：上线前 / 交付前</span>
+                    </div>
+                    <p class="skill-value">价值：保留传统色气质，同时照顾真实阅读者、操作状态和无障碍要求。</p>
+                  </div>
+                </div>
+                <div class="skill-actions">
+                  <button class="skill-toggle" type="button" data-skill-toggle aria-expanded="false" aria-controls="skill-detail-accessible">
+                    <span data-skill-toggle-label>展开说明</span>
+                    <iconify-icon icon="lucide:plus" aria-hidden="true"></iconify-icon>
+                  </button>
+                  <a class="skill-doc-link" href="https://github.com/nevertoday/zhongguo-traditional-colors/tree/main/skills/xxd-accessible-color" target="_blank" rel="noopener">
+                    GitHub 目录
+                    <iconify-icon icon="lucide:arrow-up-right" aria-hidden="true"></iconify-icon>
+                  </a>
+                </div>
+                <div class="skill-detail" id="skill-detail-accessible">
+                  <div class="skill-detail-grid">
+                    <section class="skill-benefit">
+                      <strong>价值</strong>
+                      <p>让传统色不只“看起来雅”，也能在正文、按钮、图表和状态提示里被可靠读取。</p>
+                    </section>
+                    <section>
+                      <strong>痛点</strong>
+                      <p>浅背景上的灰绿、粉、黄很容易低对比；图表和状态如果只靠颜色表达，也会丢信息。</p>
+                    </section>
+                    <section>
+                      <strong>适合</strong>
+                      <p>正文、小字、按钮、焦点环、状态色、标签、图表、深色模式和印刷小字。</p>
+                    </section>
+                    <section>
+                      <strong>输入</strong>
+                      <p>`/xxd-accessible-color` + 前景色、背景色、用途、字号、是否要通过 WCAG。</p>
+                    </section>
+                    <section>
+                      <strong>产出</strong>
+                      <p>contrast ratio、通过/条件可用/失败判断、同库替代色、非颜色提示和修复方案。</p>
+                    </section>
+                    <div class="skill-command">
+                      <span>示例触发</span>
+                      <code>/xxd-accessible-color 检查 #F9F4DC 背景上的 #5C2223 正文和按钮文字是否适合网页阅读，并给出同库替代色</code>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article class="skill-item" id="skill-xxd-brand-system" tabindex="-1" data-open="false">
+              <div class="skill-index">06</div>
+              <div class="skill-body">
+                <div class="skill-head">
+                  <iconify-icon icon="lucide:badge-check" aria-hidden="true"></iconify-icon>
+                  <div>
+                    <span class="skill-phase">定品牌</span>
+                    <h3>xxd-brand-system</h3>
+                    <p>把一次好看的传统色方案沉淀成长期品牌规则、比例和禁用组合。</p>
+                    <div class="skill-snapshot">
+                      <span>卡点：每次物料都重新争论</span>
+                      <span>交付：品牌锚点 + 渠道规则</span>
+                      <span>适合：官网 / 包装 / 社媒矩阵</span>
+                    </div>
+                    <p class="skill-value">价值：让团队有长期决策依据，减少活动、海报、官网、包装之间的品牌色漂移。</p>
+                  </div>
+                </div>
+                <div class="skill-actions">
+                  <button class="skill-toggle" type="button" data-skill-toggle aria-expanded="false" aria-controls="skill-detail-brand">
+                    <span data-skill-toggle-label>展开说明</span>
+                    <iconify-icon icon="lucide:plus" aria-hidden="true"></iconify-icon>
+                  </button>
+                  <a class="skill-doc-link" href="https://github.com/nevertoday/zhongguo-traditional-colors/tree/main/skills/xxd-brand-system" target="_blank" rel="noopener">
+                    GitHub 目录
+                    <iconify-icon icon="lucide:arrow-up-right" aria-hidden="true"></iconify-icon>
+                  </a>
+                </div>
+                <div class="skill-detail" id="skill-detail-brand">
+                  <div class="skill-detail-grid">
+                    <section class="skill-benefit">
+                      <strong>价值</strong>
+                      <p>把一次配色从“这张稿好看”升级成品牌系统，明确哪些能变、哪些不能乱变。</p>
+                    </section>
+                    <section>
+                      <strong>痛点</strong>
+                      <p>官网、包装、活动、社媒各自调色，短期热闹，长期识别越来越散。</p>
+                    </section>
+                    <section>
+                      <strong>适合</strong>
+                      <p>品牌升级、产品官网、社媒矩阵、包装系列、内容栏目和长期视觉系统。</p>
+                    </section>
+                    <section>
+                      <strong>输入</strong>
+                      <p>`/xxd-brand-system` + 行业、价格带、目标用户、竞品差异、品牌性格、主要渠道。</p>
+                    </section>
+                    <section>
+                      <strong>产出</strong>
+                      <p>品牌锚点色、支撑色、强调色、默认比例、渠道差异、禁用组合和 token 化建议。</p>
+                    </section>
+                    <div class="skill-command">
+                      <span>示例触发</span>
+                      <code>/xxd-brand-system 为文创香氛品牌建立传统色规范，覆盖官网、包装、小红书封面和线下展陈</code>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article class="skill-item" id="skill-xxd-data-viz" tabindex="-1" data-open="false">
+              <div class="skill-index">07</div>
+              <div class="skill-body">
+                <div class="skill-head">
+                  <iconify-icon icon="lucide:chart-column" aria-hidden="true"></iconify-icon>
+                  <div>
+                    <span class="skill-phase">做图表</span>
+                    <h3>xxd-data-viz</h3>
+                    <p>按数据关系而不是装饰喜好，生成分类、顺序、发散、高亮和状态色方案。</p>
+                    <div class="skill-snapshot">
+                      <span>卡点：海报色板放进图表就乱</span>
+                      <span>交付：ECharts / D3 / Chart.js 色组</span>
+                      <span>适合：报告 / 地图 / 看板</span>
+                    </div>
+                    <p class="skill-value">价值：让读者先看懂数据，再感受到传统色气质；图表颜色首先服务理解。</p>
+                  </div>
+                </div>
+                <div class="skill-actions">
+                  <button class="skill-toggle" type="button" data-skill-toggle aria-expanded="false" aria-controls="skill-detail-data">
+                    <span data-skill-toggle-label>展开说明</span>
+                    <iconify-icon icon="lucide:plus" aria-hidden="true"></iconify-icon>
+                  </button>
+                  <a class="skill-doc-link" href="https://github.com/nevertoday/zhongguo-traditional-colors/tree/main/skills/xxd-data-viz" target="_blank" rel="noopener">
+                    GitHub 目录
+                    <iconify-icon icon="lucide:arrow-up-right" aria-hidden="true"></iconify-icon>
+                  </a>
+                </div>
+                <div class="skill-detail" id="skill-detail-data">
+                  <div class="skill-detail-grid">
+                    <section class="skill-benefit">
+                      <strong>价值</strong>
+                      <p>先判断数据是分类、顺序、发散、高亮还是语义状态，再用传统色做可读的编码。</p>
+                    </section>
+                    <section>
+                      <strong>痛点</strong>
+                      <p>海报配色直接放进图表后，分类分不清、顺序没轻重、正负发散没有中点。</p>
+                    </section>
+                    <section>
+                      <strong>适合</strong>
+                      <p>仪表盘、报告图表、地图、热力图、数据故事、课程数据页和可视化组件。</p>
+                    </section>
+                    <section>
+                      <strong>输入</strong>
+                      <p>`/xxd-data-viz` + 图表类型、系列数量、背景色、数据关系和是否有重点系列。</p>
+                    </section>
+                    <section>
+                      <strong>产出</strong>
+                      <p>分类色数组、顺序色带、发散色带、高亮色、状态色，以及常见图表库可用格式。</p>
+                    </section>
+                    <div class="skill-command">
+                      <span>示例触发</span>
+                      <code>/xxd-data-viz 为 7 个分类和一个高亮系列生成 ECharts 中国传统色数组，背景是浅色，要求分类容易区分</code>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article class="skill-item" id="skill-xxd-existing-design-audit" tabindex="-1" data-open="false">
+              <div class="skill-index">08</div>
+              <div class="skill-body">
+                <div class="skill-head">
+                  <iconify-icon icon="lucide:scan-search" aria-hidden="true"></iconify-icon>
+                  <div>
+                    <span class="skill-phase">修旧稿</span>
+                    <h3>xxd-existing-design-audit</h3>
+                    <p>盘点旧稿、CSS、Figma styles 或散乱 HEX，判断哪些该保留、合并、替换或移除。</p>
+                    <div class="skill-snapshot">
+                      <span>卡点：旧资产里颜色越积越多</span>
+                      <span>交付：映射 + 迁移顺序</span>
+                      <span>适合：改版 / 设计系统清理</span>
+                    </div>
+                    <p class="skill-value">价值：尊重旧项目里已经有效的识别资产，只清理真正造成混乱、重复或难维护的颜色。</p>
+                  </div>
+                </div>
+                <div class="skill-actions">
+                  <button class="skill-toggle" type="button" data-skill-toggle aria-expanded="false" aria-controls="skill-detail-audit">
+                    <span data-skill-toggle-label>展开说明</span>
+                    <iconify-icon icon="lucide:plus" aria-hidden="true"></iconify-icon>
+                  </button>
+                  <a class="skill-doc-link" href="https://github.com/nevertoday/zhongguo-traditional-colors/tree/main/skills/xxd-existing-design-audit" target="_blank" rel="noopener">
+                    GitHub 目录
+                    <iconify-icon icon="lucide:arrow-up-right" aria-hidden="true"></iconify-icon>
+                  </a>
+                </div>
+                <div class="skill-detail" id="skill-detail-audit">
+                  <div class="skill-detail-grid">
+                    <section class="skill-benefit">
+                      <strong>价值</strong>
+                      <p>先做颜色库存和风险诊断，再决定保守修、均衡修，还是进入全系统迁移。</p>
+                    </section>
+                    <section>
+                      <strong>痛点</strong>
+                      <p>旧稿里有重复近似色、临时色、低对比色和没人敢删的历史品牌色。</p>
+                    </section>
+                    <section>
+                      <strong>适合</strong>
+                      <p>旧官网、旧 CSS、Figma styles、历史海报、品牌色表或一串散乱 HEX。</p>
+                    </section>
+                    <section>
+                      <strong>输入</strong>
+                      <p>`/xxd-existing-design-audit` + HEX 清单、截图描述、当前用途、不能轻易改的颜色和迁移程度。</p>
+                    </section>
+                    <section>
+                      <strong>产出</strong>
+                      <p>颜色盘点、相近传统色映射、保留/合并/替换/移除建议、迁移风险和执行顺序。</p>
+                    </section>
+                    <div class="skill-command">
+                      <span>示例触发</span>
+                      <code>/xxd-existing-design-audit 审计这组 CSS 颜色，映射到最接近的中国传统色，并告诉我哪些应该保留或合并</code>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article class="skill-item" id="skill-xxd-content-series" tabindex="-1" data-open="false">
+              <div class="skill-index">09</div>
+              <div class="skill-body">
+                <div class="skill-head">
+                  <iconify-icon icon="lucide:newspaper" aria-hidden="true"></iconify-icon>
+                  <div>
+                    <span class="skill-phase">做系列</span>
+                    <h3>xxd-content-series</h3>
+                    <p>为小红书、公众号、视频封面、课程课件等长期内容建立统一但不疲劳的色彩系统。</p>
+                    <div class="skill-snapshot">
+                      <span>卡点：每期重配会散，固定又会腻</span>
+                      <span>交付：固定层 + 变量层 + 轮换表</span>
+                      <span>适合：内容矩阵 / 栏目模板</span>
+                    </div>
+                    <p class="skill-value">价值：让内容团队稳定生产，既保留栏目识别度，也降低每期重新设计封面和模板的压力。</p>
+                  </div>
+                </div>
+                <div class="skill-actions">
+                  <button class="skill-toggle" type="button" data-skill-toggle aria-expanded="false" aria-controls="skill-detail-content">
+                    <span data-skill-toggle-label>展开说明</span>
+                    <iconify-icon icon="lucide:plus" aria-hidden="true"></iconify-icon>
+                  </button>
+                  <a class="skill-doc-link" href="https://github.com/nevertoday/zhongguo-traditional-colors/tree/main/skills/xxd-content-series" target="_blank" rel="noopener">
+                    GitHub 目录
+                    <iconify-icon icon="lucide:arrow-up-right" aria-hidden="true"></iconify-icon>
+                  </a>
+                </div>
+                <div class="skill-detail" id="skill-detail-content">
+                  <div class="skill-detail-grid">
+                    <section class="skill-benefit">
+                      <strong>价值</strong>
+                      <p>把长期内容拆成固定层、变量层、模板层和特殊期规则，既统一又有变化。</p>
+                    </section>
+                    <section>
+                      <strong>痛点</strong>
+                      <p>每期都换色会丢识别，完全固定又容易疲劳，团队也难长期执行。</p>
+                    </section>
+                    <section>
+                      <strong>适合</strong>
+                      <p>小红书、公众号、视频封面、课程课件、newsletter、栏目海报和长期内容矩阵。</p>
+                    </section>
+                    <section>
+                      <strong>输入</strong>
+                      <p>`/xxd-content-series` + 平台、栏目数量、更新节奏、模板类型、固定元素和可变化元素。</p>
+                    </section>
+                    <section>
+                      <strong>产出</strong>
+                      <p>固定层、变量层、模板层、栏目色、特殊期色、轮换规则和内容生产检查清单。</p>
+                    </section>
+                    <div class="skill-command">
+                      <span>示例触发</span>
+                      <code>/xxd-content-series 为小红书 5 个栏目做统一但不重复的封面色彩系统，每周更新 3 次，要求传统但不老气</code>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article class="skill-item" id="skill-xxd-print-packaging" tabindex="-1" data-open="false">
+              <div class="skill-index">10</div>
+              <div class="skill-body">
+                <div class="skill-head">
+                  <iconify-icon icon="lucide:package-check" aria-hidden="true"></iconify-icon>
+                  <div>
+                    <span class="skill-phase">进生产</span>
+                    <h3>xxd-print-packaging</h3>
+                    <p>把屏幕上的 HEX 推进到材质、CMYK、工艺、货架光线和打样检查。</p>
+                    <div class="skill-snapshot">
+                      <span>卡点：屏幕好看不等于实物可靠</span>
+                      <span>交付：面板计划 + 打样清单</span>
+                      <span>适合：包装 / 书籍 / 礼盒 / 标签</span>
+                    </div>
+                    <p class="skill-value">价值：提前照顾印刷、材质、供应商和最终实物效果，减少交付后才发现色差或小字不可读的成本。</p>
+                  </div>
+                </div>
+                <div class="skill-actions">
+                  <button class="skill-toggle" type="button" data-skill-toggle aria-expanded="false" aria-controls="skill-detail-print">
+                    <span data-skill-toggle-label>展开说明</span>
+                    <iconify-icon icon="lucide:plus" aria-hidden="true"></iconify-icon>
+                  </button>
+                  <a class="skill-doc-link" href="https://github.com/nevertoday/zhongguo-traditional-colors/tree/main/skills/xxd-print-packaging" target="_blank" rel="noopener">
+                    GitHub 目录
+                    <iconify-icon icon="lucide:arrow-up-right" aria-hidden="true"></iconify-icon>
+                  </a>
+                </div>
+                <div class="skill-detail" id="skill-detail-print">
+                  <div class="skill-detail-grid">
+                    <section class="skill-benefit">
+                      <strong>价值</strong>
+                      <p>把屏幕配色翻译成生产前能讨论的约束，而不是把 HEX 直接当最终印刷值。</p>
+                    </section>
+                    <section>
+                      <strong>痛点</strong>
+                      <p>CMYK、纸张、油墨、覆膜、烫金、材质纹理、光线和货架环境都会改变最终观感。</p>
+                    </section>
+                    <section>
+                      <strong>适合</strong>
+                      <p>包装、书籍、礼盒、文创、标签、实体材料、展陈和需要跟印刷方沟通的项目。</p>
+                    </section>
+                    <section>
+                      <strong>输入</strong>
+                      <p>`/xxd-print-packaging` + 品类、材质、工艺、预算/价格带、系列数量、专色和条码要求。</p>
+                    </section>
+                    <section>
+                      <strong>产出</strong>
+                      <p>正背侧面板用色、系列变体规则、CMYK 风险、材质建议、小字和条码提醒、打样检查清单。</p>
+                    </section>
+                    <div class="skill-command">
+                      <span>示例触发</span>
+                      <code>/xxd-print-packaging 为茶叶礼盒规划传统色、系列变体和印刷打样清单，材质是哑粉纸加局部烫金</code>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div data-shared-footer></div>
+
+    <script src="assets/js/shared-chrome.js?v=20260616-1" defer></script>
+    <script src="assets/js/favorites-store.js?v=20260612-1" defer></script>
+    <script src="assets/data/images.js?v=20260610-6" defer></script>
+    <script src="assets/data/harmonies.js?v=20260610-6" defer></script>
+    <script src="assets/data/harmony-usage.js?v=20260610-6" defer></script>
+    <script src="assets/js/app.js?v=20260616-3" defer></script>
+  </body>
+</html>

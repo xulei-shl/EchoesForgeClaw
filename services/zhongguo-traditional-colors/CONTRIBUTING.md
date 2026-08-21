@@ -1,0 +1,81 @@
+# 贡献指南
+
+感谢你愿意参与中国传统配色项目。这个项目的目标是让传统色资料更容易被学习、引用和复用，因此贡献不只包括代码，也包括色卡校勘、资料来源、知识补充和教学说明。
+
+## 可以贡献什么
+
+- 新增传统色色卡图片。
+- 修正色名、HEX、RGB、CMYK 或配色推荐。
+- 补充色名出处、文献线索、器物来源或使用场景。
+- 改进页面体验、可访问性、移动端展示和下载流程。
+- 完善 README、图片打包说明和教学内容。
+
+## 新增色卡
+
+1. 将图片放入 `images/`，命名必须为 `NNN-色名.ext`（三位数字编号 + 色名）。
+2. 图片建议为 PNG、JPG、JPEG 或 WEBP。
+3. **在 `docs/chinese-color-master-list.md` 的颜色清单里增加对应行 `色名 #HEX`**，顺序与编号一致——这是色彩真相源，缺了这一步构建会直接 `exit 1`。文件名里的色名必须与清单同位置的色名完全一致，否则会报 `name drift`。
+4. 单张图片应包含色名、色值和必要说明，保持与现有色卡接近的视觉规格。
+5. 避免提交 `.DS_Store`、临时文件和重复图片。
+6. 生成拼音：`python scripts/build-pinyin.py`（需 `pip install pypinyin`）。这会更新 `docs/chinese-color-pinyin.json`；`npm run manifest` 现在要求每个色名都有拼音，缺了会报错。若是多音字，复核 `scripts/build-pinyin.py` 里的 `CHAR_OVERRIDES` 表。
+7. 若新色名引入了新汉字，重新生成字体子集：`python scripts/build-font-subset.py`（需 `pip install fonttools brotli`）。
+8. 运行 `npm run manifest` 更新图片清单（会校验图片、清单、拼音一一对应）。
+9. 打开页面检查新增图片是否能正常显示。
+
+## 命名建议
+
+当前图片文件名保留了早期生成记录，后续可以逐步整理为更可读的格式：
+
+```text
+颜色名-hex-批次.png
+```
+
+示例：
+
+```text
+水牛灰-2f2f35-2026a.png
+```
+
+如果一次性重命名大量图片，请在提交说明中写清楚规则，方便审阅者确认不是误删重传。
+
+## 下载包
+
+ZIP 下载包不建议直接提交到仓库。维护者可以运行：
+
+```bash
+npm run package:images
+```
+
+然后把 `downloads/zhongguo-traditional-colors-images.zip` 上传为 GitHub Release 附件。
+
+## 提交前检查
+
+如果改动涉及色卡、配色或任何生成产物，先重建并校验，再提交生成结果（CI 会用同一套检查拦截未重建/未提交的产物漂移）：
+
+```bash
+npm run prepare:release   # 重建 images.js / harmonies / 色卡页 / 分享卡 / README 等
+npm run verify:manifest   # 校验图片清单与 742 色清单一一对应
+npm run start             # 本地预览
+```
+
+检查项：
+
+- 首屏能显示真实色卡。
+- 图库能加载更多。
+- 单张下载链接可用。
+- 浏览器端 ZIP 按钮能开始读取图片。
+- README 和文档中的数量、路径和命令保持一致。
+- `git status` 干净——所有重新生成的产物都已提交（否则 CI 的产物漂移检查会失败）。
+
+## Pull Request 说明
+
+请在 PR 中说明：
+
+- 这次改动解决了什么问题。
+- 新增或修改了多少张图片。
+- 是否更新了 `assets/data/images.js`。
+- 是否运行过页面预览或下载包脚本。
+
+## 色值说明
+
+传统色没有唯一标准答案。同名颜色可能因时代、器物、资料来源和媒介转换而产生差异。提交校勘时，请尽量附上来源或判断依据。

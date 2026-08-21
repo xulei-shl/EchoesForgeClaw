@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="中华传统色演示、色卡浏览、配色灵感与素材下载开源项目。">
+    <meta name="theme-color" content="#f7f7f4" data-theme-color>
+    <title>中国传统配色 - 中华传统色色卡资料馆</title>
+    <link rel="canonical" href="https://colors.xiaoxiaodong.ai/">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="中国传统配色">
+    <meta property="og:title" content="中国传统配色 - 中华传统色色卡资料馆">
+    <meta property="og:description" content="742 张中华传统色高清色卡，含 HEX/RGB/CMYK、配色关系与设计工具。查色、试色、生成色板，一页完成。">
+    <meta property="og:url" content="https://colors.xiaoxiaodong.ai/">
+    <meta property="og:image" content="https://colors.xiaoxiaodong.ai/docs/screenshots/home-gallery.png">
+    <meta property="og:locale" content="zh_CN">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:site" content="@xiaoxiaodong01">
+    <meta name="twitter:title" content="中国传统配色 - 中华传统色色卡资料馆">
+    <meta name="twitter:description" content="742 张中华传统色高清色卡，含 HEX/RGB/CMYK、配色关系与设计工具。">
+    <meta name="twitter:image" content="https://colors.xiaoxiaodong.ai/docs/screenshots/home-gallery.png">
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"中国传统配色","alternateName":"中华传统色色卡资料馆","url":"https://colors.xiaoxiaodong.ai/","inLanguage":"zh-CN","description":"742 张中华传统色高清色卡，含 HEX/RGB/CMYK、配色关系与设计工具。","publisher":{"@id":"https://colors.xiaoxiaodong.ai/#org"},"author":{"@id":"https://colors.xiaoxiaodong.ai/#person"},"potentialAction":{"@type":"SearchAction","target":{"@type":"EntryPoint","urlTemplate":"https://colors.xiaoxiaodong.ai/dictionary.html?q={search_term_string}"},"query-input":"required name=search_term_string"}}</script>
+    <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://colors.xiaoxiaodong.ai/#org","name":"中国传统配色","alternateName":"中华传统色色卡资料馆","url":"https://colors.xiaoxiaodong.ai/","logo":{"@type":"ImageObject","url":"https://colors.xiaoxiaodong.ai/favicon.svg"},"sameAs":["https://github.com/nevertoday/zhongguo-traditional-colors","https://x.com/xiaoxiaodong01"]},{"@type":"Person","@id":"https://colors.xiaoxiaodong.ai/#person","name":"小小东","url":"https://colors.xiaoxiaodong.ai/","sameAs":["https://x.com/xiaoxiaodong01","https://github.com/nevertoday/zhongguo-traditional-colors"]}]}</script>
+    <link rel="icon" href="favicon.svg?v=20260610-6" type="image/svg+xml">
+    <script>
+      (() => {
+        try {
+          const theme = localStorage.getItem('theme');
+          if (theme === 'dark' || theme === 'light') {
+            document.documentElement.dataset.theme = theme;
+          }
+        } catch (error) {
+          document.documentElement.dataset.theme = 'light';
+        }
+      })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;500;700&family=Noto+Serif+SC:wght@600;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/css/styles.css?v=20260616-10">
+    <link rel="stylesheet" href="assets/css/color-suggestions.css?v=20260616-3">
+    <script src="https://code.iconify.design/iconify-icon/3.0.0/iconify-icon.min.js" defer></script>
+    <!-- Privacy-friendly, cookieless analytics. Requires a Plausible account (or self-host) for the domain to collect data. -->
+    <script defer data-domain="colors.xiaoxiaodong.ai" src="https://plausible.io/js/script.js"></script>
+  </head>
+  <body data-current-page="home">
+    <a class="skip-link" href="#gallery">跳到色卡列表</a>
+
+    <div data-shared-header></div>
+
+    <main id="top">
+      <section class="hero-section" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow">小小东整理维护</p>
+          <h1 id="hero-title">中国传统配色</h1>
+          <p class="hero-lede">
+            742 张传统色色卡。查色、复制、下载、配色，一页完成。
+          </p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="colors/">
+              <iconify-icon icon="lucide:list-tree" aria-hidden="true"></iconify-icon>
+              中国传统色大全
+            </a>
+            <a class="button button-secondary" href="#gallery">
+              <iconify-icon icon="lucide:images" aria-hidden="true"></iconify-icon>
+              浏览色卡
+            </a>
+            <a class="button button-secondary" href="https://github.com/nevertoday/zhongguo-traditional-colors/releases/latest/download/zhongguo-traditional-colors-images.zip">
+              <iconify-icon icon="lucide:download" aria-hidden="true"></iconify-icon>
+              直接下载 ZIP
+            </a>
+          </div>
+          <div class="hero-proof" aria-label="项目维护信息">
+            <span>作者：小小东</span>
+            <span>MIT 开源</span>
+            <span>742 色完整覆盖</span>
+            <span>Release ZIP 附件</span>
+          </div>
+          <dl class="hero-stats">
+            <div>
+              <dt data-count>742</dt>
+              <dd>当前色卡</dd>
+            </div>
+            <div>
+              <dt data-total-size>998 MB</dt>
+              <dd>图片资产</dd>
+            </div>
+            <div>
+              <dt>742</dt>
+              <dd>原始清单</dd>
+            </div>
+          </dl>
+        </div>
+
+        <div class="hero-gallery" aria-label="传统色色卡预览">
+          <div class="ink-panel">
+            <div class="mosaic" data-hero-mosaic></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="support-section" id="support" aria-label="赞赏小小东">
+        <aside class="support-panel">
+          <div class="support-copy">
+            <span class="section-kicker">支持作者</span>
+            <h2>支持维护</h2>
+            <p>微信、支付宝，或海外 Buy Me a Coffee。</p>
+          </div>
+          <div class="support-qr-list">
+            <figure class="support-qr">
+              <img src="docs/images/wechat-reward-qr.png" alt="微信打赏小小东的二维码" width="220" height="220">
+              <figcaption>微信</figcaption>
+            </figure>
+            <figure class="support-qr">
+              <img src="docs/images/alipay-reward-qr.png" alt="支付宝打赏小小东的二维码" width="220" height="220">
+              <figcaption>支付宝</figcaption>
+            </figure>
+            <figure class="support-qr">
+              <img src="docs/images/buy-me-a-coffee-qr.png" alt="通过 Buy Me a Coffee 请小小东喝咖啡的二维码" width="220" height="220">
+              <figcaption>请喝咖啡</figcaption>
+            </figure>
+          </div>
+        </aside>
+      </section>
+
+      <section class="section-shell gallery-section" id="gallery" aria-labelledby="gallery-title">
+        <h2 class="sr-only" id="gallery-title">色卡资料库</h2>
+
+        <div class="toolbar" aria-label="色卡工具">
+          <label class="search-box">
+            <span class="sr-only">检索</span>
+            <iconify-icon icon="lucide:search" aria-hidden="true"></iconify-icon>
+            <input type="search" data-search data-color-suggest placeholder="搜索色名 / 编号 / HEX" autocomplete="off">
+          </label>
+          <button class="tool-button shuffle-tool-button" type="button" data-shuffle>
+            <iconify-icon icon="lucide:shuffle" aria-hidden="true"></iconify-icon>
+            随机换组
+          </button>
+          <label class="hue-filter">
+            <span class="sr-only">按色相筛选</span>
+            <select data-hue-filter>
+              <option value="all">全部色相</option>
+              <option value="red">红色系</option>
+              <option value="orange">橙色系</option>
+              <option value="yellow">黄色系</option>
+              <option value="green">绿色系</option>
+              <option value="cyan">青色系</option>
+              <option value="blue">蓝色系</option>
+              <option value="purple">紫色系</option>
+              <option value="neutral">中性色</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="gallery-grid" data-gallery></div>
+        <div class="gallery-footer">
+          <p data-gallery-status></p>
+          <button class="button button-secondary" type="button" data-load-more>
+            <iconify-icon icon="lucide:chevron-down" aria-hidden="true"></iconify-icon>
+            加载更多
+          </button>
+        </div>
+      </section>
+
+      <section class="audit-section" id="audit" aria-labelledby="audit-title">
+        <div class="section-heading">
+          <span class="section-kicker">覆盖情况</span>
+          <h2 id="audit-title">清单完整覆盖</h2>
+          <p>742 色已入库。文件名、色值、图片一一对应。</p>
+        </div>
+
+        <div class="audit-workspace">
+          <div class="audit-summary">
+            <span>742 / 742 已入库</span>
+            <h3>清单、图片、色值已对应</h3>
+            <p><code>NNN-颜色名.png</code> 对应原始清单，方便检索和校对。</p>
+          </div>
+          <div class="audit-grid" aria-label="颜色清单审计摘要">
+            <article>
+              <span>色名</span>
+              <strong data-count>742</strong>
+              <small>与完整清单对应</small>
+            </article>
+            <article>
+              <span>图片</span>
+              <strong data-total-size>998 MB</strong>
+              <small>保留高清原图</small>
+            </article>
+            <article>
+              <span>复制</span>
+              <strong>4</strong>
+              <small>HEX / RGB / HSL / CMYK</small>
+            </article>
+            <article>
+              <span>下载</span>
+              <strong>ZIP</strong>
+              <small>整包直接下载</small>
+            </article>
+          </div>
+          <button class="archive-trigger" type="button" data-open-master-list>
+            <span class="archive-trigger-top">
+              <span>色值索引</span>
+              <iconify-icon icon="lucide:list-filter" aria-hidden="true"></iconify-icon>
+            </span>
+            <span class="archive-trigger-body">
+              <span class="archive-trigger-copy">
+                <strong>打开完整色值索引</strong>
+                <small>按编号、色名或 HEX 检索，复制单色或整份清单。</small>
+              </span>
+            </span>
+            <span class="archive-trigger-action">
+              查看清单
+              <iconify-icon icon="lucide:arrow-right" aria-hidden="true"></iconify-icon>
+            </span>
+          </button>
+        </div>
+      </section>
+
+      <section class="author-section" id="author" aria-labelledby="author-title">
+        <div class="author-copy">
+          <div class="author-heading">
+            <span class="section-kicker">作者</span>
+            <span>Maintainer / 2026</span>
+          </div>
+          <h2 id="author-title">小小东</h2>
+          <p class="author-role">中国传统配色整理维护者</p>
+          <p class="author-statement">
+            免费开源，持续维护。
+          </p>
+          <dl class="author-meta" aria-label="作者信息">
+            <div>
+              <dt>X</dt>
+              <dd>@xiaoxiaodong01</dd>
+            </div>
+            <div>
+              <dt>项目</dt>
+              <dd>742 色开放资料库</dd>
+            </div>
+          </dl>
+          <div class="author-actions">
+            <a class="button button-primary" href="https://x.com/xiaoxiaodong01">
+              <iconify-icon icon="lucide:external-link" aria-hidden="true"></iconify-icon>
+              X 主页
+            </a>
+            <a class="button button-secondary" href="https://github.com/nevertoday/zhongguo-traditional-colors">
+              <iconify-icon icon="simple-icons:github" aria-hidden="true"></iconify-icon>
+              GitHub
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <section class="open-section" id="open-source" aria-labelledby="open-title">
+        <div class="section-heading">
+          <span class="section-kicker">颜色工具</span>
+          <h2 id="open-title">围绕中国色的一组工作台</h2>
+          <p>查色、试场景、找配色、看渐变、跑 Studio，再下载资料。</p>
+        </div>
+        <div class="open-workbench" aria-label="中国传统色工具入口">
+          <a class="open-primary" href="#gallery" data-open-number="00">
+            <span class="open-primary-top">
+              <span>工具入口</span>
+              <iconify-icon icon="lucide:layout-dashboard" aria-hidden="true"></iconify-icon>
+            </span>
+            <strong>先选颜色，再决定用法</strong>
+            <p>从 742 个传统色出发，复制色值、切换使用场景、查看配色关系和渐变路径，最后带走素材或交给工作流继续处理。</p>
+            <dl class="open-primary-stats" aria-label="工具覆盖范围">
+              <div>
+                <dt>742</dt>
+                <dd>传统色</dd>
+              </div>
+              <div>
+                <dt>12</dt>
+                <dd>配色关系</dd>
+              </div>
+              <div>
+                <dt>6</dt>
+                <dd>落地场景</dd>
+              </div>
+              <div>
+                <dt>10</dt>
+                <dd>Studio</dd>
+              </div>
+            </dl>
+            <em>进入色卡资料库</em>
+          </a>
+          <div class="open-steps" aria-label="中国色工具列表">
+            <a class="open-step" href="style-lab.html" data-open-number="01">
+              <span class="open-step-index">01</span>
+              <iconify-icon icon="lucide:panel-top" aria-hidden="true"></iconify-icon>
+              <span>
+                <strong>场景试色</strong>
+                <small>把主色放进网页、PPT、封面、海报、品牌和社媒图里看落位。</small>
+              </span>
+              <em>打开工作台</em>
+            </a>
+            <a class="open-step" href="palettes.html" data-open-number="02">
+              <span class="open-step-index">02</span>
+              <iconify-icon icon="lucide:palette" aria-hidden="true"></iconify-icon>
+              <span>
+                <strong>配色灵感</strong>
+                <small>按同类、邻近、互补、三角等关系筛选和复制整组配色。</small>
+              </span>
+              <em>浏览配色</em>
+            </a>
+            <a class="open-step" href="generator.html" data-open-number="03">
+              <span class="open-step-index">03</span>
+              <iconify-icon icon="lucide:sparkles" aria-hidden="true"></iconify-icon>
+              <span>
+                <strong>配色生成</strong>
+                <small>五列铺开生成中国色方案，支持锁定、替换、查看和导出。</small>
+              </span>
+              <em>进入生成器</em>
+            </a>
+            <a class="open-step" href="gradients.html" data-open-number="04">
+              <span class="open-step-index">04</span>
+              <iconify-icon icon="lucide:blend" aria-hidden="true"></iconify-icon>
+              <span>
+                <strong>渐变逻辑</strong>
+                <small>每个传统色生成浅阶、本色、邻近、深阶、双色和渐变路径。</small>
+              </span>
+              <em>查看渐变</em>
+            </a>
+            <a class="open-step" href="skills.html" data-open-number="05">
+              <span class="open-step-index">05</span>
+              <iconify-icon icon="lucide:workflow" aria-hidden="true"></iconify-icon>
+              <span>
+                <strong>Studio / Skills</strong>
+                <small>面向品牌、包装、内容系列和可访问性的 10 个实战工具。</small>
+              </span>
+              <em>进入 Studio</em>
+            </a>
+            <a class="open-step" href="https://github.com/nevertoday/zhongguo-traditional-colors/releases/latest/download/zhongguo-traditional-colors-images.zip" data-open-number="06">
+              <span class="open-step-index">06</span>
+              <iconify-icon icon="lucide:archive" aria-hidden="true"></iconify-icon>
+              <span>
+                <strong>资料出口</strong>
+                <small>下载完整 ZIP，或在资料库里查看原始色值清单。</small>
+              </span>
+              <em>下载 ZIP</em>
+            </a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div data-shared-footer></div>
+
+    <nav class="scroll-rail" aria-label="页面滚动">
+      <button class="scroll-control" type="button" data-scroll-up aria-label="滚动到上一个区块">
+        <iconify-icon icon="lucide:arrow-up" aria-hidden="true"></iconify-icon>
+      </button>
+      <button class="scroll-control" type="button" data-scroll-down aria-label="滚动到下一个区块">
+        <iconify-icon icon="lucide:arrow-down" aria-hidden="true"></iconify-icon>
+      </button>
+    </nav>
+
+    <dialog class="hero-preview-dialog" data-hero-preview-dialog>
+      <button class="dialog-close hero-preview-close" type="button" data-close-hero-preview aria-label="关闭色卡信息">
+        <iconify-icon icon="lucide:x" aria-hidden="true"></iconify-icon>
+      </button>
+      <div class="hero-preview-media">
+        <img alt="" data-hero-preview-image>
+      </div>
+      <div class="hero-preview-content">
+        <span class="section-kicker">胶片色卡</span>
+        <h2 data-hero-preview-title></h2>
+        <dl class="hero-preview-facts">
+          <div>
+            <dt>HEX</dt>
+            <dd data-hero-preview-hex></dd>
+          </div>
+          <div>
+            <dt>属性</dt>
+            <dd data-hero-preview-hue></dd>
+          </div>
+          <div>
+            <dt>大小</dt>
+            <dd data-hero-preview-size></dd>
+          </div>
+        </dl>
+        <div class="hero-preview-actions">
+          <label class="hero-preview-format">
+            <span class="sr-only">选择复制色值类型</span>
+            <select data-hero-preview-format aria-label="复制色值类型">
+              <option value="hex">HEX</option>
+              <option value="rgb">RGB</option>
+              <option value="hsl">HSL</option>
+              <option value="cmyk">CMYK</option>
+            </select>
+          </label>
+          <button class="button button-primary" type="button" data-copy-hero-preview>
+            <iconify-icon icon="lucide:copy" aria-hidden="true"></iconify-icon>
+            复制色值
+          </button>
+          <button class="button button-secondary" type="button" data-use-preview-color>
+            <iconify-icon icon="lucide:wand-sparkles" aria-hidden="true"></iconify-icon>
+            进入实验区
+          </button>
+          <a class="button button-secondary" data-hero-preview-download download>
+            <iconify-icon icon="lucide:download" aria-hidden="true"></iconify-icon>
+            下载原图
+          </a>
+        </div>
+        <div class="hero-preview-guide" data-preview-left-guide aria-label="当前色卡实用规范"></div>
+        <section class="hero-preview-harmony" data-hero-preview-harmony aria-label="传统色配色关系">
+          <div class="harmony-summary">
+            <div>
+              <span class="section-kicker">配色建议</span>
+              <h3>这组颜色可以这样用</h3>
+            </div>
+            <p data-hero-preview-harmony-note></p>
+          </div>
+          <div class="harmony-role-strip" data-hero-preview-role-map></div>
+          <div class="harmony-method" aria-label="配色推导依据">
+            <strong>怎么选出来</strong>
+            <p>从 742 色里按关系、明暗、饱和度挑选。仅作起稿参考。</p>
+          </div>
+          <div class="harmony-tab-head">
+            <strong>换一个搭配目的</strong>
+            <span>想更统一、更突出或更轻一点，就在这里切换。</span>
+          </div>
+          <div class="harmony-tabs" role="tablist" aria-label="切换配色关系" data-harmony-tabs></div>
+          <div class="harmony-panel" data-harmony-panel></div>
+        </section>
+        <span class="hero-preview-status" data-hero-preview-status aria-live="polite"></span>
+      </div>
+    </dialog>
+
+    <dialog class="master-list-dialog" data-master-list-dialog>
+      <div class="master-list-head">
+        <div>
+          <span class="section-kicker">原始清单</span>
+          <h2>742 色预览</h2>
+          <p>检索、复制单色或整份清单。</p>
+        </div>
+        <button class="dialog-close master-close" type="button" data-close-master-list aria-label="关闭颜色清单">
+          <iconify-icon icon="lucide:x" aria-hidden="true"></iconify-icon>
+        </button>
+      </div>
+      <div class="master-list-actions">
+        <label class="master-search">
+          <span class="sr-only">检索 742 色清单</span>
+          <iconify-icon icon="lucide:search" aria-hidden="true"></iconify-icon>
+          <input type="search" data-master-search data-color-suggest placeholder="检索编号 / 色名 / HEX" autocomplete="off">
+        </label>
+        <button class="master-copy-button" type="button" data-copy-master-list>
+          <iconify-icon icon="lucide:copy" aria-hidden="true"></iconify-icon>
+          复制 742 色
+        </button>
+        <span data-master-list-status>742 个颜色</span>
+      </div>
+      <div class="master-color-list" data-master-color-list></div>
+    </dialog>
+
+    <script src="assets/js/shared-chrome.js?v=20260616-1" defer></script>
+    <script src="assets/js/favorites-store.js?v=20260612-1" defer></script>
+    <script src="assets/data/images.js?v=20260610-6" defer></script>
+    <script src="assets/data/harmonies.js?v=20260610-6" defer></script>
+    <script src="assets/js/color-search-suggestions.js?v=20260616-3" defer></script>
+    <script src="assets/data/harmony-usage.js?v=20260610-6" defer></script>
+    <script src="assets/js/app.js?v=20260617-1" defer></script>
+  </body>
+</html>
