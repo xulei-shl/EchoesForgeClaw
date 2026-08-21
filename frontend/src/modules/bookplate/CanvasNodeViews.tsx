@@ -21,6 +21,7 @@ import { ArtImageSearchNode, type GlamSearchSelection } from '../../modules/mult
 import { ReceiptPrinterNode } from '../../modules/multimodal/components/ReceiptPrinterNode';
 import { StampCutterNode } from '../../modules/multimodal/components/StampCutterNode';
 import { MapArtNode } from '../../modules/multimodal/components/MapArtNode';
+import { PatternSearchNode, type PatternItem } from '../../modules/multimodal/components/PatternSearchNode';
 import { MAP_POSTER_DEFAULTS } from '../../modules/multimodal/map/defaults';
 import { MAP_ART_DEFAULTS } from '../../modules/multimodal/map/art-defaults';
 import {
@@ -124,6 +125,10 @@ export interface NodeViewHelpers {
   handleSelectGlamImageFor: (id: string, url: string, meta: GlamSearchSelection) => Promise<void>;
   /** 艺术图片检索节点：编辑器状态（provider 等）写入 node.data（仅持久化，不记撤销历史） */
   handleUpdateGlamEditorFor: (id: string, patch: Record<string, any>, undoable?: boolean) => void;
+  /** 中国传统纹样检索节点：选中纹样 → 下载到本地并获取详情文本 → 写回 node.data */
+  handleSelectPatternFor: (id: string, pattern: PatternItem) => Promise<void>;
+  /** 中国传统纹样检索节点：编辑器状态（category 等）写入 node.data（仅持久化，不记撤销历史） */
+  handleUpdatePatternEditorFor: (id: string, patch: Record<string, any>, undoable?: boolean) => void;
   /** 图书小票生成节点：导出 PNG data URL 落盘（保存到后端 + 记录数据库历史 + 写回 node.data） */
   handleExportReceiptFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   /** 图书小票生成节点：状态更新写入 node.data（持久化） */
@@ -746,6 +751,29 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           mismatchBadge={mismatchBadge}
           onUpdateState={h.handleUpdateStampStateFor}
           onExport={h.handleExportStampFor}
+        />
+      );
+    }
+
+    case 'pattern_search': {
+      const d = node.data ?? {};
+      // 连线即输入：文本输出上级内容作为检索关键词（优先于手动输入）
+      const upstreamKeyword =
+        collectNodeInputs(node, h.nodes, h.edges, h.portTypesOf)
+          .text.map((p) => nodeOutputText(p))
+          .find((v) => v.trim()) ?? '';
+      return (
+        <PatternSearchNode
+          key={node.id}
+          {...common}
+          imageUrl={typeof d.imageUrl === 'string' ? d.imageUrl : null}
+          selectedPattern={d.selectedPattern ?? null}
+          category={typeof d.category === 'string' ? d.category : ''}
+          upstreamKeyword={upstreamKeyword}
+          error={d.error ?? null}
+          hasDownstream={hasDownstreamOf(node, h.edges)}
+          onSelectPattern={h.handleSelectPatternFor}
+          onUpdateEditor={h.handleUpdatePatternEditorFor}
         />
       );
     }

@@ -11,6 +11,7 @@ import type { ZhihuSearchRequest } from './components/ZhihuSearchNode';
 import type { WikipediaSearchRequest } from './components/WikipediaSearchNode';
 import type { TranslationRequest } from './components/TextTranslationNode';
 import type { WebSearchRequest } from './components/WebSearchNode';
+import type { PatternItem } from '../multimodal/components/PatternSearchNode';
 import { resolveReferenceImage, collectNodeInputs, DEFAULT_RUN_SETTINGS } from './execution';
 
 export interface NodeHandlersDeps {
@@ -1157,6 +1158,75 @@ export function useNodeHandlers({
       // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** 中国传统纹样检索节点：编辑器状态（category 等）写入 node.data（仅持久化，不记撤销历史） */
+  const handleUpdatePatternEditorFor = useCallback(
+    (id: string, patch: Record<string, any>, undoable = false) => {
+      const node = nodesRef.current.find((n) => n.id === id);
+      if (!node || node.type !== 'pattern_search') return;
+      const cur = node.data ?? {};
+      let changed = false;
+      for (const [k, v] of Object.entries(patch)) {
+        if (cur[k] !== v) {
+          changed = true;
+          break;
+        }
+      }
+      if (!changed) return;
+      if (undoable) recordHistory();
+      updateNodeData(id, patch);
+      // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** 中国传统纹样检索节点：选中一款纹样 → 下载图片到 search-images 并获取详情 MD → 写入 node.data (imageUrl + output) */
+  const handleSelectPatternFor = useCallback(
+    async (id: string, pattern: PatternItem) => {
+      const node = nodesRef.current.find((n) => n.id === id);
+      if (!node || node.type !== 'pattern_search') return;
+      updateNodeData(id, { error: null });
+
+      try {
+        const res: any = await api.post(
+          '/modules/bookplate/pattern-search/save',
+          {
+            id: pattern.id,
+            image_url: pattern.full_image_url || pattern.preview_url || pattern.thumb_url,
+          },
+          { timeout: SMALL_TOOL_TIMEOUT_MS }
+        );
+
+        const imageUrl = typeof res?.image_url === 'string' ? res.image_url : '';
+        if (!imageUrl) throw new Error('保存纹样图片失败');
+
+        const detailMarkdown = typeof res?.detail_markdown === 'string' ? res.detail_markdown : '';
+
+        recordHistory();
+        updateNodeData(id, {
+          imageUrl,
+          output: detailMarkdown,
+          selectedPattern: {
+            id: pattern.id,
+            name_cn: pattern.name_cn,
+            name_en: pattern.name_en,
+            category: pattern.category,
+            summary: pattern.summary,
+            meaning: pattern.meaning,
+            visual_keywords: pattern.visual_keywords,
+            full_image_url: pattern.full_image_url,
+          },
+          error: null,
+        });
+      } catch (error: any) {
+        console.error('Failed to save pattern:', error);
+        updateNodeData(id, {
+          error: error?.isTimeout ? '纹样保存超时，请重试' : error?.detail || '纹样保存失败，请重试',
+        });
+        throw error;
+      }
+      // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /** 提示词检索节点：选用一条 Bifrost 提示词（正文写入 data.content；未变化不记历史） */
   const handleUpdatePromptFor = useCallback(
     (id: string, selection: PromptSelection) => {
@@ -1328,6 +1398,8 @@ export function useNodeHandlers({
     handleUpdateImageSearchEditorFor,
     handleSelectGlamImageFor,
     handleUpdateGlamEditorFor,
+    handleSelectPatternFor,
+    handleUpdatePatternEditorFor,
     handleUpdatePromptFor,
     handleUpdateAggregateTemplateFor,
     handleRenameAggregatePlaceholderFor,

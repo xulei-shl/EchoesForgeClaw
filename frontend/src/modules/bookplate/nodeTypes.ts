@@ -27,6 +27,7 @@ export const NODE_DEFAULT_SIZES: Record<CanvasNodeType, { width: number; height:
   receipt_printer: { width: 440, height: 640 },
   stamp_cutter: { width: 440, height: 560 },
   map_art: { width: 460, height: 560 },
+  pattern_search: { width: 440, height: 560 },
 };
 
 /** 节点的主题色（用于左上角指示圆点） */
@@ -54,6 +55,7 @@ export const NODE_COLORS: Record<CanvasNodeType, string> = {
   receipt_printer: 'oklch(0.68 0.15 40)',
   stamp_cutter: 'oklch(0.68 0.16 25)',
   map_art: 'oklch(0.65 0.18 80)',
+  pattern_search: 'oklch(0.65 0.16 20)',
 };
 
 export interface NodeTemplateDef {
@@ -248,6 +250,14 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     configurable: false,
     defaultSize: NODE_DEFAULT_SIZES.map_art,
   },
+  {
+    type: 'pattern_search',
+    name: '中国传统纹样',
+    description: '检索/浏览 100 款中国传统纹样（植物花卉、动物瑞兽、几何锦纹等），选中后输出纹样图片与详情说明文本',
+    category: 'multimodal',
+    configurable: false,
+    defaultSize: NODE_DEFAULT_SIZES.pattern_search,
+  },
 ];
 
 export const NODE_TEMPLATE_MAP: Record<CanvasNodeType, NodeTemplateDef> = Object.fromEntries(
@@ -321,6 +331,7 @@ export const NODE_PORT_TYPES: Record<CanvasNodeType, { output: NodePortType; inp
   // 邮票截图框：输出生成的邮票图片；可连线图片或图书元数据作为输入源（连线即输入）
   stamp_cutter: { output: 'image', inputs: ['image', 'text'] },
   map_art: { output: 'image', inputs: ['text'] },
+  pattern_search: { output: 'image', inputs: ['text'] },
 };
 
 /** 端口类型查找（由画布提供：后端模板声明优先，前端静态镜像兜底） */
