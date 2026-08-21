@@ -99,7 +99,7 @@ class SearchRequest(BaseModel):
     category: Optional[str] = Field(None, description="分类筛选（如：植物花卉纹、动物瑞兽纹等）")
     query: Optional[str] = Field(None, description="搜索关键词")
     page: int = Field(1, ge=1, description="页码，从1开始")
-    per_page: int = Field(24, ge=1, le=100, description="每页条数")
+    per_page: int = Field(24, ge=1, le=500, description="每页条数")
     random: bool = Field(False, description="是否随机打乱返回")
 
 

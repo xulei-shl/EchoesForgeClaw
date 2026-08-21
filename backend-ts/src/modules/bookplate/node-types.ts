@@ -40,6 +40,8 @@ export const NODE_TYPES = {
   MAP_ART: 'map_art',
   /** 中国传统纹样（多模态工具）：100 款中国传统纹样分类浏览/关键词检索/随机浏览，输出纹样图片与说明文本 */
   PATTERN_SEARCH: 'pattern_search',
+  /** 中国传统配色（多模态工具）：742 款中国传统色检索/分类浏览/5色配色生成器/场景灵感，输出色卡图片与配色方案文本 */
+  COLOR_SEARCH: 'color_search',
 } as const;
 
 export type NodeType = (typeof NODE_TYPES)[keyof typeof NODE_TYPES];
@@ -267,6 +269,16 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     type: NODE_TYPES.PATTERN_SEARCH,
     name: '中国传统纹样',
     description: '检索/浏览 100 款中国传统纹样（植物花卉、动物瑞兽、几何锦纹等），选中后输出纹样图片与详情说明文本',
+    category: 'multimodal',
+    configurable: false,
+    output_type: 'image',
+    output_types: ['image', 'text'],
+    input_types: ['text'],
+  },
+  {
+    type: NODE_TYPES.COLOR_SEARCH,
+    name: '中国传统配色',
+    description: '检索/浏览 742 款中国传统色，支持 5 色智能调色板生成与场景灵感，输出色卡图片与配色方案文本',
     category: 'multimodal',
     configurable: false,
     output_type: 'image',

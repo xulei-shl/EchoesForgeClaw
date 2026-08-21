@@ -28,6 +28,7 @@ export const NODE_DEFAULT_SIZES: Record<CanvasNodeType, { width: number; height:
   stamp_cutter: { width: 440, height: 560 },
   map_art: { width: 460, height: 560 },
   pattern_search: { width: 440, height: 560 },
+  color_search: { width: 480, height: 620 },
 };
 
 /** 节点的主题色（用于左上角指示圆点） */
@@ -56,6 +57,7 @@ export const NODE_COLORS: Record<CanvasNodeType, string> = {
   stamp_cutter: 'oklch(0.68 0.16 25)',
   map_art: 'oklch(0.65 0.18 80)',
   pattern_search: 'oklch(0.65 0.16 20)',
+  color_search: 'oklch(0.68 0.18 45)',
 };
 
 export interface NodeTemplateDef {
@@ -258,6 +260,14 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     configurable: false,
     defaultSize: NODE_DEFAULT_SIZES.pattern_search,
   },
+  {
+    type: 'color_search',
+    name: '中国传统配色',
+    description: '检索/浏览 742 款中国传统色，支持 5 色智能调色板生成与场景灵感，输出色卡图片与配色方案文本',
+    category: 'multimodal',
+    configurable: false,
+    defaultSize: NODE_DEFAULT_SIZES.color_search,
+  },
 ];
 
 export const NODE_TEMPLATE_MAP: Record<CanvasNodeType, NodeTemplateDef> = Object.fromEntries(
@@ -339,6 +349,8 @@ export const NODE_PORT_TYPES: Record<
   // 中国传统纹样：复合输出——主输出为图片（纹样卡片图），同时产出详情说明文本；
   // 下游按自身接受的输入类型取用（图片分析/图像生成拿图片，文本聚合/AI对话拿文本或两者都拿）
   pattern_search: { output: 'image', outputs: ['image', 'text'], inputs: ['text'] },
+  // 中国传统配色：复合输出——主输出为图片（传统色卡图），同时产出调色板与搭配方案 Markdown 文本；
+  color_search: { output: 'image', outputs: ['image', 'text'], inputs: ['text'] },
 };
 
 /** 节点端口声明：主输出 + 全部输出类型 + 接受的上游输入类型列表 */
@@ -530,6 +542,8 @@ export function nodeOutputText(node: GraphNode | undefined): string {
     case 'prompt_search':
       return typeof node.data.content === 'string' ? node.data.content : '';
     case 'pattern_search':
+      return typeof node.data.output === 'string' ? node.data.output : '';
+    case 'color_search':
       return typeof node.data.output === 'string' ? node.data.output : '';
     case 'skill_search': {
       const selections = Array.isArray(node.data.skillSelections) ? node.data.skillSelections : [];

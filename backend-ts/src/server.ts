@@ -137,6 +137,15 @@ export async function buildApp() {
     return reply.code(404).send();
   });
 
+  // 中国传统配色（多模态工具）：/static/colors/* → services/zhongguo-traditional-colors/*
+  const TRADITIONAL_COLORS_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../services/zhongguo-traditional-colors');
+  app.get('/static/colors/*', async (request, reply) => {
+    const relPath = (request.params as any)['*'];
+    if (!relPath || relPath.includes('..')) return reply.code(404).send();
+    if (sendPublicImage(reply, safeJoin(TRADITIONAL_COLORS_DIR, relPath))) return reply;
+    return reply.code(404).send();
+  });
+
   // 其余 /static 资源（如 bifrost 提示词预览图 prompt-previews）仍由 backend-ts/static/ 提供
   await app.register(fastifyStatic, { root: STATIC_DIR, prefix: '/static/' });
 

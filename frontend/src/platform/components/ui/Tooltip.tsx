@@ -59,13 +59,21 @@ export const Tooltip: React.FC<TooltipProps & Record<string, any>> = ({
           setIsVisible(false);
           (children as any).props.onMouseLeave?.(e);
         },
+        onClick: (e: any) => {
+          setIsVisible(false);
+          (children as any).props?.onClick?.(e);
+        },
+        onPointerDown: (e: any) => {
+          setIsVisible(false);
+          (children as any).props?.onPointerDown?.(e);
+        },
       })}
       {typeof document !== 'undefined' &&
         createPortal(
           <AnimatePresence>
             {isVisible && (
               <div
-                className="fixed z-[9999] pointer-events-none"
+                className="fixed z-[1500] pointer-events-none"
                 style={{ left: coords.x, top: coords.y }}
               >
                 <motion.div

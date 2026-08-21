@@ -22,6 +22,7 @@ import { ReceiptPrinterNode } from '../../modules/multimodal/components/ReceiptP
 import { StampCutterNode } from '../../modules/multimodal/components/StampCutterNode';
 import { MapArtNode } from '../../modules/multimodal/components/MapArtNode';
 import { PatternSearchNode, type PatternItem } from '../../modules/multimodal/components/PatternSearchNode';
+import { ColorSearchNode, type ColorItem } from '../../modules/multimodal/components/ColorSearchNode';
 import { MAP_POSTER_DEFAULTS } from '../../modules/multimodal/map/defaults';
 import { MAP_ART_DEFAULTS } from '../../modules/multimodal/map/art-defaults';
 import {
@@ -129,6 +130,10 @@ export interface NodeViewHelpers {
   handleSelectPatternFor: (id: string, pattern: PatternItem) => Promise<void>;
   /** 中国传统纹样检索节点：编辑器状态（category 等）写入 node.data（仅持久化，不记撤销历史） */
   handleUpdatePatternEditorFor: (id: string, patch: Record<string, any>, undoable?: boolean) => void;
+  /** 中国传统配色节点：选用传统色（保存图片 + 生成配色 Markdown 写入 node.data） */
+  handleSelectColorFor: (id: string, color: ColorItem, palette?: ColorItem[]) => Promise<void>;
+  /** 中国传统配色节点：编辑器状态（category/tab/palette 等）写入 node.data */
+  handleUpdateColorEditorFor: (id: string, patch: Record<string, any>, undoable?: boolean) => void;
   /** 图书小票生成节点：导出 PNG data URL 落盘（保存到后端 + 记录数据库历史 + 写回 node.data） */
   handleExportReceiptFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   /** 图书小票生成节点：状态更新写入 node.data（持久化） */
@@ -774,6 +779,33 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           hasDownstream={hasDownstreamOf(node, h.edges)}
           onSelectPattern={h.handleSelectPatternFor}
           onUpdateEditor={h.handleUpdatePatternEditorFor}
+        />
+      );
+    }
+
+    case 'color_search': {
+      const d = node.data ?? {};
+      // 连线即输入：文本输出上级内容作为检索关键词（优先于手动输入）
+      const upstreamKeyword =
+        collectNodeInputs(node, h.nodes, h.edges, h.portTypesOf)
+          .text.map((p) => nodeOutputText(p))
+          .find((v) => v.trim()) ?? '';
+      return (
+        <ColorSearchNode
+          key={node.id}
+          {...common}
+          imageUrl={typeof d.imageUrl === 'string' ? d.imageUrl : null}
+          selectedColor={d.selectedColor ?? null}
+          palette={Array.isArray(d.palette) ? d.palette : []}
+          category={typeof d.category === 'string' ? d.category : ''}
+          temperature={typeof d.temperature === 'string' ? d.temperature : ''}
+          activeTab={d.activeTab ?? 'search'}
+          paletteMethod={d.paletteMethod ?? 'auto'}
+          upstreamKeyword={upstreamKeyword}
+          error={d.error ?? null}
+          hasDownstream={hasDownstreamOf(node, h.edges)}
+          onSelectColor={h.handleSelectColorFor}
+          onUpdateEditor={h.handleUpdateColorEditorFor}
         />
       );
     }

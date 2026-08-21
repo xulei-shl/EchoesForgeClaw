@@ -174,14 +174,16 @@ export function collectNodeInputs(
     const outs = portTypesOf(p.type).outputs;
     return (
       (outs.includes('text') || outs.includes('any')) &&
-      !(p.type === 'pattern_search' && !nodeOutputText(p))
+      !(p.type === 'pattern_search' && !nodeOutputText(p)) &&
+      !(p.type === 'color_search' && !nodeOutputText(p))
     );
   });
   const imageParents = parents.filter((p) => {
     const outs = portTypesOf(p.type).outputs;
     return (
       (outs.includes('image') || outs.includes('any')) &&
-      !(p.type === 'pattern_search' && nodeOutputImages(p).length === 0)
+      !(p.type === 'pattern_search' && nodeOutputImages(p).length === 0) &&
+      !(p.type === 'color_search' && nodeOutputImages(p).length === 0)
     );
   });
 

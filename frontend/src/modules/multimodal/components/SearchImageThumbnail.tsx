@@ -1,6 +1,6 @@
 import React, { memo, useState, useCallback, useEffect } from 'react';
 import { ImageOff, RotateCcw } from 'lucide-react';
-import { PhotoView } from 'react-photo-view';
+import { PhotoProvider, PhotoView } from 'react-photo-view';
 
 export interface SearchImageThumbnailProps {
   /** 缩略图地址（优先加载） */
@@ -84,21 +84,23 @@ export const SearchImageThumbnail: React.FC<SearchImageThumbnailProps> = memo(({
           </button>
         </div>
       ) : (
-        <PhotoView src={previewUrl || currentSrc}>
-          <img
-            key={retryKey}
-            src={currentSrc}
-            alt={alt}
-            loading="lazy"
-            decoding="async"
-            referrerPolicy="no-referrer"
-            onError={handleError}
-            onLoad={handleLoad}
-            className={`w-full h-full object-cover cursor-zoom-in group-hover:opacity-90 text-transparent select-none transition-opacity duration-200 ${
-              status === 'loaded' ? 'opacity-100' : 'opacity-0 pointer-events-none'
-            }`}
-          />
-        </PhotoView>
+        <PhotoProvider maskOpacity={0.8} bannerVisible={false}>
+          <PhotoView src={previewUrl || currentSrc}>
+            <img
+              key={retryKey}
+              src={currentSrc}
+              alt={alt}
+              loading="lazy"
+              decoding="async"
+              referrerPolicy="no-referrer"
+              onError={handleError}
+              onLoad={handleLoad}
+              className={`w-full h-full object-cover cursor-zoom-in group-hover:opacity-90 text-transparent select-none transition-opacity duration-200 ${
+                status === 'loaded' ? 'opacity-100' : 'opacity-0 pointer-events-none'
+              }`}
+            />
+          </PhotoView>
+        </PhotoProvider>
       )}
     </div>
   );

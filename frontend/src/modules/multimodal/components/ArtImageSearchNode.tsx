@@ -364,8 +364,7 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
         </NodeActionBar>
       }
     >
-      <PhotoProvider maskOpacity={0.8} bannerVisible={false}>
-        <div className="h-full flex flex-col flex-1 min-h-0 gap-2">
+      <div className="h-full flex flex-col flex-1 min-h-0 gap-2">
           {/* 来源选择 + 换一批 */}
           <div className="shrink-0 flex items-center gap-1.5">
             <div className="flex-1 min-w-0">
@@ -583,17 +582,19 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
           <div className="shrink-0 flex items-center gap-2.5 pt-2 border-t border-dashed border-paper-grid">
             {imageUrl ? (
               <>
-                <PhotoView src={imageUrl}>
-                  <Tooltip content="点击查看已选图片">
-                    <img
-                      src={imageUrl}
-                      alt="已选图片"
-                      referrerPolicy="no-referrer"
-                      decoding="async"
-                      className="h-12 w-12 rounded-md border border-paper-grid object-cover cursor-zoom-in hover:opacity-90 transition-opacity"
-                    />
-                  </Tooltip>
-                </PhotoView>
+                <PhotoProvider maskOpacity={0.8} bannerVisible={false}>
+                  <PhotoView src={imageUrl}>
+                    <Tooltip content="点击查看已选图片">
+                      <img
+                        src={imageUrl}
+                        alt="已选图片"
+                        referrerPolicy="no-referrer"
+                        decoding="async"
+                        className="h-12 w-12 rounded-md border border-paper-grid object-cover cursor-zoom-in hover:opacity-90 transition-opacity"
+                      />
+                    </Tooltip>
+                  </PhotoView>
+                </PhotoProvider>
                 <div className="min-w-0 flex-1">
                   <p className="text-[11px] font-serif text-ink truncate flex items-center gap-1.5">
                     <span>已选择作品</span>
@@ -625,7 +626,6 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
             )}
           </div>
         </div>
-      </PhotoProvider>
     </CanvasNode>
   );
 };

@@ -70,7 +70,8 @@ export interface PatternSearchNodeProps {
   hasDownstream?: boolean;
 }
 
-const PER_PAGE = 24;
+const PER_PAGE_RANDOM = 24;
+const PER_PAGE_ALL = 100;
 
 /** 内置默认传统纹样分类（静态兜底 + 数量标注） */
 export const DEFAULT_PATTERN_CATEGORIES: { name: string; count: number }[] = [
@@ -113,7 +114,7 @@ const PatternSearchNodeInner: React.FC<PatternSearchNodeProps> = ({
   // 检索输入与状态
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<PatternItem[]>([]);
-  const [total, setTotal] = useState<number>(0);
+  const [, setTotal] = useState<number>(0);
   const [loadingType, setLoadingType] = useState<'search' | 'refresh' | 'auto' | null>(null);
   const loading = loadingType !== null;
   const [searchError, setSearchError] = useState<string>('');
@@ -159,6 +160,9 @@ const PatternSearchNodeInner: React.FC<PatternSearchNodeProps> = ({
       setLoadingType(type);
       setSearchError('');
 
+      const hasFilter = Boolean(cat || queryText);
+      const effectivePerPage = isRandom && !hasFilter ? PER_PAGE_RANDOM : PER_PAGE_ALL;
+
       try {
         const res: { items?: PatternItem[]; total?: number } = await api.post(
           '/modules/bookplate/pattern-search',
@@ -166,7 +170,7 @@ const PatternSearchNodeInner: React.FC<PatternSearchNodeProps> = ({
             category: cat || null,
             query: queryText || null,
             page: 1,
-            per_page: PER_PAGE,
+            per_page: effectivePerPage,
             random: isRandom,
           },
           { timeout: SMALL_TOOL_TIMEOUT_MS }
@@ -199,7 +203,7 @@ const PatternSearchNodeInner: React.FC<PatternSearchNodeProps> = ({
 
   // 挂载初次加载（随机 24 款）
   useEffect(() => {
-    void load(activeCategory, effectiveQuery, 'auto', !effectiveQuery);
+    void load(activeCategory, effectiveQuery, 'auto', !effectiveQuery && !activeCategory);
   }, [activeCategory, effectiveQuery, load]);
 
   // 上游关键词变化响应
@@ -213,7 +217,7 @@ const PatternSearchNodeInner: React.FC<PatternSearchNodeProps> = ({
   const handleCategoryChange = (cat: string) => {
     setActiveCategory(cat);
     onUpdateEditor?.(id, { category: cat }, false);
-    void load(cat, effectiveQuery, 'search', !effectiveQuery);
+    void load(cat, effectiveQuery, 'search', !effectiveQuery && !cat);
   };
 
   const handleSearch = (e?: React.FormEvent) => {
@@ -281,8 +285,7 @@ const PatternSearchNodeInner: React.FC<PatternSearchNodeProps> = ({
         </NodeActionBar>
       }
     >
-      <PhotoProvider maskOpacity={0.8} bannerVisible={false}>
-        <div className="h-full flex flex-col flex-1 min-h-0 gap-2">
+      <div className="h-full flex flex-col flex-1 min-h-0 gap-2">
           {/* 分类下拉/选择 + 换一批 */}
           <div className="shrink-0 flex items-center gap-1.5">
             <div className="relative flex-1 min-w-0">
@@ -344,7 +347,7 @@ const PatternSearchNodeInner: React.FC<PatternSearchNodeProps> = ({
                 type="button"
                 onClick={() => {
                   setQuery('');
-                  void load(activeCategory, '', 'search', true);
+                  void load(activeCategory, '', 'search', !activeCategory);
                 }}
                 className="absolute right-9 top-1/2 -translate-y-1/2 p-0.5 rounded text-ink-faint hover:text-error hover:bg-paper-grid/40 active:scale-[0.96] transition-all"
                 title="清除"
@@ -498,17 +501,19 @@ const PatternSearchNodeInner: React.FC<PatternSearchNodeProps> = ({
           <div className="shrink-0 flex items-center gap-2.5 pt-2 border-t border-dashed border-paper-grid">
             {imageUrl ? (
               <>
-                <PhotoView src={imageUrl}>
-                  <Tooltip content="点击查看纹样高清大图">
-                    <img
-                      src={imageUrl}
-                      alt={selectedPattern?.name_cn || '已选纹样'}
-                      referrerPolicy="no-referrer"
-                      decoding="async"
-                      className="h-12 w-12 rounded-md border border-paper-grid object-cover cursor-zoom-in hover:opacity-90 transition-opacity shrink-0"
-                    />
-                  </Tooltip>
-                </PhotoView>
+                <PhotoProvider maskOpacity={0.8} bannerVisible={false}>
+                  <PhotoView src={imageUrl}>
+                    <Tooltip content="点击查看纹样高清大图">
+                      <img
+                        src={imageUrl}
+                        alt={selectedPattern?.name_cn || '已选纹样'}
+                        referrerPolicy="no-referrer"
+                        decoding="async"
+                        className="h-12 w-12 rounded-md border border-paper-grid object-cover cursor-zoom-in hover:opacity-90 transition-opacity shrink-0"
+                      />
+                    </Tooltip>
+                  </PhotoView>
+                </PhotoProvider>
                 <div className="min-w-0 flex-1">
                   <p className="text-[11px] font-serif text-ink truncate flex items-center gap-1.5">
                     <span className="font-medium text-accent">{selectedPattern?.name_cn || '已选择纹样'}</span>
@@ -550,7 +555,6 @@ const PatternSearchNodeInner: React.FC<PatternSearchNodeProps> = ({
             )}
           </div>
         </div>
-      </PhotoProvider>
     </CanvasNode>
   );
 };

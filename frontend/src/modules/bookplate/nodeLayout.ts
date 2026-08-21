@@ -28,7 +28,8 @@ export type NodeType =
   | 'receipt_printer'
   | 'stamp_cutter'
   | 'map_art'
-  | 'pattern_search';
+  | 'pattern_search'
+  | 'color_search';
 
 /** 各节点模板类型的默认尺寸（必须与组件 defaultSize 一致） */
 export const NODE_SIZES: Record<NodeType, { width: number; height: number }> = {
@@ -56,6 +57,7 @@ export const NODE_SIZES: Record<NodeType, { width: number; height: number }> = {
 stamp_cutter:       { width: 440, height: 560 },
   map_art:           { width: 460, height: 560 },
   pattern_search:    { width: 440, height: 560 },
+  color_search:      { width: 480, height: 620 },
 };
 
 /** 节点间水平间距（px） */

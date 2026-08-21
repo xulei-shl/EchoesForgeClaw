@@ -60,7 +60,6 @@ import api from '../../platform/services/api';
 import { ISBN_FETCH_TIMEOUT_MS } from '../../platform/utils/timeouts';
 import type {
   CanvasNodeType,
-  NodePortType,
   NodeRegistry,
   RegistryNodeConfig,
 } from '../../platform/types';
@@ -702,6 +701,8 @@ const BookplatePage: React.FC = () => {
     handleUpdateGlamEditorFor,
     handleSelectPatternFor,
     handleUpdatePatternEditorFor,
+    handleSelectColorFor,
+    handleUpdateColorEditorFor,
     handleUpdatePromptFor,
     handleUpdateAggregateTemplateFor,
     handleRenameAggregatePlaceholderFor,
@@ -917,6 +918,8 @@ const BookplatePage: React.FC = () => {
     handleUpdateGlamEditorFor,
     handleSelectPatternFor,
     handleUpdatePatternEditorFor,
+    handleSelectColorFor,
+    handleUpdateColorEditorFor,
     handleUpdateAggregateTemplateFor,
     handleRenameAggregatePlaceholderFor,
     handleUpdateChatSettingsFor,

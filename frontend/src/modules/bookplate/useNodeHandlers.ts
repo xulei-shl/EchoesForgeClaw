@@ -12,6 +12,7 @@ import type { WikipediaSearchRequest } from './components/WikipediaSearchNode';
 import type { TranslationRequest } from './components/TextTranslationNode';
 import type { WebSearchRequest } from './components/WebSearchNode';
 import type { PatternItem } from '../multimodal/components/PatternSearchNode';
+import type { ColorItem } from '../multimodal/components/ColorSearchNode';
 import { resolveReferenceImage, collectNodeInputs, DEFAULT_RUN_SETTINGS } from './execution';
 
 export interface NodeHandlersDeps {
@@ -1227,6 +1228,65 @@ export function useNodeHandlers({
       // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** 中国传统配色节点：编辑器状态（category/temperature/tab/palette 等）写入 node.data（仅持久化，不记撤销历史） */
+  const handleUpdateColorEditorFor = useCallback(
+    (id: string, patch: Record<string, any>, undoable = false) => {
+      const node = nodesRef.current.find((n) => n.id === id);
+      if (!node || node.type !== 'color_search') return;
+      const cur = node.data ?? {};
+      let changed = false;
+      for (const [k, v] of Object.entries(patch)) {
+        if (cur[k] !== v) {
+          changed = true;
+          break;
+        }
+      }
+      if (!changed) return;
+      if (undoable) recordHistory();
+      updateNodeData(id, patch);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** 中国传统配色节点：选中一款传统色/调色板 → 保存图片并生成 Markdown 详情 → 写入 node.data */
+  const handleSelectColorFor = useCallback(
+    async (id: string, color: ColorItem, palette?: ColorItem[]) => {
+      const node = nodesRef.current.find((n) => n.id === id);
+      if (!node || node.type !== 'color_search') return;
+      updateNodeData(id, { error: null });
+
+      try {
+        const res: any = await api.post(
+          '/modules/bookplate/color-search/save',
+          {
+            color,
+            palette,
+          },
+          { timeout: SMALL_TOOL_TIMEOUT_MS }
+        );
+
+        const imageUrl = typeof res?.imageUrl === 'string' ? res.imageUrl : '';
+        if (!imageUrl) throw new Error('保存传统色图片失败');
+
+        const outputMarkdown = typeof res?.output === 'string' ? res.output : '';
+
+        recordHistory();
+        updateNodeData(id, {
+          imageUrl,
+          output: outputMarkdown,
+          selectedColor: res.selectedColor || color,
+          palette: res.palette || palette || [color],
+          error: null,
+        });
+      } catch (error: any) {
+        console.error('Failed to save color:', error);
+        updateNodeData(id, {
+          error: error?.isTimeout ? '色彩保存超时，请重试' : error?.detail || '色彩保存失败，请重试',
+        });
+        throw error;
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /** 提示词检索节点：选用一条 Bifrost 提示词（正文写入 data.content；未变化不记历史） */
   const handleUpdatePromptFor = useCallback(
     (id: string, selection: PromptSelection) => {
@@ -1400,6 +1460,8 @@ export function useNodeHandlers({
     handleUpdateGlamEditorFor,
     handleSelectPatternFor,
     handleUpdatePatternEditorFor,
+    handleSelectColorFor,
+    handleUpdateColorEditorFor,
     handleUpdatePromptFor,
     handleUpdateAggregateTemplateFor,
     handleRenameAggregatePlaceholderFor,

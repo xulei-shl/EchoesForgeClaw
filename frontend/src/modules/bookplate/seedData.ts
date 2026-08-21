@@ -164,5 +164,17 @@ export function seedDataFor(type: NodeType, parent?: NodeData): any {
         output: '',
         error: null,
       };
+    case 'color_search':
+      return {
+        category: '',
+        temperature: '',
+        activeTab: 'search',
+        imageUrl: null,
+        selectedColor: null,
+        palette: [],
+        paletteMethod: 'auto',
+        output: '',
+        error: null,
+      };
   }
 }

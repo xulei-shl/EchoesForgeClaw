@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Tooltip } from '../ui/Tooltip';
 import { useFeedback } from '../ui/FeedbackProvider';
-import { Play, RefreshCw, Pencil, Check, X, Download, Eraser, Settings2, Copy, RotateCcw } from 'lucide-react';
+import { Play, RefreshCw, Pencil, Check, X, Download, Eraser, Settings2, Copy, RotateCcw, ExternalLink } from 'lucide-react';
 
 export const ACTION_BTN_CLASS =
   'flex items-center justify-center w-7 h-7 rounded-full ' +
@@ -227,6 +227,39 @@ NodeActionBar.Copy = ({
       }
       tooltip={copied ? copiedTooltip : tooltip}
       onClick={handleCopy}
+      {...props}
+    />
+  );
+};
+
+export interface ExternalLinkButtonProps extends Omit<BaseButtonProps, 'icon' | 'tooltip'> {
+  /** 跳转的目标 URL */
+  href?: string;
+  /** 悬浮提示文案，缺省「打开链接」 */
+  tooltip?: string;
+  /** 链接打开方式，缺省「_blank」 */
+  target?: string;
+}
+
+NodeActionBar.ExternalLink = ({
+  href,
+  tooltip = '打开链接',
+  target = '_blank',
+  onClick,
+  ...props
+}: ExternalLinkButtonProps) => {
+  const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    onClick?.(e);
+    if (href) {
+      window.open(href, target, 'noopener,noreferrer');
+    }
+  };
+
+  return (
+    <BaseButton
+      icon={<ExternalLink size={16} strokeWidth={1.5} />}
+      tooltip={tooltip}
+      onClick={handleClick}
       {...props}
     />
   );
