@@ -34,7 +34,7 @@ export const NODE_TYPES = {
   WEB_SEARCH: 'web_search',
   /** 图书小票生成（多模态工具）：生成热敏纸风格图书小票、借书卡、古籍排版等书目推荐卡片 */
   RECEIPT_PRINTER: 'receipt_printer',
-  /** 邮票截图框（多模态工具）：锯齿邮票框自由截取，生成带打孔边缘与柔和投影的邮票图片 */
+  /** 邮票截图框（多模态工具）：锯齿邮票框自由截取，生成带打孔边缘与边框的邮票图片 */
   STAMP_CUTTER: 'stamp_cutter',
   /** 艺术地图生成（多模态工具）：基于 prettymaps 服务端生成艺术风格地图图片 */
   MAP_ART: 'map_art',
@@ -254,7 +254,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
   {
     type: NODE_TYPES.STAMP_CUTTER,
     name: '邮票截图框',
-    description: '锯齿邮票框自由截取，生成带打孔边缘与柔和投影的邮票图片',
+    description: '锯齿邮票框自由截取，生成带打孔边缘与边框的邮票图片',
     category: 'multimodal',
     configurable: false,
     output_type: 'image',

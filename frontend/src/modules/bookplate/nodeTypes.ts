@@ -213,7 +213,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'stamp_cutter',
     name: '邮票截图框',
-    description: '锯齿邮票框自由截取，生成带打孔边缘与柔和投影的邮票图片',
+    description: '锯齿邮票框自由截取，生成带打孔边缘与边框的邮票图片',
     category: 'multimodal',
     configurable: false,
     defaultSize: DEFAULT_SIZES.stamp_cutter,
