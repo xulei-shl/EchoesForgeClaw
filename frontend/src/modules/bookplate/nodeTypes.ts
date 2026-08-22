@@ -237,7 +237,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'color_search',
     name: '中国传统配色',
-    description: '检索/浏览 742 款中国传统色，支持 5 色智能调色板生成与场景灵感，输出色卡图片与配色方案文本',
+    description: '检索/浏览 742 款中国传统色，支持 5 色智能调色板生成',
     category: 'multimodal',
     configurable: false,
     defaultSize: DEFAULT_SIZES.color_search,
@@ -245,7 +245,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'oil_paint',
     name: '湿油彩效果',
-    description: '浏览器端 WebGL 流场笔触渲染：结构张量方向场 + 三层 Bézier 笔触重建画面，合成带颜料厚度与湿润高光的湿油彩效果',
+    description: '图片合成带颜料厚度与湿润高光的湿油彩效果',
     category: 'multimodal',
     configurable: false,
     defaultSize: DEFAULT_SIZES.oil_paint,
@@ -253,7 +253,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'image_process',
     name: '图片处理',
-    description: '浏览器端 Canvas 多效果图片处理：噪点 / ASCII / 网点 / 抖动等风格化效果，效果注册表驱动切换（第一阶段：噪点）',
+    description: '噪点 / ASCII / 网点 / 抖动等风格化效果',
     category: 'multimodal',
     configurable: false,
     defaultSize: DEFAULT_SIZES.image_process,

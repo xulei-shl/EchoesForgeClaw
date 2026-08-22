@@ -40,11 +40,11 @@ export const NODE_TYPES = {
   MAP_ART: 'map_art',
   /** 中国传统纹样（多模态工具）：100 款中国传统纹样分类浏览/关键词检索/随机浏览，输出纹样图片与说明文本 */
   PATTERN_SEARCH: 'pattern_search',
-  /** 中国传统配色（多模态工具）：742 款中国传统色检索/分类浏览/5色配色生成器/场景灵感，输出色卡图片与配色方案文本 */
+  /** 中国传统配色（多模态工具）：742 款中国传统色检索/分类浏览/5色调色板生成器，输出色卡图片与配色方案文本 */
   COLOR_SEARCH: 'color_search',
-  /** 湿油彩效果（多模态工具）：浏览器端 WebGL 流场笔触渲染，把输入图片重建为三层 Bézier 笔触 + 湿油彩质感的油画 */
+  /** 湿油彩效果（多模态工具）：图片合成带颜料厚度与湿润高光的湿油彩效果 */
   OIL_PAINT: 'oil_paint',
-  /** 图片处理（多模态工具）：浏览器端 Canvas 多效果图片处理（噪点 / ASCII / 网点 / 抖动），效果注册表驱动 */
+  /** 图片处理（多模态工具）：噪点 / ASCII / 网点 / 抖动等风格化效果 */
   IMAGE_PROCESS: 'image_process',
 } as const;
 
@@ -282,7 +282,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
   {
     type: NODE_TYPES.COLOR_SEARCH,
     name: '中国传统配色',
-    description: '检索/浏览 742 款中国传统色，支持 5 色智能调色板生成与场景灵感，输出色卡图片与配色方案文本',
+    description: '检索/浏览 742 款中国传统色，支持 5 色智能调色板生成',
     category: 'multimodal',
     configurable: false,
     output_type: 'image',
@@ -292,7 +292,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
   {
     type: NODE_TYPES.OIL_PAINT,
     name: '湿油彩效果',
-    description: '浏览器端 WebGL 流场笔触渲染：结构张量方向场 + 三层 Bézier 笔触重建画面，合成带颜料厚度与湿润高光的湿油彩效果',
+    description: '图片合成带颜料厚度与湿润高光的湿油彩效果',
     category: 'multimodal',
     configurable: false,
     output_type: 'image',
