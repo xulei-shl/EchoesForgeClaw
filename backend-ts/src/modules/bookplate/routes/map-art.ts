@@ -1,8 +1,15 @@
 import type { FastifyInstance } from 'fastify';
+import { getDb } from '../../../config/database.js';
+import { getAppSettingsMap } from '../../../repositories/index.js';
 import { imageService } from '../../../services/image-service.js';
 
-/** Python prettymaps API base URL（默认 localhost:8101，可通过环境变量覆盖） */
-const PRETTYMAPS_API = process.env.PRETTYMAPS_API ?? 'http://127.0.0.1:8101';
+/** 获取 Python prettymaps API base URL（优先系统设置，次选环境变量，最后默认 localhost:8101） */
+function getMapArtApiUrl(): string {
+  const s = getAppSettingsMap(getDb());
+  const configured = s['service.map_art.base_url']?.trim();
+  if (configured) return configured.replace(/\/+$/, '');
+  return (process.env.PRETTYMAPS_API ?? 'http://127.0.0.1:8101').replace(/\/+$/, '');
+}
 
 export async function register(app: FastifyInstance): Promise<void> {
   /**
@@ -19,7 +26,8 @@ export async function register(app: FastifyInstance): Promise<void> {
       const userId = request.authUser!.id;
 
       try {
-        const resp = await fetch(`${PRETTYMAPS_API}/generate`, {
+        const apiUrl = getMapArtApiUrl();
+        const resp = await fetch(`${apiUrl}/generate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -65,9 +73,10 @@ export async function register(app: FastifyInstance): Promise<void> {
     { preHandler: app.authenticate },
     async (_request, reply) => {
       try {
-        const resp = await fetch(`${PRETTYMAPS_API}/presets/simple`);
+        const apiUrl = getMapArtApiUrl();
+        const resp = await fetch(`${apiUrl}/presets/simple`);
         if (!resp.ok) {
-          return reply.code(resp.status).send({ detail: 'Failed to fetch presets' });
+          return reply.code(resp.status).send({ detail: 'Failed to fetch themes' });
         }
         return await resp.json();
       } catch (err: any) {

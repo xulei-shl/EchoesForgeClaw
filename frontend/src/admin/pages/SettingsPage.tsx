@@ -13,6 +13,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Server,
   Settings as SettingsIcon,
   Shield,
   ShieldCheck,
@@ -52,6 +53,10 @@ const KNOWN_KEYS: { key: string; description: string }[] = [
   { key: 'exa.api_key', description: '网络搜索节点 Exa API Key（https://exa.ai 注册获取；敏感，仅显示掩码）' },
   { key: 'anysearch.api_key', description: '网络搜索节点 AnySearch API Key（https://anysearch.com 注册获取；敏感，仅显示掩码；支持匿名调用）' },
   { key: 'doubao.api_key', description: '网络搜索节点豆包搜索 API Key（https://console.volcengine.com/search-infinity 获取；敏感，仅显示掩码）' },
+  { key: 'service.map_poster.base_url', description: '城市地图海报 FastAPI 基础地址（默认 http://127.0.0.1:8100）' },
+  { key: 'service.map_art.base_url', description: '艺术地图海报 (prettymaps) FastAPI 基础地址（默认 http://127.0.0.1:8101）' },
+  { key: 'service.patterns.base_url', description: '中国传统纹样 FastAPI 基础地址（默认 http://127.0.0.1:8102）' },
+  { key: 'service.colors.base_url', description: '中国传统配色 FastAPI 基础地址（默认 http://127.0.0.1:8103）' },
   { key: 'http.proxy', description: '全局 HTTP 代理地址（如 http://127.0.0.1:7890；留空 = 全部直连）' },
   { key: 'loc.use_proxy', description: 'LoC 国会图书馆检索/图片是否使用全局代理（true = 启用，false = 直连）' },
   { key: 'google_translate.use_proxy', description: 'Google 翻译是否使用全局代理（true = 启用，false = 直连）' },
@@ -68,6 +73,13 @@ interface CategoryDef {
 }
 
 const CATEGORY_DEFS: CategoryDef[] = [
+  {
+    id: 'microservices',
+    name: '本地微服务',
+    icon: Server,
+    description: '画布多模态节点依赖的本地 Python FastAPI 扩展微服务基础地址（城市地图海报、艺术地图海报、中国传统纹样与中国传统配色）',
+    match: (key) => key.startsWith('service.') || key.startsWith('services.'),
+  },
   {
     id: 'proxy',
     name: '网络代理',

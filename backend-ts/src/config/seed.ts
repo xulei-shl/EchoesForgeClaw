@@ -130,6 +130,26 @@ const DEFAULT_SETTINGS: Array<[string, string, string]> = [
     '',
     '全局 HTTP 代理地址，如 http://127.0.0.1:7890。各服务是否使用代理由对应的 use_proxy 开关控制（留空 = 全部直连）',
   ],
+  [
+    'service.map_poster.base_url',
+    'http://127.0.0.1:8100',
+    '城市地图海报 FastAPI 基础地址（对应 services/maptoposter，生成城市路网海报）',
+  ],
+  [
+    'service.map_art.base_url',
+    'http://127.0.0.1:8101',
+    '艺术地图海报 FastAPI 基础地址（对应 services/prettymaps，基于 OSM + matplotlib 渲染）',
+  ],
+  [
+    'service.patterns.base_url',
+    'http://127.0.0.1:8102',
+    '中国传统纹样 FastAPI 基础地址（对应 services/chinese-traditional-patterns，检索与详情服务）',
+  ],
+  [
+    'service.colors.base_url',
+    'http://127.0.0.1:8103',
+    '中国传统配色 FastAPI 基础地址（对应 services/zhongguo-traditional-colors，色卡与 5 色调色板生成）',
+  ],
 ];
 
 /** 废弃/已删除的系统设置键（启动时自动彻底清理存量历史数据） */

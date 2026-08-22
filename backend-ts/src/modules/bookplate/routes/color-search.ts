@@ -2,11 +2,18 @@ import type { FastifyInstance } from 'fastify';
 import { readFileSync, existsSync, mkdirSync, copyFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getDb } from '../../../config/database.js';
+import { getAppSettingsMap } from '../../../repositories/index.js';
 import { userSearchImageDir } from '../../../services/image-service.js';
 import { ImageGenerationError } from '../../../infrastructure/ai/errors.js';
 
-/** Python Chinese Traditional Colors API base URL（默认 localhost:8103，可通过环境变量覆盖） */
-const COLORS_API = process.env.COLORS_API ?? 'http://127.0.0.1:8103';
+/** 获取 Python Chinese Traditional Colors API base URL（优先系统设置，次选环境变量，最后默认 localhost:8103） */
+function getColorsApiUrl(): string {
+  const s = getAppSettingsMap(getDb());
+  const configured = s['service.colors.base_url']?.trim();
+  if (configured) return configured.replace(/\/+$/, '');
+  return (process.env.COLORS_API ?? 'http://127.0.0.1:8103').replace(/\/+$/, '');
+}
 
 /** 动态查找 services/zhongguo-traditional-colors 真实路径 */
 function findColorsDir(): string {
@@ -511,7 +518,8 @@ export async function register(app: FastifyInstance): Promise<void> {
     { preHandler: app.authenticate },
     async (_request, _reply) => {
       try {
-        const resp = await fetch(`${COLORS_API}/categories`, {
+        const apiUrl = getColorsApiUrl();
+        const resp = await fetch(`${apiUrl}/categories`, {
           signal: AbortSignal.timeout(2000),
         });
         if (resp.ok) {
@@ -550,7 +558,8 @@ export async function register(app: FastifyInstance): Promise<void> {
       };
 
       try {
-        const resp = await fetch(`${COLORS_API}/colors/search`, {
+        const apiUrl = getColorsApiUrl();
+        const resp = await fetch(`${apiUrl}/colors/search`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -593,7 +602,8 @@ export async function register(app: FastifyInstance): Promise<void> {
       const { id } = request.params as { id: string };
 
       try {
-        const resp = await fetch(`${COLORS_API}/colors/${encodeURIComponent(id)}`, {
+        const apiUrl = getColorsApiUrl();
+        const resp = await fetch(`${apiUrl}/colors/${encodeURIComponent(id)}`, {
           signal: AbortSignal.timeout(2000),
         });
         if (resp.ok) {
@@ -629,7 +639,8 @@ export async function register(app: FastifyInstance): Promise<void> {
       };
 
       try {
-        const resp = await fetch(`${COLORS_API}/colors/palette/generate`, {
+        const apiUrl = getColorsApiUrl();
+        const resp = await fetch(`${apiUrl}/colors/palette/generate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -705,9 +716,10 @@ export async function register(app: FastifyInstance): Promise<void> {
         }
 
         if (!saved) {
+          const apiUrl = getColorsApiUrl();
           const fetchUrls = [
-            `${COLORS_API}/static/images/${cid}-${encodeURIComponent(color.name)}.png`,
-            `${COLORS_API}/static/thumbnails/color-card-${cid}.jpg`,
+            `${apiUrl}/static/images/${cid}-${encodeURIComponent(color.name)}.png`,
+            `${apiUrl}/static/thumbnails/color-card-${cid}.jpg`,
           ];
           for (const url of fetchUrls) {
             try {

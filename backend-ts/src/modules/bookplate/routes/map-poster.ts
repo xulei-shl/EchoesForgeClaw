@@ -1,13 +1,20 @@
 import type { FastifyInstance } from 'fastify';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { getDb } from '../../../config/database.js';
+import { getAppSettingsMap } from '../../../repositories/index.js';
 import { imageService, userMapPosterDir } from '../../../services/image-service.js';
 import { RUNTIME_ROOT } from '../../../services/skill-agent-service.js';
 
 const MAP_POSTER_STATIC_PREFIX = '/static/map-posters';
 
-/** Python maptoposter API base URL（默认 localhost:8100，可通过环境变量覆盖） */
-const MAPTOPoster_API = process.env.MAPTOPoster_API ?? 'http://127.0.0.1:8100';
+/** 获取 Python maptoposter API base URL（优先系统设置，次选环境变量，最后默认 localhost:8100） */
+function getMapPosterApiUrl(): string {
+  const s = getAppSettingsMap(getDb());
+  const configured = s['service.map_poster.base_url']?.trim();
+  if (configured) return configured.replace(/\/+$/, '');
+  return (process.env.MAPTOPoster_API ?? 'http://127.0.0.1:8100').replace(/\/+$/, '');
+}
 
 export async function register(app: FastifyInstance): Promise<void> {
   /**
@@ -24,7 +31,8 @@ export async function register(app: FastifyInstance): Promise<void> {
       const userId = request.authUser!.id;
 
       try {
-        const resp = await fetch(`${MAPTOPoster_API}/generate`, {
+        const apiUrl = getMapPosterApiUrl();
+        const resp = await fetch(`${apiUrl}/generate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
@@ -73,7 +81,8 @@ export async function register(app: FastifyInstance): Promise<void> {
     { preHandler: app.authenticate },
     async (_request, reply) => {
       try {
-        const resp = await fetch(`${MAPTOPoster_API}/themes`);
+        const apiUrl = getMapPosterApiUrl();
+        const resp = await fetch(`${apiUrl}/themes`);
         if (!resp.ok) {
           return reply.code(resp.status).send({ detail: 'Failed to fetch themes' });
         }

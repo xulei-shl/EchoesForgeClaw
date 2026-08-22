@@ -2,11 +2,18 @@ import type { FastifyInstance } from 'fastify';
 import { readFileSync, existsSync, mkdirSync, writeFileSync, copyFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getDb } from '../../../config/database.js';
+import { getAppSettingsMap } from '../../../repositories/index.js';
 import { userSearchImageDir } from '../../../services/image-service.js';
 import { ImageGenerationError } from '../../../infrastructure/ai/errors.js';
 
-/** Python Chinese Traditional Patterns API base URL（默认 localhost:8102，可通过环境变量覆盖） */
-const PATTERNS_API = process.env.PATTERNS_API ?? 'http://127.0.0.1:8102';
+/** 获取 Python Chinese Traditional Patterns API base URL（优先系统设置，次选环境变量，最后默认 localhost:8102） */
+function getPatternsApiUrl(): string {
+  const s = getAppSettingsMap(getDb());
+  const configured = s['service.patterns.base_url']?.trim();
+  if (configured) return configured.replace(/\/+$/, '');
+  return (process.env.PATTERNS_API ?? 'http://127.0.0.1:8102').replace(/\/+$/, '');
+}
 
 /** 动态查找 services/chinese-traditional-patterns 真实路径 */
 function findPatternsDir(): string {
@@ -176,7 +183,8 @@ export async function register(app: FastifyInstance): Promise<void> {
     { preHandler: app.authenticate },
     async (_request, _reply) => {
       try {
-        const resp = await fetch(`${PATTERNS_API}/categories`, {
+        const apiUrl = getPatternsApiUrl();
+        const resp = await fetch(`${apiUrl}/categories`, {
           signal: AbortSignal.timeout(2000),
         });
         if (resp.ok) {
@@ -211,7 +219,8 @@ export async function register(app: FastifyInstance): Promise<void> {
       };
 
       try {
-        const resp = await fetch(`${PATTERNS_API}/patterns/search`, {
+        const apiUrl = getPatternsApiUrl();
+        const resp = await fetch(`${apiUrl}/patterns/search`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -276,7 +285,8 @@ export async function register(app: FastifyInstance): Promise<void> {
       const { id } = request.params as { id: string };
 
       try {
-        const resp = await fetch(`${PATTERNS_API}/patterns/${encodeURIComponent(id)}`, {
+        const apiUrl = getPatternsApiUrl();
+        const resp = await fetch(`${apiUrl}/patterns/${encodeURIComponent(id)}`, {
           signal: AbortSignal.timeout(2000),
         });
 
@@ -343,7 +353,8 @@ export async function register(app: FastifyInstance): Promise<void> {
           copyFileSync(localSourceImg, destPath);
         } else {
           // 若本地文件不存在，尝试 fetch 外部静态地址
-          const downloadUrl = payload.image_url || `${PATTERNS_API}/static/${cardRel}`;
+          const apiUrl = getPatternsApiUrl();
+          const downloadUrl = payload.image_url || `${apiUrl}/static/${cardRel}`;
           const resp = await fetch(downloadUrl);
           if (!resp.ok) throw new Error('下载纹样图片失败');
           const buf = Buffer.from(await resp.arrayBuffer());
