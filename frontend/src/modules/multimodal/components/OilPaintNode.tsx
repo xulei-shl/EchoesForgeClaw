@@ -47,6 +47,46 @@ export interface OilPaintNodeProps {
   onExport?: (id: string, dataUrl: string, state: OilPaintState) => Promise<void>;
 }
 
+interface SliderRowProps {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  display: string;
+  disabled?: boolean;
+  onChange: (v: number) => void;
+}
+
+const SliderRow: React.FC<SliderRowProps> = memo(({
+  label,
+  value,
+  min,
+  max,
+  step,
+  display,
+  disabled = false,
+  onChange,
+}) => (
+  <label className="flex items-center gap-2 flex-1 min-w-0">
+    <span className="text-ink-faint text-[11px] whitespace-nowrap">{label}</span>
+    <input
+      type="range"
+      min={min}
+      max={max}
+      step={step}
+      value={value}
+      aria-label={label}
+      aria-valuetext={display}
+      disabled={disabled}
+      onChange={(e) => onChange(Number(e.target.value))}
+      className="flex-1 min-w-0 accent-[color:var(--accent)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent rounded-sm"
+    />
+    <span className="text-[11px] text-ink-light w-12 text-right whitespace-nowrap tabular-nums">{display}</span>
+  </label>
+));
+SliderRow.displayName = 'SliderRow';
+
 const OilPaintNodeInner: React.FC<OilPaintNodeProps> = ({
   id,
   initialX,
@@ -114,7 +154,7 @@ const OilPaintNodeInner: React.FC<OilPaintNodeProps> = ({
         const session = await WetPaintSession.create(activeImageSrc, {
           params: { strokeSize, strokeCountK, dryness },
           style,
-          maxEdge: 2048,
+          maxEdge: 1024,
         });
         if (cancelled) {
           session.dispose();
@@ -139,6 +179,7 @@ const OilPaintNodeInner: React.FC<OilPaintNodeProps> = ({
       cancelled = true;
       sessionRef.current?.dispose();
       sessionRef.current = null;
+      previewContainerRef.current?.replaceChildren();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeImageSrc, isEditing]);
@@ -302,31 +343,6 @@ const OilPaintNodeInner: React.FC<OilPaintNodeProps> = ({
   const hasGenerated = Boolean(data?.imageUrl && !isEditing);
   const isSaved = Boolean(data?.isSaved);
 
-  const sliderRow = (
-    label: string,
-    value: number,
-    min: number,
-    max: number,
-    step: number,
-    display: string,
-    onChange: (v: number) => void
-  ) => (
-    <label className="flex items-center gap-2 flex-1 min-w-0">
-      <span className="text-ink-faint text-[11px] whitespace-nowrap">{label}</span>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        disabled={hasDownstream || isGenerating}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="flex-1 min-w-0 accent-[color:var(--accent)]"
-      />
-      <span className="text-[11px] text-ink-light w-12 text-right whitespace-nowrap">{display}</span>
-    </label>
-  );
-
   return (
     <CanvasNode
       id={id}
@@ -380,7 +396,7 @@ const OilPaintNodeInner: React.FC<OilPaintNodeProps> = ({
               )}
               {/* 独立保存到数据库按钮 */}
               <NodeActionBar.Custom
-                icon={<Check size={16} strokeWidth={isSaved ? 2.5 : 1.5} className={isSaved ? 'text-accent' : ''} />}
+                icon={<Check size={16} strokeWidth={1.5} className={isSaved ? 'text-accent' : ''} />}
                 onClick={handleSaveToDatabase}
                 disabled={isExporting || isSaved}
                 hasDownstream={hasDownstream}
@@ -480,6 +496,10 @@ const OilPaintNodeInner: React.FC<OilPaintNodeProps> = ({
               )}
             </>
           )}
+          <NodeActionBar.ExternalLink
+            href="https://github.com/simonxxooxxoo/wet-paint-flow"
+            tooltip="点击使用完整功能"
+          />
         </NodeActionBar>
       }
     >
@@ -495,22 +515,51 @@ const OilPaintNodeInner: React.FC<OilPaintNodeProps> = ({
       <div className="h-full flex flex-col flex-1 min-h-0 gap-2">
         {/* 参数工具栏（编辑态展示核心参数滑杆与风格切换） */}
         {!hasGenerated && (
-          <div className="flex flex-col gap-1.5 px-1.5 py-1.5 rounded bg-paper-grid/20 border border-paper-grid/40 text-xs font-sans text-ink-light select-none">
+          <div className="flex flex-col gap-1.5 px-1.5 py-1.5 rounded-md bg-paper-grid/20 border border-paper-grid/40 text-xs font-sans text-ink-light select-none">
             <div className="flex items-center justify-between gap-2">
-              {sliderRow('笔触大小', strokeSize, 0.4, 2.5, 0.1, `${strokeSize.toFixed(1)}x`, (v) => patchParam({ strokeSize: v }))}
-              {sliderRow('数量(千)', strokeCountK, 6, 24, 1, `${strokeCountK}k`, (v) => patchParam({ strokeCountK: v }))}
+              <SliderRow
+                label="笔触大小"
+                value={strokeSize}
+                min={0.4}
+                max={2.5}
+                step={0.1}
+                display={`${strokeSize.toFixed(1)}x`}
+                disabled={hasDownstream || isGenerating}
+                onChange={(v) => patchParam({ strokeSize: v })}
+              />
+              <SliderRow
+                label="数量(千)"
+                value={strokeCountK}
+                min={6}
+                max={24}
+                step={1}
+                display={`${strokeCountK}k`}
+                disabled={hasDownstream || isGenerating}
+                onChange={(v) => patchParam({ strokeCountK: v })}
+              />
             </div>
             <div className="flex items-center justify-between gap-2">
-              {sliderRow('干燥度', dryness, 0, 1, 0.05, `${Math.round(dryness * 100)}%`, (v) => patchParam({ dryness: v }))}
-              <div className="flex items-center gap-1 shrink-0">
+              <SliderRow
+                label="干燥度"
+                value={dryness}
+                min={0}
+                max={1}
+                step={0.05}
+                display={`${Math.round(dryness * 100)}%`}
+                disabled={hasDownstream || isGenerating}
+                onChange={(v) => patchParam({ dryness: v })}
+              />
+              <div className="flex items-center gap-1 shrink-0" role="radiogroup" aria-label="湿油彩风格">
                 <span className="text-ink-faint text-[11px] px-0.5">风格:</span>
                 {(['brush', 'blend'] as OilPaintStyle[]).map((s) => (
                   <button
                     key={s}
                     type="button"
+                    role="radio"
+                    aria-checked={style === s}
                     onClick={() => patchParam({ style: s })}
                     disabled={hasDownstream || isGenerating}
-                    className={`px-1.5 py-0.5 rounded transition ${
+                    className={`px-2 py-0.5 rounded text-xs transition-colors duration-150 active:scale-[0.96] ${
                       style === s
                         ? 'bg-accent/15 text-accent font-medium'
                         : 'hover:bg-paper-grid/40 text-ink-light'
@@ -526,7 +575,7 @@ const OilPaintNodeInner: React.FC<OilPaintNodeProps> = ({
 
         {/* 预览画布 */}
         <div className="relative flex-1 min-h-0 w-full overflow-hidden rounded bg-paper-grid/10 border border-paper-grid/40 flex items-center justify-center select-none">
-          <AnimatePresence mode="wait">
+          <AnimatePresence mode="wait" initial={false}>
             {!hasGenerated ? (
               <motion.div
                 key="editor"
@@ -556,7 +605,7 @@ const OilPaintNodeInner: React.FC<OilPaintNodeProps> = ({
                             setSessionStatus('idle');
                             window.setTimeout(() => patchParam({}), 0);
                           }}
-                          className="px-2 py-0.5 rounded text-xs bg-paper-grid/40 hover:bg-paper-grid/70 transition"
+                          className="px-2.5 py-1 rounded text-xs bg-paper-grid/40 hover:bg-paper-grid/70 active:scale-[0.96] transition-colors duration-150"
                         >
                           重试
                         </button>
@@ -565,7 +614,7 @@ const OilPaintNodeInner: React.FC<OilPaintNodeProps> = ({
                   </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center text-ink-faint gap-2 p-6 text-center">
-                    <Upload size={32} strokeWidth={1.2} />
+                    <Upload size={32} strokeWidth={1.5} />
                     <p className="text-xs">请连线上级图片或点击上方按钮上传本地图片</p>
                   </div>
                 )}
@@ -573,26 +622,26 @@ const OilPaintNodeInner: React.FC<OilPaintNodeProps> = ({
             ) : (
               <motion.div
                 key="preview"
-                initial={{ scale: 0.88, opacity: 0 }}
+                initial={{ scale: 0.96, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.88, opacity: 0 }}
-                transition={{ type: 'spring', damping: 22, stiffness: 240 }}
+                exit={{ scale: 0.96, opacity: 0 }}
+                transition={{ type: 'spring', damping: 24, stiffness: 260 }}
                 className="relative w-full h-full flex items-center justify-center p-3"
               >
                 {data.imageUrl ? (
                   <div className="relative group max-w-full max-h-full flex items-center justify-center">
                     <img
                       src={data.imageUrl}
-                      alt="Oil Paint Output"
+                      alt="湿油彩效果预览"
                       className="max-w-full max-h-[440px] object-contain drop-shadow-md select-none pointer-events-none rounded"
                     />
                     {!hasDownstream && (
                       <button
                         type="button"
                         onClick={() => setIsEditing(true)}
-                        className="absolute bottom-3 right-3 px-2.5 py-1 rounded-full bg-paper/90 backdrop-blur text-ink text-xs shadow-md border border-paper-grid/40 hover:bg-white hover:text-accent transition flex items-center gap-1.5 opacity-0 group-hover:opacity-100 duration-150"
+                        className="absolute bottom-3 right-3 px-2.5 py-1.5 rounded-full bg-paper/90 backdrop-blur text-ink text-xs shadow-md border border-paper-grid/40 hover:bg-white hover:text-accent active:scale-[0.96] transition-[opacity,transform,background-color,color] flex items-center gap-1.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent duration-150"
                       >
-                        <Pencil size={12} />
+                        <Pencil size={12} strokeWidth={1.5} />
                         <span>调整参数</span>
                       </button>
                     )}
