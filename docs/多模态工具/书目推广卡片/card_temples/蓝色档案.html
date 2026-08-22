@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Book Echoes - Share Card (Typography Edition)</title>
+
+<!-- 引入网络字体作为优雅降级（Fallback）：思源宋体(标题) + 霞鹜文楷(正文) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=LXGW+WenKai+Mono&family=Noto+Serif+SC:wght@600;900&display=swap" rel="stylesheet">
+
+<style>
+    /* =========================================
+       1. 全局与变量设定
+       ========================================= */
+    :root {
+        --primary-blue: #375592; 
+        --bg-color: #F3EFE6;     
+        --card-bg: #F8F6F0;      
+        --text-dark: #111111;
+        --line-color: #222222;
+        
+        /* --- 核心：定义中文字体栈 --- */
+        --font-title: 'Huiwen-mincho', '汇文明朝体', 'Noto Serif SC', 'Songti SC', serif;
+        --font-body: 'yoyoyisong', '又又意宋', 'LXGW WenKai Mono', 'Kaiti SC', serif;
+        --font-label: 'Courier New', Courier, monospace;
+    }
+
+    body {
+        margin: 0;
+        padding: 0;
+        background-color: var(--bg-color);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        overflow: auto;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E");
+    }
+
+    /* =========================================
+       2. 横版统一大组件容器 (截图抓取目标: 1050px)
+       ========================================= */
+    .library-card {
+        position: relative;
+        width: 1050px;
+        box-sizing: border-box;
+        padding: 75px 35px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        overflow: hidden;
+        background-color: transparent;
+    }
+
+    /* =========================================
+       3. 横版背景巨大文字子组件 (超强视觉冲击)
+       ========================================= */
+    .bg-text {
+        position: absolute;
+        font-family: 'Impact', 'Arial Black', sans-serif;
+        color: var(--primary-blue);
+        font-size: 190px;
+        line-height: 0.8;
+        letter-spacing: 0.01em;
+        white-space: nowrap;
+        text-transform: uppercase;
+        z-index: 0;
+        user-select: none;
+        pointer-events: none;
+    }
+    .bg-text-top { top: -10px; left: 50%; transform: translateX(-50%); }
+    .bg-text-bottom { bottom: -10px; left: 50%; transform: translateX(-50%); }
+
+    /* =========================================
+       4. 内部精致倾斜主体卡片 (精简至 720px)
+       ========================================= */
+    .ticket-card-inner {
+        position: relative;
+        z-index: 10;
+        background-color: var(--card-bg);
+        width: 720px;
+        max-width: 100%;
+        box-sizing: border-box;
+        padding: 35px 40px;
+        border: 1.5px solid var(--text-dark);
+        transform: rotate(-2deg);
+        box-shadow: 5px 10px 25px rgba(0, 0, 0, 0.15);
+        display: flex;
+        flex-direction: column;
+        gap: 25px;
+    }
+
+    /* =========================================
+       5. 顶部寄语
+       ========================================= */
+    .ticket-header {
+        text-align: center;
+        font-family: var(--font-label);
+        font-size: 1.15rem;
+        font-weight: bold;
+        color: var(--text-dark);
+        letter-spacing: 1px;
+        line-height: 1.4;
+    }
+
+    /* =========================================
+       6. 核心内容区：左右固定布局
+       ========================================= */
+    .ticket-body {
+        display: flex;
+        gap: 35px;
+        align-items: stretch;
+    }
+
+    /* --- 左侧：固定宽度封面组件 (锁定 200px 保证排版统一) --- */
+    .cover-section {
+        flex: 0 0 200px; 
+        width: 200px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        position: relative;
+    }
+    .cover-image {
+        width: 100%;
+        height: auto;
+        aspect-ratio: 2 / 3;
+        object-fit: cover;
+        border: 1.5px solid var(--text-dark);
+        box-shadow: 4px 4px 0px rgba(55, 85, 146, 0.2); 
+    }
+    .douban-badge {
+        margin-top: 15px;
+        width: 100%;
+        box-sizing: border-box;
+        background-color: var(--primary-blue);
+        color: white;
+        font-family: var(--font-label);
+        font-size: 1rem;
+        font-weight: bold;
+        padding: 5px 10px;
+        border: 1.5px solid var(--text-dark);
+        box-shadow: 2px 2px 0px var(--text-dark);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        text-align: center;
+    }
+
+    /* --- 右侧：元数据信息 --- */
+    .info-section {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        min-width: 0; 
+    }
+
+    /* =========================================
+       7. 信息条目组件
+       ========================================= */
+    .info-block {
+        margin-bottom: 12px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        width: 100%;
+        min-width: 0;
+    }
+    
+    .label {
+        background-color: var(--primary-blue);
+        color: white;
+        font-family: var(--font-label);
+        font-size: 0.95rem;
+        font-weight: bold;
+        padding: 3px 10px;
+        margin-bottom: 6px;
+        text-transform: uppercase;
+    }
+
+    .value {
+        width: 100%;
+        min-width: 0;
+        color: var(--text-dark);
+        box-sizing: border-box;
+    }
+
+    .divider {
+        width: 100%;
+        height: 1.5px;
+        background-color: var(--line-color);
+        margin-top: 6px;
+    }
+
+    /* =========================================
+       8. 独立文本样式与截断处理 (Typography Focus)
+       ========================================= */
+    
+    /* 书名：使用强烈的明朝体/宋体，字号加大，单行截断 */
+    .val-title {
+        font-family: var(--font-title);
+        font-size: 2.2rem;
+        font-weight: 900;
+        letter-spacing: 1.5px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        padding-bottom: 2px;
+    }
+
+    /* 作者/出版社等：使用文楷/意宋，单行截断 */
+    .val-normal {
+        font-family: var(--font-body);
+        font-size: 1.2rem;
+        font-weight: 500;
+        letter-spacing: 1px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* 推荐语：使用文楷/意宋，多行截断 (自适应) */
+    .val-review {
+        font-family: var(--font-body);
+        font-size: 1.1rem;
+        line-height: 1.55;
+        font-weight: 500;
+        letter-spacing: 0.5px;
+        color: #222;
+        display: -webkit-box;
+        -webkit-line-clamp: 3; 
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        text-align: justify;
+    }
+
+    /* =========================================
+       9. 底部页脚
+       ========================================= */
+    .ticket-footer {
+        margin-top: 5px;
+        text-align: center;
+        font-family: var(--font-label);
+        font-size: 0.95rem;
+        font-weight: bold;
+        color: var(--text-dark);
+    }
+</style>
+</head>
+<body>
+
+    <!-- 最外围大组件容器：横版统一抓取焦点 -->
+    <div class="library-card">
+        
+        <!-- 背景大字子组件 -->
+        <div class="bg-text bg-text-top">BOOK ECHOES</div>
+        <div class="bg-text bg-text-bottom">BOOK ECHOES</div>
+
+        <!-- 内部倾斜主体卡片子组件 -->
+        <div class="ticket-card-inner">
+            
+            <div class="ticket-header">
+                CONGRATULATIONS! YOU FOUND<br>
+                A GREAT BOOK TO READ :)
+            </div>
+
+            <div class="ticket-body">
+                
+                <div class="cover-section">
+                    <!-- 替换为真实的图书封面 -->
+                    <img src="pic/cover.jpg" alt="Book Cover" class="cover-image" onerror="this.src='https://via.placeholder.com/300x400?text=COVER';">
+                    <div class="douban-badge">
+                        DOUBAN: {{DOUBAN_RATING}}
+                    </div>
+                </div>
+
+                <div class="info-section">
+                    
+                    <div class="info-block">
+                        <div class="label">TITLE</div>
+                        <div class="value val-title" title="{{TITLE}}">{{TITLE}}</div>
+                        <div class="divider"></div>
+                    </div>
+
+                    <div class="info-block">
+                        <div class="label">AUTHOR</div>
+                        <div class="value val-normal" title="{{AUTHOR}}">{{AUTHOR}}</div>
+                        <div class="divider"></div>
+                    </div>
+
+                    <div class="info-block">
+                        <div class="label">PUBLICATION</div>
+                        <div class="value val-normal" title="{{PUBLISHER}} · {{PUB_YEAR}}">{{PUBLISHER}} · {{PUB_YEAR}}</div>
+                        <div class="divider"></div>
+                    </div>
+
+                    <div class="info-block">
+                        <div class="label">CALL NUMBER</div>
+                        <div class="value val-normal" title="{{CALL_NUMBER}}">{{CALL_NUMBER}}</div>
+                        <div class="divider"></div>
+                    </div>
+
+                    <div class="info-block" style="margin-bottom: 0;">
+                        <div class="label">REVIEW</div>
+                        <div class="value val-review" title="{{RECOMMENDATION}}">{{RECOMMENDATION}}</div>
+                        <div class="divider"></div>
+                    </div>
+
+                </div>
+            </div>
+
+            <div class="ticket-footer">
+                100% RECOMMENDED / READ IT NOW<br>
+                USE THE CODE: 'BOOK_ECHOES_1ST'
+            </div>
+
+        </div>
+
+    </div>
+
+</body>
+</html>

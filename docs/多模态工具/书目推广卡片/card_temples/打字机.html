@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图书卡片 - 打字机风格</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=VT323&family=Special+Elite&family=Courier+Prime:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --paper: #EDE8DD;
+            --paper-dark: #D9D4C7;
+            --ink: #1A1814;
+            --border: #1A1814;
+            --highlight: rgba(26, 24, 20, 0.08);
+            --rule-color: #2A2620;
+            --font-label: 'VT323', 'Courier New', monospace;
+            --font-body: 'ZhaohuaTypeWriter Light', 'ZhaohuaTypeWriter', 'Courier Prime', 'Courier New', serif;
+            --font-accent: 'ZhaohuaTypeWriter Light', 'ZhaohuaTypeWriter', 'Special Elite', 'Courier Prime', monospace;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background-color: #E8E4D8;
+            color: var(--ink);
+            font-family: var(--font-body);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .library-card.layout-wrapper {
+            display: grid;
+            grid-template-columns: 58% 42%;
+            max-width: 1100px;
+            height: 720px;
+            width: 100%;
+            border: 2px solid var(--border);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+            background-color: var(--paper);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .left-col {
+            border-right: 2px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            min-width: 0;
+            height: 100%;
+        }
+
+        .right-col {
+            position: relative;
+            overflow: hidden;
+            min-width: 0;
+            height: 100%;
+            background-color: #000;
+        }
+
+        .section {
+            border-bottom: 1px dashed var(--rule-color);
+            min-width: 0;
+        }
+
+        .section:last-child {
+            border-bottom: none;
+        }
+
+        .section-header {
+            font-family: var(--font-label);
+            font-size: 15px;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            padding: 6px 18px;
+            background-color: var(--highlight);
+            border-bottom: 1px solid var(--border);
+            color: var(--ink);
+            user-select: none;
+        }
+
+        .section-content {
+            padding: 16px 22px;
+            min-width: 0;
+        }
+
+        p {
+            font-family: var(--font-body);
+            font-size: 15px;
+            line-height: 1.6;
+            text-align: justify;
+        }
+
+        a {
+            color: var(--ink);
+            text-decoration: none;
+            border-bottom: 1.5px solid var(--ink);
+            font-weight: 700;
+            font-family: var(--font-accent);
+        }
+
+        a:hover {
+            background-color: var(--ink);
+            color: var(--paper);
+        }
+
+        .review-bar {
+            background-color: var(--paper-dark);
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+
+        .img-container {
+            position: relative;
+            border: 1.5px solid var(--border);
+            margin: 14px 0;
+            overflow: hidden;
+            background: var(--ink);
+        }
+
+        .img-container img {
+            width: 100%;
+            height: 100%;
+            display: block;
+            object-fit: cover;
+            filter: grayscale(100%) contrast(380%) brightness(80%);
+        }
+
+        .img-container::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background-image:
+                linear-gradient(var(--paper) 1.2px, transparent 1.2px),
+                linear-gradient(90deg, var(--paper) 1.2px, transparent 1.2px);
+            background-size: 4px 4px;
+            mix-blend-mode: multiply;
+            pointer-events: none;
+            opacity: 0.85;
+        }
+
+        .banner-img { height: 85px; }
+        .banner-mid { height: 58px; }
+        .banner-top img { object-position: top center; }
+        .banner-mid img { object-position: center center; }
+
+        .main-art-container {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            border: none;
+            position: relative;
+            background-color: var(--ink);
+            overflow: hidden;
+        }
+
+        .cover-main {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            clip-path: polygon(0 0, 100% 0, 100% 53%, 0 63%);
+            z-index: 1;
+        }
+
+        .cover-main img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: center;
+            display: block;
+            filter: contrast(105%) brightness(95%);
+        }
+
+        .reflection-divider {
+            position: absolute;
+            top: 58%;
+            left: -10%;
+            width: 120%;
+            height: 1.5px;
+            background-color: var(--paper);
+            opacity: 0.45;
+            transform: rotate(-8.8deg);
+            z-index: 2;
+            pointer-events: none;
+            box-shadow: 0 0 4px rgba(237, 232, 221, 0.4);
+        }
+
+        .cover-reflection {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            clip-path: polygon(0 63%, 100% 53%, 100% 100%, 0 100%);
+            z-index: 1;
+            filter: opacity(0.65);
+            -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 1) 40%, rgba(0, 0, 0, 0.15) 100%);
+            mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 1) 40%, rgba(0, 0, 0, 0.15) 100%);
+        }
+
+        .cover-reflection img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: center;
+            display: block;
+            transform: scaleY(-1);
+        }
+
+        .main-art-container::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(26, 24, 20, 0.15) 1.2px, transparent 1.2px),
+                linear-gradient(90deg, rgba(26, 24, 20, 0.15) 1.2px, transparent 1.2px);
+            background-size: 6px 6px;
+            pointer-events: none;
+            mix-blend-mode: multiply;
+            z-index: 3;
+        }
+
+        .qrcode-container {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            padding: 5px;
+            background: var(--paper);
+            border: 1.5px solid var(--border);
+            box-shadow: 2px 2px 0 var(--border);
+            z-index: 10;
+        }
+
+        .qrcode-container img {
+            width: 52px;
+            height: 52px;
+            display: block;
+        }
+
+        .meta-block {
+            margin-bottom: 14px;
+            min-width: 0;
+        }
+
+        .meta-block:last-child {
+            margin-bottom: 0;
+        }
+
+        .meta-label {
+            font-family: var(--font-label);
+            font-size: 13px;
+            letter-spacing: 1.2px;
+            text-transform: uppercase;
+            color: var(--ink);
+            margin-bottom: 3px;
+            opacity: 0.75;
+        }
+
+        .val-title {
+            font-family: var(--font-accent);
+            font-size: 22px;
+            font-weight: 700;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            min-width: 0;
+            width: 100%;
+        }
+
+        .val-normal {
+            font-family: var(--font-body);
+            font-size: 14px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            min-width: 0;
+            width: 100%;
+        }
+
+        .val-review {
+            font-family: var(--font-body);
+            font-size: 14px;
+            line-height: 1.65;
+            overflow: hidden;
+            text-align: justify;
+        }
+
+        .review-bar .section-content {
+            padding: 18px 22px;
+            flex: 1;
+        }
+
+        .details-section .section-content {
+            padding: 12px 22px;
+        }
+
+        .val-review::before {
+            content: "* ";
+            font-weight: 700;
+            opacity: 0.85;
+        }
+
+        .val-rating {
+            font-family: var(--font-label);
+            font-size: 17px;
+            font-weight: 700;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        @media (max-width: 768px) {
+            .library-card.layout-wrapper { grid-template-columns: 1fr; }
+            .left-col { border-right: none; border-bottom: 2px solid var(--border); }
+            .right-col { min-height: 400px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="library-card layout-wrapper">
+    <aside class="left-col">
+        <div class="section">
+            <div class="section-header">/// FILE: BOOK_METADATA.TXT</div>
+            <div class="section-content">
+                <div class="meta-block">
+                    <div class="meta-label">TITLE</div>
+                    <div class="val-title" title="{{TITLE}}">{{TITLE}}</div>
+                </div>
+                <div class="meta-block">
+                    <div class="meta-label">AUTHOR</div>
+                    <div class="val-normal" title="{{AUTHOR}}">{{AUTHOR}}</div>
+                </div>
+                <div class="meta-block">
+                    <div class="meta-label">PUBLISHER / YEAR</div>
+                    <div class="val-normal" title="{{PUBLISHER}} / {{PUB_YEAR}}">{{PUBLISHER}} / {{PUB_YEAR}}</div>
+                </div>
+                <div class="meta-block">
+                    <div class="meta-label">CALL NUMBER</div>
+                    <div class="val-normal" title="{{CALL_NUMBER}}">{{CALL_NUMBER}}</div>
+                </div>
+                <div class="meta-block">
+                    <div class="meta-label">DOUBAN RATING</div>
+                    <div class="val-rating" title="{{DOUBAN_RATING}}">{{DOUBAN_RATING}}</div>
+                </div>
+                <!-- 横版插图：显示封面顶部 -->
+                <div class="img-container banner-img banner-top" style="margin-top: 14px; margin-bottom: 0;">
+                    <img src="pic/b.png" alt="Cover Detail Top" onerror="this.onerror=null;this.src='pic/b.png';">
+                </div>
+            </div>
+        </div>
+
+        <div class="section review-bar">
+            <div class="section-header" style="background:transparent;border-bottom:1px solid var(--border);">/// LOG: REVIEW</div>
+            <div class="section-content">
+                <p class="val-review" title="{{RECOMMENDATION}}">{{RECOMMENDATION}}</p>
+            </div>
+        </div>
+
+        <div class="section details-section">
+            <div class="section-header">/// DETAILS</div>
+            <div class="section-content">
+                <!-- 横版插图：显示封面中部 -->
+                <div class="img-container banner-img banner-mid" style="margin-top: 0; margin-bottom: 8px;">
+                    <img src="pic/b.png" alt="Cover Detail Mid" onerror="this.onerror=null;this.src='pic/b.png';">
+                </div>
+                <p style="font-size:13px; opacity:0.9; margin-bottom:0;">* 来自 <span style="font-family:'Special Elite',monospace;font-weight:700;">BOOK_ECHOES</span> 的推荐</p>
+            </div>
+        </div>
+    </aside>
+
+    <main class="right-col">
+        <!-- 上下双图倒影结构 -->
+        <div class="main-art-container">
+            <div class="cover-main">
+                <img src="../pic/cover.jpg" alt="Book Cover" onerror="this.onerror=null;this.src='pic/cover.jpg';">
+            </div>
+            <div class="reflection-divider"></div>
+            <div class="cover-reflection">
+                <img src="../pic/cover.jpg" alt="Book Cover Reflection" onerror="this.onerror=null;this.src='pic/cover.jpg';">
+            </div>
+        </div>
+        <div class="qrcode-container">
+            <img src="../pic/qrcode.png" alt="QR Code" onerror="this.onerror=null;this.src='pic/qrcode.png';">
+        </div>
+    </main>
+</div>
+
+</body>
+</html>
