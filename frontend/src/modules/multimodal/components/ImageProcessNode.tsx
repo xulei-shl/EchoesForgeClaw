@@ -489,10 +489,6 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
               )}
             </>
           )}
-          <NodeActionBar.ExternalLink
-            href="https://github.com/yashrajbharti/Grainy-image"
-            tooltip="点击使用完整功能"
-          />
         </NodeActionBar>
       }
     >
