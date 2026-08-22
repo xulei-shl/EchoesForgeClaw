@@ -8,7 +8,7 @@
  */
 
 /** 效果注册表 id */
-export type ImageFxId = 'grain' | 'halftone';
+export type ImageFxId = 'grain' | 'halftone' | 'dither';
 
 /** 数值滑杆参数声明（节点 UI 按声明自动渲染滑杆行） */
 export interface ImageFxSliderParamDef {
@@ -87,6 +87,16 @@ export interface HalftoneFxParams {
   shape: 'circle' | 'rect' | 'triangle' | 'hexagon';
   /** mono = 单色亮度网屏；cmyk = 四色分离叠印 */
   mode: 'mono' | 'cmyk';
+}
+
+/** 抖动效果参数（原创实现，思路参考 ditherjs） */
+export interface DitherFxParams {
+  /** 量化算法：ordered = Bayer 有序抖动；floyd_steinberg / atkinson = 误差扩散（蛇形扫描） */
+  algorithm: 'ordered' | 'floyd_steinberg' | 'atkinson';
+  /** 目标色板：mono = 黑白二值；gameboy = 掌机四阶绿；cga = 复古十六色；custom = 自定义十六进制色板 */
+  palette: 'mono' | 'gameboy' | 'cga' | 'custom';
+  /** 像素块边长（px，blockSize×blockSize 块共享同一量化结果，1 = 逐像素） */
+  blockSize: number;
 }
 
 /** 图片处理节点持久化状态（写入 node.data） */

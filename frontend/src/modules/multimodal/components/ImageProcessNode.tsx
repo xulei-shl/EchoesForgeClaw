@@ -564,6 +564,19 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
                 ))}
               </div>
             ))}
+            {effect.id === 'dither' && params.palette === 'custom' && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-ink-faint text-[11px] whitespace-nowrap">自定义:</span>
+                <input
+                  type="text"
+                  value={String(params.customPalette ?? '#000000,#ffffff')}
+                  onChange={(e) => setParam('customPalette', e.target.value)}
+                  placeholder="#000000,#ffffff,..."
+                  className="flex-1 bg-paper border border-paper-grid text-ink rounded px-2 py-1 text-xs outline-none focus:border-accent disabled:opacity-60 font-mono"
+                  disabled={hasDownstream || isGenerating}
+                />
+              </div>
+            )}
           </div>
         )}
 

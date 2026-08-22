@@ -10,6 +10,7 @@ export * from './shared';
 export * from './effects/registry';
 export * from './effects/grain';
 export * from './effects/halftone';
+export * from './effects/dither';
 export * from './state';
 
 import { getImageFxEffect } from './effects/registry';
