@@ -229,7 +229,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'pattern_search',
     name: '中国传统纹样',
-    description: '检索/浏览 100 款中国传统纹样（植物花卉、动物瑞兽、几何锦纹等），选中后输出纹样图片与详情说明文本',
+    description: '检索/浏览 100 款中国传统纹样（AI生成版）',
     category: 'multimodal',
     configurable: false,
     defaultSize: DEFAULT_SIZES.pattern_search,
