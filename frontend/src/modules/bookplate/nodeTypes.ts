@@ -205,7 +205,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'receipt_printer',
     name: '图书小票生成',
-    description: '生成热敏纸风格图书小票、借书卡、古籍排版等书目推荐卡片',
+    description: '生成热敏纸小票、借书卡、古籍排版等书目推荐卡片',
     category: 'multimodal',
     configurable: false,
     defaultSize: DEFAULT_SIZES.receipt_printer,

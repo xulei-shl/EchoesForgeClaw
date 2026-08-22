@@ -32,7 +32,7 @@ export const NODE_TYPES = {
   TEXT_TRANSLATION: 'text_translation',
   /** 网络搜索（文本工具）：知乎全网 / Tavily / Exa / 豆包等多源网络检索 */
   WEB_SEARCH: 'web_search',
-  /** 图书小票生成（多模态工具）：生成热敏纸风格图书小票、借书卡、古籍排版等书目推荐卡片 */
+  /** 图书小票生成（多模态工具）：生成热敏纸小票、借书卡、古籍排版等书目推荐卡片 */
   RECEIPT_PRINTER: 'receipt_printer',
   /** 邮票截图框（多模态工具）：锯齿邮票框自由截取，生成带打孔边缘与边框的邮票图片 */
   STAMP_CUTTER: 'stamp_cutter',
@@ -245,7 +245,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
   {
     type: NODE_TYPES.RECEIPT_PRINTER,
     name: '图书小票生成',
-    description: '生成热敏纸风格图书小票、借书卡、古籍排版等书目推荐卡片',
+    description: '生成热敏纸小票、借书卡、古籍排版等书目推荐卡片',
     category: 'multimodal',
     configurable: false,
     output_type: 'image',
