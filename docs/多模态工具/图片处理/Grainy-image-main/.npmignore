@@ -1,0 +1,18 @@
+# Demo files (not needed in package)
+index.html
+
+# Development files
+.gitignore
+.git/
+.github/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+

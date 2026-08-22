@@ -1,0 +1,47 @@
+{
+    "name": "grainy-image",
+    "version": "1.2.3",
+    "description": "A Web Component for creating grainy/noisy image effects with 4 powerful methods: Canvas, CSS Gradient Mask, CSS Background Layers, and SVG feTurbulence",
+    "main": "grainy-image.js",
+    "module": "grainy-image.js",
+    "type": "module",
+    "files": [
+        "grainy-image.js",
+        "README.md",
+        "LICENSE",
+        "assets"
+    ],
+    "keywords": [
+        "web-component",
+        "custom-element",
+        "grainy",
+        "grain",
+        "noise",
+        "image-effect",
+        "canvas",
+        "css",
+        "svg",
+        "filter",
+        "turbulence",
+        "film-grain",
+        "texture",
+        "web-components",
+        "vanilla-js",
+        "shadow-dom"
+    ],
+    "author": "Yash Raj Bharti",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/yashrajbharti/Grainy-image.git"
+    },
+    "bugs": {
+        "url": "https://github.com/yashrajbharti/Grainy-image/issues"
+    },
+    "homepage": "https://yashrajbharti.github.io/Grainy-image/",
+    "scripts": {
+        "test": "echo \"No tests specified\" && exit 0"
+    },
+    "devDependencies": {},
+    "dependencies": {}
+}

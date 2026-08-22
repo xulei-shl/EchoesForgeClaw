@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grainy Image - Web Component</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <meta name="description" content="A Web Component for creating grainy/noisy image effects">
+    <meta name="keywords"
+        content="web-component, custom-element, grainy, grain, noise, image-effect, canvas, css, svg, filter, turbulence, film-grain, texture, web-components, vanilla-js, shadow-dom">
+    <meta name="author" content="Yash Raj Bharti">
+    <meta name="robots" content="index, follow">
+    <meta name="googlebot" content="index, follow">
+    <meta name="google" content="notranslate">
+    <meta name="google-site-verification" content="google-site-verification=google-site-verification">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap"
+        rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #000000;
+            color: #fafafa;
+            line-height: 1.6;
+            min-height: 100vh;
+            padding: 3rem 1.5rem;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 4rem;
+            border-bottom: 1px solid #27272a;
+            padding-bottom: 2rem;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 0.75rem;
+            letter-spacing: -0.025em;
+        }
+
+        .subtitle {
+            font-size: 1.125rem;
+            color: #a1a1aa;
+            font-weight: 400;
+        }
+
+        .method-section {
+            margin-bottom: 4rem;
+        }
+
+        .method-header {
+            margin-bottom: 1.5rem;
+        }
+
+        .method-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            letter-spacing: -0.025em;
+        }
+
+        .method-description {
+            color: #a1a1aa;
+            font-size: 0.95rem;
+        }
+
+        .demo-card {
+            background: #09090b;
+            border: 1px solid #27272a;
+            border-radius: 0.75rem;
+            overflow: hidden;
+            transition: border-color 0.2s;
+        }
+
+        .demo-card:hover {
+            border-color: #3f3f46;
+        }
+
+        .image-container {
+            padding: 2rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: #0a0a0a;
+        }
+
+        grainy-image {
+            border-radius: 0.5rem;
+            overflow: hidden;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+        }
+
+        .code-container {
+            padding: 0;
+            background: #0a0a0a;
+            border-top: 1px solid #27272a;
+        }
+
+        .code-header {
+            padding: 0.75rem 1.25rem;
+            background: #09090b;
+            border-bottom: 1px solid #27272a;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .code-header::before {
+            content: '';
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #7e7e88;
+        }
+
+        .code-header span {
+            font-size: 0.75rem;
+            color: #7e7e88;
+            font-family: 'Fira Code', monospace;
+        }
+
+        pre {
+            margin: 0;
+            padding: 1.5rem 1.25rem;
+            overflow-x: auto;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.875rem;
+            line-height: 1.7;
+        }
+
+        code {
+            color: #fafafa;
+        }
+
+        .token-tag {
+            color: #8b5cf6;
+        }
+
+        .token-attr {
+            color: #06b6d4;
+        }
+
+        .token-value {
+            color: #10b981;
+        }
+
+        .token-comment {
+            color: #7e7e88;
+            font-style: italic;
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 5rem;
+            padding-top: 2rem;
+            border-top: 1px solid #27272a;
+            color: #7e7e88;
+            font-size: 0.875rem;
+        }
+
+        footer a {
+            color: #a1a1aa;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        footer a:hover {
+            color: #fafafa;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 2rem 1rem;
+            }
+
+            h1 {
+                font-size: 2rem;
+            }
+
+            .method-title {
+                font-size: 1.25rem;
+            }
+
+            .image-container {
+                padding: 1rem;
+            }
+
+            pre {
+                font-size: 0.75rem;
+                padding: 1rem;
+            }
+        }
+
+        .github-corner {
+            fill: #fff;
+            color: #0D080B;
+        }
+
+        .github-corner:hover .octocat .arm {
+            animation: wave 560ms ease-in-out;
+        }
+
+
+        @keyframes wave {
+
+            0%,
+            100% {
+                rotate: 0;
+            }
+
+            20%,
+            60% {
+                rotate: -25deg;
+            }
+
+            40%,
+            80% {
+                rotate: 10deg;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>Grainy Image</h1>
+            <p class="subtitle">A Web Component for creating grainy/noisy image effects</p>
+
+            <a href="https://github.com/yashrajbharti/Grainy-image" target="_blank" class="github-corner"
+                aria-label="View source on GitHub">
+                <svg width="80" height="80" viewBox="0 0 250 250" style="position: fixed; top: 0; border: 0; right: 0;"
+                    aria-hidden="true" class="octocat">
+                    <path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path>
+                    <path
+                        d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2"
+                        fill="currentColor" style="transform-origin: 130px 106px;" class="arm"></path>
+                    <path
+                        d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.6 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.6 187.2,61.8 190.9,65.4 C194.5,69.0 197.7,73.2 200.1,77.6 C213.8,80.2 216.3,84.9 216.3,84.9 C212.7,93.1 206.9,96.0 205.4,96.6 C205.1,102.4 203.0,107.8 198.3,112.5 C181.9,128.9 168.3,122.5 157.7,114.1 C157.9,116.9 156.7,120.9 152.7,124.9 L141.0,136.5 C139.8,137.7 141.6,141.9 141.8,141.8 Z"
+                        fill="currentColor" class="body"></path>
+                </svg>
+            </a>
+        </header>
+
+        <main>
+            <!-- Canvas Method -->
+            <section class="method-section">
+                <div class="method-header">
+                    <h2 class="method-title">Canvas Method</h2>
+                    <p class="method-description">Pixel-level noise generation using HTML5 Canvas API</p>
+                </div>
+
+                <div class="demo-card">
+                    <div class="image-container">
+                        <grainy-image method="canvas" intensity="0.25" width="600" height="400"
+                            src="https://picsum.photos/600/400?random=1" alt="Sample image with canvas grain effect">
+                        </grainy-image>
+                    </div>
+
+                    <div class="code-container">
+                        <div class="code-header">
+                            <span>example1.html</span>
+                        </div>
+                        <pre><code><span class="token-comment">&lt;!-- Include the script --&gt;</span>
+<span class="token-tag">&lt;script</span> <span class="token-attr">src</span>=<span class="token-value">"grainy-image.js"</span><span class="token-tag">&gt;&lt;/script&gt;</span>
+
+<span class="token-comment">&lt;!-- Canvas method --&gt;</span>
+<span class="token-tag">&lt;grainy-image</span> 
+    <span class="token-attr">method</span>=<span class="token-value">"canvas"</span> 
+    <span class="token-attr">intensity</span>=<span class="token-value">"0.25"</span> 
+    <span class="token-attr">width</span>=<span class="token-value">"600"</span> 
+    <span class="token-attr">height</span>=<span class="token-value">"400"</span>
+    <span class="token-attr">src</span>=<span class="token-value">"your-image.jpg"</span>
+    <span class="token-attr">alt</span>=<span class="token-value">"Description of the image"</span><span class="token-tag">&gt;</span>
+<span class="token-tag">&lt;/grainy-image&gt;</span></code></pre>
+                    </div>
+                </div>
+            </section>
+
+            <!-- CSS Gradient Mask Method -->
+            <section class="method-section">
+                <div class="method-header">
+                    <h2 class="method-title">CSS Gradient Mask Method (Chrome Only)</h2>
+                    <p class="method-description">Sub-pixel gradient distortion for unique grain patterns (supports
+                        optional animation-duration)</p>
+                </div>
+
+                <div class="demo-card">
+                    <div class="image-container">
+                        <grainy-image method="css-mask" intensity="0.00011" animation-duration="3" width="600"
+                            height="400" src="https://picsum.photos/600/400?random=2"
+                            alt="Sample image with CSS gradient mask effect">
+                        </grainy-image>
+                    </div>
+
+                    <div class="code-container">
+                        <div class="code-header">
+                            <span>example2.html</span>
+                        </div>
+                        <pre><code><span class="token-comment">&lt;!-- Include the script --&gt;</span>
+<span class="token-tag">&lt;script</span> <span class="token-attr">src</span>=<span class="token-value">"grainy-image.js"</span><span class="token-tag">&gt;&lt;/script&gt;</span>
+
+<span class="token-comment">&lt;!-- CSS Mask method --&gt;</span>
+<span class="token-tag">&lt;grainy-image</span> 
+    <span class="token-attr">method</span>=<span class="token-value">"css-mask"</span> 
+    <span class="token-attr">intensity</span>=<span class="token-value">"0.00011"</span> 
+    <span class="token-attr">animation-duration</span>=<span class="token-value">"3"</span>
+    <span class="token-attr">width</span>=<span class="token-value">"600"</span> 
+    <span class="token-attr">height</span>=<span class="token-value">"400"</span>
+    <span class="token-attr">src</span>=<span class="token-value">"your-image.jpg"</span>
+    <span class="token-attr">alt</span>=<span class="token-value">"Description of the image"</span><span class="token-tag">&gt;</span>
+<span class="token-tag">&lt;/grainy-image&gt;</span></code></pre>
+                    </div>
+                </div>
+            </section>
+
+            <!-- CSS Background Layers Method -->
+            <section class="method-section">
+                <div class="method-header">
+                    <h2 class="method-title">CSS Background Layers Method</h2>
+                    <p class="method-description">Layers image and noise.svg using CSS backgrounds with blend modes</p>
+                </div>
+
+                <div class="demo-card">
+                    <div class="image-container">
+                        <grainy-image method="css-background" intensity="1" width="600" height="400"
+                            src="https://picsum.photos/600/400?random=3"
+                            alt="Sample image with CSS background layers effect">
+                        </grainy-image>
+                    </div>
+
+                    <div class="code-container">
+                        <div class="code-header">
+                            <span>example3.html</span>
+                        </div>
+                        <pre><code><span class="token-comment">&lt;!-- Include the script --&gt;</span>
+<span class="token-tag">&lt;script</span> <span class="token-attr">src</span>=<span class="token-value">"grainy-image.js"</span><span class="token-tag">&gt;&lt;/script&gt;</span>
+
+<span class="token-comment">&lt;!-- CSS Background Layers method --&gt;</span>
+<span class="token-tag">&lt;grainy-image</span> 
+    <span class="token-attr">method</span>=<span class="token-value">"css-background"</span> 
+    <span class="token-attr">intensity</span>=<span class="token-value">"1"</span> 
+    <span class="token-attr">width</span>=<span class="token-value">"600"</span> 
+    <span class="token-attr">height</span>=<span class="token-value">"400"</span>
+    <span class="token-attr">src</span>=<span class="token-value">"your-image.jpg"</span>
+    <span class="token-attr">alt</span>=<span class="token-value">"Description of the image"</span><span class="token-tag">&gt;</span>
+<span class="token-tag">&lt;/grainy-image&gt;</span></code></pre>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SVG feTurbulence Method -->
+            <section class="method-section">
+                <div class="method-header">
+                    <h2 class="method-title">SVG feTurbulence Method</h2>
+                    <p class="method-description">Uses SVG filters for fractal noise generation (supports octaves
+                        parameter)</p>
+                </div>
+
+                <div class="demo-card">
+                    <div class="image-container">
+                        <grainy-image method="svg-turbulence" intensity="0.02" octaves="3" width="600" height="400"
+                            src="https://picsum.photos/600/400?random=4"
+                            alt="Sample image with SVG turbulence grain effect">
+                        </grainy-image>
+                    </div>
+
+                    <div class="code-container">
+                        <div class="code-header">
+                            <span>example4.html</span>
+                        </div>
+                        <pre><code><span class="token-comment">&lt;!-- Include the script --&gt;</span>
+<span class="token-tag">&lt;script</span> <span class="token-attr">src</span>=<span class="token-value">"grainy-image.js"</span><span class="token-tag">&gt;&lt;/script&gt;</span>
+
+<span class="token-comment">&lt;!-- SVG feTurbulence method --&gt;</span>
+<span class="token-tag">&lt;grainy-image</span> 
+    <span class="token-attr">method</span>=<span class="token-value">"svg-turbulence"</span> 
+    <span class="token-attr">intensity</span>=<span class="token-value">"0.02"</span> 
+    <span class="token-attr">octaves</span>=<span class="token-value">"3"</span>
+    <span class="token-attr">width</span>=<span class="token-value">"600"</span> 
+    <span class="token-attr">height</span>=<span class="token-value">"400"</span>
+    <span class="token-attr">src</span>=<span class="token-value">"your-image.jpg"</span>
+    <span class="token-attr">alt</span>=<span class="token-value">"Description of the image"</span><span class="token-tag">&gt;</span>
+<span class="token-tag">&lt;/grainy-image&gt;</span></code></pre>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p><a href="https://github.com/yashrajbharti/Grainy-image/blob/main/LICENSE">MIT License</a> &middot; <a
+                    href="https://github.com/yashrajbharti/Grainy-image">View on GitHub</a> &middot;
+                <a href="https://www.npmjs.com/package/grainy-image">npm Package</a> &middot;
+                <a href="https://github.com/yashrajbharti/Grainy-image/blob/main/README.md">Documentation</a>
+            </p>
+            <p>Made with ❤️ by <a href="https://github.com/yashrajbharti">Yash Raj Bharti</a></p>
+        </footer>
+    </div>
+
+    <script src="grainy-image.js"></script>
+</body>
+
+</html>
