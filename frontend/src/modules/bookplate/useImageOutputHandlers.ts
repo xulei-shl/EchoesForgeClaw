@@ -287,6 +287,7 @@ export interface ImageOutputHandlers {
   handleSelectColorFor: (id: string, color: ColorItem, palette?: ColorItem[]) => Promise<void>;
   handleExportReceiptFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportStampFor: (id: string, dataUrl: string, state: any) => Promise<void>;
+  handleExportOilPaintFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportMapPosterFor: (id: string, imageUrl: string) => Promise<void>;
   handleExportMapArtFor: (id: string, imageUrl: string) => Promise<void>;
 }
@@ -334,6 +335,18 @@ export function useImageOutputHandlers(ctx: ImageOutputCtx): ImageOutputHandlers
     historyWarn: '记录邮票到历史数据库失败(不阻断导出):',
   });
 
+  // 湿油彩效果：与邮票同流程——手动点击保存 → /save-image 落盘 → generations 记录
+  const handleExportOilPaintFor = useImageExportHandler(ctx, {
+    nodeType: 'oil_paint',
+    historyNodeType: 'oil_paint',
+    promptOf: () => '湿油彩效果',
+    okExtras: () => ({}),
+    onHistorySaved: () => {},
+    emptyError: '保存湿油彩图片失败',
+    errLabel: '湿油彩图片保存',
+    historyWarn: '记录湿油彩到历史数据库失败(不阻断导出):',
+  });
+
   const handleExportMapPosterFor = useSimpleImageExportHandler(ctx, 'map_poster');
   const handleExportMapArtFor = useSimpleImageExportHandler(ctx, 'map_art');
 
@@ -344,6 +357,7 @@ export function useImageOutputHandlers(ctx: ImageOutputCtx): ImageOutputHandlers
     handleSelectColorFor,
     handleExportReceiptFor,
     handleExportStampFor,
+    handleExportOilPaintFor,
     handleExportMapPosterFor,
     handleExportMapArtFor,
   };

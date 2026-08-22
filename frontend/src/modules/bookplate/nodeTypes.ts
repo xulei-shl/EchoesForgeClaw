@@ -30,6 +30,7 @@ export const NODE_COLORS: Record<CanvasNodeType, string> = {
   map_art: 'oklch(0.65 0.18 80)',
   pattern_search: 'oklch(0.65 0.16 20)',
   color_search: 'oklch(0.68 0.18 45)',
+  oil_paint: 'oklch(0.66 0.16 60)',
 };
 
 export interface NodeTemplateDef {
@@ -240,6 +241,14 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     configurable: false,
     defaultSize: DEFAULT_SIZES.color_search,
   },
+  {
+    type: 'oil_paint',
+    name: '湿油彩效果',
+    description: '浏览器端 WebGL 流场笔触渲染：结构张量方向场 + 三层 Bézier 笔触重建画面，合成带颜料厚度与湿润高光的湿油彩效果',
+    category: 'multimodal',
+    configurable: false,
+    defaultSize: DEFAULT_SIZES.oil_paint,
+  },
 ];
 
 export const NODE_TEMPLATE_MAP: Record<CanvasNodeType, NodeTemplateDef> = Object.fromEntries(
@@ -323,6 +332,8 @@ export const NODE_PORT_TYPES: Record<
   pattern_search: { output: 'image', outputs: ['image', 'text'], inputs: ['text'] },
   // 中国传统配色：复合输出——主输出为图片（传统色卡图），同时产出调色板与搭配方案 Markdown 文本；
   color_search: { output: 'image', outputs: ['image', 'text'], inputs: ['text'] },
+  // 湿油彩效果：输出生成的油画图片；可连线图片或图书元数据作为输入源（连线即输入）
+  oil_paint: { output: 'image', inputs: ['image', 'text'] },
 };
 
 /** 节点端口声明：主输出 + 全部输出类型 + 接受的上游输入类型列表 */

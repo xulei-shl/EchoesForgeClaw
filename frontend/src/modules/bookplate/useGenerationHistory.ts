@@ -54,9 +54,11 @@ export function useGenerationHistory(ctx: GenerationHistoryContext): GenerationH
           ? (imageNode.data?.storeName ? `${imageNode.data.storeName} - ${imageNode.data?.subtitle || '图书小票'}` : '图书小票生成')
           : imageNode.type === 'stamp_cutter'
             ? '邮票截图'
-            : typeof imageNode.data?.prompt === 'string'
-              ? imageNode.data.prompt
-              : '';
+            : imageNode.type === 'oil_paint'
+              ? '湿油彩效果'
+              : typeof imageNode.data?.prompt === 'string'
+                ? imageNode.data.prompt
+                : '';
 
       return {
         stage1: bookNode
@@ -78,7 +80,7 @@ export function useGenerationHistory(ctx: GenerationHistoryContext): GenerationH
                   : undefined,
               agent_steps: promptSteps.length > 0 ? promptSteps : undefined,
             }
-          : (imageNode.type === 'receipt_printer' || imageNode.type === 'stamp_cutter')
+          : (imageNode.type === 'receipt_printer' || imageNode.type === 'stamp_cutter' || imageNode.type === 'oil_paint')
             ? { prompt: promptText }
             : undefined,
         stage3: {

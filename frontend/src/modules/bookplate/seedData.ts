@@ -176,5 +176,15 @@ export function seedDataFor(type: NodeType, parent?: NodeData): any {
         output: '',
         error: null,
       };
+    case 'oil_paint':
+      return {
+        strokeSize: 1,
+        strokeCountK: 14,
+        dryness: 0.69,
+        style: 'brush',
+        imageUrl: null,
+        uploadedImage: null,
+        error: null,
+      };
   }
 }

@@ -417,6 +417,7 @@ export function useNodeHandlers({
   const handleUpdateTranslationEditorFor = useEditorPatchHandler(['text_translation'], editorPatchFns);
   const handleUpdateWebSearchEditorFor = useEditorPatchHandler(['web_search'], editorPatchFns);
   const handleUpdateStampStateFor = useEditorPatchHandler(['stamp_cutter'], editorPatchFns);
+  const handleUpdateOilPaintStateFor = useEditorPatchHandler(['oil_paint'], editorPatchFns);
 
   /** 图书小票生成节点：状态更新写入 node.data（持久化）。
    *  插图（图书封面 / 上游图片 / 本地上传）与「生成输出图」分离：
@@ -494,6 +495,7 @@ export function useNodeHandlers({
     handleSelectColorFor,
     handleExportReceiptFor,
     handleExportStampFor,
+    handleExportOilPaintFor,
     handleExportMapPosterFor,
     handleExportMapArtFor,
   } = useImageOutputHandlers(imageOutputCtx);
@@ -596,6 +598,8 @@ export function useNodeHandlers({
     handleUpdateReceiptStateFor,
     handleExportStampFor,
     handleUpdateStampStateFor,
+    handleExportOilPaintFor,
+    handleUpdateOilPaintStateFor,
     handleSelectSearchImageFor,
     handleUpdateImageSearchEditorFor,
     handleSelectGlamImageFor,

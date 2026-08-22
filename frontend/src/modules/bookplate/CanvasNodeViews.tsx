@@ -20,6 +20,7 @@ import { ImageSearchNode, type ImageSearchSelection } from '../../modules/multim
 import { ArtImageSearchNode, type GlamSearchSelection } from '../../modules/multimodal/components/ArtImageSearchNode';
 import { ReceiptPrinterNode } from '../../modules/multimodal/components/ReceiptPrinterNode';
 import { StampCutterNode } from '../../modules/multimodal/components/StampCutterNode';
+import { OilPaintNode } from '../../modules/multimodal/components/OilPaintNode';
 import { MapArtNode } from '../../modules/multimodal/components/MapArtNode';
 import { PatternSearchNode, type PatternItem } from '../../modules/multimodal/components/PatternSearchNode';
 import { ColorSearchNode, type ColorItem } from '../../modules/multimodal/components/ColorSearchNode';
@@ -142,6 +143,10 @@ export interface NodeViewHelpers {
   handleExportStampFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   /** 邮票截图框节点：状态更新写入 node.data（持久化） */
   handleUpdateStampStateFor: (id: string, patch: Record<string, any>) => void;
+  /** 湿油彩效果节点：导出 PNG data URL 落盘（保存到后端 + 记录数据库历史 + 写回 node.data） */
+  handleExportOilPaintFor: (id: string, dataUrl: string, state: any) => Promise<void>;
+  /** 湿油彩效果节点：状态更新写入 node.data（持久化） */
+  handleUpdateOilPaintStateFor: (id: string, patch: Record<string, any>) => void;
   /** 文本聚合节点：保存占位符模板 */
   handleUpdateAggregateTemplateFor: (id: string, template: string) => void;
   /** 文本聚合节点：重命名某上级节点的占位符别名 */
@@ -722,6 +727,30 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           hasDownstream={hasDownstreamOf(node, h.edges)}
           onSelectPattern={h.handleSelectPatternFor}
           onUpdateEditor={h.handleUpdatePatternEditorFor}
+        />
+      );
+    }
+
+    case 'oil_paint': {
+      const d = node.data ?? {};
+      const { upstreamImageUrl } = resolveUpstreamImage(node, h);
+      return (
+        <OilPaintNode
+          key={node.id}
+          {...common}
+          data={d}
+          upstreamImageUrl={upstreamImageUrl}
+          isFavorited={!!h.favoritedState[node.id]}
+          isPublic={!!h.publishedState[node.id]}
+          isSelected={node.id === h.activeImage?.id}
+          recordDeleted={h.staleRecordIds.has(node.id)}
+          onSelect={h.handleSelectImage}
+          onToggleFavorite={h.handleToggleFavoriteFor}
+          onTogglePublic={h.handleTogglePublicFor}
+          hasDownstream={hasDownstreamOf(node, h.edges)}
+          mismatchBadge={mismatchBadge}
+          onUpdateState={h.handleUpdateOilPaintStateFor}
+          onExport={h.handleExportOilPaintFor}
         />
       );
     }
