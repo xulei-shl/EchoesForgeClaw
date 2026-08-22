@@ -101,6 +101,9 @@ def _parse_relation_colors(raw_str: str) -> List[Dict[str, str]]:
                 "name": part,
                 "hex": c_hex.upper(),
             })
+    return items
+
+
 def _calibrate_category(name: str, hex_val: str, h: int, s: int, l: int, raw_cat: str) -> str:
     if s < 12 or l >= 92 or l <= 12:
         if "黄" in name and s >= 10:

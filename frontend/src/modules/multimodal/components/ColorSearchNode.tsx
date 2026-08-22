@@ -214,6 +214,26 @@ ${paletteLines}
 `;
 }
 
+/** 判断 harmony 对象是否携带了可用的具体搭配数组（至少一类非空），
+ *  用于区分「真的没有搭配」与「仅带 curated_plan/空数组」的残缺数据 */
+function hasUsableHarmonies(h: ColorItem['harmonies']): boolean {
+  if (!h) return false;
+  return [
+    'same',
+    'analogous',
+    'complementary',
+    'split_complementary',
+    'triadic',
+    'tetradic',
+    'temperature_contrast',
+    'lighter',
+    'darker',
+    'gray_tone',
+    'neutral',
+    'accent',
+  ].some((k) => Array.isArray((h as any)[k]) && (h as any)[k].length > 0);
+}
+
 /** 判断颜色亮度，计算最易读的前景文字颜色 */
 function getReadableTextColor(hex: string): string {
   const clean = hex.replace('#', '');
@@ -238,7 +258,11 @@ function getSuggestionsForTile(
     cache.get(color.id) ||
     (padId ? cache.get(padId) : undefined) ||
     (color.name ? cache.get(color.name) : undefined);
-  const harmonies = color.harmonies || cached?.harmonies || {};
+  const harmonies = (hasUsableHarmonies(color.harmonies)
+    ? color.harmonies
+    : cached && hasUsableHarmonies(cached.harmonies)
+      ? cached.harmonies
+      : {}) || {};
 
   let pool: ColorHarmonyItem[] = [];
   if (currentMethod === 'analogous') {
@@ -454,7 +478,7 @@ const ColorSearchNodeInner: React.FC<ColorSearchNodeProps> = ({
         const list = Array.isArray(res.items) ? res.items : [];
         setItems(list);
         list.forEach((c) => {
-          if (c.id && c.harmonies) colorCacheRef.current.set(c.id, c);
+          if (c.id && hasUsableHarmonies(c.harmonies)) colorCacheRef.current.set(c.id, c);
         });
         setTotal(typeof res.total === 'number' ? res.total : list.length);
         setSearchError('');
@@ -502,7 +526,7 @@ const ColorSearchNodeInner: React.FC<ColorSearchNodeProps> = ({
         if (Array.isArray(res?.palette) && res.palette.length > 0) {
           setPalette(res.palette);
           res.palette.forEach((p: ColorItem) => {
-            if (p.id && p.harmonies) colorCacheRef.current.set(p.id, p);
+            if (p.id && hasUsableHarmonies(p.harmonies)) colorCacheRef.current.set(p.id, p);
           });
           const curAnchor = selectedColor || res.palette[0];
           const newOutput = formatColorMarkdown(curAnchor, res.palette);
@@ -547,20 +571,20 @@ const ColorSearchNodeInner: React.FC<ColorSearchNodeProps> = ({
   // 调色板若有缺失 harmonies 的项，自动并行补全
   useEffect(() => {
     let unmounted = false;
-    const hasMissing = palette.some((p) => !p.harmonies || Object.keys(p.harmonies).length === 0);
+    const hasMissing = palette.some((p) => !hasUsableHarmonies(p.harmonies));
     if (!hasMissing) return;
 
     async function enrichPalette() {
       let changed = false;
       const updated = await Promise.all(
         palette.map(async (p) => {
-          if (p.harmonies && Object.keys(p.harmonies).length > 0) {
+          if (hasUsableHarmonies(p.harmonies)) {
             colorCacheRef.current.set(p.id, p);
             return p;
           }
           const cid = p.id || p.name;
           const cached = colorCacheRef.current.get(cid) || (p.name ? colorCacheRef.current.get(p.name) : undefined);
-          if (cached && cached.harmonies) {
+          if (cached && hasUsableHarmonies(cached.harmonies)) {
             changed = true;
             return cached;
           }
@@ -568,7 +592,7 @@ const ColorSearchNodeInner: React.FC<ColorSearchNodeProps> = ({
             const res: any = await api.get(`/modules/bookplate/color-search/${encodeURIComponent(cid)}`, {
               timeout: SMALL_TOOL_TIMEOUT_MS,
             });
-            if (res && res.id && res.harmonies) {
+            if (res && res.id && hasUsableHarmonies(res.harmonies)) {
               changed = true;
               colorCacheRef.current.set(res.id, res);
               if (res.name) colorCacheRef.current.set(res.name, res);
@@ -658,7 +682,7 @@ const ColorSearchNodeInner: React.FC<ColorSearchNodeProps> = ({
       items.find((c) => c.id === replacement.id || c.name === replacement.name) ||
       null;
 
-    if (!targetItem || !targetItem.harmonies) {
+    if (!targetItem || !hasUsableHarmonies(targetItem.harmonies)) {
       try {
         const res: any = await api.get(`/modules/bookplate/color-search/${encodeURIComponent(cid)}`, {
           timeout: SMALL_TOOL_TIMEOUT_MS,
