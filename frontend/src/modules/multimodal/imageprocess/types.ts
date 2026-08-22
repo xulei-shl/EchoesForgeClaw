@@ -7,8 +7,8 @@
  * 后续新增效果（ASCII / 网点 / 抖动）= 新增一个效果文件 + 注册表登记一行。
  */
 
-/** 效果注册表 id（第一阶段仅噪点） */
-export type ImageFxId = 'grain';
+/** 效果注册表 id */
+export type ImageFxId = 'grain' | 'halftone';
 
 /** 数值滑杆参数声明（节点 UI 按声明自动渲染滑杆行） */
 export interface ImageFxSliderParamDef {
@@ -73,6 +73,20 @@ export interface GrainFxParams {
   grainSize: number;
   /** mono = 单色亮度噪声（源项目口径）；color = RGB 独立彩色噪声 */
   mode: 'mono' | 'color';
+}
+
+/** 网点效果参数（img-halftone 移植 + 扩展） */
+export interface HalftoneFxParams {
+  /** 网点点距（px，单元格边长） */
+  dotSize: number;
+  /** 满覆盖率时的最大点半径（相对点距比例，参考实现口径 0.7） */
+  maxRadius: number;
+  /** 网屏角度（度；彩色模式下四色板在此基础上按经典印刷网角错开） */
+  angle: number;
+  /** 网点形状 */
+  shape: 'circle' | 'rect' | 'triangle' | 'hexagon';
+  /** mono = 单色亮度网屏；cmyk = 四色分离叠印 */
+  mode: 'mono' | 'cmyk';
 }
 
 /** 图片处理节点持久化状态（写入 node.data） */

@@ -30,11 +30,11 @@ export const NODE_TYPES = {
   WIKIPEDIA_SEARCH: 'wikipedia_search',
   /** 文本翻译（文本工具）：Google 翻译 / DeepLX 翻译引擎，支持随机源与自动降级 */
   TEXT_TRANSLATION: 'text_translation',
-  /** 网络搜索（文本工具）：知乎全网 / Tavily / Exa 多源检索，支持随机源与自动降级（凭据在管理端「系统设置」配置，可连线文本节点传入关键词） */
+  /** 网络搜索（文本工具）：知乎全网 / Tavily / Exa / 豆包等多源网络检索 */
   WEB_SEARCH: 'web_search',
-  /** 图书小票生成（多模态工具）：生成复古热敏纸风格图书小票/书目推荐凭证（支持图书元数据继承、封面点阵化、索书号自定义与导出） */
+  /** 图书小票生成（多模态工具）：生成热敏纸风格图书小票、借书卡、古籍排版等书目推荐卡片 */
   RECEIPT_PRINTER: 'receipt_printer',
-  /** 邮票截图框（多模态工具）：在图片上移动锯齿邮票框自由截取，生成带打孔边缘与柔和投影的复古邮票图片 */
+  /** 邮票截图框（多模态工具）：锯齿邮票框自由截取，生成带打孔边缘与柔和投影的邮票图片 */
   STAMP_CUTTER: 'stamp_cutter',
   /** 艺术地图生成（多模态工具）：基于 prettymaps 服务端生成艺术风格地图图片 */
   MAP_ART: 'map_art',
@@ -236,7 +236,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
   {
     type: NODE_TYPES.WEB_SEARCH,
     name: '网络搜索',
-    description: '知乎全网 / Tavily / Exa 多源网络检索，支持随机源与自动降级（凭据在管理端「系统设置」配置，可连线文本节点传入关键词）',
+    description: '知乎全网 / Tavily / Exa / 豆包等多源网络检索',
     category: 'tool',
     configurable: false,
     output_type: 'text',
@@ -245,7 +245,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
   {
     type: NODE_TYPES.RECEIPT_PRINTER,
     name: '图书小票生成',
-    description: '生成复古热敏纸风格图书小票 / 书目推荐凭证（支持图书元数据继承、封面点阵化、索书号自定义与导出）',
+    description: '生成热敏纸风格图书小票、借书卡、古籍排版等书目推荐卡片',
     category: 'multimodal',
     configurable: false,
     output_type: 'image',
@@ -254,7 +254,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
   {
     type: NODE_TYPES.STAMP_CUTTER,
     name: '邮票截图框',
-    description: '在图片上移动锯齿邮票框自由截取，生成带打孔边缘与柔和投影的复古邮票图片',
+    description: '锯齿邮票框自由截取，生成带打孔边缘与柔和投影的邮票图片',
     category: 'multimodal',
     configurable: false,
     output_type: 'image',

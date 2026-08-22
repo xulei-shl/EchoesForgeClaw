@@ -197,7 +197,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'web_search',
     name: '网络搜索',
-    description: '知乎全网 / Tavily / Exa 多源网络检索，支持随机源与自动降级',
+    description: '知乎全网 / Tavily / Exa / 豆包等多源网络检索',
     category: 'tool',
     configurable: false,
     defaultSize: DEFAULT_SIZES.web_search,
@@ -205,7 +205,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'receipt_printer',
     name: '图书小票生成',
-    description: '生成复古热敏纸风格图书小票 / 书目推荐凭证（支持图书元数据继承、封面点阵化、索书号自定义与导出）',
+    description: '生成热敏纸风格图书小票、借书卡、古籍排版等书目推荐卡片',
     category: 'multimodal',
     configurable: false,
     defaultSize: DEFAULT_SIZES.receipt_printer,
@@ -213,7 +213,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'stamp_cutter',
     name: '邮票截图框',
-    description: '在图片上移动锯齿邮票框自由截取，生成带打孔边缘与柔和投影的复古邮票图片',
+    description: '锯齿邮票框自由截取，生成带打孔边缘与柔和投影的邮票图片',
     category: 'multimodal',
     configurable: false,
     defaultSize: DEFAULT_SIZES.stamp_cutter,
