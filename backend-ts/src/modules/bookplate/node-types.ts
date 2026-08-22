@@ -36,7 +36,7 @@ export const NODE_TYPES = {
   RECEIPT_PRINTER: 'receipt_printer',
   /** 邮票截图框（多模态工具）：在图片上移动锯齿邮票框自由截取，生成带打孔边缘与柔和投影的复古邮票图片 */
   STAMP_CUTTER: 'stamp_cutter',
-  /** 艺术地图生成（多模态工具）：基于 prettymaps 服务端生成艺术风格地图图片（OSM 数据 + matplotlib 渲染） */
+  /** 艺术地图生成（多模态工具）：基于 prettymaps 服务端生成艺术风格地图图片 */
   MAP_ART: 'map_art',
   /** 中国传统纹样（多模态工具）：100 款中国传统纹样分类浏览/关键词检索/随机浏览，输出纹样图片与说明文本 */
   PATTERN_SEARCH: 'pattern_search',
@@ -263,7 +263,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
   {
     type: NODE_TYPES.MAP_ART,
     name: '艺术地图生成',
-    description: '基于 prettymaps 服务端生成艺术风格地图图片（OSM 数据 + matplotlib 渲染）',
+    description: '基于 prettymaps 服务端生成艺术风格地图图片',
     category: 'multimodal',
     configurable: false,
     output_type: 'image',

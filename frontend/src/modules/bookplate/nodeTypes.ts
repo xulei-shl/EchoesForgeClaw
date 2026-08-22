@@ -221,7 +221,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'map_art',
     name: '艺术地图生成',
-    description: '基于 prettymaps 服务端生成艺术风格地图图片（OSM 数据 + matplotlib 渲染）',
+    description: '基于 prettymaps 服务端生成艺术风格地图图片',
     category: 'multimodal',
     configurable: false,
     defaultSize: DEFAULT_SIZES.map_art,
