@@ -31,6 +31,7 @@ export const NODE_COLORS: Record<CanvasNodeType, string> = {
   pattern_search: 'oklch(0.65 0.16 20)',
   color_search: 'oklch(0.68 0.18 45)',
   oil_paint: 'oklch(0.66 0.16 60)',
+  image_process: 'oklch(0.66 0.15 105)',
 };
 
 export interface NodeTemplateDef {
@@ -249,6 +250,14 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     configurable: false,
     defaultSize: DEFAULT_SIZES.oil_paint,
   },
+  {
+    type: 'image_process',
+    name: '图片处理',
+    description: '浏览器端 Canvas 多效果图片处理：噪点 / ASCII / 网点 / 抖动等风格化效果，效果注册表驱动切换（第一阶段：噪点）',
+    category: 'multimodal',
+    configurable: false,
+    defaultSize: DEFAULT_SIZES.image_process,
+  },
 ];
 
 export const NODE_TEMPLATE_MAP: Record<CanvasNodeType, NodeTemplateDef> = Object.fromEntries(
@@ -334,6 +343,8 @@ export const NODE_PORT_TYPES: Record<
   color_search: { output: 'image', outputs: ['image', 'text'], inputs: ['text'] },
   // 湿油彩效果：输出生成的油画图片；可连线图片或图书元数据作为输入源（连线即输入）
   oil_paint: { output: 'image', inputs: ['image', 'text'] },
+  // 图片处理：输出处理结果图片；可连线图片或图书元数据作为输入源（连线即输入）
+  image_process: { output: 'image', inputs: ['image', 'text'] },
 };
 
 /** 节点端口声明：主输出 + 全部输出类型 + 接受的上游输入类型列表 */

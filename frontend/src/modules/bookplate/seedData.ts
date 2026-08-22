@@ -186,5 +186,14 @@ export function seedDataFor(type: NodeType, parent?: NodeData): any {
         uploadedImage: null,
         error: null,
       };
+    case 'image_process':
+      return {
+        effectId: 'grain',
+        fxParams: {},
+        imageUrl: null,
+        uploadedImage: null,
+        isSaved: false,
+        error: null,
+      };
   }
 }

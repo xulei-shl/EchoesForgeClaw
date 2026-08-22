@@ -288,6 +288,7 @@ export interface ImageOutputHandlers {
   handleExportReceiptFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportStampFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportOilPaintFor: (id: string, dataUrl: string, state: any) => Promise<void>;
+  handleExportImageProcessFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportMapPosterFor: (id: string, imageUrl: string) => Promise<void>;
   handleExportMapArtFor: (id: string, imageUrl: string) => Promise<void>;
 }
@@ -347,6 +348,20 @@ export function useImageOutputHandlers(ctx: ImageOutputCtx): ImageOutputHandlers
     historyWarn: '记录湿油彩到历史数据库失败(不阻断导出):',
   });
 
+  // 图片处理：与邮票/湿油彩同流程——手动点击保存 → /save-image 落盘 → generations 记录
+  //（prompt 记录当前所选效果名，如「图片处理 · 噪点」，多效果切换后记录可追溯）
+  const handleExportImageProcessFor = useImageExportHandler(ctx, {
+    nodeType: 'image_process',
+    historyNodeType: 'image_process',
+    promptOf: (state) =>
+      `图片处理 · ${state?.effectName || '未知效果'}`,
+    okExtras: () => ({}),
+    onHistorySaved: () => {},
+    emptyError: '保存处理结果图片失败',
+    errLabel: '图片处理保存',
+    historyWarn: '记录图片处理到历史数据库失败(不阻断导出):',
+  });
+
   const handleExportMapPosterFor = useSimpleImageExportHandler(ctx, 'map_poster');
   const handleExportMapArtFor = useSimpleImageExportHandler(ctx, 'map_art');
 
@@ -358,6 +373,7 @@ export function useImageOutputHandlers(ctx: ImageOutputCtx): ImageOutputHandlers
     handleExportReceiptFor,
     handleExportStampFor,
     handleExportOilPaintFor,
+    handleExportImageProcessFor,
     handleExportMapPosterFor,
     handleExportMapArtFor,
   };

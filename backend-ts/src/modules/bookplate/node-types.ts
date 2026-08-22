@@ -44,6 +44,8 @@ export const NODE_TYPES = {
   COLOR_SEARCH: 'color_search',
   /** 湿油彩效果（多模态工具）：浏览器端 WebGL 流场笔触渲染，把输入图片重建为三层 Bézier 笔触 + 湿油彩质感的油画 */
   OIL_PAINT: 'oil_paint',
+  /** 图片处理（多模态工具）：浏览器端 Canvas 多效果图片处理（噪点 / ASCII / 网点 / 抖动），效果注册表驱动 */
+  IMAGE_PROCESS: 'image_process',
 } as const;
 
 export type NodeType = (typeof NODE_TYPES)[keyof typeof NODE_TYPES];
@@ -291,6 +293,15 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     type: NODE_TYPES.OIL_PAINT,
     name: '湿油彩效果',
     description: '浏览器端 WebGL 流场笔触渲染：结构张量方向场 + 三层 Bézier 笔触重建画面，合成带颜料厚度与湿润高光的湿油彩效果',
+    category: 'multimodal',
+    configurable: false,
+    output_type: 'image',
+    input_types: ['image', 'text'],
+  },
+  {
+    type: NODE_TYPES.IMAGE_PROCESS,
+    name: '图片处理',
+    description: '浏览器端 Canvas 多效果图片处理（第一阶段：噪点；后续 ASCII / 网点 / 抖动），效果注册表驱动切换，输出处理结果图片',
     category: 'multimodal',
     configurable: false,
     output_type: 'image',

@@ -1,6 +1,7 @@
 import { useCallback, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import generationsService from '../../platform/services/generations';
 import { flushSnapshot } from '../../platform/stores/useCanvasState';
+import { getImageFxEffect } from '../../modules/multimodal/imageprocess';
 import type { GenerationStageResults } from '../../platform/types';
 import { findConnectedBookInfoUpstream, findRootBookInfo, resolveDirectParents } from './nodeTypes';
 import type { EdgeData, NodeData } from './graphTypes';
@@ -56,9 +57,11 @@ export function useGenerationHistory(ctx: GenerationHistoryContext): GenerationH
             ? '邮票截图'
             : imageNode.type === 'oil_paint'
               ? '湿油彩效果'
-              : typeof imageNode.data?.prompt === 'string'
-                ? imageNode.data.prompt
-                : '';
+              : imageNode.type === 'image_process'
+                ? `图片处理 · ${getImageFxEffect(imageNode.data?.effectId).name}`
+                : typeof imageNode.data?.prompt === 'string'
+                  ? imageNode.data.prompt
+                  : '';
 
       return {
         stage1: bookNode
@@ -80,7 +83,7 @@ export function useGenerationHistory(ctx: GenerationHistoryContext): GenerationH
                   : undefined,
               agent_steps: promptSteps.length > 0 ? promptSteps : undefined,
             }
-          : (imageNode.type === 'receipt_printer' || imageNode.type === 'stamp_cutter' || imageNode.type === 'oil_paint')
+          : (imageNode.type === 'receipt_printer' || imageNode.type === 'stamp_cutter' || imageNode.type === 'oil_paint' || imageNode.type === 'image_process')
             ? { prompt: promptText }
             : undefined,
         stage3: {

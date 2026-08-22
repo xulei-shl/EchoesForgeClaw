@@ -124,3 +124,81 @@ Three.js/WebGL 着色器管线，FastAPI(Python)/backend-ts(Node) 均无法直�
 ### 未验证项
 - 真机 GPU 下的实时拖拽帧率与并发双节点编辑（需浏览器人工验收）
 
+---
+
+# 图片处理节点（image_process）实施规划 · 第一阶段：噪点
+
+## 方案决策
+- **前端浏览器端 Canvas 执行**（同湿油彩/邮票模式）：噪点为纯像素级变换，Canvas API 毫秒级完成，
+  零服务端成本；保存链路复用既有 `/save-image` + `generations`（useImageExportHandler 工厂）。
+- **多效果架构参照「图书小票生成」多模板模式**（用户指定参考）：效果注册表 Map +
+  getAll/get（未知 id 兜底首个，同 getReceiptTemplate 口径）+ register 扩展机制；
+  每个效果一个声明式定义（参数 schema + render 函数），UI 按注册表自动渲染。
+- **多效果切换语义**：
+  - 参数按效果分桶存储（`data.fxParams[effectId]`），切换效果互不覆盖、切回恢复各自参数；
+  - **切换效果 = 旧结果立即失效**（`switchFxEffectPatch` 清空 imageUrl/isSaved 回编辑态）——
+    保证下游读到的 `data.imageUrl` 与 db 记录始终对应「当前所选效果」；
+  - hasDownstream 门禁与湿油彩一致（影响输出的操作全部禁用）。
+- **输入优先级**：本地上传 uploadedImage > 上级图片/封面穿透（复用 `resolveUpstreamImage`）。
+- **算法**：移植 Grainy-image-main（MIT）canvas 方法——`(Math.random()-0.5)*intensity*255`
+  加到 RGB；扩展颗粒大小（g×g 块共享噪声）与单色/彩色两档。
+
+## 任务清单
+
+### 后端
+- [x] 1. `backend-ts/src/modules/bookplate/node-types.ts`：`IMAGE_PROCESS: 'image_process'`
+      + NODE_TEMPLATES 条目（category='multimodal', output_type='image', input_types=['image','text']）
+
+### 效果引擎模块
+- [x] 2. 新建 `frontend/src/modules/multimodal/imageprocess/`：
+      - `types.ts`：ImageFxEffectDef（id/name/params 声明/render）、GrainFxParams、ImageProcessState
+      - `shared.ts`：fxLoadImage / fxDrawingCanvas / fxDefaultParams（预览与导出共用）
+      - `effects/grain.ts`：噪点效果（强度 0-1 默认 0.3 / 颗粒 1-8px / 单色|彩色）
+      - `effects/registry.ts`：imageFxRegistry Map + getAll/get/register + defaultFxParamsOf
+      - `state.ts`：resolveFxParams（参数读取兜底）+ switchFxEffectPatch（切换补丁）
+      - `index.ts`：re-export + applyImageFx 统一渲染分发
+
+### 前端注册链路（按 docs/节点输入输出声明式接线.md §3.1）
+- [x] 3. `platform/types/index.ts`：CanvasNodeType 加 `'image_process'`
+- [x] 4. `modules/bookplate/nodeLayout.ts`：NodeType 联合 + NODE_SIZES（440×560）
+- [x] 5. `modules/bookplate/nodeTypes.ts`：NODE_TEMPLATES / NODE_COLORS / NODE_PORT_TYPES
+- [x] 6. `modules/multimodal/components/ImageProcessNode.tsx`：
+      编辑态（效果下拉 + 声明式参数控件 + 实时预览防抖 150ms）/ 结果态双态；
+      NodeActionBar 统一按钮组逐一对齐湿油彩（生成/上传/清空/重新调整/保存落库/收藏/公开/下载/重置 + 外链）
+- [x] 7. `seedData.ts`：image_process 初始 data 分支
+- [x] 8. `useImageOutputHandlers.ts`：handleExportImageProcessFor（historyNodeType='image_process'，
+      promptOf=`图片处理 · ${effectName}`，记录可追溯所选效果）
+- [x] 9. `useNodeHandlers.ts`：`useEditorPatchHandler(['image_process'])` 注册 + 返回两个 handler
+- [x] 10. `CanvasNodeViews.tsx`：渲染分支（resolveUpstreamImage 注入 upstreamImageUrl）
+- [x] 11. `BookplatePage.tsx`：isImageResultNode + handlers 注入两处
+- [x] 12. `useGenerationHistory.ts`（promptText 分支 + stage2 条件）+
+      `platform/utils/generation.ts` generationNodeTypeLabel：名称映射「图片处理」
+- [x] 13. 文档 `docs/节点输入输出声明式接线.md` §2 清单表行 + 多效果架构说明段
+
+### 验证
+- [x] 14. frontend `npm run build`（tsc -b && vite build）✅ + backend-ts `npm run typecheck` ✅；
+      lint 无新增错误（既存 maplibre/useGenerationHistory 警告经 stash 对照确认为历史遗留）
+- [ ] 15. 手动验证路径（需浏览器人工验收）：连线图片上传→图片处理→调参数实时预览→生成→
+      下载/保存落库→输出下游（图片分析/图像生成/邮票）；切换效果后确认旧结果失效、
+      下游与 db 记录只对应新效果
+
+## 变更记录与评审（2026-08-22 完成）
+
+### 实施结果
+- 后端：IMAGE_PROCESS 常量 + NODE_TEMPLATES 条目（与湿油彩同端口契约：output image /
+  inputs [image, text]，端口类型自动接入 collectNodeInputs 图片分组，零收集代码改动）
+- 效果引擎：registry Map 驱动（对齐 receipt templates.ts）；噪点算法逐字移植 canvas 方法，
+  grainSize=1 时与源项目行为一致；Uint8ClampedArray 自动钳制溢出；参数 default 字段为
+  单一事实来源（fxDefaultParams 提取默认值表，UI 与兜底共用）
+- 组件：双态交互镜像 OilPaintNode；效果下拉 + 参数滑杆按 effect.params 声明自动渲染
+  （滑杆每行两个、分段独占一行），后续新增效果 = 一个 effect 文件 + registry 一行，UI 零改动
+- 输出/保存链路：imageUrl 约定字段 → nodeOutputImages 自动被下游读取；保存走
+  useImageExportHandler（/save-image 落盘 + generations 记录 + 收藏/公开解锁），与湿油彩一致
+- 自查修复：① 预览重试改 previewNonce 触发（避免把垃圾 key 写进持久化参数桶）；
+  ② handleSaveToDatabase 显式构造 state 并把 data 加入依赖（消除旧闭包字段回写风险）
+
+### 未验证项（需人工浏览器验收）
+- 实际噪点视觉效果与实时预览流畅度（Canvas 渲染需真实环境）
+- 跨域图书封面作为输入时 Canvas taint 的报错提示路径（预期显示错误文案 + 重试按钮）
+- 保存落库后收藏/公开链路（复用既有 stamp/oil_paint 流程，理论一致）
+
