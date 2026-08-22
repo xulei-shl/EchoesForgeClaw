@@ -1,35 +1,7 @@
 import type { CanvasNodeType, NodePortType } from '../../platform/types';
+import { DEFAULT_SIZES } from './graphTypes';
 
 export type { NodePortType } from '../../platform/types';
-
-/** 节点模板的默认尺寸（画布布局用，与各节点组件 defaultSize 一致） */
-export const NODE_DEFAULT_SIZES: Record<CanvasNodeType, { width: number; height: number }> = {
-  book_info: { width: 440, height: 540 },
-  image_analysis: { width: 420, height: 460 },
-  text_generation: { width: 420, height: 500 },
-  image_generation: { width: 420, height: 540 },
-  text: { width: 420, height: 400 },
-  image_upload: { width: 420, height: 420 },
-  chat: { width: 420, height: 560 },
-  text_aggregate: { width: 460, height: 520 },
-  prompt_search: { width: 420, height: 440 },
-  skill_search: { width: 440, height: 460 },
-  calendar: { width: 420, height: 480 },
-  weather: { width: 420, height: 460 },
-  map_poster: { width: 460, height: 560 },
-  image_search: { width: 440, height: 560 },
-  art_image_search: { width: 460, height: 580 },
-  
-  zhihu_search: { width: 440, height: 560 },
-  wikipedia_search: { width: 440, height: 560 },
-  text_translation: { width: 460, height: 520 },
-  web_search: { width: 460, height: 560 },
-  receipt_printer: { width: 440, height: 640 },
-  stamp_cutter: { width: 440, height: 560 },
-  map_art: { width: 460, height: 560 },
-  pattern_search: { width: 440, height: 560 },
-  color_search: { width: 480, height: 620 },
-};
 
 /** 节点的主题色（用于左上角指示圆点） */
 export const NODE_COLORS: Record<CanvasNodeType, string> = {
@@ -81,7 +53,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     description: '通过豆瓣 API 获取 ISBN 对应的图书元数据',
     category: 'input',
     configurable: false,
-    defaultSize: NODE_DEFAULT_SIZES.book_info,
+    defaultSize: DEFAULT_SIZES.book_info,
   },
   {
     type: 'image_analysis',
@@ -89,7 +61,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     description: '多模态模型分析封面 / 参考图，输出艺术风格与主题色分析',
     category: 'analysis',
     configurable: true,
-    defaultSize: NODE_DEFAULT_SIZES.image_analysis,
+    defaultSize: DEFAULT_SIZES.image_analysis,
   },
   {
     type: 'text_generation',
@@ -97,7 +69,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     description: '基于上游输入流式生成文本内容（支持 LLM / Agent 模式）',
     category: 'generate',
     configurable: true,
-    defaultSize: NODE_DEFAULT_SIZES.text_generation,
+    defaultSize: DEFAULT_SIZES.text_generation,
   },
   {
     type: 'image_generation',
@@ -105,7 +77,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     description: '根据提示词生成藏书票图片',
     category: 'output',
     configurable: true,
-    defaultSize: NODE_DEFAULT_SIZES.image_generation,
+    defaultSize: DEFAULT_SIZES.image_generation,
   },
   {
     type: 'text',
@@ -113,7 +85,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     description: '手动输入 / 编辑 Markdown 文本，作为工作流中的笔记或说明',
     category: 'input',
     configurable: false,
-    defaultSize: NODE_DEFAULT_SIZES.text,
+    defaultSize: DEFAULT_SIZES.text,
   },
   {
     type: 'image_upload',
@@ -121,7 +93,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     description: '手动上传一张图片到画布，作为工作流中的参考素材',
     category: 'input',
     configurable: false,
-    defaultSize: NODE_DEFAULT_SIZES.image_upload,
+    defaultSize: DEFAULT_SIZES.image_upload,
   },
   {
     type: 'chat',
@@ -129,7 +101,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     description: '多轮对话 AI 助手，可绑定大模型或 FastClaw Agent，输出最后一轮回复',
     category: 'generate',
     configurable: true,
-    defaultSize: NODE_DEFAULT_SIZES.chat,
+    defaultSize: DEFAULT_SIZES.chat,
   },
   {
     type: 'text_aggregate',
@@ -137,7 +109,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     description: '用占位符模板把多个上级文本按自定义格式拼接',
     category: 'tool',
     configurable: false,
-    defaultSize: NODE_DEFAULT_SIZES.text_aggregate,
+    defaultSize: DEFAULT_SIZES.text_aggregate,
   },
   {
     type: 'prompt_search',
@@ -145,7 +117,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     description: '从 Bifrost 提示词库检索并选用一条提示词，将其内容作为文本输出',
     category: 'input',
     configurable: false,
-    defaultSize: NODE_DEFAULT_SIZES.prompt_search,
+    defaultSize: DEFAULT_SIZES.prompt_search,
   },
   {
     type: 'skill_search',
@@ -153,7 +125,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     description: '从 Bifrost Skills 仓库检索并安装 skill（或上传本地 zip），作为 Skill Agent 的 skill 来源',
     category: 'input',
     configurable: false,
-    defaultSize: NODE_DEFAULT_SIZES.skill_search,
+    defaultSize: DEFAULT_SIZES.skill_search,
   },
   {
     type: 'calendar',
@@ -161,7 +133,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     description: '查询指定日期的节假日与农历万年历',
     category: 'tool',
     configurable: false,
-    defaultSize: NODE_DEFAULT_SIZES.calendar,
+    defaultSize: DEFAULT_SIZES.calendar,
   },
   {
     type: 'weather',
@@ -169,7 +141,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     description: '查询指定城市当前天气',
     category: 'tool',
     configurable: false,
-    defaultSize: NODE_DEFAULT_SIZES.weather,
+    defaultSize: DEFAULT_SIZES.weather,
   },
   {
     type: 'map_poster',
@@ -177,7 +149,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     description: '搜索城市并生成地图海报图片',
     category: 'multimodal',
     configurable: false,
-    defaultSize: NODE_DEFAULT_SIZES.map_poster,
+    defaultSize: DEFAULT_SIZES.map_poster,
   },
   {
     type: 'image_search',
@@ -185,7 +157,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     description: '检索 Unsplash / Pixabay / NASA 等平台的免版权图片',
     category: 'multimodal',
     configurable: false,
-    defaultSize: NODE_DEFAULT_SIZES.image_search,
+    defaultSize: DEFAULT_SIZES.image_search,
   },
   {
     type: 'art_image_search',
@@ -193,7 +165,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     description: '聚合博物馆 / 图书馆开放 API，关键词检索或随机浏览',
     category: 'glam',
     configurable: false,
-    defaultSize: NODE_DEFAULT_SIZES.art_image_search,
+    defaultSize: DEFAULT_SIZES.art_image_search,
   },
   
   {
@@ -202,7 +174,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     description: '知乎开发者平台 3 类检索：站内 / 全网 / 直答',
     category: 'tool',
     configurable: false,
-    defaultSize: NODE_DEFAULT_SIZES.zhihu_search,
+    defaultSize: DEFAULT_SIZES.zhihu_search,
   },
   {
     type: 'wikipedia_search',
@@ -210,7 +182,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     description: '检索 Wikipedia 官方公开词条并获取全文 / 简介',
     category: 'tool',
     configurable: false,
-    defaultSize: NODE_DEFAULT_SIZES.wikipedia_search,
+    defaultSize: DEFAULT_SIZES.wikipedia_search,
   },
   {
     type: 'text_translation',
@@ -218,7 +190,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     description: 'Google 翻译 / DeepLX 多引擎翻译，支持随机源与降级',
     category: 'tool',
     configurable: false,
-    defaultSize: NODE_DEFAULT_SIZES.text_translation,
+    defaultSize: DEFAULT_SIZES.text_translation,
   },
   {
     type: 'web_search',
@@ -226,7 +198,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     description: '知乎全网 / Tavily / Exa 多源网络检索，支持随机源与自动降级',
     category: 'tool',
     configurable: false,
-    defaultSize: NODE_DEFAULT_SIZES.web_search,
+    defaultSize: DEFAULT_SIZES.web_search,
   },
   {
     type: 'receipt_printer',
@@ -234,7 +206,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     description: '生成复古热敏纸风格图书小票 / 书目推荐凭证（支持图书元数据继承、封面点阵化、索书号自定义与导出）',
     category: 'multimodal',
     configurable: false,
-    defaultSize: NODE_DEFAULT_SIZES.receipt_printer,
+    defaultSize: DEFAULT_SIZES.receipt_printer,
   },
   {
     type: 'stamp_cutter',
@@ -242,7 +214,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     description: '在图片上移动锯齿邮票框自由截取，生成带打孔边缘与柔和投影的复古邮票图片',
     category: 'multimodal',
     configurable: false,
-    defaultSize: NODE_DEFAULT_SIZES.stamp_cutter,
+    defaultSize: DEFAULT_SIZES.stamp_cutter,
   },
   {
     type: 'map_art',
@@ -250,7 +222,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     description: '基于 prettymaps 服务端生成艺术风格地图图片（OSM 数据 + matplotlib 渲染）',
     category: 'multimodal',
     configurable: false,
-    defaultSize: NODE_DEFAULT_SIZES.map_art,
+    defaultSize: DEFAULT_SIZES.map_art,
   },
   {
     type: 'pattern_search',
@@ -258,7 +230,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     description: '检索/浏览 100 款中国传统纹样（植物花卉、动物瑞兽、几何锦纹等），选中后输出纹样图片与详情说明文本',
     category: 'multimodal',
     configurable: false,
-    defaultSize: NODE_DEFAULT_SIZES.pattern_search,
+    defaultSize: DEFAULT_SIZES.pattern_search,
   },
   {
     type: 'color_search',
@@ -266,7 +238,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     description: '检索/浏览 742 款中国传统色，支持 5 色智能调色板生成与场景灵感，输出色卡图片与配色方案文本',
     category: 'multimodal',
     configurable: false,
-    defaultSize: NODE_DEFAULT_SIZES.color_search,
+    defaultSize: DEFAULT_SIZES.color_search,
   },
 ];
 

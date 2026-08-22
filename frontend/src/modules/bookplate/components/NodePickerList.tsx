@@ -193,6 +193,13 @@ const NodeItemRow: React.FC<NodeItemRowProps> = ({
   );
 };
 
+const EmptyPickerState = React.memo(({ message }: { message: string }) => (
+  <div className="h-full flex flex-col items-center justify-center p-4 text-center">
+    <Layers className="w-6 h-6 text-ink-faint/50 mb-1.5" />
+    <p className="text-xs text-ink-faint font-sans">{message}</p>
+  </div>
+));
+
 const NodePickerListInner: React.FC<NodePickerListProps> = ({ items, onPick, pendingChildId }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('all');
@@ -306,10 +313,7 @@ const NodePickerListInner: React.FC<NodePickerListProps> = ({ items, onPick, pen
           {searchQuery.trim() ? (
             // 搜索态：平铺展示，并显示所属类别微徽标
             filteredItems.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center p-4 text-center">
-                <Layers className="w-6 h-6 text-ink-faint/50 mb-1.5" />
-                <p className="text-xs text-ink-faint font-sans">未找到匹配的节点</p>
-              </div>
+              <EmptyPickerState message="未找到匹配的节点" />
             ) : (
               <div className="space-y-1">
                 {filteredItems.map((item) => (
@@ -326,10 +330,7 @@ const NodePickerListInner: React.FC<NodePickerListProps> = ({ items, onPick, pen
           ) : activeCategory === 'all' ? (
             // 全览态（全部节点）：按子分类分节分层渲染
             subSections.length === 0 || items.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center p-4 text-center">
-                <Layers className="w-6 h-6 text-ink-faint/50 mb-1.5" />
-                <p className="text-xs text-ink-faint font-sans">暂无可添加的节点</p>
-              </div>
+              <EmptyPickerState message="暂无可添加的节点" />
             ) : (
               <div className="space-y-3">
                 {subSections.map((sec) => {
@@ -371,10 +372,7 @@ const NodePickerListInner: React.FC<NodePickerListProps> = ({ items, onPick, pen
               const currentItems = groupMap.get(activeCategory) || [];
               if (currentItems.length === 0) {
                 return (
-                  <div className="h-full flex flex-col items-center justify-center p-4 text-center">
-                    <Layers className="w-6 h-6 text-ink-faint/50 mb-1.5" />
-                    <p className="text-xs text-ink-faint font-sans">该分类下暂无节点</p>
-                  </div>
+                  <EmptyPickerState message="该分类下暂无节点" />
                 );
               }
               return (

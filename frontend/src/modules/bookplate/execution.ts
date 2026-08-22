@@ -197,6 +197,24 @@ export function collectNodeInputs(
 }
 
 /**
+ * 取「第一个有内容的线上级文本」作为输入（连线即输入：优先于手动输入）。
+ * 按端口类型推导文本输出上级，任一非空返回原值；无则返回空串。
+ * 天气 / 知乎 / Wikipedia / 翻译 / 网络搜索 / 图片检索等节点共用（消除各处重复表达式）。
+ */
+export function firstUpstreamText(
+  node: NodeData,
+  nodes: NodeData[],
+  edges: EdgeData[],
+  portTypesOf: PortTypesLookup
+): string {
+  return (
+    collectNodeInputs(node, nodes, edges, portTypesOf)
+      .text.map((p) => nodeOutputText(p))
+      .find((v) => v.trim()) ?? ''
+  );
+}
+
+/**
  * 参考图来源解析（图生图）：从「图片输出上级」分组中取第一张可用图片作为参考图。
  * data URL（图片上传）优先——无需转换即可直接使用；本地路径（如 /static/generated）
  * 其次，发起请求前由调用方转 data URL。返回空 = 无可用参考图。

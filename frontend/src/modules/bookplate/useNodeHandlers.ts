@@ -1,19 +1,15 @@
 import { useCallback } from 'react';
-import type { NodeData, EdgeData, NodeType, NodeSize } from './graphTypes';
+import type { NodeData, EdgeData, NodeSize } from './graphTypes';
 import type { PortTypesLookup } from './execution';
-import api from '../../platform/services/api';
-import generationsService from '../../platform/services/generations';
-import { flushSnapshot } from '../../platform/stores/useCanvasState';
-import { SMALL_TOOL_TIMEOUT_MS } from '../../platform/utils/timeouts';
-import { findConnectedBookInfoUpstream, findRootBookInfo, nodeOutputText, resolveDirectParents } from './nodeTypes';
+import { resolveReferenceImage, collectNodeInputs } from './execution';
+import { collectDescendantIds, hasChildOfType } from './nodeGraph';
+import { useEditorPatchHandler, type EditorPatchFns } from './editorPatch';
+import { useToolHandlers, type ToolRequestCtx } from './useToolHandlers';
+import {
+  useImageOutputHandlers,
+  type ImageOutputCtx,
+} from './useImageOutputHandlers';
 import type { ChatNodeSettings, NodeRunSettings, PromptSelection, SkillSelection } from '../../platform/types';
-import type { ZhihuSearchRequest } from './components/ZhihuSearchNode';
-import type { WikipediaSearchRequest } from './components/WikipediaSearchNode';
-import type { TranslationRequest } from './components/TextTranslationNode';
-import type { WebSearchRequest } from './components/WebSearchNode';
-import type { PatternItem } from '../multimodal/components/PatternSearchNode';
-import type { ColorItem } from '../multimodal/components/ColorSearchNode';
-import { resolveReferenceImage, collectNodeInputs, DEFAULT_RUN_SETTINGS } from './execution';
 
 export interface NodeHandlersDeps {
   nodesRef: React.MutableRefObject<NodeData[]>;
@@ -44,6 +40,14 @@ export interface NodeHandlersDeps {
   autoSaveGeneration: (imageNodeId: string, imageUrl: string) => Promise<number | null>;
 }
 
+/**
+ * 组件 handler 工厂入口（组合根）：把节点级 handler 按「行为族」组织到独立模块，避免超大单体。
+ * - 通用「编辑器 patch 写入」共享实现见 editorPatch.ts（新增编辑器类节点一行工厂调用）；
+ * - 工具类 fetch（日历/天气/Wikipedia/知乎/翻译/网络搜索）见 useToolHandlers.ts；
+ * - 图片输出（选中保存/导出落盘）见 useImageOutputHandlers.ts；
+ * - 纯图操作（子孙收集/子节点类型判断）见 nodeGraph.ts。
+ * 公开返回的所有 handler 均为稳定回调（配合节点组件 memo，避免非必要重渲染）。
+ */
 export function useNodeHandlers({
   nodesRef, edgesRef, portTypesRef, streamControllers, analysisUploads, generationIds,
   setNodes, setEdges, setNodeSizes, setFavoritedState, setPublishedState,
@@ -51,25 +55,7 @@ export function useNodeHandlers({
   runNode, runImageGeneration, addChildNode, toggleFavoriteForImage, togglePublicForImage,
   showToast, dialog, fetchBookInfo, removingRef, setCtxMenu, autoSaveGeneration
 }: NodeHandlersDeps) {
-  /** 收集节点的全部子孙节点 id（沿出边 BFS，含自身）；分支/级联删除用 */
-  const collectDescendantIds = (id: string): string[] => {
-    const ids = new Set<string>([id]);
-    let frontier = [id];
-    while (frontier.length > 0) {
-      const next: string[] = [];
-      for (const nid of frontier) {
-        for (const edge of edgesRef.current) {
-          if (edge.source === nid && !ids.has(edge.target)) {
-            ids.add(edge.target);
-            next.push(edge.target);
-          }
-        }
-      }
-      frontier = next;
-    }
-    return [...ids];
-  };
-
+  // ---------- 删除节点（含级联） ----------
   /** 批量删除节点（含子孙）：中止进行中请求，清理连线/尺寸/收藏/公开/generation 关联 */
   const removeNodesByIds = (ids: string[]) => {
     recordHistory();
@@ -100,14 +86,8 @@ export function useNodeHandlers({
     setSelectedImageId((prev) => (prev && idSet.has(prev) ? null : prev));
   };
 
-  /** 某节点是否已有指定类型的直接子节点 */
-  const hasChildOfType = (nodeId: string, type: NodeType): boolean =>
-    edgesRef.current.some(
-      (e) => e.source === nodeId && nodesRef.current.find((n) => n.id === e.target)?.type === type
-    );
-
   const handleRemoveNode = (id: string) => {
-    const ids = collectDescendantIds(id);
+    const ids = collectDescendantIds(id, edgesRef.current);
     if (ids.length > 1) {
       if (removingRef.current) return;
       removingRef.current = true;
@@ -135,15 +115,11 @@ export function useNodeHandlers({
     e.stopPropagation();
     if (!nodesRef.current.some((n) => n.id === nodeId)) return;
     setCtxMenu({ x: e.clientX, y: e.clientY, nodeId });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const closeContextMenu = useCallback(() => setCtxMenu(null), []);
 
-  // ---------- 稳定回调（配合节点组件 memo）：避免内联箭头导致未变化节点重渲染 ----------
-  // 不变量：下方被引用的处理函数只能读取 refs / 模块函数 / 稳定 setter；依赖数组刻意保持
-  // []（eslint-disable exhaustive-deps）：被引用函数虽为普通函数，但仅读取 refs / 稳定 setter，
-  // 闭包不会过期；若把普通函数加入依赖会导致回调每渲染重建，破坏节点 memo。
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const handleRemove = useCallback((id: string) => handleRemoveNode(id), []);
+  // ---------- 图书元数据 ----------
   const handleRetryBookFor = useCallback((id: string) => {
     const node = nodesRef.current.find((n) => n.id === id);
     const isbn = node?.data?.isbn;
@@ -178,12 +154,15 @@ export function useNodeHandlers({
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ---------- 文本生成 / 图片分析 / 图像生成 ----------
   /** 保存编辑文本：若该提示词节点已有子图像节点，则分支新建节点保留旧分支；否则原地保存 */
   const handleEditContent = useCallback((id: string, content: string) => {
     const promptNode = nodesRef.current.find((n) => n.id === id);
     if (!promptNode || promptNode.type !== 'text_generation') return;
-    if (!hasChildOfType(id, 'image_generation')) {
+    if (!hasChildOfType(id, 'image_generation', edgesRef.current, nodesRef.current)) {
       recordHistory();
       updateNodeData(id, { content });
       return;
@@ -251,7 +230,20 @@ export function useNodeHandlers({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
-  /** 文本节点保存编辑内容（无需分支，原地保存；内容未变化不记历史） */
+  /** 点击图片节点选中（作为全局操作栏的作用目标）；仅已有图片的节点可选中 */
+  const handleSelectImage = useCallback((id: string) => {
+    const node = nodesRef.current.find((n) => n.id === id);
+    if (
+      (node?.type === 'image_generation' || node?.type === 'receipt_printer') &&
+      node.data?.imageUrl
+    ) {
+      setSelectedImageId(id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ---------- 文本 / AI 对话 / 图片上传 / Skills / 文本聚合 ----------
+  /** 文本节点保存编辑内容（原地保存；内容未变化不记历史） */
   const handleEditTextFor = useCallback((id: string, content: string) => {
     const node = nodesRef.current.find((n) => n.id === id);
     if (!node || node.type !== 'text') return;
@@ -300,7 +292,7 @@ export function useNodeHandlers({
       const node = nodesRef.current.find((n) => n.id === id);
       if (!node || node.type !== 'image_upload') return;
 
-      const descIds = collectDescendantIds(id);
+      const descIds = collectDescendantIds(id, edgesRef.current);
       const hasDownstream = descIds.length > 1;
 
       if (imageUrl === null) {
@@ -319,17 +311,6 @@ export function useNodeHandlers({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
-  /** 点击图片节点选中（作为全局操作栏的作用目标）；仅已有图片的节点可选中 */
-  const handleSelectImage = useCallback((id: string) => {
-    const node = nodesRef.current.find((n) => n.id === id);
-    if (
-      (node?.type === 'image_generation' || node?.type === 'receipt_printer') &&
-      node.data?.imageUrl
-    ) {
-      setSelectedImageId(id);
-    }
-  }, []);
-
   /** 手动「运行」：输入不足时 toast 明确原因（含类型不匹配提示） */
   const handleRunFor = useCallback((id: string) => {
     const node = nodesRef.current.find((n) => n.id === id);
@@ -338,7 +319,6 @@ export function useNodeHandlers({
     if (reason) showToast(reason, { type: 'warning', position: 'top-right' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
   /** Skill 检索节点：整块替换已选 skill 集合（写入 data.skillSelections；未变化不记历史）。
    *  旧单数字段节点（skillName 等）重新编辑即迁移为数组；读取侧默认空数组向后兼容。 */
   const handleUpdateSkillsFor = useCallback(
@@ -353,940 +333,6 @@ export function useNodeHandlers({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
-
-  /** 万年历节点：按日期查询节假日 / 农历万年历（结果写入 data.output，供下游消费） */
-  const handleFetchCalendarFor = useCallback((id: string, date: string) => {
-    const node = nodesRef.current.find((n) => n.id === id);
-    if (!node || node.type !== 'calendar' || node.data?.isGenerating) return;
-    updateNodeData(id, { isGenerating: true, error: null, date });
-    api
-      .post('/modules/bookplate/calendar', { date }, { timeout: SMALL_TOOL_TIMEOUT_MS })
-      .then((res: any) => {
-        updateNodeData(id, {
-          output: typeof res?.output === 'string' ? res.output : '',
-          isGenerating: false,
-          error: null,
-        });
-      })
-      .catch((error: any) => {
-        console.error('Failed to fetch calendar:', error);
-        updateNodeData(id, {
-          isGenerating: false,
-          error: error?.isTimeout ? '万年历查询超时，请重试' : error?.detail || '万年历查询失败，请重试',
-        });
-      });
-    // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** 天气查询节点：按城市查询当前天气（城市 = 连线上级文本 > 手动输入；留空自动定位） */
-  const handleFetchWeatherFor = useCallback((id: string, city: string) => {
-    const node = nodesRef.current.find((n) => n.id === id);
-    if (!node || node.type !== 'weather' || node.data?.isGenerating) return;
-    const parents = resolveDirectParents(id, nodesRef.current, edgesRef.current);
-    const upstreamCity = parents.map((p) => nodeOutputText(p)).find((v) => v.trim()) ?? '';
-    const finalCity = upstreamCity || city;
-    updateNodeData(id, { isGenerating: true, error: null, city });
-    api
-      .post('/modules/bookplate/weather', { city: finalCity }, { timeout: SMALL_TOOL_TIMEOUT_MS })
-      .then((res: any) => {
-        updateNodeData(id, {
-          output: typeof res?.output === 'string' ? res.output : '',
-          isGenerating: false,
-          error: null,
-        });
-      })
-      .catch((error: any) => {
-        console.error('Failed to fetch weather:', error);
-        updateNodeData(id, {
-          isGenerating: false,
-          error: error?.isTimeout ? '天气查询超时，请重试' : error?.detail || '天气查询失败，请重试',
-        });
-      });
-    // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** 知乎检索节点：按模式检索 / 直答（关键词 = 连线上级文本 > 手动输入；按模式隔离 tabData，对外输出当前 active mode 结果） */
-  const handleFetchZhihuFor = useCallback((id: string, payload: ZhihuSearchRequest) => {
-    const node = nodesRef.current.find((n) => n.id === id);
-    if (!node || node.type !== 'zhihu_search') return;
-    const curData = node.data ?? {};
-    const curTabData = curData.tabData ?? {};
-    const targetMode = payload.mode;
-    if (curTabData[targetMode]?.isGenerating) return;
-
-    const parents = resolveDirectParents(id, nodesRef.current, edgesRef.current);
-    const upstreamQuery = parents.map((p) => nodeOutputText(p)).find((v) => v.trim()) ?? '';
-    const finalQuery = upstreamQuery || payload.query.trim();
-    if (!finalQuery) return;
-
-    const newTargetTabData = {
-      ...(curTabData[targetMode] || {}),
-      count: payload.count,
-      model: payload.model,
-      isGenerating: true,
-      error: null,
-    };
-
-    const nextTabData = {
-      ...curTabData,
-      [targetMode]: newTargetTabData,
-    };
-
-    const isCurrentActive = (curData.mode ?? 'zhihu') === targetMode;
-
-    updateNodeData(id, {
-      query: payload.query,
-      tabData: nextTabData,
-      ...(isCurrentActive
-        ? {
-            isGenerating: true,
-            error: null,
-          }
-        : {}),
-    });
-
-    api
-      .post(
-        '/modules/bookplate/zhihu-search',
-        { ...payload, query: finalQuery },
-        { timeout: SMALL_TOOL_TIMEOUT_MS }
-      )
-      .then((res: any) => {
-        const latestNode = nodesRef.current.find((n) => n.id === id);
-        const latestData = latestNode?.data ?? {};
-        const latestTabData = latestData.tabData ?? nextTabData;
-        const outputText = typeof res?.output === 'string' ? res.output : '';
-
-        const finishedTargetTabData = {
-          ...(latestTabData[targetMode] || {}),
-          output: outputText,
-          isGenerating: false,
-          error: null,
-        };
-
-        const updatedTabData = {
-          ...latestTabData,
-          [targetMode]: finishedTargetTabData,
-        };
-
-        const isStillActive = (latestData.mode ?? 'zhihu') === targetMode;
-
-        updateNodeData(id, {
-          tabData: updatedTabData,
-          ...(isStillActive
-            ? {
-                output: outputText,
-                isGenerating: false,
-                error: null,
-              }
-            : {}),
-        });
-      })
-      .catch((error: any) => {
-        console.error('Failed to fetch zhihu:', error);
-        const latestNode = nodesRef.current.find((n) => n.id === id);
-        const latestData = latestNode?.data ?? {};
-        const latestTabData = latestData.tabData ?? nextTabData;
-        const errDetail = error?.isTimeout ? '知乎检索超时，请重试' : error?.detail || '知乎检索失败，请重试';
-
-        const erroredTargetTabData = {
-          ...(latestTabData[targetMode] || {}),
-          isGenerating: false,
-          error: errDetail,
-        };
-
-        const updatedTabData = {
-          ...latestTabData,
-          [targetMode]: erroredTargetTabData,
-        };
-
-        const isStillActive = (latestData.mode ?? 'zhihu') === targetMode;
-
-        updateNodeData(id, {
-          tabData: updatedTabData,
-          ...(isStillActive
-            ? {
-                isGenerating: false,
-                error: errDetail,
-              }
-            : {}),
-        });
-      });
-    // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** 知乎检索节点：编辑器状态（tabData / mode / query 等）写入 node.data（仅持久化，不记撤销历史） */
-  const handleUpdateZhihuEditorFor = useCallback(
-    (id: string, patch: Record<string, any>, undoable: boolean = false) => {
-      const node = nodesRef.current.find((n) => n.id === id);
-      if (!node || node.type !== 'zhihu_search') return;
-      const cur = node.data ?? {};
-      let changed = false;
-      for (const [k, v] of Object.entries(patch)) {
-        if (cur[k] !== v) {
-          changed = true;
-          break;
-        }
-      }
-      if (!changed) return;
-      if (undoable) recordHistory();
-      updateNodeData(id, patch);
-      // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** Wikipedia 检索节点：关键词检索（关键词 = 连线上级文本 > 手动输入；结果列表写入 data.results） */
-  const handleSearchWikipediaFor = useCallback((id: string, payload: WikipediaSearchRequest) => {
-    const node = nodesRef.current.find((n) => n.id === id);
-    if (!node || node.type !== 'wikipedia_search' || node.data?.isGenerating) return;
-    const parents = resolveDirectParents(id, nodesRef.current, edgesRef.current);
-    const upstreamKeyword = parents.map((p) => nodeOutputText(p)).find((v) => v.trim()) ?? '';
-    const finalQuery = upstreamKeyword || payload.query.trim();
-    if (!finalQuery) return;
-    updateNodeData(id, {
-      language: payload.language,
-      query: payload.query,
-      limit: payload.limit,
-      // 新检索使旧文章全文失效
-      articleTitle: '',
-      output: '',
-      results: [],
-      isGenerating: true,
-      error: null,
-    });
-    api
-      .post(
-        '/modules/bookplate/wikipedia-search',
-        { ...payload, query: finalQuery },
-        { timeout: SMALL_TOOL_TIMEOUT_MS }
-      )
-      .then((res: any) => {
-        updateNodeData(id, {
-          results: Array.isArray(res?.results) ? res.results : [],
-          isGenerating: false,
-          error: null,
-        });
-      })
-      .catch((error: any) => {
-        console.error('Failed to search wikipedia:', error);
-        updateNodeData(id, {
-          isGenerating: false,
-          error: error?.isTimeout ? 'Wikipedia 检索超时，请重试' : error?.detail || 'Wikipedia 检索失败，请重试',
-        });
-      });
-    // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** Wikipedia 检索节点：打开一篇检索结果的文章（summary=true 走简介，false 走全文；正文写入 data.output） */
-  const handleOpenWikipediaArticleFor = useCallback((id: string, title: string, summary?: boolean) => {
-    const node = nodesRef.current.find((n) => n.id === id);
-    if (!node || node.type !== 'wikipedia_search' || node.data?.isGenerating) return;
-    const language = node.data?.language ?? 'zh';
-    updateNodeData(id, { articleTitle: title, isGenerating: true, error: null });
-    api
-      .post(
-        '/modules/bookplate/wikipedia-article',
-        { title, language, summary: !!summary },
-        { timeout: SMALL_TOOL_TIMEOUT_MS }
-      )
-      .then((res: any) => {
-        updateNodeData(id, {
-          output: typeof res?.content === 'string' ? res.content : '',
-          isGenerating: false,
-          error: null,
-        });
-      })
-      .catch((error: any) => {
-        console.error('Failed to fetch wikipedia article:', error);
-        updateNodeData(id, {
-          isGenerating: false,
-          error: error?.isTimeout ? 'Wikipedia 全文获取超时，请重试' : error?.detail || 'Wikipedia 全文获取失败，请重试',
-        });
-      });
-    // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** Wikipedia 检索节点：从全文视图返回检索结果列表（仅切视图，保留 data.output 供下游继续消费） */
-  const handleBackToWikipediaResultsFor = useCallback((id: string) => {
-    const node = nodesRef.current.find((n) => n.id === id);
-    if (!node || node.type !== 'wikipedia_search') return;
-    if (!(node.data?.articleTitle ?? '')) return;
-    updateNodeData(id, { articleTitle: '' });
-    // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** Wikipedia 检索节点：编辑器状态写入 node.data（summaryMode 等切换，仅持久化，不记撤销历史） */
-  const handleUpdateWikipediaEditorFor = useCallback((id: string, patch: Record<string, any>) => {
-    const node = nodesRef.current.find((n) => n.id === id);
-    if (!node || node.type !== 'wikipedia_search') return;
-    updateNodeData(id, patch);
-    // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** 文本翻译节点：按配置翻译上级文本（语言/翻译源由节点组件传入，合并上游文本后转发后端） */
-  const handleFetchTranslationFor = useCallback((id: string, payload: TranslationRequest) => {
-    const node = nodesRef.current.find((n) => n.id === id);
-    if (!node || node.type !== 'text_translation') return;
-    const curData = node.data ?? {};
-    const curTabData = curData.tabData ?? {};
-    const targetSource = payload.source;
-    if (curTabData[targetSource]?.isGenerating) return;
-
-    const parents = resolveDirectParents(id, nodesRef.current, edgesRef.current);
-    const upstreamText = parents.map((p) => nodeOutputText(p)).find((v) => v.trim()) ?? '';
-    const finalText = upstreamText || payload.text;
-    if (!finalText.trim()) return;
-
-    const newTargetTabData = {
-      ...(curTabData[targetSource] || {}),
-      isGenerating: true,
-      error: null,
-    };
-    const nextTabData = { ...curTabData, [targetSource]: newTargetTabData };
-    const isCurrentActive = (curData.source ?? 'random') === targetSource;
-
-    updateNodeData(id, {
-      from: payload.from,
-      to: payload.to,
-      tabData: nextTabData,
-      ...(isCurrentActive ? { isGenerating: true, error: null } : {}),
-    });
-
-    api
-      .post('/modules/bookplate/translate', { text: finalText, from: payload.from, to: payload.to, source: payload.source }, { timeout: SMALL_TOOL_TIMEOUT_MS })
-      .then((res: any) => {
-        const latestNode = nodesRef.current.find((n) => n.id === id);
-        const latestData = latestNode?.data ?? {};
-        const latestTabData = latestData.tabData ?? nextTabData;
-        const outputText = typeof res?.output === 'string' ? res.output : '';
-        const usedSrc = typeof res?.source === 'string' ? res.source : '';
-
-        const finishedTargetTabData = {
-          ...(latestTabData[targetSource] || {}),
-          output: outputText,
-          usedSource: usedSrc,
-          isGenerating: false,
-          error: null,
-        };
-        const updatedTabData = { ...latestTabData, [targetSource]: finishedTargetTabData };
-        const isStillActive = (latestData.source ?? 'random') === targetSource;
-
-        updateNodeData(id, {
-          tabData: updatedTabData,
-          ...(isStillActive ? { output: outputText, isGenerating: false, error: null } : {}),
-        });
-      })
-      .catch((error: any) => {
-        console.error('Failed to translate:', error);
-        const latestNode = nodesRef.current.find((n) => n.id === id);
-        const latestData = latestNode?.data ?? {};
-        const latestTabData = latestData.tabData ?? nextTabData;
-        const errDetail = error?.isTimeout ? '翻译超时，请重试' : error?.detail || '翻译失败，请重试';
-
-        const erroredTargetTabData = {
-          ...(latestTabData[targetSource] || {}),
-          isGenerating: false,
-          error: errDetail,
-        };
-        const updatedTabData = { ...latestTabData, [targetSource]: erroredTargetTabData };
-        const isStillActive = (latestData.source ?? 'random') === targetSource;
-
-        updateNodeData(id, {
-          tabData: updatedTabData,
-          ...(isStillActive ? { isGenerating: false, error: errDetail } : {}),
-        });
-      });
-    // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** 文本翻译节点：编辑器状态写入 node.data（仅持久化，不记撤销历史） */
-  const handleUpdateTranslationEditorFor = useCallback((id: string, patch: Record<string, any>) => {
-    const node = nodesRef.current.find((n) => n.id === id);
-    if (!node || node.type !== 'text_translation') return;
-    updateNodeData(id, patch);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** 网络搜索节点：多源检索（关键词 = 连线上级文本 > 手动输入；按源隔离 tabData，对外输出当前 active source 结果） */
-  const handleFetchWebSearchFor = useCallback((id: string, payload: WebSearchRequest) => {
-    const node = nodesRef.current.find((n) => n.id === id);
-    if (!node || node.type !== 'web_search') return;
-    const curData = node.data ?? {};
-    const curTabData = curData.tabData ?? {};
-    const targetSource = payload.source;
-    if (curTabData[targetSource]?.isGenerating) return;
-
-    const parents = resolveDirectParents(id, nodesRef.current, edgesRef.current);
-    const upstreamQuery = parents.map((p) => nodeOutputText(p)).find((v) => v.trim()) ?? '';
-    const finalQuery = upstreamQuery || payload.query.trim();
-    if (!finalQuery) return;
-
-    const newTargetTabData = {
-      ...(curTabData[targetSource] || {}),
-      isGenerating: true,
-      error: null,
-    };
-    const nextTabData = { ...curTabData, [targetSource]: newTargetTabData };
-    const isCurrentActive = (curData.source ?? 'random') === targetSource;
-
-    updateNodeData(id, {
-      tabData: nextTabData,
-      ...(isCurrentActive ? { isGenerating: true, error: null } : {}),
-    });
-
-    api
-      .post('/modules/bookplate/web-search', { query: finalQuery, count: payload.count, source: payload.source }, { timeout: SMALL_TOOL_TIMEOUT_MS })
-      .then((res: any) => {
-        const latestNode = nodesRef.current.find((n) => n.id === id);
-        const latestData = latestNode?.data ?? {};
-        const latestTabData = latestData.tabData ?? nextTabData;
-        const outputText = typeof res?.output === 'string' ? res.output : '';
-        const usedSrc = typeof res?.source === 'string' ? res.source : '';
-
-        const finishedTargetTabData = {
-          ...(latestTabData[targetSource] || {}),
-          output: outputText,
-          usedSource: usedSrc,
-          isGenerating: false,
-          error: null,
-        };
-        const updatedTabData = { ...latestTabData, [targetSource]: finishedTargetTabData };
-        const isStillActive = (latestData.source ?? 'random') === targetSource;
-
-        updateNodeData(id, {
-          tabData: updatedTabData,
-          ...(isStillActive ? { output: outputText, isGenerating: false, error: null } : {}),
-        });
-      })
-      .catch((error: any) => {
-        console.error('Failed to fetch web search:', error);
-        const latestNode = nodesRef.current.find((n) => n.id === id);
-        const latestData = latestNode?.data ?? {};
-        const latestTabData = latestData.tabData ?? nextTabData;
-        const errDetail = error?.isTimeout ? '网络搜索超时，请重试' : error?.detail || '网络搜索失败，请重试';
-
-        const erroredTargetTabData = {
-          ...(latestTabData[targetSource] || {}),
-          isGenerating: false,
-          error: errDetail,
-        };
-        const updatedTabData = { ...latestTabData, [targetSource]: erroredTargetTabData };
-        const isStillActive = (latestData.source ?? 'random') === targetSource;
-
-        updateNodeData(id, {
-          tabData: updatedTabData,
-          ...(isStillActive ? { isGenerating: false, error: errDetail } : {}),
-        });
-      });
-    // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** 网络搜索节点：编辑器状态写入 node.data（仅持久化，不记撤销历史） */
-  const handleUpdateWebSearchEditorFor = useCallback((id: string, patch: Record<string, any>) => {
-    const node = nodesRef.current.find((n) => n.id === id);
-    if (!node || node.type !== 'web_search') return;
-    updateNodeData(id, patch);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** 地图海报节点：编辑器状态（主题/尺寸/文字/视口）写入 node.data（画布快照持久化，切页保持）。
-   *  undoable=true 的离散编辑（主题/尺寸/文字/地点）记撤销历史；平移/缩放仅持久化不记历史，
-   *  避免频繁 pan 污染撤销栈（与万年历 date 字段同口径）。 */
-  const handleUpdateMapPosterEditorFor = useCallback(
-    (id: string, patch: Record<string, any>, undoable: boolean) => {
-      const node = nodesRef.current.find((n) => n.id === id);
-      if (!node || node.type !== 'map_poster') return;
-      const cur = node.data ?? {};
-      // 未变化不记历史/不写回（与文本/设置等节点口径一致）
-      let changed = false;
-      for (const [k, v] of Object.entries(patch)) {
-        if (cur[k] !== v) {
-          changed = true;
-          break;
-        }
-      }
-      if (!changed) return;
-      if (undoable) recordHistory();
-      updateNodeData(id, patch);
-      // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** 地图海报节点：后端已落盘并返回 image_url，直接写入 node.data.imageUrl。
-   *  地图海报为中间结果：不写入历史记录（db），仅在节点内展示 / 下载；recordHistory 仅记录画布撤销。 */
-  const handleExportMapPosterFor = useCallback(
-    async (id: string, imageUrl: string) => {
-      const node = nodesRef.current.find((n) => n.id === id);
-      if (!node || node.type !== 'map_poster') return;
-      recordHistory();
-      updateNodeData(id, { imageUrl, error: null });
-      // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** 艺术地图生成节点：编辑器状态写入 node.data */
-  const handleUpdateMapArtEditorFor = useCallback(
-    (id: string, patch: Record<string, any>, undoable: boolean) => {
-      const node = nodesRef.current.find((n) => n.id === id);
-      if (!node || node.type !== 'map_art') return;
-      const cur = node.data ?? {};
-      let changed = false;
-      for (const [k, v] of Object.entries(patch)) {
-        if (cur[k] !== v) {
-          changed = true;
-          break;
-        }
-      }
-      if (!changed) return;
-      if (undoable) recordHistory();
-      updateNodeData(id, patch);
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** 艺术地图生成节点：后端已落盘并返回 image_url，直接写入 node.data.imageUrl */
-  const handleExportMapArtFor = useCallback(
-    async (id: string, imageUrl: string) => {
-      const node = nodesRef.current.find((n) => n.id === id);
-      if (!node || node.type !== 'map_art') return;
-      recordHistory();
-      updateNodeData(id, { imageUrl, error: null });
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** 图书小票生成节点：导出 PNG → 落盘保存到后端 → 写入数据库历史记录表 → 写回 node.data.imageUrl */
-  const handleExportReceiptFor = useCallback(
-    async (id: string, dataUrl: string, state: any) => {
-      const node = nodesRef.current.find((n) => n.id === id);
-      if (!node || node.type !== 'receipt_printer') return;
-      updateNodeData(id, { isExporting: true, error: null });
-      try {
-        const res: any = await api.post(
-          '/modules/bookplate/save-image',
-          { image: dataUrl },
-          { timeout: SMALL_TOOL_TIMEOUT_MS }
-        );
-        const imageUrl = typeof res?.image_url === 'string' ? res.image_url : '';
-        if (!imageUrl) throw new Error('保存小票图片失败');
-
-        // 组装历史记录保存到数据库 (generations 表)
-        try {
-          const rootBook =
-            findConnectedBookInfoUpstream(id, nodesRef.current, edgesRef.current) ??
-            findRootBookInfo(nodesRef.current, edgesRef.current);
-          const promptText = state?.storeName
-            ? `${state.storeName} - ${state.subtitle || '图书小票'}`
-            : '图书小票生成';
-          const gen = await generationsService.create({
-            node_type: 'receipt_printer',
-            stage_results: {
-              stage1: rootBook
-                ? { isbn: rootBook.data?.isbn || '', metadata: rootBook.data || {} }
-                : undefined,
-              stage2: {
-                prompt: promptText,
-              },
-              stage3: {
-                image_url: imageUrl,
-                prompt: promptText,
-              },
-            },
-            result_url: imageUrl,
-            status: 'completed',
-          });
-          generationIds.current[id] = gen.id;
-          flushSnapshot();
-          // 新记录默认 is_favorited=false, is_public=false，重置 UI 态避免旧记录残留
-          setFavoritedState((prev) => ({ ...prev, [id]: false }));
-          setPublishedState((prev) => ({ ...prev, [id]: false }));
-          // 新记录就绪：清除此前「记录已删除」弱提示（如切换模板后留下的陈旧关联）
-          setStaleRecordIds?.((prev) => {
-            if (!prev.has(id)) return prev;
-            const next = new Set(prev);
-            next.delete(id);
-            return next;
-          });
-        } catch (dbErr) {
-          console.warn('记录小票到历史数据库失败(不阻断导出):', dbErr);
-        }
-
-        // 新图生成成功：自动选中，使全局操作栏作用于本节点（对齐 ImageNode）
-        setSelectedImageId(id);
-        recordHistory();
-        // 插图（图书封面 / 上游图片）持久化到 coverImageUrl，imageUrl 记录生成的完整小票（供下游 / 画廊读取），两者互不覆盖
-        const coverImageUrl =
-          state && typeof state.imageUrl === 'string' && state.imageUrl.trim() !== ''
-            ? state.imageUrl
-            : null;
-        updateNodeData(id, {
-          ...state,
-          coverImageUrl,
-          imageUrl,
-          isExporting: false,
-          error: null,
-        });
-      } catch (error: any) {
-        console.error('Failed to export receipt:', error);
-        updateNodeData(id, {
-          isExporting: false,
-          error: error?.isTimeout ? '小票图片保存超时，请重试' : error?.detail || '小票图片保存失败，请重试',
-        });
-        throw error;
-      }
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** 图书小票生成节点：状态更新写入 node.data（持久化）。
-   *  插图（图书封面 / 上游图片 / 本地上传）与「生成输出图」分离：
-   *  组件侧统一以 imageUrl 表达插图，此处持久化写入 coverImageUrl，
-   *  node.data.imageUrl 保留给导出生成的完整小票（下游 / 画廊读取它），避免互相覆盖。 */
-  const handleUpdateReceiptStateFor = useCallback(
-    (id: string, patch: Record<string, any>) => {
-      const node = nodesRef.current.find((n) => n.id === id);
-      if (!node || node.type !== 'receipt_printer') return;
-      // 内容变更（模板 / 纸色 / 文字 / 图片 / 点阵等任一影响渲染的字段）后，当前预览不再对应
-      // 「生成保存到数据库」的结果：若该节点已有保存记录，解除收藏/公开关联并重置高亮
-      // （节点角标与画板右侧操作栏同步失效），避免旧结果按钮高亮残留误导；
-      // 下次收藏/公开将按当前内容重新生成记录。
-      const cur = node.data ?? {};
-      let changed = false;
-      for (const [k, v] of Object.entries(patch)) {
-        if (cur[k] !== v) {
-          changed = true;
-          break;
-        }
-      }
-      if (changed && generationIds.current[id] !== undefined) {
-        delete generationIds.current[id];
-        setFavoritedState((prev) => ({ ...prev, [id]: false }));
-        setPublishedState((prev) => ({ ...prev, [id]: false }));
-        setStaleRecordIds?.((prev) => {
-          if (prev.has(id)) return prev;
-          const next = new Set(prev);
-          next.add(id);
-          return next;
-        });
-      }
-      const stored = { ...patch };
-      if ('imageUrl' in stored) {
-        stored.coverImageUrl = stored.imageUrl;
-        delete stored.imageUrl;
-      }
-      updateNodeData(id, stored);
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** 邮票截图框节点：导出 PNG → 落盘保存到后端 → 写入数据库历史记录表 → 写回 node.data.imageUrl */
-  const handleExportStampFor = useCallback(
-    async (id: string, dataUrl: string, state: any) => {
-      const node = nodesRef.current.find((n) => n.id === id);
-      if (!node || node.type !== 'stamp_cutter') return;
-      updateNodeData(id, { isExporting: true, error: null });
-      try {
-        const res: any = await api.post(
-          '/modules/bookplate/save-image',
-          { image: dataUrl },
-          { timeout: SMALL_TOOL_TIMEOUT_MS }
-        );
-        const imageUrl = typeof res?.image_url === 'string' ? res.image_url : '';
-        if (!imageUrl) throw new Error('保存邮票图片失败');
-
-        // 组装历史记录保存到数据库 (generations 表)
-        try {
-          const rootBook =
-            findConnectedBookInfoUpstream(id, nodesRef.current, edgesRef.current) ??
-            findRootBookInfo(nodesRef.current, edgesRef.current);
-          const promptText = '邮票截图';
-          const gen = await generationsService.create({
-            node_type: 'stamp_cutter',
-            stage_results: {
-              stage1: rootBook
-                ? { isbn: rootBook.data?.isbn || '', metadata: rootBook.data || {} }
-                : undefined,
-              stage2: {
-                prompt: promptText,
-              },
-              stage3: {
-                image_url: imageUrl,
-                prompt: promptText,
-              },
-            },
-            result_url: imageUrl,
-            status: 'completed',
-          });
-          generationIds.current[id] = gen.id;
-          flushSnapshot();
-          setFavoritedState((prev) => ({ ...prev, [id]: false }));
-          setPublishedState((prev) => ({ ...prev, [id]: false }));
-        } catch (dbErr) {
-          console.warn('记录邮票到历史数据库失败(不阻断导出):', dbErr);
-        }
-
-        setSelectedImageId(id);
-        recordHistory();
-        updateNodeData(id, {
-          ...state,
-          imageUrl,
-          isExporting: false,
-          error: null,
-        });
-      } catch (error: any) {
-        console.error('Failed to export stamp:', error);
-        updateNodeData(id, {
-          isExporting: false,
-          error: error?.isTimeout ? '邮票图片保存超时，请重试' : error?.detail || '邮票图片保存失败，请重试',
-        });
-        throw error;
-      }
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** 邮票截图框节点：状态更新写入 node.data（持久化） */
-  const handleUpdateStampStateFor = useCallback(
-    (id: string, patch: Record<string, any>) => {
-      const node = nodesRef.current.find((n) => n.id === id);
-      if (!node || node.type !== 'stamp_cutter') return;
-      updateNodeData(id, patch);
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** 图片检索节点：编辑器状态（来源 tab 等）写入 node.data（仅持久化，不记撤销历史）。
-   *  与地图海报编辑器同口径：结果集/关键词为节点内临时态，不落 node.data。 */
-  const handleUpdateImageSearchEditorFor = useCallback(
-    (id: string, patch: Record<string, any>, undoable = false) => {
-      const node = nodesRef.current.find((n) => n.id === id);
-      if (!node || node.type !== 'image_search') return;
-      const cur = node.data ?? {};
-      let changed = false;
-      for (const [k, v] of Object.entries(patch)) {
-        if (cur[k] !== v) {
-          changed = true;
-          break;
-        }
-      }
-      if (!changed) return;
-      if (undoable) recordHistory();
-      updateNodeData(id, patch);
-      // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** 图片检索节点：选中一张图 → 下载到本地独立子目录（search-images）→ 写回 node.data.imageUrl。
-   *  选中图为中间结果：不写入历史记录（db），仅作为节点输出供下游消费 / 下载；recordHistory 记录画布撤销。 */
-  const handleSelectSearchImageFor = useCallback(
-    async (id: string, url: string, meta: any) => {
-      const node = nodesRef.current.find((n) => n.id === id);
-      if (!node || node.type !== 'image_search') return;
-      updateNodeData(id, { error: null });
-      try {
-        const res: any = await api.post(
-          '/modules/bookplate/image-search/save',
-          {
-            url,
-            source: meta?.source ?? null,
-            download_url: meta?.downloadUrl ?? null,
-          },
-          { timeout: SMALL_TOOL_TIMEOUT_MS }
-        );
-        const imageUrl = typeof res?.image_url === 'string' ? res.image_url : '';
-        if (!imageUrl) throw new Error('保存图片失败');
-        recordHistory();
-        updateNodeData(id, { imageUrl, selectedImage: meta, error: null });
-      } catch (error: any) {
-        console.error('Failed to save search image:', error);
-        updateNodeData(id, {
-          error: error?.isTimeout ? '图片保存超时，请重试' : error?.detail || '图片保存失败，请重试',
-        });
-        throw error;
-      }
-      // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** 艺术图片检索节点：编辑器状态（来源等）写入 node.data（仅持久化，不记撤销历史）。与图片检索同口径。 */
-  const handleUpdateGlamEditorFor = useCallback(
-    (id: string, patch: Record<string, any>, undoable = false) => {
-      const node = nodesRef.current.find((n) => n.id === id);
-      if (!node || node.type !== 'art_image_search') return;
-      const cur = node.data ?? {};
-      let changed = false;
-      for (const [k, v] of Object.entries(patch)) {
-        if (cur[k] !== v) {
-          changed = true;
-          break;
-        }
-      }
-      if (!changed) return;
-      if (undoable) recordHistory();
-      updateNodeData(id, patch);
-      // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** 艺术图片检索节点：选中一张作品 → 下载到本地独立子目录（search-images，与图片检索共用）→ 写回 node.data.imageUrl。
-   *  选中图为中间结果：不写入历史记录（db），仅作为节点输出供下游消费 / 下载；recordHistory 记录画布撤销。 */
-  const handleSelectGlamImageFor = useCallback(
-    async (id: string, url: string, meta: any) => {
-      const node = nodesRef.current.find((n) => n.id === id);
-      if (!node || node.type !== 'art_image_search') return;
-      updateNodeData(id, { error: null });
-      try {
-        const res: any = await api.post(
-          '/modules/bookplate/glam-search/save',
-          { url },
-          { timeout: SMALL_TOOL_TIMEOUT_MS }
-        );
-        const imageUrl = typeof res?.image_url === 'string' ? res.image_url : '';
-        if (!imageUrl) throw new Error('保存图片失败');
-        recordHistory();
-        updateNodeData(id, { imageUrl, selectedImage: meta, error: null });
-      } catch (error: any) {
-        console.error('Failed to save glam image:', error);
-        updateNodeData(id, {
-          error: error?.isTimeout ? '图片保存超时，请重试' : error?.detail || '图片保存失败，请重试',
-        });
-        throw error;
-      }
-      // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** 中国传统纹样检索节点：编辑器状态（category 等）写入 node.data（仅持久化，不记撤销历史） */
-  const handleUpdatePatternEditorFor = useCallback(
-    (id: string, patch: Record<string, any>, undoable = false) => {
-      const node = nodesRef.current.find((n) => n.id === id);
-      if (!node || node.type !== 'pattern_search') return;
-      const cur = node.data ?? {};
-      let changed = false;
-      for (const [k, v] of Object.entries(patch)) {
-        if (cur[k] !== v) {
-          changed = true;
-          break;
-        }
-      }
-      if (!changed) return;
-      if (undoable) recordHistory();
-      updateNodeData(id, patch);
-      // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** 中国传统纹样检索节点：选中一款纹样 → 下载图片到 search-images 并获取详情 MD → 写入 node.data (imageUrl + output) */
-  const handleSelectPatternFor = useCallback(
-    async (id: string, pattern: PatternItem) => {
-      const node = nodesRef.current.find((n) => n.id === id);
-      if (!node || node.type !== 'pattern_search') return;
-      updateNodeData(id, { error: null });
-
-      try {
-        const res: any = await api.post(
-          '/modules/bookplate/pattern-search/save',
-          {
-            id: pattern.id,
-            image_url: pattern.full_image_url || pattern.preview_url || pattern.thumb_url,
-          },
-          { timeout: SMALL_TOOL_TIMEOUT_MS }
-        );
-
-        const imageUrl = typeof res?.image_url === 'string' ? res.image_url : '';
-        if (!imageUrl) throw new Error('保存纹样图片失败');
-
-        const detailMarkdown = typeof res?.detail_markdown === 'string' ? res.detail_markdown : '';
-
-        recordHistory();
-        updateNodeData(id, {
-          imageUrl,
-          output: detailMarkdown,
-          selectedPattern: {
-            id: pattern.id,
-            name_cn: pattern.name_cn,
-            name_en: pattern.name_en,
-            category: pattern.category,
-            summary: pattern.summary,
-            meaning: pattern.meaning,
-            visual_keywords: pattern.visual_keywords,
-            full_image_url: pattern.full_image_url,
-          },
-          error: null,
-        });
-      } catch (error: any) {
-        console.error('Failed to save pattern:', error);
-        updateNodeData(id, {
-          error: error?.isTimeout ? '纹样保存超时，请重试' : error?.detail || '纹样保存失败，请重试',
-        });
-        throw error;
-      }
-      // 稳定回调设计：仅读取 refs / 稳定 setter，闭包不会过期
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** 中国传统配色节点：编辑器状态（category/temperature/tab/palette 等）写入 node.data（仅持久化，不记撤销历史） */
-  const handleUpdateColorEditorFor = useCallback(
-    (id: string, patch: Record<string, any>, undoable = false) => {
-      const node = nodesRef.current.find((n) => n.id === id);
-      if (!node || node.type !== 'color_search') return;
-      const cur = node.data ?? {};
-      let changed = false;
-      for (const [k, v] of Object.entries(patch)) {
-        if (cur[k] !== v) {
-          changed = true;
-          break;
-        }
-      }
-      if (!changed) return;
-      if (undoable) recordHistory();
-      updateNodeData(id, patch);
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /** 中国传统配色节点：选中一款传统色/调色板 → 保存图片并生成 Markdown 详情 → 写入 node.data */
-  const handleSelectColorFor = useCallback(
-    async (id: string, color: ColorItem, palette?: ColorItem[]) => {
-      const node = nodesRef.current.find((n) => n.id === id);
-      if (!node || node.type !== 'color_search') return;
-      updateNodeData(id, { error: null });
-
-      try {
-        const res: any = await api.post(
-          '/modules/bookplate/color-search/save',
-          {
-            color,
-            palette,
-          },
-          { timeout: SMALL_TOOL_TIMEOUT_MS }
-        );
-
-        const imageUrl = typeof res?.imageUrl === 'string' ? res.imageUrl : '';
-        if (!imageUrl) throw new Error('保存传统色图片失败');
-
-        const outputMarkdown = typeof res?.output === 'string' ? res.output : '';
-
-        recordHistory();
-        updateNodeData(id, {
-          imageUrl,
-          output: outputMarkdown,
-          selectedColor: res.selectedColor || color,
-          palette: res.palette || palette || [color],
-          error: null,
-        });
-      } catch (error: any) {
-        console.error('Failed to save color:', error);
-        updateNodeData(id, {
-          error: error?.isTimeout ? '色彩保存超时，请重试' : error?.detail || '色彩保存失败，请重试',
-        });
-        throw error;
-      }
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   /** 提示词检索节点：选用一条 Bifrost 提示词（正文写入 data.content；未变化不记历史） */
   const handleUpdatePromptFor = useCallback(
     (id: string, selection: PromptSelection) => {
@@ -1311,7 +357,6 @@ export function useNodeHandlers({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
-
   /** 文本聚合节点：保存占位符模板（未变化不记历史） */
   const handleUpdateAggregateTemplateFor = useCallback((id: string, template: string) => {
     const node = nodesRef.current.find((n) => n.id === id);
@@ -1352,13 +397,106 @@ export function useNodeHandlers({
   const handleUpdateRunSettingsFor = useCallback((id: string, settings: NodeRunSettings) => {
     const node = nodesRef.current.find((n) => n.id === id);
     if (!node) return;
-    const old: NodeRunSettings = node.data?.settings ?? DEFAULT_RUN_SETTINGS;
+    const old: NodeRunSettings = node.data?.settings ?? { includeBook: false };
     if (JSON.stringify(old) === JSON.stringify(settings)) return;
     recordHistory();
     updateNodeData(id, { settings });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ---------- 编辑器 patch 写入（各节点共用同一实现，见 editorPatch.ts） ----------
+  const editorPatchFns: EditorPatchFns = { nodesRef, recordHistory, updateNodeData };
+  const handleUpdateZhihuEditorFor = useEditorPatchHandler(['zhihu_search'], editorPatchFns);
+  const handleUpdateMapPosterEditorFor = useEditorPatchHandler(['map_poster'], editorPatchFns);
+  const handleUpdateMapArtEditorFor = useEditorPatchHandler(['map_art'], editorPatchFns);
+  const handleUpdateImageSearchEditorFor = useEditorPatchHandler(['image_search'], editorPatchFns);
+  const handleUpdateGlamEditorFor = useEditorPatchHandler(['art_image_search'], editorPatchFns);
+  const handleUpdatePatternEditorFor = useEditorPatchHandler(['pattern_search'], editorPatchFns);
+  const handleUpdateColorEditorFor = useEditorPatchHandler(['color_search'], editorPatchFns);
+  const handleUpdateWikipediaEditorFor = useEditorPatchHandler(['wikipedia_search'], editorPatchFns);
+  const handleUpdateTranslationEditorFor = useEditorPatchHandler(['text_translation'], editorPatchFns);
+  const handleUpdateWebSearchEditorFor = useEditorPatchHandler(['web_search'], editorPatchFns);
+  const handleUpdateStampStateFor = useEditorPatchHandler(['stamp_cutter'], editorPatchFns);
+
+  /** 图书小票生成节点：状态更新写入 node.data（持久化）。
+   *  插图（图书封面 / 上游图片 / 本地上传）与「生成输出图」分离：
+   *  组件侧统一以 imageUrl 表达插图，此处持久化写入 coverImageUrl，
+   *  node.data.imageUrl 保留给导出生成的完整小票（下游 / 画廊读取它），避免互相覆盖。 */
+  const handleUpdateReceiptStateFor = useCallback(
+    (id: string, patch: Record<string, any>) => {
+      const node = nodesRef.current.find((n) => n.id === id);
+      if (!node || node.type !== 'receipt_printer') return;
+      // 内容变更（模板 / 纸色 / 文字 / 图片 / 点阵等任一影响渲染的字段）后，当前预览不再对应
+      // 「生成保存到数据库」的结果：若该节点已有保存记录，解除收藏/公开关联并重置高亮
+      // （节点角标与画板右侧操作栏同步失效），避免旧结果按钮高亮残留误导；
+      // 下次收藏/公开将按当前内容重新生成记录。
+      const cur = node.data ?? {};
+      let changed = false;
+      for (const [k, v] of Object.entries(patch)) {
+        if (cur[k] !== v) {
+          changed = true;
+          break;
+        }
+      }
+      if (changed && generationIds.current[id] !== undefined) {
+        delete generationIds.current[id];
+        setFavoritedState((prev) => ({ ...prev, [id]: false }));
+        setPublishedState((prev) => ({ ...prev, [id]: false }));
+        setStaleRecordIds?.((prev) => {
+          if (prev.has(id)) return prev;
+          const next = new Set(prev);
+          next.add(id);
+          return next;
+        });
+      }
+      const stored = { ...patch };
+      if ('imageUrl' in stored) {
+        stored.coverImageUrl = stored.imageUrl;
+        delete stored.imageUrl;
+      }
+      updateNodeData(id, stored);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+  // ---------- Wikipedia 检索：从全文视图返回结果列表（仅切视图） ----------
+  const handleBackToWikipediaResultsFor = useCallback((id: string) => {
+    const node = nodesRef.current.find((n) => n.id === id);
+    if (!node || node.type !== 'wikipedia_search') return;
+    if (!(node.data?.articleTitle ?? '')) return;
+    updateNodeData(id, { articleTitle: '' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ---------- 工具类 fetch（日历/天气/Wikipedia/知乎/翻译/网络搜索） ----------
+  const toolRequestCtx: ToolRequestCtx = {
+    nodesRef, edgesRef, portTypesRef, updateNodeData,
+  };
+  const {
+    handleFetchCalendarFor,
+    handleFetchWeatherFor,
+    handleSearchWikipediaFor,
+    handleOpenWikipediaArticleFor,
+    handleFetchZhihuFor,
+    handleFetchTranslationFor,
+    handleFetchWebSearchFor,
+  } = useToolHandlers(toolRequestCtx);
+
+  // ---------- 图片输出（选中保存/导出落盘） ----------
+  const imageOutputCtx: ImageOutputCtx = {
+    nodesRef, edgesRef, generationIds,
+    setFavoritedState, setPublishedState, setSelectedImageId, setStaleRecordIds,
+    recordHistory, updateNodeData,
+  };
+  const {
+    handleSelectSearchImageFor,
+    handleSelectGlamImageFor,
+    handleSelectPatternFor,
+    handleSelectColorFor,
+    handleExportReceiptFor,
+    handleExportStampFor,
+    handleExportMapPosterFor,
+    handleExportMapArtFor,
+  } = useImageOutputHandlers(imageOutputCtx);
 
   // ---------- 分支节点（新建共享父级的兄弟节点，保留旧分支） ----------
   const branchNode = (
@@ -1413,6 +551,10 @@ export function useNodeHandlers({
     });
   };
 
+  // ---------- 稳定回调（配合节点组件 memo）：避免内联箭头导致未变化节点重渲染 ----------
+  // 不变量：handleRemove 仅读取 refs / 稳定 setter；闭包不会过期。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const handleRemove = useCallback((id: string) => handleRemoveNode(id), []);
 
   return {
     handleRemove,

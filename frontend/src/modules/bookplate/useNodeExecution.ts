@@ -81,16 +81,8 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
       },
       signal: controller.signal,
       onData: (event, data) => {
-        idle.arm(); // 收到数据，重置空闲计时
-        if (
-          event === 'agent_tool_call' ||
-          event === 'agent_tool_result' ||
-          event === 'agent_status'
-        ) {
-          handleAgentSseMessage(ctx.setNodes, node.id, event, JSON.stringify(data));
-          return;
-        }
-        // 其余 data part（agent_file / agent_image 等）本节点不需要
+        idle.arm();
+        handleAgentSseMessage(ctx.setNodes, node.id, event, JSON.stringify(data));
       },
       onStreamEnd: (analysis) => {
         idle.arm();
@@ -177,14 +169,7 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
       },
       onData: (event, data) => {
         idle.arm();
-        // Agent 模式中间步骤（工具调用 / 思考状态）单独处理，不注入提示词内容
-        if (
-          event === 'agent_tool_call' ||
-          event === 'agent_tool_result' ||
-          event === 'agent_status'
-        ) {
-          handleAgentSseMessage(ctx.setNodes, node.id, event, JSON.stringify(data));
-        }
+        handleAgentSseMessage(ctx.setNodes, node.id, event, JSON.stringify(data));
       },
       onError: (message) => {
         flushDelta();
@@ -235,15 +220,8 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
         },
         signal: controller.signal,
         onData: (event, data) => {
-          idle.arm(); // 收到数据，重置空闲计时
-          if (
-            event === 'agent_tool_call' ||
-            event === 'agent_tool_result' ||
-            event === 'agent_status'
-          ) {
-            handleAgentSseMessage(ctx.setNodes, nodeId, event, JSON.stringify(data));
-            return;
-          }
+          idle.arm();
+          handleAgentSseMessage(ctx.setNodes, nodeId, event, JSON.stringify(data));
           if (event === 'agent_image') {
             const payload = (data ?? {}) as { url?: string; image_url?: string; mock?: boolean };
             const url = payload?.url || payload?.image_url;
@@ -397,8 +375,6 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
    */
   const runNode = (node: NodeData): string => {
     switch (node.type) {
-      case 'book_info':
-        return ''; // 需用户输入 ISBN
       case 'image_analysis': {
         const inputs = resolveNodeRunInputs(
           node,
@@ -470,31 +446,6 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
         runImageGeneration(node, inputs.imagePrompt, inputs.refImage, coverUrl);
         return '';
       }
-      case 'chat':
-      case 'text':
-      case 'image_upload':
-        return ''; // 用户手动输入 / 上传，无需自动执行
-      case 'text_aggregate':
-        return ''; // 纯文本变换：输出随上级内容/连线变化自动重算，无需手动运行
-      case 'prompt_search':
-        return ''; // 手动选用提示词，无需自动执行
-      case 'skill_search':
-        return ''; // 手动检索 / 安装 skill，无需自动执行
-      case 'calendar':
-      case 'weather':
-        return ''; // 手动输入参数（日期 / 城市）后点查询，无需自动执行
-      case 'zhihu_search':
-      case 'wikipedia_search':
-      case 'text_translation':
-      case 'web_search':
-        return ''; // 手动输入关键词后点检索，无需自动执行
-      case 'map_poster':
-        return ''; // 客户端渲染导出（导出按钮触发），无需自动执行
-      case 'image_search':
-      case 'art_image_search':
-        return ''; // 手动检索 / 选择图片，无需自动执行
-      case 'map_art':
-        return ''; // 手动点击生成，无需自动执行
     }
     return '';
   };

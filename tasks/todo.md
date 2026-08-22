@@ -1,33 +1,46 @@
-# 网络搜索节点 (`web_search`) 实施计划
+# useNodeHandlers 架构重构计划
 
 ## 目标
-从 `ZhihuSearchNode` 中提取「全网搜索(global)」为独立节点 `web_search`，集成 Tavily / Exa 检索源，支持随机模式与自动降级。
+`useNodeHandlers.ts`（1472 行）是堆叠 50+ handler 的 God Hook。按「行为族」模块化拆分、合并重复逻辑、删除死代码，保持公开接口（handler 名称/签名）完全不变，降低后续新增节点类型的成本。
 
 ## 实施步骤
 
-### Step 1: 后端 — 节点类型 + 服务 + 路由 + 种子配置
-- [x] `backend-ts/src/modules/bookplate/node-types.ts`: 添加 `web_search` 到 NODE_TYPES + NODE_TEMPLATES
-- [x] `backend-ts/src/services/web-search-service.ts`: 新建，实现 Tavily 和 Exa 搜索服务
-- [x] `backend-ts/src/modules/bookplate/routes/tools.ts`: 添加 `POST /api/modules/bookplate/web-search` 路由
-- [x] `backend-ts/src/config/seed.ts`: 添加 `tavily.api_key` 和 `exa.api_key` 默认种子配置
+### Step 1: 纯图操作模块
+- [x] `nodeGraph.ts` 新建：`collectDescendantIds` / `hasChildOfType`
+- [x] `nodeLayout.ts` 删除死函数 `getNextNodePosition`（从未被调用）
 
-### Step 2: 前端 — 类型注册
-- [x] `frontend/src/platform/types/index.ts`: 添加 `web_search` 到 `CanvasNodeType`
-- [x] `frontend/src/modules/bookplate/nodeLayout.ts`: 添加 `web_search` 到 `NodeType` + `NODE_SIZES`
-- [x] `frontend/src/modules/bookplate/nodeTypes.ts`: 添加 `NODE_DEFAULT_SIZES`, `NODE_COLORS`, `NODE_TEMPLATES`, `NODE_PORT_TYPES`
-- [x] `frontend/src/modules/bookplate/seedData.ts`: 添加 `case 'web_search'`
-- [x] `frontend/src/modules/bookplate/useNodeExecution.ts`: 添加 `case 'web_search'`
-- [x] `frontend/src/platform/utils/generation.ts`: 添加 label
+### Step 2: 编辑器 patch 工厂
+- [x] `editorPatch.ts` 新建：`useEditorPatchHandler`（变更检测 + 可选撤销历史）
+- [x] 合并 11 个重复 handler（zhihu / map_poster / map_art / image_search / art_image_search / pattern_search / color_search / wikipedia / translation / web_search / stamp_cutter）
 
-### Step 3: 前端 — WebSearchNode 组件
-- [x] `frontend/src/modules/bookplate/components/WebSearchNode.tsx`: 新建组件，4 源（随机/知乎全网/Tavily/Exa），独立结果保存，上游文本输入
+### Step 3: 输入收集去重
+- [x] `execution.ts` 新增 `firstUpstreamText`（取第一个线上级文本）
+- [x] `CanvasNodeViews.tsx` 9 处重复表达式改共用 helper（-27 行）
 
-### Step 4: 前端 — 集成到画布
-- [x] `frontend/src/modules/bookplate/CanvasNodeViews.tsx`: 添加 `case 'web_search'` + import
-- [x] `frontend/src/modules/bookplate/useNodeHandlers.ts`: 添加 `handleFetchWebSearchFor` + `handleUpdateWebSearchEditorFor`
+### Step 4: 工具类 fetch 工厂
+- [x] `useToolHandlers.ts` 新建：
+  - `useSimpleToolHandler`（日历 / 天气 / Wikipedia 检索 / Wikipedia 全文）
+  - `useTabbedToolHandler`（知乎 / 翻译 / 网络搜索：tabData 按源隔离）
 
-### Step 5: 前端 — 从 ZhihuSearchNode 移除 global 模式
-- [x] `frontend/src/modules/bookplate/components/ZhihuSearchNode.tsx`: 移除 `'global'` 模式相关代码
+### Step 5: 图片输出工厂
+- [x] `useImageOutputHandlers.ts` 新建：
+  - `useSelectImageHandler`（图片检索 / 艺术检索 / 纹样 / 配色）
+  - `useImageExportHandler`（图书小票 / 邮票：保存 → 历史记录 → 写回）
+  - `useSimpleImageExportHandler`（地图海报 / 艺术地图）
 
-### Step 6: 前端 — 管理后台设置项
-- [x] `frontend/src/admin/pages/SettingsPage.tsx`: 添加 `tavily.api_key` 和 `exa.api_key` 到 `KNOWN_KEYS`
+### Step 6: 组合根
+- [x] `useNodeHandlers.ts` 重写为组合根（1472 → 592 行），公开接口不变
+
+### Step 7: 删除冗余尺寸表
+- [x] `nodeTypes.ts` 删除重复的 `NODE_DEFAULT_SIZES`，改用 `DEFAULT_SIZES`（graphTypes）
+
+## 验证
+- [x] `npx tsc -b` 通过（无类型错误）
+- [x] `npm run lint` 通过（无新增告警；原文件的 setCtxMenu 告警保留为既有状态）
+- [x] `npm run build` 构建成功
+
+## 评审
+- 行为等价：所有 handler 逻辑逐行对照原文迁移，仅将重复骨架提取为工厂配置；锁定的语义差异点：
+  - wikipedia/translation/web/stamp 的 editor 从「无条件写回」变为「变更检测写回」（组件均传新对象，行为等价且更优）；
+  - tabbed/select/export 的 console.error 文案改为统一模板（不影响行为）。
+- 新增工具类节点：一行工厂调用即可（见 useToolHandlers.ts / useImageOutputHandlers.ts 组装区）。

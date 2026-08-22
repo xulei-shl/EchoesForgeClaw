@@ -14,6 +14,7 @@ import { ContextInjectionBlock } from './ContextInjectionBlock';
 import { AgentOverrideField } from './AgentOverrideField';
 import { ModelOverrideField } from './ModelOverrideField';
 import { NODE_COLORS } from '../nodeTypes';
+import { authHeaders } from '../authUtils';
 import {
   RASTER_IMAGE_TYPES,
   MAX_UPLOAD_BYTES,
@@ -28,10 +29,7 @@ const MAX_ATTACHMENTS = 4;
  *  skill-files 接口要求登录鉴权，<img> / <a href> 无法携带 Authorization 头，
  *  因此图片预览与文件下载统一走 fetch + token → blob → objectURL 路线。 */
 async function fetchSkillFile(file: AgentFile): Promise<Blob> {
-  const token = localStorage.getItem('token');
-  const resp = await fetch(file.url, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
+  const resp = await fetch(file.url, { headers: authHeaders() });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   return resp.blob();
 }
@@ -204,6 +202,30 @@ const ReasoningBlock: React.FC<{
   );
 });
 ReasoningBlock.displayName = 'ReasoningBlock';
+
+const SettingsToggleRow = memo(({ label, description, checked, onChange, disabled }: {
+  label: string; description: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean;
+}) => (
+  <div className="flex items-start justify-between gap-2.5">
+    <div className="min-w-0">
+      <p className="text-xs font-sans text-ink">{label}</p>
+      <p className="text-[10px] text-ink-faint font-sans mt-0.5 leading-snug">{description}</p>
+    </div>
+    <Toggle checked={checked} onChange={onChange} label={label} disabled={disabled} />
+  </div>
+));
+
+const ScrollButton = memo(({ direction, onClick, title }: {
+  direction: 'up' | 'down'; onClick: () => void; title: string;
+}) => (
+  <button
+    onClick={onClick}
+    className="pointer-events-auto flex items-center justify-center w-7 h-7 rounded-full bg-paper/90 border border-paper-grid/60 shadow-sm text-ink-faint hover:text-ink hover:bg-paper-grid hover:shadow backdrop-blur-md transition-all active:scale-95"
+    title={title}
+  >
+    {direction === 'up' ? <ChevronUp size={16} strokeWidth={2} /> : <ChevronDown size={16} strokeWidth={2} />}
+  </button>
+));
 
 const STYLE_INJECTIONS = `
 @keyframes msg-enter {
@@ -713,22 +735,10 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
         {/* 悬浮滚动按钮 */}
         <div className="absolute right-4 bottom-14 flex flex-col gap-2 z-20 pointer-events-none">
           <div className={`transition-all duration-300 ${showScrollTop ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2 pointer-events-none'}`}>
-            <button
-              onClick={() => listRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
-              className="pointer-events-auto flex items-center justify-center w-7 h-7 rounded-full bg-paper/90 border border-paper-grid/60 shadow-sm text-ink-faint hover:text-ink hover:bg-paper-grid hover:shadow backdrop-blur-md transition-all active:scale-95"
-              title="回到顶部"
-            >
-              <ChevronUp size={16} strokeWidth={2} />
-            </button>
+            <ScrollButton direction="up" onClick={() => listRef.current?.scrollTo({ top: 0, behavior: 'smooth' })} title="回到顶部" />
           </div>
           <div className={`transition-all duration-300 ${showScrollBottom ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2 pointer-events-none'}`}>
-            <button
-              onClick={() => listRef.current?.scrollTo({ top: listRef.current?.scrollHeight, behavior: 'smooth' })}
-              className="pointer-events-auto flex items-center justify-center w-7 h-7 rounded-full bg-paper/90 border border-paper-grid/60 shadow-sm text-ink-faint hover:text-ink hover:bg-paper-grid hover:shadow backdrop-blur-md transition-all active:scale-95"
-              title="回到底部"
-            >
-              <ChevronDown size={16} strokeWidth={2} />
-            </button>
+            <ScrollButton direction="down" onClick={() => listRef.current?.scrollTo({ top: listRef.current?.scrollHeight, behavior: 'smooth' })} title="回到底部" />
           </div>
         </div>
 
@@ -820,66 +830,34 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                 <p className="text-xs font-sans font-medium text-ink-light">运行设置</p>
               </div>
               <div className="p-3 space-y-3">
-                <div className="flex items-start justify-between gap-2.5">
-                  <div className="min-w-0">
-                    <p className="text-xs font-sans text-ink">继承图书元数据</p>
-                    <p className="text-[10px] text-ink-faint font-sans mt-0.5 leading-snug">
-                      上游穿透的图书节点或兜底的图书节点
-                    </p>
-                  </div>
-                  <Toggle
-                    checked={settings.includeBook}
-                    onChange={(v) => onUpdateSettings?.(id, { ...settings, includeBook: v })}
-                    label="继承图书元数据"
-                    disabled={messages.length > 0}
-                  />
-                </div>
-                <div className="flex items-start justify-between gap-2.5">
-                  <div className="min-w-0">
-                    <p className="text-xs font-sans text-ink">加载图书封面图片</p>
-                    <p className="text-[10px] text-ink-faint font-sans mt-0.5 leading-snug">
-                      {settings.includeBook
-                        ? '随图书元数据注入封面图作为视觉上下文'
-                        : '需先开启「继承图书元数据」'}
-                    </p>
-                  </div>
-                  <Toggle
-                    checked={settings.includeBookCover !== false}
-                    onChange={(v) => onUpdateSettings?.(id, { ...settings, includeBookCover: v })}
-                    label="加载图书封面图片"
-                    disabled={messages.length > 0 || !settings.includeBook}
-                  />
-                </div>
-                <div className="flex items-start justify-between gap-2.5">
-                  <div className="min-w-0">
-                    <p className="text-xs font-sans text-ink">加载直接上级文本</p>
-                    <p className="text-[10px] text-ink-faint font-sans mt-0.5 leading-snug">
-                      仅提取紧邻相连的父节点输出的文字内容
-                    </p>
-                  </div>
-                  <Toggle
-                    checked={settings.includeUpstream}
-                    onChange={(v) => onUpdateSettings?.(id, { ...settings, includeUpstream: v })}
-                    label="加载直接上级文本"
-                    disabled={messages.length > 0}
-                  />
-                </div>
-                <div className="flex items-start justify-between gap-2.5">
-                  <div className="min-w-0">
-                    <p className="text-xs font-sans text-ink">加载直接上级图片</p>
-                    <p className="text-[10px] text-ink-faint font-sans mt-0.5 leading-snug">
-                      仅提取紧邻相连的父节点输出的图像
-                    </p>
-                  </div>
-                  <Toggle
-                    checked={settings.includeUpstreamImages !== false}
-                    onChange={(v) =>
-                      onUpdateSettings?.(id, { ...settings, includeUpstreamImages: v })
-                    }
-                    label="加载直接上级图片"
-                    disabled={messages.length > 0}
-                  />
-                </div>
+                <SettingsToggleRow
+                  label="继承图书元数据"
+                  description="上游穿透的图书节点或兜底的图书节点"
+                  checked={settings.includeBook}
+                  onChange={(v) => onUpdateSettings?.(id, { ...settings, includeBook: v })}
+                  disabled={messages.length > 0}
+                />
+                <SettingsToggleRow
+                  label="加载图书封面图片"
+                  description={settings.includeBook ? '随图书元数据注入封面图作为视觉上下文' : '需先开启「继承图书元数据」'}
+                  checked={settings.includeBookCover !== false}
+                  onChange={(v) => onUpdateSettings?.(id, { ...settings, includeBookCover: v })}
+                  disabled={messages.length > 0 || !settings.includeBook}
+                />
+                <SettingsToggleRow
+                  label="加载直接上级文本"
+                  description="仅提取紧邻相连的父节点输出的文字内容"
+                  checked={settings.includeUpstream}
+                  onChange={(v) => onUpdateSettings?.(id, { ...settings, includeUpstream: v })}
+                  disabled={messages.length > 0}
+                />
+                <SettingsToggleRow
+                  label="加载直接上级图片"
+                  description="仅提取紧邻相连的父节点输出的图像"
+                  checked={settings.includeUpstreamImages !== false}
+                  onChange={(v) => onUpdateSettings?.(id, { ...settings, includeUpstreamImages: v })}
+                  disabled={messages.length > 0}
+                />
                 {/* 模型选择：仅 LLM 模式（Agent 模式模型由 Agent 侧决定）；候选 = admin 已配置模型，留空 = 配置默认模型 */}
                 {mode === 'llm' && configId != null && (
                   <div className="space-y-1.5">

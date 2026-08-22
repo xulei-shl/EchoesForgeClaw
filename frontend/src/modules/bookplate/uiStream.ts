@@ -13,6 +13,8 @@
  * | error             | onError                     |
  */
 
+import { authHeaders, handleUnauthorized } from './authUtils';
+
 export interface PostUIStreamOptions {
   url: string;
   body: unknown;
@@ -27,19 +29,6 @@ export interface PostUIStreamOptions {
   onError?: (message: string) => void;
 }
 
-/** 401 统一处理：清除本地凭据并跳转登录（与 postSSEStream 行为一致）。 */
-function handleUnauthorized(): void {
-  localStorage.removeItem('token');
-  localStorage.removeItem('user');
-  if (window.location.pathname !== '/login') {
-    sessionStorage.setItem(
-      'redirectAfterLogin',
-      window.location.pathname + window.location.search
-    );
-    window.location.href = '/login';
-  }
-}
-
 export async function postUIStream({
   url,
   body,
@@ -52,9 +41,8 @@ export async function postUIStream({
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     Accept: 'text/event-stream',
+    ...authHeaders(),
   };
-  const token = localStorage.getItem('token');
-  if (token) headers.Authorization = `Bearer ${token}`;
 
   const response = await fetch(url, {
     method: 'POST',

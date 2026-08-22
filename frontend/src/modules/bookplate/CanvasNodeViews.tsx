@@ -30,12 +30,12 @@ import {
   findRootBookInfo,
   getNodeTitle,
   matchPortType,
-  nodeOutputText,
   resolveDirectParents,
 } from './nodeTypes';
 import {
   DEFAULT_RUN_SETTINGS,
   collectNodeInputs,
+  firstUpstreamText,
   resolveReferenceImage,
   type PortTypesLookup,
 } from './execution';
@@ -171,6 +171,28 @@ export function mismatchBadgeOf(node: NodeData, h: NodeViewHelpers): string | nu
  *  各节点共用同一口径，抽成公共判定避免重复计算。 */
 export function hasDownstreamOf(node: { id: string }, edges: EdgeData[]): boolean {
   return edges.some((e) => e.source === node.id);
+}
+
+/** 小票/邮票节点上游图片解析（共用同一口径，避免两处重复） */
+function resolveUpstreamImage(node: NodeData, h: NodeViewHelpers): {
+  upstreamImageUrl: string | null;
+  upstreamBookData: any;
+} {
+  const inputs = collectNodeInputs(node, h.nodes, h.edges, h.portTypesOf);
+  const nonBookImageParents = inputs.images.filter((p) => p.type !== 'book_info');
+  const directParentImage = resolveReferenceImage(nonBookImageParents) ?? null;
+  const connectedBookNode = findConnectedBookInfoUpstream(node.id, h.nodes, h.edges);
+  const connectedBookData = connectedBookNode?.data ?? null;
+  const connectedBookCover =
+    connectedBookData?.cover_image_local || connectedBookData?.cover_image || connectedBookData?.coverUrl || null;
+  const rootBookNode = findRootBookInfo(h.nodes, h.edges);
+  const rootBookData = rootBookNode?.data ?? null;
+  const rootBookCover =
+    rootBookData?.cover_image_local || rootBookData?.cover_image || rootBookData?.coverUrl || null;
+  return {
+    upstreamImageUrl: directParentImage || connectedBookCover || rootBookCover || null,
+    upstreamBookData: connectedBookData || rootBookData || null,
+  };
 }
 
 /** 画布节点渲染：按节点类型分发到对应组件（bookplate 模块唯一渲染入口） */
@@ -442,10 +464,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       const hasDownstream = hasDownstreamOf(node, h.edges);
       // 连线即输入：文本输出上级内容作为城市（collectNodeInputs 按端口类型统一分组，
       // 取第一个非空），优先于手动输入
-      const upstreamCity =
-        collectNodeInputs(node, h.nodes, h.edges, h.portTypesOf)
-          .text.map((p) => nodeOutputText(p))
-          .find((v) => v.trim()) ?? '';
+      const upstreamCity = firstUpstreamText(node, h.nodes, h.edges, h.portTypesOf);
       return (
         <WeatherNode
           key={node.id}
@@ -465,10 +484,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       const d = node.data ?? {};
       // 连线即输入：文本输出上级内容作为检索关键词 / 直答问题（collectNodeInputs
       // 按端口类型统一分组，取第一个非空），优先于手动输入（与天气节点同口径）
-      const upstreamQuery =
-        collectNodeInputs(node, h.nodes, h.edges, h.portTypesOf)
-          .text.map((p) => nodeOutputText(p))
-          .find((v) => v.trim()) ?? '';
+      const upstreamQuery = firstUpstreamText(node, h.nodes, h.edges, h.portTypesOf);
       return (
         <ZhihuSearchNode
           key={node.id}
@@ -493,10 +509,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       const d = node.data ?? {};
       // 连线即输入：文本输出上级内容作为检索关键词（collectNodeInputs
       // 按端口类型统一分组，取第一个非空），优先于手动输入（与天气节点同口径）
-      const upstreamKeyword =
-        collectNodeInputs(node, h.nodes, h.edges, h.portTypesOf)
-          .text.map((p) => nodeOutputText(p))
-          .find((v) => v.trim()) ?? '';
+      const upstreamKeyword = firstUpstreamText(node, h.nodes, h.edges, h.portTypesOf);
       const results = Array.isArray(d.results) ? d.results : [];
       return (
         <WikipediaSearchNode
@@ -523,10 +536,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
     case 'text_translation': {
       const hasDownstream = hasDownstreamOf(node, h.edges);
       const d = node.data ?? {};
-      const upstreamText =
-        collectNodeInputs(node, h.nodes, h.edges, h.portTypesOf)
-          .text.map((p) => nodeOutputText(p))
-          .find((v) => v.trim()) ?? '';
+      const upstreamText = firstUpstreamText(node, h.nodes, h.edges, h.portTypesOf);
       return (
         <TextTranslationNode
           key={node.id}
@@ -548,10 +558,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
     case 'web_search': {
       const hasDownstream = hasDownstreamOf(node, h.edges);
       const d = node.data ?? {};
-      const upstreamQuery =
-        collectNodeInputs(node, h.nodes, h.edges, h.portTypesOf)
-          .text.map((p) => nodeOutputText(p))
-          .find((v) => v.trim()) ?? '';
+      const upstreamQuery = firstUpstreamText(node, h.nodes, h.edges, h.portTypesOf);
       const validSources: WebSearchSource[] = ['random', 'zhihu_global', 'tavily', 'exa', 'anysearch', 'doubao'];
       const activeSource: WebSearchSource = validSources.includes(d.source) ? d.source : 'random';
       return (
@@ -594,10 +601,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
     case 'image_search': {
       const d = node.data ?? {};
       // 连线即输入：文本输出上级内容作为检索关键词（优先于手动输入，与天气节点同口径）
-      const upstreamKeyword =
-        collectNodeInputs(node, h.nodes, h.edges, h.portTypesOf)
-          .text.map((p) => nodeOutputText(p))
-          .find((v) => v.trim()) ?? '';
+      const upstreamKeyword = firstUpstreamText(node, h.nodes, h.edges, h.portTypesOf);
       return (
         <ImageSearchNode
           key={node.id}
@@ -616,10 +620,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
     case 'art_image_search': {
       const d = node.data ?? {};
       // 连线即输入：文本输出上级内容作为检索关键词（优先于手动输入，与天气节点同口径）
-      const upstreamKeyword =
-        collectNodeInputs(node, h.nodes, h.edges, h.portTypesOf)
-          .text.map((p) => nodeOutputText(p))
-          .find((v) => v.trim()) ?? '';
+      const upstreamKeyword = firstUpstreamText(node, h.nodes, h.edges, h.portTypesOf);
       return (
         <ArtImageSearchNode
           key={node.id}
@@ -637,43 +638,14 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
     }
     case 'receipt_printer': {
       const d = node.data ?? {};
-      const inputs = collectNodeInputs(node, h.nodes, h.edges, h.portTypesOf);
-
-      // ② 紧邻上一级图片输出节点（非图书元数据：图片上传 / 图像生成 / 艺术检索等）
-      const nonBookImageParents = inputs.images.filter((p) => p.type !== 'book_info');
-      const directParentImage = resolveReferenceImage(nonBookImageParents) ?? null;
-
-      // ③ 连线穿透追溯的图书元数据封面图
-      const connectedBookNode = findConnectedBookInfoUpstream(node.id, h.nodes, h.edges);
-      const connectedBookData = connectedBookNode?.data ?? null;
-      const connectedBookCover =
-        connectedBookData?.cover_image_local ||
-        connectedBookData?.cover_image ||
-        connectedBookData?.coverUrl ||
-        null;
-
-      // ④ 画布根图书元数据封面图（兜底）
-      const rootBookNode = findRootBookInfo(h.nodes, h.edges);
-      const rootBookData = rootBookNode?.data ?? null;
-      const rootBookCover =
-        rootBookData?.cover_image_local ||
-        rootBookData?.cover_image ||
-        rootBookData?.coverUrl ||
-        null;
-
-      // 最终上游图书数据：优先连线穿透，次之根节点兜底
-      const upstreamBookData = connectedBookData || rootBookData || null;
-
-      // 上游有效图片（按优先级：② 直连图片节点 > ③ 连线穿透图书封面 > ④ 根节点图书封面）
-      const effectiveUpstreamImageUrl = directParentImage || connectedBookCover || rootBookCover || null;
-
+      const { upstreamImageUrl, upstreamBookData } = resolveUpstreamImage(node, h);
       return (
         <ReceiptPrinterNode
           key={node.id}
           {...common}
           data={d}
           upstreamBookData={upstreamBookData}
-          upstreamImageUrl={effectiveUpstreamImageUrl}
+          upstreamImageUrl={upstreamImageUrl}
           isFavorited={!!h.favoritedState[node.id]}
           isPublic={!!h.publishedState[node.id]}
           isSelected={node.id === h.activeImage?.id}
@@ -712,39 +684,13 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
 
     case 'stamp_cutter': {
       const d = node.data ?? {};
-      const inputs = collectNodeInputs(node, h.nodes, h.edges, h.portTypesOf);
-
-      // ② 紧邻上一级图片输出节点（非图书元数据：图片上传 / 图像生成 / 艺术检索等）
-      const nonBookImageParents = inputs.images.filter((p) => p.type !== 'book_info');
-      const directParentImage = resolveReferenceImage(nonBookImageParents) ?? null;
-
-      // ③ 连线穿透追溯的图书元数据封面图
-      const connectedBookNode = findConnectedBookInfoUpstream(node.id, h.nodes, h.edges);
-      const connectedBookData = connectedBookNode?.data ?? null;
-      const connectedBookCover =
-        connectedBookData?.cover_image_local ||
-        connectedBookData?.cover_image ||
-        connectedBookData?.coverUrl ||
-        null;
-
-      // ④ 画布根图书元数据封面图（兜底）
-      const rootBookNode = findRootBookInfo(h.nodes, h.edges);
-      const rootBookData = rootBookNode?.data ?? null;
-      const rootBookCover =
-        rootBookData?.cover_image_local ||
-        rootBookData?.cover_image ||
-        rootBookData?.coverUrl ||
-        null;
-
-      // 上游有效图片（按优先级：② 直连图片节点 > ③ 连线穿透图书封面 > ④ 根节点图书封面）
-      const effectiveUpstreamImageUrl = directParentImage || connectedBookCover || rootBookCover || null;
-
+      const { upstreamImageUrl } = resolveUpstreamImage(node, h);
       return (
         <StampCutterNode
           key={node.id}
           {...common}
           data={d}
-          upstreamImageUrl={effectiveUpstreamImageUrl}
+          upstreamImageUrl={upstreamImageUrl}
           isFavorited={!!h.favoritedState[node.id]}
           isPublic={!!h.publishedState[node.id]}
           isSelected={node.id === h.activeImage?.id}
@@ -763,10 +709,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
     case 'pattern_search': {
       const d = node.data ?? {};
       // 连线即输入：文本输出上级内容作为检索关键词（优先于手动输入）
-      const upstreamKeyword =
-        collectNodeInputs(node, h.nodes, h.edges, h.portTypesOf)
-          .text.map((p) => nodeOutputText(p))
-          .find((v) => v.trim()) ?? '';
+      const upstreamKeyword = firstUpstreamText(node, h.nodes, h.edges, h.portTypesOf);
       return (
         <PatternSearchNode
           key={node.id}
@@ -786,10 +729,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
     case 'color_search': {
       const d = node.data ?? {};
       // 连线即输入：文本输出上级内容作为检索关键词（优先于手动输入）
-      const upstreamKeyword =
-        collectNodeInputs(node, h.nodes, h.edges, h.portTypesOf)
-          .text.map((p) => nodeOutputText(p))
-          .find((v) => v.trim()) ?? '';
+      const upstreamKeyword = firstUpstreamText(node, h.nodes, h.edges, h.portTypesOf);
       return (
         <ColorSearchNode
           key={node.id}

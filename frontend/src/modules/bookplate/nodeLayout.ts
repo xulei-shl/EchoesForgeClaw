@@ -74,35 +74,6 @@ export function getBookInfoPosition(): { x: number; y: number } {
   };
 }
 
-/**
- * 计算下一阶段节点的位置（与前序节点顶边对齐，水平右移）
- *
- * @param sourceX      前序节点的 X 坐标
- * @param sourceY      前序节点的 Y 坐标
- * @param sourceNodeId 前序节点 id，用于查询实际尺寸
- * @param actualSizes  ResizeObserver 上报的实际节点尺寸映射
- * @param sourceType   前序节点类型，用于回退到默认尺寸
- */
-export function getNextNodePosition(
-  sourceX: number,
-  sourceY: number,
-  sourceNodeId: string,
-  actualSizes: Record<string, { width: number; height: number }>,
-  sourceType: NodeType,
-  targetType: NodeType,
-): { x: number; y: number } {
-  const sourceSize = actualSizes[sourceNodeId] ?? NODE_SIZES[sourceType];
-  const targetHeight = NODE_SIZES[targetType].height;
-
-  // 计算垂直居中对齐时的 Y 坐标
-  const newY = sourceY + (sourceSize.height - targetHeight) / 2;
-
-  return {
-    x: sourceX + sourceSize.width + NODE_GAP,
-    y: newY,
-  };
-}
-
 interface BranchNodeAnchor {
   x: number;
   y: number;
@@ -113,8 +84,7 @@ interface BranchNodeAnchor {
 /**
  * 计算分支节点的位置（兄弟级联布局）：
  *
- * - 无同级兄弟：与锚点（父）节点垂直居中，水平右移（与 getNextNodePosition 一致，
- *   遵循 lessons.md #2「垂直居中对齐」）。
+ * - 无同级兄弟：与锚点（父）节点垂直居中，水平右移（遵循 lessons.md #2「垂直居中对齐」）。
  * - 有同级兄弟：x 固定对齐锚点列，y 级联在「最低兄弟」下方，避免重叠，
  *   且尊重用户手动拖动后的布局（以兄弟实际位置为基准）。
  *

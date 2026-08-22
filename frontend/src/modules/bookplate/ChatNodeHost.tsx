@@ -8,6 +8,7 @@ import type { PortTypesLookup } from './execution';
 import { buildInjectedContextBlocks } from './contextBlocks';
 import { toWireChatMessages } from './graphTypes';
 import { handleAgentSseMessage } from './agentSteps';
+import { authHeaders, handleUnauthorized } from './authUtils';
 import { urlToDataUrl } from './imageUpload';
 import { makeIdleTimeout } from './idleTimeout';
 import { PROMPT_SSE_IDLE_TIMEOUT_MS } from '../../platform/utils/timeouts';
@@ -104,28 +105,6 @@ const capWireImages = (msgs: ChatMessage[]): ChatMessage[] =>
       ? { ...m, images: m.images.slice(0, MAX_CHAT_IMAGES) }
       : m
   );
-
-/** 鉴权请求头（每次请求时读取最新 token）。
- * 注意不要带 Content-Type：AI SDK 传输层会自动设置 `Content-Type: application/json`；
- * 若这里也带上，normalize 成小写 `content-type` 后与传输层的键并存，浏览器 fetch 会把
- * 大小写相同的头合并成 `application/json, application/json`，Fastify 5 严格解析判为非法 → 415。 */
-function authHeaders(): Record<string, string> {
-  const token = localStorage.getItem('token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
-/** 401 统一处理：清除本地凭据并跳转登录（与 postSSEStream 行为一致）。 */
-function handleUnauthorized(): void {
-  localStorage.removeItem('token');
-  localStorage.removeItem('user');
-  if (window.location.pathname !== '/login') {
-    sessionStorage.setItem(
-      'redirectAfterLogin',
-      window.location.pathname + window.location.search
-    );
-    window.location.href = '/login';
-  }
-}
 
 /**
  * AI 对话节点宿主（useChat 迁移核心）：

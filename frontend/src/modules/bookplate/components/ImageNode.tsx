@@ -82,6 +82,15 @@ export interface ImageNodeProps {
   configId?: number | null;
 }
 
+const ErrorBanner = memo(({ children }: { children: React.ReactNode }) => (
+  <div className="flex items-start gap-2.5">
+    <AlertTriangle size={14} strokeWidth={1.5} className="text-error shrink-0 mt-0.5" />
+    <div className="flex-1 min-w-0 font-sans">
+      <p className="text-[12px] text-error/90 leading-relaxed break-words">{children}</p>
+    </div>
+  </div>
+));
+
 const ImageNodeInner: React.FC<ImageNodeProps> = ({
   id,
   initialX,
@@ -356,11 +365,8 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
                   />
                   {/* 悬浮错误提示 */}
                   <div className="absolute inset-x-0 bottom-4 z-10 flex justify-center px-4 pointer-events-none">
-                    <div className="bg-paper/95 backdrop-blur-sm shadow-md border border-error/20 rounded-lg p-3 flex items-start gap-2.5 max-w-[95%] pointer-events-auto">
-                      <AlertTriangle size={14} strokeWidth={1.5} className="text-error shrink-0 mt-0.5" />
-                      <div className="flex-1 min-w-0 font-sans" id={`error-desc-${id}`}>
-                        <p className="text-[12px] text-error/90 leading-relaxed break-words">{displayError}</p>
-                      </div>
+                    <div className="bg-paper/95 backdrop-blur-sm shadow-md border border-error/20 rounded-lg p-3 max-w-[95%] pointer-events-auto">
+                      <ErrorBanner>{displayError}</ErrorBanner>
                     </div>
                   </div>
                 </>
@@ -376,11 +382,8 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
           ) : displayError ? (
             /* 错误态：与 PromptNode 错误横幅同款视觉 */
             <div className="flex-1 flex flex-col gap-3 min-h-[160px]">
-              <div className="p-3 rounded-md border border-error/20 bg-error/5 flex items-start gap-2.5">
-                <AlertTriangle size={14} strokeWidth={1.5} className="text-error shrink-0 mt-0.5" />
-                <div className="flex-1 min-w-0 font-sans">
-                  <p className="text-[12px] text-error/90 leading-relaxed break-words">{displayError}</p>
-                </div>
+              <div className="p-3 rounded-md border border-error/20 bg-error/5">
+                <ErrorBanner>{displayError}</ErrorBanner>
               </div>
             </div>
           ) : (
