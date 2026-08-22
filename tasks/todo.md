@@ -207,3 +207,52 @@ Three.js/WebGL 着色器管线，FastAPI(Python)/backend-ts(Node) 均无法直�
       （架构总结 + 新增效果三步接入 + 参数/render 规范 + 禁止事项 + ASCII/网点/抖动算法备忘 +
       验证清单）；接线文档 §2 image_process 段落已加指南入口
 
+---
+
+# 图片处理节点 · 第二阶段：网点（halftone）效果接入
+
+## 方案决策
+- **按接入指南三步走**（types.ts 加 id → effects/halftone.ts 新文件 → registry.ts 登记一行 +
+  index.ts re-export 一行），节点组件与接线代码零改动。
+- **算法参考 img-halftone-main（MIT）**：旋转栅格化 → 单元格均值 = 油墨覆盖率 → 点半径随覆盖率缩放；
+  彩色模式 CMYK 分离、四色板按经典印刷网角错开（基准角 ±30°/-45°，默认 45° 时对齐 C15/M75/Y0/K45）
+  后 multiply 叠印；输出保持原图尺寸（超出画布自动裁剪），空白补纸色。
+- **效率优化（用户授权直接实施更高效逻辑）**：相比参考实现去掉 Web Worker 池与逐像素 JS 循环——
+  每通道仅一次旋转栅格化（GPU 光栅化）+ 一趟线性像素扫描累计单元格均值（预生成列映射表消除内层除法），
+  全部网点合并单条 Path2D 一次性填充；导出 2048² 单色 ≈ 数十 ms，CMYK 四通道约数百 ms。
+- **参数**（default 为单一事实来源）：点距 dotSize(4-24px 默认 8) / 点半径 maxRadius(0.2-1 默认 0.7，
+  参考实现口径) / 角度 angle(0-90° 默认 45) / 形状 shape(circle|rect|triangle|hexagon 分段) /
+  色彩 mode(mono|cmyk 分段)；近黑区 d<12 回落纯 K 板承载，避免比值噪声放大。
+
+## 任务清单
+- [x] 1. `types.ts`：ImageFxId 加 `'halftone'` + HalftoneFxParams 接口
+- [x] 2. 新建 `effects/halftone.ts`：参数 schema + renderHalftone（旋转栅格化/单趟扫描/
+       Path2D 批量网点/multiply 叠印；taint 抛中文可读错误）
+- [x] 3. `effects/registry.ts` 登记一行 + `index.ts` re-export 一行
+
+## 验证记录
+- [x] frontend `npm run build` ✅（tsc -b && vite build 通过）
+- [x] frontend `npm run lint` ✅ 0 错误（仅既存 maplibre 公共文件警告，未触及新代码）
+
+### 修复（2026-08-22 用户反馈：切换网点后预览空白）
+- 根因：renderHalftone 在 fxDrawingCanvas 画好源图后对**同一画布**铺白色纸底，
+  再从该画布旋转栅格化采样 —— 源图被白底覆盖，采样全白 → 覆盖率 0 → 纯白输出
+- 修复：输出画布与采样源分离（新建独立输出画布铺纸底 + multiply 叠印；
+  各通道统一从干净 source 采样），build/lint 复验通过
+- 经验已录入 tasks/lessons.md（Canvas 管线采样源与输出目标必须严格分离）
+
+### 端到端验证（2026-08-22 用户疑问「网点是否支持彩色」）
+- 方法：vite dev + 无头 Chrome 截图真实模块渲染结果（合成色块/渐变图，
+  mono 圆形 45° / CMYK 圆形 / CMYK 方形 15° / 噪点回归 五组对照）
+- 结论：单色灰阶网点 ✅、CMYK 彩色分离叠印出红绿黄彩点 ✅、形状/角度正常 ✅、
+  单次渲染 40-60ms(maxEdge 512) ✅、噪点无回归 ✅ —— 色彩控件保留，无需修改节点页面
+- 说明：CMYK 为印刷油墨叠印口径，蓝色等深色会明显偏暗（青+品红叠印 ≈ (0,0,131)），
+  属经典印刷特性而非缺陷；用户此前看到空白应为上一修复前的旧代码
+
+## 未验证项（需人工浏览器验收）
+- 实际网点视觉效果：单色 45° 经典网屏观感、CMYK 叠印色彩、四种形状切换、角度旋转方向
+- 实时预览流畅度（150ms 防抖下拖动点距/角度滑杆）
+- 跨域封面输入时「图片受跨域保护」错误文案 + 重试路径
+- 生成/下载/保存落库 prompt 文案 `图片处理 · 网点`、下游读取、hasDownstream 门禁、切换失效语义
+
+

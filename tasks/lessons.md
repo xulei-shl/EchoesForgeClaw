@@ -23,3 +23,10 @@
 **规则：** 所有模板组件必须统一使用 `theme.text`、`theme.faint`、`theme.dashed`、`theme.accent` 四个语义变量，禁止硬编码颜色类。Canvas 导出渲染器必须与前端组件使用相同的主题变量，保证所见即所得。
 
 **修复：** `LibraryCardPaper.tsx` 中所有 `text-gray-*` → `theme.text` / `theme.faint`，`text-blue-*` → `theme.accent`，`border-blue-*` / `border-gray-*` → `theme.dashed`；`libraryCardRenderer.ts` 中 `#1f2937` → `theme.text`，`#1e40af` / `#1e3a8a` → `theme.accent`，`#bfdbfe` → `theme.dashed`，`#4b5563` → `theme.faint`。
+## 2026-08-22: 网点效果输出空白 — 输出画布污染采样源
+
+**问题：** imageprocess/effects/halftone.ts 的 renderHalftone 在 xDrawingCanvas 画好源图后，先对同一画布 fillRect 铺白色纸底再进行旋转栅格化采样 —— 源图被白底覆盖，采样读到的全是白色（覆盖率 0），网点效果切换后预览为空白。
+
+**规则：** Canvas 渲染管线中「采样源」与「输出目标」必须严格分离；任何铺底/清屏操作只能作用于输出画布，且多通道渲染时不得把上一通道的绘制结果当作下一通道的输入。交付前仅跑 build/lint 无法发现此类像素逻辑错误，涉及视觉效果的新效果必须先在浏览器实际验证预览再交付。
+
+**修复：** 新建独立输出画布（纸底 + multiply 叠印），xDrawingCanvas 结果只作采样源（asterizeRotatedGrid(source, ...)），各通道从同一干净源采样。

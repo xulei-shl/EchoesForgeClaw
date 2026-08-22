@@ -9,6 +9,7 @@ export * from './types';
 export * from './shared';
 export * from './effects/registry';
 export * from './effects/grain';
+export * from './effects/halftone';
 export * from './state';
 
 import { getImageFxEffect } from './effects/registry';

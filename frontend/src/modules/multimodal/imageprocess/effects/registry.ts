@@ -9,10 +9,12 @@
 import type { ImageFxEffectDef, ImageFxId, ImageFxParamValue } from '../types';
 import { fxDefaultParams } from '../shared';
 import { GRAIN_FX_EFFECT } from './grain';
+import { HALFTONE_FX_EFFECT } from './halftone';
 
 /** 效果注册表 */
 const imageFxRegistry = new Map<string, ImageFxEffectDef>([
   [GRAIN_FX_EFFECT.id, GRAIN_FX_EFFECT],
+  [HALFTONE_FX_EFFECT.id, HALFTONE_FX_EFFECT],
 ]);
 
 /** 获取所有可用效果（UI 效果切换列表按此渲染） */
