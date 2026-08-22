@@ -1,0 +1,47 @@
+{
+  "name": "blobatar-codemod",
+  "version": "0.1.0",
+  "description": "Rewrites @blobatar/react and @blobatar/vue imports to the @blobatar/* adapter packages.",
+  "type": "module",
+  "//name": "Unscoped, and deliberately not `@blobatar/codemod`. The `fixed` group in `.changeset/config.json` matches `@blobatar/*`, so a scoped name would be dragged to every library major — and a migration tool's version should track the migration it performs, not the generation of the renderer. It is also the one package here that a consumer runs rather than installs.",
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "bin": {
+    "blobatar-codemod": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "bun scripts/build.ts",
+    "test": "bun test",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "check": "bun run typecheck && bun test"
+  },
+  "keywords": [
+    "blobatar",
+    "codemod",
+    "migration"
+  ],
+  "license": "MIT",
+  "author": "Alain",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Alain00/blobatar.git",
+    "directory": "packages/codemod"
+  },
+  "homepage": "https://github.com/Alain00/blobatar#readme",
+  "bugs": "https://github.com/Alain00/blobatar/issues",
+  "//check": "No `bun run build` here. The build is a turbo task that `check` depends on, so it runs once for the whole workspace before any check reads a `dist` — a check that rebuilt its own package would delete `dist` out from under a concurrent check in another one."
+}

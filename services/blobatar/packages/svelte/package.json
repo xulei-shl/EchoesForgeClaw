@@ -1,0 +1,57 @@
+{
+  "name": "@blobatar/svelte",
+  "version": "2.4.0",
+  "description": "Svelte adapter for blobatar — deterministic geometric avatars.",
+  "type": "module",
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "svelte": "./src/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "//build": "None. There is nothing to build: the published artifact is the source, and a `dist` would only be a copy of it. This package is the reason `packages/harness` measures a source-resolved adapter by what it ships rather than by a `dist` it does not have.",
+    "typecheck": "svelte-check --tsconfig ./tsconfig.json",
+    "check": "bun run typecheck"
+  },
+  "peerDependencies": {
+    "blobatar": "2.x",
+    "svelte": ">=5"
+  },
+  "devDependencies": {
+    "blobatar": "workspace:*",
+    "svelte": "^5.0.0",
+    "svelte-check": "^4.0.0",
+    "typescript": "~6"
+  },
+  "keywords": [
+    "blobatar",
+    "avatar",
+    "identicon",
+    "svelte",
+    "svg",
+    "deterministic"
+  ],
+  "license": "MIT",
+  "author": "Alain",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Alain00/blobatar.git",
+    "directory": "packages/svelte"
+  },
+  "homepage": "https://github.com/Alain00/blobatar#readme",
+  "bugs": "https://github.com/Alain00/blobatar/issues",
+  "//exports": "Source-resolved: what ships is Svelte, not JavaScript. A Svelte component only becomes renderable code inside the consumer's own compiler, so there is no built entry for a `default` condition to point at — and none is invented. A resolver without the `svelte` condition gets a resolution error naming this package, which is the true answer, rather than a file it cannot execute. See ADR-0010.",
+  "types": "./src/index.d.ts",
+  "svelte": "./src/index.js",
+  "//peerDependencies": "`blobatar` is pinned to an exact major, not `^2`. Every package in this set publishes the same version (`.changeset/config.json`), and npm does not enforce that at install time — under ADR-0008 the major names the generation, so a mixed pair is not a version skew, it is the wrong picture. `packages/harness` asserts this range."
+}

@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    // No React in this package, and the root config declares it for the library.
+    "types": ["bun"]
+  },
+  "include": ["src", "test", "scripts"]
+}

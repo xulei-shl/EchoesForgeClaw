@@ -1,0 +1,43 @@
+{
+  "name": "blobatar-workspace",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "//packageManager": "Turborepo refuses to resolve the workspace without it. Pinned to the bun the repo already assumes everywhere (CLAUDE.md, every script, `bun.lock`) rather than introducing a second package manager by omission.",
+  "packageManager": "bun@1.3.14",
+  "//turbo": "Turborepo owns the task graph, `bun --filter` no longer does. The difference matters once the library is several packages: `bun --filter` runs a script across matching workspaces in dependency order but knows nothing about *which* tasks depend on which, so every cross-package `build` ordering had to be spelled out by hand in the scripts below — `bun --filter blobatar build && bun --filter blobatar-api dev` is that, written out. `turbo.json` states each dependency once.",
+  "scripts": {
+    "dev": "turbo run dev --filter=demo",
+    "site": "turbo run dev --filter=site",
+    "//api": "The `&& bun --filter blobatar build` that used to be here is now `dependsOn: [\"^build\"]` on the `dev` task. `apps/api` resolves `blobatar` through its `exports` map — built JS that is not in the repo — so unlike the site, which aliases the library to source, it cannot start against a fresh clone.",
+    "api": "turbo run dev --filter=blobatar-api",
+    "build:site": "turbo run build --filter=site",
+    "preview": "turbo run preview --filter=site",
+    "deploy": "turbo run deploy --filter=site",
+    "deploy:api": "turbo run deploy --filter=blobatar-api",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "size": "turbo run size",
+    "probe": "turbo run probe",
+    "smoke": "turbo run smoke",
+    "media": "bun scripts/media.ts",
+    "//profile:wall": "Needs `bun run site` already running — it drives the real page in headless Chrome rather than a harness, because the thing being measured is the renderer under the fixture the page actually loads. Not part of `check`: it takes twenty seconds and needs a server, which is exactly the shape of thing that should be run deliberately.",
+    "profile:wall": "bun scripts/wall-profile.ts",
+    "check": "turbo run check",
+    "//changeset": "Node, not bun: the changesets CLI prompts interactively and its bin does a top-level dynamic import that bun reports as an unsettled await. Node runs it as intended. See `.changeset/README.md` for why `fixed` mode is not optional here.",
+    "changeset": "node ./node_modules/.bin/changeset",
+    "changeset:status": "node ./node_modules/.bin/changeset status",
+    "//version-packages": "The `sync-version.ts` half is not optional. `changeset version` does not know about the `VERSION` constant in core's `src/index.ts`, which cannot simply be deleted — see its comment. Chained here rather than written in a release checklist, because the failure it prevents shows up only after the version commit already exists.",
+    "version-packages": "node ./node_modules/.bin/changeset version && bun scripts/sync-version.ts"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^3.0.1",
+    "@types/bun": "latest",
+    "turbo": "^2.10.11",
+    "typescript": "^7.0.2"
+  }
+}

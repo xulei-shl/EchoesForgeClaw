@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "types": ["bun"],
+    // `blobatar` resolves to source here, the same way every other package
+    // does it, so editing the renderer shows up without a build in between.
+    // Unlike the built adapters there is no `tsconfig.build.json` clearing
+    // these for a declaration emit — nothing is emitted. The declarations that
+    // ship are written by hand and reference `blobatar/internal` by its public
+    // specifier, so what a consumer resolves is the real `exports` map.
+    "paths": {
+      "blobatar": ["../blobatar/src/index.ts"],
+      "blobatar/internal": ["../blobatar/src/internal.ts"],
+      "blobatar/uri": ["../blobatar/src/uri.ts"]
+    }
+  },
+  "include": ["src"]
+}

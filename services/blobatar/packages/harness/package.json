@@ -1,0 +1,33 @@
+{
+  "name": "@blobatar/harness",
+  "version": "2.1.0",
+  "private": true,
+  "//private": "Never published. It exists to hold the one test that no single package can own — the cross-adapter equivalence check — and a published package would have to declare every adapter as a dependency, which would drag all of them into any install.",
+  "type": "module",
+  "scripts": {
+    "test": "bun test --conditions=svelte --preload ./test/svelte-plugin.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "//size": "The second size instrument. Core's measures its own source; this one measures every package's `dist` resolved by name, which is the only place a packaging regression — core stopping being external, a second copy of the renderer — can show up. It lives here because core cannot depend on an adapter without making `^build` cyclic.",
+    "size": "bun scripts/size.ts",
+    "check": "bun run typecheck && bun run test && bun run size",
+    "//test": "`--conditions=svelte` and the preload are both for one adapter, and they do different things. `@blobatar/svelte` is source-resolved (ADR-0010): its only entry sits behind the `svelte` export condition, which Bun does not apply by default — without the flag the package does not resolve at all, and skipping it here would mean this file stops resolving adapters through their real `exports` maps, which is the reason it lives in this package. The preload teaches Bun to load the `.svelte` file the condition points at."
+  },
+  "devDependencies": {
+    "@blobatar/react": "workspace:*",
+    "@blobatar/vue": "workspace:*",
+    "@blobatar/svelte": "workspace:*",
+    "@blobatar/solid": "workspace:*",
+    "@blobatar/preact": "workspace:*",
+    "@blobatar/cli": "workspace:*",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "blobatar": "workspace:*",
+    "react": "^19",
+    "react-dom": "^19",
+    "vue": "^3.5.0",
+    "svelte": "^5.0.0",
+    "solid-js": "^1.0.0",
+    "preact": "^10.0.0",
+    "preact-render-to-string": "^6.0.0"
+  }
+}

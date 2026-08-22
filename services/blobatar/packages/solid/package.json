@@ -1,0 +1,67 @@
+{
+  "name": "@blobatar/solid",
+  "version": "2.4.0",
+  "description": "Solid adapter for blobatar — deterministic geometric avatars.",
+  "type": "module",
+  "sideEffects": [
+    "*.css"
+  ],
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "//exports": "Three conditions because Solid's compiler emits different code per target rather than one runtime that branches. `solid` hands the consumer's own `vite-plugin-solid` types-stripped JSX, which is the only way their build and this one agree about hydration markers; `node` is the SSR build, and a consumer who got the DOM build there would render nothing at all; `default` is the DOM build. `scripts/build.ts` produces all three.",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "solid": "./dist/source.jsx",
+      "node": "./dist/server.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "bun scripts/build.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "check": "bun run typecheck",
+    "//prepack": "Under `check`, turbo owns the build: the `build` task runs once for the whole workspace before any check reads a `dist`. Under `npm pack` and `npm publish` there is no turbo and no ordering, so without this the tarball is whatever `dist` happened to be on disk — stale, from another branch, or absent.",
+    "prepack": "bun run build"
+  },
+  "//peerDependencies": "`blobatar` is pinned to an exact major, not `^2`. Every package in this set publishes the same version (`.changeset/config.json`), and npm does not enforce that at install time — without the exact range, `@blobatar/solid@3` resolves happily alongside `blobatar@2` and renders a different generation's faces from a package the consumer believes is current. Under ADR-0008 the major names the generation, so a mixed pair is not a version skew, it is the wrong picture. `packages/harness` asserts this range rather than trusting it.",
+  "peerDependencies": {
+    "blobatar": "2.x",
+    "solid-js": ">=1"
+  },
+  "devDependencies": {
+    "@babel/core": "^7",
+    "@babel/preset-typescript": "^7",
+    "@types/babel__core": "^7.20.5",
+    "babel-preset-solid": "^1.9.15",
+    "blobatar": "workspace:*",
+    "solid-js": "^1.0.0"
+  },
+  "keywords": [
+    "blobatar",
+    "avatar",
+    "identicon",
+    "solid",
+    "svg",
+    "deterministic"
+  ],
+  "license": "MIT",
+  "author": "Alain",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Alain00/blobatar.git",
+    "directory": "packages/solid"
+  },
+  "homepage": "https://github.com/Alain00/blobatar#readme",
+  "bugs": "https://github.com/Alain00/blobatar/issues"
+}

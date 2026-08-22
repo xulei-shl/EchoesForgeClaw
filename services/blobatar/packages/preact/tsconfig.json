@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "types": ["bun"],
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact",
+    "paths": {
+      "blobatar": ["../blobatar/src/index.ts"],
+      "blobatar/internal": ["../blobatar/src/internal.ts"],
+      "blobatar/uri": ["../blobatar/src/uri.ts"]
+    }
+  },
+  "include": ["src", "scripts"]
+}

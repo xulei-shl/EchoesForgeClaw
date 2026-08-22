@@ -1,0 +1,106 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "blobatar",
+	"main": "worker/index.ts",
+	"compatibility_date": "2026-08-17",
+	// No `nodejs_compat`: the library is zero-dependency and the endpoint uses
+	// only Request, Response and URL. Leaving the flag off keeps startup minimal
+	// and makes any accidental Node import fail at build time rather than in
+	// production.
+	/*
+   * The landing page and the tuning editor, served by Cloudflare's asset
+   * pipeline rather than by the Worker.
+   *
+   * That distinction is the economics of this whole arrangement: asset requests
+   * are free and unmetered, Worker requests are billed. `run_worker_first`
+   * scopes the Worker to `/avatar/*`, so a visitor reading the site costs
+   * nothing and only a rendered blobatar counts.
+   *
+   * `auto-trailing-slash` is what `cleanUrls` was doing on Vercel — `/editor`
+   * resolves to `editor.html`, and a link somebody already shared keeps working.
+   *
+   * `not_found_handling` is left at its default 404 rather than made an SPA
+   * fallback. The site is two real documents, not one client-routed app; the
+   * dev server's `"/*": index` catch-all is a convenience that production never
+   * had, and adopting it here would turn every typo'd URL into a 200.
+   */
+	"assets": {
+		"directory": "./dist",
+		"binding": "ASSETS",
+		"html_handling": "auto-trailing-slash",
+		/*
+     * `/wall/*` joins `/avatar/*` here, and that is a deliberate spend rather
+     * than a widening by accident: the wall puts a fetch in the second section
+     * of the landing page, so reading the site now costs Worker invocations
+     * where it used to cost nothing.
+     *
+     * What pays it back is in the responses. A chunk body's URL contains its
+     * version and the body is `immutable` for a year, so a client fetches any
+     * given body at most once, ever; the only repeated request is a region
+     * index of a few bytes an entry with a thirty-second TTL. A visitor costs a
+     * handful of D1 reads on arrival and approximately nothing thereafter.
+     *
+     * `/wall/` itself is still a document — the preview page — and the Worker
+     * hands it back to the asset pipeline rather than answering it.
+     */
+		"run_worker_first": [
+			"/avatar/*",
+			"/wall/*"
+		]
+	},
+	/*
+   * Storage: one D1 database, called `blobatar`, for everything the site keeps.
+   *
+   * Here rather than in `apps/api`, which ADR 0005 keeps free of anything
+   * account-specific so that a fork can deploy it unchanged — a D1 binding
+   * there would break every fork's deploy on a database id that is not theirs.
+   *
+   * One database for the whole project rather than one per feature: D1 bills
+   * reads and storage, not databases, and a second one would be a second
+   * migration history and a second thing to remember to apply. The binding is
+   * named for the database rather than for the feature — it was `WALL`, which
+   * read as "the wall's database" and promised a second binding for the next
+   * feature that is never coming. The next feature's tables land in here,
+   * under this binding, beside the wall's.
+   *
+   * `database_id` is this account's and is not a secret; `wrangler d1 create
+   * blobatar` is what produces it, and it is the one step in this feature that
+   * cannot be done from the repo. Migrations live beside the queries they
+   * create tables for rather than in a top-level `migrations/`, because the
+   * whole of the wall's server side is one directory.
+   */
+	"d1_databases": [
+		{
+			"binding": "BLOBATAR",
+			"database_name": "blobatar",
+			"database_id": "34c378de-80ec-4f5b-a3f7-2c8232fb3dc7",
+			"migrations_dir": "worker/wall/migrations"
+		}
+	],
+	/*
+   * Both hostnames, as custom domains.
+   *
+   * `custom_domain: true` makes Wrangler own the DNS record and the route
+   * together. The apex and `www` currently hold A records pointing at Vercel —
+   * those must be deleted first, or the deploy fails on the conflict. That
+   * deletion is the cutover; see the README.
+   *
+   * The apex 308-redirects to `www` on Vercel today. Cloudflare will not do
+   * that on its own, so a Redirect Rule has to reproduce it — the alternative
+   * is two hostnames serving identical content, which is a duplicate-content
+   * problem and splits every cache in the path.
+   */
+	"routes": [
+		{
+			"pattern": "blobatar.dev",
+			"custom_domain": true
+		},
+		{
+			"pattern": "www.blobatar.dev",
+			"custom_domain": true
+		}
+	],
+	"observability": {
+		"enabled": true
+	}
+}

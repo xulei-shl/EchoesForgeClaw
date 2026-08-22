@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    // The root config declares ["bun", "react"], for the library that still
+    // contains a React adapter. This package has no React dependency and must
+    // not acquire one by inheritance.
+    "types": ["bun"],
+    // See `packages/react/tsconfig.json` — same aliasing, same reason.
+    "paths": {
+      "blobatar": ["../blobatar/src/index.ts"],
+      "blobatar/vue": ["../blobatar/src/vue.ts"],
+      "blobatar/uri": ["../blobatar/src/uri.ts"],
+      "blobatar/internal": ["../blobatar/src/internal.ts"]
+    }
+  },
+  "include": ["src", "scripts"]
+}

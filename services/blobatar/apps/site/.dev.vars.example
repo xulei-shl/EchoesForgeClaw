@@ -1,0 +1,24 @@
+# The wall's secrets, for `wrangler dev`. Copy to `.dev.vars`, which is ignored.
+#
+# Production sets the same four with `wrangler secret put <NAME>`. None of them
+# belongs in the repo: the site is public and MIT with 38 forks, and a fork that
+# inherited these would be writing to our wall and moderating with our token.
+
+# Salts the address hashes behind the one-blob-per-day cooldown. Any long random
+# string. Rotating it resets every cooldown currently in flight.
+WALL_SECRET="a-long-random-string"
+
+# Turnstile's server key. This is Cloudflare's documented always-passes test
+# secret, which is what makes local development exercise the real code path
+# rather than a bypass — there is no bypass. The production key comes from the
+# Turnstile dashboard and is paired with a site key in the client.
+TURNSTILE_SECRET="1x0000000000000000000000000000000AA"
+
+# Bearer token for `DELETE /wall/p/<x>_<y>`, the moderation delete. Unset means
+# the endpoint does not exist rather than exists unguarded.
+WALL_ADMIN_TOKEN="another-long-random-string"
+
+# Extra blocklist terms, comma-separated, on top of the small base list in
+# `worker/wall/moderation.ts`. This is the list that grows — out of the repo, so
+# it needs no deploy and no fork inherits it.
+WALL_BLOCKLIST=""

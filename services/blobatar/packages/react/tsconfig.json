@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    // `blobatar` resolves to source here, the same way the apps do it, so
+    // editing the renderer shows up without a build in between. What *ships*
+    // resolves through the real `exports` map — `tsconfig.build.json` clears
+    // these paths for the declaration emit, and `scripts/build.ts` externalizes
+    // `blobatar` entirely, so nothing of core is inlined into this package.
+    "paths": {
+      "blobatar": ["../blobatar/src/index.ts"],
+      "blobatar/react": ["../blobatar/src/react.tsx"],
+      "blobatar/uri": ["../blobatar/src/uri.ts"],
+      "blobatar/internal": ["../blobatar/src/internal.ts"]
+    }
+  },
+  "include": ["src", "scripts"]
+}

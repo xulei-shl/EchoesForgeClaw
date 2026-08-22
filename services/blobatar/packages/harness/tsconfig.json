@@ -1,0 +1,5 @@
+{
+  "extends": "../../tsconfig.json",
+  "//paths": "Deliberately none. Every other workspace member aliases `blobatar/*` to source so a curve edit shows up on save; this one must not, because what it is testing is the adapters as a consumer receives them. Resolving through the real `exports` maps is the point.",
+  "include": ["test", "scripts"]
+}

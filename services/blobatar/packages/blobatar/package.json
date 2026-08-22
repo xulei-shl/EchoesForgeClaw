@@ -1,0 +1,109 @@
+{
+  "name": "blobatar",
+  "version": "2.4.0",
+  "description": "Deterministic geometric blobatars from any string. No dependencies.",
+  "type": "module",
+  "//sideEffects": "Not `false`. That would license bundlers to drop `import \"blobatar/motion.css\"` as dead weight, and animated blobatars would silently render static for everyone shipping through a bundler.",
+  "sideEffects": [
+    "*.css"
+  ],
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "//exports": "Built JS for everyone. What the workspace apps use in development is not this map — they alias `blobatar/*` back to `src` through tsconfig paths, so editing a curve shows up in the tuning grid on save. Keeping one resolution here means the published package resolves identically under every runtime and bundler.",
+  "//internal": "Adapters only. Its shape changes on a major together with every `@blobatar/*` package, which is a guarantee lockstep release makes truthful and nothing else would. See the header of `src/internal.ts`.",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./blob": {
+      "types": "./dist/blob.d.ts",
+      "default": "./dist/blob.js"
+    },
+    "./uri": {
+      "types": "./dist/uri.d.ts",
+      "default": "./dist/uri.js"
+    },
+    "./expression": {
+      "types": "./dist/expression.d.ts",
+      "default": "./dist/expression.js"
+    },
+    "./internal": {
+      "types": "./dist/internal.d.ts",
+      "default": "./dist/internal.js"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "default": "./dist/react.js"
+    },
+    "./vue": {
+      "types": "./dist/vue.d.ts",
+      "default": "./dist/vue.js"
+    },
+    "./motion.css": "./dist/motion.css",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "bun test",
+    "size": "bun scripts/size.ts",
+    "build": "bun scripts/build.ts",
+    "smoke": "node scripts/smoke.mjs",
+    "//golden": "Regenerating is a deliberate act, so the script refuses without `--write` and says why. `check` does not call it — `bun test` already asserts against the fixture, which is the direction that matters.",
+    "golden": "bun scripts/golden.ts",
+    "//typecheck": "CI runs this first, so `check` does too. It is a named script rather than an inline `tsc` so the two cannot drift — a local gate that is a subset of CI is a gate that goes green on code CI rejects, which is exactly how a type error reached a pull request.",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "check": "bun run typecheck && bun test && bun run size && bun run probe && bun run smoke",
+    "prepack": "bun run build",
+    "probe": "bun scripts/probe-compose.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "react": "^19",
+    "react-dom": "^19",
+    "vue": "^3.5.0"
+  },
+  "keywords": [
+    "blobatar",
+    "avatar",
+    "identicon",
+    "svg",
+    "deterministic",
+    "no-dependencies",
+    "shadcn"
+  ],
+  "license": "MIT",
+  "author": "Alain",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Alain00/blobatar.git",
+    "directory": "packages/blobatar"
+  },
+  "homepage": "https://github.com/Alain00/blobatar#readme",
+  "bugs": "https://github.com/Alain00/blobatar/issues",
+  "//check": "No `bun run build` here. The build is a turbo task that `check` depends on, so it runs once for the whole workspace before any check reads a `dist` — a check that rebuilt its own package would delete `dist` out from under a concurrent check in another one.",
+  "//react-vue": "`./react` and `./vue` are **deprecated and frozen**. They are here because they shipped in v2 with consumers, and removing them is a v3 change; `@blobatar/react` and `@blobatar/vue` are where they live now, and `blobatar-codemod` moves an import across in one command. Both are removed in v3 — see the `@deprecated` banners in `src/react.tsx` and `src/vue.ts`, which is where an editor will surface it. Frozen means no third subpath is ever added beside them: `@blobatar/svelte`, `@blobatar/solid` and `@blobatar/preact` have no `blobatar/svelte` counterpart and must not grow one. These two are a legacy artifact, not a pattern — the peer list below is the reason, and it stops growing here.",
+  "peerDependencies": {
+    "react": ">=18",
+    "vue": ">=3"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "vue": {
+      "optional": true
+    }
+  }
+}

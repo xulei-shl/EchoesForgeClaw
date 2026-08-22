@@ -1,0 +1,292 @@
+:root {
+  --bg: #f4f5f8;
+  --fg: #14161c;
+  --muted: #6b7182;
+  --line: #dcdfe8;
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font:
+    14px/1.5 ui-sans-serif,
+    system-ui,
+    sans-serif;
+}
+
+main {
+  padding: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+h1 {
+  font-size: 18px;
+  margin: 0 0 16px;
+  letter-spacing: -0.01em;
+}
+
+.controls {
+  display: flex;
+  gap: 16px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.controls label.check {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+input,
+select,
+button,
+textarea {
+  background: #fff;
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+code {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.stats {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 12px 0 16px;
+}
+
+.grid {
+  display: grid;
+  gap: 6px;
+}
+
+.cell {
+  padding: 0;
+  border: 0;
+  background: none;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.08s;
+}
+
+.cell:hover {
+  transform: scale(1.12);
+}
+
+.cell svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/**
+ * Paired mode — the same seed under two expressions, touching.
+ *
+ * This is the instrument for the one question the roster hangs on: whether `sad`
+ * and `mad` are actually distinguishable on a variant with no brows. Judging it
+ * needs the pair adjacent on the same seed, because confusability is a property
+ * of the difference, not of either pose — flipping between two pages and holding
+ * one in memory answers a much easier question than the one that matters.
+ *
+ * Aspect ratio doubles so each half stays square. The hairline is what stops the
+ * pair reading as one wide creature.
+ */
+.big.pair {
+  display: flex;
+  gap: 8px;
+}
+
+.big.pair > * {
+  flex: 1;
+  min-width: 0;
+}
+
+.cell.pair {
+  aspect-ratio: 2;
+  display: flex;
+  gap: 1px;
+  background: #ffffff14;
+}
+
+.cell.pair > * {
+  flex: 1;
+  min-width: 0;
+  aspect-ratio: 1;
+}
+
+.sheet {
+  position: fixed;
+  inset: 0;
+  background: #0006;
+  display: grid;
+  place-items: center;
+  backdrop-filter: blur(4px);
+}
+
+.card {
+  display: flex;
+  gap: 20px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 20px;
+  max-width: 620px;
+}
+
+.big svg {
+  width: 220px;
+  height: 220px;
+  border-radius: 16px;
+  display: block;
+}
+
+.meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.meta span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.swatches {
+  display: flex;
+  gap: 6px;
+}
+
+.swatches span {
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  border: 1px solid #fff2;
+}
+
+textarea {
+  width: 320px;
+  height: 120px;
+  font-family: ui-monospace, monospace;
+  font-size: 10px;
+  resize: vertical;
+}
+
+/* The library brings its own hover reaction when animating; two stacked scales
+   on two different clocks is not a thing worth looking at. */
+.grid[data-animate] .cell:hover {
+  transform: none;
+}
+
+/**
+ * The candidate ballot — one seed, three loops, side by side and labelled.
+ *
+ * Adjacency is doing the same job it does in paired mode, for a different
+ * question: three loops seen one page at a time are judged against memory, which
+ * is a much easier test than the one that decides this. What is being compared
+ * is how each one reads *while the others are also running*, so they share a
+ * cell and share a seed, and every difference on screen is the loop.
+ *
+ * Cells are far larger than the tuning grid's, because the tuning grid is
+ * looking for outliers across hundreds of blobatars and this is looking at three
+ * animations. Five seeds is enough; five hundred would only make each one too
+ * small to watch.
+ */
+.cell.trio,
+.big.trio {
+  aspect-ratio: 3;
+  display: flex;
+  gap: 1px;
+  background: #ffffff14;
+}
+
+.cell.trio > span,
+.big.trio > span {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+.cell.trio svg,
+.big.trio svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+}
+
+/**
+ * The label sits *over* the blobatar rather than under it, so the three cells
+ * stay square and the row keeps its rhythm. Low contrast on purpose — it has to
+ * be readable when you go looking for it and invisible when you are watching the
+ * motion, which is the whole of the time.
+ */
+.cell.trio em,
+.big.trio em {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 4px;
+  text-align: center;
+  font: 10px/1 ui-monospace, monospace;
+  font-style: normal;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+/* Three squares plus the gaps, and the card widened to hold them beside the
+   meta column it shares with every other focus view. */
+.big.trio {
+  width: 540px;
+}
+
+.card:has(.big.trio) {
+  max-width: 900px;
+}
+
+.big.trio em {
+  font-size: 12px;
+  bottom: 8px;
+}
+
+/* The ballot's cells are already large; the grid's hover-scale would only push
+   the neighbours it is being compared against off the edge. */
+.cell.trio:hover {
+  transform: none;
+}

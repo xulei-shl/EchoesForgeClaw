@@ -1,0 +1,58 @@
+{
+  "name": "@blobatar/preact",
+  "version": "2.4.0",
+  "description": "Preact adapter for blobatar — deterministic geometric avatars.",
+  "type": "module",
+  "sideEffects": [
+    "*.css"
+  ],
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "bun scripts/build.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "check": "bun run typecheck",
+    "prepack": "bun run build"
+  },
+  "peerDependencies": {
+    "blobatar": "2.x",
+    "preact": ">=10"
+  },
+  "devDependencies": {
+    "blobatar": "workspace:*",
+    "preact": "^10.0.0"
+  },
+  "keywords": [
+    "blobatar",
+    "avatar",
+    "identicon",
+    "preact",
+    "svg",
+    "deterministic"
+  ],
+  "license": "MIT",
+  "author": "Alain",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Alain00/blobatar.git",
+    "directory": "packages/preact"
+  },
+  "homepage": "https://github.com/Alain00/blobatar#readme",
+  "bugs": "https://github.com/Alain00/blobatar/issues"
+}

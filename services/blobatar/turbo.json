@@ -1,0 +1,85 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+
+  // Turborepo is here for the task graph, not for speed. The library is about
+  // to become several packages that build in a real order — an adapter
+  // externalizes `blobatar` rather than inlining it, so its build genuinely
+  // waits on core's — and `^build` is the line that states that once instead of
+  // in every root script. The caching is a side effect worth having, not the
+  // reason.
+  //
+  // While there is still one package, every `^build` below resolves to nothing
+  // and this file changes no behavior at all. That is deliberate: the tooling
+  // lands on its own, provably green, before anything moves.
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+
+    // `tsc` reads dependency declarations out of `dist`, so a package whose
+    // types have not been emitted yet typechecks against nothing.
+    "typecheck": {
+      "dependsOn": ["^build"]
+    },
+
+    // The library's own tests run against `src`. What they need built is any
+    // *dependency* — which is why this is `^build` and not `build`.
+    "test": {
+      "dependsOn": ["^build"]
+    },
+
+    // `^build`, and only because a second size gate arrived that needs it.
+    // There are two, measuring deliberately different things: core's
+    // `scripts/size.ts` imports `../../src/*` and never touches `dist`, so it
+    // measures what the source tree-shakes to and depends on nothing — while
+    // `packages/harness/scripts/size.ts` resolves every package by name through
+    // its real `exports` map, so it cannot run before those packages are built.
+    //
+    // `^build` and not `build`: neither gate builds the package it lives in.
+    // Core's reads its own source, and the harness is never built at all.
+    "size": {
+      "dependsOn": ["^build"]
+    },
+
+    // Browser-driven, and it reads the stylesheet and geometry from source.
+    "probe": {},
+
+    // The one task that genuinely consumes `dist` — it links the built package
+    // under Node, through its own `exports` map.
+    "smoke": {
+      "dependsOn": ["build"]
+    },
+
+    // Long-running and never cached.
+    "dev": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true
+    },
+
+    // Serves the built site locally; wants the same inputs a deploy does.
+    "preview": {
+      "dependsOn": ["^build", "build"],
+      "cache": false,
+      "persistent": true
+    },
+
+    // Deploys read `dist` and must never be served from cache.
+    "deploy": {
+      "dependsOn": ["^build", "build"],
+      "cache": false
+    },
+
+    // `["^build", "build"]`, not `["^build"]`, and the difference is a race that
+    // only shows up under concurrency. A `check` script that runs its own build
+    // starts by deleting `dist` — and other packages' checks read that `dist`
+    // through the real `exports` map, so one package's check could wipe the
+    // declarations another was mid-way through typechecking. Depending on the
+    // `build` task instead means it happens once, before anything reads it, and
+    // no `check` script needs to invoke a build itself.
+    "check": {
+      "dependsOn": ["^build", "build"]
+    }
+  }
+}

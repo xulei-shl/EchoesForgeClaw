@@ -1,0 +1,186 @@
+/**
+ * The two candidate loops — demo-local, and two-thirds of this file is meant to
+ * be deleted. See `candidates.ts` for why none of it is in `motion.css`: a
+ * candidate is a question, and the published stylesheet is paid for by everyone
+ * who imports it, including every app that will never render a loading face.
+ *
+ * The `.mo-eyes` rule below restates `motion.css`'s saccade entry in order to
+ * extend it, so it has to win the cascade against that file — and it wins on
+ * **specificity**, through a redundant `.mo-root` ancestor, rather than on source
+ * order. Order looked like enough and is not: `bun build` emits these two
+ * stylesheets in import order and the dev server emits them reversed, so the
+ * loops ran in a production bundle and silently did nothing under `bun --hot`,
+ * which is the only way anyone is going to look at them.
+ *
+ * Both loops resolve to the identity at their amplitude's initial value, which
+ * is the same bargain `mo-shake` and `mo-rock` already make and the reason they
+ * are allowed to run on every blobatar: nothing to start, nothing to stop, and
+ * nothing to snap when an expression is cleared mid-morph.
+ */
+
+/*
+ * The excursions, in viewBox units, emitted per-pose by `candidates.ts` so the
+ * numbers live next to the pose they belong to and the `bake` can read the same
+ * constants. Inherited, because they are declared on `.mo-root` and read two
+ * levels down.
+ *
+ * At `0px` — every pose but the one candidate that asked — the transform below
+ * multiplies out to nothing and the eyes never move.
+ */
+@property --mo-gaze-x {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --mo-gaze-y {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --mo-orbit-r {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+
+/*
+ * The phases. Both initial values are their loop's 0% stop, so a blobatar with
+ * the animations removed — `prefers-reduced-motion`, which `motion.css` already
+ * covers for `.mo-eyes` — holds exactly the frame `bake` emits rather than a
+ * resting pose nobody designed. `--mo-rockp` is built this way for this reason.
+ */
+@property --mo-gazep {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 1;
+}
+
+@property --mo-orbp {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0turn;
+}
+
+/**
+ * Both candidates move the pair as one, so both land on the eye *group* —
+ * the same element the saccade uses, for the same reason. Independent eye
+ * movement is a lazy eye instantly.
+ *
+ * They go on `transform` while the saccade owns `translate`. The individual
+ * transform properties resolve before `transform` does, so the two compose
+ * without either knowing about the other, and neither has to be folded into the
+ * other's keyframes.
+ *
+ * The orbit is a conjugation — `rotate(a) · translate(0,-r) · rotate(-a)` — which
+ * is a pure translation by the rotated radius, independent of the transform
+ * origin. That is what makes the pair travel round the circle while each eye
+ * keeps its own orientation; a plain `rotate` would spin the eyes with it, and a
+ * pair of capsules cartwheeling is a different animation entirely.
+ */
+.mo-root .mo-eyes {
+  /*
+   * `mo-saccade` is restated from `motion.css` because `animation-name` is one
+   * property and a second rule replaces the list rather than extending it.
+   * Dropping it here would quietly turn off the idle glances, which is half of
+   * what these three candidates have to be judged against.
+   */
+  animation-name: mo-saccade, mo-gaze, mo-orbit;
+  animation-duration:
+    calc(var(--mo-saccade, 5600ms) * var(--mo-rate, 1)),
+    calc(2600ms * var(--mo-rate, 1)), calc(1600ms * var(--mo-rate, 1));
+  animation-delay: calc(var(--mo-saccade-phase, 0ms) * var(--mo-rate, 1)), 0s,
+    0s;
+  animation-iteration-count: infinite;
+  /*
+   * Linear for all three, and for the same reason each time: every one of these
+   * loops is either holding still or crossing between holds, and easing the
+   * crossings is what produces floating eyeballs.
+   */
+  animation-timing-function: linear;
+
+  transform: translate(
+      calc(var(--mo-gaze-x) * var(--mo-gazep)),
+      calc(var(--mo-gaze-y) * var(--mo-gazep))
+    )
+    rotate(var(--mo-orbp)) translate(0, calc(-1 * var(--mo-orbit-r)))
+    rotate(calc(-1 * var(--mo-orbp)));
+}
+
+/**
+ * B — look away. Ballistic, and that is the entire animation.
+ *
+ * Real saccades are under a tenth of a second between fixations and then a long
+ * hold, so the two crossings here are 91ms of a 2600ms cycle — 3.5% — and
+ * everything else is dwell. Easing this the way `mo-breathe` is eased is the one
+ * change that kills it: the eyes stop reading as *looking* somewhere and start
+ * reading as *floating* there, which is unsettling in a way that is immediate to
+ * feel and hard to name. This is `motion-spec.md` §4.6's ruling, and it applies
+ * with more force here than it does to the idle saccade, because a deliberate
+ * glance is three times the excursion.
+ *
+ * The away hold is roughly 1.5s against 0.9s at centre. Weighted that way on
+ * purpose: the pose the consumer set is *thinking*, so the face should spend
+ * most of its time with its attention elsewhere and only check back.
+ *
+ * Frame zero is the away fixation, matching `lookaway`'s bake.
+ */
+@keyframes mo-gaze {
+  0%,
+  57% {
+    --mo-gazep: 1;
+  }
+  60.5%,
+  96.5% {
+    --mo-gazep: 0;
+  }
+  100% {
+    --mo-gazep: 1;
+  }
+}
+
+/**
+ * C — orbit. One turn per cycle, linear, no dwell anywhere.
+ *
+ * The linearity is the candidate's whole proposition and its whole risk. A
+ * constant-speed circle is what makes it read instantly as a spinner, and it is
+ * also the most mechanical motion the library would contain — judge it next to
+ * `sick`, which is already in the roster wearing a tremor, and decide whether
+ * this reads as *working* or as *woozy*.
+ *
+ * Starts at the top of the circle, matching `orbit`'s bake.
+ */
+@keyframes mo-orbit {
+  from {
+    --mo-orbp: 0turn;
+  }
+  to {
+    --mo-orbp: 1turn;
+  }
+}
+
+/**
+ * Touch devices: keep the candidates running, the way `motion.css` keeps the
+ * seesaw running.
+ *
+ * That file pauses every loop under this query because they are all gated on
+ * `--mo-amp`, which the same query pins to zero — so pausing them stops nothing
+ * that was moving. It then un-pauses `.mo-eye`, because `mo-rock` is gated on
+ * `--mo-rock` instead and a loading indicator that freezes on every phone is the
+ * feature not working. B and C are gated the same way and need the same
+ * exception.
+ *
+ * The honest cost, and the thing to weigh if B or C wins: this un-pauses
+ * `.mo-eyes`, which also carries the ambient saccade, so a phone pays for that
+ * loop again on any blobatar wearing an expression. `mo-rock` got to be cheap
+ * here because `.mo-eye` carries nothing else. A real implementation would need
+ * to move the candidate loop onto an element of its own, or accept the cost —
+ * which is a genuine argument in A's favour that costs nothing to notice now
+ * and a great deal to notice after shipping.
+ */
+@media not ((hover: hover) and (pointer: fine)) {
+  .mo-root.mo-expr:not(.mo-always) .mo-eyes {
+    animation-play-state: running;
+  }
+}

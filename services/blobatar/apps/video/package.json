@@ -1,0 +1,32 @@
+{
+  "name": "video",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "remotion studio src/index.ts",
+    "render": "remotion render src/index.ts Launch out/launch.mp4",
+    "render:expressions": "remotion render src/index.ts Expressions out/expressions.mp4",
+    "render:endpoint": "remotion render src/index.ts Endpoint out/endpoint.mp4",
+    "render:triangles": "remotion render src/index.ts Triangles out/triangles.mp4",
+    "render:adapters": "remotion render src/index.ts Adapters out/adapters.mp4",
+    "//render:thanks": "Concurrency is pinned, unlike the other films. The closing frames paint 590 animated blobatars each, and one tab per core leaves a freshly opened tab starved for long enough that its font load misses the deadline in src/fonts.ts — the render then fails at whichever frame was unlucky, reporting a font problem rather than a scheduling one.",
+    "render:thanks": "remotion render src/index.ts Thanks out/thanks.mp4 --concurrency=4",
+    "render:square": "remotion render src/index.ts LaunchSquare out/launch-square.mp4",
+    "still": "remotion still src/index.ts Launch",
+    "check": "bun scripts/check-crowd.ts && bun scripts/check-endpoint.ts && bun scripts/check-triangles.ts && bun scripts/check-adapters.ts && bun scripts/check-stars.ts"
+  },
+  "dependencies": {
+    "@blobatar/react": "workspace:*",
+    "@blobatar/vue": "workspace:*",
+    "@remotion/cli": "^4.0.512",
+    "blobatar": "workspace:*",
+    "react": "^19",
+    "react-dom": "^19",
+    "remotion": "^4.0.512"
+  },
+  "devDependencies": {
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "vue": "^3.5.0"
+  }
+}
