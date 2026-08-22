@@ -399,15 +399,9 @@ export function ChatNodeHost({
     if (stateChanged) {
       pendingPatchRef.current = { next, streaming, errMsg, output, json };
 
-      // 流式中进行 80ms 节流写入顶层 store，流式结束（或出错）时立即 flush 最终状态
-      if (streaming) {
-        if (throttleTimerRef.current === null) {
-          throttleTimerRef.current = setTimeout(() => {
-            throttleTimerRef.current = null;
-            flushPendingPatch();
-          }, 80);
-        }
-      } else {
+      // 仅在非流式状态（生成结束/报错/中断）时立即写入顶层 store；
+      // 流式进行期间仅在 ChatNodeHost 本地实时渲染，完全避免高频 setNodes 引发整板重绘
+      if (!streaming) {
         flushPendingPatch();
       }
     }
@@ -443,11 +437,11 @@ export function ChatNodeHost({
       if (statusRef.current === 'submitted' || statusRef.current === 'streaming') return;
       const nodeNow = nodesRef.current.find((n) => n.id === nodeId);
       if (!nodeNow || nodeNow.type !== 'chat') return;
-      // 重置本轮状态（agent 步骤 / 错误横幅）
+      // 重置本轮状态（agent 步骤 / 错误横幅），标记 isGenerating: true
       setNodes((prev) =>
         prev.map((n) =>
           n.id === nodeId
-            ? { ...n, data: { ...n.data, agentSteps: [], error: null } }
+            ? { ...n, data: { ...n.data, agentSteps: [], error: null, isGenerating: true } }
             : n
         )
       );
@@ -477,7 +471,7 @@ export function ChatNodeHost({
     // 重置本轮 agent 步骤：重试是新一轮执行，旧步骤（含失败轮残留）不应混入新回复
     setNodes((prev) =>
       prev.map((n) =>
-        n.id === nodeId ? { ...n, data: { ...n.data, agentSteps: [], error: null } } : n
+        n.id === nodeId ? { ...n, data: { ...n.data, agentSteps: [], error: null, isGenerating: true } } : n
       )
     );
     void regenerate();
@@ -488,12 +482,26 @@ export function ChatNodeHost({
   const settings: ChatNodeSettings =
     node.data?.settings ?? DEFAULT_CHAT_SETTINGS;
   const isStreaming = status === 'submitted' || status === 'streaming';
-  const messages: ChatMessage[] =
-    isStreaming && pendingPatchRef.current
-      ? pendingPatchRef.current.next
-      : Array.isArray(node.data?.messages)
-        ? node.data.messages
-        : [];
+  const nodeSteps = Array.isArray(node.data?.agentSteps) ? node.data.agentSteps : [];
+
+  // 计算展示消息：流式中直接由 uiMessages 实时转换，并在最后一条 assistant 注入 streaming 标志与 agentSteps
+  let messages: ChatMessage[];
+  if (isStreaming) {
+    let next = uiToStore(uiMessages);
+    if (next.length) {
+      const lastIdx = next.length - 1;
+      if (next[lastIdx].role === 'assistant') {
+        next[lastIdx] = {
+          ...next[lastIdx],
+          streaming: true,
+          agentSteps: nodeSteps.length ? nodeSteps : next[lastIdx].agentSteps,
+        };
+      }
+    }
+    messages = next;
+  } else {
+    messages = Array.isArray(node.data?.messages) ? node.data.messages : [];
+  }
 
   // 计算上下文块：未发消息时实时根据画布连线与配置动态重算；已发消息时从首条 user 消息获取已锁定的上下文
   const firstUser = messages.find((m: ChatMessage) => m.role === 'user');

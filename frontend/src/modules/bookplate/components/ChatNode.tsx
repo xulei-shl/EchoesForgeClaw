@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, Eraser, ImagePlus, MessageSquare, Send, Copy, Check, Loader2, Square, RefreshCw, ChevronUp, ChevronDown, Lock, X, FileText, Download, Brain } from 'lucide-react';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
@@ -158,21 +158,21 @@ const ReasoningBlock: React.FC<{
     }
   }, [hasContent]);
 
-  const tailText = text.slice(-50).replace(/\n/g, ' ');
+  const tailText = text.slice(-40).replace(/\n/g, ' ');
 
   return (
-    <div className="w-full mb-1 rounded-lg border border-dashed border-paper-grid/80 bg-paper-grid/15 overflow-hidden msg-enter-anim">
+    <div className="w-full mb-1 rounded-lg border border-dashed border-paper-grid/80 bg-paper-grid/15 overflow-hidden">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-1.5 px-2 py-1 text-[10px] text-ink-faint hover:text-ink-light font-sans transition-colors overflow-hidden"
+        className="w-full flex items-center gap-1.5 px-2 py-1 text-[10px] text-ink-faint hover:text-ink-light font-sans transition-colors overflow-hidden active:scale-[0.99]"
         title={open ? '收起思考过程' : '展开思考过程'}
       >
         <Brain size={11} strokeWidth={1.75} className={open ? 'text-accent shrink-0' : 'shrink-0'} />
         <span className={open ? 'text-ink-light shrink-0' : 'shrink-0'}>思考过程</span>
         
         {!open && tailText && (
-          <span className="flex-1 min-w-0 mx-1 overflow-hidden whitespace-nowrap text-right mask-gradient-left text-ink-faint/70 select-none">
+          <span className="flex-1 min-w-0 mx-1 overflow-hidden whitespace-nowrap text-right text-ink-faint/70 select-none truncate text-[9.5px]">
             {tailText}
           </span>
         )}
@@ -188,12 +188,12 @@ const ReasoningBlock: React.FC<{
       </button>
       {/* grid-rows 0fr/1fr 过渡：折叠/展开平滑动画（无需固定高度） */}
       <div
-        className={`grid transition-[grid-template-rows] duration-300 ease-out ${
+        className={`grid transition-[grid-template-rows] duration-200 ease-out ${
           open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
         }`}
       >
         <div className="overflow-hidden">
-          <pre className="text-[11px] text-ink-light font-sans whitespace-pre-wrap leading-relaxed px-2.5 pb-2 max-h-44 overflow-y-auto custom-scrollbar border-t border-dashed border-paper-grid/50">
+          <pre className="text-[11px] text-ink-light font-sans whitespace-pre-wrap leading-relaxed px-2.5 pb-2 max-h-44 overflow-y-auto custom-scrollbar border-t border-dashed border-paper-grid/50 select-text">
             {text}
           </pre>
         </div>
@@ -220,7 +220,7 @@ const ScrollButton = memo(({ direction, onClick, title }: {
 }) => (
   <button
     onClick={onClick}
-    className="pointer-events-auto flex items-center justify-center w-7 h-7 rounded-full bg-paper/90 border border-paper-grid/60 shadow-sm text-ink-faint hover:text-ink hover:bg-paper-grid hover:shadow backdrop-blur-md transition-all active:scale-95"
+    className="pointer-events-auto flex items-center justify-center w-7 h-7 rounded-full bg-paper/90 border border-paper-grid/60 shadow-sm text-ink-faint hover:text-ink hover:bg-paper-grid hover:shadow backdrop-blur-md transition-all active:scale-[0.96]"
     title={title}
   >
     {direction === 'up' ? <ChevronUp size={16} strokeWidth={2} /> : <ChevronDown size={16} strokeWidth={2} />}
@@ -229,36 +229,183 @@ const ScrollButton = memo(({ direction, onClick, title }: {
 
 const STYLE_INJECTIONS = `
 @keyframes msg-enter {
-  0% { opacity: 0; transform: translateY(8px); }
+  0% { opacity: 0; transform: translateY(4px); }
   100% { opacity: 1; transform: translateY(0); }
 }
-.msg-enter-anim { animation: msg-enter 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+.msg-enter-anim { animation: msg-enter 0.2s cubic-bezier(0.2, 0, 0, 1) forwards; }
 @keyframes pop-enter {
   0% { opacity: 0; transform: scale(0.96); transform-origin: bottom right; }
   100% { opacity: 1; transform: scale(1); transform-origin: bottom right; }
 }
-.pop-enter-anim { animation: pop-enter 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
-.mask-gradient-left {
-  mask-image: linear-gradient(to right, transparent, black 16px);
-  -webkit-mask-image: linear-gradient(to right, transparent, black 16px);
-}
+.pop-enter-anim { animation: pop-enter 0.2s cubic-bezier(0.2, 0, 0, 1) forwards; }
 @keyframes thinking-wave {
   0%, 100% { transform: translateY(0); opacity: 0.35; }
-  50% { transform: translateY(-2.5px); opacity: 1; }
+  50% { transform: translateY(-2px); opacity: 1; }
 }
 @keyframes thinking-glow {
   0%, 100% { opacity: 0.65; }
   50% { opacity: 1; }
 }
-.animate-thinking-wave { animation: thinking-wave 1.3s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
-.animate-thinking-glow { animation: thinking-glow 2s ease-in-out infinite; }
+.animate-thinking-wave { 
+  animation: thinking-wave 1.2s cubic-bezier(0.2, 0, 0, 1) infinite; 
+  will-change: transform, opacity;
+}
+.animate-thinking-glow { 
+  animation: thinking-glow 1.8s ease-in-out infinite; 
+  will-change: opacity;
+}
+.chat-scroll-container {
+  contain: content;
+}
 @media (prefers-reduced-motion: reduce) {
   .animate-thinking-wave {
     animation: thinking-glow 1.3s ease-in-out infinite;
     transform: none !important;
   }
+  .msg-enter-anim, .pop-enter-anim {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
 }
 `;
+
+interface ChatMessageItemProps {
+  msg: ChatMessage;
+  idx: number;
+  isLast: boolean;
+  agentName?: string;
+  onCopy: (content: string, idx: number) => void;
+  isCopied: boolean;
+  onRetry?: () => void;
+}
+
+/** 单条对话消息气泡：memo 隔离，流式更新时非活动历史消息跳过 re-render */
+const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
+  msg,
+  idx,
+  isLast,
+  agentName,
+  onCopy,
+  isCopied,
+  onRetry,
+}) => {
+  if (msg.role === 'user') {
+    return (
+      <div className="flex flex-col items-end gap-0.5 msg-enter-anim">
+        {msg.images && msg.images.length > 0 && (
+          <div className="flex flex-wrap justify-end gap-1.5 max-w-[85%]">
+            {msg.images.map((img, i) => (
+              <PhotoView key={i} src={img}>
+                <img
+                  src={img}
+                  alt={`附带图片 ${i + 1}`}
+                  className="w-16 h-16 rounded-lg object-cover cursor-zoom-in border border-white/20 shadow-sm hover:opacity-90 active:scale-[0.96] transition-transform duration-100"
+                  loading="lazy"
+                />
+              </PhotoView>
+            ))}
+          </div>
+        )}
+        {msg.content && (
+          <div className="max-w-[85%] px-3 py-2 rounded-2xl rounded-br-sm bg-accent text-white text-[13px] leading-relaxed whitespace-pre-wrap break-words font-sans shadow-sm select-text">
+            {msg.content}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // 判定正文是否有内容
+  const hasContent = Boolean(msg.content && msg.content.trim().length > 0);
+  // 正在等待 AI 返回正文（处于流式生成中但正文尚未开始输出，涵盖首字等待与思考过程输出阶段）
+  const isWaitingResponse = Boolean(msg.streaming && !hasContent);
+
+  return (
+    <div className={`flex flex-col items-start gap-1 relative group ${!msg.streaming ? 'msg-enter-anim' : ''}`}>
+      {msg.agentSteps && msg.agentSteps.length > 0 && (
+        <div className="w-full mb-1">
+          <AgentActivity
+            steps={msg.agentSteps}
+            agentName={agentName}
+            running={!!msg.streaming}
+          />
+        </div>
+      )}
+      {/* 模型思考过程（reasoning）：与回答正文分离的折叠块；正文开始输出后自动收起 */}
+      {msg.reasoning && (
+        <ReasoningBlock
+          text={msg.reasoning}
+          streaming={!!msg.streaming}
+          hasContent={!!msg.content}
+        />
+      )}
+      <div className="flex items-end w-full min-w-0">
+        <div className={`max-w-[92%] px-3 py-2 rounded-2xl rounded-bl-sm bg-paper-grid/25 border border-paper-grid/60 text-[13px] leading-relaxed font-sans min-w-0 select-text ${isWaitingResponse ? 'flex items-center text-ink-light' : ''}`}>
+          {isWaitingResponse ? (
+            <div className="flex items-center gap-2 py-0.5 text-ink-light select-none">
+              <div className="flex items-center gap-1.5 text-accent">
+                <Brain size={13} strokeWidth={2} className="animate-thinking-glow shrink-0" />
+                <span className="text-[12px] font-sans font-medium text-ink-light">思考中…</span>
+              </div>
+              <div className="flex items-center gap-1 h-3 pl-0.5">
+                <div className="w-1.5 h-1.5 rounded-full bg-accent/70 animate-thinking-wave" style={{ animationDelay: '0ms' }} />
+                <div className="w-1.5 h-1.5 rounded-full bg-accent/70 animate-thinking-wave" style={{ animationDelay: '160ms' }} />
+                <div className="w-1.5 h-1.5 rounded-full bg-accent/70 animate-thinking-wave" style={{ animationDelay: '320ms' }} />
+              </div>
+            </div>
+          ) : (
+            <Streamdown
+              plugins={{ cjk, code }}
+              isAnimating={!!msg.streaming}
+              caret="block"
+              linkSafety={{ enabled: false }}
+            >
+              {normalizeMarkdown(msg.content) || (msg.interrupted ? '已中断' : '')}
+            </Streamdown>
+          )}
+        </div>
+        {!msg.streaming && hasContent && (
+          <div className="ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+            <button
+              onClick={() => onCopy(msg.content, idx)}
+              className="p-1.5 text-ink-faint hover:text-ink hover:bg-paper-grid/40 rounded-md transition-colors active:scale-[0.96]"
+              title="复制回复"
+            >
+              {isCopied ? <Check size={14} /> : <Copy size={14} />}
+            </button>
+          </div>
+        )}
+      </div>
+      {/* Skill Agent 执行产生的文件：图片缩略预览 + 下载卡片 */}
+      {msg.files && msg.files.length > 0 && (
+        <div className="flex flex-wrap gap-2 mt-1 w-full pl-0.5">
+          {msg.files.map((f) => (
+            <SkillFileCard key={f.url} file={f} />
+          ))}
+        </div>
+      )}
+      {/* 被用户停止的回复：展示「重试」入口（仅当该消息是最后一条时，重试目标 = 本轮） */}
+      {msg.interrupted && !msg.streaming && isLast && (
+        <div className="flex items-center gap-1.5 text-[10px] font-sans text-ink-faint pl-1">
+          <span className="flex items-center gap-1">
+            <Square size={8} strokeWidth={2} fill="currentColor" />
+            已中断
+          </span>
+          <button
+            onClick={onRetry}
+            title="重新发送该轮对话"
+            className="flex items-center gap-1 rounded-md border border-paper-grid px-1.5 py-0.5 text-ink-light hover:text-accent hover:border-accent/40 hover:bg-accent/5 active:scale-[0.96] transition"
+          >
+            <RefreshCw size={9} strokeWidth={2} />
+            重试
+          </button>
+        </div>
+      )}
+    </div>
+  );
+});
+ChatMessageItem.displayName = 'ChatMessageItem';
 
 export interface ChatNodeProps {
   id: string;
@@ -364,11 +511,11 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
     };
   }, []);
 
-  const handleCopy = (content: string, idx: number) => {
+  const handleCopy = useCallback((content: string, idx: number) => {
     navigator.clipboard.writeText(content);
     setCopiedId(idx);
     setTimeout(() => setCopiedId(null), 2000);
-  };
+  }, []);
 
   const handleDownload = () => {
     if (messages.length === 0) return;
@@ -408,29 +555,29 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
     }
   }, [draft]);
 
-  const handleScroll = () => {
+  const handleScroll = useCallback(() => {
     if (scrollRafRef.current) return;
     scrollRafRef.current = requestAnimationFrame(() => {
-      const el = listRef.current;
-      if (el) {
-        const { scrollTop, scrollHeight, clientHeight } = el;
-        stickBottomRef.current = scrollHeight - scrollTop - clientHeight < 40;
-        setShowScrollTop(scrollTop > 200);
-        setShowScrollBottom(scrollHeight - scrollTop - clientHeight > 100);
-      }
       scrollRafRef.current = null;
+      const el = listRef.current;
+      if (!el) return;
+      const { scrollTop, scrollHeight, clientHeight } = el;
+      stickBottomRef.current = scrollHeight - scrollTop - clientHeight < 40;
+      const needTop = scrollTop > 200;
+      const needBottom = scrollHeight - scrollTop - clientHeight > 100;
+      setShowScrollTop((prev) => (prev !== needTop ? needTop : prev));
+      setShowScrollBottom((prev) => (prev !== needBottom ? needBottom : prev));
     });
-  };
+  }, []);
 
-  // 新消息 / 流式增量 / agent 步骤到达时自动滚到底（贴底状态下）
+  // 新消息 / 流式增量 / agent 步骤到达时自动滚到底（贴底状态下使用 rAF 异步滚动，消除 Forced Reflow）
   useEffect(() => {
     const el = listRef.current;
-    if (el) {
-      if (stickBottomRef.current) {
-        el.scrollTop = el.scrollHeight;
-      }
-      handleScroll();
-    }
+    if (!el || !stickBottomRef.current) return;
+    const frame = requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+    });
+    return () => cancelAnimationFrame(frame);
   }, [messages, agentSteps]);
 
   // 设置弹层：点击外部 / Esc 关闭
@@ -532,122 +679,6 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
     );
   };
 
-  const renderMessage = (msg: ChatMessage, idx: number) => {
-    if (msg.role === 'user') {
-      return (
-        <div key={idx} className="flex flex-col items-end gap-0.5 msg-enter-anim">
-          {msg.images && msg.images.length > 0 && (
-            <div className="flex flex-wrap justify-end gap-1.5 max-w-[85%]">
-              {msg.images.map((img, i) => (
-                <PhotoView key={i} src={img}>
-                  <img
-                    src={img}
-                    alt={`附带图片 ${i + 1}`}
-                    className="w-16 h-16 rounded-lg object-cover cursor-zoom-in border border-white/20 shadow-sm hover:opacity-90 active:scale-95 transition"
-                    loading="lazy"
-                  />
-                </PhotoView>
-              ))}
-            </div>
-          )}
-          {msg.content && (
-            <div className="max-w-[85%] px-3 py-2 rounded-2xl rounded-br-sm bg-accent text-white text-[13px] leading-relaxed whitespace-pre-wrap break-words font-sans shadow-sm">
-              {msg.content}
-            </div>
-          )}
-        </div>
-      );
-    }
-    // 判定正文是否有内容
-    const hasContent = Boolean(msg.content && msg.content.trim().length > 0);
-    // 正在等待 AI 返回正文（处于流式生成中但正文尚未开始输出，涵盖首字等待与思考过程输出阶段）
-    const isWaitingResponse = Boolean(msg.streaming && !hasContent);
-
-    return (
-      <div key={idx} className="flex flex-col items-start gap-1 relative group msg-enter-anim">
-        {msg.agentSteps && msg.agentSteps.length > 0 && (
-          <div className="w-full mb-1">
-            <AgentActivity
-              steps={msg.agentSteps}
-              agentName={agentName}
-              running={!!msg.streaming}
-            />
-          </div>
-        )}
-        {/* 模型思考过程（reasoning）：与回答正文分离的折叠块；正文开始输出后自动收起 */}
-        {msg.reasoning && (
-          <ReasoningBlock
-            text={msg.reasoning}
-            streaming={!!msg.streaming}
-            hasContent={!!msg.content}
-          />
-        )}
-        <div className="flex items-end w-full min-w-0">
-          <div className={`max-w-[92%] px-3 py-2 rounded-2xl rounded-bl-sm bg-paper-grid/25 border border-paper-grid/60 text-[13px] leading-relaxed font-sans min-w-0 ${isWaitingResponse ? 'flex items-center text-ink-light' : ''}`}>
-            {isWaitingResponse ? (
-              <div className="flex items-center gap-2 py-0.5 text-ink-light select-none">
-                <div className="flex items-center gap-1.5 text-accent">
-                  <Brain size={13} strokeWidth={2} className="animate-thinking-glow" />
-                  <span className="text-[12px] font-sans font-medium text-ink-light">思考中…</span>
-                </div>
-                <div className="flex items-center gap-1 h-3 pl-0.5">
-                  <div className="w-1.5 h-1.5 rounded-full bg-accent/70 animate-thinking-wave" style={{ animationDelay: '0ms' }} />
-                  <div className="w-1.5 h-1.5 rounded-full bg-accent/70 animate-thinking-wave" style={{ animationDelay: '160ms' }} />
-                  <div className="w-1.5 h-1.5 rounded-full bg-accent/70 animate-thinking-wave" style={{ animationDelay: '320ms' }} />
-                </div>
-              </div>
-            ) : (
-              <Streamdown
-                plugins={{ cjk, code }}
-                isAnimating={!!msg.streaming}
-                caret="block"
-                linkSafety={{ enabled: false }}
-              >
-                {normalizeMarkdown(msg.content) || (msg.interrupted ? '已中断' : '')}
-              </Streamdown>
-            )}
-          </div>
-          {!msg.streaming && hasContent && (
-            <div className="ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-              <button
-                onClick={() => handleCopy(msg.content, idx)}
-                className="p-1.5 text-ink-faint hover:text-ink hover:bg-paper-grid/40 rounded-md transition-colors"
-                title="复制回复"
-              >
-                {copiedId === idx ? <Check size={14} /> : <Copy size={14} />}
-              </button>
-            </div>
-          )}
-        </div>
-        {/* Skill Agent 执行产生的文件：图片缩略预览 + 下载卡片 */}
-        {msg.files && msg.files.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-1 w-full pl-0.5">
-            {msg.files.map((f) => (
-              <SkillFileCard key={f.url} file={f} />
-            ))}
-          </div>
-        )}
-        {/* 被用户停止的回复：展示「重试」入口（仅当该消息是最后一条时，重试目标 = 本轮） */}
-        {msg.interrupted && !msg.streaming && idx === messages.length - 1 && (
-          <div className="flex items-center gap-1.5 text-[10px] font-sans text-ink-faint pl-1">
-            <span className="flex items-center gap-1">
-              <Square size={8} strokeWidth={2} fill="currentColor" />
-              已中断
-            </span>
-            <button
-              onClick={() => onRetry?.(id)}
-              title="重新发送该轮对话"
-              className="flex items-center gap-1 rounded-md border border-paper-grid px-1.5 py-0.5 text-ink-light hover:text-accent hover:border-accent/40 hover:bg-accent/5 active:scale-95 transition"
-            >
-              <RefreshCw size={9} strokeWidth={2} />
-              重试
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  };
-
   return (
     <CanvasNode
       id={id}
@@ -683,7 +714,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
               <button
                 onClick={() => onRetry?.(id)}
                 title="重新发送最后一轮对话"
-                className="shrink-0 flex items-center gap-1 rounded-md border border-error/25 px-2 py-1 text-[10px] font-sans text-error hover:bg-error/10 active:scale-95 transition"
+                className="shrink-0 flex items-center gap-1 rounded-md border border-error/25 px-2 py-1 text-[10px] font-sans text-error hover:bg-error/10 active:scale-[0.96] transition"
               >
                 <RefreshCw size={11} strokeWidth={2} />
                 重试
@@ -697,7 +728,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
           <div
             ref={listRef}
             onScroll={handleScroll}
-            className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden space-y-2.5 pr-0.5"
+            className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden space-y-2.5 pr-0.5 chat-scroll-container"
           >
             {/* 顶部展示各个上级节点的上下文注入折叠块 */}
             {contextBlocks.length > 0 && (
@@ -718,7 +749,18 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                 </p>
               </div>
             ) : (
-              messages.map(renderMessage)
+              messages.map((msg, idx) => (
+                <ChatMessageItem
+                  key={`${msg.role}-${idx}`}
+                  msg={msg}
+                  idx={idx}
+                  isLast={idx === messages.length - 1}
+                  agentName={agentName}
+                  onCopy={handleCopy}
+                  isCopied={copiedId === idx}
+                  onRetry={() => onRetry?.(id)}
+                />
+              ))
             )}
             {/* 工具执行阶段（正文尚未开始流式）的实时 Agent 日志：步骤先落在节点级 agentSteps，
                 正文开始后由镜像挂到最后一条 assistant 消息，此块随即让位给消息级展示，避免重复 */}
@@ -734,10 +776,10 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
 
         {/* 悬浮滚动按钮 */}
         <div className="absolute right-4 bottom-14 flex flex-col gap-2 z-20 pointer-events-none">
-          <div className={`transition-all duration-300 ${showScrollTop ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2 pointer-events-none'}`}>
+          <div className={`transition-all duration-200 ${showScrollTop ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2 pointer-events-none'}`}>
             <ScrollButton direction="up" onClick={() => listRef.current?.scrollTo({ top: 0, behavior: 'smooth' })} title="回到顶部" />
           </div>
-          <div className={`transition-all duration-300 ${showScrollBottom ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2 pointer-events-none'}`}>
+          <div className={`transition-all duration-200 ${showScrollBottom ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2 pointer-events-none'}`}>
             <ScrollButton direction="down" onClick={() => listRef.current?.scrollTo({ top: listRef.current?.scrollHeight, behavior: 'smooth' })} title="回到底部" />
           </div>
         </div>
@@ -785,7 +827,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                   ? `最多附带 ${MAX_ATTACHMENTS} 张图片`
                   : '附带图片'
               }
-              className="flex shrink-0 items-center justify-center w-9 h-9 rounded-lg border border-dashed border-paper-grid text-ink-faint hover:text-accent hover:border-accent/40 hover:bg-accent/5 active:scale-95 transition disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              className="flex shrink-0 items-center justify-center w-9 h-9 rounded-lg border border-dashed border-paper-grid text-ink-faint hover:text-accent hover:border-accent/40 hover:bg-accent/5 active:scale-[0.96] transition disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
               <ImagePlus size={15} strokeWidth={2} />
             </button>
@@ -803,7 +845,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
               <button
                 onClick={() => onStop?.(id)}
                 title="停止生成"
-                className="flex shrink-0 items-center justify-center w-9 h-9 rounded-lg border border-error/30 bg-error/5 text-error hover:bg-error/10 active:scale-95 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error"
+                className="flex shrink-0 items-center justify-center w-9 h-9 rounded-lg border border-error/30 bg-error/5 text-error hover:bg-error/10 active:scale-[0.96] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error"
               >
                 <Square size={15} strokeWidth={2} fill="currentColor" />
               </button>
@@ -812,7 +854,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                 onClick={handleSend}
                 disabled={!draft.trim() && attachments.length === 0}
                 title="发送 (Enter)"
-                className="flex items-center justify-center w-9 h-9 rounded-lg bg-accent text-white shadow-sm hover:bg-accent/90 active:scale-95 transition disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                className="flex items-center justify-center w-9 h-9 rounded-lg bg-accent text-white shadow-sm hover:bg-accent/90 active:scale-[0.96] transition disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
               >
                 <Send size={15} strokeWidth={2} />
               </button>
