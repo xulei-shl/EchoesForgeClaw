@@ -255,4 +255,35 @@ Three.js/WebGL 着色器管线，FastAPI(Python)/backend-ts(Node) 均无法直�
 - 跨域封面输入时「图片受跨域保护」错误文案 + 重试路径
 - 生成/下载/保存落库 prompt 文案 `图片处理 · 网点`、下游读取、hasDownstream 门禁、切换失效语义
 
+---
+
+# 图片处理节点 · 第三阶段：ASCII（ascii）效果接入
+
+## 方案决策
+- **前端移植 `effects/ascii.ts`**（用户确认）：参考项目 asciify-engine-main 为 MIT 协议的
+  TypeScript 浏览器端 Canvas 引擎——FastAPI(Python) 无法运行 TS/Canvas 代码，重写必失真；
+  后端渲染破坏「预览即结果」不变量且引入上传延迟。与 grain/halftone/dither 同模式移植。
+- **不直接 npm 引入原库**（用户确认规避）：其 renderer 存在模块级全局缓存（WeakMap/Memo Map）
+  与 `isDarkMode()` DOM 探测（宿主页面主题影响输出底色/字色），违反接入指南 §4/§5 render
+  纯函数要求，会造成预览与导出不一致；移植时以固定底色替代主题探测。
+- **算法要点**：源图按单元格网格块均值采样（超采样保细节）→ 亮度 →「由疏到密」字符梯度
+  映射（`floor(norm×(len-1))`，与原库逐字一致）；charAspect=0.55 校正等宽字符宽高比防变形；
+  输出画布独立于采样源（吸取网点教训：采样源/输出目标严格分离）；无随机数、无全局状态。
+- **参数**（default 为单一事实来源）：列数 cols(40-240 默认 120) /
+  字符集 charset(standard|blocks|dots|katakana 分段) / 配色 colorMode(dark|light|matrix|color 分段) /
+  反转 invert(normal|inverted 分段)；配色固定底色：黑 #0a0a0a / 白 #faf9f7 / 绿底 #050505。
+
+## 任务清单
+- [ ] 1. `tasks/todo.md` 写入规划（本节）
+- [ ] 2. `types.ts`：ImageFxId 加 `'ascii'` + AsciiFxParams 接口
+- [ ] 3. 新建 `effects/ascii.ts`：参数 schema + renderAscii（块均值采样 / 字符梯度映射 /
+       固定底色 fillText 绘制；taint 抛中文可读错误）
+- [ ] 4. `effects/registry.ts` 登记一行 + `index.ts` re-export 一行
+- [ ] 5. 文档：接入指南头部「已实现效果」状态同步一行
+
+### 验证
+- [ ] 6. frontend `npm run build`（tsc -b && vite build）✅ + `npm run lint` ✅
+- [ ] 7. 手动验证路径（需浏览器人工验收）：按接入指南 §7 清单逐项
+
+
 
