@@ -21,6 +21,7 @@ import { ArtImageSearchNode, type GlamSearchSelection } from '../../modules/mult
 import { ReceiptPrinterNode } from '../../modules/multimodal/components/ReceiptPrinterNode';
 import { StampCutterNode } from '../../modules/multimodal/components/StampCutterNode';
 import { StickerMakerNode } from '../../modules/multimodal/components/StickerMakerNode';
+import { JournalMakerNode } from '../../modules/multimodal/components/JournalMakerNode';
 import { OilPaintNode } from '../../modules/multimodal/components/OilPaintNode';
 import { ImageProcessNode } from '../../modules/multimodal/components/ImageProcessNode';
 import { MapArtNode } from '../../modules/multimodal/components/MapArtNode';
@@ -33,6 +34,7 @@ import {
   findRootBookInfo,
   getNodeTitle,
   matchPortType,
+  nodeOutputImages,
   resolveDirectParents,
 } from './nodeTypes';
 import {
@@ -144,9 +146,17 @@ export interface NodeViewHelpers {
   /** 邮票截图框节点：导出 PNG data URL 落盘（保存到后端 + 记录数据库历史 + 写回 node.data） */
   handleExportStampFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportStickerFor: (id: string, dataUrl: string, state: any) => Promise<void>;
+  /** 手账制作节点：导出 PNG data URL 落盘（保存到后端 + 记录数据库历史 + 写回 node.data） */
+  handleExportJournalFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   /** 邮票截图框节点：状态更新写入 node.data（持久化） */
   handleUpdateStampStateFor: (id: string, patch: Record<string, any>) => void;
   handleUpdateStickerMakerStateFor: (id: string, patch: Record<string, any>) => void;
+  /** 手账制作节点：状态更新写入 node.data（用户排版动作带 undoable 记撤销历史） */
+  handleUpdateJournalMakerStateFor: (
+    id: string,
+    patch: Record<string, any>,
+    undoable?: boolean
+  ) => void;
   /** 湿油彩效果节点：导出 PNG data URL 落盘（保存到后端 + 记录数据库历史 + 写回 node.data） */
   handleExportOilPaintFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   /** 湿油彩效果节点：状态更新写入 node.data（持久化） */
@@ -206,6 +216,47 @@ function resolveUpstreamImage(node: NodeData, h: NodeViewHelpers): {
     upstreamImageUrl: directParentImage || connectedBookCover || rootBookCover || null,
     upstreamBookData: connectedBookData || rootBookData || null,
   };
+}
+
+/**
+ * 手账制作节点上游素材解析（多图并集，不走单图优先级）：
+ *
+ * 封面加载规则：
+ *   1. 根节点图书元数据（无入边者）——无论是否连线，始终加载其封面图；
+ *   2. 非根节点图书元数据——只有直连（1 级）时才加载其封面图；
+ *   3. 其他图片输出上级（图片上传/图像生成等）——直连即各取首图加载。
+ *
+ * 三者去重后返回（以 src 字符串为键），避免相同封面重复出现。
+ */
+function resolveUpstreamImages(node: NodeData, h: NodeViewHelpers): string[] {
+  const inputs = collectNodeInputs(node, h.nodes, h.edges, h.portTypesOf);
+
+  // 1) 直连图片输出上级（book_info 输出 type 为 text，已在 collectNodeInputs 被排除在外）
+  const parentImages = inputs.images
+    .map((p) => nodeOutputImages(p)[0])
+    .filter((src): src is string => Boolean(src));
+
+  // 2) 直连的图书元数据节点封面（连线即加载）
+  const connectedBookCovers = inputs.parents
+    .filter((p) => p.type === 'book_info')
+    .map((p) => {
+      const d = p.data ?? {};
+      return d.cover_image_local || d.cover_image || d.coverUrl || null;
+    })
+    .filter((src): src is string => Boolean(src));
+
+  // 3) 根节点图书元数据封面（无论是否连线始终加载）
+  const rootNode = findRootBookInfo(h.nodes, h.edges);
+  const rootCover =
+    rootNode?.data?.cover_image_local || rootNode?.data?.cover_image || rootNode?.data?.coverUrl || null;
+
+  // 去重合并
+  const seen = new Set<string>();
+  return [...parentImages, ...connectedBookCovers, ...(rootCover ? [rootCover] : [])].filter((src) => {
+    if (seen.has(src)) return false;
+    seen.add(src);
+    return true;
+  });
 }
 
 /** 画布节点渲染：按节点类型分发到对应组件（bookplate 模块唯一渲染入口） */
@@ -739,6 +790,30 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           mismatchBadge={mismatchBadge}
           onUpdateState={h.handleUpdateStickerMakerStateFor}
           onExport={h.handleExportStickerFor}
+        />
+      );
+    }
+
+    case 'journal_maker': {
+      const d = node.data ?? {};
+      const upstreamImages = resolveUpstreamImages(node, h);
+      return (
+        <JournalMakerNode
+          key={node.id}
+          {...common}
+          data={d}
+          upstreamImages={upstreamImages}
+          isFavorited={!!h.favoritedState[node.id]}
+          isPublic={!!h.publishedState[node.id]}
+          isSelected={node.id === h.activeImage?.id}
+          recordDeleted={h.staleRecordIds.has(node.id)}
+          onSelect={h.handleSelectImage}
+          onToggleFavorite={h.handleToggleFavoriteFor}
+          onTogglePublic={h.handleTogglePublicFor}
+          hasDownstream={hasDownstreamOf(node, h.edges)}
+          mismatchBadge={mismatchBadge}
+          onUpdateState={h.handleUpdateJournalMakerStateFor}
+          onExport={h.handleExportJournalFor}
         />
       );
     }

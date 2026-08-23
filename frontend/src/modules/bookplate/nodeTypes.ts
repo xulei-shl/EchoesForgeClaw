@@ -33,6 +33,7 @@ export const NODE_COLORS: Record<CanvasNodeType, string> = {
   oil_paint: 'oklch(0.66 0.16 60)',
   image_process: 'oklch(0.66 0.15 105)',
   sticker_maker: 'oklch(0.72 0.15 340)',
+  journal_maker: 'oklch(0.7 0.14 150)',
 };
 
 export interface NodeTemplateDef {
@@ -228,6 +229,14 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     defaultSize: DEFAULT_SIZES.sticker_maker,
   },
   {
+    type: 'journal_maker',
+    name: '手账制作',
+    description: '多图拼贴排版（拖移/缩放/旋转/图层排序/随机布局），合成整张手账页图片',
+    category: 'multimodal',
+    configurable: false,
+    defaultSize: DEFAULT_SIZES.journal_maker,
+  },
+  {
     type: 'map_art',
     name: '艺术地图生成',
     description: '基于 prettymaps 服务端生成艺术风格地图图片',
@@ -346,6 +355,8 @@ export const NODE_PORT_TYPES: Record<
   stamp_cutter: { output: 'image', inputs: ['image', 'text'] },
   // 贴纸制作：输出生成的贴纸图片；可连线图片或图书元数据作为输入源（连线即输入）
   sticker_maker: { output: 'image', inputs: ['image', 'text'] },
+  // 手账制作：输出合成的整张手账页图片；可连线多张图片或图书元数据一并作为素材源（连线即输入）
+  journal_maker: { output: 'image', inputs: ['image', 'text'] },
   map_art: { output: 'image', inputs: ['text'] },
   // 中国传统纹样：复合输出——主输出为图片（纹样卡片图），同时产出详情说明文本；
   // 下游按自身接受的输入类型取用（图片分析/图像生成拿图片，文本聚合/AI对话拿文本或两者都拿）

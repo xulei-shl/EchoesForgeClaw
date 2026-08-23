@@ -48,6 +48,8 @@ export const NODE_TYPES = {
   IMAGE_PROCESS: 'image_process',
   /** 贴纸制作（多模态工具）：一键抠图移除背景，生成带白边描边与投影的 die-cut 贴纸图片 */
   STICKER_MAKER: 'sticker_maker',
+  /** 手账制作（多模态工具）：多图拼贴排版（拖移/缩放/旋转/图层/随机布局），合成整张手账页图片 */
+  JOURNAL_MAKER: 'journal_maker',
 } as const;
 
 export type NodeType = (typeof NODE_TYPES)[keyof typeof NODE_TYPES];
@@ -313,6 +315,15 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     type: NODE_TYPES.STICKER_MAKER,
     name: '贴纸制作',
     description: '一键抠图移除背景，生成带白边描边与投影的 die-cut 贴纸图片',
+    category: 'multimodal',
+    configurable: false,
+    output_type: 'image',
+    input_types: ['image', 'text'],
+  },
+  {
+    type: NODE_TYPES.JOURNAL_MAKER,
+    name: '手账制作',
+    description: '多图拼贴排版（拖移/缩放/旋转/图层排序/随机布局），浏览器端合成整张手账页图片',
     category: 'multimodal',
     configurable: false,
     output_type: 'image',

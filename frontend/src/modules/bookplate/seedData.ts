@@ -1,5 +1,6 @@
 import { AGGREGATE_DEFAULT_TEMPLATE } from './textTemplate';
 import { MAP_POSTER_DEFAULTS } from '../multimodal/map/defaults';
+import { JOURNAL_DEFAULTS } from '../multimodal/journal/types';
 
 import type { NodeType, NodeData } from './graphTypes';
 import type { NodeRunSettings } from '../../platform/types';
@@ -162,6 +163,17 @@ export function seedDataFor(type: NodeType, parent?: NodeData): any {
         shadowEnabled: true,
         imageUrl: null,
         uploadedImage: null,
+        error: null,
+      };
+    case 'journal_maker':
+      return {
+        items: [],
+        background: JOURNAL_DEFAULTS.background,
+        pageSize: JOURNAL_DEFAULTS.pageSize,
+        removeBackground: false,
+        imageUrl: null,
+        uploadedImages: [],
+        dismissedSources: [],
         error: null,
       };
     case 'map_art':

@@ -288,6 +288,7 @@ export interface ImageOutputHandlers {
   handleExportReceiptFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportStampFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportStickerFor: (id: string, dataUrl: string, state: any) => Promise<void>;
+  handleExportJournalFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportOilPaintFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportImageProcessFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportMapPosterFor: (id: string, imageUrl: string) => Promise<void>;
@@ -349,6 +350,18 @@ export function useImageOutputHandlers(ctx: ImageOutputCtx): ImageOutputHandlers
     historyWarn: '记录贴纸到历史数据库失败(不阻断导出):',
   });
 
+  // 手账制作：与贴纸同流程——手动点击保存 → /save-image 落盘 → generations 记录
+  const handleExportJournalFor = useImageExportHandler(ctx, {
+    nodeType: 'journal_maker',
+    historyNodeType: 'journal_maker',
+    promptOf: () => '手账制作',
+    okExtras: () => ({}),
+    onHistorySaved: () => {},
+    emptyError: '保存手账图片失败',
+    errLabel: '手账图片保存',
+    historyWarn: '记录手账到历史数据库失败(不阻断导出):',
+  });
+
   // 湿油彩效果：与邮票同流程——手动点击保存 → /save-image 落盘 → generations 记录
   const handleExportOilPaintFor = useImageExportHandler(ctx, {
     nodeType: 'oil_paint',
@@ -386,6 +399,7 @@ export function useImageOutputHandlers(ctx: ImageOutputCtx): ImageOutputHandlers
     handleExportReceiptFor,
     handleExportStampFor,
     handleExportStickerFor,
+    handleExportJournalFor,
     handleExportOilPaintFor,
     handleExportImageProcessFor,
     handleExportMapPosterFor,
