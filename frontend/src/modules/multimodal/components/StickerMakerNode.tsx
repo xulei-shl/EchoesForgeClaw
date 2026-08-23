@@ -9,7 +9,6 @@ import {
   Eraser,
   Layers,
   Loader2,
-  Pencil,
   Check,
   Pipette,
 } from 'lucide-react';
@@ -353,10 +352,12 @@ const StickerMakerNodeInner: React.FC<StickerMakerNodeProps> = ({
                 hasDownstream={hasDownstream}
                 downstreamTooltip="有下级节点，不可重新调整"
                 tooltip="返回编辑模式"
+                aria-label="返回编辑模式"
               />
               <NodeActionBar.Custom
                 icon={<Upload size={16} strokeWidth={1.5} />}
                 tooltip="上传/替换本地图片"
+                aria-label="上传/替换本地图片"
                 downstreamTooltip="有下级节点，不可更换图片"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={busy}
@@ -366,6 +367,7 @@ const StickerMakerNodeInner: React.FC<StickerMakerNodeProps> = ({
                 <NodeActionBar.Custom
                   icon={<Trash2 size={16} strokeWidth={1.5} className="text-error/80 hover:text-error" />}
                   tooltip="恢复上级继承图片（清空本地上传）"
+                  aria-label="恢复上级继承图片"
                   downstreamTooltip="有下级节点，不可清空图片"
                   onClick={handleClearUpload}
                   disabled={busy}
@@ -380,6 +382,7 @@ const StickerMakerNodeInner: React.FC<StickerMakerNodeProps> = ({
                 hasDownstream={hasDownstream}
                 downstreamTooltip="有下级节点，不可保存"
                 tooltip={isSaved ? '已保存到数据库' : '保存到数据库（保存后可公开/收藏）'}
+                aria-label={isSaved ? '已保存到数据库' : '保存到数据库'}
                 className={isSaved ? 'text-accent opacity-70' : 'text-ink-light hover:text-accent'}
               />
               {/* 收藏按钮（未保存时禁用并提示） */}
@@ -392,6 +395,13 @@ const StickerMakerNodeInner: React.FC<StickerMakerNodeProps> = ({
                   />
                 }
                 tooltip={
+                  !isSaved
+                    ? '请先保存到数据库后再收藏'
+                    : isFavorited
+                      ? '取消收藏'
+                      : '收藏'
+                }
+                aria-label={
                   !isSaved
                     ? '请先保存到数据库后再收藏'
                     : isFavorited
@@ -419,6 +429,13 @@ const StickerMakerNodeInner: React.FC<StickerMakerNodeProps> = ({
                       ? '从画廊撤下'
                       : '公开到画廊'
                 }
+                aria-label={
+                  !isSaved
+                    ? '请先保存到数据库后再公开'
+                    : isPublic
+                      ? '从画廊撤下'
+                      : '公开到画廊'
+                }
                 onClick={() =>
                   isSaved && runToggle(onTogglePublic, (act) => (act ? '已公开' : '已撤下'))
                 }
@@ -429,6 +446,7 @@ const StickerMakerNodeInner: React.FC<StickerMakerNodeProps> = ({
                 onClick={handleDownload}
                 disabled={isExporting}
                 tooltip="直接下载贴纸 PNG"
+                aria-label="直接下载贴纸 PNG"
               />
               <NodeActionBar.Reset
                 onClick={handleReset}
@@ -436,6 +454,7 @@ const StickerMakerNodeInner: React.FC<StickerMakerNodeProps> = ({
                 hasDownstream={hasDownstream}
                 downstreamTooltip="有下级节点，不可重置"
                 tooltip="重置参数与结果"
+                aria-label="重置参数与结果"
               />
             </>
           ) : (
@@ -449,6 +468,7 @@ const StickerMakerNodeInner: React.FC<StickerMakerNodeProps> = ({
                   )
                 }
                 tooltip="生成贴纸"
+                aria-label="生成贴纸"
                 downstreamTooltip="有下级节点，不可生成"
                 onClick={handleGenerate}
                 disabled={!activeImageSrc || busy}
@@ -457,6 +477,7 @@ const StickerMakerNodeInner: React.FC<StickerMakerNodeProps> = ({
               <NodeActionBar.Custom
                 icon={<Upload size={16} strokeWidth={1.5} />}
                 tooltip="上传/替换本地图片"
+                aria-label="上传/替换本地图片"
                 downstreamTooltip="有下级节点，不可更换图片"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={busy}
@@ -466,6 +487,7 @@ const StickerMakerNodeInner: React.FC<StickerMakerNodeProps> = ({
                 <NodeActionBar.Custom
                   icon={<Trash2 size={16} strokeWidth={1.5} className="text-error/80 hover:text-error" />}
                   tooltip="恢复上级继承图片（清空本地上传）"
+                  aria-label="恢复上级继承图片"
                   downstreamTooltip="有下级节点，不可清空图片"
                   onClick={handleClearUpload}
                   disabled={busy}
@@ -478,12 +500,14 @@ const StickerMakerNodeInner: React.FC<StickerMakerNodeProps> = ({
                 hasDownstream={hasDownstream}
                 downstreamTooltip="有下级节点，不可重置"
                 tooltip="重置参数"
+                aria-label="重置参数"
               />
             </>
           )}
           <NodeActionBar.ExternalLink
             href="https://github.com/CatsJuice/sticker-forge"
             tooltip="点击使用完整功能"
+            aria-label="点击使用完整功能"
           />
         </NodeActionBar>
       }
@@ -671,7 +695,7 @@ const StickerMakerNodeInner: React.FC<StickerMakerNodeProps> = ({
                         {bgProgress?.phase === 'loading' ? (
                           <>
                             <span className="text-xs">正在加载抠图模型…</span>
-                            {typeof bgProgress.progress === 'number' && bgProgress.progress < 100 && (
+                            {typeof bgProgress.progress === 'number' && (bgProgress.progress < 100) && (
                               <div className="w-32 h-1 rounded-full bg-white/25 overflow-hidden">
                                 <div
                                   className="h-full bg-accent transition-all duration-200"
@@ -684,19 +708,6 @@ const StickerMakerNodeInner: React.FC<StickerMakerNodeProps> = ({
                           <span className="text-xs">正在移除背景…</span>
                         )}
                       </div>
-                    )}
-
-                    {/* 中央生成快捷悬浮按钮 */}
-                    {!isWorking && !bgProgress && (
-                      <button
-                        type="button"
-                        onClick={handleGenerate}
-                        disabled={!activeImageSrc || busy}
-                        className="absolute bottom-3 right-3 z-20 px-2.5 py-1 rounded-full bg-paper/90 backdrop-blur text-ink font-medium text-xs shadow-md hover:bg-white hover:scale-105 active:scale-95 transition flex items-center gap-1.5"
-                      >
-                        <Wand2 size={13} className="text-accent" />
-                        <span>生成贴纸</span>
-                      </button>
                     )}
                   </div>
                 ) : (
@@ -717,24 +728,12 @@ const StickerMakerNodeInner: React.FC<StickerMakerNodeProps> = ({
                 className="relative w-full h-full flex items-center justify-center p-3"
               >
                 {data.imageUrl ? (
-                  <div className="relative group max-w-full max-h-full flex items-center justify-center">
+                  <div className="relative max-w-full max-h-full flex items-center justify-center">
                     <img
                       src={data.imageUrl}
                       alt="Sticker Output"
                       className="max-w-full max-h-[440px] object-contain drop-shadow-md select-none pointer-events-none sticker-checker-bg"
                     />
-
-                    {/* 快捷悬浮重新编辑按钮 */}
-                    {!hasDownstream && (
-                      <button
-                        type="button"
-                        onClick={() => setIsEditing(true)}
-                        className="absolute bottom-3 right-3 px-2.5 py-1 rounded-full bg-paper/90 backdrop-blur text-ink text-xs shadow-md border border-paper-grid/40 hover:bg-white hover:text-accent transition flex items-center gap-1.5 opacity-0 group-hover:opacity-100 duration-150"
-                      >
-                        <Pencil size={12} />
-                        <span>重新编辑</span>
-                      </button>
-                    )}
                   </div>
                 ) : (
                   <div className="text-xs text-ink-faint">暂无贴纸生成结果</div>
