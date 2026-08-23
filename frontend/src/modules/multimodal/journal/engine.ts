@@ -3,7 +3,7 @@
  * 纯浏览器端实现（零后端计算），与贴纸制作同属「前端合成图片后输出」链路。
  */
 import type { JournalBackground, JournalMakerItem, JournalPagePreset, JournalPagePresetId } from './types';
-import { journalPagePresetOf, FONT_FAMILY } from './types';
+import { journalPagePresetOf } from './types';
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
@@ -226,61 +226,18 @@ function paintBackground(
   ctx.drawImage(layerCanvas, 0, 0);
 }
 
-/**
- * 确保手写字体已加载（Canvas 文本渲染前调用）；超时 3s 后仍用后备字体继续。
- */
-export async function ensureFontLoaded(): Promise<void> {
-  const spec = `16px "${FONT_FAMILY}"`;
-  if (document.fonts && document.fonts.check(spec)) return;
-  try {
-    await Promise.race([
-      document.fonts.load(spec),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000)),
-    ]);
-  } catch {
-    // 字体加载失败，使用后备字体
-  }
-}
+import {
+  drawTextItemToCanvas,
+  ensureJournalFontsLoaded,
+  textFontSize,
+} from './text/drawText';
 
-/** 文本素材渲染字体大小（w = 字体缩放系数，约 3~10） */
-export function textFontSize(w: number, pageWidth: number): number {
-  return Math.max(10, (w * pageWidth) / 250);
-}
-
-/** 绘制文本素材到画布 */
-function drawTextItem(
-  ctx: CanvasRenderingContext2D,
-  item: JournalMakerItem,
-  pageWidth: number,
-  pageHeight: number
-) {
-  const text = item.text || '';
-  if (!text) return;
-  const fontSize = textFontSize(item.w, pageWidth);
-  const cx = (item.x / 100) * pageWidth;
-  const cy = (item.y / 100) * pageHeight;
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.rotate((item.angle * Math.PI) / 180);
-  ctx.font = `${fontSize}px "${FONT_FAMILY}", cursive, sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#2d2a24';
-  ctx.shadowColor = 'rgba(15, 23, 42, 0.12)';
-  ctx.shadowBlur = 2;
-  ctx.shadowOffsetY = 1;
-  const lines = text.split('\n');
-  const lineH = fontSize * 1.4;
-  lines.forEach((line, i) => {
-    ctx.fillText(line, 0, (i - (lines.length - 1) / 2) * lineH);
-  });
-  ctx.restore();
-}
+export { textFontSize };
 
 /**
  * 把拼贴项按 z 序合成整张手账页 PNG Data URL：
- * 背景填充（纯色/渐变/网状光斑）→ 各素材（含旋转、柔和投影）→ 导出。
- * 任一素材加载失败即抛错（fail-fast，不静默跳过）。
+ * 背景填充（纯色/渐变/网状光斑）→ 各素材（含旋转、柔和投影、横/竖排文本）→ 导出。
+ * 任一图片素材加载失败即抛错（fail-fast，不静默跳过）。
  */
 export async function composeJournalPage(
   items: JournalMakerItem[],
@@ -295,7 +252,7 @@ export async function composeJournalPage(
 
   paintBackground(ctx, preset.width, preset.height, options.background);
 
-  // 分离图文素材并确保字体已加载
+  // 分离图文素材并确保字体已按需加载就绪
   const imageItems = items.filter((it) => it.kind !== 'text');
   const textItems = items.filter((it) => it.kind === 'text');
   const sorted = [...imageItems, ...textItems].sort((a, b) => a.z - b.z);
@@ -304,12 +261,12 @@ export async function composeJournalPage(
         imageItems.map((it) => loadImage(it.src || ''))
       )
     : [];
-  await ensureFontLoaded();
+  await ensureJournalFontsLoaded(items);
 
   let imgIdx = 0;
   for (const item of sorted) {
     if (item.kind === 'text') {
-      drawTextItem(ctx, item, preset.width, preset.height);
+      drawTextItemToCanvas(ctx, item, preset.width, preset.height);
       continue;
     }
     const img = imageLoads[imgIdx];
@@ -327,7 +284,7 @@ export async function composeJournalPage(
     ctx.shadowOffsetY = Math.max(2, preset.height * 0.004);
     ctx.drawImage(img, -w / 2, -h / 2, w, h);
     ctx.restore();
-}
+  }
 
   return canvas.toDataURL('image/png');
 }

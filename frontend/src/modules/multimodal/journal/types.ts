@@ -389,7 +389,9 @@ export const JOURNAL_DEFAULTS = {
   removeBackground: false,
 };
 
-/** 手写字体名称（Google Fonts，用于文本素材） */
+export type JournalWritingMode = 'horizontal' | 'vertical';
+
+/** 手写字体默认名称（用于文本素材） */
 export const FONT_FAMILY = 'Ma Shan Zheng';
 
 /** 文本素材默认文案 */
@@ -401,6 +403,10 @@ export interface JournalMakerItem {
   kind?: 'image' | 'text';
   src: string;
   text?: string;
+  /** 文本专属属性 */
+  fontFamily?: string;
+  color?: string;
+  writingMode?: JournalWritingMode;
   x: number;
   y: number;
   w: number;

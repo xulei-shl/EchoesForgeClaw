@@ -42,9 +42,12 @@ import {
   nextJournalItemId,
   randomizeLayout,
   composeJournalPage,
-  textFontSize,
-  FONT_FAMILY,
   DEFAULT_TEXT,
+  DEFAULT_FONT_FAMILY,
+  DEFAULT_TEXT_COLOR,
+  preloadAllJournalFonts,
+  JournalTextItem,
+  JournalTextToolbar,
   downloadJournalImage,
 } from '../journal';
 
@@ -164,14 +167,9 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textInputRef = useRef<HTMLTextAreaElement>(null);
 
-  // 一次性加载手写字体
+  // 预加载所有手账字体预设
   useEffect(() => {
-    if (document.getElementById('journal-handwriting-font')) return;
-    const link = document.createElement('link');
-    link.id = 'journal-handwriting-font';
-    link.href = `https://fonts.googleapis.com/css2?family=${FONT_FAMILY.replace(/ /g, '+')}&display=swap`;
-    link.rel = 'stylesheet';
-    document.head.appendChild(link);
+    preloadAllJournalFonts();
   }, []);
   /** items 实时镜像（手势结束提交用，避免在 setState updater 内做副作用） */
   const itemsRef = useRef(items);
@@ -199,6 +197,7 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
 
   const uploadedImages = useMemo(() => data.uploadedImages ?? [], [data.uploadedImages]);
   const dismissedSources = useMemo(() => data.dismissedSources ?? [], [data.dismissedSources]);
+  const selectedItem = useMemo(() => items.find((it) => it.id === selectedId), [items, selectedId]);
 
   // 外部数据变更同步（撤销 / 上级触发 patch）
   useEffect(() => {
@@ -305,7 +304,7 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
     showToast('已清空本地上传素材', { type: 'success' });
   };
 
-  // 添加文字素材
+  // 添加文字素材（默认手写体、墨色、横向排版）
   const handleAddText = () => {
     if (hasDownstream) return;
     const maxZ = items.reduce((m, it) => Math.max(m, it.z), -1);
@@ -315,6 +314,9 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
       kind: 'text',
       src: '',
       text: DEFAULT_TEXT,
+      fontFamily: DEFAULT_FONT_FAMILY,
+      color: DEFAULT_TEXT_COLOR,
+      writingMode: 'horizontal',
       ...defaultTextPlacement(textItems.length),
       z: maxZ + 1,
     };
@@ -326,6 +328,18 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
     setEditingText(DEFAULT_TEXT);
     setIsEditing(true);
   };
+
+  // 更新素材属性（字号、字体、颜色、排版方向等）
+  const handleUpdateItem = useCallback(
+    (itemId: string, patch: Partial<JournalMakerItem>) => {
+      setItems((prev) => {
+        const next = prev.map((it) => (it.id === itemId ? { ...it, ...patch } : it));
+        commit({ items: next }, true);
+        return next;
+      });
+    },
+    [commit]
+  );
 
   // 确认文本编辑
   const confirmTextEdit = () => {
@@ -339,9 +353,13 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
     setEditingText('');
   };
 
-  // 文本编辑：Enter 确认，Shift+Enter 换行
+  // 文本编辑快捷键：Enter 确认，Shift+Enter 换行，Escape 取消
   const handleTextKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      setEditingTextId(null);
+      setEditingText('');
+    } else if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       confirmTextEdit();
     }
@@ -1083,10 +1101,55 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                         </div>
                       )}
 
+                      {/* 选中文本时的悬浮微交互工具栏（字体、颜色、横竖排、字号、图层与删除） */}
+                      {selectedItem && selectedItem.kind === 'text' && !hasDownstream && (
+                        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-40 max-w-[94%] pointer-events-auto">
+                          <JournalTextToolbar
+                            item={selectedItem}
+                            disabled={hasDownstream}
+                            onUpdate={(patch) => handleUpdateItem(selectedItem.id, patch)}
+                            onOpenEdit={() => {
+                              setEditingTextId(selectedItem.id);
+                              setEditingText((selectedItem.text || '').replace(/\\n/g, '\n'));
+                              setTimeout(() => textInputRef.current?.select(), 50);
+                            }}
+                            onDelete={() => deleteItem(selectedItem)}
+                            onBumpLayer={(mode) => bumpLayer(selectedItem.id, mode)}
+                          />
+                        </div>
+                      )}
+
                       {/* 素材拼贴列表 */}
                       {[...items].sort((a, b) => a.z - b.z).map((item) => {
                         const selected = selectedId === item.id;
                         const isGesturingThis = activeGestureId === item.id;
+
+                        if (item.kind === 'text') {
+                          return (
+                            <JournalTextItem
+                              key={item.id}
+                              item={item}
+                              selected={selected}
+                              isGesturing={isGesturingThis}
+                              stageWidth={stageSize.w}
+                              disabled={hasDownstream}
+                              onSelect={() => {
+                                onSelect?.(id);
+                                setSelectedId(item.id);
+                              }}
+                              onOpenEdit={() => {
+                                setEditingTextId(item.id);
+                                setEditingText((item.text || '').replace(/\\n/g, '\n'));
+                                setTimeout(() => textInputRef.current?.select(), 50);
+                              }}
+                              onGestureStart={beginGesture}
+                              onGestureMove={moveGesture}
+                              onGestureEnd={endGesture}
+                            />
+                          );
+                        }
+
+                        // 图片素材
                         return (
                           <div
                             key={item.id}
@@ -1101,51 +1164,24 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                               zIndex: selected ? 800 + item.z : item.z,
                               transform: `translate(-50%, -50%) rotate(${item.angle}deg)`,
                             }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onSelect?.(id);
+                              setSelectedId(item.id);
+                            }}
                           >
-                            {item.kind === 'text' ? (
-                              <div
-                                onPointerDown={(e) => beginGesture(e, item, 'move')}
-                                onPointerMove={moveGesture}
-                                onPointerUp={endGesture}
-                                onPointerCancel={endGesture}
-                                onDoubleClick={() => {
-                                  if (!hasDownstream) {
-                                    setEditingTextId(item.id);
-                                    setEditingText((item.text || '').replace(/\\n/g, '\n'));
-                                    setTimeout(() => textInputRef.current?.select(), 50);
-                                  }
-                                }}
-                                className={`cursor-move transition-[outline,box-shadow] duration-150 ease-out rounded px-2 py-1 ${
-                                  selected ? 'outline outline-2 outline-accent ring-2 ring-white/80' : ''
-                                }`}
-                                style={{
-                                  fontFamily: `"${FONT_FAMILY}", cursive, sans-serif`,
-                                  fontSize: `${textFontSize(item.w, stageSize.w || 400)}px`,
-                                  color: '#2d2a24',
-                                  textShadow: '0 1px 2px rgba(15,23,42,0.08)',
-                                  lineHeight: 1.4,
-                                  whiteSpace: 'pre-wrap',
-                                  textAlign: 'center',
-                                  width: `${item.w * 2.5}%`,
-                                  maxWidth: '80vw',
-                                }}
-                              >
-                                {item.text || ''}
-                              </div>
-                            ) : (
-                              <img
-                                src={item.src}
-                                alt=""
-                                draggable={false}
-                                onPointerDown={(e) => beginGesture(e, item, 'move')}
-                                onPointerMove={moveGesture}
-                                onPointerUp={endGesture}
-                                onPointerCancel={endGesture}
-                                className={`block w-full h-auto cursor-move drop-shadow-[0_3px_8px_rgba(15,23,42,0.18)] transition-[outline,box-shadow] duration-150 ease-out ${
-                                  selected ? 'outline outline-2 outline-accent ring-2 ring-white/80' : ''
-                                }`}
-                              />
-                            )}
+                            <img
+                              src={item.src}
+                              alt=""
+                              draggable={false}
+                              onPointerDown={(e) => beginGesture(e, item, 'move')}
+                              onPointerMove={moveGesture}
+                              onPointerUp={endGesture}
+                              onPointerCancel={endGesture}
+                              className={`block w-full h-auto cursor-move drop-shadow-[0_3px_8px_rgba(15,23,42,0.18)] transition-[outline,box-shadow] duration-150 ease-out ${
+                                selected ? 'outline outline-2 outline-accent ring-2 ring-white/80' : ''
+                              }`}
+                            />
                             {renderLayerButtons(item, selected)}
 
                             {selected && (
@@ -1163,7 +1199,7 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                                 </div>
                                 {/* 底部居中旋转手柄与引线 */}
                                 <div className="absolute left-1/2 -bottom-6 -translate-x-1/2 flex flex-col items-center pointer-events-none z-20">
-                                  {/* 连接引线（向上触碰图片底边） */}
+                                  {/* 连接引线 */}
                                   <div className="w-px h-2 bg-accent/70" />
                                   <div
                                     onPointerDown={(e) => beginGesture(e, item, 'rotate')}
@@ -1226,7 +1262,7 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                       {/* 文本编辑浮层 */}
                       {editingTextId && (
                         <div
-                          className="absolute z-[1000] flex flex-col gap-1 p-1.5 rounded-lg bg-paper shadow-xl border border-paper-grid/50"
+                          className="absolute z-[1000] flex flex-col gap-2 p-2.5 rounded-xl bg-paper/95 backdrop-blur-md shadow-2xl border border-paper-grid/60"
                           style={{
                             top: '50%',
                             left: '50%',
@@ -1234,30 +1270,34 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                           }}
                           onPointerDown={(e) => e.stopPropagation()}
                         >
+                          <div className="flex items-center justify-between text-xs text-ink-light px-0.5">
+                            <span className="font-medium text-ink">编辑文字</span>
+                            <span className="text-[10px] text-ink-faint">Enter 确认 · Shift+Enter 换行</span>
+                          </div>
                           <textarea
                             ref={textInputRef}
                             value={editingText}
                             onChange={(e) => setEditingText(e.target.value)}
                             onKeyDown={handleTextKeyDown}
-                            className="w-44 h-16 resize-none rounded border border-paper-grid/50 bg-paper px-2 py-1 text-xs text-ink leading-relaxed outline-none focus:border-accent/60 focus:ring-1 focus:ring-accent/30 transition"
+                            className="w-52 h-20 resize-none rounded-lg border border-paper-grid/60 bg-paper px-2.5 py-1.5 text-xs text-ink leading-relaxed outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 transition font-sans"
                             autoFocus
                             placeholder="输入文字…"
                           />
-                          <div className="flex items-center justify-end gap-1">
+                          <div className="flex items-center justify-end gap-1.5">
                             <button
                               type="button"
                               onClick={() => {
                                 setEditingTextId(null);
                                 setEditingText('');
                               }}
-                              className="px-2 py-0.5 text-[11px] text-ink-light rounded hover:bg-paper-grid/30 transition"
+                              className="px-2.5 py-1 text-xs text-ink-light rounded-md hover:bg-paper-grid/30 active:scale-[0.96] transition"
                             >
                               取消
                             </button>
                             <button
                               type="button"
                               onClick={confirmTextEdit}
-                              className="px-2 py-0.5 text-[11px] text-white bg-accent/80 rounded hover:bg-accent transition"
+                              className="px-3 py-1 text-xs text-white font-medium bg-accent rounded-md hover:bg-accent-hover active:scale-[0.96] shadow-sm transition"
                             >
                               确认
                             </button>
