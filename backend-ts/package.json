@@ -20,6 +20,8 @@
   "dependencies": {
     "@ai-sdk/openai-compatible": "3.0.30",
     "@ai-sdk/provider": "4.0.7",
+    "@amaster.ai/pi-image-gen": "^0.1.9",
+    "@earendil-works/pi-coding-agent": "^0.84.2",
     "@fastify/cors": "^11.1.0",
     "@fastify/jwt": "^9.1.0",
     "@fastify/multipart": "^9.4.0",

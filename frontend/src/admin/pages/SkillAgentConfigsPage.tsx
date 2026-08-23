@@ -35,6 +35,7 @@ interface FormState {
   name: string;
   llm_config_id: number | '';
   prompt_id: number | '';
+  image_llm_config_id: number | '';
   is_active: boolean;
 }
 
@@ -42,6 +43,7 @@ const EMPTY_FORM: FormState = {
   name: '',
   llm_config_id: '',
   prompt_id: '',
+  image_llm_config_id: '',
   is_active: true,
 };
 
@@ -103,6 +105,16 @@ export const SkillAgentConfigsPage: React.FC = () => {
     return usable;
   }, [prompts, editing]);
 
+  /** 绘图模型候选：仅启用且有 Key 的 image 类配置；编辑时绑定项兜底展示 */
+  const usableImageLlmConfigs = useMemo(() => {
+    const usable = llmConfigs.filter((c) => c.kind === 'image' && c.is_active && c.has_api_key);
+    if (editing && editing.image_llm_config_id != null) {
+      const bound = llmConfigs.find((c) => c.id === editing.image_llm_config_id);
+      if (bound && !usable.some((c) => c.id === bound.id)) return [...usable, bound];
+    }
+    return usable;
+  }, [llmConfigs, editing]);
+
   const resetForm = () => {
     setForm(EMPTY_FORM);
     setFormError('');
@@ -122,6 +134,7 @@ export const SkillAgentConfigsPage: React.FC = () => {
       name: c.name,
       llm_config_id: c.llm_config_id ?? '',
       prompt_id: c.prompt_id ?? '',
+      image_llm_config_id: c.image_llm_config_id ?? '',
       is_active: c.is_active,
     });
     setFormError('');
@@ -139,6 +152,7 @@ export const SkillAgentConfigsPage: React.FC = () => {
         name: form.name.trim(),
         llm_config_id: Number(form.llm_config_id),
         prompt_id: form.prompt_id === '' ? null : Number(form.prompt_id),
+        image_llm_config_id: form.image_llm_config_id === '' ? null : Number(form.image_llm_config_id),
         is_active: form.is_active,
       };
       if (editing) {
@@ -250,6 +264,27 @@ export const SkillAgentConfigsPage: React.FC = () => {
               )}
             </div>
             <div className="space-y-1.5 sm:col-span-2">
+              <FieldLabel>绘图模型（可选）</FieldLabel>
+              <Select
+                value={String(form.image_llm_config_id || '')}
+                onChange={(val) =>
+                  setForm({ ...form, image_llm_config_id: val === '' ? '' : Number(val) })
+                }
+                options={[
+                  { label: '不使用绘图工具', value: '' },
+                  ...usableImageLlmConfigs.map((c) => ({
+                    label: `${c.model_name || c.name}（图像生成）`,
+                    value: String(c.id),
+                  })),
+                ]}
+              />
+              {usableImageLlmConfigs.length === 0 && (
+                <p className="text-xs text-ink-faint font-sans">
+                  暂无「图像生成」类型模型配置；配置后 Agent 可调用 image_generate 工具生成图片
+                </p>
+              )}
+            </div>
+            <div className="space-y-1.5 sm:col-span-2">
               <FieldLabel>系统提示词（提示词模板，可选）</FieldLabel>
               <Select
                 value={String(form.prompt_id || '')}
@@ -343,6 +378,14 @@ export const SkillAgentConfigsPage: React.FC = () => {
                         <span className="text-ink">{c.prompt_name}</span>
                       ) : (
                         <span className="text-ink-faint">无（仅由已加载 skill 的 SKILL.md 指令驱动）</span>
+                      )}
+                    </p>
+                    <p className="mt-0.5 text-xs text-ink-light font-sans">
+                      绘图模型：
+                      {c.image_llm_config_name ? (
+                        <span className="text-ink">{c.image_llm_config_name}</span>
+                      ) : (
+                        <span className="text-ink-faint">无（不启用绘图工具）</span>
                       )}
                     </p>
                   </div>

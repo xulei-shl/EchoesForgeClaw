@@ -1,5 +1,11 @@
 # 计划：Skill Agent 运行时工作区（runtime/ 真实文档集中 + 按需装配）— v2
 
+> **状态更新（2026-08-23）**：本计划的工作区/软链装配部分已在 backend-ts 落地
+> （`skill-agent-service.ts` / `skill-agent-files.ts` / admin 物化）。原「openai-agents 执行栈」
+> 的执行器部分改为 **pi CLI 子进程**方案落地：chat 节点 Skill Agent 模式见
+> `backend-ts/src/services/pi-agent-service.ts`（pi --mode json + AGENTS.md 注入 +
+> .pi-agent 配置物化 + image_generate 扩展），任务 4/5 由其取代。
+
 ## 决策更新（2026-08-12，用户已确认）
 
 1. **执行栈不变**：继续使用 `openai-agents==0.20.0` + 自研 `SandboxedShellExecutor`（沙箱、流式、多模态、agent_file 文件卡片全部保留）。**不迁移** `open-agent-sdk`；`plans/open-agent-sdk-rewrite-plan.md` 挂起存档（详见该文件顶部状态标记）。

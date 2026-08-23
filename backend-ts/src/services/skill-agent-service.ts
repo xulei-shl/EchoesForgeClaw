@@ -93,7 +93,7 @@ function removePath(p: string): void {
 }
 
 /** 建软链指向绝对目标；失败（如 Windows 无 symlink 权限）退化为真实复制。 */
-function symlinkOrCopy(target: string, link: string): void {
+export function symlinkOrCopy(target: string, link: string): void {
   mkdirSync(path.dirname(link), { recursive: true });
   try {
     const isDir = statSync(target).isDirectory();

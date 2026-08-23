@@ -21,6 +21,8 @@ interface SkillAgentPayload {
   name?: string;
   llm_config_id?: number | null;
   prompt_id?: number | null;
+  /** 绘图模型配置（kind='image'）引用；可空 = 不启用绘图工具。 */
+  image_llm_config_id?: number | null;
   is_active?: boolean;
 }
 
@@ -29,8 +31,10 @@ interface SkillAgentOut {
   name: string;
   llm_config_id: number | null;
   prompt_id: number | null;
+  image_llm_config_id: number | null;
   llm_config_name: string | null;
   prompt_name: string | null;
+  image_llm_config_name: string | null;
   base_url: string;
   model_name: string;
   system_prompt: string;
@@ -43,13 +47,16 @@ interface SkillAgentOut {
 function toOut(db: DB, cfg: SkillAgentRow): SkillAgentOut {
   const llm = cfg.llmConfigId != null ? db.select().from(llmConfigs).where(eq(llmConfigs.id, cfg.llmConfigId)).get() : undefined;
   const prompt = cfg.promptId != null ? db.select().from(promptTemplates).where(eq(promptTemplates.id, cfg.promptId)).get() : undefined;
+  const imageLlm = cfg.imageLlmConfigId != null ? db.select().from(llmConfigs).where(eq(llmConfigs.id, cfg.imageLlmConfigId)).get() : undefined;
   return {
     id: cfg.id,
     name: cfg.name,
     llm_config_id: cfg.llmConfigId,
     prompt_id: cfg.promptId,
+    image_llm_config_id: cfg.imageLlmConfigId,
     llm_config_name: llm?.name ?? null,
     prompt_name: prompt?.name ?? null,
+    image_llm_config_name: imageLlm?.name ?? null,
     // 展示用：引用优先（存在引用即以其为准），无引用时回退旧字段（存量数据兼容）
     base_url: llm?.baseUrl ?? cfg.baseUrl,
     model_name: llm?.modelName ?? cfg.modelName,
@@ -85,6 +92,19 @@ function requireLLMConfig(db: DB, llmConfigId: number | null | undefined): strin
   return null;
 }
 
+/** 校验绘图模型引用：必须存在、启用、有 Key 且 kind='image'。 */
+function requireImageLLMConfig(db: DB, imageLlmConfigId: number | null | undefined): string | null {
+  if (imageLlmConfigId == null) return null;
+  const llm = db.select().from(llmConfigs).where(eq(llmConfigs.id, imageLlmConfigId)).get();
+  if (!llm || !llm.isActive || !llm.apiKey) {
+    return '所选绘图模型配置不存在 / 未启用 / 未配置 API Key';
+  }
+  if (llm.kind !== 'image') {
+    return '绘图模型必须引用「图像生成」类型的模型配置';
+  }
+  return null;
+}
+
 export async function registerSkillAgentConfigsAdminRouter(app: FastifyInstance): Promise<void> {
   const admin = { preHandler: app.requireAdmin };
 
@@ -107,12 +127,15 @@ export async function registerSkillAgentConfigsAdminRouter(app: FastifyInstance)
       const db = getDb();
       const refErr = requireLLMConfig(db, p.llm_config_id);
       if (refErr) return reply.code(400).send({ detail: refErr });
+      const imageRefErr = requireImageLLMConfig(db, p.image_llm_config_id);
+      if (imageRefErr) return reply.code(400).send({ detail: imageRefErr });
       const row = db
         .insert(skillAgentConfigs)
         .values({
           name: p.name.trim(),
           llmConfigId: p.llm_config_id,
           promptId: p.prompt_id ?? null,
+          imageLlmConfigId: p.image_llm_config_id ?? null,
           // 旧字段仅作存量兼容回退，新配置写空串（对应 Python 模型 default=""）
           apiKey: '',
           baseUrl: '',
@@ -135,13 +158,14 @@ export async function registerSkillAgentConfigsAdminRouter(app: FastifyInstance)
     const db = getDb();
     const cfg = db.select().from(skillAgentConfigs).where(eq(skillAgentConfigs.id, id)).get();
     if (!cfg) return reply.code(404).send({ detail: 'DeepSeek Agent 配置不存在' });
-    const row = db
-      .insert(skillAgentConfigs)
-      .values({
-        name: `${cfg.name} (副本)`,
-        llmConfigId: cfg.llmConfigId,
-        promptId: cfg.promptId,
-        apiKey: '',
+      const row = db
+        .insert(skillAgentConfigs)
+        .values({
+          name: `${cfg.name} (副本)`,
+          llmConfigId: cfg.llmConfigId,
+          promptId: cfg.promptId,
+          imageLlmConfigId: cfg.imageLlmConfigId,
+          apiKey: '',
         baseUrl: '',
         modelName: '',
         systemPrompt: '',
@@ -169,10 +193,15 @@ export async function registerSkillAgentConfigsAdminRouter(app: FastifyInstance)
         const refErr = requireLLMConfig(db, p.llm_config_id);
         if (refErr) return reply.code(400).send({ detail: refErr });
       }
+      if (p.image_llm_config_id !== undefined) {
+        const imageRefErr = requireImageLLMConfig(db, p.image_llm_config_id);
+        if (imageRefErr) return reply.code(400).send({ detail: imageRefErr });
+      }
       const set: Record<string, unknown> = {};
       if (p.name != null) set.name = p.name;
       if (p.llm_config_id !== undefined) set.llmConfigId = p.llm_config_id;
       if (p.prompt_id !== undefined) set.promptId = p.prompt_id;
+      if (p.image_llm_config_id !== undefined) set.imageLlmConfigId = p.image_llm_config_id;
       if (p.is_active !== undefined) set.isActive = p.is_active;
       set.updatedAt = now();
       db.update(skillAgentConfigs).set(set).where(eq(skillAgentConfigs.id, id)).run();

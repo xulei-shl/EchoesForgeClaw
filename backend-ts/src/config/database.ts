@@ -37,10 +37,25 @@ export function initDb(filePath: string): DB {
   return db;
 }
 
-/** 幂等建表：执行初始迁移 DDL（表与索引均带 IF NOT EXISTS）。 */
+/** 幂等建表：执行初始迁移 DDL（表与索引均带 IF NOT EXISTS），并为存量库补列。 */
 export function applyInitialSchema(db: DB): void {
   const sqlite = (db as unknown as { $client?: Database.Database }).$client;
   for (const ddl of INITIAL_DDL) sqlite?.exec(ddl);
+  ensureColumn(sqlite, 'skill_agent_configs', 'image_llm_config_id', 'INTEGER');
+}
+
+/** 存量库补列：PRAGMA 检查缺失时 ALTER TABLE ADD COLUMN（SQLite 无 ADD COLUMN IF NOT EXISTS）。 */
+function ensureColumn(
+  sqlite: Database.Database | undefined | null,
+  table: string,
+  column: string,
+  decl: string
+): void {
+  if (!sqlite) return;
+  const cols = sqlite.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === column)) {
+    sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`);
+  }
 }
 
 let _db: DB | null = null;
@@ -120,6 +135,7 @@ const INITIAL_DDL: string[] = [
     system_prompt VARCHAR NOT NULL,
     llm_config_id INTEGER,
     prompt_id INTEGER,
+    image_llm_config_id INTEGER,
     is_active BOOLEAN,
     created_at DATETIME,
     updated_at DATETIME

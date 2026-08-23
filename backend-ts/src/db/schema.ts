@@ -170,6 +170,7 @@ export const skillAgentConfigs = sqliteTable("skill_agent_configs", {
 	updatedAt: numeric("updated_at"),
 	llmConfigId: integer("llm_config_id"),
 	promptId: integer("prompt_id"),
+	imageLlmConfigId: integer("image_llm_config_id"),
 },
 (table) => [
 	index("ix_skill_agent_configs_id").on(table.id),

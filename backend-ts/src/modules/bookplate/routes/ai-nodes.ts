@@ -13,7 +13,9 @@ import {
   imageConfigFrom,
   agentConfigFrom,
   agentConfigFromWithOverride,
+  skillAgentConfigFrom,
 } from '../../../services/node-config-service.js';
+import { preparePiWorkspace, runPiAgent } from '../../../services/pi-agent-service.js';
 import { chatStreamToResponse, type ChatStreamEvent } from '../stream.js';
 import { NODE_TYPES } from '../node-types.js';
 import { ImageGenerationError } from '../../../infrastructure/ai/errors.js';
@@ -44,16 +46,63 @@ export async function register(app: FastifyInstance): Promise<void> {
       const configId = payload.config_id ?? null;
 
       if (hasSkillAgentBinding(configId)) {
-        return reply.send(
-          chatStreamToResponse(
-            (async function* () {
-              yield {
-                type: 'error',
-                message: 'Skill Agent 模式将在第二阶段迁移（当前请改用 LLM / FastClaw Agent 配置）',
-              };
-            })()
-          )
-        );
+        // Skill Agent 模式（pi CLI 子进程）：装配 chatid 工作区 → pi --mode json 流式执行
+        const saCfg = skillAgentConfigFrom(configId);
+        async function* skillAgentEvents(): AsyncGenerator<ChatStreamEvent, void, unknown> {
+          if (!saCfg?.chat) {
+            yield {
+              type: 'error',
+              message: 'Skill Agent 配置无效：请检查绑定的模型配置（需启用且已配置 API Key）',
+            };
+            return;
+          }
+          const workspaceId =
+            payload.workspace_id ?? `${payload.node_id ?? 'node'}_${Date.now()}`;
+          let prepared;
+          try {
+            prepared = preparePiWorkspace(request.authUser!.id, workspaceId, {
+              agentId: saCfg.configId,
+              chatModel: {
+                baseUrl: saCfg.chat.baseUrl,
+                apiKey: saCfg.chat.apiKey,
+                modelName: saCfg.chat.modelName,
+                multimodal: saCfg.chat.kind === 'multimodal',
+              },
+              imageModel: saCfg.image,
+              skillNames: payload.skills ?? [],
+            });
+          } catch (err) {
+            yield {
+              type: 'error',
+              message: `Skill Agent 工作区装配失败: ${err instanceof Error ? err.message : String(err)}`,
+            };
+            return;
+          }
+          if (prepared.skippedSkills.length) {
+            yield {
+              type: 'status',
+              message: `以下技能未安装，已跳过：${prepared.skippedSkills.join('、')}`,
+            };
+          }
+          try {
+            for await (const evt of runPiAgent({
+              userId: request.authUser!.id,
+              workspaceId,
+              ws: prepared.ws,
+              hasPrompt: prepared.hasPrompt,
+              chatModelName: saCfg.chat.modelName,
+              imageGenEnabled: !!saCfg.image,
+              message: payload.message ?? '',
+              images: payload.images?.length ? payload.images : undefined,
+              signal: requestAbortSignal(request),
+            })) {
+              yield evt;
+            }
+          } catch (err) {
+            yield { type: 'error', message: err instanceof Error ? err.message : String(err) };
+          }
+        }
+        return reply.send(chatStreamToResponse(skillAgentEvents()));
       }
 
       const agentConfig: FastClawRuntimeConfig | null = agentConfigFromWithOverride(

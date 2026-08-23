@@ -161,8 +161,11 @@ export interface SkillAgentConfig {
   llm_config_id: number | null;
   /** 引用的「提示词模板」（作为系统提示词，可空） */
   prompt_id: number | null;
+  /** 引用的「绘图模型配置」（kind='image'，可空 = 不启用绘图工具） */
+  image_llm_config_id: number | null;
   llm_config_name?: string | null;
   prompt_name?: string | null;
+  image_llm_config_name?: string | null;
   /** 展示用（引用解析或旧字段回退） */
   base_url: string;
   model_name: string;
@@ -177,6 +180,7 @@ export interface SkillAgentConfigPayload {
   name: string;
   llm_config_id?: number | null;
   prompt_id?: number | null;
+  image_llm_config_id?: number | null;
   is_active?: boolean;
 }
 

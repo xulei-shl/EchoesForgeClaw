@@ -1,10 +1,13 @@
 import { getDb } from '../config/database.js';
+import { eq, and } from 'drizzle-orm';
 import {
   findNodeConfigById,
   findLLMConfigById,
   findPromptTemplateById,
   findFastClawAgentConfigById,
+  type LLMConfigRow,
 } from '../repositories/index.js';
+import { llmConfigs, skillAgentConfigs } from '../db/schema.js';
 import type { TextModelConfig, VisionModelConfig, ImageModelConfig } from '../infrastructure/ai/types.js';
 import type { FastClawRuntimeConfig } from './fastclaw-service.js';
 
@@ -110,4 +113,79 @@ export function agentConfigFromWithOverride(
     }
   }
   return bound;
+}
+
+// ---------------------------------------------------------------------------
+// Skill Agent（pi CLI）运行时解析
+// ---------------------------------------------------------------------------
+
+/** Skill Agent 运行时配置：对话模型 + 可选绘图模型。 */
+export interface SkillAgentRuntimeConfig {
+  configId: number;
+  /** 对话大模型（pi 的 bookforge provider；缺失视为配置无效）。 */
+  chat: { baseUrl: string; apiKey: string; modelName: string; kind: string } | null;
+  /** 绘图模型（kind='image'）；未绑定且无全局启用项时为 null = 不加载绘图工具。 */
+  image: { baseUrl: string; apiKey: string; modelName: string } | null;
+}
+
+/** 解析 SkillAgentConfig 引用的对话模型（llmConfigId 优先，回退旧字段三件套）。 */
+function skillAgentChatModel(db: ReturnType<typeof getDb>, cfg: typeof skillAgentConfigs.$inferSelect) {
+  if (cfg.llmConfigId != null) {
+    const llm = findLLMConfigById(db, cfg.llmConfigId);
+    if (llm && llm.isActive && llm.apiKey) {
+      return {
+        baseUrl: llm.baseUrl ?? '',
+        apiKey: llm.apiKey,
+        modelName: llm.modelName ?? '',
+        kind: llm.kind ?? 'text',
+      };
+    }
+    return null;
+  }
+  // 存量兼容：自身 baseUrl/apiKey/modelName 三件套
+  if (cfg.apiKey && cfg.baseUrl && cfg.modelName) {
+    return { baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, modelName: cfg.modelName, kind: 'text' };
+  }
+  return null;
+}
+
+/** 解析绘图模型：SkillAgentConfig.imageLlmConfigId 优先（须 kind='image'），回退全局启用的 image 配置。 */
+function resolveImageModel(
+  db: ReturnType<typeof getDb>,
+  imageLlmConfigId: number | null | undefined
+): { baseUrl: string; apiKey: string; modelName: string } | null {
+  let llm: LLMConfigRow | undefined;
+  if (imageLlmConfigId != null) {
+    const row = findLLMConfigById(db, imageLlmConfigId);
+    if (row && row.kind === 'image') llm = row;
+  } else {
+    const row = db
+      .select()
+      .from(llmConfigs)
+      .where(and(eq(llmConfigs.kind, 'image'), eq(llmConfigs.isActive, true)))
+      .orderBy(llmConfigs.id)
+      .get();
+    llm = row;
+  }
+  if (!llm || !llm.isActive || !llm.apiKey) return null;
+  return { baseUrl: llm.baseUrl ?? '', apiKey: llm.apiKey, modelName: llm.modelName ?? '' };
+}
+
+/**
+ * 从节点配置解析 Skill Agent（pi）运行时配置。
+ * 未绑定 / 节点或配置未启用 / 对话模型缺失时返回 null（调用方显式报错，不静默回退其它模式）。
+ */
+export function skillAgentConfigFrom(configId: number | null): SkillAgentRuntimeConfig | null {
+  const nc = resolveNodeConfig(configId, 'chat');
+  if (!nc?.skillAgentConfigId) return null;
+  const db = getDb();
+  const cfg = db.select().from(skillAgentConfigs).where(eq(skillAgentConfigs.id, nc.skillAgentConfigId)).get();
+  if (!cfg || !cfg.isActive) return null;
+  const chat = skillAgentChatModel(db, cfg);
+  if (!chat) return null;
+  return {
+    configId: cfg.id,
+    chat,
+    image: resolveImageModel(db, cfg.imageLlmConfigId),
+  };
 }

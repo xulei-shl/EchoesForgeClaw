@@ -53,9 +53,12 @@ const loadedFontsCache = new Set<string>();
  */
 export async function loadFontFamily(family: string = DEFAULT_FONT_FAMILY): Promise<void> {
   if (typeof document === 'undefined') return;
-  const preset = JOURNAL_FONTS.find((f) => f.family.toLowerCase() === family.toLowerCase()) || {
-    googleFont: family.replace(/ /g, '+'),
+  const preset: JournalFontPreset = JOURNAL_FONTS.find((f) => f.family.toLowerCase() === family.toLowerCase()) || {
+    id: 'custom',
+    name: family,
     family,
+    googleFont: family.replace(/ /g, '+'),
+    category: 'chinese',
   };
 
   if (!preset.localOnly) {
