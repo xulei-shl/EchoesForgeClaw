@@ -154,6 +154,16 @@ export function seedDataFor(type: NodeType, parent?: NodeData): any {
         uploadedImage: null,
         error: null,
       };
+    case 'sticker_maker':
+      return {
+        removeBackground: true,
+        outlineWidth: 18,
+        outlineColor: '#ffffff',
+        shadowEnabled: true,
+        imageUrl: null,
+        uploadedImage: null,
+        error: null,
+      };
     case 'map_art':
       return { imageUrl: null, error: null, preset: 'default', radius: 0.75, circle: false, query: '', lat: 48.8566, lon: 2.3522 };
     case 'pattern_search':

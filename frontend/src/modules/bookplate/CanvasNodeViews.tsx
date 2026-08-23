@@ -20,6 +20,7 @@ import { ImageSearchNode, type ImageSearchSelection } from '../../modules/multim
 import { ArtImageSearchNode, type GlamSearchSelection } from '../../modules/multimodal/components/ArtImageSearchNode';
 import { ReceiptPrinterNode } from '../../modules/multimodal/components/ReceiptPrinterNode';
 import { StampCutterNode } from '../../modules/multimodal/components/StampCutterNode';
+import { StickerMakerNode } from '../../modules/multimodal/components/StickerMakerNode';
 import { OilPaintNode } from '../../modules/multimodal/components/OilPaintNode';
 import { ImageProcessNode } from '../../modules/multimodal/components/ImageProcessNode';
 import { MapArtNode } from '../../modules/multimodal/components/MapArtNode';
@@ -142,8 +143,10 @@ export interface NodeViewHelpers {
   handleUpdateReceiptStateFor: (id: string, patch: Record<string, any>) => void;
   /** 邮票截图框节点：导出 PNG data URL 落盘（保存到后端 + 记录数据库历史 + 写回 node.data） */
   handleExportStampFor: (id: string, dataUrl: string, state: any) => Promise<void>;
+  handleExportStickerFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   /** 邮票截图框节点：状态更新写入 node.data（持久化） */
   handleUpdateStampStateFor: (id: string, patch: Record<string, any>) => void;
+  handleUpdateStickerMakerStateFor: (id: string, patch: Record<string, any>) => void;
   /** 湿油彩效果节点：导出 PNG data URL 落盘（保存到后端 + 记录数据库历史 + 写回 node.data） */
   handleExportOilPaintFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   /** 湿油彩效果节点：状态更新写入 node.data（持久化） */
@@ -712,6 +715,30 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           mismatchBadge={mismatchBadge}
           onUpdateState={h.handleUpdateStampStateFor}
           onExport={h.handleExportStampFor}
+        />
+      );
+    }
+
+    case 'sticker_maker': {
+      const d = node.data ?? {};
+      const { upstreamImageUrl } = resolveUpstreamImage(node, h);
+      return (
+        <StickerMakerNode
+          key={node.id}
+          {...common}
+          data={d}
+          upstreamImageUrl={upstreamImageUrl}
+          isFavorited={!!h.favoritedState[node.id]}
+          isPublic={!!h.publishedState[node.id]}
+          isSelected={node.id === h.activeImage?.id}
+          recordDeleted={h.staleRecordIds.has(node.id)}
+          onSelect={h.handleSelectImage}
+          onToggleFavorite={h.handleToggleFavoriteFor}
+          onTogglePublic={h.handleTogglePublicFor}
+          hasDownstream={hasDownstreamOf(node, h.edges)}
+          mismatchBadge={mismatchBadge}
+          onUpdateState={h.handleUpdateStickerMakerStateFor}
+          onExport={h.handleExportStickerFor}
         />
       );
     }

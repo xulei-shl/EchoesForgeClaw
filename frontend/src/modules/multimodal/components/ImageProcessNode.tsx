@@ -566,8 +566,9 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
               </div>
             )}
 
-            {/* 自定义色板高级配置栏（抖动模式 + 自定义色板生效时展示） */}
-            {effect.id === 'dither' && params.palette === 'custom' && (
+            {/* 自定义色板高级配置栏（抖动模式 / ASCII 模式且选用自定义色板时展示） */}
+            {((effect.id === 'dither' && params.palette === 'custom') ||
+              (effect.id === 'ascii' && params.colorMode === 'custom')) && (
               <CustomPaletteEditor
                 value={String(params.customPalette ?? '#000000,#ffffff')}
                 onChange={(nextPalette) => setParam('customPalette', nextPalette)}

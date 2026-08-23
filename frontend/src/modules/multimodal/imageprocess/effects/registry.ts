@@ -11,12 +11,14 @@ import { fxDefaultParams } from '../shared';
 import { GRAIN_FX_EFFECT } from './grain';
 import { HALFTONE_FX_EFFECT } from './halftone';
 import { DITHER_FX_EFFECT } from './dither';
+import { ASCII_FX_EFFECT } from './ascii';
 
 /** 效果注册表 */
 const imageFxRegistry = new Map<string, ImageFxEffectDef>([
   [GRAIN_FX_EFFECT.id, GRAIN_FX_EFFECT],
   [HALFTONE_FX_EFFECT.id, HALFTONE_FX_EFFECT],
   [DITHER_FX_EFFECT.id, DITHER_FX_EFFECT],
+  [ASCII_FX_EFFECT.id, ASCII_FX_EFFECT],
 ]);
 
 /** 获取所有可用效果（UI 效果切换列表按此渲染） */

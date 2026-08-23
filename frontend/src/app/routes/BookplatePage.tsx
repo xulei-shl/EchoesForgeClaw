@@ -159,9 +159,9 @@ const BookplatePage: React.FC = () => {
   // 节点右键菜单状态（视口坐标 + 目标节点）
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
 
-  // 操作栏作用目标：优先选中且已有图片的 ImageNode / ReceiptNode / StampCutterNode / OilPaintNode / ImageProcessNode，否则回退到最近生成的图片节点
+  // 操作栏作用目标：优先选中且已有图片的 ImageNode / ReceiptNode / StampCutterNode / StickerMakerNode / OilPaintNode / ImageProcessNode，否则回退到最近生成的图片节点
   const isImageResultNode = (n: any) =>
-    (n.type === 'image_generation' || n.type === 'receipt_printer' || n.type === 'stamp_cutter' || n.type === 'oil_paint' || n.type === 'image_process') && Boolean(n.data?.imageUrl);
+    (n.type === 'image_generation' || n.type === 'receipt_printer' || n.type === 'stamp_cutter' || n.type === 'sticker_maker' || n.type === 'oil_paint' || n.type === 'image_process') && Boolean(n.data?.imageUrl);
 
   const selectedImageNode =
     selectedImageId &&
@@ -694,6 +694,8 @@ const BookplatePage: React.FC = () => {
     handleUpdateReceiptStateFor,
     handleExportStampFor,
     handleUpdateStampStateFor,
+    handleExportStickerFor,
+    handleUpdateStickerMakerStateFor,
     handleExportOilPaintFor,
     handleUpdateOilPaintStateFor,
     handleExportImageProcessFor,
@@ -916,6 +918,8 @@ const BookplatePage: React.FC = () => {
     handleUpdateReceiptStateFor,
     handleExportStampFor,
     handleUpdateStampStateFor,
+    handleExportStickerFor,
+    handleUpdateStickerMakerStateFor,
     handleExportOilPaintFor,
     handleUpdateOilPaintStateFor,
     handleExportImageProcessFor,

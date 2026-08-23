@@ -8,7 +8,7 @@
  */
 
 /** 效果注册表 id */
-export type ImageFxId = 'grain' | 'halftone' | 'dither';
+export type ImageFxId = 'grain' | 'halftone' | 'dither' | 'ascii';
 
 /** 数值滑杆参数声明（节点 UI 按声明自动渲染滑杆行） */
 export interface ImageFxSliderParamDef {
@@ -97,6 +97,30 @@ export interface DitherFxParams {
   palette: 'mono' | 'gameboy' | 'cga' | 'custom';
   /** 像素块边长（px，blockSize×blockSize 块共享同一量化结果，1 = 逐像素） */
   blockSize: number;
+}
+
+/** ASCII 字符画效果参数（asciify-engine 移植 + 增强） */
+export interface AsciiFxParams {
+  /** 输出字符列数（细节密度） */
+  cols: number;
+  /** 字符梯度预设：standard 经典 / dense 细腻 / blocks 块面 / braille 盲文 / dots 点阵 / katakana 片假名 / geometric 几何 / claudeCode 制表符 */
+  charset:
+    | 'standard'
+    | 'dense'
+    | 'blocks'
+    | 'braille'
+    | 'dots'
+    | 'katakana'
+    | 'geometric'
+    | 'claudeCode';
+  /** 配色方案：dark 黑底白字 / light 白底黑字 / matrix 终端绿 / gameboy 掌机绿 / dracula 暗紫 / color 彩色 / custom 自定义色板 */
+  colorMode: 'dark' | 'light' | 'matrix' | 'gameboy' | 'dracula' | 'color' | 'custom';
+  /** 自定义十六进制色板（如 #000000,#ffffff 或多色，首色为底色） */
+  customPalette?: string;
+  /** 亮度动态范围拉伸增强（解决低对比度原图发灰发糊） */
+  normalize?: 'on' | 'off';
+  /** 亮度→字符映射方向反转（白底配色建议开启，亮区用疏字符） */
+  invert: 'normal' | 'inverted';
 }
 
 /** 图片处理节点持久化状态（写入 node.data） */

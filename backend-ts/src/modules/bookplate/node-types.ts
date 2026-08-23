@@ -46,6 +46,8 @@ export const NODE_TYPES = {
   OIL_PAINT: 'oil_paint',
   /** 图片处理（多模态工具）：噪点 / ASCII / 网点 / 抖动等风格化效果 */
   IMAGE_PROCESS: 'image_process',
+  /** 贴纸制作（多模态工具）：一键抠图移除背景，生成带白边描边与投影的 die-cut 贴纸图片 */
+  STICKER_MAKER: 'sticker_maker',
 } as const;
 
 export type NodeType = (typeof NODE_TYPES)[keyof typeof NODE_TYPES];
@@ -302,6 +304,15 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     type: NODE_TYPES.IMAGE_PROCESS,
     name: '图片处理',
     description: '浏览器端 Canvas 多效果图片处理（第一阶段：噪点；后续 ASCII / 网点 / 抖动），效果注册表驱动切换，输出处理结果图片',
+    category: 'multimodal',
+    configurable: false,
+    output_type: 'image',
+    input_types: ['image', 'text'],
+  },
+  {
+    type: NODE_TYPES.STICKER_MAKER,
+    name: '贴纸制作',
+    description: '一键抠图移除背景，生成带白边描边与投影的 die-cut 贴纸图片',
     category: 'multimodal',
     configurable: false,
     output_type: 'image',

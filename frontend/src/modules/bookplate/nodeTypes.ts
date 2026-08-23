@@ -32,6 +32,7 @@ export const NODE_COLORS: Record<CanvasNodeType, string> = {
   color_search: 'oklch(0.68 0.18 45)',
   oil_paint: 'oklch(0.66 0.16 60)',
   image_process: 'oklch(0.66 0.15 105)',
+  sticker_maker: 'oklch(0.72 0.15 340)',
 };
 
 export interface NodeTemplateDef {
@@ -219,6 +220,14 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     defaultSize: DEFAULT_SIZES.stamp_cutter,
   },
   {
+    type: 'sticker_maker',
+    name: '贴纸制作',
+    description: '一键抠图移除背景，生成带白边描边与投影的 die-cut 贴纸图片',
+    category: 'multimodal',
+    configurable: false,
+    defaultSize: DEFAULT_SIZES.sticker_maker,
+  },
+  {
     type: 'map_art',
     name: '艺术地图生成',
     description: '基于 prettymaps 服务端生成艺术风格地图图片',
@@ -335,6 +344,8 @@ export const NODE_PORT_TYPES: Record<
   receipt_printer: { output: 'image', inputs: ['text', 'image'] },
   // 邮票截图框：输出生成的邮票图片；可连线图片或图书元数据作为输入源（连线即输入）
   stamp_cutter: { output: 'image', inputs: ['image', 'text'] },
+  // 贴纸制作：输出生成的贴纸图片；可连线图片或图书元数据作为输入源（连线即输入）
+  sticker_maker: { output: 'image', inputs: ['image', 'text'] },
   map_art: { output: 'image', inputs: ['text'] },
   // 中国传统纹样：复合输出——主输出为图片（纹样卡片图），同时产出详情说明文本；
   // 下游按自身接受的输入类型取用（图片分析/图像生成拿图片，文本聚合/AI对话拿文本或两者都拿）
