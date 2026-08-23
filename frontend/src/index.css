@@ -8,6 +8,49 @@
 /* 复古借书卡/明朝体字体：Caveat, Cutive Mono, Special Elite, Zhi Mang Xing, Noto Serif SC, Shippori Mincho */
 @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=Cutive+Mono&family=Noto+Serif+SC:wght@300;400;600;700&family=Shippori+Mincho:wght@400;500;700;800&family=Shippori+Mincho+B1:wght@400;700&family=Special+Elite&family=Zhi+Mang+Xing&display=swap');
 
+/* ========== 本地字体 @font-face（local 优先，fallback 从服务器加载） ========== */
+/* 上图东观体 - 常规 */
+@font-face {
+  font-family: '上图东观体';
+  src: local('上图东观体 常规'), url('/fonts/上图东观体-常规.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+/* 上图东观体 - 粗体 */
+@font-face {
+  font-family: '上图东观体';
+  src: local('上图东观体 粗体'), url('/fonts/上图东观体-粗体.ttf') format('truetype');
+  font-weight: bold;
+  font-style: normal;
+  font-display: swap;
+}
+/* 上图东观体 - 细体 */
+@font-face {
+  font-family: '上图东观体';
+  src: local('上图东观体 细体'), url('/fonts/上图东观体-细体.ttf') format('truetype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+/* 又又意宋 */
+@font-face {
+  font-family: '又又意宋';
+  src: local('又又意宋'), url('/fonts/又又意宋.ttf') format('truetype');
+  font-display: swap;
+}
+/* 汇文明朝体（Huiwen-mincho 别名，匹配 CSS 引用名） */
+@font-face {
+  font-family: 'Huiwen-mincho';
+  src: local('汇文明朝体'), url('/fonts/汇文明朝体.otf') format('opentype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Huiwen Mincho';
+  src: local('汇文明朝体'), url('/fonts/汇文明朝体.otf') format('opentype');
+  font-display: swap;
+}
+
 @import "tailwindcss";
 
 /* Streamdown markdown 渲染器的样式扫描 */

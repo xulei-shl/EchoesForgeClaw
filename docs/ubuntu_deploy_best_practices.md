@@ -493,3 +493,152 @@ systemctl is-active chinese-traditional-patterns   # 期望 active
 - 跨机部署时，在 `backend-ts/.env` 设置 `PATTERNS_API=http://<patterns-host>:8102` 后重启 `backend-ts` 服务生效。
 - 端口冲突：若 8102 被占用，启动时换端口（如 `8109`），并同步 `PATTERNS_API=http://127.0.0.1:8109` 与后端重启。
 - 端口冲突：若 8100 被占用（例如同时运行 `docs/fastclaw-dev/plugins/mem0` 的 Mem0 服务，其 `plugin.json` 默认也指向 `127.0.0.1:8100`），需为其中之一换端口，并同步 `MAPTOPoster_API` 或 Mem0 的 `config.url`。
+
+---
+
+## 15. 字体部署与最佳实践
+
+项目使用三款本地中文字体：**上图东观体**、**又又意宋**、**汇文明朝体**。字体通过 `@font-face` 声明（`frontend/src/index.css`）以 `local()` 优先 + `url()` 回退的方式加载，确保已安装字体的客户端零延迟渲染，未安装的客户端从服务器下载字体文件。
+
+同时，后端 Canvas 导出（手账合成、借书卡渲染等）依赖系统字体，因此**部署服务器也需安装这些字体**。
+
+### 15.1 Server-Side Rendering 为何需要系统字体
+
+后端渲染（如 `composeJournalPage`、`libraryCardRenderer`）使用 `node-canvas` 或浏览器 Canvas API 在服务端生成图片。这些 API 依赖操作系统字体注册表，**不会**加载 CSS `@font-face`。因此：
+
+- 已安装字体 → Canvas 正确渲染
+- 未安装字体 → Canvas 降级到后备字体（如 `Noto Serif SC`），字形与预览不一致
+
+### 15.2 在 Ubuntu 上安装字体
+
+将字体文件上传到服务器后，执行：
+
+```bash
+# 字体文件路径（从仓库复制）
+# frontend/public/fonts/上图东观体-常规.ttf
+# frontend/public/fonts/上图东观体-粗体.ttf
+# frontend/public/fonts/上图东观体-细体.ttf
+# frontend/public/fonts/又又意宋.ttf
+# frontend/public/fonts/汇文明朝体.otf
+
+# 安装到系统字体目录
+sudo mkdir -p /usr/share/fonts/opentype/bookforge
+sudo mkdir -p /usr/share/fonts/truetype/bookforge
+
+sudo cp /opt/EchoesForgeClaw/frontend/public/fonts/汇文明朝体.otf /usr/share/fonts/opentype/bookforge/
+sudo cp /opt/EchoesForgeClaw/frontend/public/fonts/上图东观体-*.ttf /usr/share/fonts/truetype/bookforge/
+sudo cp /opt/EchoesForgeClaw/frontend/public/fonts/又又意宋.ttf /usr/share/fonts/truetype/bookforge/
+
+# 刷新字体缓存
+sudo fc-cache -fv
+
+# 验证安装
+fc-list | grep -E '上图东观|又又意宋|汇文明朝'
+# 期望输出三条匹配记录
+```
+
+> 字体文件较大（合计约 89 MB），`git clone` / `git pull` 时注意网络耗时。如果使用 CI/CD 流水线，可考虑单独管理字体文件，避免每次构建重复下载。
+
+### 15.3 字体文件优化（推荐）
+
+原始 `.ttf` / `.otf` 文件未经 Web 优化，建议转换为 `.woff2` 格式以减小体积（可缩小 50-70%）：
+
+```bash
+# 安装转换工具（Ubuntu）
+sudo apt install -y woff2
+
+# 或使用 npm 包
+npm install -g ttf2woff2
+
+# 逐个转换
+woff2_compress /opt/EchoesForgeClaw/frontend/public/fonts/上图东观体-常规.ttf
+woff2_compress /opt/EchoesForgeClaw/frontend/public/fonts/上图东观体-粗体.ttf
+woff2_compress /opt/EchoesForgeClaw/frontend/public/fonts/上图东观体-细体.ttf
+woff2_compress /opt/EchoesForgeClaw/frontend/public/fonts/又又意宋.ttf
+woff2_compress /opt/EchoesForgeClaw/frontend/public/fonts/汇文明朝体.otf
+```
+
+转换后更新 `frontend/src/index.css` 中的 `@font-face` 的 `src` 和 `format`：
+
+```css
+/* 示例：转换后更新 url 后缀和 format */
+@font-face {
+  font-family: '上图东观体';
+  src: local('上图东观体 常规'), url('/fonts/上图东观体-常规.woff2') format('woff2');
+  font-weight: normal;
+  font-display: swap;
+}
+```
+
+> `.woff2` 文件同样需要放入 `frontend/public/fonts/` 并提交到 git。转换后可删除对应的 `.ttf` / `.otf` 文件以节省仓库空间。
+
+### 15.4 Git LFS 管理大字体文件（推荐）
+
+字体文件较大（单文件 10-30 MB），建议使用 Git LFS 跟踪，避免 `git clone` 拉取所有历史版本时膨胀仓库体积：
+
+```bash
+# 安装 Git LFS（Ubuntu）
+sudo apt install -y git-lfs
+
+# 在项目根目录初始化
+cd /opt/EchoesForgeClaw
+git lfs install
+
+# 跟踪字体文件扩展名
+git lfs track "*.ttf"
+git lfs track "*.otf"
+git lfs track "*.woff2"
+
+# 提交 .gitattributes
+git add .gitattributes
+git commit -m "chore: track font files with Git LFS"
+```
+
+> 如果已提交字体文件到 git 历史，需用 `git lfs migrate` 迁移历史。建议在首次提交字体前就配置好 LFS。
+
+### 15.5 字体加载性能优化
+
+- **`font-display: swap`**：已启用，确保字体加载期间文本以后备字体立即显示，避免 FOIT（Flash of Invisible Text）。
+- **`local()` 优先**：已安装字体的客户端零延迟，不触发网络请求。
+- **预加载提示**：如需进一步优化，可在 `index.html` 的 `<head>` 中添加 `<link rel="preload">` 提示浏览器尽早加载字体文件：
+
+```html
+<link rel="preload" href="/fonts/上图东观体-常规.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/又又意宋.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/汇文明朝体.woff2" as="font" type="font/woff2" crossorigin>
+```
+
+> 注意：`preload` 仅对网络加载生效，已安装字体的客户端不受影响。且只有转换为 `.woff2` 后才有意义，原始 `.ttf` 文件过大不推荐 preload。
+
+### 15.6 增量代码更新时的字体处理
+
+```bash
+cd /opt/EchoesForgeClaw
+git pull
+
+# 字体文件变更也需要重新构建前端
+cd frontend && npm run build && cd ..
+sudo systemctl restart bookforge-frontend
+
+# 字体文件变更后不需要重启后端，但安装/更新系统字体后需要重启涉及 Canvas 渲染的服务
+# 如果只是新增/更新了 frontend/public/fonts/ 下的字体文件，只需重建前端即可
+# 如果是安装/更新了系统字体，需要重启后端：
+sudo systemctl restart bookforge-backend
+```
+
+### 15.7 验证字体正确渲染
+
+```bash
+# 1. 验证前端字体文件可访问
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:5180/fonts/上图东观体-常规.ttf
+# 期望 200
+
+# 2. 验证后端 Canvas 渲染可用字体
+# 启动后端后，通过 API 触发生成手账或借书卡，观察输出图片中的文字字形是否正确
+
+# 3. 浏览器验证（开发机访问）
+# 打开 F12 → Network 标签，确认字体请求状态：
+#   - 已安装字体：无网络请求（local() 命中）
+#   - 未安装字体：200 从服务器加载字体文件
+# 打开 F12 → Console，确认无字体加载 warning
+```

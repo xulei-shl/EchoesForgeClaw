@@ -8,9 +8,13 @@ export interface JournalFontPreset {
   family: string;
   googleFont: string;
   category: 'chinese' | 'english';
+  localOnly?: boolean;
 }
 
 export const JOURNAL_FONTS: JournalFontPreset[] = [
+  { id: 'shangtudongguan', name: '上图东观体', family: '上图东观体', googleFont: '', category: 'chinese', localOnly: true },
+  { id: 'youyouyisong', name: '又又意宋', family: '又又意宋', googleFont: '', category: 'chinese', localOnly: true },
+  { id: 'huiwenmincho', name: '汇文明朝体', family: 'Huiwen-mincho', googleFont: '', category: 'chinese', localOnly: true },
   { id: 'mashanzheng', name: '马善政楷', family: 'Ma Shan Zheng', googleFont: 'Ma+Shan+Zheng', category: 'chinese' },
   { id: 'zhimangxing', name: '志莽行书', family: 'Zhi Mang Xing', googleFont: 'Zhi+Mang+Xing', category: 'chinese' },
   { id: 'liujianmaocao', name: '刘建毛草', family: 'Liu Jian Mao Cao', googleFont: 'Liu+Jian+Mao+Cao', category: 'chinese' },
@@ -54,13 +58,15 @@ export async function loadFontFamily(family: string = DEFAULT_FONT_FAMILY): Prom
     family,
   };
 
-  const linkId = `journal-font-${family.toLowerCase().replace(/\s+/g, '-')}`;
-  if (!document.getElementById(linkId)) {
-    const link = document.createElement('link');
-    link.id = linkId;
-    link.href = `https://fonts.googleapis.com/css2?family=${preset.googleFont}&display=swap`;
-    link.rel = 'stylesheet';
-    document.head.appendChild(link);
+  if (!preset.localOnly) {
+    const linkId = `journal-font-${family.toLowerCase().replace(/\s+/g, '-')}`;
+    if (!document.getElementById(linkId)) {
+      const link = document.createElement('link');
+      link.id = linkId;
+      link.href = `https://fonts.googleapis.com/css2?family=${preset.googleFont}&display=swap`;
+      link.rel = 'stylesheet';
+      document.head.appendChild(link);
+    }
   }
 
   if (loadedFontsCache.has(family)) return;
@@ -89,7 +95,8 @@ export async function loadFontFamily(family: string = DEFAULT_FONT_FAMILY): Prom
  */
 export function preloadAllJournalFonts(): void {
   if (typeof window === 'undefined') return;
-  const families = JOURNAL_FONTS.map((f) => f.googleFont).join('&family=');
+  const families = JOURNAL_FONTS.filter((f) => !f.localOnly).map((f) => f.googleFont).join('&family=');
+  if (!families) return;
   const linkId = 'journal-all-fonts-bundle';
   if (!document.getElementById(linkId)) {
     const link = document.createElement('link');
