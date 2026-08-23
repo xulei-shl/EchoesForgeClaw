@@ -14,6 +14,7 @@ import {
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
+import { Select, type SelectOption } from '../../../platform/components/ui/Select';
 import { NODE_COLORS } from '../../bookplate/nodeTypes';
 import {
   applyImageFx,
@@ -22,6 +23,7 @@ import {
   switchFxEffectPatch,
 } from '../imageprocess';
 import type { ImageProcessState, ImageFxParamValue, ImageFxSliderParamDef } from '../imageprocess';
+import { CustomPaletteEditor } from './CustomPaletteEditor';
 
 /** 预览渲染最长边（提速）；导出生成用大值保清晰 */
 const PREVIEW_MAX_EDGE = 1024;
@@ -82,8 +84,8 @@ const SliderRow: React.FC<SliderRowProps> = memo(({
   disabled = false,
   onChange,
 }) => (
-  <label className="flex items-center gap-2 flex-1 min-w-0">
-    <span className="text-ink-faint text-[11px] whitespace-nowrap">{label}</span>
+  <label className="flex items-center gap-2 min-w-0">
+    <span className="text-ink-faint text-[11px] whitespace-nowrap w-9 shrink-0 text-left">{label}</span>
     <input
       type="range"
       min={min}
@@ -94,9 +96,9 @@ const SliderRow: React.FC<SliderRowProps> = memo(({
       aria-valuetext={display}
       disabled={disabled}
       onChange={(e) => onChange(Number(e.target.value))}
-      className="flex-1 min-w-0 accent-[color:var(--accent)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent rounded-sm"
+      className="flex-1 min-w-0 h-1.5 bg-paper-grid/50 rounded-lg appearance-none cursor-pointer accent-[color:var(--accent)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-50"
     />
-    <span className="text-[11px] text-ink-light w-12 text-right whitespace-nowrap tabular-nums">{display}</span>
+    <span className="text-[11px] text-ink-light w-10 text-right whitespace-nowrap tabular-nums font-mono shrink-0">{display}</span>
   </label>
 ));
 SliderRow.displayName = 'SliderRow';
@@ -141,6 +143,15 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
     [data?.effectId, data?.fxParams]
   );
   const allEffects = useMemo(() => getAllImageFxEffects(), []);
+  const effectOptions: SelectOption[] = useMemo(
+    () =>
+      allEffects.map((fx) => ({
+        label: fx.name,
+        value: fx.id,
+        title: fx.description,
+      })),
+    [allEffects]
+  );
   const paramsKey = JSON.stringify(params);
 
   const [isGenerating, setIsGenerating] = useState(false);
@@ -328,13 +339,9 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
   const hasGenerated = Boolean(data?.imageUrl && !isEditing);
   const isSaved = Boolean(data?.isSaved);
 
-  // 参数控件按声明分组：滑杆每行两个，分段控件独占一行右对齐
+  // 参数控件按声明分组：滑杆与分段控件
   const sliderDefs = effect.params.filter((p): p is ImageFxSliderParamDef => p.kind === 'slider');
   const segmentDefs = effect.params.filter((p) => p.kind === 'segment');
-  const sliderRows: ImageFxSliderParamDef[][] = [];
-  for (let i = 0; i < sliderDefs.length; i += 2) {
-    sliderRows.push(sliderDefs.slice(i, i + 2));
-  }
 
   return (
     <CanvasNode
@@ -504,52 +511,75 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
       <div className="h-full flex flex-col flex-1 min-h-0 gap-2">
         {/* 控制工具栏（编辑态展示：效果切换 + 按声明渲染的参数控件） */}
         {!hasGenerated && (
-          <div className="flex flex-col gap-1.5 px-1.5 py-1.5 rounded-md bg-paper-grid/20 border border-paper-grid/40 text-xs font-sans text-ink-light select-none">
-            <div className="flex items-center justify-between gap-2">
-              <label className="flex items-center gap-1.5 min-w-0" title={effect.description}>
-                <Layers size={14} className="text-ink-faint shrink-0" />
-                <select
+          <div className="relative z-20 flex flex-col gap-2 p-2 rounded-lg bg-paper-grid/15 border border-paper-grid/40 text-xs font-sans text-ink-light select-none shadow-2xs">
+            {/* 顶部主效果切换行 */}
+            <div className="flex items-center justify-between gap-2 pb-1.5 border-b border-paper-grid/30">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <Layers size={14} className="text-accent shrink-0" />
+                <span className="text-ink-faint text-[11px] shrink-0 font-medium">效果:</span>
+                <Select
+                  size="sm"
                   value={effect.id}
                   disabled={hasDownstream || isGenerating}
-                  onChange={(e) => handleEffectChange(e.target.value)}
-                  aria-label="处理效果"
-                  className="bg-paper border border-paper-grid text-ink rounded px-2 py-1 text-xs outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {allEffects.map((fx) => (
-                    <option key={fx.id} value={fx.id}>
-                      {fx.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {segmentDefs.map((def) =>
-                def.kind === 'segment' ? (
-                  <div key={def.key} className="flex items-center gap-1 shrink-0" role="radiogroup" aria-label={def.label}>
-                    <span className="text-ink-faint text-[11px] px-0.5">{def.label}:</span>
-                    {def.options.map((opt) => (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        role="radio"
-                        aria-checked={params[def.key] === opt.value}
-                        onClick={() => setParam(def.key, opt.value)}
-                        disabled={hasDownstream || isGenerating}
-                        className={`px-2 py-0.5 rounded text-xs transition-colors duration-150 active:scale-[0.96] ${
-                          params[def.key] === opt.value
-                            ? 'bg-accent/15 text-accent font-medium'
-                            : 'hover:bg-paper-grid/40 text-ink-light'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                ) : null
-              )}
+                  onChange={handleEffectChange}
+                  options={effectOptions}
+                  className="w-28 shrink-0"
+                />
+              </div>
+              <span className="text-[11px] text-ink-faint truncate max-w-[200px]" title={effect.description}>
+                {effect.description.split('：')[0]}
+              </span>
             </div>
-            {sliderRows.map((row, rowIndex) => (
-              <div key={rowIndex} className="flex items-center justify-between gap-2">
-                {row.map((def) => (
+
+            {/* 分段选项控件（算法、色板、形状、色彩等） */}
+            {segmentDefs.length > 0 && (
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                {segmentDefs.map((def) =>
+                  def.kind === 'segment' ? (
+                    <div key={def.key} className="flex items-center gap-1.5 shrink-0" role="radiogroup" aria-label={def.label}>
+                      <span className="text-ink-faint text-[11px] shrink-0">{def.label}:</span>
+                      <div className="flex items-center p-0.5 rounded-md bg-paper/60 border border-paper-grid/50 gap-0.5 shadow-2xs">
+                        {def.options.map((opt) => {
+                          const isChecked = params[def.key] === opt.value;
+                          return (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              role="radio"
+                              aria-checked={isChecked}
+                              onClick={() => setParam(def.key, opt.value)}
+                              disabled={hasDownstream || isGenerating}
+                              className={`px-2 py-0.5 rounded text-[11px] leading-tight transition-all duration-150 active:scale-[0.96] ${
+                                isChecked
+                                  ? 'bg-accent text-paper font-medium shadow-2xs'
+                                  : 'text-ink-light hover:text-ink hover:bg-paper-grid/30'
+                              } disabled:cursor-not-allowed disabled:opacity-50`}
+                            >
+                              {opt.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null
+                )}
+              </div>
+            )}
+
+            {/* 自定义色板高级配置栏（抖动模式 + 自定义色板生效时展示） */}
+            {effect.id === 'dither' && params.palette === 'custom' && (
+              <CustomPaletteEditor
+                value={String(params.customPalette ?? '#000000,#ffffff')}
+                onChange={(nextPalette) => setParam('customPalette', nextPalette)}
+                disabled={hasDownstream || isGenerating}
+                imageSrc={activeImageSrc}
+              />
+            )}
+
+            {/* 滑杆参数网格 */}
+            {sliderDefs.length > 0 && (
+              <div className={`grid gap-x-4 gap-y-1.5 ${sliderDefs.length === 1 ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'}`}>
+                {sliderDefs.map((def) => (
                   <SliderRow
                     key={def.key}
                     label={def.label}
@@ -562,19 +592,6 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
                     onChange={(v) => setParam(def.key, v)}
                   />
                 ))}
-              </div>
-            ))}
-            {effect.id === 'dither' && params.palette === 'custom' && (
-              <div className="flex items-center gap-1.5">
-                <span className="text-ink-faint text-[11px] whitespace-nowrap">自定义:</span>
-                <input
-                  type="text"
-                  value={String(params.customPalette ?? '#000000,#ffffff')}
-                  onChange={(e) => setParam('customPalette', e.target.value)}
-                  placeholder="#000000,#ffffff,..."
-                  className="flex-1 bg-paper border border-paper-grid text-ink rounded px-2 py-1 text-xs outline-none focus:border-accent disabled:opacity-60 font-mono"
-                  disabled={hasDownstream || isGenerating}
-                />
               </div>
             )}
           </div>

@@ -23,13 +23,13 @@ export interface ImageFxSliderParamDef {
   display?: (value: number) => string;
 }
 
-/** 枚举分段参数声明（如 单色 | 彩色，UI 渲染为分段按钮组） */
+/** 枚举分段参数声明（如 单色 | 彩色 或 1px | 2px，UI 渲染为分段按钮组） */
 export interface ImageFxSegmentParamDef {
   kind: 'segment';
   key: string;
   label: string;
-  default: string;
-  options: { value: string; label: string }[];
+  default: ImageFxParamValue;
+  options: { value: ImageFxParamValue; label: string }[];
 }
 
 export type ImageFxParamDef = ImageFxSliderParamDef | ImageFxSegmentParamDef;
