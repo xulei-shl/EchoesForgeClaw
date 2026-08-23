@@ -531,12 +531,12 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
               </span>
             </div>
 
-            {/* 分段选项控件（算法、色板、形状、色彩等） */}
+            {/* 分段选项控件（算法、像素块、色板、形状等） */}
             {segmentDefs.length > 0 && (
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
                 {segmentDefs.map((def) =>
                   def.kind === 'segment' ? (
-                    <div key={def.key} className="flex items-center gap-1.5 shrink-0" role="radiogroup" aria-label={def.label}>
+                    <div key={def.key} className="flex items-center gap-1 shrink-0" role="radiogroup" aria-label={def.label}>
                       <span className="text-ink-faint text-[11px] shrink-0">{def.label}:</span>
                       <div className="flex items-center p-0.5 rounded-md bg-paper/60 border border-paper-grid/50 gap-0.5 shadow-2xs">
                         {def.options.map((opt) => {
@@ -549,9 +549,9 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
                               aria-checked={isChecked}
                               onClick={() => setParam(def.key, opt.value)}
                               disabled={hasDownstream || isGenerating}
-                              className={`px-2 py-0.5 rounded text-[11px] leading-tight transition-all duration-150 active:scale-[0.96] ${
+                              className={`min-w-[26px] px-1.5 py-0.5 rounded text-[11px] font-medium leading-tight text-center transition-[background-color,color,box-shadow,transform] duration-150 active:scale-[0.96] ${
                                 isChecked
-                                  ? 'bg-accent text-paper font-medium shadow-2xs'
+                                  ? 'bg-accent text-paper shadow-2xs'
                                   : 'text-ink-light hover:text-ink hover:bg-paper-grid/30'
                               } disabled:cursor-not-allowed disabled:opacity-50`}
                             >
