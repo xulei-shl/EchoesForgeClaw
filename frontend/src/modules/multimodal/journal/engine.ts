@@ -3,7 +3,7 @@
  * 纯浏览器端实现（零后端计算），与贴纸制作同属「前端合成图片后输出」链路。
  */
 import type { JournalBackground, JournalMakerItem, JournalPagePreset, JournalPagePresetId } from './types';
-import { journalPagePresetOf } from './types';
+import { journalPagePresetOf, FONT_FAMILY } from './types';
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
@@ -31,6 +31,18 @@ export function defaultPlacement(): Pick<JournalMakerItem, 'x' | 'y' | 'w' | 'an
   };
 }
 
+/** 新文本素材的默认落位（字体大小 5~7，居中偏右） */
+export function defaultTextPlacement(
+  index: number
+): Pick<JournalMakerItem, 'x' | 'y' | 'w' | 'angle'> {
+  return {
+    x: clamp(50 + rand(-8, 8) + index * 4, 20, 80),
+    y: clamp(50 + rand(-8, 8) + index * 3, 18, 82),
+    w: rand(5, 7),
+    angle: rand(-5, 5),
+  };
+}
+
 /** 随机布局：位置/大小/旋转全量重排，z 序整体洗牌 */
 export function randomizeLayout(items: JournalMakerItem[]): JournalMakerItem[] {
   const zs = items.map((_, i) => i);
@@ -42,7 +54,7 @@ export function randomizeLayout(items: JournalMakerItem[]): JournalMakerItem[] {
     ...item,
     x: rand(18, 82),
     y: rand(16, 84),
-    w: rand(20, 52),
+    w: item.kind === 'text' ? rand(3, 10) : rand(20, 52),
     angle: rand(-24, 24),
     z: zs[i],
   }));
@@ -215,8 +227,59 @@ function paintBackground(
 }
 
 /**
+ * 确保手写字体已加载（Canvas 文本渲染前调用）；超时 3s 后仍用后备字体继续。
+ */
+export async function ensureFontLoaded(): Promise<void> {
+  const spec = `16px "${FONT_FAMILY}"`;
+  if (document.fonts && document.fonts.check(spec)) return;
+  try {
+    await Promise.race([
+      document.fonts.load(spec),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000)),
+    ]);
+  } catch {
+    // 字体加载失败，使用后备字体
+  }
+}
+
+/** 文本素材渲染字体大小（w = 字体缩放系数，约 3~10） */
+export function textFontSize(w: number, pageWidth: number): number {
+  return Math.max(10, (w * pageWidth) / 250);
+}
+
+/** 绘制文本素材到画布 */
+function drawTextItem(
+  ctx: CanvasRenderingContext2D,
+  item: JournalMakerItem,
+  pageWidth: number,
+  pageHeight: number
+) {
+  const text = item.text || '';
+  if (!text) return;
+  const fontSize = textFontSize(item.w, pageWidth);
+  const cx = (item.x / 100) * pageWidth;
+  const cy = (item.y / 100) * pageHeight;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate((item.angle * Math.PI) / 180);
+  ctx.font = `${fontSize}px "${FONT_FAMILY}", cursive, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#2d2a24';
+  ctx.shadowColor = 'rgba(15, 23, 42, 0.12)';
+  ctx.shadowBlur = 2;
+  ctx.shadowOffsetY = 1;
+  const lines = text.split('\n');
+  const lineH = fontSize * 1.4;
+  lines.forEach((line, i) => {
+    ctx.fillText(line, 0, (i - (lines.length - 1) / 2) * lineH);
+  });
+  ctx.restore();
+}
+
+/**
  * 把拼贴项按 z 序合成整张手账页 PNG Data URL：
- * 背景填充（纯色/渐变）→ 各素材（含旋转、柔和投影）→ 导出。
+ * 背景填充（纯色/渐变/网状光斑）→ 各素材（含旋转、柔和投影）→ 导出。
  * 任一素材加载失败即抛错（fail-fast，不静默跳过）。
  */
 export async function composeJournalPage(
@@ -232,12 +295,26 @@ export async function composeJournalPage(
 
   paintBackground(ctx, preset.width, preset.height, options.background);
 
-  const sorted = [...items].sort((a, b) => a.z - b.z);
-  const images = await Promise.all(sorted.map((it) => loadImage(it.src)));
+  // 分离图文素材并确保字体已加载
+  const imageItems = items.filter((it) => it.kind !== 'text');
+  const textItems = items.filter((it) => it.kind === 'text');
+  const sorted = [...imageItems, ...textItems].sort((a, b) => a.z - b.z);
+  const imageLoads = imageItems.length
+    ? await Promise.all(
+        imageItems.map((it) => loadImage(it.src || ''))
+      )
+    : [];
+  await ensureFontLoaded();
 
-  for (let i = 0; i < sorted.length; i += 1) {
-    const img = images[i];
-    const item = sorted[i];
+  let imgIdx = 0;
+  for (const item of sorted) {
+    if (item.kind === 'text') {
+      drawTextItem(ctx, item, preset.width, preset.height);
+      continue;
+    }
+    const img = imageLoads[imgIdx];
+    imgIdx += 1;
+    if (!img) continue;
     const w = (item.w / 100) * preset.width;
     const h = w * (img.naturalHeight / img.naturalWidth);
     const cx = (item.x / 100) * preset.width;
@@ -250,7 +327,7 @@ export async function composeJournalPage(
     ctx.shadowOffsetY = Math.max(2, preset.height * 0.004);
     ctx.drawImage(img, -w / 2, -h / 2, w, h);
     ctx.restore();
-  }
+}
 
   return canvas.toDataURL('image/png');
 }

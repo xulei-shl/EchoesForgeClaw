@@ -14,6 +14,7 @@ import {
   ArrowDown,
   ChevronsUp,
   ChevronsDown,
+  Type,
 } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
@@ -37,9 +38,13 @@ import {
   deriveTintMesh,
   updateBackgroundOpacity,
   defaultPlacement,
+  defaultTextPlacement,
   nextJournalItemId,
   randomizeLayout,
   composeJournalPage,
+  textFontSize,
+  FONT_FAMILY,
+  DEFAULT_TEXT,
   downloadJournalImage,
 } from '../journal';
 
@@ -150,10 +155,24 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
   const [mattingProgress, setMattingProgress] = useState<{ done: number; total: number; modelPct?: number } | null>(null);
   const [isEditing, setIsEditing] = useState<boolean>(!data?.imageUrl);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [editingTextId, setEditingTextId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState('');
+  const [activeGestureId, setActiveGestureId] = useState<string | null>(null);
 
   const pageRef = useRef<HTMLDivElement>(null);
   const gestureRef = useRef<GestureState | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textInputRef = useRef<HTMLTextAreaElement>(null);
+
+  // 一次性加载手写字体
+  useEffect(() => {
+    if (document.getElementById('journal-handwriting-font')) return;
+    const link = document.createElement('link');
+    link.id = 'journal-handwriting-font';
+    link.href = `https://fonts.googleapis.com/css2?family=${FONT_FAMILY.replace(/ /g, '+')}&display=swap`;
+    link.rel = 'stylesheet';
+    document.head.appendChild(link);
+  }, []);
   /** items 实时镜像（手势结束提交用，避免在 setState updater 内做副作用） */
   const itemsRef = useRef(items);
   useEffect(() => {
@@ -202,7 +221,7 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
   useEffect(() => {
     const upstreamSet = new Set(upstreamImages ?? []);
     const uploadSet = new Set(uploadedImages);
-    const filtered = items.filter((it) => uploadSet.has(it.src) || upstreamSet.has(it.src));
+    const filtered = items.filter((it) => it.kind === 'text' || uploadSet.has(it.src) || upstreamSet.has(it.src));
     const removed = filtered.length < items.length;
 
     if (removed) {
@@ -286,28 +305,64 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
     showToast('已清空本地上传素材', { type: 'success' });
   };
 
+  // 添加文字素材
+  const handleAddText = () => {
+    if (hasDownstream) return;
+    const maxZ = items.reduce((m, it) => Math.max(m, it.z), -1);
+    const textItems = items.filter((it) => it.kind === 'text');
+    const newItem: JournalMakerItem = {
+      id: nextJournalItemId(),
+      kind: 'text',
+      src: '',
+      text: DEFAULT_TEXT,
+      ...defaultTextPlacement(textItems.length),
+      z: maxZ + 1,
+    };
+    const nextItems = [...items, newItem];
+    setItems(nextItems);
+    commit({ items: nextItems, imageUrl: null }, true);
+    setSelectedId(newItem.id);
+    setEditingTextId(newItem.id);
+    setEditingText(DEFAULT_TEXT);
+    setIsEditing(true);
+  };
+
+  // 确认文本编辑
+  const confirmTextEdit = () => {
+    if (!editingTextId) return;
+    const nextItems = items.map((it) =>
+      it.id === editingTextId ? { ...it, text: editingText || DEFAULT_TEXT } : it
+    );
+    setItems(nextItems);
+    commit({ items: nextItems }, true);
+    setEditingTextId(null);
+    setEditingText('');
+  };
+
+  // 文本编辑：Enter 确认，Shift+Enter 换行
+  const handleTextKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      confirmTextEdit();
+    }
+  };
+
   // 删除单个拼贴项：上传图彻底移除；上级/封面来源记入 dismissedSources 防自动回填
   const deleteItem = (item: JournalMakerItem) => {
     if (hasDownstream) return;
     const nextItems = items.filter((it) => it.id !== item.id);
     setItems(nextItems);
     setSelectedId(null);
-    if (uploadedImages.includes(item.src)) {
+    if (item.kind === 'text') {
+      commit({ items: nextItems }, true);
+    } else if (uploadedImages.includes(item.src)) {
       commit(
-        {
-          items: nextItems,
-          uploadedImages: uploadedImages.filter((s) => s !== item.src),
-          imageUrl: null,
-        },
+        { items: nextItems, uploadedImages: uploadedImages.filter((s) => s !== item.src) },
         true
       );
     } else {
       commit(
-        {
-          items: nextItems,
-          dismissedSources: Array.from(new Set([...dismissedSources, item.src])),
-          imageUrl: null,
-        },
+        { items: nextItems, dismissedSources: Array.from(new Set([...dismissedSources, item.src])) },
         true
       );
     }
@@ -380,6 +435,7 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
     };
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     setSelectedId(item.id);
+    setActiveGestureId(item.id);
   };
 
   const moveGesture = (e: React.PointerEvent<HTMLElement>) => {
@@ -417,6 +473,7 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
       /* 未捕获时忽略 */
     }
     gestureRef.current = null;
+    setActiveGestureId(null);
     // 最后一次 move 的 setState 已在本次事件前冲刷，ref 即最新值；用户排版动作记撤销历史
     commit({ items: itemsRef.current }, true);
   };
@@ -579,7 +636,7 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
     const isNearTop = item.y < 12;
     return (
       <div
-        className={`absolute left-1/2 -translate-x-1/2 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-paper/95 backdrop-blur-md shadow-md border border-paper-grid/50 transition-all duration-150 z-30 ${
+        className={`absolute left-1/2 -translate-x-1/2 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-paper/95 backdrop-blur-md shadow-md border border-paper-grid/50 transition-[opacity,transform] duration-150 ease-out z-30 ${
           isNearTop ? '-bottom-9' : '-top-9'
         } ${
           selected
@@ -601,7 +658,7 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
               disabled={hasDownstream}
               onPointerDown={(e) => e.stopPropagation()}
               onClick={() => bumpLayer(item.id, mode)}
-              className="p-1 rounded text-ink-light hover:text-accent hover:bg-paper-grid/40 active:scale-[0.96] transition-all disabled:opacity-40"
+              className="p-1 rounded text-ink-light hover:text-accent hover:bg-paper-grid/40 active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out disabled:opacity-40"
             >
               <Icon size={12} strokeWidth={1.8} />
             </button>
@@ -614,7 +671,7 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
             disabled={hasDownstream}
             onPointerDown={(e) => e.stopPropagation()}
             onClick={() => deleteItem(item)}
-            className="p-1 rounded text-ink-light hover:text-error hover:bg-error/10 active:scale-[0.96] transition-all disabled:opacity-40"
+            className="p-1 rounded text-ink-light hover:text-error hover:bg-error/10 active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out disabled:opacity-40"
           >
             <Trash2 size={12} strokeWidth={1.8} />
           </button>
@@ -663,6 +720,15 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                 aria-label="添加图片（可多选）"
                 downstreamTooltip="有下级节点，不可更换图片"
                 onClick={() => fileInputRef.current?.click()}
+                disabled={busy}
+                hasDownstream={hasDownstream}
+              />
+              <NodeActionBar.Custom
+                icon={<Type size={16} strokeWidth={1.5} />}
+                tooltip="添加文字（手写字体）"
+                aria-label="添加文字"
+                downstreamTooltip="有下级节点，不可添加文字"
+                onClick={handleAddText}
                 disabled={busy}
                 hasDownstream={hasDownstream}
               />
@@ -757,6 +823,15 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                 hasDownstream={hasDownstream}
               />
               <NodeActionBar.Custom
+                icon={<Type size={16} strokeWidth={1.5} />}
+                tooltip="添加文字（手写字体）"
+                aria-label="添加文字"
+                downstreamTooltip="有下级节点，不可添加文字"
+                onClick={handleAddText}
+                disabled={busy}
+                hasDownstream={hasDownstream}
+              />
+              <NodeActionBar.Custom
                 icon={<Upload size={16} strokeWidth={1.5} />}
                 tooltip="添加图片（可多选）"
                 aria-label="添加图片（可多选）"
@@ -820,7 +895,7 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                     updateParam({ removeBackground: next });
                   }}
                   disabled={hasDownstream}
-                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition shrink-0 ${
+                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.96] shrink-0 ${
                     removeBackground
                       ? 'bg-accent/15 text-accent font-medium'
                       : 'hover:bg-paper-grid/40 text-ink-light'
@@ -844,7 +919,7 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                           updateParam({ pageSize: p.id });
                         }}
                         disabled={hasDownstream}
-                        className={`flex-1 px-1.5 py-0.5 rounded border text-[11px] transition ${
+                        className={`flex-1 px-1.5 py-0.5 rounded border text-[11px] transition-[background-color,border-color,color,transform] duration-150 ease-out active:scale-[0.96] ${
                           pageSize === p.id
                             ? 'bg-accent/15 border-accent/50 text-accent font-medium'
                             : 'border-paper-grid/50 hover:bg-paper-grid/30 text-ink-light'
@@ -898,7 +973,7 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                       }}
                       disabled={hasDownstream}
                       style={{ background: journalBackgroundCss(p.bg, false) }}
-                      className={`w-4 h-4 rounded-full border transition ${
+                      className={`w-4 h-4 rounded-full border transition-[border-color,transform,box-shadow] duration-150 ease-out active:scale-[0.96] ${
                         journalBackgroundKey(background) === journalBackgroundKey(p.bg)
                           ? 'border-accent ring-2 ring-accent/40 scale-110 shadow-2xs'
                           : 'border-paper-grid/60 hover:scale-110'
@@ -933,7 +1008,7 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                           ? `radial-gradient(circle, ${background.tintHex} 40%, rgba(255,255,255,0.8) 100%)`
                           : undefined,
                       }}
-                      className={`w-4 h-4 rounded-full border flex items-center justify-center transition ${
+                      className={`w-4 h-4 rounded-full border flex items-center justify-center transition-[border-color,transform,box-shadow] duration-150 ease-out active:scale-[0.96] ${
                         background.tintHex
                           ? 'border-accent ring-2 ring-accent/40 scale-110 shadow-2xs'
                           : 'border-paper-grid/70 hover:border-accent hover:scale-110 bg-paper/80 text-ink-light hover:text-accent'
@@ -952,21 +1027,21 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
 
         {/* 核心操作与预览画布 */}
         <div className="relative flex-1 min-h-0 w-full overflow-hidden rounded bg-paper-grid/10 border border-paper-grid/40 flex items-center justify-center select-none">
-          <AnimatePresence mode="wait">
+          <AnimatePresence mode="wait" initial={false}>
             {!hasGenerated ? (
               // 编辑模式：可交互手账页面
               <motion.div
                 key="editor"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
                 className="relative w-full h-full flex items-center justify-center overflow-hidden p-2 sm:p-3"
               >
                 <div ref={stageRef} className="relative w-full h-full flex items-center justify-center overflow-hidden">
                   {/* Card Shell: 精致的白底外框与多层细腻阴影（参考 canvas-card.css） */}
                   <div
-                    className="relative p-2 rounded-2xl bg-white shadow-[0_0_0_0.5px_rgba(0,0,0,0.08),0_16px_48px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03),0_2px_4px_rgba(0,0,0,0.02)] transition-all flex items-center justify-center"
+                    className="relative p-2 rounded-2xl bg-white shadow-[0_0_0_0.5px_rgba(0,0,0,0.08),0_16px_48px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03),0_2px_4px_rgba(0,0,0,0.02)] flex items-center justify-center"
                     style={{
                       aspectRatio: `${preset.width} / ${preset.height}`,
                       width: pageFit.w,
@@ -1011,11 +1086,14 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                       {/* 素材拼贴列表 */}
                       {[...items].sort((a, b) => a.z - b.z).map((item) => {
                         const selected = selectedId === item.id;
+                        const isGesturingThis = activeGestureId === item.id;
                         return (
                           <div
                             key={item.id}
                             data-journal-item
-                            className="absolute group/jitem touch-none"
+                            className={`absolute group/jitem touch-none ${
+                              isGesturingThis ? 'will-change-transform select-none' : ''
+                            }`}
                             style={{
                               left: `${item.x}%`,
                               top: `${item.y}%`,
@@ -1024,18 +1102,50 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                               transform: `translate(-50%, -50%) rotate(${item.angle}deg)`,
                             }}
                           >
-                            <img
-                              src={item.src}
-                              alt=""
-                              draggable={false}
-                              onPointerDown={(e) => beginGesture(e, item, 'move')}
-                              onPointerMove={moveGesture}
-                              onPointerUp={endGesture}
-                              onPointerCancel={endGesture}
-                              className={`block w-full h-auto cursor-move drop-shadow-[0_3px_8px_rgba(15,23,42,0.18)] transition-all ${
-                                selected ? 'outline outline-2 outline-accent ring-2 ring-white/80' : ''
-                              }`}
-                            />
+                            {item.kind === 'text' ? (
+                              <div
+                                onPointerDown={(e) => beginGesture(e, item, 'move')}
+                                onPointerMove={moveGesture}
+                                onPointerUp={endGesture}
+                                onPointerCancel={endGesture}
+                                onDoubleClick={() => {
+                                  if (!hasDownstream) {
+                                    setEditingTextId(item.id);
+                                    setEditingText((item.text || '').replace(/\\n/g, '\n'));
+                                    setTimeout(() => textInputRef.current?.select(), 50);
+                                  }
+                                }}
+                                className={`cursor-move transition-[outline,box-shadow] duration-150 ease-out rounded px-2 py-1 ${
+                                  selected ? 'outline outline-2 outline-accent ring-2 ring-white/80' : ''
+                                }`}
+                                style={{
+                                  fontFamily: `"${FONT_FAMILY}", cursive, sans-serif`,
+                                  fontSize: `${textFontSize(item.w, stageSize.w || 400)}px`,
+                                  color: '#2d2a24',
+                                  textShadow: '0 1px 2px rgba(15,23,42,0.08)',
+                                  lineHeight: 1.4,
+                                  whiteSpace: 'pre-wrap',
+                                  textAlign: 'center',
+                                  width: `${item.w * 2.5}%`,
+                                  maxWidth: '80vw',
+                                }}
+                              >
+                                {item.text || ''}
+                              </div>
+                            ) : (
+                              <img
+                                src={item.src}
+                                alt=""
+                                draggable={false}
+                                onPointerDown={(e) => beginGesture(e, item, 'move')}
+                                onPointerMove={moveGesture}
+                                onPointerUp={endGesture}
+                                onPointerCancel={endGesture}
+                                className={`block w-full h-auto cursor-move drop-shadow-[0_3px_8px_rgba(15,23,42,0.18)] transition-[outline,box-shadow] duration-150 ease-out ${
+                                  selected ? 'outline outline-2 outline-accent ring-2 ring-white/80' : ''
+                                }`}
+                              />
+                            )}
                             {renderLayerButtons(item, selected)}
 
                             {selected && (
@@ -1047,7 +1157,7 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                                   onPointerUp={endGesture}
                                   onPointerCancel={endGesture}
                                   title="拖拽调整大小"
-                                  className="absolute -right-2 -bottom-2 w-4 h-4 rounded-full bg-accent border-2 border-white shadow-md cursor-nwse-resize hover:scale-110 active:scale-95 transition-transform flex items-center justify-center z-20"
+                                  className="absolute -right-2 -bottom-2 w-4 h-4 rounded-full bg-accent border-2 border-white shadow-md cursor-nwse-resize hover:scale-110 active:scale-[0.96] transition-transform duration-150 ease-out flex items-center justify-center z-20"
                                 >
                                   <span className="w-1.5 h-1.5 rounded-full bg-white/80" />
                                 </div>
@@ -1061,7 +1171,7 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                                     onPointerUp={endGesture}
                                     onPointerCancel={endGesture}
                                     title="拖拽旋转"
-                                    className="w-4 h-4 rounded-full bg-accent border-2 border-white shadow-md cursor-grab active:cursor-grabbing hover:scale-110 active:scale-95 transition-transform pointer-events-auto flex items-center justify-center"
+                                    className="w-4 h-4 rounded-full bg-accent border-2 border-white shadow-md cursor-grab active:cursor-grabbing hover:scale-110 active:scale-[0.96] transition-transform duration-150 ease-out pointer-events-auto flex items-center justify-center"
                                   >
                                     <div className="w-1 h-1 rounded-full bg-white/90" />
                                   </div>
@@ -1072,28 +1182,86 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                         );
                       })}
 
-                      {/* 抠图进度浮层 */}
-                      {(isWorking || mattingProgress) && (
-                        <div className="absolute inset-0 z-[999] bg-black/45 backdrop-blur-[2px] flex flex-col items-center justify-center gap-2 text-paper">
-                          <Loader2 size={22} className="animate-spin" />
-                          {mattingProgress ? (
-                            <>
-                              <span className="text-xs">
-                                正在 AI 抠图 {mattingProgress.done + 1}/{mattingProgress.total}…
-                              </span>
-                              {typeof mattingProgress.modelPct === 'number' &&
-                                mattingProgress.modelPct < 100 && (
-                                  <div className="w-32 h-1 rounded-full bg-white/25 overflow-hidden">
-                                    <div
-                                      className="h-full bg-accent transition-all duration-200"
-                                      style={{ width: `${Math.round(mattingProgress.modelPct)}%` }}
-                                    />
-                                  </div>
-                                )}
-                            </>
-                          ) : (
-                            <span className="text-xs">正在合成手账页…</span>
-                          )}
+                      {/* 抠图与生成进度浮层 */}
+                      <AnimatePresence>
+                        {(isWorking || mattingProgress) && (
+                          <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.15, ease: 'easeOut' }}
+                            className="absolute inset-0 z-[999] bg-black/45 backdrop-blur-[2px] flex flex-col items-center justify-center gap-2 text-paper"
+                          >
+                            <Loader2 size={22} className="animate-spin" />
+                            {mattingProgress ? (
+                              <>
+                                <span className="text-xs">
+                                  正在 AI 抠图{' '}
+                                  <span className="tabular-nums font-mono">
+                                    {mattingProgress.done + 1}
+                                  </span>
+                                  /
+                                  <span className="tabular-nums font-mono">
+                                    {mattingProgress.total}
+                                  </span>
+                                  …
+                                </span>
+                                {typeof mattingProgress.modelPct === 'number' &&
+                                  mattingProgress.modelPct < 100 && (
+                                    <div className="w-32 h-1 rounded-full bg-white/25 overflow-hidden">
+                                      <div
+                                        className="h-full bg-accent transition-[width] duration-200 ease-out"
+                                        style={{ width: `${Math.round(mattingProgress.modelPct)}%` }}
+                                      />
+                                    </div>
+                                  )}
+                              </>
+                            ) : (
+                              <span className="text-xs">正在合成手账页…</span>
+                            )}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      {/* 文本编辑浮层 */}
+                      {editingTextId && (
+                        <div
+                          className="absolute z-[1000] flex flex-col gap-1 p-1.5 rounded-lg bg-paper shadow-xl border border-paper-grid/50"
+                          style={{
+                            top: '50%',
+                            left: '50%',
+                            transform: 'translate(-50%, -50%)',
+                          }}
+                          onPointerDown={(e) => e.stopPropagation()}
+                        >
+                          <textarea
+                            ref={textInputRef}
+                            value={editingText}
+                            onChange={(e) => setEditingText(e.target.value)}
+                            onKeyDown={handleTextKeyDown}
+                            className="w-44 h-16 resize-none rounded border border-paper-grid/50 bg-paper px-2 py-1 text-xs text-ink leading-relaxed outline-none focus:border-accent/60 focus:ring-1 focus:ring-accent/30 transition"
+                            autoFocus
+                            placeholder="输入文字…"
+                          />
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingTextId(null);
+                                setEditingText('');
+                              }}
+                              className="px-2 py-0.5 text-[11px] text-ink-light rounded hover:bg-paper-grid/30 transition"
+                            >
+                              取消
+                            </button>
+                            <button
+                              type="button"
+                              onClick={confirmTextEdit}
+                              className="px-2 py-0.5 text-[11px] text-white bg-accent/80 rounded hover:bg-accent transition"
+                            >
+                              确认
+                            </button>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -1104,10 +1272,10 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
               // 生成完成展示模式
               <motion.div
                 key="preview"
-                initial={{ scale: 0.88, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.88, opacity: 0 }}
-                transition={{ type: 'spring', damping: 22, stiffness: 240 }}
+                initial={{ opacity: 0, scale: 0.97 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.97 }}
+                transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
                 className="relative w-full h-full flex items-center justify-center p-3"
               >
                 {data.imageUrl ? (

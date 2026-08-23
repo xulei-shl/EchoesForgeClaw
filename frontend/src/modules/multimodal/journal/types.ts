@@ -389,10 +389,18 @@ export const JOURNAL_DEFAULTS = {
   removeBackground: false,
 };
 
+/** 手写字体名称（Google Fonts，用于文本素材） */
+export const FONT_FAMILY = 'Ma Shan Zheng';
+
+/** 文本素材默认文案 */
+export const DEFAULT_TEXT = '手写文字';
+
 /** 页面上的一张拼贴素材：中心点 x/y 与宽 w 均为页面百分比，angle 度，z 图层序 */
 export interface JournalMakerItem {
   id: string;
+  kind?: 'image' | 'text';
   src: string;
+  text?: string;
   x: number;
   y: number;
   w: number;
