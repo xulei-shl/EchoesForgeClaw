@@ -421,6 +421,7 @@ export function useNodeHandlers({
   const handleUpdateStampStateFor = useEditorPatchHandler(['stamp_cutter'], editorPatchFns);
   const handleUpdateStickerMakerStateFor = useEditorPatchHandler(['sticker_maker'], editorPatchFns);
   const handleUpdateJournalMakerStateFor = useEditorPatchHandler(['journal_maker'], editorPatchFns);
+  const handleUpdateTextImageStateFor = useEditorPatchHandler(['text_image'], editorPatchFns);
   const handleUpdateOilPaintStateFor = useEditorPatchHandler(['oil_paint'], editorPatchFns);
   const handleUpdateImageProcessStateFor = useEditorPatchHandler(['image_process'], editorPatchFns);
 
@@ -518,6 +519,7 @@ export function useNodeHandlers({
     handleExportStampFor,
     handleExportStickerFor,
     handleExportJournalFor,
+    handleExportTextImageFor,
     handleExportOilPaintFor,
     handleExportImageProcessFor,
     handleExportMapPosterFor,
@@ -628,6 +630,8 @@ export function useNodeHandlers({
     handleExportStickerFor,
     handleUpdateJournalMakerStateFor,
     handleExportJournalFor,
+    handleUpdateTextImageStateFor,
+    handleExportTextImageFor,
     handleExportOilPaintFor,
     handleUpdateOilPaintStateFor,
     handleExportImageProcessFor,

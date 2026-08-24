@@ -1,6 +1,7 @@
 import { AGGREGATE_DEFAULT_TEMPLATE } from './textTemplate';
 import { MAP_POSTER_DEFAULTS } from '../multimodal/map/defaults';
 import { JOURNAL_DEFAULTS } from '../multimodal/journal/types';
+import { TEXT_IMAGE_DEFAULTS } from '../multimodal/textimage';
 import { DEFAULT_BOOK_CARD_TEMPLATE_ID } from '../multimodal/bookcard';
 
 import type { NodeType, NodeData } from './graphTypes';
@@ -182,6 +183,12 @@ export function seedDataFor(type: NodeType, parent?: NodeData): any {
         imageUrl: null,
         uploadedImages: [],
         dismissedSources: [],
+        error: null,
+      };
+    case 'text_image':
+      return {
+        ...TEXT_IMAGE_DEFAULTS,
+        imageUrl: null,
         error: null,
       };
     case 'map_art':

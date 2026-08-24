@@ -23,6 +23,7 @@ import { BookCardNode } from '../../modules/multimodal/components/BookCardNode';
 import { StampCutterNode } from '../../modules/multimodal/components/StampCutterNode';
 import { StickerMakerNode } from '../../modules/multimodal/components/StickerMakerNode';
 import { JournalMakerNode } from '../../modules/multimodal/components/JournalMakerNode';
+import { TextImageNode } from '../../modules/multimodal/components/TextImageNode';
 import { OilPaintNode } from '../../modules/multimodal/components/OilPaintNode';
 import { ImageProcessNode } from '../../modules/multimodal/components/ImageProcessNode';
 import { MapArtNode } from '../../modules/multimodal/components/MapArtNode';
@@ -162,6 +163,14 @@ export interface NodeViewHelpers {
     patch: Record<string, any>,
     undoable?: boolean
   ) => void;
+  /** 文本成图节点：样式更新写入 node.data（离散选择带 undoable 记撤销历史） */
+  handleUpdateTextImageStateFor: (
+    id: string,
+    patch: Record<string, any>,
+    undoable?: boolean
+  ) => void;
+  /** 文本成图节点：导出 PNG data URL 落盘（保存到后端 + 记录数据库历史 + 写回 node.data） */
+  handleExportTextImageFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   /** 湿油彩效果节点：导出 PNG data URL 落盘（保存到后端 + 记录数据库历史 + 写回 node.data） */
   handleExportOilPaintFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   /** 湿油彩效果节点：状态更新写入 node.data（持久化） */
@@ -844,6 +853,28 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           mismatchBadge={mismatchBadge}
           onUpdateState={h.handleUpdateJournalMakerStateFor}
           onExport={h.handleExportJournalFor}
+        />
+      );
+    }
+
+    case 'text_image': {
+      const d = node.data ?? {};
+      return (
+        <TextImageNode
+          key={node.id}
+          {...common}
+          data={d}
+          isFavorited={!!h.favoritedState[node.id]}
+          isPublic={!!h.publishedState[node.id]}
+          isSelected={node.id === h.activeImage?.id}
+          recordDeleted={h.staleRecordIds.has(node.id)}
+          onSelect={h.handleSelectImage}
+          onToggleFavorite={h.handleToggleFavoriteFor}
+          onTogglePublic={h.handleTogglePublicFor}
+          hasDownstream={hasDownstreamOf(node, h.edges)}
+          mismatchBadge={mismatchBadge}
+          onUpdateState={h.handleUpdateTextImageStateFor}
+          onExport={h.handleExportTextImageFor}
         />
       );
     }

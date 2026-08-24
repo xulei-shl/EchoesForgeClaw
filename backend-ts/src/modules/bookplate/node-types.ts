@@ -52,6 +52,8 @@ export const NODE_TYPES = {
   STICKER_MAKER: 'sticker_maker',
   /** 手账制作（多模态工具）：多图拼贴排版（拖移/缩放/旋转/图层/随机布局），合成整张手账页图片 */
   JOURNAL_MAKER: 'journal_maker',
+  /** 文本成图（多模态工具）：输入文字并调整字体/字号/颜色/横竖排/描边与背景，浏览器端渲染为图片输出 */
+  TEXT_IMAGE: 'text_image',
 } as const;
 
 export type NodeType = (typeof NODE_TYPES)[keyof typeof NODE_TYPES];
@@ -339,5 +341,13 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     configurable: false,
     output_type: 'image',
     input_types: ['image', 'text'],
+  },
+  {
+    type: NODE_TYPES.TEXT_IMAGE,
+    name: '文本成图',
+    description: '输入文字并调整字体/字号/颜色/横竖排/描边与背景，浏览器端渲染为图片输出（背景默认透明）',
+    category: 'multimodal',
+    configurable: false,
+    output_type: 'image',
   },
 ];

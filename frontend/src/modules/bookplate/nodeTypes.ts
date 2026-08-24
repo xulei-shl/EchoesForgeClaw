@@ -35,6 +35,7 @@ export const NODE_COLORS: Record<CanvasNodeType, string> = {
   image_process: 'oklch(0.66 0.15 105)',
   sticker_maker: 'oklch(0.72 0.15 340)',
   journal_maker: 'oklch(0.7 0.14 150)',
+  text_image: 'oklch(0.68 0.15 195)',
 };
 
 export interface NodeTemplateDef {
@@ -246,6 +247,14 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     defaultSize: DEFAULT_SIZES.journal_maker,
   },
   {
+    type: 'text_image',
+    name: '文本成图',
+    description: '输入文字并调整字体/字号/颜色/横竖排/描边与背景，渲染为图片输出（背景默认透明）',
+    category: 'multimodal',
+    configurable: false,
+    defaultSize: DEFAULT_SIZES.text_image,
+  },
+  {
     type: 'map_art',
     name: '艺术地图生成',
     description: '基于 prettymaps 服务端生成艺术风格地图图片',
@@ -368,6 +377,8 @@ export const NODE_PORT_TYPES: Record<
   sticker_maker: { output: 'image', inputs: ['image', 'text'] },
   // 手账制作：输出合成的整张手账页图片；可连线多张图片或图书元数据一并作为素材源（连线即输入）
   journal_maker: { output: 'image', inputs: ['image', 'text'] },
+  // 文本成图：手动输入文字渲染为图片（默认透明背景），不接受上游输入
+  text_image: { output: 'image', inputs: [] },
   map_art: { output: 'image', inputs: ['text'] },
   // 中国传统纹样：复合输出——主输出为图片（纹样卡片图），同时产出详情说明文本；
   // 下游按自身接受的输入类型取用（图片分析/图像生成拿图片，文本聚合/AI对话拿文本或两者都拿）

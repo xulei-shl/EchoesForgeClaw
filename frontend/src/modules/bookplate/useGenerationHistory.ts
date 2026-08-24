@@ -61,13 +61,15 @@ export function useGenerationHistory(ctx: GenerationHistoryContext): GenerationH
                 ? '贴纸制作'
                 : imageNode.type === 'journal_maker'
                   ? '手账制作'
-                  : imageNode.type === 'oil_paint'
-                    ? '湿油彩效果'
-                    : imageNode.type === 'image_process'
-                      ? `图片处理 · ${getImageFxEffect(imageNode.data?.effectId).name}`
-                      : typeof imageNode.data?.prompt === 'string'
-                        ? imageNode.data.prompt
-                        : '';
+                  : imageNode.type === 'text_image'
+                    ? '文本成图'
+                    : imageNode.type === 'oil_paint'
+                      ? '湿油彩效果'
+                      : imageNode.type === 'image_process'
+                        ? `图片处理 · ${getImageFxEffect(imageNode.data?.effectId).name}`
+                        : typeof imageNode.data?.prompt === 'string'
+                          ? imageNode.data.prompt
+                          : '';
 
       return {
         stage1: bookNode
@@ -89,7 +91,7 @@ export function useGenerationHistory(ctx: GenerationHistoryContext): GenerationH
                   : undefined,
               agent_steps: promptSteps.length > 0 ? promptSteps : undefined,
             }
-          : (imageNode.type === 'receipt_printer' || imageNode.type === 'book_card' || imageNode.type === 'stamp_cutter' || imageNode.type === 'sticker_maker' || imageNode.type === 'journal_maker' || imageNode.type === 'oil_paint' || imageNode.type === 'image_process')
+          : (imageNode.type === 'receipt_printer' || imageNode.type === 'book_card' || imageNode.type === 'stamp_cutter' || imageNode.type === 'sticker_maker' || imageNode.type === 'journal_maker' || imageNode.type === 'text_image' || imageNode.type === 'oil_paint' || imageNode.type === 'image_process')
             ? { prompt: promptText }
             : undefined,
         stage3: {

@@ -30,6 +30,7 @@ export type NodeType =
   | 'stamp_cutter'
   | 'sticker_maker'
   | 'journal_maker'
+  | 'text_image'
   | 'map_art'
   | 'pattern_search'
   | 'color_search'
@@ -63,6 +64,7 @@ export const NODE_SIZES: Record<NodeType, { width: number; height: number }> = {
 stamp_cutter:       { width: 440, height: 560 },
   sticker_maker:      { width: 440, height: 560 },
   journal_maker:      { width: 500, height: 700 },
+  text_image:         { width: 440, height: 560 },
   map_art:           { width: 460, height: 560 },
   pattern_search:    { width: 440, height: 560 },
   color_search:      { width: 480, height: 620 },

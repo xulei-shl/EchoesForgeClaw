@@ -77,6 +77,7 @@ export function generationNodeTypeLabel(nodeType?: string | null): string {
     stamp_cutter: '邮票截图框',
     sticker_maker: '贴纸制作',
     journal_maker: '手账制作',
+    text_image: '文本成图',
     oil_paint: '湿油彩效果',
     image_process: '图片处理',
     
