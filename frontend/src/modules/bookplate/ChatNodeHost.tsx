@@ -526,6 +526,7 @@ export function ChatNodeHost({
             includeBookCover: settings.includeBookCover !== false,
             includeUpstreamText: settings.includeUpstream !== false,
             includeUpstreamImages: settings.includeUpstreamImages !== false,
+            includeSkills: true,
           },
           h.nodes,
           h.edges,
