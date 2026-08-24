@@ -13,6 +13,7 @@ import { registerAuthRouter } from './api/auth.js';
 import { registerBookplateRouter } from './modules/bookplate/router.js';
 import { userGeneratedDir, userMapPosterDir, userSearchImageDir, userMapArtDir } from './services/image-service.js';
 import { COVERS_DIR } from './modules/bookplate/covers.js';
+import { PREVIEW_DIR, migrateLegacyPreviewFiles } from './services/bifrost-service.js';
 import { registerUsersRouter } from './api/users.js';
 import { registerGenerationsRouter } from './api/generations.js';
 import { registerFavoritesRouter } from './api/favorites.js';
@@ -42,12 +43,12 @@ import { registerAnnotationRouter } from './api/annotation.js';
 const STATIC_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../static');
 
 // ---------------------------------------------------------------------------
-// runtime 公开图片（生成图 runtime/{userId}/generated、封面 runtime/covers）
+// runtime 公开图片（生成图 / 封面 / 地图海报 / 艺术地图 / 检索选中图 / Bifrost 提示词预览图）
 // ---------------------------------------------------------------------------
-// 这两类图片的物理文件在根目录 runtime/ 下（与 skills/workspace 同一运行时目录约定），
+// 物理文件在根目录 runtime/ 下（与 skills/workspace 同一运行时目录约定，部署持久化点），
 // 对外仍沿用 /static 前缀的公开 URL：<img> 无法携带鉴权头、公开画廊需跨用户展示。
-// 仅白名单两个子路径，不暴露 runtime 下 skills/workspace/.agent 等私有数据。
-// 文件名内容寻址（时间戳+随机 / URL 摘要），长缓存安全。
+// 仅白名单子路径，不暴露 runtime 下 skills/workspace/.agent 等私有数据。
+// 文件名内容寻址的（时间戳+随机 / URL 摘要）长缓存安全；同名覆盖的（提示词预览图）仅协商缓存。
 
 const EXT_MIME: Record<string, string> = {
   '.png': 'image/png',
@@ -65,11 +66,11 @@ function safeJoin(root: string, rel: string): string | null {
   return full;
 }
 
-/** 发送图片文件；不存在返回 false。 */
-function sendPublicImage(reply: FastifyReply, full: string | null): boolean {
+/** 发送图片文件；不存在返回 false。cacheable=false 用于内容可变（同名覆盖）的文件：仅协商缓存。 */
+function sendPublicImage(reply: FastifyReply, full: string | null, cacheable = true): boolean {
   if (!full || !existsSync(full) || !statSync(full).isFile()) return false;
   reply.type(EXT_MIME[path.extname(full).toLowerCase()] ?? 'application/octet-stream');
-  reply.header('Cache-Control', 'public, max-age=31536000, immutable');
+  reply.header('Cache-Control', cacheable ? 'public, max-age=31536000, immutable' : 'no-cache');
   reply.send(createReadStream(full));
   return true;
 }
@@ -101,6 +102,15 @@ export async function buildApp() {
     const { file } = request.params as { file: string };
     if (!file || file.includes('..')) return reply.code(404).send();
     if (sendPublicImage(reply, safeJoin(COVERS_DIR, file))) return reply;
+    return reply.code(404).send();
+  });
+
+  // Bifrost 提示词预览图：/static/prompt-previews/{file} → runtime/prompt-previews/{file}
+  // 文件名固定为 {prompt_id}{ext}、重新上传会同 URL 覆盖内容，故仅协商缓存（不可 immutable 长缓存）
+  app.get('/static/prompt-previews/:file', async (request, reply) => {
+    const { file } = request.params as { file: string };
+    if (!file || file.includes('..')) return reply.code(404).send();
+    if (sendPublicImage(reply, safeJoin(PREVIEW_DIR, file), false)) return reply;
     return reply.code(404).send();
   });
 
@@ -146,7 +156,7 @@ export async function buildApp() {
     return reply.code(404).send();
   });
 
-  // 其余 /static 资源（如 bifrost 提示词预览图 prompt-previews）仍由 backend-ts/static/ 提供
+  // 其余 /static 资源由 backend-ts/static/ 提供（构建期静态资源；用户运行时图片均在上方白名单路由 → runtime/）
   await app.register(fastifyStatic, { root: STATIC_DIR, prefix: '/static/' });
 
   // multipart（bifrost 预览图上传）
@@ -154,6 +164,9 @@ export async function buildApp() {
 
   // 启动种子（幂等：admin 账号 + 系统设置 + 默认提示词）
   seedStartup();
+
+  // 旧版预览图目录搬迁（backend-ts/static/prompt-previews → runtime/prompt-previews，幂等）
+  migrateLegacyPreviewFiles();
 
   // 认证（JWT + authenticate/requireAdmin preHandler）与登录
   await registerAuth(app);

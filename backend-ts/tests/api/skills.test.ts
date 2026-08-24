@@ -271,15 +271,15 @@ describe('skill-files 下载', () => {
   it('下载装配后工作区内的文件（workspace_id 定位）', async () => {
     // 重新上传一个带文件的 skill
     await uploadZip(makeSkillZip('demo-skill', { 'output.txt': 'hello file' }));
-    // 模拟 prepare_runtime_workspace：把 skill 装配进节点工作区（.agents/skills/{name}）
+    // 模拟 prepare_runtime_workspace：把 skill 装配进节点工作区（.pi-agent/skills/{name}）
     const ws = nodeWorkspace(uid, 'ws_test_1');
-    const agentsSkills = `${ws}/.agents/skills`;
+    const agentsSkills = `${ws}/.pi-agent/skills`;
     mkdirSync(agentsSkills, { recursive: true });
     cpSync(path.join(RUNTIME_ROOT, String(uid), 'skills', 'demo-skill'), `${agentsSkills}/demo-skill`, { recursive: true });
 
     const res = await app.inject({
       method: 'GET',
-      url: '/api/modules/bookplate/skill-files?path=.agents/skills/demo-skill/output.txt&workspace_id=ws_test_1',
+      url: '/api/modules/bookplate/skill-files?path=.pi-agent/skills/demo-skill/output.txt&workspace_id=ws_test_1',
       headers: { authorization: `Bearer ${token}` },
     });
     expect(res.statusCode).toBe(200);
@@ -288,7 +288,7 @@ describe('skill-files 下载', () => {
     // 未装配的路径（仅存在于登记目录，不在工作区）→ 404
     const miss = await app.inject({
       method: 'GET',
-      url: '/api/modules/bookplate/skill-files?path=.agents/skills/demo-skill/SKILL.md&workspace_id=other_ws',
+      url: '/api/modules/bookplate/skill-files?path=.pi-agent/skills/demo-skill/SKILL.md&workspace_id=other_ws',
       headers: { authorization: `Bearer ${token}` },
     });
     expect(miss.statusCode).toBe(404);

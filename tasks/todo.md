@@ -1,3 +1,80 @@
+# pi agent skill 加载路径修复（.agents/skills → .pi-agent/skills）
+
+> 现象：skill_search 节点 Bifrost 检索的 skill 只登记在 `runtime/{uid}/skills/`，
+> 未进入 `runtime/{uid}/workspace/{chatid}/.pi-agent/skills/`，pi agent 加载不到 skill。
+>
+> 根因（核对 pi 源码 @earendil-works/pi-coding-agent dist/core/package-manager.js
+> `addAutoDiscoveredResources`）：pi 的 skill 自动发现只扫描——
+> ① `{agentDir}/skills`（agentDir=PI_CODING_AGENT_DIR=ws/.pi-agent → **ws/.pi-agent/skills，无条件扫描**）；
+> ② `cwd/.pi/skills` 与 `.agents/skills` 祖先链——**均需 projectTrusted**，
+> headless json 模式无交互授信流程 → 被跳过。
+> 当前 preparePiWorkspace 装配到 ws/.agents/skills/（需授信路径）→ pi 不加载。
+>
+> 修复：装配目标改为 `ws/.pi-agent/skills/{name}`（pi user-scope 技能目录，无需授信）。
+> 两种来源语义不变（计划 plans/runtime-symlink-workspace.md）：Bifrost=软链共享区；上传 zip=真实复制。
+> DIFF_EXCLUDED_PREFIXES 已含 `.pi-agent/`、resolveSkillAbs allowedRoots 已覆盖软链落点 → 下载/差分均无需改。
+
+## 任务清单
+
+- [ ] 1. pi-agent-service.ts：skillsDir 改为 `.pi-agent/skills`，更新头注释与装配注释
+- [ ] 2. tests/api/pi-agent-workspace.test.ts：断言路径同步更新（空 skills 不建 .pi-agent/skills）
+- [ ] 3. tests/api/skills.test.ts：模拟装配路径同步为 .pi-agent/skills（下载放行回归）
+- [ ] 4. 验证：vitest run pi-agent-workspace + skills + pi-sse-wire；typecheck
+
+## 验证记录
+
+| 检查 | 结果 |
+|---|---|
+
+---
+
+# Bifrost 提示词预览图持久化风险消除（迁移到 runtime/）
+
+> 背景：打标备注存 `user_annotations` 表、预览图路径存 `prompt_metadata` 表均无问题；
+> 唯一风险是预览图物理文件在 `backend-ts/static/prompt-previews/`（代码目录内），
+> 若部署重建应用目录仅挂载 `runtime/` + db，文件丢失 → DB 悬空 URL 破图。
+> 其他用户数据（covers / generated / map-posters）均已迁移到根目录 runtime/ 并由白名单路由服务。
+
+## 方案
+
+- 物理位置：`backend-ts/static/prompt-previews/` → 根目录 `runtime/prompt-previews/`
+- URL 前缀不变（`/static/prompt-previews/*`）：DB 无需任何数据迁移
+- 服务方式：fastify-static 通配 → server.ts 白名单精确路由（与 covers 同模式）
+- 旧目录存量文件：启动时幂等搬迁（目标存在则跳过），升级无缝
+- 自愈：列表/详情返回 preview_image 前校验文件存在，缺失则视为无预览图
+
+## 任务清单
+
+- [x] 1. bifrost-service.ts：PREVIEW_DIR 指向 RUNTIME_ROOT/prompt-previews；previewMap 加 existsSync 校验；新增 migrateLegacyPreviewFiles()；更新头注释
+- [x] 2. server.ts：新增 /static/prompt-previews/:file 白名单路由；启动时调用迁移；更新注释
+- [x] 3. 验证：typecheck + bifrost 相关测试（platform.test.ts 预览图上传/删除、annotations）
+- [x] 4. 新增回归测试 tests/api/bifrost-preview-persistence.test.ts（白名单路由 / 防穿越 / 协商缓存 / 搬迁幂等）
+
+## 验证记录
+
+| 检查 | 结果 |
+|---|---|
+| `npx tsc --noEmit` | ✅ EXIT=0 |
+| vitest 全量套件 | ✅ 12 文件 100 用例全过 |
+| E2E 手工实证（一次性脚本，已删） | ✅ GET 200+no-cache / 穿越 404 / 搬迁·同名跳过·幂等 / 搬空清理 |
+| 迁移实现 bug 自查 | ✅ 初版漏 unlinkSync 致旧目录永不清空——已修复（复制成功才删源）并固化为回归测试 |
+
+## 关键决策记录
+
+| 决策 | 结论 |
+|---|---|
+| URL 前缀不变 `/static/prompt-previews/*` | prompt_metadata 与前端零数据迁移，只动物理位置与服务方式 |
+| 缓存策略 | 预览图文件名 `{prompt_id}{ext}` 同名覆盖内容 → 仅协商缓存（no-cache），不可照搬 covers 的 immutable 长缓存，否则换图后浏览器一年不更新 |
+| 同名冲突处理 | runtime 已有同名则保留旧副本不覆盖（宁可冗余不可丢失），旧目录该文件留存导致目录暂不清空属预期 |
+| 失败语义 | 单文件搬迁失败不阻断其余文件与其他启动流程，下次启动幂等重试 |
+
+## 遗留与风险
+
+- 无已知遗留。注意工作区另有用户自己的未提交改动（pi-agent-service / skills 相关），本次未触碰。
+- 会话期间检测到用户侧提交 `45177bec`（含 bifrost-service.ts 中间态），最终修复以工作区未提交增量形式存在，提交时请一并纳入。
+
+---
+
 # Skill Agent（pi）工具调用日志显示排查与修复
 
 > 现象：chat 节点 Skill Agent 模式只有思考过程与最终结果，无工具调用日志。

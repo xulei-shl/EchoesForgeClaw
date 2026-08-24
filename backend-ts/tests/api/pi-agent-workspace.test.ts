@@ -103,7 +103,7 @@ describe('preparePiWorkspace 装配', () => {
     }
   });
 
-  it('空 skills 不创建 .agents/skills；选中的 Bifrost 软链登记与上传真实目录均可装配', () => {
+  it('空 skills 不创建 .pi-agent/skills；选中的 Bifrost 软链登记与上传真实目录均可装配', () => {
     const r0 = preparePiWorkspace(UID, WS_ID, {
       agentId: 1,
       chatModel: CHAT_MODEL,
@@ -111,7 +111,7 @@ describe('preparePiWorkspace 装配', () => {
       skillNames: [],
     });
     expect(r0.mountedSkills).toEqual([]);
-    expect(existsSync(path.join(wsPath(), '.agents'))).toBe(false);
+    expect(existsSync(path.join(wsPath(), '.pi-agent', 'skills'))).toBe(false);
 
     // 共享区 + 用户登记软链（Bifrost 语义）
     const shared = path.join(REAL_SKILLS_ROOT, 'pi-demo-shared');
@@ -134,8 +134,8 @@ describe('preparePiWorkspace 装配', () => {
       });
       expect(r.mountedSkills.sort()).toEqual(['pi-demo-shared', 'pi-demo-upload']);
       expect(r.skippedSkills).toEqual([]);
-      const mountedShared = path.join(wsPath(), '.agents', 'skills', 'pi-demo-shared');
-      const mountedUpload = path.join(wsPath(), '.agents', 'skills', 'pi-demo-upload');
+      const mountedShared = path.join(wsPath(), '.pi-agent', 'skills', 'pi-demo-shared');
+      const mountedUpload = path.join(wsPath(), '.pi-agent', 'skills', 'pi-demo-upload');
       expect(existsSync(path.join(mountedShared, 'SKILL.md'))).toBe(true);
       expect(existsSync(path.join(mountedUpload, 'SKILL.md'))).toBe(true);
       // 上传件保持「工作区内真实目录」语义

@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { copyFileSync, existsSync, mkdirSync, readdirSync, rmdirSync, statSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, rmdirSync, statSync, unlinkSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { DB } from '../config/database.js';
 import { appSettings, promptMetadata } from '../db/schema.js';
@@ -253,11 +253,16 @@ export function migrateLegacyPreviewFiles(): void {
   try {
     mkdirSync(PREVIEW_DIR, { recursive: true });
     for (const name of readdirSync(LEGACY_PREVIEW_DIR)) {
-      const source = path.join(LEGACY_PREVIEW_DIR, name);
-      if (!statSync(source).isFile()) continue;
-      const target = path.join(PREVIEW_DIR, name);
-      if (existsSync(target)) continue;
-      copyFileSync(source, target);
+      try {
+        const source = path.join(LEGACY_PREVIEW_DIR, name);
+        if (!statSync(source).isFile()) continue;
+        const target = path.join(PREVIEW_DIR, name);
+        if (existsSync(target)) continue; // 同名冲突：保留旧副本，宁可冗余不可丢失
+        copyFileSync(source, target);
+        unlinkSync(source); // 复制成功后才删源；失败则旧目录搬不空，下次启动重试
+      } catch {
+        /* 单文件失败不阻断其余文件搬迁 */
+      }
     }
     if (!readdirSync(LEGACY_PREVIEW_DIR).length) rmdirSync(LEGACY_PREVIEW_DIR);
   } catch {

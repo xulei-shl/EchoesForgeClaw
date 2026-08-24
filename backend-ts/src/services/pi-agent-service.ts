@@ -24,7 +24,7 @@ import {
 /**
  * pi CLI Skill Agent 执行器（chat 节点第三模式）。
  *
- * 运行模型：每次对话把 admin 提示词（AGENTS.md 软链）、选中 skills（.agents/skills/ 软链/复制）、
+ * 运行模型：每次对话把 admin 提示词（AGENTS.md 软链）、选中 skills（.pi-agent/skills/ 软链/复制）、
  * 对话大模型（.pi-agent/models.json）与绘图模型（.pi-agent/settings.json 的 pi-image-gen 段）
  * 装配进 runtime/{uid}/workspace/{chatid}/，以该目录为 cwd 子进程运行：
  *
@@ -144,7 +144,9 @@ function isValidSkillName(name: string): boolean {
 /**
  * 装配 pi 运行时工作区（幂等）：
  * - AGENTS.md：真实提示词文件存在 → 软链到工作区根（否则清理残留链接）；
- * - .agents/skills/{name}：登记为软链（Bifrost 共享包）→ 软链共享区；真实目录（上传）→ 复制；
+ * - .pi-agent/skills/{name}：登记为软链（Bifrost 共享包）→ 软链共享区；真实目录（上传）→ 复制。
+ *   目标目录必须是 .pi-agent/skills/：这是 pi 的 user-scope 技能目录（agentDir=PI_CODING_AGENT_DIR），
+ *   无条件扫描；.agents/skills 属 project scope，需 project trust，headless json 模式下不会加载；
  * - .pi-agent/models.json：对话模型物化（provider=bookforge）；
  * - .pi-agent/settings.json：pi-image-gen 段物化（defaultModel + customProviders.bookforge）。
  */
@@ -163,10 +165,10 @@ export function preparePiWorkspace(
     symlinkOrCopy(realAgentsMd, wsAgentsMd);
   }
 
-  // 2) skills 条件装配（仅显式选中项）
+  // 2) skills 条件装配（仅显式选中项；目录口径见 preparePiWorkspace 注释——必须 .pi-agent/skills）
   const mountedSkills: string[] = [];
   const skippedSkills: string[] = [];
-  const skillsDir = path.join(ws, '.agents', 'skills');
+  const skillsDir = path.join(ws, '.pi-agent', 'skills');
   rmSync(skillsDir, { recursive: true, force: true });
   if (opts.skillNames.length) {
     mkdirSync(skillsDir, { recursive: true });
