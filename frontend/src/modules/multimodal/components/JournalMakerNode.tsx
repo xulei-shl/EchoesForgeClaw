@@ -14,6 +14,8 @@ import {
   ArrowDown,
   ChevronsUp,
   ChevronsDown,
+  RotateCcw,
+  RotateCw,
   Type,
 } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
@@ -42,6 +44,8 @@ import {
   defaultTextPlacement,
   nextJournalItemId,
   randomizeLayout,
+  snapRotateCw,
+  snapRotateCcw,
   composeJournalPage,
   DEFAULT_TEXT,
   DEFAULT_FONT_FAMILY,
@@ -404,6 +408,18 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
     commit({ items: nextItems }, true);
   };
 
+  // 旋转操作：顺时针/逆时针步进 90 度并自动对齐摆正
+  const rotateStepItem = (itemId: string, direction: 'cw' | 'ccw') => {
+    if (hasDownstream) return;
+    const nextItems = items.map((it) => {
+      if (it.id !== itemId) return it;
+      const nextAngle = direction === 'cw' ? snapRotateCw(it.angle) : snapRotateCcw(it.angle);
+      return { ...it, angle: nextAngle };
+    });
+    setItems(nextItems);
+    commit({ items: nextItems }, true);
+  };
+
   // 随机布局：位置/大小/旋转/z 序全量重排
   const handleRandomize = () => {
     if (items.length === 0 || hasDownstream) return;
@@ -681,6 +697,29 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
             </button>
           </Tooltip>
         ))}
+        <div className="w-px h-3 bg-paper-grid/50 my-auto mx-0.5" />
+        <Tooltip content="逆时针旋转 90° (摆正)">
+          <button
+            type="button"
+            disabled={hasDownstream}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => rotateStepItem(item.id, 'ccw')}
+            className="p-1 rounded text-ink-light hover:text-accent hover:bg-paper-grid/40 active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out disabled:opacity-40"
+          >
+            <RotateCcw size={12} strokeWidth={1.8} />
+          </button>
+        </Tooltip>
+        <Tooltip content="顺时针旋转 90° (摆正)">
+          <button
+            type="button"
+            disabled={hasDownstream}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => rotateStepItem(item.id, 'cw')}
+            className="p-1 rounded text-ink-light hover:text-accent hover:bg-paper-grid/40 active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out disabled:opacity-40"
+          >
+            <RotateCw size={12} strokeWidth={1.8} />
+          </button>
+        </Tooltip>
         <div className="w-px h-3 bg-paper-grid/50 my-auto mx-0.5" />
         <Tooltip content="移除该素材">
           <button
@@ -1115,6 +1154,7 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                             }}
                             onDelete={() => deleteItem(selectedItem)}
                             onBumpLayer={(mode) => bumpLayer(selectedItem.id, mode)}
+                            onRotateStep={(mode) => rotateStepItem(selectedItem.id, mode)}
                           />
                         </div>
                       )}

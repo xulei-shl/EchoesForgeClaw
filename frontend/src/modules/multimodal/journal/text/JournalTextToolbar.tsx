@@ -9,6 +9,8 @@ import {
   ArrowDown,
   ChevronsUp,
   ChevronsDown,
+  RotateCcw,
+  RotateCw,
 } from 'lucide-react';
 import { Tooltip } from '../../../../platform/components/ui/Tooltip';
 import type { JournalMakerItem } from '../types';
@@ -22,6 +24,7 @@ interface JournalTextToolbarProps {
   onOpenEdit: () => void;
   onDelete: () => void;
   onBumpLayer: (mode: 'up' | 'down' | 'top' | 'bottom') => void;
+  onRotateStep?: (mode: 'cw' | 'ccw') => void;
 }
 
 export const JournalTextToolbar: React.FC<JournalTextToolbarProps> = ({
@@ -31,6 +34,7 @@ export const JournalTextToolbar: React.FC<JournalTextToolbarProps> = ({
   onOpenEdit,
   onDelete,
   onBumpLayer,
+  onRotateStep,
 }) => {
   const currentFont = item.fontFamily || DEFAULT_FONT_FAMILY;
   const currentColor = item.color || DEFAULT_TEXT_COLOR;
@@ -115,6 +119,30 @@ export const JournalTextToolbar: React.FC<JournalTextToolbarProps> = ({
             </button>
           </Tooltip>
         ))}
+
+        <div className="w-px h-3.5 bg-paper-grid/60 my-auto shrink-0" />
+
+        {/* 旋转 90 度（自动摆正） */}
+        <Tooltip content="逆时针旋转 90° (摆正)">
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => onRotateStep?.('ccw')}
+            className="p-1 rounded text-ink-light hover:text-accent hover:bg-paper-grid/40 active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out disabled:opacity-40"
+          >
+            <RotateCcw size={12} strokeWidth={1.8} />
+          </button>
+        </Tooltip>
+        <Tooltip content="顺时针旋转 90° (摆正)">
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => onRotateStep?.('cw')}
+            className="p-1 rounded text-ink-light hover:text-accent hover:bg-paper-grid/40 active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out disabled:opacity-40"
+          >
+            <RotateCw size={12} strokeWidth={1.8} />
+          </button>
+        </Tooltip>
 
         <div className="w-px h-3.5 bg-paper-grid/60 my-auto shrink-0" />
 

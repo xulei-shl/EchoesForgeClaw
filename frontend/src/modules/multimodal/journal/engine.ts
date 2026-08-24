@@ -60,6 +60,42 @@ export function randomizeLayout(items: JournalMakerItem[]): JournalMakerItem[] {
   }));
 }
 
+/** 角度标准化到 [0, 360) 区间 */
+export function normalizeAngle(angle: number): number {
+  const a = angle % 360;
+  return a < 0 ? a + 360 : a;
+}
+
+/**
+ * 顺时针旋转并对齐到下一个 90 度的倍数（自动摆正）
+ * @param angle 当前角度 (deg)
+ * @returns 对齐后的角度 [0, 360)
+ */
+export function snapRotateCw(angle: number): number {
+  const norm = normalizeAngle(angle);
+  const rounded = Math.round(norm);
+  // 如果已非常接近整 90 度倍数（误差 < 0.5 度），则直接 +90 度
+  if (rounded % 90 === 0 && Math.abs(norm - rounded) < 0.5) {
+    return (rounded + 90) % 360;
+  }
+  return (Math.floor(norm / 90) * 90 + 90) % 360;
+}
+
+/**
+ * 逆时针旋转并对齐到上一个 90 度的倍数（自动摆正）
+ * @param angle 当前角度 (deg)
+ * @returns 对齐后的角度 [0, 360)
+ */
+export function snapRotateCcw(angle: number): number {
+  const norm = normalizeAngle(angle);
+  const rounded = Math.round(norm);
+  // 如果已非常接近整 90 度倍数（误差 < 0.5 度），则直接 -90 度
+  if (rounded % 90 === 0 && Math.abs(norm - rounded) < 0.5) {
+    return (rounded - 90 + 360) % 360;
+  }
+  return (Math.ceil(norm / 90) * 90 - 90 + 360) % 360;
+}
+
 async function loadImage(src: string): Promise<HTMLImageElement> {
   const image = new Image();
   image.decoding = 'async';
