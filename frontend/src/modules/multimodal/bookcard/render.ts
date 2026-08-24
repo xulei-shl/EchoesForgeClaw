@@ -12,18 +12,22 @@
  */
 
 import { toPng } from 'html-to-image';
-import { LOGO_SHL, LOGO_ZI, TRANSPARENT_PIXEL } from './assets';
+import { LOGO_SHL, LOGO_ZI, TPL_BG_MAP, TRANSPARENT_PIXEL } from './assets';
 import type { CardFields } from './fields';
 
 /** 显式截图根标记（模板可加 data-card-root 等属性精确指定） */
 const EXPLICIT_ROOT_SELECTOR = '[data-card-root], [data-export-root], [data-screenshot-root]';
 
-/** 兜底选择器（移植 Python LEGACY_ROOT_SELECTORS；命中多个时取可见面积最大者） */
-const FALLBACK_ROOT_SELECTORS = [
+/** 顶级卡片根容器选择器（按特异性从外到内优先查找顶级卡片包裹器） */
+const TOP_CARD_SELECTORS = [
+  '.layout-wrapper',
+  '.poster-container',
+  '.poster-card',
+  '.swiss-card',
   '.library-card',
   '.book-card',
+  '.bento-grid',
   '.archive-wrapper',
-  '.layout-wrapper',
   '.container',
   '.card',
 ];
@@ -62,61 +66,101 @@ function resolveTemplateAsset(file: string, input: BuildCardHtmlInput): string {
   return TRANSPARENT_PIXEL;
 }
 
-/** 填充占位符 + 改写 pic/* 资源引用，产出最终可渲染 HTML */
+/** 填充占位符 + 改写 pic/* 与外部 COS 资源引用，产出最终可渲染 HTML */
 export function buildCardHtml(input: BuildCardHtmlInput): string {
   let html = input.templateHtml;
   for (const [key, value] of Object.entries(input.fields)) {
     html = html.replace(new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'g'), value ?? '');
   }
-  // 同时覆盖 src="pic/x"、url(pic/x)、onerror 回退等所有出现位置（含 ../pic/x 变体）
-  html = html.replace(/(?:\.\.\/)?pic\/([\w.-]+)/g, (_m, file: string) =>
-    resolveTemplateAsset(file, input)
-  );
-  return html;
-}
-/** 确定性解析截图根元素：显式标记优先，兜底取固定选择器中可见面积最大者 */
-export function getCardRootElement(doc: Document): HTMLElement {
-  const explicit = doc.querySelector<HTMLElement>(EXPLICIT_ROOT_SELECTOR);
-  if (explicit && explicit.offsetWidth > 1 && explicit.offsetHeight > 1) return explicit;
 
-  let best: HTMLElement | null = null;
-  let bestArea = 0;
-  for (const selector of FALLBACK_ROOT_SELECTORS) {
-    for (const el of Array.from(doc.querySelectorAll<HTMLElement>(selector))) {
-      const area = el.offsetWidth * el.offsetHeight;
-      const style = doc.defaultView?.getComputedStyle(el);
-      if (!style || style.display === 'none' || style.visibility === 'hidden') continue;
-      if (el.offsetWidth <= 60 || el.offsetHeight <= 60) continue;
-      if (area > bestArea) {
-        best = el;
-        bestArea = area;
-      }
+  // 1. 规范化所有 CSS url(...)：未加引号的统一加上单引号
+  html = html.replace(/url\(\s*(?!['"])([^)]+?)\s*\)/g, "url('$1')");
+
+  // 2. 先替换外部腾讯云 COS 背景图（防止被后面的 pic/* 规则误伤 /mdpic/）
+  html = html.replace(
+    /https?:\/\/xulei-pic-1258542021\.cos\.ap-shanghai\.myqcloud\.com\/mdpic\/([^"')\s]+)/g,
+    (_m, rawFilename: string) => {
+      const decoded = decodeURIComponent(rawFilename).toLowerCase();
+      const localAsset =
+        TPL_BG_MAP[rawFilename] ||
+        TPL_BG_MAP[decoded] ||
+        TPL_BG_MAP[rawFilename.toLowerCase()];
+      return localAsset || _m;
     }
-  }
-  return best ?? (doc.body.firstElementChild as HTMLElement | null) ?? doc.body;
-}
+  );
 
-/** 供预览组件测量卡片根元素自然尺寸（与导出同一套根解析逻辑，保证所见即所得） */
-export function measureCardRoot(doc: Document): { width: number; height: number } {
-  const root = getCardRootElement(doc);
-  const rect = root.getBoundingClientRect();
-  return {
-    width: Math.max(1, Math.round(rect.width) || root.offsetWidth),
-    height: Math.max(1, Math.round(rect.height) || root.offsetHeight),
-  };
+  // 3. 严格匹配模板内置相对资源引用（如 src="pic/x"、url('pic/x')、../pic/x 等，避免误伤其他 URL）
+  html = html.replace(/(?:^|["'(\s])(?:\.\.\/)?pic\/([\w.-]+)/g, (fullMatch, file: string) => {
+    const prefix = fullMatch.startsWith('../') ? '' : fullMatch.slice(0, fullMatch.indexOf('pic/'));
+    return `${prefix}${resolveTemplateAsset(file, input)}`;
+  });
+
+  return html;
 }
 
 /**
- * 预览文档预处理：清除 body 默认边距并禁用滚动，
- * 使卡片根元素对齐 iframe 左上角、滚动条不进入预览（导出路径不做此处理，
- * 元素级截图本就不含 body 边距，两侧所见仍一致）。
+ * 确定性解析截图根元素：
+ * 1. 显式标记优先（[data-card-root] 等）
+ * 2. 顶级已知卡片选择器优先（命中即作为根卡片，避免误取内部子元素）
+ * 3. 兜底取 body 的第一个子元素（面积 > 40000）或 body 自身
+ */
+export function getCardRootElement(doc: Document): HTMLElement {
+  // 1. 显式标记优先
+  const explicit = doc.querySelector<HTMLElement>(EXPLICIT_ROOT_SELECTOR);
+  if (explicit && explicit.offsetWidth > 10 && explicit.offsetHeight > 10) return explicit;
+
+  // 2. 顶级卡片根容器选择器（按优先级查找最外层卡片容器）
+  for (const selector of TOP_CARD_SELECTORS) {
+    const el = doc.querySelector<HTMLElement>(selector);
+    if (el && el.offsetWidth > 100 && el.offsetHeight > 100) {
+      return el;
+    }
+  }
+
+  // 3. 兜底：取 body 的第一个可见子容器
+  const firstChild = doc.body.firstElementChild as HTMLElement | null;
+  if (firstChild && firstChild.offsetWidth > 100 && firstChild.offsetHeight > 100) {
+    return firstChild;
+  }
+
+  return doc.body;
+}
+
+/** 供预览与导出组件测量卡片根元素自然尺寸（与导出同一套根解析逻辑，保证所见即所得） */
+export function measureCardRoot(doc: Document): { width: number; height: number } {
+  const root = getCardRootElement(doc);
+  const rect = root.getBoundingClientRect();
+  const width = Math.max(1, Math.round(rect.width) || root.offsetWidth);
+  const height = Math.max(1, Math.round(rect.height) || root.offsetHeight);
+  return { width, height };
+}
+
+/**
+ * 预览与导出文档预处理：清除 body 默认边距并禁用滚动，
+ * 注入 base href 确保 iframe 内部的静态资源 URL 正确解析。
  */
 export function prepareCardDocument(doc: Document): void {
   if (!doc.head) return;
+  if (!doc.head.querySelector('base')) {
+    const base = doc.createElement('base');
+    base.href = typeof window !== 'undefined' ? `${window.location.origin}/` : '/';
+    doc.head.prepend(base);
+  }
   if (!doc.head.querySelector('style[data-card-preview]')) {
     const style = doc.createElement('style');
     style.setAttribute('data-card-preview', '1');
-    style.textContent = 'html, body { margin: 0 !important; padding: 0 !important; overflow: hidden !important; }';
+    style.textContent = `
+      html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+        background: transparent !important;
+        width: max-content !important;
+        height: max-content !important;
+        min-width: 0 !important;
+        min-height: 0 !important;
+      }
+    `;
     doc.head.appendChild(style);
   }
 }
@@ -131,30 +175,61 @@ function nextFrame(win: Window | null): Promise<void> {
   });
 }
 
-/** 等待字体与全部 <img> 就绪（单图超时 8s，不因个别资源失败而中断）；预览与导出共用 */
+/**
+ * 等待字体、全部 <img> 与 CSS 背景图就绪（单图超时 8s，不因个别资源失败而中断）；预览与导出共用
+ */
 export async function waitForCardAssets(doc: Document): Promise<void> {
   try {
     await doc.fonts?.ready;
   } catch {
     /* 字体接口不可用时忽略 */
   }
-  await Promise.all(
-    Array.from(doc.images).map((img) => {
-      if (img.complete) {
-        return img.decode?.().catch(() => {}) ?? Promise.resolve();
+
+  // 1. 等待全部 <img>
+  const imgPromises = Array.from(doc.images).map((img) => {
+    if (img.complete) {
+      return img.decode?.().catch(() => {}) ?? Promise.resolve();
+    }
+    return new Promise<void>((resolve) => {
+      const done = () => {
+        img.decode?.().catch(() => {});
+        resolve();
+      };
+      img.addEventListener('load', done, { once: true });
+      img.addEventListener('error', done, { once: true });
+      window.setTimeout(resolve, 8000);
+    });
+  });
+
+  // 2. 等待 CSS background-image
+  const win = doc.defaultView || window;
+  const bgPromises: Promise<void>[] = [];
+  const allElements = Array.from(doc.querySelectorAll<HTMLElement>('*')).slice(0, 300);
+  for (const el of allElements) {
+    try {
+      const bg = win.getComputedStyle(el).backgroundImage;
+      if (bg && bg !== 'none' && bg.startsWith('url(')) {
+        const urlMatch = bg.match(/url\(['"]?([^'")]+)['"]?\)/);
+        if (urlMatch && urlMatch[1] && !urlMatch[1].startsWith('data:')) {
+          const imgUrl = urlMatch[1];
+          bgPromises.push(
+            new Promise<void>((resolve) => {
+              const img = new Image();
+              img.onload = () => resolve();
+              img.onerror = () => resolve();
+              img.src = imgUrl;
+              window.setTimeout(resolve, 5000);
+            })
+          );
+        }
       }
-      return new Promise<void>((resolve) => {
-        const done = () => {
-          img.decode?.().catch(() => {});
-          resolve();
-        };
-        img.addEventListener('load', done, { once: true });
-        img.addEventListener('error', done, { once: true });
-        window.setTimeout(resolve, 8000);
-      });
-    })
-  );
-  await nextFrame(doc.defaultView);
+    } catch {
+      // 忽略无法读取样式的元素
+    }
+  }
+
+  await Promise.all([...imgPromises, ...bgPromises]);
+  await nextFrame(win);
 }
 
 function createOffscreenIframe(): HTMLIFrameElement {
@@ -163,13 +238,14 @@ function createOffscreenIframe(): HTMLIFrameElement {
   iframe.setAttribute('sandbox', 'allow-same-origin allow-scripts');
   Object.assign(iframe.style, {
     position: 'fixed',
-    left: '-100000px',
+    left: '0',
     top: '0',
-    width: '1440px',
-    height: '2000px',
+    width: '1920px',
+    height: '1920px',
     border: '0',
     opacity: '0',
     pointerEvents: 'none',
+    zIndex: '-9999',
   } satisfies Partial<CSSStyleDeclaration>);
   return iframe;
 }
@@ -215,6 +291,7 @@ export async function renderCardToDataUrl(html: string, options?: RenderCardOpti
     await loadSrcdoc(iframe, html);
     const doc = iframe.contentDocument;
     if (!doc?.body) throw new Error('卡片页面未能渲染');
+    prepareCardDocument(doc);
     await waitForCardAssets(doc);
 
     const root = getCardRootElement(doc);
@@ -223,13 +300,18 @@ export async function renderCardToDataUrl(html: string, options?: RenderCardOpti
     const height = Math.max(1, Math.round(rect.height));
     if (!width || !height) throw new Error('未找到有效的卡片区域');
 
+    // 动态将 iframe 尺寸调整为目标卡片的实际宽高，消除滚动条与负坐标偏移
+    iframe.style.width = `${width}px`;
+    iframe.style.height = `${height}px`;
+    await nextFrame(doc.defaultView);
+
     const dataUrl = await toPng(root, {
       pixelRatio,
       width,
       height,
-      cacheBust: false,
+      cacheBust: true,
     });
-    if (!dataUrl.startsWith('data:image/png')) {
+    if (!dataUrl || !dataUrl.startsWith('data:image/png')) {
       throw new Error('卡片截图输出为空');
     }
     return dataUrl;
@@ -246,3 +328,4 @@ export async function downloadBookCardImage(html: string): Promise<void> {
   link.download = `图书卡片-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.png`;
   link.click();
 }
+

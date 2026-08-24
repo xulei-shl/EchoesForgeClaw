@@ -15,27 +15,28 @@
 export const TRANSPARENT_PIXEL =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 
-const assetModules = import.meta.glob('../../../assets/card-decor/*.{png,jpg,jpeg,webp,svg}', {
-  query: '?url',
-  import: 'default',
-  eager: true,
-}) as Record<string, string>;
-
-const assetsByName = new Map<string, string>(
-  Object.entries(assetModules).map(([path, url]) => [path.split('/').pop()!, url])
+/** 装饰性背景图池（b-1.png ~ b-46.png） */
+export const DECOR_IMAGES: string[] = Array.from(
+  { length: 46 },
+  (_, i) => `/card-decor/b-${i + 1}.png`
 );
 
-/** 装饰性背景图池（b-*.png 等，不含 logo） */
-export const DECOR_IMAGES: string[] = [...assetsByName.entries()]
-  .filter(([name]) => !/^logo/i.test(name))
-  .sort(([a], [b]) => a.localeCompare(b))
-  .map(([, url]) => url);
+/** 图书馆主 Logo（pic/logo_shl.png） */
+export const LOGO_SHL = '/card-decor/logo_shl.png';
 
-/** 图书馆主 Logo（pic/logo_shl.png），未提供素材时为透明像素 */
-export const LOGO_SHL: string = assetsByName.get('logo_shl.png') ?? TRANSPARENT_PIXEL;
+/** 图书馆子 Logo（pic/logozi_shl.jpg） */
+export const LOGO_ZI = '/card-decor/logozi_shl.jpg';
 
-/** 图书馆子 Logo（pic/logozi_shl.jpg），未提供素材时为透明像素 */
-export const LOGO_ZI: string = assetsByName.get('logozi_shl.jpg') ?? TRANSPARENT_PIXEL;
+/** 模板内置背景图映射（同源 public 静态资源，彻底消除跨域与破图） */
+export const TPL_BG_MAP: Record<string, string> = {
+  'wmremove-transformed.png': '/card-decor/tpl-cat.png',
+  'backup.png': '/card-decor/tpl-handbook.png',
+  '%e5%9b%be%e7%89%87%e5%a4%84%e7%90%86.png': '/card-decor/tpl-lines.png',
+  '图片处理.png': '/card-decor/tpl-lines.png',
+  'bg-circuit.png': '/card-decor/tpl-circuit.png',
+  '%e5%be%ae%e4%bf%a1%e5%9b%be%e7%89%87_20251205192936.jpg': '/card-decor/tpl-sky.jpg',
+  '微信图片_20251205192936.jpg': '/card-decor/tpl-sky.jpg',
+};
 
 /** 装饰图是否可用（决定「换一张」按钮可用性） */
 export const hasDecorImages = (): boolean => DECOR_IMAGES.length > 0;

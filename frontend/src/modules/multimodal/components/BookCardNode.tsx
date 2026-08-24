@@ -14,9 +14,11 @@ import {
   getBookCardTemplate,
   hasDecorImages,
   measureCardRoot,
+  prepareCardDocument,
   randomDecorIndex,
   renderCardToDataUrl,
   resolveCardFields,
+  waitForCardAssets,
 } from '../bookcard';
 import type { BookCardState } from '../bookcard';
 
@@ -112,7 +114,10 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
     upstreamBookData?.cover_image_local || upstreamBookData?.cover_image || upstreamBookData?.coverUrl || null;
 
   // 装饰图：图池按下标取（对应原 card_generator 从文件夹随机选 b-*.png）
-  const decorUrl = DECOR_IMAGES.length > 0 ? DECOR_IMAGES[((decorIndex ?? 0) % DECOR_IMAGES.length + DECOR_IMAGES.length) % DECOR_IMAGES.length] : null;
+  const decorUrl =
+    DECOR_IMAGES.length > 0
+      ? DECOR_IMAGES[(((decorIndex ?? 0) % DECOR_IMAGES.length) + DECOR_IMAGES.length) % DECOR_IMAGES.length]
+      : null;
 
   // 填充后的 HTML：预览与导出共用同一份字符串（所见即所得由构造保证）。
   // 二维码为异步生成（索书号等字段值 → vufind 链接 data URL），故整体走 effect 而非同步 useMemo。
@@ -151,41 +156,74 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [previewHtml, setPreviewHtml] = useState('');
-  const [cardSize, setCardSize] = useState({ width: 800, height: 1200 });
+  const [cardSize, setCardSize] = useState({ width: 850, height: 1200 });
   const [fitScale, setFitScale] = useState(0.4);
 
   // 输入变化防抖后刷新预览 HTML
   useEffect(() => {
-    const timer = window.setTimeout(() => setPreviewHtml(filledHtml), 300);
+    const timer = window.setTimeout(() => setPreviewHtml(filledHtml), 200);
     return () => window.clearTimeout(timer);
   }, [filledHtml]);
 
-  const remeasureFit = useCallback((natural: { width: number; height: number }) => {
-    setCardSize(natural);
-    const container = containerRef.current;
-    if (!container || !natural.width || !natural.height) return;
-    const scale = Math.min(
-      1,
-      (container.clientWidth - 8) / natural.width,
-      (container.clientHeight - 8) / natural.height
-    );
-    setFitScale(Math.max(0.05, scale));
-  }, []);
+  const remeasureFit = useCallback(
+    (natural?: { width: number; height: number }) => {
+      const targetSize = natural || cardSize;
+      if (natural) {
+        setCardSize(natural);
+      }
+      const container = containerRef.current;
+      if (!container || !targetSize.width || !targetSize.height) return;
+      const padding = 16;
+      const availWidth = Math.max(10, container.clientWidth - padding);
+      const availHeight = Math.max(10, container.clientHeight - padding);
+      const scale = Math.min(1, availWidth / targetSize.width, availHeight / targetSize.height);
+      setFitScale(Math.max(0.05, scale));
+    },
+    [cardSize]
+  );
 
-  const handlePreviewLoad = useCallback(() => {
-    const doc = iframeRef.current?.contentDocument;
-    if (!doc?.body) return;
-    remeasureFit(measureCardRoot(doc));
+  const handlePreviewLoad = useCallback(async () => {
+    const iframe = iframeRef.current;
+    const doc = iframe?.contentDocument;
+    if (!iframe || !doc?.body) return;
+
+    // 1. 注入文档重置样式（消除 body 默认 padding/margin 并解除 100vh 限制）
+    prepareCardDocument(doc);
+
+    // 2. 测量初始自然尺寸（临时给 iframe 宽大测量视口，防止小视口挤压导致换行或变形）
+    iframe.style.width = '1920px';
+    iframe.style.height = '1920px';
+    const initialSize = measureCardRoot(doc);
+    setCardSize(initialSize);
+    iframe.style.width = `${initialSize.width}px`;
+    iframe.style.height = `${initialSize.height}px`;
+    remeasureFit(initialSize);
+
+    // 3. 等待所有图片与字体就绪后再次精确校准（防止异步图片撑开高度）
+    try {
+      await waitForCardAssets(doc);
+      if (iframeRef.current?.contentDocument === doc) {
+        iframe.style.width = '1920px';
+        iframe.style.height = '1920px';
+        const finalSize = measureCardRoot(doc);
+        setCardSize(finalSize);
+        iframe.style.width = `${finalSize.width}px`;
+        iframe.style.height = `${finalSize.height}px`;
+        remeasureFit(finalSize);
+      }
+    } catch {
+      // 忽略图片加载超时
+    }
   }, [remeasureFit]);
 
   // 容器尺寸变化时按当前自然尺寸重算缩放
   useEffect(() => {
     const container = containerRef.current;
     if (!container || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => remeasureFit(cardSize));
+    const observer = new ResizeObserver(() => remeasureFit());
     observer.observe(container);
     return () => observer.disconnect();
-  }, [cardSize, remeasureFit]);
+  }, [remeasureFit]);
 
   // ---------- 交互 ----------
   const runToggle = async (
@@ -331,7 +369,7 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
             onClick={handleShuffleDecor}
             disabled={busy || hasDownstream || !hasDecorImages()}
             title={hasDecorImages() ? '换一张装饰图' : '未提供装饰图素材（放入 src/assets/card-decor/ 后可用）'}
-            className="flex items-center gap-1 text-[11px] text-ink-faint hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex items-center gap-1 text-[11px] text-ink-faint hover:text-accent active:scale-[0.96] transition-transform disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Shuffle size={13} strokeWidth={1.5} />
             换装饰图
@@ -341,25 +379,42 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
         {/* 预览区域：填充后 HTML 的等比缩放实时预览（与导出同一份 HTML 字符串） */}
         <div
           ref={containerRef}
-          className="flex-1 min-h-0 overflow-hidden rounded bg-paper-grid/10 border border-paper-grid/40 flex items-start justify-center"
+          className="flex-1 min-h-0 overflow-hidden rounded bg-paper-grid/10 border border-paper-grid/40 flex items-center justify-center p-2 select-none"
         >
+          {/* 缩放外壳：真实占位大小 = cardSize * fitScale，让 Flex 容器精准居中 */}
           <div
+            className="relative rounded overflow-hidden shadow-md shrink-0 bg-white"
             style={{
-              transform: `scale(${fitScale})`,
-              transformOrigin: 'top left',
-              width: cardSize.width,
-              height: cardSize.height,
+              width: Math.max(1, Math.round(cardSize.width * fitScale)),
+              height: Math.max(1, Math.round(cardSize.height * fitScale)),
             }}
           >
-            <iframe
-              ref={iframeRef}
-              title="图书卡片预览"
-              sandbox="allow-same-origin allow-scripts"
-              srcDoc={previewHtml}
-              onLoad={handlePreviewLoad}
-              className="border-0 bg-white"
-              style={{ width: cardSize.width, height: cardSize.height, pointerEvents: 'none' }}
-            />
+            {/* 内部绝对定位层：真实尺寸 cardSize，以 top left 为原点等比缩小 */}
+            <div
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: cardSize.width,
+                height: cardSize.height,
+                transform: `scale(${fitScale})`,
+                transformOrigin: 'top left',
+              }}
+            >
+              <iframe
+                ref={iframeRef}
+                title="图书卡片预览"
+                sandbox="allow-same-origin allow-scripts"
+                srcDoc={previewHtml}
+                onLoad={handlePreviewLoad}
+                className="border-0 bg-transparent block"
+                style={{
+                  width: cardSize.width,
+                  height: cardSize.height,
+                  pointerEvents: 'none',
+                }}
+              />
+            </div>
           </div>
         </div>
 

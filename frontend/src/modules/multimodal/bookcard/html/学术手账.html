@@ -40,15 +40,23 @@
             position: relative;
             width: 600px;
             height: 800px;
-            /* 背景图 */
-            background-image: url(https://xulei-pic-1258542021.cos.ap-shanghai.myqcloud.com/mdpic/backup.png);
-            background-size: cover;
-            background-position: center;
-            /* box-shadow: 0 20px 40px rgba(0,0,0,0.1);  <-- 移除这个，由父级统一管理阴影 */
             overflow: hidden;
             background-color: #fff;
             flex-shrink: 0; /* 防止被压缩 */
             z-index: 2;
+        }
+
+        .handbook-bg-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: url('https://xulei-pic-1258542021.cos.ap-shanghai.myqcloud.com/mdpic/backup.png');
+            background-size: cover;
+            background-position: center;
+            z-index: 1;
+            pointer-events: none;
         }
 
         .title-group {
@@ -331,6 +339,9 @@
 
         <!-- ================= 左侧：原有卡片 (完全不动) ================= -->
         <div class="library-card">
+            <!-- 独立手账底图层（对齐杂乱线条实现） -->
+            <div class="handbook-bg-layer"></div>
+
             <!-- 1. 标题组 -->
             <div class="title-group">
                 <div class="main-title">{{TITLE}}</div>

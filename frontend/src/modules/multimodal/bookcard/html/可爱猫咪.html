@@ -28,21 +28,44 @@
         .library-card {
             width: var(--card-width);
             height: var(--card-height);
-            background-color: #000;
+            background-color: #0a0a0a;
+            position: relative;
+            overflow: hidden;
             display: flex;
             flex-direction: column;
             padding: 60px 80px; 
-            background: 
-                linear-gradient(135deg, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.7) 50%, rgba(0,0,0,0.92) 100%),
-                url('https://xulei-pic-1258542021.cos.ap-shanghai.myqcloud.com/mdpic/wmremove-transformed.png');
-            background-size: cover;
-            background-position: center;
             border: 1px solid rgba(255,255,255,0.1);
             box-shadow: 0 50px 100px rgba(0,0,0,0.9);
         }
 
+        .cat-bg-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: url('https://xulei-pic-1258542021.cos.ap-shanghai.myqcloud.com/mdpic/wmremove-transformed.png');
+            background-size: cover;
+            background-position: center;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        .cat-overlay-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.25) 50%, rgba(0,0,0,0.65) 100%);
+            z-index: 2;
+            pointer-events: none;
+        }
+
         /* --- Header --- */
         .header {
+            position: relative;
+            z-index: 5;
             display: flex;
             justify-content: space-between;
             border-bottom: 1px solid rgba(255,255,255,0.15);
@@ -64,6 +87,8 @@
 
         /* --- Main Layout --- */
         .main-content {
+            position: relative;
+            z-index: 5;
             flex-grow: 1;
             display: grid;
             grid-template-columns: 340px 1fr;
@@ -165,6 +190,8 @@
 
         /* --- Footer (保留 v6 间距) --- */
         .footer {
+            position: relative;
+            z-index: 5;
             height: 120px; 
             flex-shrink: 0;
             display: flex;
@@ -198,6 +225,10 @@
 <body>
 
     <div class="library-card">
+        <!-- 独立猫咪立体背景图层与光影层（对齐杂乱线条实现） -->
+        <div class="cat-bg-layer"></div>
+        <div class="cat-overlay-layer"></div>
+
         <header class="header">
             <div class="logo">SHANGHAI LIBRARY</div>
             <div class="nav-meta">

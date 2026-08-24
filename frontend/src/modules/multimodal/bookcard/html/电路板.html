@@ -84,14 +84,16 @@
             user-select: none;
         }
 
-        .visual-header img {
+        .circuit-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
             width: 100%;
             height: 100%;
-            object-fit: contain;
-            object-position: center;
-            opacity: 1;
-            display: block;
-            position: relative;
+            background-image: url('https://xulei-pic-1258542021.cos.ap-shanghai.myqcloud.com/mdpic/bg-circuit.png');
+            background-size: contain;
+            background-position: center;
+            background-repeat: no-repeat;
             z-index: 1;
         }
 
@@ -353,7 +355,7 @@
         <!-- 顶部视觉区 -->
         <div class="visual-header">
             <span class="bg-letter">BOOK</span>
-            <img src="https://xulei-pic-1258542021.cos.ap-shanghai.myqcloud.com/mdpic/bg-circuit.png" alt="Header" onerror="this.src='https://placehold.co/900x380/0B2344/CBBF86?text=ARCHITECTURAL+HEADER'">
+            <div class="circuit-bg"></div>
             <div class="visual-overlay"></div>
             <div class="circuit-deco">SYS.2025.READ_ONLY // MODE</div>
         </div>
