@@ -1,8 +1,10 @@
 import path from 'node:path';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, rmdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { DB } from '../config/database.js';
 import { appSettings, promptMetadata } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
+import { RUNTIME_ROOT } from './skill-agent-service.js';
 
 /**
  * Bifrost Prompt Repository 代理服务（对应 Python `app/services/bifrost_service.py`）。
@@ -15,15 +17,21 @@ import { eq } from 'drizzle-orm';
  * 正文提取：提示词内容必须 Commit 成 Version 才存在，取 `latest_version`
  * （缺省回退 versions 数组）。真实结构为 `messages[].message.payload.content`。
  *
- * 预览图：本地存储（static/prompt-previews + prompt_metadata 表），列表/详情合并返回。
+ * 预览图：物理文件在根目录 runtime/prompt-previews（运行时数据目录，与 covers/generated
+ * 同一持久化口径，不随应用目录重建丢失），prompt_metadata 表记录公开 URL，
+ * 列表/详情合并返回；文件缺失（如仅恢复了 DB）时视为无预览图，前端自愈展示「暂无」。
  */
 
 export class BifrostError extends Error {}
 export class BifrostNotConfiguredError extends BifrostError {}
 export class BifrostNotFoundError extends BifrostError {}
 
-const STATIC_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../static');
-export const PREVIEW_DIR = path.join(STATIC_DIR, 'prompt-previews');
+/** 旧版物理位置（代码目录内，升级有丢失风险）；启动时由 migrateLegacyPreviewFiles 搬迁。 */
+const LEGACY_PREVIEW_DIR = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../static/prompt-previews'
+);
+export const PREVIEW_DIR = path.join(RUNTIME_ROOT, 'prompt-previews');
 export const PREVIEW_PREFIX = '/static/prompt-previews';
 export const PREVIEW_MAX_BYTES = 5 * 1024 * 1024;
 
@@ -226,9 +234,35 @@ function previewMap(db: DB, promptIds: string[]): Map<string, string> {
   if (!promptIds.length) return out;
   for (const id of promptIds) {
     const row = db.select().from(promptMetadata).where(eq(promptMetadata.promptId, id)).get();
-    if (row?.previewImage) out.set(id, row.previewImage);
+    if (row?.previewImage) {
+      const filename = row.previewImage.split('/').pop();
+      // 文件缺失（DB 悬空引用）：不返回该 URL，前端展示「暂无预览图」而非破图
+      if (filename && existsSync(path.join(PREVIEW_DIR, filename))) out.set(id, row.previewImage);
+    }
   }
   return out;
+}
+
+/**
+ * 旧部署升级搬迁：backend-ts/static/prompt-previews → runtime/prompt-previews（幂等）。
+ * URL 前缀不变，prompt_metadata 无需数据迁移；目标已存在同名文件则跳过（保留旧副本，宁可冗余不可丢失），
+ * 旧目录搬空后尝试清理。启动时调用。
+ */
+export function migrateLegacyPreviewFiles(): void {
+  if (!existsSync(LEGACY_PREVIEW_DIR)) return;
+  try {
+    mkdirSync(PREVIEW_DIR, { recursive: true });
+    for (const name of readdirSync(LEGACY_PREVIEW_DIR)) {
+      const source = path.join(LEGACY_PREVIEW_DIR, name);
+      if (!statSync(source).isFile()) continue;
+      const target = path.join(PREVIEW_DIR, name);
+      if (existsSync(target)) continue;
+      copyFileSync(source, target);
+    }
+    if (!readdirSync(LEGACY_PREVIEW_DIR).length) rmdirSync(LEGACY_PREVIEW_DIR);
+  } catch {
+    /* 搬迁失败不阻断启动：旧目录仍在时下次启动重试 */
+  }
 }
 
 function compactPrompt(prompt: Record<string, any>, previewImage: string | null): Record<string, any> {
