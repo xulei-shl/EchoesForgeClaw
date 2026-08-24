@@ -1,5 +1,7 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Image as ImageIcon, Loader2, Heart, Globe, Shuffle, Pencil } from 'lucide-react';
+import { PhotoProvider, PhotoView } from 'react-photo-view';
+import 'react-photo-view/dist/react-photo-view.css';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { Select } from '../../../platform/components/ui/Select';
@@ -362,6 +364,50 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
   const hasGeneratedImage = Boolean(data?.imageUrl);
   const busy = isRendering || Boolean(data?.isExporting);
 
+  // 预览区域：填充后 HTML 的等比缩放实时预览（与导出同一份 HTML 字符串）；已生成 PNG 时整块可点击全屏查看
+  const previewArea = (
+    <div
+      ref={containerRef}
+      className={`flex-1 min-h-0 overflow-hidden rounded bg-paper-grid/10 border border-paper-grid/40 flex items-center justify-center p-2 select-none ${data.imageUrl ? 'cursor-zoom-in' : ''}`}
+    >
+      {/* 缩放外壳：真实占位大小 = cardSize * fitScale，让 Flex 容器精准居中 */}
+      <div
+        className="relative rounded overflow-hidden shadow-md shrink-0 bg-white"
+        style={{
+          width: Math.max(1, Math.round(cardSize.width * fitScale)),
+          height: Math.max(1, Math.round(cardSize.height * fitScale)),
+        }}
+      >
+        {/* 内部绝对定位层：真实尺寸 cardSize，以 top left 为原点等比缩小 */}
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: cardSize.width,
+            height: cardSize.height,
+            transform: `scale(${fitScale})`,
+            transformOrigin: 'top left',
+          }}
+        >
+          <iframe
+            ref={iframeRef}
+            title="图书卡片预览"
+            sandbox="allow-same-origin allow-scripts"
+            srcDoc={previewHtml}
+            onLoad={handlePreviewLoad}
+            className="border-0 bg-transparent block"
+            style={{
+              width: cardSize.width,
+              height: cardSize.height,
+              pointerEvents: 'none',
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <CanvasNode
       id={id}
@@ -651,47 +697,14 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
           </div>
         )}
 
-        {/* 预览区域：填充后 HTML 的等比缩放实时预览（与导出同一份 HTML 字符串） */}
-        <div
-          ref={containerRef}
-          className="flex-1 min-h-0 overflow-hidden rounded bg-paper-grid/10 border border-paper-grid/40 flex items-center justify-center p-2 select-none"
-        >
-          {/* 缩放外壳：真实占位大小 = cardSize * fitScale，让 Flex 容器精准居中 */}
-          <div
-            className="relative rounded overflow-hidden shadow-md shrink-0 bg-white"
-            style={{
-              width: Math.max(1, Math.round(cardSize.width * fitScale)),
-              height: Math.max(1, Math.round(cardSize.height * fitScale)),
-            }}
-          >
-            {/* 内部绝对定位层：真实尺寸 cardSize，以 top left 为原点等比缩小 */}
-            <div
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: cardSize.width,
-                height: cardSize.height,
-                transform: `scale(${fitScale})`,
-                transformOrigin: 'top left',
-              }}
-            >
-              <iframe
-                ref={iframeRef}
-                title="图书卡片预览"
-                sandbox="allow-same-origin allow-scripts"
-                srcDoc={previewHtml}
-                onLoad={handlePreviewLoad}
-                className="border-0 bg-transparent block"
-                style={{
-                  width: cardSize.width,
-                  height: cardSize.height,
-                  pointerEvents: 'none',
-                }}
-              />
-            </div>
-          </div>
-        </div>
+        {/* 预览区域：已生成 PNG 时点击整块全屏查看最近一次导出结果 */}
+        {data.imageUrl ? (
+          <PhotoProvider maskOpacity={0.8} bannerVisible={false}>
+            <PhotoView src={data.imageUrl}>{previewArea}</PhotoView>
+          </PhotoProvider>
+        ) : (
+          previewArea
+        )}
 
         {!upstreamBookData && metaFields.length === 0 && Object.keys(extraFields).length === 0 && (
           <div className="text-right text-xs text-ink-faint font-sans">

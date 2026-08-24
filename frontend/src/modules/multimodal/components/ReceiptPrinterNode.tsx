@@ -1,5 +1,7 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Printer, Loader2, Heart, Globe, Sparkles } from 'lucide-react';
+import { Printer, Loader2, Heart, Globe, Sparkles, Maximize2 } from 'lucide-react';
+import { PhotoProvider, PhotoView } from 'react-photo-view';
+import 'react-photo-view/dist/react-photo-view.css';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
@@ -356,15 +358,30 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
           disabled={isExporting || hasDownstream}
         />
 
-        {/* 主体小票预览与就地编辑区域 */}
-        <div className="flex-1 min-h-0 overflow-y-auto px-1 py-1 rounded bg-paper-grid/10 border border-paper-grid/40 flex items-start justify-center">
-          <ReceiptPaper
-            ref={paperRef}
-            state={localState}
-            onChange={handleChange}
-            upstreamImageUrl={effectiveUpstreamImageUrl}
-            disabled={isExporting || hasDownstream}
-          />
+        {/* 主体小票预览与就地编辑区域（已生成 PNG 时右上角浮钮可全屏查看最近一次导出结果） */}
+        <div className="relative flex-1 min-h-0">
+          <div className="h-full overflow-y-auto px-1 py-1 rounded bg-paper-grid/10 border border-paper-grid/40 flex items-start justify-center">
+            <ReceiptPaper
+              ref={paperRef}
+              state={localState}
+              onChange={handleChange}
+              upstreamImageUrl={effectiveUpstreamImageUrl}
+              disabled={isExporting || hasDownstream}
+            />
+          </div>
+          {hasGeneratedImage && !isExporting && data?.imageUrl && (
+            <PhotoProvider maskOpacity={0.8} bannerVisible={false}>
+              <PhotoView src={data.imageUrl}>
+                <button
+                  type="button"
+                  title="查看大图"
+                  className="absolute right-2 top-2 z-20 flex h-7 w-7 items-center justify-center rounded-full bg-paper/90 backdrop-blur shadow-md border border-paper-grid/40 text-ink-light hover:text-accent hover:border-accent/50 transition-colors"
+                >
+                  <Maximize2 size={13} strokeWidth={1.75} />
+                </button>
+              </PhotoView>
+            </PhotoProvider>
+          )}
         </div>
 
         {/* 状态与弱提示（对齐 ImageNode） */}

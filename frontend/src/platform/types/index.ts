@@ -204,7 +204,7 @@ export type CanvasNodeType =
   | 'text_aggregate'
   /** 提示词检索节点：从 Bifrost 提示词库检索选用后供下游节点使用（无需配置） */
   | 'prompt_search'
-  /** Skill 检索节点：从 Bifrost 检索并安装 skill（或上传本地 zip），传入 Skill Agent */
+  /** Skill 检索节点：从 Bifrost 检索或上传本地 skill zip，传入 Skill Agent */
   | 'skill_search'
   /** 万年历节点：查询指定日期的节假日与农历万年历（无需配置） */
   | 'calendar'

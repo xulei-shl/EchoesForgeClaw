@@ -1,5 +1,7 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { PhotoProvider, PhotoView } from 'react-photo-view';
+import 'react-photo-view/dist/react-photo-view.css';
 import {
   Wand2,
   Heart,
@@ -1411,11 +1413,15 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
               >
                 {data.imageUrl ? (
                   <div className="relative max-w-full max-h-full flex items-center justify-center p-2 rounded-2xl bg-white shadow-[0_0_0_0.5px_rgba(0,0,0,0.08),0_16px_48px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03),0_2px_4px_rgba(0,0,0,0.02)]">
-                    <img
-                      src={data.imageUrl}
-                      alt="Journal Output"
-                      className="max-w-full max-h-[500px] rounded-lg object-contain select-none pointer-events-none drop-shadow-sm"
-                    />
+                    <PhotoProvider maskOpacity={0.8} bannerVisible={false}>
+                      <PhotoView src={data.imageUrl}>
+                        <img
+                          src={data.imageUrl}
+                          alt="Journal Output"
+                          className="max-w-full max-h-[500px] rounded-lg object-contain select-none cursor-zoom-in hover:opacity-90 transition-opacity drop-shadow-sm"
+                        />
+                      </PhotoView>
+                    </PhotoProvider>
                   </div>
                 ) : (
                   <div className="text-xs text-ink-faint">暂无手账生成结果</div>

@@ -1,5 +1,7 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { PhotoProvider, PhotoView } from 'react-photo-view';
+import 'react-photo-view/dist/react-photo-view.css';
 import {
   Sparkles,
   Heart,
@@ -694,11 +696,15 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
               >
                 {data.imageUrl ? (
                   <div className="relative group max-w-full max-h-full flex items-center justify-center">
-                    <img
-                      src={data.imageUrl}
-                      alt={`${effect.name}效果结果`}
-                      className="max-w-full max-h-[440px] object-contain drop-shadow-md select-none pointer-events-none rounded"
-                    />
+                    <PhotoProvider maskOpacity={0.8} bannerVisible={false}>
+                      <PhotoView src={data.imageUrl}>
+                        <img
+                          src={data.imageUrl}
+                          alt={`${effect.name}效果结果`}
+                          className="max-w-full max-h-[440px] object-contain drop-shadow-md select-none rounded cursor-zoom-in hover:opacity-90 transition-opacity"
+                        />
+                      </PhotoView>
+                    </PhotoProvider>
                     {!hasDownstream && (
                       <button
                         type="button"
