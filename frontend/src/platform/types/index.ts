@@ -198,13 +198,13 @@ export type CanvasNodeType =
   | 'text'
   /** 图片上传节点：手动上传一张图片（无需配置） */
   | 'image_upload'
-  /** AI 对话节点：多轮对话 AI 助手（可配置绑定 LLM / Agent） */
+  /** AI 对话节点：多轮对话 AI 助手（可绑定 LLM / Agent） */
   | 'chat'
   /** 文本聚合节点：用占位符模板把多个上级文本按自定义格式拼接（无需配置，纯文本变换） */
   | 'text_aggregate'
-  /** 提示词检索节点：从 Bifrost 提示词库检索并选用一条提示词，输出其内容为文本（无需配置） */
+  /** 提示词检索节点：从 Bifrost 提示词库检索选用后供下游节点使用（无需配置） */
   | 'prompt_search'
-  /** Skill 检索节点：从 Bifrost Skills 仓库检索并安装 skill（或上传本地 zip），作为 Skill Agent 的 skill 来源 */
+  /** Skill 检索节点：从 Bifrost 检索并安装 skill（或上传本地 zip），作为 Skill Agent 的 skill 来源 */
   | 'skill_search'
   /** 万年历节点：查询指定日期的节假日与农历万年历（无需配置） */
   | 'calendar'
@@ -234,7 +234,7 @@ export type CanvasNodeType =
   | 'sticker_maker'
   /** 手账制作节点：多图拼贴排版（拖移/缩放/旋转/图层/随机布局），合成整张手账页图片（多模态工具） */
   | 'journal_maker'
-  /** 文本成图节点：输入文字并调整字体/字号/颜色/横竖排/描边与背景，渲染为图片输出（多模态工具，无需配置） */
+  /** 文本成图节点：输入文字并调整字体/字号/颜色等参数，渲染为图片输出（多模态工具，无需配置） */
   | 'text_image'
   /** 艺术地图生成节点：基于 prettymaps 服务端生成艺术风格地图图片（多模态工具） */
   | 'map_art'

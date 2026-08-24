@@ -72,7 +72,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'text_generation',
     name: 'AI 文本生成',
-    description: '基于上游输入流式生成文本内容（支持 LLM / Agent 模式）',
+    description: '基于上游输入流式生成文本内容',
     category: 'generate',
     configurable: true,
     defaultSize: DEFAULT_SIZES.text_generation,
@@ -104,7 +104,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'chat',
     name: 'AI 对话',
-    description: '多轮对话 AI 助手，可绑定大模型或 FastClaw Agent，输出最后一轮回复',
+    description: '多轮对话 AI 助手，可绑定大模型或 Agent',
     category: 'generate',
     configurable: true,
     defaultSize: DEFAULT_SIZES.chat,
@@ -120,7 +120,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'prompt_search',
     name: '提示词检索',
-    description: '从 Bifrost 提示词库检索并选用一条提示词，将其内容作为文本输出',
+    description: '从 Bifrost 提示词库检索选用后供下游节点使用',
     category: 'input',
     configurable: false,
     defaultSize: DEFAULT_SIZES.prompt_search,
@@ -128,7 +128,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'skill_search',
     name: 'Skill 检索',
-    description: '从 Bifrost Skills 仓库检索并安装 skill（或上传本地 zip），作为 Skill Agent 的 skill 来源',
+    description: '从 Bifrost 检索并安装 skill（或上传本地 zip），作为 Skill Agent 的 skill 来源',
     category: 'input',
     configurable: false,
     defaultSize: DEFAULT_SIZES.skill_search,
@@ -217,7 +217,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'book_card',
     name: '图书卡片',
-    description: '将书目元数据与封面图填入 HTML 推广卡片模板，浏览器端截图为图片输出',
+    description: '将元数据与封面图填入 HTML 模板并截图为图片',
     category: 'multimodal',
     configurable: false,
     defaultSize: DEFAULT_SIZES.book_card,
@@ -241,7 +241,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'journal_maker',
     name: '手账制作',
-    description: '多图拼贴排版（拖移/缩放/旋转/图层排序/随机布局），合成整张手账页图片',
+    description: '多图拼贴排版（拖移/缩放/旋转/图层排序/随机布局），合成图片',
     category: 'multimodal',
     configurable: false,
     defaultSize: DEFAULT_SIZES.journal_maker,
@@ -249,7 +249,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'text_image',
     name: '文本成图',
-    description: '输入文字并调整字体/字号/颜色/横竖排/描边与背景，渲染为图片输出（背景默认透明）',
+    description: '输入文字并调整字体/字号/颜色等参数，渲染为图片',
     category: 'multimodal',
     configurable: false,
     defaultSize: DEFAULT_SIZES.text_image,
