@@ -52,11 +52,12 @@ function normalizeTextValue(value: unknown): string {
 }
 
 /** 完整书名：书名 + 副标题（" : " 拼接，移植 models.py full_title） */
-function fullTitle(book: CardBookMetadata): string {
+function fullTitle(book: CardBookMetadata, showSubtitle?: boolean): string {
   const title = normalizeTextValue(book.title);
   const subtitle = normalizeTextValue(book.subtitle);
   if (!title) return subtitle;
-  return subtitle ? `${title} : ${subtitle}` : title;
+  if (!showSubtitle || !subtitle) return title;
+  return `${title} : ${subtitle}`;
 }
 
 /**
@@ -107,15 +108,24 @@ export function parseExtraCardFields(raw?: string | null): CardFields {
   }
 }
 
+/** 取第一位作者（移植 field_transformers.py FirstAuthorTransformer） */
+function firstAuthor(author: string): string {
+  const parts = author.split('/').map((s) => s.trim()).filter(Boolean);
+  if (parts.length <= 1) return author;
+  return `${parts[0]} 等`;
+}
+
 /** 图书元数据 → 模板占位符取值；extra 同名键优先（补充字段覆盖） */
 export function resolveCardFields(
   book: CardBookMetadata | null | undefined,
-  extra?: CardFields | null
+  extra?: CardFields | null,
+  options?: CardFieldOptions | null
 ): CardFields {
   const recommendationSource = normalizeTextValue(book?.summary) || normalizeTextValue(book?.description);
+  const rawAuthor = normalizeTextValue(book?.author);
   const fields: CardFields = {
-    TITLE: fullTitle(book ?? {}),
-    AUTHOR: normalizeTextValue(book?.author),
+    TITLE: fullTitle(book ?? {}, options?.showSubtitle ?? true),
+    AUTHOR: options?.firstAuthorOnly && rawAuthor ? firstAuthor(rawAuthor) : rawAuthor,
     PUBLISHER: normalizeTextValue(book?.publisher),
     PUB_YEAR: normalizeTextValue(book?.pub_year) || normalizeTextValue(book?.publishDate),
     CALL_NUMBER: '',

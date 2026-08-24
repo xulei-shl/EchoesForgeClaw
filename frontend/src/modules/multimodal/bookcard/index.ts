@@ -17,4 +17,4 @@ export {
   type RenderCardOptions,
 } from './render';
 export { DECOR_IMAGES, hasDecorImages, randomDecorIndex } from './assets';
-export type { BookCardState } from './types';
+export type { BookCardState, CardFieldOptions } from './types';

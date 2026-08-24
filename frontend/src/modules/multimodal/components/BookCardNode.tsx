@@ -109,6 +109,14 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
     [id, onUpdateState]
   );
 
+  const fieldOptions = data.fieldOptions ?? {};
+  const patchFieldOption = useCallback(
+    (patch: Partial<BookCardState['fieldOptions']>) => {
+      patchState({ fieldOptions: { ...fieldOptions, ...patch } });
+    },
+    [fieldOptions, patchState]
+  );
+
   // 封面图：直接取图书元数据节点（本地代理图优先，跨域远程图兜底）
   const coverUrl =
     upstreamBookData?.cover_image_local || upstreamBookData?.cover_image || upstreamBookData?.coverUrl || null;
@@ -126,7 +134,7 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const fields = resolveCardFields(upstreamBookData);
+      const fields = resolveCardFields(upstreamBookData, null, fieldOptions);
       let qrcodeUrl: string | null = null;
       if (fields.CALL_NUMBER) {
         try {
@@ -150,7 +158,7 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [templateId, upstreamBookData, coverUrl, decorUrl]);
+  }, [templateId, upstreamBookData, coverUrl, decorUrl, fieldOptions]);
 
   // ---------- 预览（缩放 iframe） ----------
   const containerRef = useRef<HTMLDivElement>(null);
@@ -374,6 +382,29 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
             <Shuffle size={13} strokeWidth={1.5} />
             换装饰图
           </button>
+        </div>
+        {/* 字段处理选项 */}
+        <div className="flex items-center gap-3 px-2 pb-1 text-[11px] text-ink-faint font-sans">
+          <label className="flex items-center gap-1 cursor-pointer select-none hover:text-ink transition-colors">
+            <input
+              type="checkbox"
+              checked={fieldOptions.showSubtitle !== false}
+              disabled={busy}
+              onChange={(e) => patchFieldOption({ showSubtitle: e.target.checked })}
+              className="accent-accent"
+            />
+            副题名
+          </label>
+          <label className="flex items-center gap-1 cursor-pointer select-none hover:text-ink transition-colors">
+            <input
+              type="checkbox"
+              checked={fieldOptions.firstAuthorOnly === true}
+              disabled={busy}
+              onChange={(e) => patchFieldOption({ firstAuthorOnly: e.target.checked })}
+              className="accent-accent"
+            />
+            仅首位作者
+          </label>
         </div>
 
         {/* 预览区域：填充后 HTML 的等比缩放实时预览（与导出同一份 HTML 字符串） */}
