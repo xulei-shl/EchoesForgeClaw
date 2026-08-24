@@ -1,3 +1,41 @@
+# Skill Agent（pi）工具调用日志显示排查与修复
+
+> 现象：chat 节点 Skill Agent 模式只有思考过程与最终结果，无工具调用日志。
+>
+> 排查结论：链路本身无断点。逐环实证——pi json 事件流含 tool_execution_start/end（源码+官方文档）；
+> 后端 runPiAgent 映射 tool_call/tool_result（E2E 真子进程通过）；SSE 线上产出 data-agent_tool_call 等
+> transient part（新增 pi-sse-wire 集成测试）；前端 ai@7/@ai-sdk/react 对 transient chunk 触发 onData
+> （vitest 实测）；onData→appendAgentStep→AgentActivity 渲染条件均正确。
+>
+> 根因：① 用户实测会话（runtime/1/workspace/chat-1787554683968-txvlst）中模型两轮均未发起工具调用
+> （裸 pi、无 AGENTS.md、无 skill 装配，模型直接回答），无事件即无日志；② AgentActivity 默认折叠，
+> 即使有日志也藏在折叠条内，感知为「没显示」。
+>
+> 修复：AgentActivity 运行中自动展开（用户手动开合优先；结束后未操作则收起为摘要条）。
+
+## 任务清单
+
+- [x] 1. 核对 pi 源码/文档（docs/skill-agent）确认 json 模式事件类型与映射一致
+- [x] 2. 新增 backend-ts/tests/api/pi-sse-wire.test.ts：真实 pi 子进程 + chatStreamToResponse 映射 → 断言 SSE 线上出现 data-agent_tool_call / data-agent_tool_result / data-agent_file
+- [x] 3. 前端 AgentActivity.tsx 运行中自动展开工具日志
+- [x] 4. 验证：backend vitest 3 文件 9 用例全过；frontend oxlint + tsc/vite build 通过
+
+## 验证记录
+
+| 检查 | 结果 |
+|---|---|
+| `npx vitest run tests/api/pi-sse-wire.test.ts pi-agent-run pi-agent-workspace` | ✅ 3 passed (9 tests) |
+| 线上 chunk 序列（绘图轮） | ✅ tool_call → tool_result → text-* → agent_file → finish（transient=true） |
+| frontend `npm run lint` / `npm run build` | ✅ 通过（仅既有 maplibre/chunk 告警） |
+| 浏览器实际交互 | ⚠️ 本环境无法启动浏览器，需画板实操确认展开效果 |
+
+## 遗留与建议
+
+- 若期望模型更积极调用工具：给节点绑定提示词（AGENTS.md）并在上游 skill_search 勾选技能；纯问候类问题模型无需工具属正常行为。
+- 可选增强（未实施）：pi 的 tool_execution_update（bash 长任务部分输出）可映射为 status 进度，但需防刷屏。
+
+---
+
 # 结果图点击全屏（react-photo-view）— 四节点补齐
 
 > 需求：手账制作 / 图书小票 / 图书卡片 / 图片处理 的最终结果图片，支持与「艺术地图生成」一致的点击全屏查看。

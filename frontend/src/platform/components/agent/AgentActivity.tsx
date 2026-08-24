@@ -17,9 +17,14 @@ export interface AgentActivityProps {
 }
 
 const AgentActivityInner: React.FC<AgentActivityProps> = ({ steps = [], agentName, running }) => {
-  const [open, setOpen] = useState(false);
+  // 运行中默认展开（工具调用 / 结果实时可见）；用户手动开合后尊重用户选择；
+  // 结束后未手动操作则收起为摘要条，避免撑爆节点
+  const [userToggledOpen, setUserToggledOpen] = useState<boolean | null>(null);
+  const open = userToggledOpen ?? !!running;
 
   if (steps.length === 0 && !running) return null;
+
+  const toggleOpen = () => setUserToggledOpen(!open);
 
   const renderStep = (step: AgentStep, idx: number) => {
     switch (step.type) {
@@ -69,7 +74,7 @@ const AgentActivityInner: React.FC<AgentActivityProps> = ({ steps = [], agentNam
   return (
     <div className="shrink-0 min-h-0 border-b border-dashed border-paper-grid pb-2 mb-2">
       <button
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggleOpen}
         className="w-full flex items-center gap-1.5 px-2 py-1.5 text-left text-xs text-ink-light hover:text-ink hover:bg-paper-grid/30 transition-colors"
       >
         {open ? <ChevronDown size={14} strokeWidth={1.5} /> : <ChevronRight size={14} strokeWidth={1.5} />}
