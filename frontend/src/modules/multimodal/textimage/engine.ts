@@ -7,6 +7,7 @@
 import type { TextImageState } from './types';
 import { TEXT_IMAGE_CANVAS } from './types';
 import { loadFontFamily } from '../journal/text/fontRegistry';
+import { drawVerticalColumns } from '../journal/text/drawText';
 
 /** 确保当前字体就绪（Google Fonts 异步加载，超时自动降级不阻断） */
 export async function ensureTextImageFontReady(fontFamily: string): Promise<void> {
@@ -51,17 +52,8 @@ export function paintTextImage(
   };
 
   if (state.writingMode === 'vertical') {
-    // 竖排：各行作为由右向左的竖列，列内字符由上至下排列
-    const columns = text.split('\n');
-    const colWidth = fontSize * 1.35;
-    const charHeight = fontSize * 1.2;
-    columns.forEach((col, colIdx) => {
-      const xOffset = ((columns.length - 1) / 2 - colIdx) * colWidth;
-      Array.from(col).forEach((char, charIdx) => {
-        const yOffset = (charIdx - (Array.from(col).length - 1) / 2) * charHeight;
-        emit(char, xOffset, yOffset);
-      });
-    });
+    // 竖排：汉字直立逐字排列，英文单词整体旋转不拆分（与手账共用竖排算法）
+    drawVerticalColumns(ctx, text, fontSize, emit);
   } else {
     // 横排：按换行符居中排版
     const lines = text.split('\n');

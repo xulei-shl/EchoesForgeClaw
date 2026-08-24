@@ -4,6 +4,84 @@
 import type { JournalMakerItem } from '../types';
 import { DEFAULT_FONT_FAMILY, DEFAULT_TEXT_COLOR, loadFontFamily } from './fontRegistry';
 
+/** 竖排单元：直立字符 / 英文数字单词（整体旋转）/ 空格间隔 */
+type VerticalUnit =
+  | { type: 'char'; ch: string }
+  | { type: 'word'; text: string }
+  | { type: 'space' };
+
+const WORD_CHAR = /[A-Za-z0-9'''’-]/;
+
+function tokenizeVerticalSegment(seg: string): VerticalUnit[] {
+  const units: VerticalUnit[] = [];
+  let wordBuf = '';
+  const flushWord = () => {
+    if (wordBuf) {
+      units.push({ type: 'word', text: wordBuf });
+      wordBuf = '';
+    }
+  };
+  for (const ch of Array.from(seg)) {
+    if (ch === ' ') {
+      flushWord();
+      units.push({ type: 'space' });
+    } else if (WORD_CHAR.test(ch)) {
+      wordBuf += ch;
+    } else {
+      flushWord();
+      units.push({ type: 'char', ch });
+    }
+  }
+  flushWord();
+  return units;
+}
+
+/**
+ * 竖排绘制：各行作为由右向左的竖列。
+ * 汉字/假名/全角标点逐字直立排列；英文与数字单词作为完整单元顺时针旋转 90°
+ * （与 DOM 的 writing-mode: vertical-rl + text-orientation: mixed 表现一致），单词不拆字母。
+ * emit 由调用方提供，以便附加描边、阴影等效果。
+ */
+export function drawVerticalColumns(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  fontSize: number,
+  emit: (str: string, x: number, y: number) => void
+): void {
+  const columns = text.split('\n');
+  const colWidth = fontSize * 1.35;
+  const charHeight = fontSize * 1.2;
+
+  columns.forEach((col, colIdx) => {
+    // 竖列从右向左分布
+    const xOffset = ((columns.length - 1) / 2 - colIdx) * colWidth;
+    const units = tokenizeVerticalSegment(col);
+    // 先测量列总高再自上而下绘制，保证列内容整体居中
+    const heights = units.map((u) =>
+      u.type === 'char'
+        ? charHeight
+        : u.type === 'space'
+          ? fontSize * 0.5
+          : ctx.measureText(u.text).width + fontSize * 0.25
+    );
+    const totalHeight = heights.reduce((sum, h) => sum + h, 0);
+    let y = -totalHeight / 2;
+    units.forEach((u, i) => {
+      const h = heights[i];
+      if (u.type === 'word') {
+        ctx.save();
+        ctx.translate(xOffset, y + h / 2);
+        ctx.rotate(Math.PI / 2);
+        emit(u.text, 0, 0);
+        ctx.restore();
+      } else if (u.type === 'char') {
+        emit(u.ch, xOffset, y + h / 2);
+      }
+      y += h;
+    });
+  });
+}
+
 /**
  * 计算文本字号（按页面宽度百分比缩放，保证高分导出与预览 1:1 对齐）
  * @param w 尺寸比例（约 3 ~ 15）
@@ -58,20 +136,8 @@ export function drawTextItemToCanvas(
   ctx.shadowOffsetY = Math.max(1, fontSize * 0.04);
 
   if (isVertical) {
-    // 竖排模式：各行作为由右向左的竖列，列内字符由上至下排列
-    const columns = text.split('\n');
-    const colWidth = fontSize * 1.35;
-    const charHeight = fontSize * 1.2;
-
-    columns.forEach((col, colIdx) => {
-      // 竖列从右向左分布
-      const xOffset = ((columns.length - 1) / 2 - colIdx) * colWidth;
-      const chars = Array.from(col);
-      chars.forEach((char, charIdx) => {
-        const yOffset = (charIdx - (chars.length - 1) / 2) * charHeight;
-        ctx.fillText(char, xOffset, yOffset);
-      });
-    });
+    // 竖排模式：汉字直立逐字排列，英文单词整体旋转不拆分（共用竖排算法）
+    drawVerticalColumns(ctx, text, fontSize, (str, x, y) => ctx.fillText(str, x, y));
   } else {
     // 横排模式：按换行符居中排版
     const lines = text.split('\n');

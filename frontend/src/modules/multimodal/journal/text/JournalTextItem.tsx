@@ -78,7 +78,8 @@ export const JournalTextItem: React.FC<JournalTextItemProps> = ({
           ...(isVertical
             ? {
                 writingMode: 'vertical-rl',
-                textOrientation: 'upright',
+                // mixed：汉字直立、英文单词整体旋转 90° 不拆分（与 Canvas 导出算法一致）
+                textOrientation: 'mixed',
                 letterSpacing: '0.12em',
                 whiteSpace: 'pre-wrap',
               }
