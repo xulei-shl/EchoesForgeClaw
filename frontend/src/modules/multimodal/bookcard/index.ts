@@ -4,7 +4,7 @@ export {
   getBookCardTemplate,
   type BookCardTemplate,
 } from './templates';
-export { resolveCardFields, parseExtraCardFields, type CardFields } from './fields';
+export { resolveCardFields, parseExtraCardFields, mergeBookCardFields, type CardFields } from './fields';
 export { buildVufindSearchUrl, generateCardQrDataUrl, type CardQrOptions } from './qrcode';
 export {
   buildCardHtml,
@@ -17,4 +17,4 @@ export {
   type RenderCardOptions,
 } from './render';
 export { DECOR_IMAGES, hasDecorImages, randomDecorIndex } from './assets';
-export type { BookCardState, CardFieldOptions } from './types';
+export type { BookCardState, BookCardMetaField, CardFieldOptions, DEFAULT_META_FIELD_LABELS } from './types';

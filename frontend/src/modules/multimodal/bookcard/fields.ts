@@ -123,6 +123,42 @@ function firstAuthor(author: string): string {
   return `${parts[0]} 等`;
 }
 
+/**
+ * 用户编辑的元数据字段键 → 图书元数据字段键映射
+ * 用于将用户编辑的 metaFields 合并回上游 book 对象
+ */
+const META_KEY_TO_BOOK_KEY: Record<string, string> = {
+  title: 'title',
+  subtitle: 'subtitle',
+  author: 'author',
+  publisher: 'publisher',
+  pub_year: 'pub_year',
+  rating: 'rating',
+  recommendation: 'summary',
+  call_number: 'callNumber',
+};
+
+/**
+ * 将用户编辑的 metaFields 合并到上游图书元数据中
+ * 用户编辑过的字段优先，未编辑的字段保留上游原始值
+ */
+function mergeMetaIntoBook(
+  book: CardBookMetadata | null | undefined,
+  metaFields?: { key: string; value: string }[] | null
+): CardBookMetadata {
+  if (!metaFields || metaFields.length === 0) return book ?? {};
+  const merged = { ...(book ?? {}) };
+  for (const field of metaFields) {
+    const v = normalizeTextValue(field.value);
+    if (!v) continue;
+    const bookKey = META_KEY_TO_BOOK_KEY[field.key];
+    if (bookKey) {
+      (merged as any)[bookKey] = v;
+    }
+  }
+  return merged;
+}
+
 /** 图书元数据 → 模板占位符取值；extra 同名键优先（补充字段覆盖） */
 export function resolveCardFields(
   book: CardBookMetadata | null | undefined,
@@ -146,4 +182,28 @@ export function resolveCardFields(
     ...(extra ?? {}),
   };
   return fields;
+}
+
+/**
+ * 融合上游图书元数据 + 用户编辑元数据 + 额外补充字段 → 最终的模板占位符取值
+ *
+ * 优先级（从低到高）：
+ * 1. 上游图书元数据（book_info 节点）
+ * 2. 用户编辑的 metaFields（覆盖同名元数据字段）
+ * 3. 额外补充字段 extraFields（如索书号，元数据节点不提供，用户手动输入）
+ * 4. 上游文本节点解析的 extra（未来专门节点注入）
+ */
+export function mergeBookCardFields(
+  book: CardBookMetadata | null | undefined,
+  metaFields?: { key: string; value: string }[] | null,
+  extraFields?: Record<string, string> | null,
+  options?: CardFieldOptions | null,
+  upstreamTextExtra?: CardFields | null,
+): CardFields {
+  const mergedBook = mergeMetaIntoBook(book, metaFields);
+  const mergedExtra: CardFields = {
+    ...(extraFields ?? {}),
+    ...(upstreamTextExtra ?? {}),
+  };
+  return resolveCardFields(mergedBook, mergedExtra, options);
 }

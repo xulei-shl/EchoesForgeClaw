@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Image as ImageIcon, Loader2, Heart, Globe, Shuffle } from 'lucide-react';
+import { Image as ImageIcon, Loader2, Heart, Globe, Shuffle, Pencil } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { Select } from '../../../platform/components/ui/Select';
@@ -18,10 +18,11 @@ import {
   prepareCardDocument,
   randomDecorIndex,
   renderCardToDataUrl,
-  resolveCardFields,
+  mergeBookCardFields,
   waitForCardAssets,
 } from '../bookcard';
-import type { BookCardState } from '../bookcard';
+import type { BookCardState, BookCardMetaField } from '../bookcard';
+import { DEFAULT_META_FIELD_LABELS } from '../bookcard/types';
 
 /** 图书卡片节点的图书元数据输入（与 receipt 共用豆瓣 API 兼容结构） */
 interface CardBookMetadata {
@@ -130,6 +131,36 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
     [fieldOptions, patchState]
   );
 
+  // 用户编辑元数据字段（持久化，覆盖上游图书元数据）
+  const metaFields = data.metaFields ?? [];
+  const extraFields = data.extraFields ?? {};
+
+  const patchMetaField = useCallback(
+    (key: string, value: string) => {
+      const existing = metaFields.find((f) => f.key === key);
+      const next: BookCardMetaField[] = existing
+        ? metaFields.map((f) => (f.key === key ? { ...f, value } : f))
+        : [...metaFields, { key, label: DEFAULT_META_FIELD_LABELS[key] || key, value, visible: true }];
+      patchState({ metaFields: next });
+    },
+    [metaFields, patchState]
+  );
+
+  const patchExtraField = useCallback(
+    (key: string, value: string) => {
+      patchState({ extraFields: { ...extraFields, [key]: value } });
+    },
+    [extraFields, patchState]
+  );
+
+  const clearMetaFields = useCallback(() => {
+    patchState({ metaFields: [], extraFields: {} });
+  }, [patchState]);
+
+  // 编辑浮层状态
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingFocus, setEditingFocus] = useState<string | null>(null);
+
   // 用户指定的连入图片角色下标（null = 使用默认来源）
   const coverImageIndex = data.coverImageIndex ?? null;
   const decorImageIndex = data.decorImageIndex ?? null;
@@ -159,13 +190,13 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const fields = resolveCardFields(upstreamBookData, null, fieldOptions);
+      const fields = mergeBookCardFields(upstreamBookData, metaFields, extraFields, fieldOptions);
       let qrcodeUrl: string | null = null;
       if (fields.CALL_NUMBER) {
         try {
           qrcodeUrl = await generateCardQrDataUrl(fields.CALL_NUMBER);
         } catch {
-          qrcodeUrl = null; // 出码失败回退透明占位，不阻断渲染
+          qrcodeUrl = null;
         }
       }
       if (!cancelled) {
@@ -183,7 +214,7 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [templateId, upstreamBookData, coverUrl, decorUrl, fieldOptions]);
+  }, [templateId, upstreamBookData, metaFields, extraFields, coverUrl, decorUrl, fieldOptions]);
 
   // ---------- 预览（缩放 iframe） ----------
   const containerRef = useRef<HTMLDivElement>(null);
@@ -297,8 +328,8 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
   // 生成并保存：渲染 PNG → 落盘 + 历史记录（同小票链路）
   const handleGenerateAndSave = useCallback(async () => {
     if (!onExport) return;
-    if (!upstreamBookData) {
-      showToast('请先连线图书元数据节点（或画布中存在根书目节点）', { type: 'error' });
+    if (!upstreamBookData && metaFields.length === 0 && Object.keys(extraFields).length === 0) {
+      showToast('请连线图书元数据节点，或先在编辑面板中手动填写元数据', { type: 'error' });
       return;
     }
     setIsRendering(true);
@@ -312,9 +343,13 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
     } finally {
       setIsRendering(false);
     }
-  }, [filledHtml, id, onExport, showToast, templateId, decorIndex, upstreamBookData]);
+  }, [filledHtml, id, onExport, showToast, templateId, decorIndex, upstreamBookData, metaFields, extraFields]);
 
   const handleDirectDownload = useCallback(async () => {
+    if (!filledHtml) {
+      showToast('卡片内容为空，请先填写元数据', { type: 'error' });
+      return;
+    }
     try {
       await downloadBookCardImage(filledHtml);
       showToast('卡片图片已下载', { type: 'success' });
@@ -383,7 +418,7 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
         </NodeActionBar>
       }
     >
-      <div className="h-full flex flex-col flex-1 min-h-0 gap-2">
+      <div className="h-full flex flex-col flex-1 min-h-0 gap-2 relative">
         {/* 顶部控制栏（单行紧凑整合：模板选择 + 换装饰图 + 字段选项） */}
         <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 p-1.5 bg-paper-grid/15 border border-paper-grid/60 rounded-md text-xs font-sans">
           <div className="flex items-center gap-1.5 min-w-0">
@@ -413,6 +448,18 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
               <span>{usingConnectedDecor ? '恢复图池' : '换图'}</span>
             </button>
           </div>
+
+          {/* 编辑元数据按钮 */}
+          <button
+            type="button"
+            onClick={() => setIsEditing(true)}
+            disabled={busy || hasDownstream}
+            title={hasDownstream ? '有下级节点，不可编辑元数据' : '编辑卡片元数据（题名、作者、索书号等）'}
+            className="flex items-center gap-1 h-8 px-2 rounded-md border border-dashed border-paper-grid hover:border-accent hover:text-accent text-ink-faint active:scale-[0.96] transition-all text-xs shrink-0 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Pencil size={13} strokeWidth={1.5} />
+            <span>编辑</span>
+          </button>
 
           {/* 字段处理选项（行内紧凑放置，受 hasDownstream 控制） */}
           <div className="flex items-center gap-2.5 text-[11px] text-ink-faint shrink-0">
@@ -514,6 +561,96 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
           </div>
         )}
 
+        {/* 编辑元数据浮层 */}
+        {isEditing && !busy && !hasDownstream && (
+          <div className="absolute inset-0 z-40 bg-paper/98 backdrop-blur-sm p-3 flex flex-col rounded shadow-2xl border border-paper-grid/60 overflow-hidden select-text">
+            <div className="flex items-center justify-between border-b border-paper-grid/40 pb-2 mb-2 shrink-0">
+              <span className="text-[12px] font-bold text-ink flex items-center gap-1.5">
+                <Pencil size={14} strokeWidth={1.5} />
+                编辑卡片元数据
+              </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => { clearMetaFields(); setEditingFocus(null); }}
+                  title="清除所有用户编辑，恢复为上游元数据默认值"
+                  className="px-2 py-0.5 rounded text-[10px] border border-paper-grid/60 text-ink-faint hover:text-red-500 hover:border-red-300 transition-all"
+                >
+                  重置
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(false)}
+                  className="px-2.5 py-0.5 bg-accent hover:bg-accent/90 active:bg-accent/80 text-white rounded text-[11px] font-medium shadow-xs transition-colors"
+                >
+                  完成
+                </button>
+              </div>
+            </div>
+            <div className="grow overflow-y-auto space-y-2.5 pr-0.5 text-[11px]">
+              {([
+                { key: 'title', label: '题名', placeholder: '图书题名' },
+                { key: 'author', label: '作者', placeholder: '著者姓名' },
+                { key: 'publisher', label: '出版社', placeholder: '出版机构' },
+                { key: 'pub_year', label: '出版年份', placeholder: '如 2024' },
+                { key: 'rating', label: '评分', placeholder: '如 9.0' },
+                { key: 'recommendation', label: '推荐语', placeholder: '推荐语（自动截断至 50 字）', multiline: true },
+              ] as const).map((item) => {
+                const { key, label, placeholder, multiline } = item;
+                const metaField = metaFields.find((f) => f.key === key);
+                const upstreamValue = upstreamBookData
+                  ? (key === 'title' ? upstreamBookData.title :
+                     key === 'author' ? upstreamBookData.author :
+                     key === 'publisher' ? upstreamBookData.publisher :
+                     key === 'pub_year' ? (upstreamBookData.pub_year || upstreamBookData.publishDate) :
+                     key === 'rating' ? String(upstreamBookData.rating ?? '') :
+                     key === 'recommendation' ? (upstreamBookData.summary || upstreamBookData.description) : '')
+                  : '';
+                const displayValue = metaField?.value ?? upstreamValue ?? '';
+                return (
+                  <div key={key}>
+                    <label className="block font-semibold text-ink mb-0.5">{label}</label>
+                    {multiline ? (
+                      <textarea
+                        autoFocus={editingFocus === key}
+                        value={displayValue}
+                        onChange={(e) => patchMetaField(key, e.target.value)}
+                        placeholder={placeholder}
+                        rows={3}
+                        className="w-full px-2 py-1 bg-paper-grid/15 border border-paper-grid/50 focus:border-accent focus:bg-paper focus:ring-1 focus:ring-accent/30 rounded outline-none text-[12px] transition-all resize-y min-h-[60px]"
+                      />
+                    ) : (
+                      <input
+                        type="text"
+                        autoFocus={editingFocus === key}
+                        value={displayValue}
+                        onChange={(e) => patchMetaField(key, e.target.value)}
+                        placeholder={placeholder}
+                        className="w-full px-2 py-1 bg-paper-grid/15 border border-paper-grid/50 focus:border-accent focus:bg-paper focus:ring-1 focus:ring-accent/30 rounded outline-none text-[12px] transition-all"
+                      />
+                    )}
+                  </div>
+                );
+              })}
+              {/* 索书号（独立显示，元数据节点不提供，专为兜底手动添加） */}
+              <div className="pt-1.5 border-t border-paper-grid/30">
+                <label className="block font-semibold text-ink mb-0.5">
+                  索书号
+                  <span className="text-[10px] text-ink-faint font-normal ml-1">（元数据节点不提供，手动输入后自动生成二维码）</span>
+                </label>
+                <input
+                  type="text"
+                  autoFocus={editingFocus === 'call_number'}
+                  value={extraFields.CALL_NUMBER || metaFields.find((f) => f.key === 'call_number')?.value || ''}
+                  onChange={(e) => patchExtraField('CALL_NUMBER', e.target.value)}
+                  placeholder="如 I247.5/1234"
+                  className="w-full px-2 py-1 bg-paper-grid/15 border border-paper-grid/50 focus:border-accent focus:bg-paper focus:ring-1 focus:ring-accent/30 rounded outline-none text-[12px] transition-all"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* 预览区域：填充后 HTML 的等比缩放实时预览（与导出同一份 HTML 字符串） */}
         <div
           ref={containerRef}
@@ -556,9 +693,9 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
           </div>
         </div>
 
-        {!upstreamBookData && (
+        {!upstreamBookData && metaFields.length === 0 && Object.keys(extraFields).length === 0 && (
           <div className="text-right text-xs text-ink-faint font-sans">
-            未连线图书元数据 · 卡片内容为空
+            未连线图书元数据 · 请点击「编辑」手动填写
           </div>
         )}
 
