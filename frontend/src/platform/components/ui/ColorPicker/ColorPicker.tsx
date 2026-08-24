@@ -191,7 +191,7 @@ export const ColorPicker: React.FC<ColorPickerProps> = memo(({
           disabled={disabled}
           onChange={handleHueChange}
           aria-label="色相选择滑条"
-          className="w-full h-2.5 rounded-full appearance-none cursor-pointer outline-none shadow-2xs"
+          className="hue-slider w-full h-2.5 rounded-full appearance-none cursor-pointer outline-none shadow-2xs"
           style={{
             background:
               'linear-gradient(to right, #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%)',

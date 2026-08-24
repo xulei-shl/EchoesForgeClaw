@@ -23,6 +23,10 @@ interface NodeEdgeProps {
   tintIndex?: number;
   /** 端口类型不匹配：false 时整条连线以错误色渲染（红色标注） */
   compatible?: boolean;
+  /** 当前连线是否高亮（所属源节点或目标节点被激活） */
+  highlighted?: boolean;
+  /** 当前存在激活节点，但本连线不关联（弱化态） */
+  dimmed?: boolean;
   /** 点击连线中间的删除按钮 */
   onDelete?: () => void;
 }
@@ -55,6 +59,8 @@ const NodeEdge = forwardRef<NodeEdgeHandle, NodeEdgeProps>(function NodeEdge(
     branchCount = 1,
     tintIndex,
     compatible = true,
+    highlighted = false,
+    dimmed = false,
     onDelete,
   },
   ref
@@ -139,12 +145,18 @@ const NodeEdge = forwardRef<NodeEdgeHandle, NodeEdgeProps>(function NodeEdge(
   return (
     <svg
       ref={svgRef}
-      className="absolute top-0 left-0 pointer-events-none z-0 group"
-      style={{ overflow: 'visible' }}
+      className={`absolute top-0 left-0 pointer-events-none group transition-opacity duration-200 ${
+        highlighted ? 'z-[30]' : 'z-0'
+      }`}
+      style={{ overflow: 'visible', opacity: dimmed ? 0.35 : 1 }}
     >
       <defs>
         <linearGradient id={`grad-${id}`} x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="var(--color-paper-grid, #E4E1DA)" />
+          <stop
+            offset="0%"
+            stopColor={highlighted ? 'var(--color-accent, #A0622B)' : 'var(--color-paper-grid, #E4E1DA)'}
+            stopOpacity={highlighted ? 0.8 : 1}
+          />
           <stop
             offset="100%"
             stopColor={
@@ -154,30 +166,36 @@ const NodeEdge = forwardRef<NodeEdgeHandle, NodeEdgeProps>(function NodeEdge(
             }
           />
         </linearGradient>
+        {highlighted && (
+          <filter id={`glow-${id}`} x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="0" stdDeviation="1.5" floodColor="var(--color-accent, #A0622B)" floodOpacity="0.45" />
+          </filter>
+        )}
       </defs>
-      {/* Hit target for hover and interactions */}
+      {/* Hit target for hover and interactions (高亮跨越节点时不拦截下方节点事件) */}
       <path
         ref={hitPathRef}
         fill="none"
         stroke="transparent"
         strokeWidth="24"
-        className="pointer-events-auto cursor-pointer"
+        className={highlighted ? 'pointer-events-none' : 'pointer-events-auto cursor-pointer'}
       />
       {/* Base line */}
       <path
         ref={basePathRef}
         fill="none"
         stroke="var(--color-paper-grid, #E4E1DA)"
-        strokeWidth="2"
-        strokeDasharray="5,5"
+        strokeWidth={highlighted ? 3.5 : 2}
+        strokeDasharray={highlighted ? '6,4' : '5,5'}
       />
       {/* Animated flowing line */}
       <path
         ref={flowPathRef}
         fill="none"
         stroke={`url(#grad-${id})`}
-        strokeWidth="2"
-        strokeDasharray="5,5"
+        strokeWidth={highlighted ? 3.5 : 2}
+        strokeDasharray={highlighted ? '6,4' : '5,5'}
+        filter={highlighted ? `url(#glow-${id})` : undefined}
         className="animate-flow"
       />
       {/* Delete button (positioned at bezier midpoint) */}
@@ -195,7 +213,9 @@ const NodeEdge = forwardRef<NodeEdgeHandle, NodeEdgeProps>(function NodeEdge(
               e.stopPropagation();
               onDelete();
             }}
-            className="w-6 h-6 bg-paper border border-error text-error rounded-full flex items-center justify-center cursor-pointer pointer-events-auto opacity-0 group-hover:opacity-100 hover:scale-110 hover:bg-error hover:text-white transition-all duration-200 shadow-sm"
+            className={`w-6 h-6 bg-paper border border-error text-error rounded-full flex items-center justify-center cursor-pointer pointer-events-auto hover:scale-110 hover:bg-error hover:text-white transition-all duration-200 shadow-sm ${
+              highlighted ? 'opacity-80 hover:opacity-100' : 'opacity-0 group-hover:opacity-100'
+            }`}
             style={{ marginLeft: '-12px', marginTop: '-12px' }}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-3.5 h-3.5">

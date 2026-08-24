@@ -9,18 +9,11 @@ import {
   ArrowDown,
   ChevronsUp,
   ChevronsDown,
-  Pipette,
 } from 'lucide-react';
 import { Tooltip } from '../../../../platform/components/ui/Tooltip';
-import { ColorPickerPopover } from '../../../../platform/components/ui/ColorPicker';
 import type { JournalMakerItem } from '../types';
-import {
-  JOURNAL_FONTS,
-  JOURNAL_TEXT_COLORS,
-  DEFAULT_FONT_FAMILY,
-  DEFAULT_TEXT_COLOR,
-  loadFontFamily,
-} from './fontRegistry';
+import { DEFAULT_FONT_FAMILY, DEFAULT_TEXT_COLOR } from './fontRegistry';
+import { FontFamilySelect, TextColorPalette } from './FontControls';
 
 interface JournalTextToolbarProps {
   item: JournalMakerItem;
@@ -43,12 +36,6 @@ export const JournalTextToolbar: React.FC<JournalTextToolbarProps> = ({
   const currentColor = item.color || DEFAULT_TEXT_COLOR;
   const isVertical = item.writingMode === 'vertical';
 
-  const handleFontChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const family = e.target.value;
-    loadFontFamily(family);
-    onUpdate({ fontFamily: family });
-  };
-
   const handleColorSelect = (color: string) => {
     onUpdate({ color });
   };
@@ -56,10 +43,6 @@ export const JournalTextToolbar: React.FC<JournalTextToolbarProps> = ({
   const toggleWritingMode = () => {
     onUpdate({ writingMode: isVertical ? 'horizontal' : 'vertical' });
   };
-
-  const isCustomColor = !JOURNAL_TEXT_COLORS.some(
-    (preset) => preset.color.toLowerCase() === currentColor.toLowerCase()
-  );
 
   return (
     <div
@@ -84,21 +67,11 @@ export const JournalTextToolbar: React.FC<JournalTextToolbarProps> = ({
         <div className="w-px h-3.5 bg-paper-grid/60 my-auto shrink-0" />
 
         {/* 字体选择下拉 */}
-        <div className="relative flex items-center shrink-0">
-          <select
-            value={currentFont}
-            onChange={handleFontChange}
-            disabled={disabled}
-            aria-label="选择字体"
-            className="h-6 pl-2 pr-5 rounded-md border border-paper-grid/60 bg-paper/90 text-xs text-ink font-sans outline-none hover:border-accent/60 focus:border-accent cursor-pointer transition whitespace-nowrap"
-          >
-            {JOURNAL_FONTS.map((font) => (
-              <option key={font.id} value={font.family}>
-                {font.name}
-              </option>
-            ))}
-          </select>
-        </div>
+        <FontFamilySelect
+          value={currentFont}
+          onChange={(family) => onUpdate({ fontFamily: family })}
+          disabled={disabled}
+        />
 
         <div className="w-px h-3.5 bg-paper-grid/60 my-auto shrink-0" />
 
@@ -160,61 +133,12 @@ export const JournalTextToolbar: React.FC<JournalTextToolbarProps> = ({
       {/* 第二行：特色墨水色盘与自定义取色器 */}
       <div className="flex items-center gap-1.5 pt-0.5 px-0.5 border-t border-paper-grid/40">
         <span className="text-[10px] text-ink-faint mr-0.5 select-none shrink-0">墨色:</span>
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {JOURNAL_TEXT_COLORS.map((preset) => {
-            const isSelected = currentColor.toLowerCase() === preset.color.toLowerCase();
-            return (
-              <Tooltip key={preset.name} content={`${preset.name} (${preset.color})`}>
-                <button
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => handleColorSelect(preset.color)}
-                  className={`relative w-4 h-4 rounded-full transition-all duration-150 ease-out active:scale-[0.92] shrink-0 ${
-                    preset.border ? 'border border-paper-grid/80' : ''
-                  } ${
-                    isSelected
-                      ? 'ring-2 ring-accent ring-offset-1 scale-110 shadow-sm'
-                      : 'hover:scale-110 opacity-90 hover:opacity-100'
-                  }`}
-                  style={{ backgroundColor: preset.color }}
-                  aria-label={preset.name}
-                />
-              </Tooltip>
-            );
-          })}
-
-          <div className="w-px h-3 bg-paper-grid/50 my-auto mx-0.5 shrink-0" />
-
-          {/* 自定义墨色与吸管取色器 */}
-          <ColorPickerPopover
-            value={currentColor}
-            onChange={handleColorSelect}
-            disabled={disabled}
-            align="right"
-          >
-            <Tooltip
-              content={
-                isCustomColor
-                  ? `自定义墨色 (当前: ${currentColor})`
-                  : '自定义颜色 / 吸管取色'
-              }
-            >
-              <button
-                type="button"
-                disabled={disabled}
-                style={{ backgroundColor: isCustomColor ? currentColor : undefined }}
-                className={`w-4 h-4 rounded-full border flex items-center justify-center transition active:scale-[0.92] shrink-0 ${
-                  isCustomColor
-                    ? 'border-accent ring-2 ring-accent ring-offset-1 scale-110 shadow-sm'
-                    : 'border-paper-grid/70 hover:border-accent hover:scale-110 bg-paper/80 text-ink-light hover:text-accent'
-                }`}
-                aria-label="自定义颜色"
-              >
-                {!isCustomColor && <Pipette size={9} strokeWidth={2} />}
-              </button>
-            </Tooltip>
-          </ColorPickerPopover>
-        </div>
+        <TextColorPalette
+          value={currentColor}
+          onChange={handleColorSelect}
+          disabled={disabled}
+          size="normal"
+        />
       </div>
     </div>
   );

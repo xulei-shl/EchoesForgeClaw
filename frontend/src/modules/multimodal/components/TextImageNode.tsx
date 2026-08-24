@@ -12,15 +12,13 @@ import {
   Check,
   PenLine,
   Square,
-  ChevronDown,
   ChevronUp,
-  Pipette,
   SlidersHorizontal,
 } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { Tooltip } from '../../../platform/components/ui/Tooltip';
-import { ColorPickerPopover } from '../../../platform/components/ui/ColorPicker';
+import { Slider } from '../../../platform/components/ui/Slider';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
 import { NODE_COLORS } from '../../bookplate/nodeTypes';
 import {
@@ -33,12 +31,12 @@ import {
   composeTextImage,
   downloadTextImage,
 } from '../textimage';
+import { loadFontFamily } from '../journal/text/fontRegistry';
 import {
-  JOURNAL_FONTS,
-  JOURNAL_TEXT_COLORS,
-  loadFontFamily,
-  preloadAllJournalFonts,
-} from '../journal/text/fontRegistry';
+  FontFamilySelect,
+  TextColorPalette,
+  usePreloadJournalFonts,
+} from '../journal/text/FontControls';
 
 export interface TextImageNodeProps {
   id: string;
@@ -78,87 +76,6 @@ const checkerStyle: React.CSSProperties = {
     'linear-gradient(45deg, rgba(23,23,23,0.06) 25%, transparent 25%, transparent 75%, rgba(23,23,23,0.06) 75%), linear-gradient(45deg, rgba(23,23,23,0.06) 25%, transparent 25%, transparent 75%, rgba(23,23,23,0.06) 75%)',
   backgroundSize: '16px 16px',
   backgroundPosition: '0 0, 8px 8px',
-};
-
-/**
- * 调色盘子组件：提供足够点击热区（22x22px）、清晰双层选中环与按压反馈
- */
-interface SwatchPaletteProps {
-  value: string;
-  onChange: (color: string) => void;
-  disabled?: boolean;
-  customLabel: string;
-  size?: 'normal' | 'compact';
-}
-
-const SwatchPalette: React.FC<SwatchPaletteProps> = ({
-  value,
-  onChange,
-  disabled = false,
-  customLabel,
-  size = 'normal',
-}) => {
-  const isCustom = !JOURNAL_TEXT_COLORS.some(
-    (p) => p.color.toLowerCase() === value.toLowerCase()
-  );
-
-  const dotSize = size === 'compact' ? 'w-3 h-3' : 'w-3.5 h-3.5';
-  const hitSize = size === 'compact' ? 'w-5 h-5' : 'w-5.5 h-5.5';
-
-  return (
-    <div className="flex items-center gap-0.5 flex-wrap">
-      {JOURNAL_TEXT_COLORS.map((preset) => {
-        const selected = value.toLowerCase() === preset.color.toLowerCase();
-        return (
-          <Tooltip key={preset.name} content={`${preset.name} (${preset.color})`}>
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={() => onChange(preset.color)}
-              className={`${hitSize} flex items-center justify-center rounded-full cursor-pointer disabled:cursor-not-allowed group focus-visible:outline-none shrink-0`}
-              aria-label={preset.name}
-            >
-              <span
-                className={`${dotSize} rounded-full transition-[transform,box-shadow,opacity] duration-150 ease-out group-hover:scale-115 active:scale-[0.92] shrink-0 ${
-                  preset.border ? 'border border-paper-grid/90 shadow-2xs' : ''
-                } ${
-                  selected
-                    ? 'ring-2 ring-accent ring-offset-1 scale-110 shadow-xs'
-                    : 'opacity-90 hover:opacity-100'
-                }`}
-                style={{ backgroundColor: preset.color }}
-              />
-            </button>
-          </Tooltip>
-        );
-      })}
-
-      <div className="w-px h-3 bg-paper-grid/80 my-auto mx-0.5 shrink-0" />
-
-      {/* 自定义颜色与吸管 */}
-      <ColorPickerPopover value={value} onChange={onChange} disabled={disabled} align="right">
-        <Tooltip content={isCustom ? `${customLabel} (当前: ${value})` : '自定义颜色 / 吸管取色'}>
-          <button
-            type="button"
-            disabled={disabled}
-            className={`${hitSize} flex items-center justify-center rounded-full cursor-pointer disabled:cursor-not-allowed group focus-visible:outline-none shrink-0`}
-            aria-label="自定义颜色"
-          >
-            <span
-              style={{ backgroundColor: isCustom ? value : undefined }}
-              className={`${dotSize} rounded-full border flex items-center justify-center transition-[transform,border-color,box-shadow] duration-150 ease-out group-hover:scale-115 active:scale-[0.92] shrink-0 ${
-                isCustom
-                  ? 'border-accent ring-2 ring-accent ring-offset-1 scale-110 shadow-xs'
-                  : 'border-paper-grid/90 bg-paper hover:border-accent text-ink-faint hover:text-accent shadow-2xs'
-              }`}
-            >
-              {!isCustom && <Pipette size={7} strokeWidth={2.5} />}
-            </span>
-          </button>
-        </Tooltip>
-      </ColorPickerPopover>
-    </div>
-  );
 };
 
 /**
@@ -283,9 +200,7 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // 预加载全部手账字体预设（与手账共享字体基建）
-  useEffect(() => {
-    preloadAllJournalFonts();
-  }, []);
+  usePreloadJournalFonts();
 
   useEffect(() => {
     if (data?.imageUrl) setIsEditing(false);
@@ -532,28 +447,11 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
                   {/* 2. 字体选择 + 横竖排 + 字号滑杆整合 */}
                   <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
                     {/* 字体下拉 */}
-                    <div className="relative w-[130px] shrink-0">
-                      <select
-                        value={st.fontFamily}
-                        onChange={(e) => {
-                          loadFontFamily(e.target.value);
-                          patch({ fontFamily: e.target.value });
-                        }}
-                        disabled={locked}
-                        aria-label="选择字体"
-                        className="w-full h-6 pl-2 pr-6 appearance-none rounded-md border border-paper-grid/80 bg-paper text-[11px] text-ink outline-none hover:border-accent/60 focus:border-accent cursor-pointer transition-[border-color]"
-                      >
-                        {JOURNAL_FONTS.map((font) => (
-                          <option key={font.id} value={font.family}>
-                            {font.name}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown
-                        size={11}
-                        className="absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none text-ink-faint"
-                      />
-                    </div>
+                    <FontFamilySelect
+                      value={st.fontFamily}
+                      onChange={(family) => patch({ fontFamily: family })}
+                      disabled={locked}
+                    />
 
                     {/* 横竖排胶囊 */}
                     <WritingModeToggle
@@ -563,19 +461,20 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
                     />
 
                     {/* 字号滑杆 */}
-                    <div className="flex items-center gap-1 flex-1 min-w-[120px]">
+                    <div className="flex items-center gap-1.5 flex-1 min-w-[120px]">
                       <span className="text-ink-faint text-[10px] shrink-0">字号</span>
-                      <input
-                        type="range"
-                        min={24}
-                        max={240}
-                        step={2}
-                        value={st.fontSize}
-                        disabled={locked}
-                        onChange={(e) => patch({ fontSize: Number(e.target.value) }, false)}
-                        className="flex-1 h-1.5 accent-[var(--accent)] cursor-pointer min-w-[50px]"
-                        aria-label="字号大小"
-                      />
+                      <div className="flex-1 min-w-[50px] flex items-center">
+                        <Slider
+                          min={24}
+                          max={240}
+                          step={2}
+                          value={st.fontSize}
+                          disabled={locked}
+                          onChange={(v) => patch({ fontSize: v }, false)}
+                          aria-label="字号大小"
+                          aria-valuetext={`${st.fontSize}px`}
+                        />
+                      </div>
                       <span className="text-[10px] text-ink-light w-8 text-right tabular-nums font-mono">
                         {st.fontSize}px
                       </span>
@@ -586,7 +485,7 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
                   <div className="flex items-center gap-1.5">
                     <span className="text-ink-faint text-[10px] shrink-0 w-6">墨色</span>
                     <div className="flex-1 min-w-0">
-                      <SwatchPalette
+                      <TextColorPalette
                         value={st.color}
                         onChange={(c) => patch({ color: c })}
                         disabled={locked}
@@ -611,7 +510,7 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
 
                     {st.strokeEnabled ? (
                       <div className="flex items-center gap-1.5 flex-1 min-w-0 ml-1">
-                        <SwatchPalette
+                        <TextColorPalette
                           value={st.strokeColor}
                           onChange={(c) => patch({ strokeColor: c })}
                           disabled={locked}
@@ -619,17 +518,18 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
                           size="compact"
                         />
                         <div className="w-px h-3 bg-paper-grid/70 mx-0.5 shrink-0" />
-                        <input
-                          type="range"
-                          min={1}
-                          max={24}
-                          step={1}
-                          value={st.strokeWidth}
-                          disabled={locked}
-                          onChange={(e) => patch({ strokeWidth: Number(e.target.value) }, false)}
-                          className="flex-1 h-1.5 accent-[var(--accent)] cursor-pointer min-w-[40px]"
-                          aria-label="描边粗细"
-                        />
+                        <div className="flex-1 min-w-[40px] flex items-center">
+                          <Slider
+                            min={1}
+                            max={24}
+                            step={1}
+                            value={st.strokeWidth}
+                            disabled={locked}
+                            onChange={(v) => patch({ strokeWidth: v }, false)}
+                            aria-label="描边粗细"
+                            aria-valuetext={`${st.strokeWidth}px`}
+                          />
+                        </div>
                         <span className="text-[10px] text-ink-light w-7 text-right tabular-nums font-mono shrink-0">
                           {st.strokeWidth}px
                         </span>
@@ -654,7 +554,7 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
 
                     {st.backgroundEnabled ? (
                       <div className="flex-1 min-w-0 ml-1">
-                        <SwatchPalette
+                        <TextColorPalette
                           value={st.backgroundColor}
                           onChange={(c) => patch({ backgroundColor: c })}
                           disabled={locked}

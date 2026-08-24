@@ -439,5 +439,98 @@ body.is-connecting [data-node-id]:hover {
   border-radius: 4px;
 }
 
+/* ========== 抹茶纸感滑杆（Retro Paper Slider） ========== */
+input[type="range"] {
+  accent-color: var(--color-accent);
+}
+
+.retro-slider {
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: var(--color-paper-grid);
+  border-radius: var(--radius-pill);
+}
+
+.retro-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--color-paper);
+  border: 2.5px solid var(--color-accent);
+  box-shadow: 0 1px 3px rgba(45, 90, 39, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.04);
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.retro-slider:hover:not(:disabled)::-webkit-slider-thumb {
+  transform: scale(1.15);
+  border-color: var(--color-accent-hover);
+  box-shadow: 0 2px 5px rgba(45, 90, 39, 0.35);
+}
+
+.retro-slider:active:not(:disabled)::-webkit-slider-thumb {
+  transform: scale(0.96);
+  background: var(--color-accent);
+}
+
+.retro-slider::-moz-range-thumb {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--color-paper);
+  border: 2.5px solid var(--color-accent);
+  box-shadow: 0 1px 3px rgba(45, 90, 39, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.04);
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.retro-slider:hover:not(:disabled)::-moz-range-thumb {
+  transform: scale(1.15);
+  border-color: var(--color-accent-hover);
+  box-shadow: 0 2px 5px rgba(45, 90, 39, 0.35);
+}
+
+.retro-slider:active:not(:disabled)::-moz-range-thumb {
+  transform: scale(0.96);
+  background: var(--color-accent);
+}
+
+/* 色相选择器滑块（白色圆环纽扣） */
+.hue-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid rgba(0, 0, 0, 0.18);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+
+.hue-slider:hover:not(:disabled)::-webkit-slider-thumb {
+  transform: scale(1.15);
+}
+
+.hue-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid rgba(0, 0, 0, 0.18);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+
+.hue-slider:hover:not(:disabled)::-moz-range-thumb {
+  transform: scale(1.15);
+}
+
+
+
 
 

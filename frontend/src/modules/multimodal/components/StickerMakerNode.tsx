@@ -16,6 +16,7 @@ import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { Tooltip } from '../../../platform/components/ui/Tooltip';
 import { ColorPickerPopover } from '../../../platform/components/ui/ColorPicker';
+import { Slider } from '../../../platform/components/ui/Slider';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
 import { NODE_COLORS } from '../../bookplate/nodeTypes';
 import {
@@ -586,20 +587,21 @@ const StickerMakerNodeInner: React.FC<StickerMakerNodeProps> = ({
               <Tooltip content="模切白边宽度：调整贴纸外轮廓宽度 (0~48px)">
                 <div className="flex items-center gap-1.5 flex-1">
                   <span className="text-ink-faint text-[11px] whitespace-nowrap">白边:</span>
-                  <input
-                    type="range"
-                    min={OUTLINE_WIDTH_MIN}
-                    max={OUTLINE_WIDTH_MAX}
-                    step={OUTLINE_WIDTH_STEP}
-                    value={outlineWidth}
-                    disabled={hasDownstream}
-                    onChange={(e) => {
-                      const next = Number(e.target.value);
-                      setOutlineWidth(next);
-                      updateParam({ outlineWidth: next });
-                    }}
-                    className="flex-1 h-1 accent-[var(--accent)] cursor-pointer"
-                  />
+                  <div className="flex-1 min-w-[50px] flex items-center">
+                    <Slider
+                      min={OUTLINE_WIDTH_MIN}
+                      max={OUTLINE_WIDTH_MAX}
+                      step={OUTLINE_WIDTH_STEP}
+                      value={outlineWidth}
+                      disabled={hasDownstream}
+                      onChange={(next) => {
+                        setOutlineWidth(next);
+                        updateParam({ outlineWidth: next });
+                      }}
+                      aria-label="模切白边宽度"
+                      aria-valuetext={`${outlineWidth}px`}
+                    />
+                  </div>
                   <span className="text-[11px] text-ink-faint w-6 text-right tabular-nums font-mono">
                     {outlineWidth}
                   </span>

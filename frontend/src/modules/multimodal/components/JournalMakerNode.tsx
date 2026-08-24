@@ -20,6 +20,7 @@ import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { Tooltip } from '../../../platform/components/ui/Tooltip';
 import { ColorPickerPopover } from '../../../platform/components/ui/ColorPicker';
+import { Slider } from '../../../platform/components/ui/Slider';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
 import { NODE_COLORS } from '../../bookplate/nodeTypes';
 import { removeImageBackground } from '../sticker';
@@ -45,7 +46,7 @@ import {
   DEFAULT_TEXT,
   DEFAULT_FONT_FAMILY,
   DEFAULT_TEXT_COLOR,
-  preloadAllJournalFonts,
+  usePreloadJournalFonts,
   JournalTextItem,
   JournalTextToolbar,
   downloadJournalImage,
@@ -168,9 +169,7 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
   const textInputRef = useRef<HTMLTextAreaElement>(null);
 
   // 预加载所有手账字体预设
-  useEffect(() => {
-    preloadAllJournalFonts();
-  }, []);
+  usePreloadJournalFonts();
   /** items 实时镜像（手势结束提交用，避免在 setState updater 内做副作用） */
   const itemsRef = useRef(items);
   useEffect(() => {
@@ -957,21 +956,22 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
               <Tooltip content="背景色彩浓度（透明度）：调整渐变光晕与网格通透度 (10%~100%)">
                 <div className="flex items-center gap-1.5 flex-1 min-w-0">
                   <span className="text-ink-faint text-[11px] whitespace-nowrap">浓度:</span>
-                  <input
-                    type="range"
-                    min={10}
-                    max={100}
-                    step={5}
-                    value={background.opacity ?? 75}
-                    disabled={hasDownstream}
-                    onChange={(e) => {
-                      const nextOpacity = Number(e.target.value);
-                      const nextBg = updateBackgroundOpacity(background, nextOpacity);
-                      setBackground(nextBg);
-                      updateParam({ background: nextBg });
-                    }}
-                    className="flex-1 h-1 accent-[var(--accent)] cursor-pointer min-w-[60px]"
-                  />
+                  <div className="flex-1 min-w-[60px] flex items-center">
+                    <Slider
+                      min={10}
+                      max={100}
+                      step={5}
+                      value={background.opacity ?? 75}
+                      disabled={hasDownstream}
+                      onChange={(nextOpacity) => {
+                        const nextBg = updateBackgroundOpacity(background, nextOpacity);
+                        setBackground(nextBg);
+                        updateParam({ background: nextBg });
+                      }}
+                      aria-label="背景色彩浓度"
+                      aria-valuetext={`${background.opacity ?? 75}%`}
+                    />
+                  </div>
                   <span className="text-[11px] text-ink-faint w-7 text-right tabular-nums font-mono">
                     {background.opacity ?? 75}%
                   </span>

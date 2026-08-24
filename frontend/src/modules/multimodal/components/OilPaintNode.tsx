@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
+import { SliderRow } from '../../../platform/components/ui/Slider';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
 import { NODE_COLORS } from '../../bookplate/nodeTypes';
 import type { OilPaintState, OilPaintStyle } from '../oilpaint';
@@ -46,46 +47,6 @@ export interface OilPaintNodeProps {
   /** 导出油画：PNG Data URL 落盘保存 + 写入历史数据库 */
   onExport?: (id: string, dataUrl: string, state: OilPaintState) => Promise<void>;
 }
-
-interface SliderRowProps {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  display: string;
-  disabled?: boolean;
-  onChange: (v: number) => void;
-}
-
-const SliderRow: React.FC<SliderRowProps> = memo(({
-  label,
-  value,
-  min,
-  max,
-  step,
-  display,
-  disabled = false,
-  onChange,
-}) => (
-  <label className="flex items-center gap-2 flex-1 min-w-0">
-    <span className="text-ink-faint text-[11px] whitespace-nowrap">{label}</span>
-    <input
-      type="range"
-      min={min}
-      max={max}
-      step={step}
-      value={value}
-      aria-label={label}
-      aria-valuetext={display}
-      disabled={disabled}
-      onChange={(e) => onChange(Number(e.target.value))}
-      className="flex-1 min-w-0 accent-[color:var(--accent)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent rounded-sm"
-    />
-    <span className="text-[11px] text-ink-light w-12 text-right whitespace-nowrap tabular-nums">{display}</span>
-  </label>
-));
-SliderRow.displayName = 'SliderRow';
 
 const OilPaintNodeInner: React.FC<OilPaintNodeProps> = ({
   id,

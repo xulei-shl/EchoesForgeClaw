@@ -18,6 +18,7 @@ import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { Tooltip } from '../../../platform/components/ui/Tooltip';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
 import { Select, type SelectOption } from '../../../platform/components/ui/Select';
+import { SliderRow } from '../../../platform/components/ui/Slider';
 import { NODE_COLORS } from '../../bookplate/nodeTypes';
 import {
   applyImageFx,
@@ -66,45 +67,6 @@ export interface ImageProcessNodeProps {
   ) => Promise<void>;
 }
 
-interface SliderRowProps {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  display: string;
-  disabled?: boolean;
-  onChange: (v: number) => void;
-}
-
-const SliderRow: React.FC<SliderRowProps> = memo(({
-  label,
-  value,
-  min,
-  max,
-  step,
-  display,
-  disabled = false,
-  onChange,
-}) => (
-  <label className="flex items-center gap-1.5 min-w-0">
-    <span className="text-ink-faint text-[10px] whitespace-nowrap w-8 shrink-0 text-left">{label}</span>
-    <input
-      type="range"
-      min={min}
-      max={max}
-      step={step}
-      value={value}
-      aria-label={label}
-      aria-valuetext={display}
-      disabled={disabled}
-      onChange={(e) => onChange(Number(e.target.value))}
-      className="flex-1 min-w-0 h-1.5 bg-paper-grid/50 rounded-lg appearance-none cursor-pointer accent-[color:var(--accent)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-50"
-    />
-    <span className="text-[10px] text-ink-light min-w-[44px] text-right whitespace-nowrap tabular-nums font-mono shrink-0 pr-0.5">{display}</span>
-  </label>
-));
-SliderRow.displayName = 'SliderRow';
 
 const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
   id,

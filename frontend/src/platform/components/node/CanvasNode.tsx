@@ -72,13 +72,19 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
   disableRemove,
 }) => {
   const rootRef = useRef<HTMLDivElement>(null);
-  const { scale, onAnchorPointerDown } = useCanvas();
+  const { scale, onAnchorPointerDown, activeNodeId, setActiveNodeId } = useCanvas();
+  const isActive = activeNodeId === id;
 
   const [zIndex, setZIndex] = useState(() => globalZIndex++);
 
   const bringToFront = useCallback(() => {
     setZIndex(globalZIndex++);
   }, []);
+
+  const handleActivate = useCallback(() => {
+    bringToFront();
+    setActiveNodeId?.(id);
+  }, [bringToFront, id, setActiveNodeId]);
 
   const [position, setPosition] = useState({ x: initialX, y: initialY });
   // 拖拽中的实时位置：命令式更新，不触发 React 渲染
@@ -244,16 +250,19 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
       ref={rootRef}
       id={id}
       data-node-id={id}
-      className={`absolute bg-node-bg border-dashed-grid border rounded-md shadow-sm flex flex-col pointer-events-auto ${className}`}
+      className={`absolute bg-node-bg border-dashed-grid border rounded-md shadow-sm flex flex-col pointer-events-auto transition-shadow duration-150 ${
+        isActive ? 'ring-1 ring-accent/60 shadow-md' : ''
+      } ${className}`}
       style={{
-        zIndex,
+        zIndex: isActive ? Math.max(zIndex, 50) : zIndex,
         width: size ? `${size.w}px` : undefined,
         height: size ? `${size.h}px` : undefined,
         minWidth: size ? `${defaultSize!.width}px` : '200px',
         minHeight: size ? `${defaultSize!.height}px` : undefined,
         transform: `translate3d(${shownPos.x}px, ${shownPos.y}px, 0)`,
       }}
-      onPointerDownCapture={bringToFront}
+      onPointerDownCapture={handleActivate}
+      onFocusCapture={handleActivate}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}

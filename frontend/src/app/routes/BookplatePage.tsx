@@ -79,6 +79,16 @@ const BookplatePage: React.FC = () => {
   } = useCanvasState<NodeData, EdgeData, NodeSize>(String(user?.id ?? 'anon'));
 
   const [isLoading, setIsLoading] = useState(false);
+  /** 当前激活（点击/聚焦/操作）的节点 ID，用于上下游连线高亮置顶与景深弱化 */
+  const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
+
+  // 当激活节点已被删除/撤销消失时，自动清除激活状态
+  useEffect(() => {
+    if (activeNodeId && !nodes.some((n) => n.id === activeNodeId)) {
+      setActiveNodeId(null);
+    }
+  }, [nodes, activeNodeId]);
+
   const nodeSizesRef = useRef(nodeSizes);
   nodeSizesRef.current = nodeSizes;
 
@@ -954,6 +964,16 @@ const BookplatePage: React.FC = () => {
     handleNodeDrag,
   };
 
+  // 连线分层与高亮：存在激活节点时，高亮连线在 DOM 层自然置顶渲染
+  const sortedEdges = useMemo(() => {
+    if (!activeNodeId) return edges;
+    return [...edges].sort((a, b) => {
+      const aHigh = a.source === activeNodeId || a.target === activeNodeId ? 1 : 0;
+      const bHigh = b.source === activeNodeId || b.target === activeNodeId ? 1 : 0;
+      return aHigh - bHigh;
+    });
+  }, [edges, activeNodeId]);
+
   return (
     <div className="flex flex-col h-screen overflow-hidden">
       <Navbar />
@@ -963,10 +983,12 @@ const BookplatePage: React.FC = () => {
           scale={scale}
           position={position}
           onPositionChange={setPosition}
+          activeNodeId={activeNodeId}
+          onActiveNodeChange={setActiveNodeId}
           onAnchorPointerDown={onAnchorPointerDown}
           onContextMenu={handleCanvasContextMenu}
         >
-          {edges.map((edge) => {
+          {sortedEdges.map((edge) => {
             const source = nodes.find((n) => n.id === edge.source);
             const target = nodes.find((n) => n.id === edge.target);
             if (!source || !target) return null;
@@ -977,6 +999,10 @@ const BookplatePage: React.FC = () => {
             const compatible =
               matchPortType(portTypesOf(source.type).outputs, portTypesOf(target.type).inputs) !==
               'mismatch';
+
+            const isConnected =
+              activeNodeId !== null && (edge.source === activeNodeId || edge.target === activeNodeId);
+            const isDimmed = activeNodeId !== null && !isConnected;
 
             return (
               <NodeEdge
@@ -1005,6 +1031,8 @@ const BookplatePage: React.FC = () => {
                     : (edgeBranchInfo.get(edge.id)?.index ?? 0)
                 }
                 compatible={compatible}
+                highlighted={isConnected}
+                dimmed={isDimmed}
                 onDelete={() => handleRemoveEdge(edge.id)}
               />
             );

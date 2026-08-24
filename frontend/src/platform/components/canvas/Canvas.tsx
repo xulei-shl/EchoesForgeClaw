@@ -7,6 +7,10 @@ interface CanvasProps {
   scale: number;
   position: { x: number; y: number };
   onPositionChange: (position: { x: number; y: number }) => void;
+  /** 当前激活/选中的节点 ID */
+  activeNodeId?: string | null;
+  /** 激活节点变化回调 */
+  onActiveNodeChange?: (id: string | null) => void;
   /** 节点输出锚点按下（手动拖线连线起点），经 context 透传给各节点 */
   onAnchorPointerDown?: (nodeId: string, e: ReactPointerEvent) => void;
   onContextMenu?: (e: React.MouseEvent) => void;
@@ -17,6 +21,8 @@ export const Canvas: React.FC<CanvasProps> = ({
   scale,
   position,
   onPositionChange,
+  activeNodeId,
+  onActiveNodeChange,
   onAnchorPointerDown,
   onContextMenu,
 }) => {
@@ -57,10 +63,22 @@ export const Canvas: React.FC<CanvasProps> = ({
     }
   }, [position.x, position.y, applyTransform]);
 
+  // 监听 Escape 按键：清除当前选中的节点
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onActiveNodeChange?.(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onActiveNodeChange]);
+
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     // 仅响应鼠标左键（0）或中键（1），且仅当命中画布背景或 wrapper 自身时触发平移
     if (e.button !== 0 && e.button !== 1) return;
     if (e.target === e.currentTarget || e.target === bgRef.current) {
+      onActiveNodeChange?.(null);
       isDragging.current = true;
       lastMousePos.current = { x: e.clientX, y: e.clientY };
       try {
@@ -139,7 +157,7 @@ export const Canvas: React.FC<CanvasProps> = ({
   const bgTy = ((curPos.y % gridSize) + gridSize) % gridSize;
 
   return (
-    <CanvasContext.Provider value={{ scale, onAnchorPointerDown }}>
+    <CanvasContext.Provider value={{ scale, activeNodeId, setActiveNodeId: onActiveNodeChange, onAnchorPointerDown }}>
       <div
         ref={wrapperRef}
         className="w-full h-[calc(100vh-64px)] overflow-hidden bg-paper relative flex-1 cursor-grab active:cursor-grabbing select-none"
@@ -194,6 +212,11 @@ export const Canvas: React.FC<CanvasProps> = ({
         }
         .animate-flow {
           animation: flow 1s linear infinite;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .animate-flow {
+            animation: none !important;
+          }
         }
       `}</style>
     </CanvasContext.Provider>
