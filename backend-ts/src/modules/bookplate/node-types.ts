@@ -157,7 +157,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
   {
     type: NODE_TYPES.SKILL_SEARCH,
     name: 'Skill 检索',
-    description: '从 Bifrost 检索并安装 skill（或直接上传本地 skill zip），作为 Skill Agent 的 skill 来源',
+    description: '从 Bifrost 检索并安装 skill（或直接上传本地 skill zip），传入 Skill Agent',
     category: 'input',
     configurable: false,
     output_type: 'document',
