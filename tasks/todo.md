@@ -9,11 +9,11 @@
 
 ## 任务清单
 
-- [ ] 1. 图片处理 `ImageProcessNode.tsx`：结果态 img 包 PhotoView（仅包 img，「调整参数」浮钮保持可点），去掉 pointer-events-none 加 cursor-zoom-in
-- [ ] 2. 手账制作 `JournalMakerNode.tsx`：结果态 img 同上处理
-- [ ] 3. 图书卡片 `BookCardNode.tsx`：有 imageUrl 时把整个预览区（iframe 非交互，安全）包进 PhotoView，容器加 cursor-zoom-in
-- [ ] 4. 图书小票 `ReceiptPrinterNode.tsx`：预览区右上角加「查看大图」浮钮（Maximize2 图标，作为 PhotoView 子元素天然触发全屏），预览区容器补 relative
-- [ ] 5. 验证：frontend lint + build
+- [x] 1. 图片处理 `ImageProcessNode.tsx`：结果态 img 包 PhotoView（仅包 img，「调整参数」浮钮保持可点），去掉 pointer-events-none 加 cursor-zoom-in
+- [x] 2. 手账制作 `JournalMakerNode.tsx`：结果态 img 同上处理
+- [x] 3. 图书卡片 `BookCardNode.tsx`：有 imageUrl 时把整个预览区（iframe 非交互，安全）包进 PhotoView，容器加 cursor-zoom-in
+- [x] 4. 图书小票 `ReceiptPrinterNode.tsx`：预览区右上角加「查看大图」浮钮（Maximize2 图标，作为 PhotoView 子元素天然触发全屏），滚动容器外包 relative 定位壳防浮钮随内容滚走
+- [x] 5. 验证：frontend lint + build
 
 ## 关键决策记录
 
@@ -27,7 +27,11 @@
 
 ## 验证记录
 
-（待实施后填写）
+| 检查 | 结果 |
+|---|---|
+| frontend `npm run lint`（oxlint） | ✅ EXIT=0，无错误；warning 均为既有问题（public/maplibre 打包产物噪音 + BookCardNode 既有 exhaustive-deps，非本次改动行） |
+| frontend `npm run build`（tsc -b + vite build） | ✅ 通过（chunk >1MB 警告为既有现象） |
+| 浏览器交互验证 | ⚠️ 本环境无法启动浏览器，点击放大 / 浮钮位置需画板实际操作确认 |
 
 ## 遗留与风险
 
