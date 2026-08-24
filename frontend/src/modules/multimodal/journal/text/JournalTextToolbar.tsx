@@ -51,6 +51,7 @@ export const JournalTextToolbar: React.FC<JournalTextToolbarProps> = ({
   return (
     <div
       onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
       className="flex flex-col gap-1.5 p-1.5 rounded-xl bg-paper/95 backdrop-blur-md shadow-xl border border-paper-grid/60 text-ink text-xs select-none pointer-events-auto w-max"
     >
       {/* 第一行：主要快捷操作（编辑文案、字体切换、横竖排、图层控制与删除） */}

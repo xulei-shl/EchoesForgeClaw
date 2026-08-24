@@ -1,5 +1,6 @@
 import React, { memo, useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
+import { Select } from '../../../platform/components/ui/Select';
 import { fetchLLMModelList, type LLMModelList } from '../llmModels';
 
 /**
@@ -66,26 +67,25 @@ const ModelOverrideFieldInner: React.FC<ModelOverrideFieldProps> = ({
     );
   }
 
+  const modelOptions = [
+    { value: '', label: `默认：${modelList.default_model || '节点配置模型'}` },
+    ...modelList.models
+      .filter((m) => m && m !== modelList.default_model)
+      .map((m) => ({ value: m, label: m })),
+  ];
+  // 当前已选但不在列表中的模型（如服务商列表变化后）也保留可回选
+  if (value && value !== modelList.default_model && !modelList.models.includes(value)) {
+    modelOptions.push({ value, label: value });
+  }
+
   return (
-    <select
+    <Select
+      size="sm"
       value={value ?? ''}
-      onChange={(e) => onChange(e.target.value || undefined)}
       disabled={disabled}
-      className={`${controlClass} bg-paper`}
-    >
-      <option value="">默认：{modelList.default_model || '节点配置模型'}</option>
-      {modelList.models
-        .filter((m) => m && m !== modelList.default_model)
-        .map((m) => (
-          <option key={m} value={m}>
-            {m}
-          </option>
-        ))}
-      {/* 当前已选但不在列表中的模型（如服务商列表变化后）也保留可回选 */}
-      {value && value !== modelList.default_model && !modelList.models.includes(value) && (
-        <option value={value}>{value}</option>
-      )}
-    </select>
+      options={modelOptions}
+      onChange={(val) => onChange(val || undefined)}
+    />
   );
 };
 

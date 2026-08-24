@@ -13,6 +13,7 @@ import api from '../../../platform/services/api';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
+import { Select } from '../../../platform/components/ui/Select';
 import { SMALL_TOOL_TIMEOUT_MS } from '../../../platform/utils/timeouts';
 import { NODE_COLORS } from '../../bookplate/nodeTypes';
 
@@ -838,20 +839,16 @@ const ColorSearchNodeInner: React.FC<ColorSearchNodeProps> = ({
               {/* 筛选与搜索条 */}
               <div className="shrink-0 flex items-center gap-1.5 flex-wrap">
                 {/* 色系下拉 */}
-                <div className="relative min-w-[100px] flex-1">
-                  <select
-                    value={activeCategory}
-                    onChange={(e) => handleCategoryChange(e.target.value)}
-                    className="w-full h-7 pl-2 pr-6 rounded-md border border-dashed border-paper-grid bg-transparent text-xs font-serif text-ink focus:outline-none focus:border-accent transition-colors appearance-none cursor-pointer"
-                  >
-                    <option value="" className="bg-paper text-ink">全部色系 (742 色)</option>
-                    {categories.map((cat) => (
-                      <option key={cat} value={cat} className="bg-paper text-ink">
-                        {cat}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <Select
+                  size="sm"
+                  value={activeCategory}
+                  onChange={handleCategoryChange}
+                  options={[
+                    { value: '', label: '全部色系 (742 色)' },
+                    ...categories.map((cat) => ({ value: cat, label: cat })),
+                  ]}
+                  className="flex-1 min-w-[100px] font-serif"
+                />
 
                 {/* 冷暖单选 */}
                 <div className="flex items-center gap-0.5 bg-ink/5 p-0.5 rounded-md border border-paper-grid/40">

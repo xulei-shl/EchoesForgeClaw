@@ -6,6 +6,7 @@ import api from '../../../platform/services/api';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { Tooltip } from '../../../platform/components/ui/Tooltip';
+import { Select } from '../../../platform/components/ui/Select';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
 import { SMALL_TOOL_TIMEOUT_MS } from '../../../platform/utils/timeouts';
 import { NODE_COLORS } from '../../bookplate/nodeTypes';
@@ -288,27 +289,19 @@ const PatternSearchNodeInner: React.FC<PatternSearchNodeProps> = ({
       <div className="h-full flex flex-col flex-1 min-h-0 gap-2">
           {/* 分类下拉/选择 + 换一批 */}
           <div className="shrink-0 flex items-center gap-1.5">
-            <div className="relative flex-1 min-w-0">
-              <select
-                value={activeCategory}
-                onChange={(e) => handleCategoryChange(e.target.value)}
-                className="w-full h-8 pl-2 pr-7 rounded-md border border-dashed border-paper-grid bg-transparent text-xs font-serif text-ink focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors appearance-none cursor-pointer"
-              >
-                <option value="" className="bg-paper text-ink">全部类别 (100 款)</option>
-                {categories.map((cat) => {
+            <Select
+              size="sm"
+              value={activeCategory}
+              onChange={handleCategoryChange}
+              options={[
+                { value: '', label: '全部类别 (100 款)' },
+                ...categories.map((cat) => {
                   const meta = DEFAULT_PATTERN_CATEGORIES.find((c) => c.name === cat);
-                  const label = meta ? `${cat} (${meta.count} 款)` : cat;
-                  return (
-                    <option key={cat} value={cat} className="bg-paper text-ink">
-                      {label}
-                    </option>
-                  );
-                })}
-              </select>
-              <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-ink-faint text-[10px]">
-                ▼
-              </div>
-            </div>
+                  return { value: cat, label: meta ? `${cat} (${meta.count} 款)` : cat };
+                }),
+              ]}
+              className="flex-1 min-w-0"
+            />
 
             <button
               type="button"

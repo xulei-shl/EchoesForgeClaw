@@ -1,6 +1,7 @@
 import React from 'react';
 import { Check, Loader2, X } from 'lucide-react';
 import { SearchImageThumbnail } from './SearchImageThumbnail';
+import { Select } from '../../../platform/components/ui/Select';
 import type { ColorItem } from './ColorSearchNode';
 
 interface ColorSearchTabProps {
@@ -45,18 +46,16 @@ export const ColorSearchTab = React.memo<ColorSearchTabProps>(({
   return (
     <div className="flex-1 flex flex-col min-h-0 gap-2">
       <div className="shrink-0 flex items-center gap-1.5 flex-wrap">
-        <div className="relative min-w-[100px] flex-1">
-          <select
-            value={activeCategory}
-            onChange={(e) => onCategoryChange(e.target.value)}
-            className="w-full h-7 pl-2 pr-6 rounded-md border border-dashed border-paper-grid bg-transparent text-xs font-serif text-ink focus:outline-none focus:border-accent transition-colors appearance-none cursor-pointer"
-          >
-            <option value="" className="bg-paper text-ink">全部色系 (742 色)</option>
-            {categories.map((cat) => (
-              <option key={cat} value={cat} className="bg-paper text-ink">{cat}</option>
-            ))}
-          </select>
-        </div>
+        <Select
+          size="sm"
+          value={activeCategory}
+          onChange={onCategoryChange}
+          options={[
+            { value: '', label: '全部色系 (742 色)' },
+            ...categories.map((cat) => ({ value: cat, label: cat })),
+          ]}
+          className="flex-1 min-w-[100px] font-serif"
+        />
 
         <div className="flex items-center gap-0.5 bg-ink/5 p-0.5 rounded-md border border-paper-grid/40">
           {['暖', '冷', '中性'].map((t) => (

@@ -3,6 +3,7 @@ import { Languages, Loader2, ArrowLeftRight, AlertTriangle, Link2, Shuffle, Glob
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { BeamGlow } from '../../../platform/components/node/BeamGlow';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
+import { Select } from '../../../platform/components/ui/Select';
 import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
 import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
 import { NODE_COLORS } from '../nodeTypes';
@@ -221,16 +222,13 @@ const TextTranslationNodeInner: React.FC<TextTranslationNodeProps> = ({
         <div className="shrink-0 space-y-2">
           <div className="flex items-center gap-2">
             <div className="flex-1">
-              <select
+              <Select
+                size="sm"
                 value={fromLan}
-                onChange={(e) => setFromLan(e.target.value)}
+                onChange={setFromLan}
                 disabled={currentTab.isGenerating}
-                className="w-full h-9 rounded-md border border-dashed border-paper-grid bg-transparent px-2 text-xs text-ink focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors disabled:opacity-50"
-              >
-                {COMMON_LANGUAGES.map((l) => (
-                  <option key={l.value} value={l.value}>{l.label}</option>
-                ))}
-              </select>
+                options={COMMON_LANGUAGES.map((l) => ({ value: l.value, label: l.label }))}
+              />
             </div>
             <button
               type="button"
@@ -242,16 +240,13 @@ const TextTranslationNodeInner: React.FC<TextTranslationNodeProps> = ({
               <ArrowLeftRight size={14} strokeWidth={2} />
             </button>
             <div className="flex-1">
-              <select
+              <Select
+                size="sm"
                 value={toLan}
-                onChange={(e) => setToLan(e.target.value)}
+                onChange={setToLan}
                 disabled={currentTab.isGenerating}
-                className="w-full h-9 rounded-md border border-dashed border-paper-grid bg-transparent px-2 text-xs text-ink focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors disabled:opacity-50"
-              >
-                {COMMON_LANGUAGES.filter((l) => l.value !== 'auto').map((l) => (
-                  <option key={l.value} value={l.value}>{l.label}</option>
-                ))}
-              </select>
+                options={COMMON_LANGUAGES.filter((l) => l.value !== 'auto').map((l) => ({ value: l.value, label: l.label }))}
+              />
             </div>
           </div>
 

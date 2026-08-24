@@ -1,5 +1,6 @@
 import React from 'react';
 import { Layers } from 'lucide-react';
+import { Select } from '../../../../platform/components/ui/Select';
 import { getAllReceiptThemes } from '../themes';
 import { getAllReceiptTemplates, buildReceiptState } from '../templates';
 import {
@@ -28,6 +29,12 @@ export const ReceiptToolbar: React.FC<ReceiptToolbarProps> = ({
 }) => {
   const allThemes = getAllReceiptThemes();
   const allTemplates = getAllReceiptTemplates();
+  const templateOptions = allTemplates.map((t) => ({ value: t.id, label: t.name }));
+  const bookmarkWidthOptions = ANCIENT_BOOKMARK_WIDTH_OPTIONS.map((opt) => ({
+    value: opt.id,
+    label: opt.label,
+    title: opt.description,
+  }));
 
   return (
     <div className={`flex flex-wrap items-center justify-between gap-2 p-2 bg-paper-grid/20 border border-paper-grid rounded-md text-xs font-sans ${disabled ? 'opacity-70' : ''}`}>
@@ -35,11 +42,13 @@ export const ReceiptToolbar: React.FC<ReceiptToolbarProps> = ({
         {/* 模板选择 */}
         <div className="flex items-center gap-1.5" title={disabled ? '有下级节点，不可切换模板' : undefined}>
           <Layers size={14} className="text-ink-faint shrink-0" />
-          <select
+          <Select
+            size="sm"
             value={state.templateId}
             disabled={disabled}
-            onChange={(e) => {
-              const tmplId = e.target.value as ReceiptTemplateId;
+            options={templateOptions}
+            onChange={(val) => {
+              const tmplId = val as ReceiptTemplateId;
               // 切换模板时，使用公共核心函数 buildReceiptState 重新构建新模板下的完整状态，并自动映射当前图书元数据与专属默认主题
               const nextState = buildReceiptState(
                 tmplId,
@@ -54,33 +63,25 @@ export const ReceiptToolbar: React.FC<ReceiptToolbarProps> = ({
               );
               onChange(nextState);
             }}
-            className="bg-paper border border-paper-grid text-ink rounded px-2 py-1 text-xs outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {allTemplates.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
+            className="w-28 sm:w-32 min-w-[100px]"
+          />
         </div>
 
         {/* 古籍书签专属规格选择器 */}
         {state.templateId === 'ancient_bookmark' && (
-          <div className="flex items-center gap-1.5" title={disabled ? '有下级节点，不可修改规格' : undefined}>
+          <div
+            className="flex items-center gap-1.5"
+            title={disabled ? '有下级节点，不可修改规格' : '选择古籍版式宽度规格（适配不同长短的文摘正文）'}
+          >
             <span className="text-[11px] text-ink-faint">规格:</span>
-            <select
+            <Select
+              size="sm"
               value={state.bookmarkWidth || 'standard'}
               disabled={disabled}
-              onChange={(e) => onChange({ bookmarkWidth: e.target.value as AncientBookmarkWidth })}
-              className="bg-paper border border-paper-grid text-ink rounded px-1.5 py-1 text-xs outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-60 font-serif"
-              title="选择古籍版式宽度规格（适配不同长短的文摘正文）"
-            >
-              {ANCIENT_BOOKMARK_WIDTH_OPTIONS.map((opt) => (
-                <option key={opt.id} value={opt.id}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+              options={bookmarkWidthOptions}
+              onChange={(val) => onChange({ bookmarkWidth: val as AncientBookmarkWidth })}
+              className="w-36 sm:w-44 min-w-[130px] font-serif"
+            />
           </div>
         )}
       </div>

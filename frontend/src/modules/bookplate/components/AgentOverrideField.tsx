@@ -1,5 +1,6 @@
 import React, { memo, useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
+import { Select } from '../../../platform/components/ui/Select';
 import { fetchFastClawAgentList, type FastClawAgentList } from '../fastclawAgents';
 
 /**
@@ -64,26 +65,25 @@ const AgentOverrideFieldInner: React.FC<AgentOverrideFieldProps> = ({
     ? agentList.default_agent.agent_name || agentList.default_agent.name
     : '节点配置';
 
+  const agentOptions = [
+    { value: '', label: `默认：${defaultLabel}` },
+    ...agentList.agents
+      .filter((a) => agentList.default_agent == null || a.id !== agentList.default_agent.id)
+      .map((a) => ({ value: String(a.id), label: a.agent_name || a.name })),
+  ];
+  // 当前已选但不在列表中的 agent（如被停用后）也保留可回选
+  if (value != null && !agentList.agents.some((a) => a.id === value)) {
+    agentOptions.push({ value: String(value), label: `Agent #${value}` });
+  }
+
   return (
-    <select
+    <Select
+      size="sm"
       value={String(value ?? '')}
-      onChange={(e) => onChange(e.target.value ? Number(e.target.value) : undefined)}
       disabled={disabled}
-      className="w-full min-h-[28px] rounded-md border border-dashed border-paper-grid bg-paper px-2 py-1 text-[11px] font-sans text-ink focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors disabled:opacity-50"
-    >
-      <option value="">默认：{defaultLabel}</option>
-      {agentList.agents
-        .filter((a) => agentList.default_agent == null || a.id !== agentList.default_agent.id)
-        .map((a) => (
-          <option key={a.id} value={String(a.id)}>
-            {a.agent_name || a.name}
-          </option>
-        ))}
-      {/* 当前已选但不在列表中的 agent（如被停用后）也保留可回选 */}
-      {value != null && !agentList.agents.some((a) => a.id === value) && (
-        <option value={String(value)}>Agent #{value}</option>
-      )}
-    </select>
+      options={agentOptions}
+      onChange={(val) => onChange(val ? Number(val) : undefined)}
+    />
   );
 };
 

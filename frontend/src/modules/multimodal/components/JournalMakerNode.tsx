@@ -212,6 +212,32 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
     else setIsEditing(true);
   }, [data?.imageUrl]);
 
+  // 节点失焦时自动清空内部素材选中与文字编辑态
+  useEffect(() => {
+    if (!isSelected) {
+      setSelectedId(null);
+      setEditingTextId(null);
+    }
+  }, [isSelected]);
+
+  // 按 Escape 键取消选中素材
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && selectedId && !editingTextId) {
+        setSelectedId(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedId, editingTextId]);
+
+  // 点击画板空白区域取消素材选中
+  const handleCanvasBlankPointerDown = useCallback((e: React.PointerEvent | React.MouseEvent) => {
+    if (!(e.target as HTMLElement).closest('[data-journal-item]')) {
+      setSelectedId(null);
+    }
+  }, []);
+
   const commit = useCallback(
     (patch: Partial<JournalMakerState>, undoable?: boolean) => {
       onUpdateState?.(id, patch, undoable);
@@ -669,6 +695,8 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
     const isNearTop = item.y < 12;
     return (
       <div
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
         className={`absolute left-1/2 -translate-x-1/2 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-paper/95 backdrop-blur-md shadow-md border border-paper-grid/50 transition-[opacity,transform] duration-150 ease-out z-30 ${
           isNearTop ? '-bottom-9' : '-top-9'
         } ${
@@ -690,7 +718,10 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
               type="button"
               disabled={hasDownstream}
               onPointerDown={(e) => e.stopPropagation()}
-              onClick={() => bumpLayer(item.id, mode)}
+              onClick={(e) => {
+                e.stopPropagation();
+                bumpLayer(item.id, mode);
+              }}
               className="p-1 rounded text-ink-light hover:text-accent hover:bg-paper-grid/40 active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out disabled:opacity-40"
             >
               <Icon size={12} strokeWidth={1.8} />
@@ -703,7 +734,10 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
             type="button"
             disabled={hasDownstream}
             onPointerDown={(e) => e.stopPropagation()}
-            onClick={() => rotateStepItem(item.id, 'ccw')}
+            onClick={(e) => {
+              e.stopPropagation();
+              rotateStepItem(item.id, 'ccw');
+            }}
             className="p-1 rounded text-ink-light hover:text-accent hover:bg-paper-grid/40 active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out disabled:opacity-40"
           >
             <RotateCcw size={12} strokeWidth={1.8} />
@@ -714,7 +748,10 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
             type="button"
             disabled={hasDownstream}
             onPointerDown={(e) => e.stopPropagation()}
-            onClick={() => rotateStepItem(item.id, 'cw')}
+            onClick={(e) => {
+              e.stopPropagation();
+              rotateStepItem(item.id, 'cw');
+            }}
             className="p-1 rounded text-ink-light hover:text-accent hover:bg-paper-grid/40 active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out disabled:opacity-40"
           >
             <RotateCw size={12} strokeWidth={1.8} />
@@ -726,7 +763,10 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
             type="button"
             disabled={hasDownstream}
             onPointerDown={(e) => e.stopPropagation()}
-            onClick={() => deleteItem(item)}
+            onClick={(e) => {
+              e.stopPropagation();
+              deleteItem(item);
+            }}
             className="p-1 rounded text-ink-light hover:text-error hover:bg-error/10 active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out disabled:opacity-40"
           >
             <Trash2 size={12} strokeWidth={1.8} />
@@ -1083,7 +1123,11 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
         )}
 
         {/* 核心操作与预览画布 */}
-        <div className="relative flex-1 min-h-0 w-full overflow-hidden rounded bg-paper-grid/10 border border-paper-grid/40 flex items-center justify-center select-none">
+        <div
+          className="relative flex-1 min-h-0 w-full overflow-hidden rounded bg-paper-grid/10 border border-paper-grid/40 flex items-center justify-center select-none"
+          onPointerDown={handleCanvasBlankPointerDown}
+          onClick={handleCanvasBlankPointerDown}
+        >
           <AnimatePresence mode="wait" initial={false}>
             {!hasGenerated ? (
               // 编辑模式：可交互手账页面
@@ -1094,8 +1138,15 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                 exit={{ opacity: 0, scale: 0.98 }}
                 transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
                 className="relative w-full h-full flex items-center justify-center overflow-hidden p-2 sm:p-3"
+                onPointerDown={handleCanvasBlankPointerDown}
+                onClick={handleCanvasBlankPointerDown}
               >
-                <div ref={stageRef} className="relative w-full h-full flex items-center justify-center overflow-hidden">
+                <div
+                  ref={stageRef}
+                  className="relative w-full h-full flex items-center justify-center overflow-hidden"
+                  onPointerDown={handleCanvasBlankPointerDown}
+                  onClick={handleCanvasBlankPointerDown}
+                >
                   {/* Card Shell: 精致的白底外框与多层细腻阴影（参考 canvas-card.css） */}
                   <div
                     className="relative p-2 rounded-2xl bg-white shadow-[0_0_0_0.5px_rgba(0,0,0,0.08),0_16px_48px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03),0_2px_4px_rgba(0,0,0,0.02)] flex items-center justify-center"
@@ -1104,15 +1155,15 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                       width: pageFit.w,
                       height: pageFit.h,
                     }}
+                    onPointerDown={handleCanvasBlankPointerDown}
+                    onClick={handleCanvasBlankPointerDown}
                   >
                     {/* 内层 Art Canvas: 承载 Mesh 渐变、点阵网格与 15% 边缘淡出遮罩 */}
                     <div
                       ref={pageRef}
                       className="relative w-full h-full rounded-lg overflow-hidden bg-white select-none shadow-2xs"
-                      onPointerDown={(e) => {
-                        // 点击空白处取消选中（素材内部会 stopPropagation）
-                        if (e.target === e.currentTarget) setSelectedId(null);
-                      }}
+                      onPointerDown={handleCanvasBlankPointerDown}
+                      onClick={handleCanvasBlankPointerDown}
                     >
                       {/* 动态 Mesh 渐变与点阵背景层（带四周 15% 边缘淡出羽化遮罩） */}
                       <div
