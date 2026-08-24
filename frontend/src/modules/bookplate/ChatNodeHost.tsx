@@ -153,6 +153,7 @@ export function ChatNodeHost({
               includeBookCover: chatSettings.includeBookCover !== false,
               includeUpstreamText: chatSettings.includeUpstream !== false,
               includeUpstreamImages: chatSettings.includeUpstreamImages !== false,
+              includeSkills: true,
             },
             nodesRef.current,
             edgesRef.current,

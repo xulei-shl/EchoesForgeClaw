@@ -24,6 +24,12 @@ export interface ContextBlocksOptions {
    * 提示词的图片分析等节点，避免展示实际未使用的上下文。
    */
   parentFilter?: (type: CanvasNodeType) => boolean;
+  /**
+   * 是否展示直连 Skill 检索上级的已选 skill（仅 chat 节点开启）：
+   * skills 不走文本/图片输出通道（skill_search 输出端口为 document），
+   * 由 collectSkillNames 单独收集并随 /chat 请求体下发，故独立成块。
+   */
+  includeSkills?: boolean;
 }
 
 /**
@@ -73,16 +79,33 @@ export function buildInjectedContextBlocks(
   // 2. 直接父节点：按「输出端口类型」分类（collectNodeInputs 统一分组，画线连上即输入）。
   //    文本上级走 nodeOutputText、图片上级走 nodeOutputImages，受各自开关控制；
   //    后续新增输出类型（音频等）接入时在下方补对应的提取与开关即可。
+  const { parents, text: textOutputs, images: imageOutputs } = collectNodeInputs(
+    node,
+    nodes,
+    edges,
+    portTypesOf
+  );
+
+  // 2.0 直连 Skill 检索上级：已选 skill 随 /chat 请求体 skills 字段注入 Skill Agent
+  //     （不受文本/图片开关控制），独立成块展示清单
+  if (opts.includeSkills) {
+    for (const p of parents) {
+      if (p.type !== 'skill_search') continue;
+      const skillText = nodeOutputText(p).trim();
+      if (!skillText) continue;
+      blocks.push({
+        id: `skills_${p.id}`,
+        title: getNodeTitle(p),
+        nodeType: p.type,
+        text: skillText,
+      });
+    }
+  }
+
   const includeText = opts.includeUpstreamText;
   const includeImages = opts.includeUpstreamImages;
 
   if (includeText || includeImages) {
-    const { parents, text: textOutputs, images: imageOutputs } = collectNodeInputs(
-      node,
-      nodes,
-      edges,
-      portTypesOf
-    );
     for (const p of parents) {
       if (opts.parentFilter && !opts.parentFilter(p.type)) continue;
       // 若该直连父节点已作为图书元数据/封面注入，跳过以避免重复注入

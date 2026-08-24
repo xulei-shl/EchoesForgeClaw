@@ -16,15 +16,26 @@
 
 ## 任务清单
 
-- [ ] 1. pi-agent-service.ts：skillsDir 改为 `.pi-agent/skills`，更新头注释与装配注释
-- [ ] 2. tests/api/pi-agent-workspace.test.ts：断言路径同步更新（空 skills 不建 .pi-agent/skills）
-- [ ] 3. tests/api/skills.test.ts：模拟装配路径同步为 .pi-agent/skills（下载放行回归）
-- [ ] 4. 验证：vitest run pi-agent-workspace + skills + pi-sse-wire；typecheck
+- [x] 1. pi-agent-service.ts：skillsDir 改为 `.pi-agent/skills`，更新头注释与装配注释
+- [x] 2. tests/api/pi-agent-workspace.test.ts：断言路径同步更新（空 skills 不建 .pi-agent/skills）
+- [x] 3. tests/api/skills.test.ts：模拟装配路径同步为 .pi-agent/skills（下载放行回归）
+- [x] 4. 验证：vitest run pi-agent-workspace + skills + pi-sse-wire；typecheck
 
 ## 验证记录
 
 | 检查 | 结果 |
 |---|---|
+| `npx vitest run tests/api/pi-agent-workspace.test.ts tests/api/skills.test.ts tests/api/pi-sse-wire.test.ts` | ✅ 3 文件 27 用例全过 |
+| 前端 `npm run lint` / `npx tsc -b` | ✅ EXIT=0 |
+
+## 附带修复：chat 节点「上下文注入」不显示传入 skill
+
+- 根因：skill_search 输出端口类型为 document（非 text/image），buildInjectedContextBlocks
+  的父节点遍历只认 text/image 通道 → skill_search 永远不成块；skill 实际由 collectSkillNames
+  单独收集随 /chat body 下发，仅 UI 缺展示。
+- 修复：contextBlocks.ts 新增 includeSkills 选项 + skill_search 父节点独立成块
+  （文本复用 nodeOutputText 的 selections 清单格式）；仅 ChatNodeHost 开启（图像/文本生成节点不传，
+  因其后端不消费 skills）。
 
 ---
 
