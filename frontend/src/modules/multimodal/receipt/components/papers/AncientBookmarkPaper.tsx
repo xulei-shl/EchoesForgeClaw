@@ -265,17 +265,17 @@ export const AncientBookmarkPaper = React.forwardRef<HTMLDivElement, AncientBook
         {isEditing && !disabled && (
           <div
             data-export-ignore="true"
-            className="absolute inset-1 z-30 bg-[#fdfbf6]/98 backdrop-blur-md p-3 flex flex-col rounded shadow-2xl border border-amber-900/30 overflow-hidden text-amber-950 select-text"
+            className="absolute inset-1 z-30 bg-paper/95 backdrop-blur-md p-3 flex flex-col rounded shadow-2xl border border-paper-grid overflow-hidden text-ink select-text"
           >
             {/* 顶栏：标题与完成按钮 */}
-            <div className="flex items-center justify-between border-b border-amber-900/20 pb-2 mb-2 shrink-0">
-              <span className="text-[12px] font-bold text-amber-950 flex items-center gap-1">
+            <div className="flex items-center justify-between border-b border-paper-grid pb-2 mb-2 shrink-0">
+              <span className="text-[12px] font-bold text-ink flex items-center gap-1">
                 <span>编辑古籍排版元素</span>
               </span>
               <button
                 type="button"
                 onClick={() => setIsEditing(false)}
-                className="px-2.5 py-0.5 bg-amber-900 hover:bg-amber-800 active:bg-amber-950 text-white rounded text-[11px] font-medium shadow-xs transition-colors"
+                className="px-2.5 py-0.5 bg-accent hover:bg-accent-hover active:bg-accent text-white rounded text-[11px] font-medium shadow-xs transition-colors"
               >
                 完成
               </button>
@@ -285,7 +285,7 @@ export const AncientBookmarkPaper = React.forwardRef<HTMLDivElement, AncientBook
             <div className="grow overflow-y-auto space-y-2.5 pr-0.5 text-[11px]">
               {/* 版式规格选择 */}
               <div>
-                <label className="block font-semibold text-amber-900 mb-1">
+                <label className="block font-semibold text-ink mb-1">
                   版式规格（宽度与容量）
                 </label>
                 <div className="grid grid-cols-2 gap-1.5">
@@ -298,12 +298,12 @@ export const AncientBookmarkPaper = React.forwardRef<HTMLDivElement, AncientBook
                         onClick={() => onChange({ bookmarkWidth: opt.id })}
                         className={`px-2 py-1.5 text-left rounded border transition-all text-[11px] ${
                           isSelected
-                            ? 'bg-amber-900 text-white border-amber-950 shadow-xs font-semibold'
-                            : 'bg-amber-50/80 text-amber-950 border-amber-900/20 hover:border-amber-800'
+                            ? 'bg-accent text-white border-accent shadow-xs font-semibold'
+                            : 'bg-paper border-paper-grid text-ink hover:border-accent/50 hover:bg-paper-grid/30'
                         }`}
                       >
                         <div className="font-serif leading-tight">{opt.label}</div>
-                        <div className={`text-[9px] mt-0.5 ${isSelected ? 'text-amber-200' : 'text-amber-700/75'}`}>
+                        <div className={`text-[9px] mt-0.5 ${isSelected ? 'text-white/80' : 'text-ink-faint'}`}>
                           {opt.description}
                         </div>
                       </button>
@@ -314,7 +314,7 @@ export const AncientBookmarkPaper = React.forwardRef<HTMLDivElement, AncientBook
 
               {/* 1. 第一栏：题名 / 书名 */}
               <div>
-                <label className="block font-semibold text-amber-900 mb-0.5">
+                <label className="block font-semibold text-ink mb-0.5">
                   第一栏：题名 / 书名
                 </label>
                 <input
@@ -325,13 +325,13 @@ export const AncientBookmarkPaper = React.forwardRef<HTMLDivElement, AncientBook
                   onMouseDown={stopEvent}
                   onPointerDown={stopEvent}
                   placeholder="输入古籍题名（如：資治通鑑）"
-                  className="w-full px-2 py-1 bg-amber-50/80 border border-amber-900/20 focus:border-amber-800 focus:bg-white focus:ring-1 focus:ring-amber-800/30 rounded outline-none text-[12px] font-serif transition-all"
+                  className="w-full px-2 py-1 bg-paper/80 border border-paper-grid focus:border-accent focus:bg-paper focus:ring-1 focus:ring-accent/30 rounded outline-none text-[12px] font-serif transition-all text-ink"
                 />
               </div>
 
               {/* 2. 第二栏：著者 / 责任者 */}
               <div>
-                <label className="block font-semibold text-amber-900 mb-0.5">
+                <label className="block font-semibold text-ink mb-0.5">
                   第二栏：著者 / 责任者
                 </label>
                 <input
@@ -342,13 +342,13 @@ export const AncientBookmarkPaper = React.forwardRef<HTMLDivElement, AncientBook
                   onMouseDown={stopEvent}
                   onPointerDown={stopEvent}
                   placeholder="著者署名（如：司马光 或 [俄] 列夫·托尔斯泰）"
-                  className="w-full px-2 py-1 bg-amber-50/80 border border-amber-900/20 focus:border-amber-800 focus:bg-white focus:ring-1 focus:ring-amber-800/30 rounded outline-none text-[12px] font-serif transition-all"
+                  className="w-full px-2 py-1 bg-paper/80 border border-paper-grid focus:border-accent focus:bg-paper focus:ring-1 focus:ring-accent/30 rounded outline-none text-[12px] font-serif transition-all text-ink"
                 />
               </div>
 
               {/* 3. 左侧：版心题名 */}
               <div>
-                <label className="block font-semibold text-amber-900 mb-0.5">
+                <label className="block font-semibold text-ink mb-0.5">
                   左侧：版心题名
                 </label>
                 <input
@@ -359,17 +359,17 @@ export const AncientBookmarkPaper = React.forwardRef<HTMLDivElement, AncientBook
                   onMouseDown={stopEvent}
                   onPointerDown={stopEvent}
                   placeholder="中缝版心文字（留空默认同书名）"
-                  className="w-full px-2 py-1 bg-amber-50/80 border border-amber-900/20 focus:border-amber-800 focus:bg-white focus:ring-1 focus:ring-amber-800/30 rounded outline-none text-[12px] font-serif transition-all"
+                  className="w-full px-2 py-1 bg-paper/80 border border-paper-grid focus:border-accent focus:bg-paper focus:ring-1 focus:ring-accent/30 rounded outline-none text-[12px] font-serif transition-all text-ink"
                 />
               </div>
 
               {/* 4. 第三栏起：正文与文摘 */}
               <div>
                 <div className="flex items-center justify-between mb-0.5">
-                  <label className="font-semibold text-amber-900">
+                  <label className="font-semibold text-ink">
                     第三栏起：正文文摘
                   </label>
-                  <span className="text-[10px] text-amber-700/80">标点自动朱批句读</span>
+                  <span className="text-[10px] text-ink-faint">标点自动朱批句读</span>
                 </div>
                 <textarea
                   autoFocus={focusTarget === 'excerpt'}
@@ -379,13 +379,13 @@ export const AncientBookmarkPaper = React.forwardRef<HTMLDivElement, AncientBook
                   onMouseDown={stopEvent}
                   onPointerDown={stopEvent}
                   placeholder="输入古籍正文或图书文摘..."
-                  className="w-full p-2 bg-amber-50/80 border border-amber-900/20 focus:border-amber-800 focus:bg-white focus:ring-1 focus:ring-amber-800/30 rounded outline-none text-[12px] leading-relaxed resize-none font-serif transition-all"
+                  className="w-full p-2 bg-paper/80 border border-paper-grid focus:border-accent focus:bg-paper focus:ring-1 focus:ring-accent/30 rounded outline-none text-[12px] leading-relaxed resize-none font-serif transition-all text-ink"
                 />
               </div>
 
               {/* 5. 尾列：校勘跋文 / 出品印记 */}
               <div>
-                <label className="block font-semibold text-amber-900 mb-0.5">
+                <label className="block font-semibold text-ink mb-0.5">
                   尾列：校勘跋文 / 印记
                 </label>
                 <input
@@ -396,7 +396,7 @@ export const AncientBookmarkPaper = React.forwardRef<HTMLDivElement, AncientBook
                   onMouseDown={stopEvent}
                   onPointerDown={stopEvent}
                   placeholder="尾列小字题跋（如：中华书局 谨印）"
-                  className="w-full px-2 py-1 bg-amber-50/80 border border-amber-900/20 focus:border-amber-800 focus:bg-white focus:ring-1 focus:ring-amber-800/30 rounded outline-none text-[12px] font-serif transition-all"
+                  className="w-full px-2 py-1 bg-paper/80 border border-paper-grid focus:border-accent focus:bg-paper focus:ring-1 focus:ring-accent/30 rounded outline-none text-[12px] font-serif transition-all text-ink"
                 />
               </div>
             </div>
@@ -451,7 +451,7 @@ export const AncientBookmarkPaper = React.forwardRef<HTMLDivElement, AncientBook
                   onMouseDown={stopEvent}
                   onPointerDown={stopEvent}
                   className={`transition-all duration-200 select-none ${
-                    !disabled && hoveredSealId === seal.id ? 'scale-110 drop-shadow-md ring-1 ring-amber-700/50' : ''
+                    !disabled && hoveredSealId === seal.id ? 'scale-110 drop-shadow-md ring-1 ring-accent/60' : ''
                   }`}
                   title={disabled ? (seal.name || '古籍印章') : `${seal.name || '印章'}（点击随机换一枚）`}
                   onError={(e) => {
