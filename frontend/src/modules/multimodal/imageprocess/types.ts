@@ -8,7 +8,7 @@
  */
 
 /** 效果注册表 id */
-export type ImageFxId = 'grain' | 'halftone' | 'dither' | 'ascii';
+export type ImageFxId = 'grain' | 'halftone' | 'dither' | 'ascii' | 'texture';
 
 /** 数值滑杆参数声明（节点 UI 按声明自动渲染滑杆行） */
 export interface ImageFxSliderParamDef {
@@ -32,7 +32,19 @@ export interface ImageFxSegmentParamDef {
   options: { value: ImageFxParamValue; label: string }[];
 }
 
-export type ImageFxParamDef = ImageFxSliderParamDef | ImageFxSegmentParamDef;
+/** 下拉选择参数声明（适用于选项较多的枚举，如质感风格切换） */
+export interface ImageFxSelectParamDef {
+  kind: 'select';
+  key: string;
+  label: string;
+  default: string;
+  options: { value: string; label: string; title?: string }[];
+}
+
+export type ImageFxParamDef =
+  | ImageFxSliderParamDef
+  | ImageFxSegmentParamDef
+  | ImageFxSelectParamDef;
 
 /** 效果参数取值（滑杆数值或分段字符串值） */
 export type ImageFxParamValue = number | string;
@@ -121,6 +133,45 @@ export interface AsciiFxParams {
   normalize?: 'on' | 'off';
   /** 亮度→字符映射方向反转（白底配色建议开启，亮区用疏字符） */
   invert: 'normal' | 'inverted';
+}
+
+/** 触感质感风格 ID（24 种风格） */
+export type TextureStyleId =
+  | 'characters'
+  | 'risograph'
+  | 'dither'
+  | 'cobalt-grain'
+  | 'denim-grain'
+  | 'harbor-grain'
+  | 'meadow-grain'
+  | 'block'
+  | 'dots'
+  | 'paper'
+  | 'watercolor'
+  | 'ink-wash'
+  | 'cyanotype'
+  | 'mixed'
+  | 'pixel-art'
+  | 'mosaic'
+  | 'lego'
+  | 'cross'
+  | 'diamond'
+  | 'lines'
+  | 'diagonal'
+  | 'braille'
+  | 'voxel'
+  | 'disco';
+
+/** 触感质感滤镜参数（texture.fayaz 24 种质感算法移植） */
+export interface TextureFxParams {
+  /** 质感风格 */
+  style: TextureStyleId;
+  /** 细节密度 0-100（控制网格颗粒、体素或字符大小） */
+  detail: number;
+  /** 效果强度 0-100（控制原图与滤镜色彩融合比例） */
+  intensity: number;
+  /** 对比度 0-100（控制明暗张力与 S 曲线斜率） */
+  contrast: number;
 }
 
 /** 图片处理节点持久化状态（写入 node.data） */

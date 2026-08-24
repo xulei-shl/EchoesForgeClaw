@@ -25,8 +25,15 @@ import {
   getAllImageFxEffects,
   resolveFxParams,
   switchFxEffectPatch,
+  TEXTURE_STYLE_PRESETS,
 } from '../imageprocess';
-import type { ImageProcessState, ImageFxParamValue, ImageFxSliderParamDef } from '../imageprocess';
+import type {
+  ImageProcessState,
+  ImageFxParamValue,
+  ImageFxSliderParamDef,
+  ImageFxSelectParamDef,
+  TextureStyleId,
+} from '../imageprocess';
 import { CustomPaletteEditor } from './CustomPaletteEditor';
 
 /** 预览渲染最长边（提速）；导出生成用大值保清晰 */
@@ -175,10 +182,28 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
   /** 更新当前效果的某个参数（参数按效果分桶存储，切换互不覆盖） */
   const setParam = useCallback(
     (key: string, value: ImageFxParamValue) => {
+      let nextEffectParams = { ...params, [key]: value };
+      // 若切换触感质感的具体风格，自动联动官方推荐的最佳预设滑杆参数
+      if (
+        effect.id === 'texture' &&
+        key === 'style' &&
+        typeof value === 'string' &&
+        value in TEXTURE_STYLE_PRESETS
+      ) {
+        const preset = TEXTURE_STYLE_PRESETS[value as TextureStyleId];
+        if (preset) {
+          nextEffectParams = {
+            ...nextEffectParams,
+            detail: preset.detail,
+            intensity: preset.intensity,
+            contrast: preset.contrast,
+          };
+        }
+      }
       patchState({
         fxParams: {
           ...(data.fxParams ?? {}),
-          [effect.id]: { ...params, [key]: value },
+          [effect.id]: nextEffectParams,
         },
       });
     },
@@ -305,9 +330,10 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
   const hasGenerated = Boolean(data?.imageUrl && !isEditing);
   const isSaved = Boolean(data?.isSaved);
 
-  // 参数控件按声明分组：滑杆与分段控件
+  // 参数控件按声明分组：滑杆、分段控件与下拉选择
   const sliderDefs = effect.params.filter((p): p is ImageFxSliderParamDef => p.kind === 'slider');
   const segmentDefs = effect.params.filter((p) => p.kind === 'segment');
+  const selectDefs = effect.params.filter((p): p is ImageFxSelectParamDef => p.kind === 'select');
 
   return (
     <CanvasNode
@@ -519,6 +545,25 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
                   transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
                   className="overflow-hidden flex flex-col gap-1.5"
                 >
+                  {/* 下拉选择控件（如 24 种质感风格选择器） */}
+                  {selectDefs.length > 0 && (
+                    <div className="flex flex-col gap-1">
+                      {selectDefs.map((def) => (
+                        <div key={def.key} className="flex items-center gap-1.5 min-w-0">
+                          <span className="text-ink-faint text-[10px] shrink-0 font-medium">{def.label}</span>
+                          <Select
+                            size="sm"
+                            value={String(params[def.key] ?? def.default)}
+                            disabled={hasDownstream || isGenerating}
+                            onChange={(val) => setParam(def.key, val)}
+                            options={def.options}
+                            className="flex-1 min-w-0 text-xs"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   {/* 分段选项控件（算法、像素块、色板、形状等） */}
                   {segmentDefs.length > 0 && (
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">

@@ -12,9 +12,11 @@ import { GRAIN_FX_EFFECT } from './grain';
 import { HALFTONE_FX_EFFECT } from './halftone';
 import { DITHER_FX_EFFECT } from './dither';
 import { ASCII_FX_EFFECT } from './ascii';
+import { TEXTURE_FX_EFFECT } from './texture';
 
 /** 效果注册表 */
 const imageFxRegistry = new Map<string, ImageFxEffectDef>([
+  [TEXTURE_FX_EFFECT.id, TEXTURE_FX_EFFECT],
   [GRAIN_FX_EFFECT.id, GRAIN_FX_EFFECT],
   [HALFTONE_FX_EFFECT.id, HALFTONE_FX_EFFECT],
   [DITHER_FX_EFFECT.id, DITHER_FX_EFFECT],
