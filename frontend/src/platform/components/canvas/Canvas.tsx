@@ -27,10 +27,12 @@ export const Canvas: React.FC<CanvasProps> = ({
   onContextMenu,
 }) => {
   const isDragging = useRef(false);
+  const pointerDownPos = useRef({ x: 0, y: 0 });
   const lastMousePos = useRef({ x: 0, y: 0 });
   const wrapperRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const bgRef = useRef<HTMLDivElement>(null);
+  const dragOverlayRef = useRef<HTMLDivElement>(null);
   const dragPos = useRef({ x: position.x, y: position.y });
   const rafId = useRef<number | null>(null);
 
@@ -78,13 +80,17 @@ export const Canvas: React.FC<CanvasProps> = ({
     // 仅响应鼠标左键（0）或中键（1），且仅当命中画布背景或 wrapper 自身时触发平移
     if (e.button !== 0 && e.button !== 1) return;
     if (e.target === e.currentTarget || e.target === bgRef.current) {
-      onActiveNodeChange?.(null);
+      // 记录起始位置，不在此处同步清空选中态，避免起步帧发生全画布 React 重渲染
       isDragging.current = true;
+      pointerDownPos.current = { x: e.clientX, y: e.clientY };
       lastMousePos.current = { x: e.clientX, y: e.clientY };
       try {
         e.currentTarget.setPointerCapture?.(e.pointerId);
       } catch {
         /* 忽略指针捕获失败 */
+      }
+      if (dragOverlayRef.current) {
+        dragOverlayRef.current.style.display = 'block';
       }
       if (wrapperRef.current) {
         wrapperRef.current.classList.add('is-dragging');
@@ -109,6 +115,9 @@ export const Canvas: React.FC<CanvasProps> = ({
   const endDrag = (pointerId?: number, currentTarget?: HTMLElement) => {
     if (!isDragging.current) return;
     isDragging.current = false;
+    if (dragOverlayRef.current) {
+      dragOverlayRef.current.style.display = 'none';
+    }
     if (wrapperRef.current) {
       wrapperRef.current.classList.remove('is-dragging');
     }
@@ -130,6 +139,14 @@ export const Canvas: React.FC<CanvasProps> = ({
   endDragRef.current = endDrag;
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isDragging.current) {
+      const dx = e.clientX - pointerDownPos.current.x;
+      const dy = e.clientY - pointerDownPos.current.y;
+      // 若位移小于 3px，说明是单纯点击画布空白处，清除当前激活节点
+      if (Math.hypot(dx, dy) < 3) {
+        onActiveNodeChange?.(null);
+      }
+    }
     endDrag(e.pointerId, e.currentTarget as HTMLElement);
   };
 
@@ -169,6 +186,21 @@ export const Canvas: React.FC<CanvasProps> = ({
         onLostPointerCapture={() => endDrag()}
         onContextMenu={onContextMenu}
       >
+        {/* 高性能拖拽透明拦截遮罩：拖动画板时阻断下层节点事件，0 样式重算开销 */}
+        <div
+          ref={dragOverlayRef}
+          style={{
+            display: 'none',
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            zIndex: 9999,
+            pointerEvents: 'auto',
+            cursor: 'grabbing',
+          }}
+        />
         <div
           ref={bgRef}
           style={{
@@ -202,9 +234,6 @@ export const Canvas: React.FC<CanvasProps> = ({
         </div>
       </div>
       <style>{`
-        .is-dragging * {
-          pointer-events: none !important;
-        }
         @keyframes flow {
           to {
             stroke-dashoffset: -10;

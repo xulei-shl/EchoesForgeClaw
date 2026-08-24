@@ -33,6 +33,8 @@ export interface CanvasNodeProps {
   onSizeChange?: (id: string, width: number, height: number) => void;
   /** 拖拽中（每帧）实时回调，供父级命令式更新连线，不触发 React 渲染 */
   onDrag?: (id: string, x: number, y: number) => void;
+  /** 调整尺寸中（每帧）实时回调，供父级命令式更新连线，不触发 React 渲染 */
+  onResizeLive?: (id: string, width: number, height: number) => void;
   /** 根层级覆盖层，渲染在卡片根节点（边框内），用于光束动效等 */
   glowOverlay?: React.ReactNode;
   /** 是否显示左侧/右侧连接点 */
@@ -60,6 +62,7 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
   onPositionChange,
   onSizeChange,
   onDrag,
+  onResizeLive,
   glowOverlay,
   showLeftAnchor,
   showRightAnchor,
@@ -94,13 +97,26 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
   const dragStart = useRef({ pointerX: 0, pointerY: 0, nodeX: 0, nodeY: 0 });
   const rafId = useRef<number | null>(null);
 
-  // 调整尺寸状态
+  // 调整尺寸状态（最终提交的 React 状态）
   const [size, setSize] = useState<{ w: number; h: number } | null>(
     () => (resizable && defaultSize ? { w: defaultSize.width, h: defaultSize.height } : null)
   );
+  // 调整尺寸中的实时尺寸：命令式更新，不触发 React 渲染
+  const resizeSize = useRef<{ w: number; h: number }>({
+    w: defaultSize?.width ?? 0,
+    h: defaultSize?.height ?? 0,
+  });
   const resizeStart = useRef<{ px: number; py: number; w: number; h: number } | null>(null);
   const resizingRef = useRef(false);
   const resizeHandleRef = useRef<HTMLDivElement>(null);
+  const resizeRafId = useRef<number | null>(null);
+
+  // 外部 size 改变时同步实时 ref
+  useEffect(() => {
+    if (size) {
+      resizeSize.current = { w: size.w, h: size.h };
+    }
+  }, [size]);
 
   // position 变化（提交后）时同步拖拽基准位
   useEffect(() => {
@@ -118,6 +134,8 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
     const el = rootRef.current;
     if (!el || !onSizeChange) return;
     const observer = new ResizeObserver((entries) => {
+      // 调整尺寸拖拽期间，屏蔽 ResizeObserver 回调广播，防止触发 React 全局渲染风暴
+      if (resizingRef.current) return;
       for (const entry of entries) {
         // borderBoxSize 为元素自身坐标空间尺寸（不受画布 scale 影响），更精确
         const box = entry.borderBoxSize?.[0];
@@ -142,6 +160,17 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
     el.style.transform = `translate3d(${x}px, ${y}px, 0)`;
     onDrag?.(id, x, y);
   }, [id, onDrag]);
+
+  /** 将实时尺寸应用到 DOM 并通知父级更新连线（0 React 渲染开销） */
+  const applyResizeTransform = useCallback(() => {
+    resizeRafId.current = null;
+    const el = rootRef.current;
+    if (!el) return;
+    const { w, h } = resizeSize.current;
+    el.style.width = `${w}px`;
+    el.style.height = `${h}px`;
+    onResizeLive?.(id, w, h);
+  }, [id, onResizeLive]);
 
   const startDrag = (pointerX: number, pointerY: number) => {
     draggingRef.current = true;
@@ -168,17 +197,42 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
     onPositionChange?.(id, x, y);
   };
 
+  const endResize = (pointerId?: number, currentTarget?: HTMLElement) => {
+    if (!resizingRef.current) return;
+    resizingRef.current = false;
+    resizeStart.current = null;
+    rootRef.current?.classList.remove('node-resizing');
+    if (resizeRafId.current !== null) {
+      cancelAnimationFrame(resizeRafId.current);
+      resizeRafId.current = null;
+    }
+    if (pointerId !== undefined && currentTarget) {
+      try {
+        currentTarget.releasePointerCapture?.(pointerId);
+      } catch {
+        /* 忽略释放捕获失败 */
+      }
+    }
+    applyResizeTransform();
+    const { w, h } = resizeSize.current;
+    setSize({ w, h });
+    onSizeChange?.(id, w, h);
+  };
+
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     // 仅响应主键（左键）：右键/中键留给画布菜单等交互，避免误触发拖拽
     if (e.button !== 0) return;
     const target = e.target as HTMLElement;
     // 命中右下角调整尺寸手柄 → 进入 resize 模式
     if (resizeHandleRef.current?.contains(target)) {
-      if (!defaultSize || !size) return;
+      if (!defaultSize) return;
+      const curW = resizeSize.current.w || defaultSize.width;
+      const curH = resizeSize.current.h || defaultSize.height;
       e.stopPropagation(); // 防止画布拖拽
       (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-      resizeStart.current = { px: e.clientX, py: e.clientY, w: size.w, h: size.h };
+      resizeStart.current = { px: e.clientX, py: e.clientY, w: curW, h: curH };
       resizingRef.current = true;
+      rootRef.current?.classList.add('node-resizing');
       return;
     }
     // 仅从头部拖拽；按钮/链接等可交互元素不触发
@@ -190,14 +244,17 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    // resize 分支
+    // resize 分支：rAF 合并 DOM 直接更新，不触发 React 渲染
     if (resizingRef.current) {
       if (!resizeStart.current || !defaultSize) return;
       const dx = (e.clientX - resizeStart.current.px) / scale;
       const dy = (e.clientY - resizeStart.current.py) / scale;
       const newW = Math.max(defaultSize.width, Math.round(resizeStart.current.w + dx));
       const newH = Math.max(defaultSize.height, Math.round(resizeStart.current.h + dy));
-      setSize({ w: newW, h: newH });
+      resizeSize.current = { w: newW, h: newH };
+      if (resizeRafId.current === null) {
+        resizeRafId.current = requestAnimationFrame(applyResizeTransform);
+      }
       return;
     }
     // 拖拽分支
@@ -220,9 +277,7 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     // 结束 resize
     if (resizingRef.current) {
-      resizingRef.current = false;
-      resizeStart.current = null;
-      try { (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId); } catch { /* 忽略 */ }
+      endResize(e.pointerId, e.currentTarget as HTMLElement);
       return;
     }
     if (!pointerDown.current) return;
@@ -239,6 +294,7 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
   useEffect(() => {
     return () => {
       if (rafId.current !== null) cancelAnimationFrame(rafId.current);
+      if (resizeRafId.current !== null) cancelAnimationFrame(resizeRafId.current);
     };
   }, []);
 
@@ -260,6 +316,7 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
         minWidth: size ? `${defaultSize!.width}px` : '200px',
         minHeight: size ? `${defaultSize!.height}px` : undefined,
         transform: `translate3d(${shownPos.x}px, ${shownPos.y}px, 0)`,
+        contain: 'layout style',
       }}
       onPointerDownCapture={handleActivate}
       onFocusCapture={handleActivate}
@@ -270,16 +327,27 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
       onClick={onClick}
       onContextMenu={onContextMenu}
       onLostPointerCapture={() => {
-        // 浏览器中途回收指针捕获（如切换标签页）时结束拖拽并提交当前位置，避免卡在拖拽态
+        // 浏览器中途回收指针捕获（如切换标签页）时结束拖拽并提交当前状态，避免卡在拖拽态
         if (resizingRef.current) {
-          resizingRef.current = false;
-          resizeStart.current = null;
+          endResize();
           return;
         }
         pointerDown.current = null;
         endDrag();
       }}
     >
+      {/* 调整尺寸与拖拽时的样式覆盖 */}
+      <style>{`
+        .node-resizing,
+        .node-dragging {
+          transition: none !important;
+          user-select: none !important;
+        }
+        .node-resizing * {
+          pointer-events: none !important;
+        }
+      `}</style>
+
       {/* 左右连接点（输出/输入端口） */}
       {showLeftAnchor && (
         <div
@@ -376,17 +444,20 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
         </div>
       )}
 
-      {/* 右下角调整尺寸手柄 */}
+      {/* 右下角调整尺寸手柄（增大触控热区至 28x28px 并增加微交互反馈） */}
       {resizable && defaultSize && (
         <div
           ref={resizeHandleRef}
-          className="absolute bottom-0 right-0 w-5 h-5 cursor-se-resize z-30 flex items-end justify-end"
+          className="absolute -bottom-1 -right-1 w-7 h-7 cursor-se-resize z-30 flex items-end justify-end p-1.5 group/handle select-none"
           style={{ touchAction: 'none' }}
+          title="拖动调整大小"
         >
-          <svg width="12" height="12" viewBox="0 0 10 10" className="text-ink-faint/70">
-            <line x1="7" y1="10" x2="10" y2="7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            <line x1="5" y1="10" x2="10" y2="5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
+          <div className="w-3.5 h-3.5 flex items-end justify-end transition-transform duration-150 group-hover/handle:scale-110 group-active/handle:scale-125">
+            <svg width="10" height="10" viewBox="0 0 10 10" className="text-ink-faint/60 group-hover/handle:text-accent transition-colors duration-150">
+              <line x1="7" y1="10" x2="10" y2="7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="4" y1="10" x2="10" y2="4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </div>
         </div>
       )}
     </div>

@@ -3,6 +3,17 @@ import { forwardRef, useImperativeHandle, useLayoutEffect, useRef } from 'react'
 export interface NodeEdgeHandle {
   /** 以节点左上角坐标实时重绘连线（拖拽跟随用，不触发 React 渲染） */
   setPositions: (sourceX: number, sourceY: number, targetX: number, targetY: number) => void;
+  /** 以节点实时尺寸与坐标重绘连线（缩放跟随用，不触发 React 渲染） */
+  setDimensionsAndPositions: (
+    sourceX: number,
+    sourceY: number,
+    targetX: number,
+    targetY: number,
+    sourceWidth?: number,
+    sourceHeight?: number,
+    targetWidth?: number,
+    targetHeight?: number
+  ) => void;
 }
 
 interface NodeEdgeProps {
@@ -80,7 +91,21 @@ const NodeEdge = forwardRef<NodeEdgeHandle, NodeEdgeProps>(function NodeEdge(
   branchRef.current = { index: branchIndex, count: branchCount };
 
   /** 计算并写入路径 / 包围盒 / 视图（DOM 直改，无渲染开销） */
-  const apply = (sx: number, sy: number, tx: number, ty: number) => {
+  const apply = (
+    sx: number,
+    sy: number,
+    tx: number,
+    ty: number,
+    swOverride?: number,
+    shOverride?: number,
+    twOverride?: number,
+    thOverride?: number
+  ) => {
+    if (swOverride !== undefined) sizesRef.current.sourceWidth = swOverride;
+    if (shOverride !== undefined) sizesRef.current.sourceHeight = shOverride;
+    if (twOverride !== undefined) sizesRef.current.targetWidth = twOverride;
+    if (thOverride !== undefined) sizesRef.current.targetHeight = thOverride;
+
     const { sourceWidth: sw, sourceHeight: sh, targetHeight: th } = sizesRef.current;
     const { index: branchIndex, count: branchCount } = branchRef.current;
     // 源节点右边框垂直中心
@@ -139,7 +164,9 @@ const NodeEdge = forwardRef<NodeEdgeHandle, NodeEdgeProps>(function NodeEdge(
   });
 
   useImperativeHandle(ref, () => ({
-    setPositions: apply,
+    setPositions: (sx, sy, tx, ty) => apply(sx, sy, tx, ty),
+    setDimensionsAndPositions: (sx, sy, tx, ty, sw, sh, tw, th) =>
+      apply(sx, sy, tx, ty, sw, sh, tw, th),
   }));
 
   return (

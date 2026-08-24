@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { createBarcodeSvgUri } from '../../../barcode';
 import { stopEvent } from './stopEvent';
 
@@ -18,7 +18,10 @@ export const ReceiptBarcodeBox: React.FC<ReceiptBarcodeBoxProps> = ({
   disabled = false,
   onChange,
 }) => {
-  const barcodeSvg = createBarcodeSvgUri(barcodeText || '9787020002207', textColor);
+  const barcodeSvg = useMemo(
+    () => createBarcodeSvgUri(barcodeText || '9787020002207', textColor),
+    [barcodeText, textColor]
+  );
 
   return (
     <div className="flex flex-col items-center gap-1.5 pt-1">

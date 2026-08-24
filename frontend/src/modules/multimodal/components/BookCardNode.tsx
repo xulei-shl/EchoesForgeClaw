@@ -589,11 +589,11 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
             </div>
             <div className="grow overflow-y-auto space-y-2.5 pr-0.5 text-[11px]">
               {([
-                { key: 'title', label: '题名', placeholder: '图书题名' },
-                { key: 'author', label: '作者', placeholder: '著者姓名' },
-                { key: 'publisher', label: '出版社', placeholder: '出版机构' },
-                { key: 'pub_year', label: '出版年份', placeholder: '如 2024' },
-                { key: 'rating', label: '评分', placeholder: '如 9.0' },
+                { key: 'title', label: '题名', placeholder: '图书题名', multiline: false },
+                { key: 'author', label: '作者', placeholder: '著者姓名', multiline: false },
+                { key: 'publisher', label: '出版社', placeholder: '出版机构', multiline: false },
+                { key: 'pub_year', label: '出版年份', placeholder: '如 2024', multiline: false },
+                { key: 'rating', label: '评分', placeholder: '如 9.0', multiline: false },
                 { key: 'recommendation', label: '推荐语', placeholder: '推荐语（自动截断至 50 字）', multiline: true },
               ] as const).map((item) => {
                 const { key, label, placeholder, multiline } = item;
@@ -606,7 +606,7 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
                      key === 'rating' ? String(upstreamBookData.rating ?? '') :
                      key === 'recommendation' ? (upstreamBookData.summary || upstreamBookData.description) : '')
                   : '';
-                const displayValue = metaField?.value ?? upstreamValue ?? '';
+                const displayValue = String(metaField?.value ?? upstreamValue ?? '');
                 return (
                   <div key={key}>
                     <label className="block font-semibold text-ink mb-0.5">{label}</label>

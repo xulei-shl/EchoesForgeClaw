@@ -48,6 +48,7 @@ export interface ReceiptPrinterNodeProps {
   onPositionChange?: (id: string, x: number, y: number) => void;
   onSizeChange?: (id: string, width: number, height: number) => void;
   onDrag?: (id: string, x: number, y: number) => void;
+  onResizeLive?: (id: string, width: number, height: number) => void;
   footer?: React.ReactNode;
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
   hasDownstream?: boolean;
@@ -77,6 +78,7 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
   onPositionChange,
   onSizeChange,
   onDrag,
+  onResizeLive,
   footer,
   onContextMenu,
   hasDownstream,
@@ -272,10 +274,11 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
       onPositionChange={onPositionChange}
       onSizeChange={onSizeChange}
       onDrag={onDrag}
+      onResizeLive={onResizeLive}
       onContextMenu={onContextMenu}
       resizable
       defaultSize={{ width: 440, height: 640 }}
-      className={`transition-[opacity,transform,box-shadow,border-color] duration-150 ease-out ${isSelected ? 'ring-2 ring-accent/70 shadow-md' : ''}`}
+      className={`transition-[box-shadow,border-color,opacity] duration-150 ease-out ${isSelected ? 'ring-2 ring-accent/70 shadow-md' : ''}`}
       showLeftAnchor={true}
       showRightAnchor={true}
       onClick={() => onSelect?.(id)}

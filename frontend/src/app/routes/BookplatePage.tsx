@@ -433,6 +433,37 @@ const BookplatePage: React.FC = () => {
     }
   }, []);
 
+  /** 节点调整尺寸中实时重绘相连连线（命令式 DOM 更新，不触发 React 渲染） */
+  const handleNodeResizeLive = useCallback((id: string, width: number, height: number) => {
+    for (const edge of edgesRef.current) {
+      const handle = edgeRefs.current.get(edge.id);
+      if (!handle) continue;
+      if (edge.source !== id && edge.target !== id) continue;
+
+      const source = nodesRef.current.find((n) => n.id === edge.source);
+      const target = nodesRef.current.find((n) => n.id === edge.target);
+      if (!source || !target) continue;
+
+      const sourceSize = edge.source === id 
+        ? { width, height } 
+        : (nodeSizesRef.current[source.id] ?? (DEFAULT_SIZES as Record<string, NodeSize>)[source.type] ?? { width: 400, height: 500 });
+      const targetSize = edge.target === id 
+        ? { width, height } 
+        : (nodeSizesRef.current[target.id] ?? (DEFAULT_SIZES as Record<string, NodeSize>)[target.type] ?? { width: 400, height: 500 });
+
+      handle.setDimensionsAndPositions(
+        source.x,
+        source.y,
+        target.x,
+        target.y,
+        sourceSize.width,
+        sourceSize.height,
+        targetSize.width,
+        targetSize.height
+      );
+    }
+  }, []);
+
   // ---------- 通用节点创建 ----------
   /** 新节点的初始数据（按模板类型；孤立节点（无连线创建）时 includeBook 默认关闭，有任何上级连线时默认开启） */
 
@@ -962,6 +993,7 @@ const BookplatePage: React.FC = () => {
     handlePositionChange,
     handleSizeChange,
     handleNodeDrag,
+    handleNodeResizeLive,
   };
 
   // 连线分层与高亮：存在激活节点时，高亮连线在 DOM 层自然置顶渲染

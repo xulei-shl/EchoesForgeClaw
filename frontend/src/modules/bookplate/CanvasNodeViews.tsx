@@ -189,6 +189,7 @@ export interface NodeViewHelpers {
   handlePositionChange: (id: string, x: number, y: number) => void;
   handleSizeChange: (id: string, width: number, height: number) => void;
   handleNodeDrag: (id: string, x: number, y: number) => void;
+  handleNodeResizeLive: (id: string, width: number, height: number) => void;
 }
 
 /** 某节点的入边端口类型不匹配数（软提示：红色连线 + 节点徽标） */
@@ -284,6 +285,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
     onPositionChange: h.handlePositionChange,
     onSizeChange: h.handleSizeChange,
     onDrag: h.handleNodeDrag,
+    onResizeLive: h.handleNodeResizeLive,
     onContextMenu: (e: React.MouseEvent) => h.handleNodeContextMenu(e, node.id),
     footer: h.renderFooter(node),
   };
