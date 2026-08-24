@@ -1,7 +1,8 @@
-import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Image as ImageIcon, Loader2, Heart, Globe, Shuffle } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
+import { Select } from '../../../platform/components/ui/Select';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
 import { NODE_COLORS } from '../../bookplate/nodeTypes';
 import {
@@ -103,6 +104,15 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
   const templateId = data.templateId ?? DEFAULT_BOOK_CARD_TEMPLATE_ID;
   const [lazyDecorIndex] = useState(() => randomDecorIndex(null));
   const decorIndex = data.decorIndex ?? lazyDecorIndex;
+
+  const templateOptions = useMemo(
+    () =>
+      BOOK_CARD_TEMPLATES.map((t) => ({
+        value: t.id,
+        label: t.name,
+      })),
+    []
+  );
 
   const patchState = useCallback(
     (patch: Partial<BookCardState>) => onUpdateState?.(id, patch),
@@ -352,59 +362,63 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
       }
     >
       <div className="h-full flex flex-col flex-1 min-h-0 gap-2">
-        {/* 顶部控制栏（模板选择 + 换装饰图） */}
-        <div className="flex flex-wrap items-center justify-between gap-2 p-2 bg-paper-grid/20 border border-paper-grid rounded-md text-xs font-sans">
+        {/* 顶部控制栏（单行紧凑整合：模板选择 + 换装饰图 + 字段选项） */}
+        <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 p-1.5 bg-paper-grid/15 border border-paper-grid/60 rounded-md text-xs font-sans">
           <div className="flex items-center gap-1.5 min-w-0">
             <span className="text-[11px] text-ink-faint shrink-0">模板</span>
-            <select
+            <Select
+              size="sm"
               value={templateId}
               disabled={busy || hasDownstream}
-              onChange={(e) => handleTemplateChange(e.target.value)}
-              title={
-                BOOK_CARD_TEMPLATES.find((t) => t.id === templateId)?.name ?? templateId
-              }
-              className="bg-paper border border-paper-grid text-ink rounded px-2 py-1 text-xs outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-60 max-w-[220px] truncate"
+              onChange={handleTemplateChange}
+              options={templateOptions}
+              className="w-28 sm:w-32 min-w-[100px]"
+            />
+            <button
+              type="button"
+              onClick={handleShuffleDecor}
+              disabled={busy || hasDownstream || !hasDecorImages()}
+              title={hasDecorImages() ? '换一张装饰图' : '未提供装饰图素材（放入 src/assets/card-decor/ 后可用）'}
+              className="flex items-center gap-1 h-8 px-2 rounded-md border border-dashed border-paper-grid hover:border-accent hover:text-accent text-ink-faint active:scale-[0.96] transition-all text-xs shrink-0 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {BOOK_CARD_TEMPLATES.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
+              <Shuffle size={13} strokeWidth={1.5} />
+              <span>换图</span>
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={handleShuffleDecor}
-            disabled={busy || hasDownstream || !hasDecorImages()}
-            title={hasDecorImages() ? '换一张装饰图' : '未提供装饰图素材（放入 src/assets/card-decor/ 后可用）'}
-            className="flex items-center gap-1 text-[11px] text-ink-faint hover:text-accent active:scale-[0.96] transition-transform disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Shuffle size={13} strokeWidth={1.5} />
-            换装饰图
-          </button>
-        </div>
-        {/* 字段处理选项 */}
-        <div className="flex items-center gap-3 px-2 pb-1 text-[11px] text-ink-faint font-sans">
-          <label className="flex items-center gap-1 cursor-pointer select-none hover:text-ink transition-colors">
-            <input
-              type="checkbox"
-              checked={fieldOptions.showSubtitle !== false}
-              disabled={busy}
-              onChange={(e) => patchFieldOption({ showSubtitle: e.target.checked })}
-              className="accent-accent"
-            />
-            副题名
-          </label>
-          <label className="flex items-center gap-1 cursor-pointer select-none hover:text-ink transition-colors">
-            <input
-              type="checkbox"
-              checked={fieldOptions.firstAuthorOnly === true}
-              disabled={busy}
-              onChange={(e) => patchFieldOption({ firstAuthorOnly: e.target.checked })}
-              className="accent-accent"
-            />
-            仅首位作者
-          </label>
+
+          {/* 字段处理选项（行内紧凑放置，受 hasDownstream 控制） */}
+          <div className="flex items-center gap-2.5 text-[11px] text-ink-faint shrink-0">
+            <label
+              className={`flex items-center gap-1 select-none transition-colors ${
+                busy || hasDownstream ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:text-ink'
+              }`}
+              title={hasDownstream ? '有下级节点，不可修改选项' : undefined}
+            >
+              <input
+                type="checkbox"
+                checked={fieldOptions.showSubtitle !== false}
+                disabled={busy || hasDownstream}
+                onChange={(e) => patchFieldOption({ showSubtitle: e.target.checked })}
+                className="accent-accent w-3.5 h-3.5 disabled:cursor-not-allowed"
+              />
+              <span>副题名</span>
+            </label>
+            <label
+              className={`flex items-center gap-1 select-none transition-colors ${
+                busy || hasDownstream ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:text-ink'
+              }`}
+              title={hasDownstream ? '有下级节点，不可修改选项' : undefined}
+            >
+              <input
+                type="checkbox"
+                checked={fieldOptions.firstAuthorOnly === true}
+                disabled={busy || hasDownstream}
+                onChange={(e) => patchFieldOption({ firstAuthorOnly: e.target.checked })}
+                className="accent-accent w-3.5 h-3.5 disabled:cursor-not-allowed"
+              />
+              <span>仅首作者</span>
+            </label>
+          </div>
         </div>
 
         {/* 预览区域：填充后 HTML 的等比缩放实时预览（与导出同一份 HTML 字符串） */}

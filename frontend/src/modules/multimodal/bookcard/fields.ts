@@ -23,6 +23,14 @@ export interface CardBookMetadata {
   [key: string]: unknown;
 }
 
+/** 字段处理选项 */
+export interface CardFieldOptions {
+  /** 题名是否包含副题名（默认 true） */
+  showSubtitle?: boolean;
+  /** 作者是否仅取第一位（默认 false） */
+  firstAuthorOnly?: boolean;
+}
+
 /** 模板占位符 → 取值 */
 export type CardFields = Record<string, string>;
 
@@ -128,7 +136,11 @@ export function resolveCardFields(
     AUTHOR: options?.firstAuthorOnly && rawAuthor ? firstAuthor(rawAuthor) : rawAuthor,
     PUBLISHER: normalizeTextValue(book?.publisher),
     PUB_YEAR: normalizeTextValue(book?.pub_year) || normalizeTextValue(book?.publishDate),
-    CALL_NUMBER: '',
+    CALL_NUMBER:
+      normalizeTextValue(book?.call_number) ||
+      normalizeTextValue(book?.callNumber) ||
+      normalizeTextValue(book?.callNo) ||
+      '',
     DOUBAN_RATING: normalizeTextValue(book?.rating),
     RECOMMENDATION: smartTruncate(recommendationSource),
     ...(extra ?? {}),
