@@ -4,9 +4,11 @@
 
 > 项目当前已部署于 `10.40.92.18`，后端端口 `8010`，前端端口 `5180`。
 > 后端已由 Python（FastAPI/uvicorn）迁移为 **TypeScript（Fastify + Drizzle + better-sqlite3 + AI SDK，目录 `backend-ts/`）**，主后端**不再需要 Python / venv / pip / uvicorn / Alembic**。
-> **例外**：以下两个功能依赖独立的 Python 微服务，需 Python ≥ 3.11，仅当使用对应功能时才需要启动：
-> - **地图海报节点**（`frontend/src/modules/multimodal`）：代码位于 `services/maptoposter/`，部署方式见「第 13 节」。
-> - **中国传统纹样检索节点**（画布节点 `PatternSearchNode`）：代码位于 `services/chinese-traditional-patterns/`，部署方式见「第 14 节」。
+> **例外**：以下功能依赖独立的 Python（FastAPI）微服务，需 Python ≥ 3.11，仅当使用对应功能时才需要启动（服务总览见「第 13 节」，部署运维见 `docs/fastapi_services_deploy.md`）：
+> - **地图海报节点**：`services/maptoposter/`（端口 8100）
+> - **艺术地图生成节点**：`services/prettymaps/`（端口 8101）
+> - **中国传统纹样检索节点**：`services/chinese-traditional-patterns/`（端口 8102）
+> - **中国传统配色节点**：`services/zhongguo-traditional-colors/`（端口 8103）
 
 ---
 
@@ -355,224 +357,80 @@ sudo bash scripts/deploy.sh
 
 ---
 
-## 13. 地图海报 Python 服务（地图海报节点依赖）
+## 13. FastAPI 微服务（Python 附属服务）
 
-地图海报节点依赖一个独立的 Python 微服务（`services/maptoposter/`）生成艺术风格地图海报。它**不属于** Node.js 后端，需单独用 Python 启动，并由 `backend-ts` 通过环境变量 `MAPTOPoster_API`（默认 `http://127.0.0.1:8100`）代理调用。代码由 git 管理，部署时随 `git pull` 一同拉取到 `/opt/EchoesForgeClaw/services/maptoposter`。
+项目包含 **4 个独立 Python 微服务**，由 `backend-ts` 按端口代理调用，systemd 托管自启动：
 
-> 仅当需要使用「地图海报」功能时才需要该服务；不启动它时，点击生成会报 `Python API not running`，其余功能不受影响。
+| 服务 | 端口 | systemd 单元 | 后端环境变量 |
+|------|------|--------------|--------------|
+| maptoposter（地图海报） | 8100 | `bookforge-maptoposter` | `MAPTOPoster_API` |
+| prettymaps（艺术地图生成） | 8101 | `bookforge-prettymaps` | `PRETTYMAPS_API` |
+| chinese-traditional-patterns（纹样检索） | 8102 | `chinese-traditional-patterns` | `PATTERNS_API` |
+| zhongguo-traditional-colors（传统配色） | 8103 | `zhongguo-traditional-colors` | `COLORS_API` |
 
-### 13.1 安装依赖（首次）
-
-```bash
-cd /opt/EchoesForgeClaw/services/maptoposter
-pip install -r requirements.txt
-```
-
-> 需要 Python ≥ 3.11。首次运行会自动安装依赖并下载 Roboto 字体。
-
-### 13.2 手动启动（验证用）
-
-```bash
-cd /opt/EchoesForgeClaw/services/maptoposter
-uvicorn api:app --host 0.0.0.0 --port 8100
-```
-
-- 启动成功标志：`Uvicorn running on http://0.0.0.0:8100`
-- 健康检查：`curl -s http://localhost:8100/health` → `{"status":"ok"}`
-
-### 13.3 Systemd 服务（推荐，开机自启 + 崩溃自愈）
-
-`/etc/systemd/system/bookforge-maptoposter.service`：
-
-```ini
-[Unit]
-Description=BookForge Map Poster Python Service (maptoposter)
-After=network.target
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/opt/EchoesForgeClaw/services/maptoposter
-ExecStart=/usr/bin/uvicorn api:app --host 0.0.0.0 --port 8100
-Restart=always
-RestartSec=5
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-```
-
-> `ExecStart` 中的 `uvicorn` 路径用 `which uvicorn` 确认（虚拟环境下替换为对应绝对路径）。
-
-启用并启动：
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable bookforge-maptoposter
-sudo systemctl start bookforge-maptoposter
-systemctl is-active bookforge-maptoposter   # 期望 active
-```
-
-### 13.4 端口与集成
-
-- 端口固定 **8100**，与 `backend-ts` 的 `MAPTOPoster_API` 默认值（`backend-ts/src/modules/bookplate/routes/map-poster.ts`）一致；**同机部署无需额外配置**即可被后端代理。
-- 跨机部署时，在 `backend-ts/.env` 设置 `MAPTOPoster_API=http://<maptoposter-host>:8100` 并随 `backend-ts` 服务读取生效。
+> 仅当使用对应画布节点功能时才必须启动；未启动不影响其余功能。
+>
+> **首次部署、增量升级、排障 FAQ 见独立文档 [`docs/fastapi_services_deploy.md`](./fastapi_services_deploy.md)**（含每服务独立 venv 隔离方案与已知依赖坑）。
 
 ---
 
-## 14. 中国传统纹样检索 Python 服务（纹样检索节点依赖）
+## 14. 字体部署与最佳实践
 
-画布节点「中国传统纹样检索」（`PatternSearchNode`）依赖一个独立的 Python（FastAPI/Uvicorn）微服务，提供纹样检索、详情读取与高清卡片原图的静态文件服务。它**不属于** Node.js 后端，需单独用 Python 启动，并由 `backend-ts` 通过环境变量 `PATTERNS_API`（默认 `http://127.0.0.1:8102`）代理调用。代码由 git 管理，部署时随 `git pull` 一同拉取到 `/opt/EchoesForgeClaw/services/chinese-traditional-patterns`。完整规范见仓库 `services/中国传统纹样API.md`。
-
-> 仅当需要使用「中国传统纹样检索」节点时才需要该服务；不启动它时，节点检索会提示「纹样检索服务未启动」，其余功能不受影响。
-
-### 14.1 安装依赖（首次）
-
-```bash
-cd /opt/EchoesForgeClaw/services/chinese-traditional-patterns
-pip install -r requirements.txt
-```
-
-> 需要 Python ≥ 3.10。依赖仅 `fastapi`、`uvicorn`。
-
-### 14.2 手动启动（验证用）
-
-```bash
-cd /opt/EchoesForgeClaw/services/chinese-traditional-patterns
-
-# 方式一：直接运行脚本（默认 0.0.0.0:8102）
-python api.py
-
-# 方式二：uvicorn（支持热重载）
-uvicorn api:app --host 0.0.0.0 --port 8102 --reload
-```
-
-- 启动成功标志：`Uvicorn running on http://0.0.0.0:8102`
-- 健康检查：`curl -s http://localhost:8102/health` → `{"status":"ok","total_patterns":100}`
-- 交互式 API 文档：`http://localhost:8102/docs`
-
-### 14.3 Systemd 服务（推荐，开机自启 + 崩溃自愈）
-
-`/etc/systemd/system/chinese-traditional-patterns.service`：
-
-```ini
-[Unit]
-Description=Chinese Traditional Patterns FastAPI Service
-After=network.target
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/opt/EchoesForgeClaw/services/chinese-traditional-patterns
-ExecStart=/usr/bin/python3 -m uvicorn api:app --host 127.0.0.1 --port 8102 --workers 2
-Restart=always
-RestartSec=5
-Environment=PYTHONUNBUFFERED=1
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-```
-
-> `ExecStart` 中的 `python3` / `uvicorn` 路径用 `which python3` / `which uvicorn` 确认（虚拟环境下替换为对应绝对路径）。
-
-启用并启动：
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable chinese-traditional-patterns
-sudo systemctl start chinese-traditional-patterns
-systemctl is-active chinese-traditional-patterns   # 期望 active
-```
-
-### 14.4 端口与集成
-
-- 端口固定 **8102**，与 `backend-ts` 的 `PATTERNS_API` 默认值（`backend-ts/src/modules/bookplate/routes/pattern-search.ts`）一致；**同机部署无需额外配置**即可被后端代理调用（路由 `/api/modules/bookplate/pattern-search/*`）。
-- 跨机部署时，在 `backend-ts/.env` 设置 `PATTERNS_API=http://<patterns-host>:8102` 后重启 `backend-ts` 服务生效。
-- 端口冲突：若 8102 被占用，启动时换端口（如 `8109`），并同步 `PATTERNS_API=http://127.0.0.1:8109` 与后端重启。
-- 端口冲突：若 8100 被占用（例如同时运行 `docs/fastclaw-dev/plugins/mem0` 的 Mem0 服务，其 `plugin.json` 默认也指向 `127.0.0.1:8100`），需为其中之一换端口，并同步 `MAPTOPoster_API` 或 Mem0 的 `config.url`。
-
----
-
-## 15. 字体部署与最佳实践
-
-项目使用三款本地中文字体：**上图东观体**、**又又意宋**、**汇文明朝体**。字体通过 `@font-face` 声明（`frontend/src/index.css`）以 `local()` 优先 + `url()` 回退的方式加载，确保已安装字体的客户端零延迟渲染，未安装的客户端从服务器下载字体文件。
+项目内置 **24 款本地中文字体**（含上图东观体、又又意宋、汇文明朝体、寒蝉活宋体/仿宋、仓耳玉楷、青柳隶书等，合计约 159 MB），全部已转换为 `.woff2` 格式存放于 `frontend/public/fonts/`。字体通过 `@font-face` 声明（`frontend/src/index.css`）以 `local()` 优先 + `url()` 回退的方式加载，确保已安装字体的客户端零延迟渲染，未安装的客户端从服务器下载字体文件。
 
 同时，后端 Canvas 导出（手账合成、借书卡渲染等）依赖系统字体，因此**部署服务器也需安装这些字体**。
 
-### 15.1 Server-Side Rendering 为何需要系统字体
+### 14.1 Server-Side Rendering 为何需要系统字体
 
 后端渲染（如 `composeJournalPage`、`libraryCardRenderer`）使用 `node-canvas` 或浏览器 Canvas API 在服务端生成图片。这些 API 依赖操作系统字体注册表，**不会**加载 CSS `@font-face`。因此：
 
 - 已安装字体 → Canvas 正确渲染
 - 未安装字体 → Canvas 降级到后备字体（如 `Noto Serif SC`），字形与预览不一致
 
-### 15.2 在 Ubuntu 上安装字体
+### 14.2 在 Ubuntu 上安装字体
 
-将字体文件上传到服务器后，执行：
+> **重要**：仓库 `frontend/public/fonts/` 只保留 `.woff2`（Web 分发用）。系统字体注册表（fontconfig / node-canvas）**不支持 woff2**，服务器安装需使用原始 `.ttf` / `.otf` 文件——它们已从仓库移除，需从字体官方发布渠道另行获取，或从旧部署备份恢复。
+>
+> 本机（10.40.92.18）已完成安装：`.otf` 位于 `/usr/share/fonts/opentype/bookforge/`，`.ttf` 位于 `/usr/share/fonts/truetype/bookforge/`。
+
+取得原始 ttf/otf 文件后，执行：
 
 ```bash
-# 字体文件路径（从仓库复制）
-# frontend/public/fonts/上图东观体-常规.ttf
-# frontend/public/fonts/上图东观体-粗体.ttf
-# frontend/public/fonts/上图东观体-细体.ttf
-# frontend/public/fonts/又又意宋.ttf
-# frontend/public/fonts/汇文明朝体.otf
-
-# 安装到系统字体目录
 sudo mkdir -p /usr/share/fonts/opentype/bookforge
 sudo mkdir -p /usr/share/fonts/truetype/bookforge
 
-sudo cp /opt/EchoesForgeClaw/frontend/public/fonts/汇文明朝体.otf /usr/share/fonts/opentype/bookforge/
-sudo cp /opt/EchoesForgeClaw/frontend/public/fonts/上图东观体-*.ttf /usr/share/fonts/truetype/bookforge/
-sudo cp /opt/EchoesForgeClaw/frontend/public/fonts/又又意宋.ttf /usr/share/fonts/truetype/bookforge/
+# 按格式分别拷贝（示例）
+sudo cp 汇文明朝体.otf ChillHuoSong_F_*.otf ... /usr/share/fonts/opentype/bookforge/
+sudo cp 上图东观体-*.ttf 又又意宋.ttf ... /usr/share/fonts/truetype/bookforge/
 
 # 刷新字体缓存
 sudo fc-cache -fv
 
-# 验证安装
-fc-list | grep -E '上图东观|又又意宋|汇文明朝'
-# 期望输出三条匹配记录
+# 验证安装（期望列出 24 条 bookforge 目录下的记录）
+fc-list | grep bookforge | wc -l   # 24
 ```
 
-> 字体文件较大（合计约 89 MB），`git clone` / `git pull` 时注意网络耗时。如果使用 CI/CD 流水线，可考虑单独管理字体文件，避免每次构建重复下载。
+> 字体文件较大，`git clone` / `git pull` 时注意网络耗时。如使用 CI/CD 流水线，可考虑单独管理字体文件，避免每次构建重复下载。
 
-### 15.3 字体文件优化（推荐）
+### 14.3 字体文件 woff2 优化（已完成）
 
-原始 `.ttf` / `.otf` 文件未经 Web 优化，建议转换为 `.woff2` 格式以减小体积（可缩小 50-70%）：
+**本项目已完成全部 24 款字体的 woff2 转换**（体积从约 360 MB 缩至约 159 MB，缩小约 56%），`@font-face` 已全部指向 `.woff2`，原始 `.ttf` / `.otf` 已从仓库删除。以下步骤仅在未来新增字体时需要：
 
 ```bash
 # 安装转换工具（Ubuntu）
 sudo apt install -y woff2
 
-# 或使用 npm 包
-npm install -g ttf2woff2
+# 逐个转换（在源 ttf/otf 所在目录执行，产物为同名 .woff2）
+woff2_compress 字体文件.ttf
 
-# 逐个转换
-woff2_compress /opt/EchoesForgeClaw/frontend/public/fonts/上图东观体-常规.ttf
-woff2_compress /opt/EchoesForgeClaw/frontend/public/fonts/上图东观体-粗体.ttf
-woff2_compress /opt/EchoesForgeClaw/frontend/public/fonts/上图东观体-细体.ttf
-woff2_compress /opt/EchoesForgeClaw/frontend/public/fonts/又又意宋.ttf
-woff2_compress /opt/EchoesForgeClaw/frontend/public/fonts/汇文明朝体.otf
+# 转换后将 .woff2 放入 frontend/public/fonts/ 并提交 git，
+# 同时更新 frontend/src/index.css 中对应 @font-face：
+#   url('/fonts/xxx.woff2') format('woff2')
 ```
 
-转换后更新 `frontend/src/index.css` 中的 `@font-face` 的 `src` 和 `format`：
+> 新增字体时保留原始 ttf/otf 一份用于服务器系统安装（见 14.2），转换完成后即可从工作目录删除。
 
-```css
-/* 示例：转换后更新 url 后缀和 format */
-@font-face {
-  font-family: '上图东观体';
-  src: local('上图东观体 常规'), url('/fonts/上图东观体-常规.woff2') format('woff2');
-  font-weight: normal;
-  font-display: swap;
-}
-```
-
-> `.woff2` 文件同样需要放入 `frontend/public/fonts/` 并提交到 git。转换后可删除对应的 `.ttf` / `.otf` 文件以节省仓库空间。
-
-### 15.4 Git LFS 管理大字体文件（推荐）
+### 14.4 Git LFS 管理大字体文件（推荐）
 
 字体文件较大（单文件 10-30 MB），建议使用 Git LFS 跟踪，避免 `git clone` 拉取所有历史版本时膨胀仓库体积：
 
@@ -596,7 +454,7 @@ git commit -m "chore: track font files with Git LFS"
 
 > 如果已提交字体文件到 git 历史，需用 `git lfs migrate` 迁移历史。建议在首次提交字体前就配置好 LFS。
 
-### 15.5 字体加载性能优化
+### 14.5 字体加载性能优化
 
 - **`font-display: swap`**：已启用，确保字体加载期间文本以后备字体立即显示，避免 FOIT（Flash of Invisible Text）。
 - **`local()` 优先**：已安装字体的客户端零延迟，不触发网络请求。
@@ -610,7 +468,7 @@ git commit -m "chore: track font files with Git LFS"
 
 > 注意：`preload` 仅对网络加载生效，已安装字体的客户端不受影响。且只有转换为 `.woff2` 后才有意义，原始 `.ttf` 文件过大不推荐 preload。
 
-### 15.6 增量代码更新时的字体处理
+### 14.6 增量代码更新时的字体处理
 
 ```bash
 cd /opt/EchoesForgeClaw
@@ -626,11 +484,11 @@ sudo systemctl restart bookforge-frontend
 sudo systemctl restart bookforge-backend
 ```
 
-### 15.7 验证字体正确渲染
+### 14.7 验证字体正确渲染
 
 ```bash
 # 1. 验证前端字体文件可访问
-curl -s -o /dev/null -w "%{http_code}\n" http://localhost:5180/fonts/上图东观体-常规.ttf
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:5180/fonts/上图东观体-常规.woff2
 # 期望 200
 
 # 2. 验证后端 Canvas 渲染可用字体

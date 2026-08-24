@@ -12,7 +12,7 @@
 /* 上图东观体 - 常规 */
 @font-face {
   font-family: '上图东观体';
-  src: local('上图东观体 常规'), url('/fonts/上图东观体-常规.ttf') format('truetype');
+  src: local('上图东观体 常规'), url('/fonts/上图东观体-常规.woff2') format('woff2');
   font-weight: normal;
   font-style: normal;
   font-display: swap;
@@ -20,7 +20,7 @@
 /* 上图东观体 - 粗体 */
 @font-face {
   font-family: '上图东观体';
-  src: local('上图东观体 粗体'), url('/fonts/上图东观体-粗体.ttf') format('truetype');
+  src: local('上图东观体 粗体'), url('/fonts/上图东观体-粗体.woff2') format('woff2');
   font-weight: bold;
   font-style: normal;
   font-display: swap;
@@ -28,7 +28,7 @@
 /* 上图东观体 - 细体 */
 @font-face {
   font-family: '上图东观体';
-  src: local('上图东观体 细体'), url('/fonts/上图东观体-细体.ttf') format('truetype');
+  src: local('上图东观体 细体'), url('/fonts/上图东观体-细体.woff2') format('woff2');
   font-weight: 300;
   font-style: normal;
   font-display: swap;
@@ -36,102 +36,102 @@
 /* 又又意宋 */
 @font-face {
   font-family: '又又意宋';
-  src: local('又又意宋'), url('/fonts/又又意宋.ttf') format('truetype');
+  src: local('又又意宋'), url('/fonts/又又意宋.woff2') format('woff2');
   font-display: swap;
 }
 /* 汇文明朝体（Huiwen-mincho 别名，匹配 CSS 引用名） */
 @font-face {
   font-family: 'Huiwen-mincho';
-  src: local('汇文明朝体'), url('/fonts/汇文明朝体.otf') format('opentype');
+  src: local('汇文明朝体'), url('/fonts/汇文明朝体.woff2') format('woff2');
   font-display: swap;
 }
 @font-face {
   font-family: 'Huiwen Mincho';
-  src: local('汇文明朝体'), url('/fonts/汇文明朝体.otf') format('opentype');
+  src: local('汇文明朝体'), url('/fonts/汇文明朝体.woff2') format('woff2');
   font-display: swap;
 }
 /* 仓耳玉楷 */
 @font-face {
   font-family: '仓耳玉楷';
-  src: local('TsangerYuKai'), url('/fonts/仓耳玉楷.ttf') format('truetype');
+  src: local('TsangerYuKai'), url('/fonts/仓耳玉楷.woff2') format('woff2');
   font-display: swap;
 }
 /* 朝华打字机 */
 @font-face {
   font-family: '朝华打字机';
-  src: local('朝华打字机'), url('/fonts/朝華打字機.ttf') format('truetype');
+  src: local('朝华打字机'), url('/fonts/朝華打字機.woff2') format('woff2');
   font-display: swap;
 }
 /* 方正屏显雅宋（文件内部名为「方正屏显雅宋简体」） */
 @font-face {
   font-family: '方正屏显雅宋';
-  src: local('方正屏显雅宋简体'), url('/fonts/方正屏显雅宋.TTF') format('truetype');
+  src: local('方正屏显雅宋简体'), url('/fonts/方正屏显雅宋.woff2') format('woff2');
   font-display: swap;
 }
 /* 荷塘月色手写体 */
 @font-face {
   font-family: '荷塘月色手写体';
-  src: local('荷塘月色手写体'), url('/fonts/荷塘月色手写体+Regular.ttf') format('truetype');
+  src: local('荷塘月色手写体'), url('/fonts/荷塘月色手写体+Regular.woff2') format('woff2');
   font-display: swap;
 }
 /* 今年也要加油鸭 */
 @font-face {
   font-family: '今年也要加油鸭';
-  src: local('今年也要加油鸭'), url('/fonts/今年也要加油鸭.ttf') format('truetype');
+  src: local('今年也要加油鸭'), url('/fonts/今年也要加油鸭.woff2') format('woff2');
   font-display: swap;
 }
 /* 平方赖江湖飞扬体 */
 @font-face {
   font-family: '平方赖江湖飞扬体';
-  src: local('平方赖江湖飞扬体'), url('/fonts/平方赖江湖飞扬体.ttf') format('truetype');
+  src: local('平方赖江湖飞扬体'), url('/fonts/平方赖江湖飞扬体.woff2') format('woff2');
   font-display: swap;
 }
 /* 平方乔木体 */
 @font-face {
   font-family: '平方乔木体';
-  src: local('平方乔木体'), url('/fonts/平方乔木体.ttf') format('truetype');
+  src: local('平方乔木体'), url('/fonts/平方乔木体.woff2') format('woff2');
   font-display: swap;
 }
 /* 青柳隶书（青柳隷書SIMO2） */
 @font-face {
   font-family: '青柳隶书';
-  src: local('aoyagireisyosimo2'), url('/fonts/青柳隶书.ttf') format('truetype');
+  src: local('aoyagireisyosimo2'), url('/fonts/青柳隶书.woff2') format('woff2');
   font-display: swap;
 }
 /* 杨任东竹石体 */
 @font-face {
   font-family: '杨任东竹石体';
-  src: local('杨任东竹石体-Regular'), url('/fonts/杨任东竹石体-Regular.ttf') format('truetype');
+  src: local('杨任东竹石体-Regular'), url('/fonts/杨任东竹石体-Regular.woff2') format('woff2');
   font-display: swap;
 }
 /* 余思源颜黄体 */
 @font-face {
   font-family: '余思源颜黄体';
-  src: local('余思源颜黄体'), url('/fonts/余思源颜黄体.ttf') format('truetype');
+  src: local('余思源颜黄体'), url('/fonts/余思源颜黄体.woff2') format('woff2');
   font-display: swap;
 }
 /* 云峰寒蝉体 */
 @font-face {
   font-family: '云峰寒蝉体';
-  src: local('云峰寒蝉体'), url('/fonts/云峰寒蝉体.ttf') format('truetype');
+  src: local('云峰寒蝉体'), url('/fonts/云峰寒蝉体.woff2') format('woff2');
   font-display: swap;
 }
 /* 钟齐志莽行书 */
 @font-face {
   font-family: '钟齐志莽行书';
-  src: local('钟齐志莽行书'), url('/fonts/钟齐志莽行书.ttf') format('truetype');
+  src: local('钟齐志莽行书'), url('/fonts/钟齐志莽行书.woff2') format('woff2');
   font-display: swap;
 }
 /* 润植家如印奏章楷 */
 @font-face {
   font-family: '润植家如印奏章楷';
-  src: local('润植家如印奏章楷'), url('/fonts/nzgrRuYinZouZhangKai.ttf') format('truetype');
+  src: local('润植家如印奏章楷'), url('/fonts/nzgrRuYinZouZhangKai.woff2') format('woff2');
   font-display: swap;
 }
 /* 寒蝉活仿宋 - 常规 */
 @font-face {
   font-family: '寒蝉活仿宋';
-  src: local('寒蝉活仿宋 Con'), url('/fonts/ChillHuoFangSong_ConRegular.otf') format('opentype');
+  src: local('寒蝉活仿宋 Con'), url('/fonts/ChillHuoFangSong_ConRegular.woff2') format('woff2');
   font-weight: normal;
   font-style: normal;
   font-display: swap;
@@ -139,7 +139,7 @@
 /* 寒蝉活仿宋 - 粗体 */
 @font-face {
   font-family: '寒蝉活仿宋';
-  src: local('寒蝉活仿宋 ConBold'), url('/fonts/ChillHuoFangSong-ConBold.otf') format('opentype');
+  src: local('寒蝉活仿宋 ConBold'), url('/fonts/ChillHuoFangSong-ConBold.woff2') format('woff2');
   font-weight: bold;
   font-style: normal;
   font-display: swap;
@@ -147,7 +147,7 @@
 /* 寒蝉活宋体 - 常规 */
 @font-face {
   font-family: '寒蝉活宋体';
-  src: local('寒蝉活宋体_復'), url('/fonts/ChillHuoSong_F_Regular.otf') format('opentype');
+  src: local('寒蝉活宋体_復'), url('/fonts/ChillHuoSong_F_Regular.woff2') format('woff2');
   font-weight: normal;
   font-style: normal;
   font-display: swap;
@@ -155,7 +155,7 @@
 /* 寒蝉活宋体 - 特粗 */
 @font-face {
   font-family: '寒蝉活宋体';
-  src: local('寒蝉活宋体_復 ExBold'), url('/fonts/ChillHuoSong_F_ExBold.otf') format('opentype');
+  src: local('寒蝉活宋体_復 ExBold'), url('/fonts/ChillHuoSong_F_ExBold.woff2') format('woff2');
   font-weight: 800;
   font-style: normal;
   font-display: swap;
