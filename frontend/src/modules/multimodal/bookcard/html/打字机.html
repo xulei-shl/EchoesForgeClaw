@@ -38,9 +38,8 @@
         .library-card.layout-wrapper {
             display: grid;
             grid-template-columns: 58% 42%;
-            max-width: 1100px;
+            width: 1100px;
             height: 720px;
-            width: 100%;
             border: 2px solid var(--border);
             box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
             background-color: var(--paper);
@@ -318,12 +317,6 @@
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-        }
-
-        @media (max-width: 768px) {
-            .library-card.layout-wrapper { grid-template-columns: 1fr; }
-            .left-col { border-right: none; border-bottom: 2px solid var(--border); }
-            .right-col { min-height: 400px; }
         }
     </style>
 </head>
