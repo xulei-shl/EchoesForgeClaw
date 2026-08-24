@@ -74,9 +74,9 @@ export function buildCardHtml(input: BuildCardHtmlInput): string {
   );
   return html;
 }
-
 /** 确定性解析截图根元素：显式标记优先，兜底取固定选择器中可见面积最大者 */
-function findCardRoot(doc: Document): HTMLElement {  const explicit = doc.querySelector<HTMLElement>(EXPLICIT_ROOT_SELECTOR);
+export function getCardRootElement(doc: Document): HTMLElement {
+  const explicit = doc.querySelector<HTMLElement>(EXPLICIT_ROOT_SELECTOR);
   if (explicit && explicit.offsetWidth > 1 && explicit.offsetHeight > 1) return explicit;
 
   let best: HTMLElement | null = null;
@@ -98,12 +98,27 @@ function findCardRoot(doc: Document): HTMLElement {  const explicit = doc.queryS
 
 /** 供预览组件测量卡片根元素自然尺寸（与导出同一套根解析逻辑，保证所见即所得） */
 export function measureCardRoot(doc: Document): { width: number; height: number } {
-  const root = findCardRoot(doc);
+  const root = getCardRootElement(doc);
   const rect = root.getBoundingClientRect();
   return {
     width: Math.max(1, Math.round(rect.width) || root.offsetWidth),
     height: Math.max(1, Math.round(rect.height) || root.offsetHeight),
   };
+}
+
+/**
+ * 预览文档预处理：清除 body 默认边距并禁用滚动，
+ * 使卡片根元素对齐 iframe 左上角、滚动条不进入预览（导出路径不做此处理，
+ * 元素级截图本就不含 body 边距，两侧所见仍一致）。
+ */
+export function prepareCardDocument(doc: Document): void {
+  if (!doc.head) return;
+  if (!doc.head.querySelector('style[data-card-preview]')) {
+    const style = doc.createElement('style');
+    style.setAttribute('data-card-preview', '1');
+    style.textContent = 'html, body { margin: 0 !important; padding: 0 !important; overflow: hidden !important; }';
+    doc.head.appendChild(style);
+  }
 }
 
 function nextFrame(win: Window | null): Promise<void> {
@@ -116,8 +131,8 @@ function nextFrame(win: Window | null): Promise<void> {
   });
 }
 
-/** 等待字体与全部 <img> 就绪（单图超时 8s，不因个别资源失败而中断） */
-async function waitForAssets(doc: Document): Promise<void> {
+/** 等待字体与全部 <img> 就绪（单图超时 8s，不因个别资源失败而中断）；预览与导出共用 */
+export async function waitForCardAssets(doc: Document): Promise<void> {
   try {
     await doc.fonts?.ready;
   } catch {
@@ -200,9 +215,9 @@ export async function renderCardToDataUrl(html: string, options?: RenderCardOpti
     await loadSrcdoc(iframe, html);
     const doc = iframe.contentDocument;
     if (!doc?.body) throw new Error('卡片页面未能渲染');
-    await waitForAssets(doc);
+    await waitForCardAssets(doc);
 
-    const root = findCardRoot(doc);
+    const root = getCardRootElement(doc);
     const rect = root.getBoundingClientRect();
     const width = Math.max(1, Math.round(rect.width));
     const height = Math.max(1, Math.round(rect.height));

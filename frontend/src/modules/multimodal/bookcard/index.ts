@@ -6,6 +6,15 @@ export {
 } from './templates';
 export { resolveCardFields, parseExtraCardFields, type CardFields } from './fields';
 export { buildVufindSearchUrl, generateCardQrDataUrl, type CardQrOptions } from './qrcode';
-export { buildCardHtml, renderCardToDataUrl, downloadBookCardImage, measureCardRoot, type RenderCardOptions } from './render';
+export {
+  buildCardHtml,
+  renderCardToDataUrl,
+  downloadBookCardImage,
+  measureCardRoot,
+  getCardRootElement,
+  prepareCardDocument,
+  waitForCardAssets,
+  type RenderCardOptions,
+} from './render';
 export { DECOR_IMAGES, hasDecorImages, randomDecorIndex } from './assets';
 export type { BookCardState } from './types';

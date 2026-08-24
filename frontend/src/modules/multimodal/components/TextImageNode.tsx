@@ -4,7 +4,19 @@
  */
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Wand2, Heart, Globe, Loader2, Check, PenLine, Square } from 'lucide-react';
+import {
+  Wand2,
+  Heart,
+  Globe,
+  Loader2,
+  Check,
+  PenLine,
+  Square,
+  ChevronDown,
+  ChevronUp,
+  Pipette,
+  SlidersHorizontal,
+} from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { Tooltip } from '../../../platform/components/ui/Tooltip';
@@ -13,6 +25,7 @@ import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
 import { NODE_COLORS } from '../../bookplate/nodeTypes';
 import {
   type TextImageState,
+  type TextImageWritingMode,
   TEXT_IMAGE_CANVAS,
   TEXT_IMAGE_DEFAULTS,
   normalizeTextImageState,
@@ -62,10 +75,170 @@ export interface TextImageNodeProps {
 /** 透明底棋盘格衬托（PNG alpha 可视化） */
 const checkerStyle: React.CSSProperties = {
   backgroundImage:
-    'linear-gradient(45deg, rgba(23,23,23,0.07) 25%, transparent 25%, transparent 75%, rgba(23,23,23,0.07) 75%), linear-gradient(45deg, rgba(23,23,23,0.07) 25%, transparent 25%, transparent 75%, rgba(23,23,23,0.07) 75%)',
+    'linear-gradient(45deg, rgba(23,23,23,0.06) 25%, transparent 25%, transparent 75%, rgba(23,23,23,0.06) 75%), linear-gradient(45deg, rgba(23,23,23,0.06) 25%, transparent 25%, transparent 75%, rgba(23,23,23,0.06) 75%)',
   backgroundSize: '16px 16px',
   backgroundPosition: '0 0, 8px 8px',
 };
+
+/**
+ * 调色盘子组件：提供足够点击热区（22x22px）、清晰双层选中环与按压反馈
+ */
+interface SwatchPaletteProps {
+  value: string;
+  onChange: (color: string) => void;
+  disabled?: boolean;
+  customLabel: string;
+  size?: 'normal' | 'compact';
+}
+
+const SwatchPalette: React.FC<SwatchPaletteProps> = ({
+  value,
+  onChange,
+  disabled = false,
+  customLabel,
+  size = 'normal',
+}) => {
+  const isCustom = !JOURNAL_TEXT_COLORS.some(
+    (p) => p.color.toLowerCase() === value.toLowerCase()
+  );
+
+  const dotSize = size === 'compact' ? 'w-3 h-3' : 'w-3.5 h-3.5';
+  const hitSize = size === 'compact' ? 'w-5 h-5' : 'w-5.5 h-5.5';
+
+  return (
+    <div className="flex items-center gap-0.5 flex-wrap">
+      {JOURNAL_TEXT_COLORS.map((preset) => {
+        const selected = value.toLowerCase() === preset.color.toLowerCase();
+        return (
+          <Tooltip key={preset.name} content={`${preset.name} (${preset.color})`}>
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => onChange(preset.color)}
+              className={`${hitSize} flex items-center justify-center rounded-full cursor-pointer disabled:cursor-not-allowed group focus-visible:outline-none shrink-0`}
+              aria-label={preset.name}
+            >
+              <span
+                className={`${dotSize} rounded-full transition-[transform,box-shadow,opacity] duration-150 ease-out group-hover:scale-115 active:scale-[0.92] shrink-0 ${
+                  preset.border ? 'border border-paper-grid/90 shadow-2xs' : ''
+                } ${
+                  selected
+                    ? 'ring-2 ring-accent ring-offset-1 scale-110 shadow-xs'
+                    : 'opacity-90 hover:opacity-100'
+                }`}
+                style={{ backgroundColor: preset.color }}
+              />
+            </button>
+          </Tooltip>
+        );
+      })}
+
+      <div className="w-px h-3 bg-paper-grid/80 my-auto mx-0.5 shrink-0" />
+
+      {/* 自定义颜色与吸管 */}
+      <ColorPickerPopover value={value} onChange={onChange} disabled={disabled} align="right">
+        <Tooltip content={isCustom ? `${customLabel} (当前: ${value})` : '自定义颜色 / 吸管取色'}>
+          <button
+            type="button"
+            disabled={disabled}
+            className={`${hitSize} flex items-center justify-center rounded-full cursor-pointer disabled:cursor-not-allowed group focus-visible:outline-none shrink-0`}
+            aria-label="自定义颜色"
+          >
+            <span
+              style={{ backgroundColor: isCustom ? value : undefined }}
+              className={`${dotSize} rounded-full border flex items-center justify-center transition-[transform,border-color,box-shadow] duration-150 ease-out group-hover:scale-115 active:scale-[0.92] shrink-0 ${
+                isCustom
+                  ? 'border-accent ring-2 ring-accent ring-offset-1 scale-110 shadow-xs'
+                  : 'border-paper-grid/90 bg-paper hover:border-accent text-ink-faint hover:text-accent shadow-2xs'
+              }`}
+            >
+              {!isCustom && <Pipette size={7} strokeWidth={2.5} />}
+            </span>
+          </button>
+        </Tooltip>
+      </ColorPickerPopover>
+    </div>
+  );
+};
+
+/**
+ * 胶囊式横竖排选择器 (Segmented Control)
+ */
+interface WritingModeToggleProps {
+  value: TextImageWritingMode;
+  onChange: (mode: TextImageWritingMode) => void;
+  disabled?: boolean;
+}
+
+const WritingModeToggle: React.FC<WritingModeToggleProps> = ({
+  value,
+  onChange,
+  disabled = false,
+}) => {
+  const options: { id: TextImageWritingMode; label: string; tooltip: string }[] = [
+    { id: 'horizontal', label: '横排', tooltip: '横向自然排版' },
+    { id: 'vertical', label: '竖排', tooltip: '纵向传统排版（列自右向左）' },
+  ];
+
+  return (
+    <div className="inline-flex items-center p-0.5 rounded-md bg-paper-grid/50 border border-paper-grid/70 select-none shrink-0">
+      {options.map((opt) => {
+        const active = value === opt.id;
+        return (
+          <Tooltip key={opt.id} content={opt.tooltip}>
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => onChange(opt.id)}
+              className={`px-1.5 py-0.5 rounded text-[10px] font-sans transition-[transform,background-color,color,box-shadow] duration-150 ease-out active:scale-[0.96] disabled:cursor-not-allowed leading-none ${
+                active
+                  ? 'bg-paper text-accent font-medium shadow-2xs border border-paper-grid/40'
+                  : 'text-ink-faint hover:text-ink'
+              }`}
+            >
+              {opt.label}
+            </button>
+          </Tooltip>
+        );
+      })}
+    </div>
+  );
+};
+
+/**
+ * 微型开关组件 (Switch/Toggle)
+ */
+interface MiniSwitchProps {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled?: boolean;
+  label: string;
+}
+
+const MiniSwitch: React.FC<MiniSwitchProps> = ({
+  checked,
+  onChange,
+  disabled = false,
+  label,
+}) => (
+  <button
+    type="button"
+    role="switch"
+    aria-checked={checked}
+    disabled={disabled}
+    onClick={() => onChange(!checked)}
+    className={`relative inline-flex h-3.5 w-6.5 shrink-0 items-center rounded-full border transition-[background-color,border-color,transform] duration-150 ease-out active:scale-[0.95] disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent ${
+      checked ? 'bg-accent border-accent' : 'bg-paper-grid/60 border-paper-grid'
+    }`}
+    title={label}
+  >
+    <span
+      className={`inline-block h-2.5 w-2.5 transform rounded-full bg-paper shadow-2xs transition-transform duration-150 ease-out ${
+        checked ? 'translate-x-3' : 'translate-x-0.5'
+      }`}
+    />
+  </button>
+);
 
 const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
   id,
@@ -105,6 +278,7 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
   const [isWorking, setIsWorking] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isEditing, setIsEditing] = useState<boolean>(!data?.imageUrl);
+  const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -205,59 +379,6 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
   const isSaved = Boolean(data?.isSaved);
   const busy = isWorking || isExporting;
   const locked = Boolean(hasDownstream);
-  const isCustomColor = !JOURNAL_TEXT_COLORS.some(
-    (preset) => preset.color.toLowerCase() === st.color.toLowerCase()
-  );
-  const isCustomStroke = st.strokeEnabled && st.strokeColor.toLowerCase() !== '#ffffff';
-
-  const renderSwatches = (
-    current: string,
-    onPick: (color: string) => void,
-    customActive: boolean,
-    customLabel: string
-  ) => (
-    <>
-      <div className="flex items-center gap-1.5 flex-wrap">
-        {JOURNAL_TEXT_COLORS.map((preset) => {
-          const selected = current.toLowerCase() === preset.color.toLowerCase();
-          return (
-            <Tooltip key={preset.name} content={`${preset.name} (${preset.color})`}>
-              <button
-                type="button"
-                disabled={locked}
-                onClick={() => onPick(preset.color)}
-                className={`relative w-4 h-4 rounded-full transition-all duration-150 ease-out active:scale-[0.92] shrink-0 ${
-                  preset.border ? 'border border-paper-grid/80' : ''
-                } ${
-                  selected
-                    ? 'ring-2 ring-accent ring-offset-1 scale-110 shadow-sm'
-                    : 'hover:scale-110 opacity-90 hover:opacity-100'
-                }`}
-                style={{ backgroundColor: preset.color }}
-                aria-label={preset.name}
-              />
-            </Tooltip>
-          );
-        })}
-      </div>
-      <div className="w-px h-3 bg-paper-grid/50 my-auto mx-0.5 shrink-0" />
-      <ColorPickerPopover value={current} onChange={onPick} disabled={locked} align="right">
-        <Tooltip content={customActive ? `${customLabel} (当前: ${current})` : '自定义颜色 / 吸管取色'}>
-          <button
-            type="button"
-            disabled={locked}
-            style={{ backgroundColor: customActive ? current : undefined }}
-            className={`w-4 h-4 rounded-full border flex items-center justify-center transition active:scale-[0.92] shrink-0 ${
-              customActive
-                ? 'border-accent ring-2 ring-accent ring-offset-1 scale-110 shadow-sm'
-                : 'border-paper-grid/70 hover:border-accent hover:scale-110 bg-paper/80 text-ink-light hover:text-accent'
-            }`}
-            aria-label="自定义颜色"
-          />
-        </Tooltip>
-      </ColorPickerPopover>
-    </>
-  );
 
   return (
     <CanvasNode
@@ -272,7 +393,7 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
       onDrag={onDrag}
       onContextMenu={onContextMenu}
       resizable
-      defaultSize={{ width: 440, height: 560 }}
+      defaultSize={{ width: 440, height: 640 }}
       className={`transition-[opacity,transform,box-shadow,border-color] duration-150 ease-out ${
         isSelected ? 'ring-2 ring-accent/70 shadow-md' : ''
       }`}
@@ -372,165 +493,187 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
         </NodeActionBar>
       }
     >
-      <div className="h-full flex flex-col flex-1 min-h-0 gap-2">
-        {/* 编辑模式：文字内容 + 样式控制 */}
+      <div className="h-full flex flex-col flex-1 min-h-0 gap-2.5">
+        {/* 编辑模式：高密度、紧凑高效的控制面板 */}
         {isEditing && (
-          <div className="flex flex-col gap-1.5 px-2 py-1.5 rounded-lg bg-paper-grid/20 border border-paper-grid/40 text-xs font-sans text-ink-light select-none">
-            {/* 文字内容 */}
-            <textarea
-              value={st.text}
-              onChange={(e) => patch({ text: e.target.value }, false)}
-              disabled={locked}
-              rows={2}
-              placeholder="输入文字…（支持多行，Enter 换行）"
-              className="w-full resize-none rounded-lg border border-paper-grid/60 bg-paper px-2.5 py-1.5 text-xs text-ink leading-relaxed outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 transition font-sans"
-            />
-
-            {/* 第 1 行：字体 + 横竖排 */}
-            <div className="flex items-center gap-1.5">
-              <select
-                value={st.fontFamily}
-                onChange={(e) => {
-                  loadFontFamily(e.target.value);
-                  patch({ fontFamily: e.target.value });
-                }}
+          <div className="flex flex-col gap-1.5 p-2 rounded-xl bg-paper/95 border border-paper-grid/80 shadow-2xs text-xs font-sans text-ink-light select-none shrink-0">
+            {/* 1. 文字内容输入 + 折叠/展开快捷按钮 */}
+            <div className="relative flex items-center gap-1">
+              <textarea
+                value={st.text}
+                onChange={(e) => patch({ text: e.target.value }, false)}
                 disabled={locked}
-                aria-label="选择字体"
-                className="h-6 pl-2 pr-5 rounded-md border border-paper-grid/60 bg-paper/90 text-xs text-ink outline-none hover:border-accent/60 focus:border-accent cursor-pointer transition"
-              >
-                {JOURNAL_FONTS.map((font) => (
-                  <option key={font.id} value={font.family}>
-                    {font.name}
-                  </option>
-                ))}
-              </select>
-              <div className="ml-auto flex items-center gap-1">
-                {(['horizontal', 'vertical'] as const).map((mode) => {
-                  const active = st.writingMode === mode;
-                  return (
-                    <Tooltip key={mode} content={mode === 'vertical' ? '纵向排版（列自右向左）' : '横向排版'}>
-                      <button
-                        type="button"
-                        disabled={locked}
-                        onClick={() => patch({ writingMode: mode })}
-                        className={`px-2 py-0.5 rounded border text-[11px] transition-[background-color,border-color,color,transform] duration-150 ease-out active:scale-[0.96] ${
-                          active
-                            ? 'bg-accent/15 border-accent/50 text-accent font-medium'
-                            : 'border-paper-grid/50 hover:bg-paper-grid/30 text-ink-light'
-                        }`}
-                      >
-                        {mode === 'vertical' ? '竖排' : '横排'}
-                      </button>
-                    </Tooltip>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* 第 2 行：字号滑杆 */}
-            <div className="flex items-center gap-1.5">
-              <span className="text-ink-faint text-[11px] whitespace-nowrap">字号:</span>
-              <input
-                type="range"
-                min={24}
-                max={240}
-                step={2}
-                value={st.fontSize}
-                disabled={locked}
-                onChange={(e) => patch({ fontSize: Number(e.target.value) }, false)}
-                className="flex-1 h-1 accent-[var(--accent)] cursor-pointer min-w-[60px]"
+                rows={isPanelCollapsed ? 1 : 2}
+                placeholder="输入文字…（Enter 换行）"
+                className="w-full resize-none rounded-lg border border-paper-grid/80 bg-paper px-2.5 py-1.5 text-xs text-ink leading-relaxed outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 transition-[border-color,box-shadow,height] font-sans placeholder:text-ink-faint/60"
               />
-              <span className="text-[11px] text-ink-faint w-9 text-right tabular-nums font-mono">
-                {st.fontSize}px
-              </span>
-            </div>
-
-            {/* 第 3 行：墨色色盘 + 自定义取色 */}
-            <div className="flex items-center gap-1.5">
-              <span className="text-ink-faint text-[11px] whitespace-nowrap">墨色:</span>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {renderSwatches(st.color, (c) => patch({ color: c }), isCustomColor, '自定义墨色')}
-              </div>
-            </div>
-
-            {/* 第 4 行：描边开关 + 颜色 + 宽度 */}
-            <div className="flex items-center gap-1.5 pt-0.5 border-t border-paper-grid/40">
-              <Tooltip content={st.strokeEnabled ? '已开启文字描边' : '已关闭描边'}>
+              <Tooltip content={isPanelCollapsed ? '展开样式设置' : '收起样式设置，扩大预览画布'}>
                 <button
                   type="button"
-                  onClick={() => patch({ strokeEnabled: !st.strokeEnabled })}
-                  disabled={locked}
-                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.96] shrink-0 ${
-                    st.strokeEnabled
-                      ? 'bg-accent/15 text-accent font-medium'
-                      : 'hover:bg-paper-grid/40 text-ink-light'
-                  }`}
+                  onClick={() => setIsPanelCollapsed(!isPanelCollapsed)}
+                  className="p-1 rounded-md border border-paper-grid/70 text-ink-faint hover:text-accent hover:border-accent/60 bg-paper/60 transition-[color,border-color,transform] active:scale-[0.94] shrink-0"
+                  aria-label={isPanelCollapsed ? '展开面板' : '收起面板'}
                 >
-                  <PenLine size={12} />
-                  <span>描边</span>
+                  {isPanelCollapsed ? <SlidersHorizontal size={13} /> : <ChevronUp size={13} />}
                 </button>
               </Tooltip>
-              {st.strokeEnabled && (
-                <>
-                  <div className="flex items-center gap-1 shrink-0">
-                    {renderSwatches(
-                      st.strokeColor,
-                      (c) => patch({ strokeColor: c }),
-                      isCustomStroke,
-                      '自定义描边色'
+            </div>
+
+            {/* 展开的参数配置区（支持一键平滑收起以释放全部视口） */}
+            <AnimatePresence initial={false}>
+              {!isPanelCollapsed && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                  className="overflow-hidden flex flex-col gap-1.5"
+                >
+                  {/* 2. 字体选择 + 横竖排 + 字号滑杆整合 */}
+                  <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
+                    {/* 字体下拉 */}
+                    <div className="relative w-[130px] shrink-0">
+                      <select
+                        value={st.fontFamily}
+                        onChange={(e) => {
+                          loadFontFamily(e.target.value);
+                          patch({ fontFamily: e.target.value });
+                        }}
+                        disabled={locked}
+                        aria-label="选择字体"
+                        className="w-full h-6 pl-2 pr-6 appearance-none rounded-md border border-paper-grid/80 bg-paper text-[11px] text-ink outline-none hover:border-accent/60 focus:border-accent cursor-pointer transition-[border-color]"
+                      >
+                        {JOURNAL_FONTS.map((font) => (
+                          <option key={font.id} value={font.family}>
+                            {font.name}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown
+                        size={11}
+                        className="absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none text-ink-faint"
+                      />
+                    </div>
+
+                    {/* 横竖排胶囊 */}
+                    <WritingModeToggle
+                      value={st.writingMode}
+                      onChange={(mode) => patch({ writingMode: mode })}
+                      disabled={locked}
+                    />
+
+                    {/* 字号滑杆 */}
+                    <div className="flex items-center gap-1 flex-1 min-w-[120px]">
+                      <span className="text-ink-faint text-[10px] shrink-0">字号</span>
+                      <input
+                        type="range"
+                        min={24}
+                        max={240}
+                        step={2}
+                        value={st.fontSize}
+                        disabled={locked}
+                        onChange={(e) => patch({ fontSize: Number(e.target.value) }, false)}
+                        className="flex-1 h-1.5 accent-[var(--accent)] cursor-pointer min-w-[50px]"
+                        aria-label="字号大小"
+                      />
+                      <span className="text-[10px] text-ink-light w-8 text-right tabular-nums font-mono">
+                        {st.fontSize}px
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 3. 墨色调色盘 */}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-ink-faint text-[10px] shrink-0 w-6">墨色</span>
+                    <div className="flex-1 min-w-0">
+                      <SwatchPalette
+                        value={st.color}
+                        onChange={(c) => patch({ color: c })}
+                        disabled={locked}
+                        customLabel="自定义墨色"
+                        size="compact"
+                      />
+                    </div>
+                  </div>
+
+                  {/* 4. 描边设置（紧凑行内整合） */}
+                  <div className="flex items-center gap-1.5 pt-1 border-t border-paper-grid/50 min-h-[24px]">
+                    <div className="flex items-center gap-1 shrink-0">
+                      <PenLine size={11} className={st.strokeEnabled ? 'text-accent' : 'text-ink-faint'} />
+                      <span className="text-[10px] text-ink font-medium">描边</span>
+                      <MiniSwitch
+                        checked={st.strokeEnabled}
+                        onChange={(checked) => patch({ strokeEnabled: checked })}
+                        disabled={locked}
+                        label="开启/关闭描边"
+                      />
+                    </div>
+
+                    {st.strokeEnabled ? (
+                      <div className="flex items-center gap-1.5 flex-1 min-w-0 ml-1">
+                        <SwatchPalette
+                          value={st.strokeColor}
+                          onChange={(c) => patch({ strokeColor: c })}
+                          disabled={locked}
+                          customLabel="描边颜色"
+                          size="compact"
+                        />
+                        <div className="w-px h-3 bg-paper-grid/70 mx-0.5 shrink-0" />
+                        <input
+                          type="range"
+                          min={1}
+                          max={24}
+                          step={1}
+                          value={st.strokeWidth}
+                          disabled={locked}
+                          onChange={(e) => patch({ strokeWidth: Number(e.target.value) }, false)}
+                          className="flex-1 h-1.5 accent-[var(--accent)] cursor-pointer min-w-[40px]"
+                          aria-label="描边粗细"
+                        />
+                        <span className="text-[10px] text-ink-light w-7 text-right tabular-nums font-mono shrink-0">
+                          {st.strokeWidth}px
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-[10px] text-ink-faint/70 ml-1">已关闭</span>
                     )}
                   </div>
-                  <input
-                    type="range"
-                    min={1}
-                    max={24}
-                    step={1}
-                    value={st.strokeWidth}
-                    disabled={locked}
-                    onChange={(e) => patch({ strokeWidth: Number(e.target.value) }, false)}
-                    className="flex-1 h-1 accent-[var(--accent)] cursor-pointer min-w-[50px]"
-                    aria-label="描边宽度"
-                  />
-                  <span className="text-[11px] text-ink-faint w-7 text-right tabular-nums font-mono">
-                    {st.strokeWidth}px
-                  </span>
-                </>
-              )}
-            </div>
 
-            {/* 第 5 行：背景开关 + 颜色（默认关 = 透明背景） */}
-            <div className="flex items-center gap-1.5">
-              <Tooltip content={st.backgroundEnabled ? `纯色背景 ${st.backgroundColor}` : '透明背景（PNG 保留 alpha 通道）'}>
-                <button
-                  type="button"
-                  onClick={() => patch({ backgroundEnabled: !st.backgroundEnabled })}
-                  disabled={locked}
-                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.96] shrink-0 ${
-                    st.backgroundEnabled
-                      ? 'bg-accent/15 text-accent font-medium'
-                      : 'hover:bg-paper-grid/40 text-ink-light'
-                  }`}
-                >
-                  <Square size={12} />
-                  <span>背景</span>
-                </button>
-              </Tooltip>
-              {st.backgroundEnabled &&
-                renderSwatches(
-                  st.backgroundColor,
-                  (c) => patch({ backgroundColor: c }),
-                  st.backgroundColor.toLowerCase() !== '#ffffff',
-                  '自定义背景色'
-                )}
-              {!st.backgroundEnabled && (
-                <span className="text-[11px] text-ink-faint">无（透明）</span>
+                  {/* 5. 背景设置（紧凑行内整合） */}
+                  <div className="flex items-center gap-1.5 min-h-[24px]">
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Square size={11} className={st.backgroundEnabled ? 'text-accent' : 'text-ink-faint'} />
+                      <span className="text-[10px] text-ink font-medium">背景</span>
+                      <MiniSwitch
+                        checked={st.backgroundEnabled}
+                        onChange={(checked) => patch({ backgroundEnabled: checked })}
+                        disabled={locked}
+                        label="开启/关闭背景"
+                      />
+                    </div>
+
+                    {st.backgroundEnabled ? (
+                      <div className="flex-1 min-w-0 ml-1">
+                        <SwatchPalette
+                          value={st.backgroundColor}
+                          onChange={(c) => patch({ backgroundColor: c })}
+                          disabled={locked}
+                          customLabel="背景底色"
+                          size="compact"
+                        />
+                      </div>
+                    ) : (
+                      <span className="text-[10px] text-ink-faint/70 ml-1">透明 (PNG Alpha)</span>
+                    )}
+                  </div>
+                </motion.div>
               )}
-            </div>
+            </AnimatePresence>
           </div>
         )}
 
-        {/* 预览画布：编辑态实时渲染 / 生成态展示输出图（同一渲染实现，所见即所得） */}
-        <div className="relative flex-1 min-h-0 w-full overflow-hidden rounded bg-paper-grid/10 border border-paper-grid/40 flex items-center justify-center select-none p-2 sm:p-3">
+        {/* 预览画布：占据全部剩余大空间，自动弹性撑满（Concentric Radius & Subtle Shadows） */}
+        <div className="relative flex-1 min-h-[260px] w-full overflow-hidden rounded-xl bg-paper-grid/15 border border-paper-grid/60 flex items-center justify-center select-none p-3 sm:p-4">
           <AnimatePresence mode="wait" initial={false}>
             {!hasGenerated ? (
               <motion.div
@@ -545,7 +688,7 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
                   ref={canvasRef}
                   width={TEXT_IMAGE_CANVAS}
                   height={TEXT_IMAGE_CANVAS}
-                  className="max-w-full max-h-full object-contain rounded-lg shadow-2xs"
+                  className="max-w-full max-h-full object-contain rounded-lg shadow-2xs border border-paper-grid/40"
                   style={checkerStyle}
                   aria-label="文本成图实时预览"
                 />
@@ -560,11 +703,11 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
                 className="relative w-full h-full flex items-center justify-center"
               >
                 {st.imageUrl ? (
-                  <div className="relative max-w-full max-h-full flex items-center justify-center p-2 rounded-2xl bg-white shadow-[0_0_0_0.5px_rgba(0,0,0,0.08),0_16px_48px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03),0_2px_4px_rgba(0,0,0,0.02)]">
+                  <div className="relative max-w-full max-h-full flex items-center justify-center p-2.5 rounded-2xl bg-paper border border-paper-grid/60 shadow-[0_0_0_0.5px_rgba(0,0,0,0.06),0_16px_48px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.02)]">
                     <img
                       src={st.imageUrl}
                       alt="Text Image Output"
-                      className="max-w-full max-h-[500px] rounded-lg object-contain select-none pointer-events-none drop-shadow-sm"
+                      className="max-w-full max-h-[520px] rounded-lg object-contain select-none pointer-events-none drop-shadow-sm"
                     />
                   </div>
                 ) : (
@@ -590,3 +733,4 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
 export const TextImageNode = memo(TextImageNodeInner);
 TextImageNode.displayName = 'TextImageNode';
 export default TextImageNode;
+

@@ -10,9 +10,12 @@ import {
   Pencil,
   Check,
   Layers,
+  ChevronUp,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
+import { Tooltip } from '../../../platform/components/ui/Tooltip';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
 import { Select, type SelectOption } from '../../../platform/components/ui/Select';
 import { NODE_COLORS } from '../../bookplate/nodeTypes';
@@ -84,8 +87,8 @@ const SliderRow: React.FC<SliderRowProps> = memo(({
   disabled = false,
   onChange,
 }) => (
-  <label className="flex items-center gap-2 min-w-0">
-    <span className="text-ink-faint text-[11px] whitespace-nowrap w-9 shrink-0 text-left">{label}</span>
+  <label className="flex items-center gap-1.5 min-w-0">
+    <span className="text-ink-faint text-[10px] whitespace-nowrap w-8 shrink-0 text-left">{label}</span>
     <input
       type="range"
       min={min}
@@ -98,7 +101,7 @@ const SliderRow: React.FC<SliderRowProps> = memo(({
       onChange={(e) => onChange(Number(e.target.value))}
       className="flex-1 min-w-0 h-1.5 bg-paper-grid/50 rounded-lg appearance-none cursor-pointer accent-[color:var(--accent)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-50"
     />
-    <span className="text-[11px] text-ink-light w-10 text-right whitespace-nowrap tabular-nums font-mono shrink-0">{display}</span>
+    <span className="text-[10px] text-ink-light min-w-[44px] text-right whitespace-nowrap tabular-nums font-mono shrink-0 pr-0.5">{display}</span>
   </label>
 ));
 SliderRow.displayName = 'SliderRow';
@@ -160,6 +163,7 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [isRenderingPreview, setIsRenderingPreview] = useState(false);
   const [isEditing, setIsEditing] = useState<boolean>(!data?.imageUrl);
+  const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
   /** 预览手动重试计数（仅触发重渲，不写入持久化参数） */
   const [previewNonce, setPreviewNonce] = useState(0);
 
@@ -356,7 +360,7 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
       onDrag={onDrag}
       onContextMenu={onContextMenu}
       resizable
-      defaultSize={{ width: 440, height: 560 }}
+      defaultSize={{ width: 440, height: 640 }}
       className={`transition-[opacity,transform,box-shadow,border-color] duration-150 ease-out ${
         isSelected ? 'ring-2 ring-accent/70 shadow-md' : ''
       }`}
@@ -508,93 +512,118 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
         onChange={handleFileUpload}
       />
 
-      <div className="h-full flex flex-col flex-1 min-h-0 gap-2">
-        {/* 控制工具栏（编辑态展示：效果切换 + 按声明渲染的参数控件） */}
+      <div className="h-full flex flex-col flex-1 min-h-0 gap-2.5">
+        {/* 控制工具栏（编辑态展示：效果切换 + 按声明渲染的高密度参数控件） */}
         {!hasGenerated && (
-          <div className="relative z-20 flex flex-col gap-2 p-2 rounded-lg bg-paper-grid/15 border border-paper-grid/40 text-xs font-sans text-ink-light select-none shadow-2xs">
-            {/* 顶部主效果切换行 */}
-            <div className="flex items-center justify-between gap-2 pb-1.5 border-b border-paper-grid/30">
-              <div className="flex items-center gap-1.5 min-w-0">
-                <Layers size={14} className="text-accent shrink-0" />
-                <span className="text-ink-faint text-[11px] shrink-0 font-medium">效果:</span>
+          <div className="relative z-20 flex flex-col gap-1.5 p-2 rounded-xl bg-paper/95 border border-paper-grid/80 text-xs font-sans text-ink-light select-none shadow-2xs shrink-0">
+            {/* 顶部主效果切换行 + 折叠/展开快捷按钮 */}
+            <div className="flex items-center justify-between gap-1.5 pb-1 border-b border-paper-grid/40">
+              <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                <Layers size={13} className="text-accent shrink-0" />
+                <span className="text-ink-faint text-[10px] shrink-0 font-medium">效果</span>
                 <Select
                   size="sm"
                   value={effect.id}
                   disabled={hasDownstream || isGenerating}
                   onChange={handleEffectChange}
                   options={effectOptions}
-                  className="w-28 shrink-0"
+                  className="w-28 shrink-0 text-xs"
                 />
+                <span className="text-[10px] text-ink-faint/80 truncate hidden sm:inline" title={effect.description}>
+                  {effect.description.split('：')[0]}
+                </span>
               </div>
-              <span className="text-[11px] text-ink-faint truncate max-w-[200px]" title={effect.description}>
-                {effect.description.split('：')[0]}
-              </span>
+
+              {/* 收起/展开整个样式设置面板 */}
+              <Tooltip content={isPanelCollapsed ? '展开参数配置' : '收起参数配置，最大化查看图片'}>
+                <button
+                  type="button"
+                  onClick={() => setIsPanelCollapsed(!isPanelCollapsed)}
+                  className="p-1 rounded-md border border-paper-grid/70 text-ink-faint hover:text-accent hover:border-accent/60 bg-paper/60 transition-[color,border-color,transform] active:scale-[0.94] shrink-0"
+                  aria-label={isPanelCollapsed ? '展开面板' : '收起面板'}
+                >
+                  {isPanelCollapsed ? <SlidersHorizontal size={13} /> : <ChevronUp size={13} />}
+                </button>
+              </Tooltip>
             </div>
 
-            {/* 分段选项控件（算法、像素块、色板、形状等） */}
-            {segmentDefs.length > 0 && (
-              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-                {segmentDefs.map((def) =>
-                  def.kind === 'segment' ? (
-                    <div key={def.key} className="flex items-center gap-1 shrink-0" role="radiogroup" aria-label={def.label}>
-                      <span className="text-ink-faint text-[11px] shrink-0">{def.label}:</span>
-                      <div className="flex items-center p-0.5 rounded-md bg-paper/60 border border-paper-grid/50 gap-0.5 shadow-2xs">
-                        {def.options.map((opt) => {
-                          const isChecked = params[def.key] === opt.value;
-                          return (
-                            <button
-                              key={opt.value}
-                              type="button"
-                              role="radio"
-                              aria-checked={isChecked}
-                              onClick={() => setParam(def.key, opt.value)}
-                              disabled={hasDownstream || isGenerating}
-                              className={`min-w-[26px] px-1.5 py-0.5 rounded text-[11px] font-medium leading-tight text-center transition-[background-color,color,box-shadow,transform] duration-150 active:scale-[0.96] ${
-                                isChecked
-                                  ? 'bg-accent text-paper shadow-2xs'
-                                  : 'text-ink-light hover:text-ink hover:bg-paper-grid/30'
-                              } disabled:cursor-not-allowed disabled:opacity-50`}
-                            >
-                              {opt.label}
-                            </button>
-                          );
-                        })}
-                      </div>
+            {/* 可平滑收起的参数设置区 */}
+            <AnimatePresence initial={false}>
+              {!isPanelCollapsed && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                  className="overflow-hidden flex flex-col gap-1.5"
+                >
+                  {/* 分段选项控件（算法、像素块、色板、形状等） */}
+                  {segmentDefs.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      {segmentDefs.map((def) =>
+                        def.kind === 'segment' ? (
+                          <div key={def.key} className="flex items-center gap-1 shrink-0" role="radiogroup" aria-label={def.label}>
+                            <span className="text-ink-faint text-[10px] shrink-0">{def.label}</span>
+                            <div className="flex items-center p-0.5 rounded-md bg-paper-grid/40 border border-paper-grid/60 gap-0.5 shadow-2xs">
+                              {def.options.map((opt) => {
+                                const isChecked = params[def.key] === opt.value;
+                                return (
+                                  <button
+                                    key={opt.value}
+                                    type="button"
+                                    role="radio"
+                                    aria-checked={isChecked}
+                                    onClick={() => setParam(def.key, opt.value)}
+                                    disabled={hasDownstream || isGenerating}
+                                    className={`px-1.5 py-0.5 rounded text-[10px] font-medium leading-none text-center transition-[background-color,color,box-shadow,transform] duration-150 active:scale-[0.96] ${
+                                      isChecked
+                                        ? 'bg-paper text-accent font-medium shadow-2xs border border-paper-grid/40'
+                                        : 'text-ink-light hover:text-ink hover:bg-paper-grid/30'
+                                    } disabled:cursor-not-allowed disabled:opacity-50`}
+                                  >
+                                    {opt.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ) : null
+                      )}
                     </div>
-                  ) : null
-                )}
-              </div>
-            )}
+                  )}
 
-            {/* 自定义色板高级配置栏（抖动模式 / ASCII 模式且选用自定义色板时展示） */}
-            {((effect.id === 'dither' && params.palette === 'custom') ||
-              (effect.id === 'ascii' && params.colorMode === 'custom')) && (
-              <CustomPaletteEditor
-                value={String(params.customPalette ?? '#000000,#ffffff')}
-                onChange={(nextPalette) => setParam('customPalette', nextPalette)}
-                disabled={hasDownstream || isGenerating}
-                imageSrc={activeImageSrc}
-              />
-            )}
+                  {/* 自定义色板高级配置栏（抖动模式 / ASCII 模式且选用自定义色板时展示） */}
+                  {((effect.id === 'dither' && params.palette === 'custom') ||
+                    (effect.id === 'ascii' && params.colorMode === 'custom')) && (
+                    <CustomPaletteEditor
+                      value={String(params.customPalette ?? '#000000,#ffffff')}
+                      onChange={(nextPalette) => setParam('customPalette', nextPalette)}
+                      disabled={hasDownstream || isGenerating}
+                      imageSrc={activeImageSrc}
+                    />
+                  )}
 
-            {/* 滑杆参数网格 */}
-            {sliderDefs.length > 0 && (
-              <div className={`grid gap-x-4 gap-y-1.5 ${sliderDefs.length === 1 ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'}`}>
-                {sliderDefs.map((def) => (
-                  <SliderRow
-                    key={def.key}
-                    label={def.label}
-                    value={Number(params[def.key])}
-                    min={def.min}
-                    max={def.max}
-                    step={def.step}
-                    display={def.display ? def.display(Number(params[def.key])) : String(params[def.key])}
-                    disabled={hasDownstream || isGenerating}
-                    onChange={(v) => setParam(def.key, v)}
-                  />
-                ))}
-              </div>
-            )}
+                  {/* 滑杆参数网格 */}
+                  {sliderDefs.length > 0 && (
+                    <div className={`grid gap-x-3 gap-y-1 ${sliderDefs.length === 1 ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'}`}>
+                      {sliderDefs.map((def) => (
+                        <SliderRow
+                          key={def.key}
+                          label={def.label}
+                          value={Number(params[def.key])}
+                          min={def.min}
+                          max={def.max}
+                          step={def.step}
+                          display={def.display ? def.display(Number(params[def.key])) : String(params[def.key])}
+                          disabled={hasDownstream || isGenerating}
+                          onChange={(v) => setParam(def.key, v)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         )}
 

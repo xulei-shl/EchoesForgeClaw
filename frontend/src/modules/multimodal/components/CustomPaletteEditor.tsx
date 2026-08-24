@@ -255,48 +255,48 @@ export const CustomPaletteEditor: React.FC<CustomPaletteEditorProps> = memo(({
   }, [imageSrc, isExtracting, applyColors]);
 
   return (
-    <div className="flex flex-col gap-1.5 p-2 rounded-lg bg-paper/80 border border-paper-grid/60 shadow-2xs font-sans text-xs text-ink-light">
+    <div className="flex flex-col gap-1 p-1.5 rounded-lg bg-paper/90 border border-paper-grid/60 shadow-2xs font-sans text-xs text-ink-light">
       {/* 顶部标签切换栏与快捷按钮 */}
-      <div className="flex items-center justify-between gap-1 pb-1 border-b border-paper-grid/30">
-        <div className="flex items-center gap-1 p-0.5 rounded-md bg-paper-grid/20 border border-paper-grid/30">
+      <div className="flex items-center justify-between gap-1 pb-0.5 border-b border-paper-grid/30">
+        <div className="flex items-center gap-0.5 p-0.5 rounded bg-paper-grid/20 border border-paper-grid/30">
           <button
             type="button"
             onClick={() => setActiveTab('ramp')}
             disabled={disabled}
-            className={`flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium transition-all active:scale-[0.96] ${
+            className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-[background-color,color,box-shadow,transform] active:scale-[0.96] leading-none ${
               activeTab === 'ramp'
                 ? 'bg-accent text-paper shadow-2xs'
                 : 'text-ink-faint hover:text-ink hover:bg-paper/50'
             }`}
           >
-            <Sliders size={11} />
-            <span>渐变色阶</span>
+            <Sliders size={10} />
+            <span>色阶</span>
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('swatches')}
             disabled={disabled}
-            className={`flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium transition-all active:scale-[0.96] ${
+            className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-[background-color,color,box-shadow,transform] active:scale-[0.96] leading-none ${
               activeTab === 'swatches'
                 ? 'bg-accent text-paper shadow-2xs'
                 : 'text-ink-faint hover:text-ink hover:bg-paper/50'
             }`}
           >
-            <Palette size={11} />
-            <span>自选色卡</span>
+            <Palette size={10} />
+            <span>自选</span>
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('presets')}
             disabled={disabled}
-            className={`flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium transition-all active:scale-[0.96] ${
+            className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-[background-color,color,box-shadow,transform] active:scale-[0.96] leading-none ${
               activeTab === 'presets'
                 ? 'bg-accent text-paper shadow-2xs'
                 : 'text-ink-faint hover:text-ink hover:bg-paper/50'
             }`}
           >
-            <Bookmark size={11} />
-            <span>灵感库</span>
+            <Bookmark size={10} />
+            <span>预设</span>
           </button>
         </div>
 
@@ -308,9 +308,9 @@ export const CustomPaletteEditor: React.FC<CustomPaletteEditorProps> = memo(({
               onClick={handleExtractFromImage}
               disabled={disabled || isExtracting}
               title="从当前输入图片提取 4 色主色板"
-              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-accent bg-accent/10 hover:bg-accent/20 active:scale-[0.96] transition-all border border-accent/20 disabled:opacity-50"
+              className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] text-accent bg-accent/10 hover:bg-accent/20 active:scale-[0.96] transition-[background-color,transform] border border-accent/20 disabled:opacity-50 leading-none"
             >
-              <Sparkles size={11} className={isExtracting ? 'animate-spin' : ''} />
+              <Sparkles size={10} className={isExtracting ? 'animate-spin' : ''} />
               <span>提取原图</span>
             </button>
           )}
@@ -319,9 +319,9 @@ export const CustomPaletteEditor: React.FC<CustomPaletteEditorProps> = memo(({
             onClick={handleRandomize}
             disabled={disabled}
             title="随机生成一组配色灵感"
-            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-ink-light bg-paper-grid/20 hover:bg-paper-grid/40 active:scale-[0.96] transition-all border border-paper-grid/40 disabled:opacity-50"
+            className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] text-ink-light bg-paper-grid/20 hover:bg-paper-grid/40 active:scale-[0.96] transition-[background-color,transform] border border-paper-grid/40 disabled:opacity-50 leading-none"
           >
-            <Dices size={11} />
+            <Dices size={10} />
             <span>随机</span>
           </button>
         </div>
@@ -329,57 +329,55 @@ export const CustomPaletteEditor: React.FC<CustomPaletteEditorProps> = memo(({
 
       {/* Tab 1: 渐变色阶生成器（小白最推荐） */}
       {activeTab === 'ramp' && (
-        <div className="flex flex-col gap-1.5 pt-0.5">
-          <div className="flex items-center justify-between gap-2">
-            {/* 暗部色选择 */}
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] text-ink-faint">暗部:</span>
-              <ColorPickerPopover
-                value={rampDark}
-                disabled={disabled}
-                onChange={(nextDark) => handleRampChange(nextDark, rampLight, rampSteps)}
-              />
-            </div>
+        <div className="flex items-center justify-between gap-1.5 pt-0.5">
+          {/* 暗部色选择 */}
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-ink-faint shrink-0">暗部:</span>
+            <ColorPickerPopover
+              value={rampDark}
+              disabled={disabled}
+              onChange={(nextDark) => handleRampChange(nextDark, rampLight, rampSteps)}
+            />
+          </div>
 
-            {/* 色阶数选择 */}
-            <div className="flex items-center gap-1">
-              <span className="text-[10px] text-ink-faint">阶数:</span>
-              <div className="flex items-center p-0.5 rounded bg-paper border border-paper-grid/50 gap-0.5">
-                {[2, 3, 4, 5, 6].map((num) => (
-                  <button
-                    key={num}
-                    type="button"
-                    onClick={() => handleRampChange(rampDark, rampLight, num)}
-                    disabled={disabled}
-                    className={`w-5 h-4.5 rounded text-[10px] font-medium leading-none transition-all ${
-                      rampSteps === num
-                        ? 'bg-accent text-paper shadow-2xs'
-                        : 'text-ink-faint hover:text-ink hover:bg-paper-grid/30'
-                    }`}
-                  >
-                    {num}
-                  </button>
-                ))}
-              </div>
+          {/* 色阶数选择 */}
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-ink-faint shrink-0">阶数:</span>
+            <div className="flex items-center p-0.5 rounded bg-paper border border-paper-grid/50 gap-0.5">
+              {[2, 3, 4, 5, 6].map((num) => (
+                <button
+                  key={num}
+                  type="button"
+                  onClick={() => handleRampChange(rampDark, rampLight, num)}
+                  disabled={disabled}
+                  className={`w-4.5 h-4 rounded text-[10px] font-medium leading-none transition-all ${
+                    rampSteps === num
+                      ? 'bg-accent text-paper shadow-2xs'
+                      : 'text-ink-faint hover:text-ink hover:bg-paper-grid/30'
+                  }`}
+                >
+                  {num}
+                </button>
+              ))}
             </div>
+          </div>
 
-            {/* 亮部色选择 */}
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] text-ink-faint">亮部:</span>
-              <ColorPickerPopover
-                value={rampLight}
-                disabled={disabled}
-                align="right"
-                onChange={(nextLight) => handleRampChange(rampDark, nextLight, rampSteps)}
-              />
-            </div>
+          {/* 亮部色选择 */}
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-ink-faint shrink-0">亮部:</span>
+            <ColorPickerPopover
+              value={rampLight}
+              disabled={disabled}
+              align="right"
+              onChange={(nextLight) => handleRampChange(rampDark, nextLight, rampSteps)}
+            />
           </div>
         </div>
       )}
 
       {/* Tab 2: 自由色卡编辑 */}
       {activeTab === 'swatches' && (
-        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+        <div className="flex flex-wrap items-center gap-1 pt-0.5">
           {colors.map((hex, idx) => (
             <div
               key={idx}
@@ -400,7 +398,7 @@ export const CustomPaletteEditor: React.FC<CustomPaletteEditorProps> = memo(({
                   aria-label={`删除颜色 ${hex}`}
                   className="p-0.5 rounded text-ink-faint hover:text-error hover:bg-paper-grid/40 active:scale-[0.9] transition-all ml-0.5"
                 >
-                  <Trash2 size={10} />
+                  <Trash2 size={9} />
                 </button>
               )}
             </div>
@@ -412,9 +410,9 @@ export const CustomPaletteEditor: React.FC<CustomPaletteEditorProps> = memo(({
               onClick={handleAddColor}
               disabled={disabled}
               title="添加新色块"
-              className="flex items-center gap-0.5 px-2 py-0.5 rounded border border-dashed border-paper-grid/80 hover:border-accent text-ink-faint hover:text-accent bg-paper/40 active:scale-[0.96] transition-all text-[10px]"
+              className="flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-dashed border-paper-grid/80 hover:border-accent text-ink-faint hover:text-accent bg-paper/40 active:scale-[0.96] transition-all text-[10px]"
             >
-              <Plus size={11} />
+              <Plus size={10} />
               <span>加色</span>
             </button>
           )}
@@ -423,7 +421,7 @@ export const CustomPaletteEditor: React.FC<CustomPaletteEditorProps> = memo(({
 
       {/* Tab 3: 灵感库预设 */}
       {activeTab === 'presets' && (
-        <div className="grid grid-cols-3 gap-1.5 pt-0.5">
+        <div className="grid grid-cols-3 gap-1 pt-0.5">
           {PRESETS.map((preset) => (
             <button
               key={preset.name}
@@ -436,12 +434,12 @@ export const CustomPaletteEditor: React.FC<CustomPaletteEditorProps> = memo(({
               }}
               disabled={disabled}
               title={`${preset.name}：${preset.description}`}
-              className="flex flex-col gap-1 p-1.5 rounded-md bg-paper border border-paper-grid/60 hover:border-accent/80 hover:bg-paper-grid/20 active:scale-[0.97] transition-all text-left shadow-2xs group"
+              className="flex flex-col gap-0.5 p-1 rounded bg-paper border border-paper-grid/60 hover:border-accent/80 hover:bg-paper-grid/20 active:scale-[0.97] transition-all text-left shadow-2xs group"
             >
-              <span className="text-[10px] font-medium text-ink group-hover:text-accent truncate">
+              <span className="text-[9px] font-medium text-ink group-hover:text-accent truncate">
                 {preset.name}
               </span>
-              <div className="flex items-center gap-0.5 h-2 w-full rounded overflow-hidden border border-black/10">
+              <div className="flex items-center gap-0.5 h-1.5 w-full rounded overflow-hidden border border-black/10">
                 {preset.colors.map((c, i) => (
                   <span
                     key={i}
@@ -456,14 +454,14 @@ export const CustomPaletteEditor: React.FC<CustomPaletteEditorProps> = memo(({
       )}
 
       {/* 底部当前色板条预览 + Hex 代码折叠开关 */}
-      <div className="flex items-center justify-between gap-2 pt-1 border-t border-paper-grid/30">
+      <div className="flex items-center justify-between gap-1.5 pt-0.5 border-t border-paper-grid/30">
         <div className="flex items-center gap-1 min-w-0">
           <span className="text-[10px] text-ink-faint shrink-0">实时色板:</span>
           <div className="flex items-center gap-0.5 p-0.5 rounded bg-paper border border-paper-grid/40">
             {colors.map((c, i) => (
               <span
                 key={i}
-                className="w-3 h-3 rounded-full border border-black/15 shadow-2xs shrink-0"
+                className="w-2.5 h-2.5 rounded-full border border-black/15 shadow-2xs shrink-0"
                 style={{ backgroundColor: c }}
                 title={`${c} (${i + 1}/${colors.length})`}
               />
@@ -477,7 +475,7 @@ export const CustomPaletteEditor: React.FC<CustomPaletteEditorProps> = memo(({
           className="flex items-center gap-0.5 text-[10px] text-ink-faint hover:text-ink transition-colors"
         >
           <span>Hex 代码</span>
-          {showHexInput ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+          {showHexInput ? <ChevronUp size={9} /> : <ChevronDown size={9} />}
         </button>
       </div>
 
@@ -489,7 +487,7 @@ export const CustomPaletteEditor: React.FC<CustomPaletteEditorProps> = memo(({
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder="#000000,#ffffff,..."
-            className="w-full bg-paper border border-paper-grid rounded px-2 py-0.5 text-ink text-[11px] font-mono outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors shadow-2xs disabled:opacity-60"
+            className="w-full bg-paper border border-paper-grid rounded px-2 py-0.5 text-ink text-[10px] font-mono outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors shadow-2xs disabled:opacity-60"
             disabled={disabled}
             aria-label="自定义十六进制色板文本"
           />
