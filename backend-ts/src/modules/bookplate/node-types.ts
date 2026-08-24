@@ -34,6 +34,8 @@ export const NODE_TYPES = {
   WEB_SEARCH: 'web_search',
   /** 图书小票生成（多模态工具）：生成热敏纸小票、借书卡、古籍排版等书目推荐卡片 */
   RECEIPT_PRINTER: 'receipt_printer',
+  /** 图书卡片（多模态工具）：书目元数据 + 封面填入 HTML 模板，浏览器端截图为图片输出 */
+  BOOK_CARD: 'book_card',
   /** 邮票截图框（多模态工具）：锯齿邮票框自由截取，生成带打孔边缘与边框的邮票图片 */
   STAMP_CUTTER: 'stamp_cutter',
   /** 艺术地图生成（多模态工具）：基于 prettymaps 服务端生成艺术风格地图图片 */
@@ -250,6 +252,15 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     type: NODE_TYPES.RECEIPT_PRINTER,
     name: '图书小票生成',
     description: '生成热敏纸小票、借书卡、古籍排版等书目推荐卡片',
+    category: 'multimodal',
+    configurable: false,
+    output_type: 'image',
+    input_types: ['text', 'image'],
+  },
+  {
+    type: NODE_TYPES.BOOK_CARD,
+    name: '图书卡片',
+    description: '将书目元数据与封面图填入 HTML 推广卡片模板，浏览器端截图为图片输出',
     category: 'multimodal',
     configurable: false,
     output_type: 'image',

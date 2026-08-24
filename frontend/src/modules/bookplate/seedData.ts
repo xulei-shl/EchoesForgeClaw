@@ -1,6 +1,7 @@
 import { AGGREGATE_DEFAULT_TEMPLATE } from './textTemplate';
 import { MAP_POSTER_DEFAULTS } from '../multimodal/map/defaults';
 import { JOURNAL_DEFAULTS } from '../multimodal/journal/types';
+import { DEFAULT_BOOK_CARD_TEMPLATE_ID } from '../multimodal/bookcard';
 
 import type { NodeType, NodeData } from './graphTypes';
 import type { NodeRunSettings } from '../../platform/types';
@@ -144,6 +145,13 @@ export function seedDataFor(type: NodeType, parent?: NodeData): any {
         templateId: 'book_recommend',
         themeId: 'white',
         ditherEnabled: true,
+        error: null,
+      };
+    case 'book_card':
+      return {
+        templateId: DEFAULT_BOOK_CARD_TEMPLATE_ID,
+        decorIndex: null,
+        imageUrl: null,
         error: null,
       };
     case 'stamp_cutter':

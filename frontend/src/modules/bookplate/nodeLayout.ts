@@ -26,6 +26,7 @@ export type NodeType =
   | 'text_translation'
   | 'web_search'
   | 'receipt_printer'
+  | 'book_card'
   | 'stamp_cutter'
   | 'sticker_maker'
   | 'journal_maker'
@@ -58,6 +59,7 @@ export const NODE_SIZES: Record<NodeType, { width: number; height: number }> = {
   text_translation: { width: 460, height: 520 },
   web_search:       { width: 460, height: 560 },
   receipt_printer:  { width: 440, height: 640 },
+  book_card:        { width: 440, height: 640 },
 stamp_cutter:       { width: 440, height: 560 },
   sticker_maker:      { width: 440, height: 560 },
   journal_maker:      { width: 500, height: 700 },

@@ -26,6 +26,7 @@ export const NODE_COLORS: Record<CanvasNodeType, string> = {
   text_translation: 'oklch(0.65 0.18 180)',
   web_search: 'oklch(0.6 0.18 130)',
   receipt_printer: 'oklch(0.68 0.15 40)',
+  book_card: 'oklch(0.66 0.15 15)',
   stamp_cutter: 'oklch(0.68 0.16 25)',
   map_art: 'oklch(0.65 0.18 80)',
   pattern_search: 'oklch(0.65 0.16 20)',
@@ -213,6 +214,14 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     defaultSize: DEFAULT_SIZES.receipt_printer,
   },
   {
+    type: 'book_card',
+    name: '图书卡片',
+    description: '将书目元数据与封面图填入 HTML 推广卡片模板，浏览器端截图为图片输出',
+    category: 'multimodal',
+    configurable: false,
+    defaultSize: DEFAULT_SIZES.book_card,
+  },
+  {
     type: 'stamp_cutter',
     name: '邮票截图框',
     description: '锯齿邮票框自由截取，生成带打孔边缘与边框的邮票图片',
@@ -351,6 +360,8 @@ export const NODE_PORT_TYPES: Record<
   web_search: { output: 'text', inputs: ['text'] },
   // 图书小票生成：输出生成的小票图片；可连线图书元数据/文本作为内容输入，图片作为插图输入（连线即输入）
   receipt_printer: { output: 'image', inputs: ['text', 'image'] },
+  // 图书卡片：输出生成的卡片图片；可连线图书元数据（封面兜底根节点）与文本/图片上级（连线即输入）
+  book_card: { output: 'image', inputs: ['text', 'image'] },
   // 邮票截图框：输出生成的邮票图片；可连线图片或图书元数据作为输入源（连线即输入）
   stamp_cutter: { output: 'image', inputs: ['image', 'text'] },
   // 贴纸制作：输出生成的贴纸图片；可连线图片或图书元数据作为输入源（连线即输入）

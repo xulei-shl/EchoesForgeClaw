@@ -234,7 +234,9 @@ export function useNodeHandlers({
   const handleSelectImage = useCallback((id: string) => {
     const node = nodesRef.current.find((n) => n.id === id);
     if (
-      (node?.type === 'image_generation' || node?.type === 'receipt_printer') &&
+      (node?.type === 'image_generation' ||
+        node?.type === 'receipt_printer' ||
+        node?.type === 'book_card') &&
       node.data?.imageUrl
     ) {
       setSelectedImageId(id);
@@ -422,6 +424,31 @@ export function useNodeHandlers({
   const handleUpdateOilPaintStateFor = useEditorPatchHandler(['oil_paint'], editorPatchFns);
   const handleUpdateImageProcessStateFor = useEditorPatchHandler(['image_process'], editorPatchFns);
 
+  /** 「内容 = 已保存记录」型图片节点（小票 / 图书卡片等）共用：
+   *  内容变更后，当前预览不再对应「生成保存到数据库」的结果：若该节点已有保存记录，
+   *  解除收藏/公开关联并重置高亮（节点角标与画板右侧操作栏同步失效），
+   *  避免旧结果按钮高亮残留误导；下次收藏/公开将按当前内容重新生成记录。 */
+  const invalidateSavedRecordOnContentChange = useCallback(
+    (id: string, patch: Record<string, any>) => {
+      const node = nodesRef.current.find((n) => n.id === id);
+      if (!node) return;
+      const cur = node.data ?? {};
+      const changed = Object.entries(patch).some(([k, v]) => cur[k] !== v);
+      if (!changed || generationIds.current[id] === undefined) return;
+      delete generationIds.current[id];
+      setFavoritedState((prev) => ({ ...prev, [id]: false }));
+      setPublishedState((prev) => ({ ...prev, [id]: false }));
+      setStaleRecordIds?.((prev) => {
+        if (prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.add(id);
+        return next;
+      });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
   /** 图书小票生成节点：状态更新写入 node.data（持久化）。
    *  插图（图书封面 / 上游图片 / 本地上传）与「生成输出图」分离：
    *  组件侧统一以 imageUrl 表达插图，此处持久化写入 coverImageUrl，
@@ -430,29 +457,7 @@ export function useNodeHandlers({
     (id: string, patch: Record<string, any>) => {
       const node = nodesRef.current.find((n) => n.id === id);
       if (!node || node.type !== 'receipt_printer') return;
-      // 内容变更（模板 / 纸色 / 文字 / 图片 / 点阵等任一影响渲染的字段）后，当前预览不再对应
-      // 「生成保存到数据库」的结果：若该节点已有保存记录，解除收藏/公开关联并重置高亮
-      // （节点角标与画板右侧操作栏同步失效），避免旧结果按钮高亮残留误导；
-      // 下次收藏/公开将按当前内容重新生成记录。
-      const cur = node.data ?? {};
-      let changed = false;
-      for (const [k, v] of Object.entries(patch)) {
-        if (cur[k] !== v) {
-          changed = true;
-          break;
-        }
-      }
-      if (changed && generationIds.current[id] !== undefined) {
-        delete generationIds.current[id];
-        setFavoritedState((prev) => ({ ...prev, [id]: false }));
-        setPublishedState((prev) => ({ ...prev, [id]: false }));
-        setStaleRecordIds?.((prev) => {
-          if (prev.has(id)) return prev;
-          const next = new Set(prev);
-          next.add(id);
-          return next;
-        });
-      }
+      invalidateSavedRecordOnContentChange(id, patch);
       const stored = { ...patch };
       if ('imageUrl' in stored) {
         stored.coverImageUrl = stored.imageUrl;
@@ -460,7 +465,19 @@ export function useNodeHandlers({
       }
       updateNodeData(id, stored);
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [invalidateSavedRecordOnContentChange]);
+
+  /** 图书卡片节点：状态更新写入 node.data（持久化）。
+   *  imageUrl 仅由导出链路写入（组件只 patch templateId / decorIndex 等内容字段）；
+   *  模板 / 装饰图变更即视为内容变更，解除已保存记录的收藏/公开关联。 */
+  const handleUpdateBookCardStateFor = useCallback(
+    (id: string, patch: Record<string, any>) => {
+      const node = nodesRef.current.find((n) => n.id === id);
+      if (!node || node.type !== 'book_card') return;
+      invalidateSavedRecordOnContentChange(id, patch);
+      updateNodeData(id, patch);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [invalidateSavedRecordOnContentChange]);
 
   // ---------- Wikipedia 检索：从全文视图返回结果列表（仅切视图） ----------
   const handleBackToWikipediaResultsFor = useCallback((id: string) => {
@@ -497,6 +514,7 @@ export function useNodeHandlers({
     handleSelectPatternFor,
     handleSelectColorFor,
     handleExportReceiptFor,
+    handleExportBookCardFor,
     handleExportStampFor,
     handleExportStickerFor,
     handleExportJournalFor,
@@ -602,6 +620,8 @@ export function useNodeHandlers({
     handleExportMapArtFor,
     handleExportReceiptFor,
     handleUpdateReceiptStateFor,
+    handleExportBookCardFor,
+    handleUpdateBookCardStateFor,
     handleExportStampFor,
     handleUpdateStampStateFor,
     handleUpdateStickerMakerStateFor,

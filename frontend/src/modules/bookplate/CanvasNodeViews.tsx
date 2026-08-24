@@ -19,6 +19,7 @@ import { MapPosterNode } from '../../modules/multimodal/components/MapPosterNode
 import { ImageSearchNode, type ImageSearchSelection } from '../../modules/multimodal/components/ImageSearchNode';
 import { ArtImageSearchNode, type GlamSearchSelection } from '../../modules/multimodal/components/ArtImageSearchNode';
 import { ReceiptPrinterNode } from '../../modules/multimodal/components/ReceiptPrinterNode';
+import { BookCardNode } from '../../modules/multimodal/components/BookCardNode';
 import { StampCutterNode } from '../../modules/multimodal/components/StampCutterNode';
 import { StickerMakerNode } from '../../modules/multimodal/components/StickerMakerNode';
 import { JournalMakerNode } from '../../modules/multimodal/components/JournalMakerNode';
@@ -143,6 +144,10 @@ export interface NodeViewHelpers {
   handleExportReceiptFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   /** 图书小票生成节点：状态更新写入 node.data（持久化） */
   handleUpdateReceiptStateFor: (id: string, patch: Record<string, any>) => void;
+  /** 图书卡片节点：导出 PNG data URL 落盘（保存到后端 + 记录数据库历史 + 写回 node.data） */
+  handleExportBookCardFor: (id: string, dataUrl: string, state: any) => Promise<void>;
+  /** 图书卡片节点：状态更新写入 node.data（持久化） */
+  handleUpdateBookCardStateFor: (id: string, patch: Record<string, any>) => void;
   /** 邮票截图框节点：导出 PNG data URL 落盘（保存到后端 + 记录数据库历史 + 写回 node.data） */
   handleExportStampFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportStickerFor: (id: string, dataUrl: string, state: any) => Promise<void>;
@@ -721,6 +726,31 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           mismatchBadge={mismatchBadge}
           onUpdateState={h.handleUpdateReceiptStateFor}
           onExport={h.handleExportReceiptFor}
+        />
+      );
+    }
+
+    case 'book_card': {
+      const d = node.data ?? {};
+      // 图书卡片：封面与元数据均直接取图书元数据节点（直连优先 → 画布根节点兜底）
+      const { upstreamBookData } = resolveUpstreamImage(node, h);
+      return (
+        <BookCardNode
+          key={node.id}
+          {...common}
+          data={d}
+          upstreamBookData={upstreamBookData}
+          isFavorited={!!h.favoritedState[node.id]}
+          isPublic={!!h.publishedState[node.id]}
+          isSelected={node.id === h.activeImage?.id}
+          recordDeleted={h.staleRecordIds.has(node.id)}
+          onSelect={h.handleSelectImage}
+          onToggleFavorite={h.handleToggleFavoriteFor}
+          onTogglePublic={h.handleTogglePublicFor}
+          hasDownstream={hasDownstreamOf(node, h.edges)}
+          mismatchBadge={mismatchBadge}
+          onUpdateState={h.handleUpdateBookCardStateFor}
+          onExport={h.handleExportBookCardFor}
         />
       );
     }

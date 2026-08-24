@@ -286,6 +286,7 @@ export interface ImageOutputHandlers {
   handleSelectPatternFor: (id: string, pattern: PatternItem) => Promise<void>;
   handleSelectColorFor: (id: string, color: ColorItem, palette?: ColorItem[]) => Promise<void>;
   handleExportReceiptFor: (id: string, dataUrl: string, state: any) => Promise<void>;
+  handleExportBookCardFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportStampFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportStickerFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportJournalFor: (id: string, dataUrl: string, state: any) => Promise<void>;
@@ -325,6 +326,25 @@ export function useImageOutputHandlers(ctx: ImageOutputCtx): ImageOutputHandlers
     emptyError: '保存小票图片失败',
     errLabel: '小票图片保存',
     historyWarn: '记录小票到历史数据库失败(不阻断导出):',
+  });
+
+  // 图书卡片：与图书小票同流程——手动点击生成 → /save-image 落盘 → generations 记录
+  const handleExportBookCardFor = useImageExportHandler(ctx, {
+    nodeType: 'book_card',
+    historyNodeType: 'book_card',
+    promptOf: () => '图书卡片生成',
+    okExtras: () => ({}),
+    onHistorySaved: (id) => {
+      ctx.setStaleRecordIds?.((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    },
+    emptyError: '保存卡片图片失败',
+    errLabel: '卡片图片保存',
+    historyWarn: '记录卡片到历史数据库失败(不阻断导出):',
   });
 
   const handleExportStampFor = useImageExportHandler(ctx, {
@@ -397,6 +417,7 @@ export function useImageOutputHandlers(ctx: ImageOutputCtx): ImageOutputHandlers
     handleSelectPatternFor,
     handleSelectColorFor,
     handleExportReceiptFor,
+    handleExportBookCardFor,
     handleExportStampFor,
     handleExportStickerFor,
     handleExportJournalFor,
