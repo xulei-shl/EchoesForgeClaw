@@ -75,10 +75,10 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
   const { scale, onAnchorPointerDown, activeNodeId, setActiveNodeId } = useCanvas();
   const isActive = activeNodeId === id;
 
-  const [zIndex, setZIndex] = useState(() => globalZIndex++);
+  const [zIndex, setZIndex] = useState(() => (globalZIndex++ % 70) + 10);
 
   const bringToFront = useCallback(() => {
-    setZIndex(globalZIndex++);
+    setZIndex((globalZIndex++ % 70) + 10);
   }, []);
 
   const handleActivate = useCallback(() => {
@@ -254,7 +254,7 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
         isActive ? 'ring-1 ring-accent/60 shadow-md' : ''
       } ${className}`}
       style={{
-        zIndex: isActive ? Math.max(zIndex, 50) : zIndex,
+        zIndex: isActive ? 200 : zIndex,
         width: size ? `${size.w}px` : undefined,
         height: size ? `${size.h}px` : undefined,
         minWidth: size ? `${defaultSize!.width}px` : '200px',

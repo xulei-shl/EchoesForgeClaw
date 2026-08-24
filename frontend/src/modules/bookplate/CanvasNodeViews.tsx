@@ -741,14 +741,20 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
 
     case 'book_card': {
       const d = node.data ?? {};
-      // 图书卡片：封面与元数据均直接取图书元数据节点（直连优先 → 画布根节点兜底）
       const { upstreamBookData } = resolveUpstreamImage(node, h);
+      // 收集直连图片输出上级（非 book_info）供用户分配封面/装饰角色
+      const inputs = collectNodeInputs(node, h.nodes, h.edges, h.portTypesOf);
+      const connectedImages = inputs.images
+        .filter((p) => p.type !== 'book_info')
+        .map((p) => nodeOutputImages(p)[0])
+        .filter((src): src is string => Boolean(src));
       return (
         <BookCardNode
           key={node.id}
           {...common}
           data={d}
           upstreamBookData={upstreamBookData}
+          connectedImages={connectedImages}
           isFavorited={!!h.favoritedState[node.id]}
           isPublic={!!h.publishedState[node.id]}
           isSelected={node.id === h.activeImage?.id}

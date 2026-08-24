@@ -51,6 +51,8 @@ export interface BookCardNodeProps {
   };
   /** 上游图书元数据（直连 book_info，兜底画布根节点） */
   upstreamBookData?: CardBookMetadata | null;
+  /** 直连图片输出上级的图片列表（供用户分配封面/装饰角色） */
+  connectedImages?: string[];
   isFavorited?: boolean;
   isPublic?: boolean;
   isSelected?: boolean;
@@ -79,6 +81,7 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
   title,
   data = {},
   upstreamBookData,
+  connectedImages = [],
   isFavorited = false,
   isPublic = false,
   isSelected = false,
@@ -127,15 +130,27 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
     [fieldOptions, patchState]
   );
 
-  // 封面图：直接取图书元数据节点（本地代理图优先，跨域远程图兜底）
-  const coverUrl =
-    upstreamBookData?.cover_image_local || upstreamBookData?.cover_image || upstreamBookData?.coverUrl || null;
+  // 用户指定的连入图片角色下标（null = 使用默认来源）
+  const coverImageIndex = data.coverImageIndex ?? null;
+  const decorImageIndex = data.decorImageIndex ?? null;
 
-  // 装饰图：图池按下标取（对应原 card_generator 从文件夹随机选 b-*.png）
-  const decorUrl =
-    DECOR_IMAGES.length > 0
+  // 封面图优先级：连入图片指定封面 > 图书元数据封面
+  const coverUrl = useMemo(() => {
+    if (coverImageIndex != null && connectedImages[coverImageIndex]) {
+      return connectedImages[coverImageIndex];
+    }
+    return upstreamBookData?.cover_image_local || upstreamBookData?.cover_image || upstreamBookData?.coverUrl || null;
+  }, [coverImageIndex, connectedImages, upstreamBookData]);
+
+  // 装饰图优先级：连入图片指定装饰 > 装饰图池随机
+  const decorUrl = useMemo(() => {
+    if (decorImageIndex != null && connectedImages[decorImageIndex]) {
+      return connectedImages[decorImageIndex];
+    }
+    return DECOR_IMAGES.length > 0
       ? DECOR_IMAGES[(((decorIndex ?? 0) % DECOR_IMAGES.length) + DECOR_IMAGES.length) % DECOR_IMAGES.length]
       : null;
+  }, [decorImageIndex, connectedImages, decorIndex]);
 
   // 填充后的 HTML：预览与导出共用同一份字符串（所见即所得由构造保证）。
   // 二维码为异步生成（索书号等字段值 → vufind 链接 data URL），故整体走 effect 而非同步 useMemo。
@@ -266,11 +281,18 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
     [templateId, patchState]
   );
 
+  const usingConnectedDecor = decorImageIndex != null && connectedImages[decorImageIndex] != null;
+
   const handleShuffleDecor = useCallback(() => {
+    if (usingConnectedDecor) {
+      patchState({ decorImageIndex: null, imageUrl: null });
+      showToast('已恢复装饰图池随机', { type: 'success' });
+      return;
+    }
     const next = randomDecorIndex(decorIndex);
     if (next == null) return;
     patchState({ decorIndex: next, imageUrl: null });
-  }, [decorIndex, patchState]);
+  }, [decorIndex, usingConnectedDecor, patchState, showToast]);
 
   // 生成并保存：渲染 PNG → 落盘 + 历史记录（同小票链路）
   const handleGenerateAndSave = useCallback(async () => {
@@ -282,7 +304,7 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
     setIsRendering(true);
     try {
       const dataUrl = await renderCardToDataUrl(filledHtml, { pixelRatio: 2 });
-      await onExport(id, dataUrl, { templateId, decorIndex });
+      await onExport(id, dataUrl, { templateId, decorIndex, coverImageIndex, decorImageIndex });
       showToast('卡片已生成并保存到历史记录', { type: 'success' });
     } catch (err: any) {
       console.error('生成图书卡片失败:', err);
@@ -377,12 +399,18 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
             <button
               type="button"
               onClick={handleShuffleDecor}
-              disabled={busy || hasDownstream || !hasDecorImages()}
-              title={hasDecorImages() ? '换一张装饰图' : '未提供装饰图素材（放入 src/assets/card-decor/ 后可用）'}
+              disabled={busy || hasDownstream || (!usingConnectedDecor && !hasDecorImages())}
+              title={
+                usingConnectedDecor
+                  ? '清除装饰图角色分配，恢复图池随机'
+                  : hasDecorImages()
+                    ? '换一张装饰图'
+                    : '未提供装饰图素材（放入 src/assets/card-decor/ 后可用）'
+              }
               className="flex items-center gap-1 h-8 px-2 rounded-md border border-dashed border-paper-grid hover:border-accent hover:text-accent text-ink-faint active:scale-[0.96] transition-all text-xs shrink-0 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Shuffle size={13} strokeWidth={1.5} />
-              <span>换图</span>
+              <span>{usingConnectedDecor ? '恢复图池' : '换图'}</span>
             </button>
           </div>
 
@@ -420,6 +448,71 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
             </label>
           </div>
         </div>
+
+        {/* 连入图片角色分配（直连图片输出上级时显示） */}
+        {connectedImages.length > 0 && (
+          <div className="flex flex-col gap-1 px-1.5 py-1.5 rounded-md border border-paper-grid/40 bg-paper-grid/10">
+            <div className="flex items-center justify-between text-[10px] text-ink-faint font-sans px-0.5">
+              <span>连入图片角色</span>
+              <span className="text-[9px] text-ink-faint/70">点击分配或取消</span>
+            </div>
+            {connectedImages.map((img, idx) => {
+              const isCover = coverImageIndex === idx;
+              const isDecor = decorImageIndex === idx;
+              const hasRole = isCover || isDecor;
+              const roleDisabled = busy || hasDownstream;
+              return (
+                <div
+                  key={idx}
+                  className={`flex items-center gap-2 text-xs rounded-md px-1.5 py-1 transition-all ${
+                    roleDisabled
+                      ? 'opacity-60'
+                      : hasRole
+                        ? 'bg-accent/8 border border-accent/20'
+                        : 'hover:bg-paper-grid/15'
+                  }`}
+                >
+                  <img
+                    src={img}
+                    alt=""
+                    className="w-5 h-7 object-cover rounded border border-paper-grid/80 shrink-0 bg-paper-grid/30 shadow-2xs"
+                  />
+                  <span className="truncate text-ink-light flex-1 text-[11px] font-mono">
+                    img_{idx + 1}
+                  </span>
+                  <div className="inline-flex items-center rounded-md border border-paper-grid/60 bg-paper p-0.5 gap-0.5 shrink-0 shadow-2xs">
+                    <button
+                      type="button"
+                      onClick={() => patchState({ coverImageIndex: isCover ? null : idx, imageUrl: null })}
+                      disabled={roleDisabled}
+                      title={hasDownstream ? '有下级节点，不可修改角色' : isCover ? '点击取消设为封面' : '设为卡片封面'}
+                      className={`px-2 py-0.5 rounded text-[10px] font-sans transition-all active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-40 ${
+                        isCover
+                          ? 'bg-accent text-white font-medium shadow-xs'
+                          : 'text-ink-light hover:text-ink hover:bg-paper-grid/40'
+                      }`}
+                    >
+                      封面
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => patchState({ decorImageIndex: isDecor ? null : idx, imageUrl: null })}
+                      disabled={roleDisabled}
+                      title={hasDownstream ? '有下级节点，不可修改角色' : isDecor ? '点击取消设为装饰图' : '设为卡片装饰图'}
+                      className={`px-2 py-0.5 rounded text-[10px] font-sans transition-all active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-40 ${
+                        isDecor
+                          ? 'bg-accent text-white font-medium shadow-xs'
+                          : 'text-ink-light hover:text-ink hover:bg-paper-grid/40'
+                      }`}
+                    >
+                      装饰
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* 预览区域：填充后 HTML 的等比缩放实时预览（与导出同一份 HTML 字符串） */}
         <div

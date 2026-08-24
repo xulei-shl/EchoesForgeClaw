@@ -16,4 +16,8 @@ export interface BookCardState {
   error?: string | null;
   /** 字段处理选项 */
   fieldOptions?: CardFieldOptions;
+  /** 连入图片中选作封面的下标（null = 使用元数据封面） */
+  coverImageIndex?: number | null;
+  /** 连入图片中选作装饰的下标（null = 使用装饰图池） */
+  decorImageIndex?: number | null;
 }

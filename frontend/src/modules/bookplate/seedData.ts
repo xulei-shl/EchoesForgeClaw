@@ -154,6 +154,8 @@ export function seedDataFor(type: NodeType, parent?: NodeData): any {
         decorIndex: null,
         imageUrl: null,
         error: null,
+        coverImageIndex: null,
+        decorImageIndex: null,
       };
     case 'stamp_cutter':
       return {
