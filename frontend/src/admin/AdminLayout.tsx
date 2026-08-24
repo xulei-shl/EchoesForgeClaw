@@ -21,7 +21,7 @@ const NAV_ITEMS = [
   { to: '/admin/bifrost-prompts', label: 'Bifrost 提示词', icon: BookOpen },
   { to: '/admin/bifrost-skills', label: 'Bifrost Skills', icon: Workflow },
   { to: '/admin/fastclaw-agents', label: 'FastClaw Agent', icon: Bot },
-  { to: '/admin/skill-agent-configs', label: 'DeepSeek Agent', icon: Sparkles },
+  { to: '/admin/skill-agent-configs', label: 'Skill Agent', icon: Sparkles },
   { to: '/admin/node-configs', label: '节点管理', icon: GitBranch },
   { to: '/admin/settings', label: '系统设置', icon: Settings },
 ];
@@ -35,7 +35,7 @@ const TITLE_MAP: Record<string, string> = {
   '/admin/bifrost-skills': 'Bifrost Skills',
   '/admin/node-configs': '节点管理',
   '/admin/fastclaw-agents': 'Agent 配置',
-  '/admin/skill-agent-configs': 'DeepSeek Agent 配置',
+  '/admin/skill-agent-configs': 'Skill Agent 配置',
   '/admin/settings': '系统设置',
 };
 

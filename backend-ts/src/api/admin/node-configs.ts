@@ -119,7 +119,7 @@ function validateRefs(
     return '所选 FastClaw Agent 配置不存在';
   }
   if (skillAgentConfigId != null && !db.select().from(skillAgentConfigs).where(eq(skillAgentConfigs.id, skillAgentConfigId)).get()) {
-    return '所选 DeepSeek Agent 配置不存在';
+    return '所选 Skill Agent 配置不存在';
   }
   return null;
 }

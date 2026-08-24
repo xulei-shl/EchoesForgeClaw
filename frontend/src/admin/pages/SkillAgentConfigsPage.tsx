@@ -157,10 +157,10 @@ export const SkillAgentConfigsPage: React.FC = () => {
       };
       if (editing) {
         await adminService.updateSkillAgentConfig(editing.id, base);
-        showToast('DeepSeek Agent 配置已更新', { type: 'success' });
+        showToast('Skill Agent 配置已更新', { type: 'success' });
       } else {
         await adminService.createSkillAgentConfig(base);
-        showToast('DeepSeek Agent 配置已创建', { type: 'success' });
+        showToast('Skill Agent 配置已创建', { type: 'success' });
       }
       resetForm();
       load();
@@ -183,7 +183,7 @@ export const SkillAgentConfigsPage: React.FC = () => {
 
   const handleDelete = async (c: SkillAgentConfig) => {
     const ok = await dialog.confirm({
-      title: '删除 DeepSeek Agent 配置',
+      title: '删除 Skill Agent 配置',
       message: `确定删除「${c.name}」吗？引用它的节点配置将解除绑定。`,
       confirmText: '删除',
       danger: true,
@@ -191,7 +191,7 @@ export const SkillAgentConfigsPage: React.FC = () => {
     if (!ok) return;
     try {
       await adminService.deleteSkillAgentConfig(c.id);
-      showToast('DeepSeek Agent 配置已删除', { type: 'success' });
+      showToast('Skill Agent 配置已删除', { type: 'success' });
       load();
     } catch (e: any) {
       showToast(e?.message || '删除失败，请重试', { type: 'error' });
@@ -211,8 +211,8 @@ export const SkillAgentConfigsPage: React.FC = () => {
   return (
     <div>
       <PageHeader
-        title="DeepSeek Agent 配置"
-        subtitle="openai-agents-python 多步执行：模型 url/key 复用「模型配置」，系统提示词复用「提示词模板」"
+        title="Skill Agent 配置"
+        subtitle="Pi-Agent 多步执行：模型 url/key 复用「模型配置」，系统提示词复用「提示词模板」"
         actions={
           !showCreate && !editing && (
             <Button size="sm" onClick={openCreate}>
@@ -230,7 +230,7 @@ export const SkillAgentConfigsPage: React.FC = () => {
         title={
           <div className="flex items-center gap-2">
             <Bot size={18} strokeWidth={1.5} className="text-accent" />
-            {editing ? `编辑配置：${editing.name}` : '新建 DeepSeek Agent 配置'}
+            {editing ? `编辑配置：${editing.name}` : '新建 Skill Agent 配置'}
           </div>
         }
       >
@@ -339,7 +339,7 @@ export const SkillAgentConfigsPage: React.FC = () => {
           {items.length === 0 ? (
             <Card className="py-14 flex flex-col items-center gap-3 text-center">
               <Bot size={36} strokeWidth={1} className="text-ink-faint" />
-              <p className="font-serif text-base text-ink">还没有 DeepSeek Agent 配置</p>
+              <p className="font-serif text-base text-ink">还没有 Skill Agent 配置</p>
               <p className="text-sm text-ink-light font-sans">
                 配置后可在「节点管理」中为 AI 对话节点选择 Skill Agent 模式
               </p>
