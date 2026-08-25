@@ -56,12 +56,17 @@ const TextNodeInner: React.FC<TextNodeProps> = ({
     setEditContent(content);
   }, [content]);
 
-  // 上级连线文本到达时写入内容（内容相同则跳过，避免多余历史记录），仍可手动编辑
+  // 上级连线文本到达时写入内容；仅在上游文本本身变化时注入一次，
+  // 手动编辑保存后的内容不被覆盖（与文本翻译节点同口径）
+  const lastUpstreamRef = useRef<string | null>(null);
   useEffect(() => {
-    if (upstreamText.trim() && upstreamText !== content) {
+    if (!upstreamText.trim() || lastUpstreamRef.current === upstreamText) return;
+    lastUpstreamRef.current = upstreamText;
+    if (upstreamText !== content) {
       onEditContent?.(id, upstreamText);
     }
-  }, [upstreamText, content, id, onEditContent]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [upstreamText]);
 
   useEffect(() => {
     if (isEditing && textareaRef.current) {
