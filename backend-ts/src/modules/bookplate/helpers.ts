@@ -225,9 +225,13 @@ export function doubanClientConfig(db = getDb()): Partial<DoubanClientConfig> {
   return config;
 }
 
-/** 封面代理 URL（前端 <img> 经此加载，后端带 Referer 下载缓存）。 */
-export function proxyCoverUrl(request: FastifyRequest, coverImage: string): string {
-  return `${request.protocol}://${request.host}/api/modules/bookplate/cover?url=${encodeURIComponent(coverImage)}`;
+/**
+ * 封面代理 URL（前端 <img> 经此加载，后端带 Referer 下载缓存）。
+ * 返回相对路径：由浏览器按当前 origin 解析，经任意主机/反向代理访问均可用
+ * （绝对地址会把 request.host 写死进节点数据，跨主机访问时 <img> 指向错误主机而 404）。
+ */
+export function proxyCoverUrl(_request: FastifyRequest, coverImage: string): string {
+  return `/api/modules/bookplate/cover?url=${encodeURIComponent(coverImage)}`;
 }
 
 /** 节点是否绑定 Skill Agent 模式（第二阶段迁移，暂不支持）。 */
