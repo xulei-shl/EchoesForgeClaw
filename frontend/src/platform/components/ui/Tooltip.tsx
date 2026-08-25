@@ -62,6 +62,7 @@ export const Tooltip: React.FC<TooltipProps & Record<string, any>> = ({
         onClick: (e: any) => {
           setIsVisible(false);
           (children as any).props?.onClick?.(e);
+          (rest as any).onClick?.(e);
         },
         onPointerDown: (e: any) => {
           setIsVisible(false);
