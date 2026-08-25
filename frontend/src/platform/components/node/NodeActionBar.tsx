@@ -146,7 +146,7 @@ NodeActionBar.SettingsTrigger = React.forwardRef<HTMLButtonElement, Omit<BaseBut
 NodeActionBar.SettingsTrigger.displayName = 'SettingsTrigger';
 
 /** 复制文本到剪贴板，优先 Clipboard API，非安全上下文等场景降级为 execCommand */
-const copyTextToClipboard = async (text: string): Promise<void> => {
+export const copyTextToClipboard = async (text: string): Promise<void> => {
   if (navigator.clipboard?.writeText) {
     try {
       await navigator.clipboard.writeText(text);

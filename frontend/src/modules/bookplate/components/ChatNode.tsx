@@ -5,7 +5,7 @@ import { PhotoProvider, PhotoView } from 'react-photo-view';
 import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
 import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
-import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
+import { NodeActionBar, copyTextToClipboard } from '../../../platform/components/node/NodeActionBar';
 import { AgentActivity } from '../../../platform/components/agent/AgentActivity';
 import { Toggle } from '../../../platform/components/ui/Toggle';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
@@ -511,10 +511,14 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
     };
   }, []);
 
-  const handleCopy = useCallback((content: string, idx: number) => {
-    navigator.clipboard.writeText(content);
-    setCopiedId(idx);
-    setTimeout(() => setCopiedId(null), 2000);
+  const handleCopy = useCallback(async (content: string, idx: number) => {
+    try {
+      await copyTextToClipboard(content);
+      setCopiedId(idx);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch {
+      showToast('复制失败，请手动选择文本复制', { type: 'error' });
+    }
   }, []);
 
   const handleDownload = () => {
