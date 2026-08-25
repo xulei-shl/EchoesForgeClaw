@@ -62,11 +62,11 @@ export const NodeActionBar = ({ children, className = '' }: NodeActionBarProps) 
 };
 
 // Preset Buttons
-NodeActionBar.Run = (props: Omit<BaseButtonProps, 'icon' | 'tooltip' | 'downstreamTooltip'> & { hasDownstream?: boolean }) => (
+NodeActionBar.Run = ({ tooltip, downstreamTooltip, ...props }: Omit<BaseButtonProps, 'icon' | 'tooltip' | 'downstreamTooltip'> & { hasDownstream?: boolean; tooltip?: string; downstreamTooltip?: string }) => (
   <BaseButton
     icon={<Play size={16} strokeWidth={1.5} />}
-    tooltip="运行"
-    downstreamTooltip="有下级节点，不可运行"
+    tooltip={tooltip || '运行'}
+    downstreamTooltip={downstreamTooltip || '有下级节点，不可运行'}
     {...props}
   />
 );

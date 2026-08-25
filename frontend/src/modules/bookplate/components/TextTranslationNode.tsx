@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useState, useCallback, useMemo } from 'react';
-import { Languages, Loader2, ArrowLeftRight, AlertTriangle, Link2, Shuffle, Globe, Trash2 } from 'lucide-react';
+import { Languages, Loader2, ArrowLeftRight, AlertTriangle, Link2, Shuffle, Globe, X } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { BeamGlow } from '../../../platform/components/node/BeamGlow';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
@@ -81,6 +81,8 @@ export interface TextTranslationNodeProps {
   initialY?: number;
   title?: string;
   upstreamText?: string;
+  /** 手动输入的待翻译文本（上级连线到达时自动填入，可继续手动编辑） */
+  inputText?: string;
   from?: string;
   to?: string;
   source?: TranslationSource;
@@ -101,7 +103,7 @@ export interface TextTranslationNodeProps {
 
 const TextTranslationNodeInner: React.FC<TextTranslationNodeProps> = ({
   id, initialX, initialY, title,
-  upstreamText = '', from = 'auto', to = 'en', source = 'random',
+  upstreamText = '', inputText: inputTextProp = '', from = 'auto', to = 'en', source = 'random',
   tabData = {},
   onFetch, onUpdateEditor, onRemove, onPositionChange, onSizeChange, onDrag,
   footer, onContextMenu, hasDownstream,
@@ -109,10 +111,17 @@ const TextTranslationNodeInner: React.FC<TextTranslationNodeProps> = ({
   const [fromLan, setFromLan] = useState(from);
   const [toLan, setToLan] = useState(to);
   const [activeSource, setActiveSource] = useState<TranslationSource>(source);
+  const [inputText, setInputText] = useState(inputTextProp);
 
   useEffect(() => { setFromLan(from); }, [from]);
   useEffect(() => { setToLan(to); }, [to]);
   useEffect(() => { setActiveSource(source); }, [source]);
+  // 撤销 / 重做 / 历史恢复时同步草稿
+  useEffect(() => { setInputText(inputTextProp); }, [inputTextProp]);
+  // 上级连线文本到达时写入输入框，仍可手动编辑
+  useEffect(() => {
+    if (upstreamText.trim()) setInputText(upstreamText);
+  }, [upstreamText]);
 
   const currentTab = useMemo<TranslationTabData>(
     () => ({ ...TAB_INITIAL, ...tabData[activeSource] }),
@@ -120,7 +129,12 @@ const TextTranslationNodeInner: React.FC<TextTranslationNodeProps> = ({
   );
 
   const hasUpstream = upstreamText.trim().length > 0;
-  const effectiveText = hasUpstream ? upstreamText.trim() : '';
+  const effectiveText = inputText.trim();
+
+  /** 持久化手动输入（失焦 / 清空时落盘，避免每次击键写 node.data） */
+  const persistInputText = (value: string) => {
+    if (value !== inputTextProp) onUpdateEditor?.(id, { inputText: value });
+  };
 
   const handleSourceChange = (src: TranslationSource) => {
     setActiveSource(src);
@@ -129,9 +143,23 @@ const TextTranslationNodeInner: React.FC<TextTranslationNodeProps> = ({
 
   const handleTranslate = useCallback(() => {
     if (currentTab.isGenerating || hasDownstream || !effectiveText) return;
-
+    if (inputText !== inputTextProp) onUpdateEditor?.(id, { inputText });
     onFetch?.(id, { text: effectiveText, from: fromLan, to: toLan, source: activeSource });
-  }, [activeSource, currentTab.isGenerating, effectiveText, fromLan, hasDownstream, id, onFetch, toLan]);
+  }, [activeSource, currentTab.isGenerating, effectiveText, fromLan, hasDownstream, id, onFetch, toLan, inputText, inputTextProp, onUpdateEditor]);
+
+  /** 清空输入框（同步持久化） */
+  const handleClearInput = () => {
+    setInputText('');
+    persistInputText('');
+  };
+
+  /** 输入框 Ctrl/Cmd + Enter 直接触发翻译 */
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      handleTranslate();
+    }
+  };
 
   const handleSwapLanguages = () => {
     if (fromLan === 'auto') return;
@@ -152,22 +180,42 @@ const TextTranslationNodeInner: React.FC<TextTranslationNodeProps> = ({
 
   const renderActionBar = () => {
     if (currentTab.isGenerating) return undefined;
+
+    if (!currentTab.output.trim() && !currentTab.error) {
+      return (
+        <NodeActionBar>
+          <NodeActionBar.Run
+            onClick={handleTranslate}
+            disabled={!effectiveText}
+            hasDownstream={hasDownstream}
+            tooltip={effectiveText ? '翻译 (Ctrl+Enter)' : '请输入或连线上级节点获取待翻译文本'}
+          />
+        </NodeActionBar>
+      );
+    }
+
     return (
       <NodeActionBar>
-        {(currentTab.output.trim() || currentTab.error) && (
-          <NodeActionBar.Retry
-            onClick={handleTranslate}
-            error={!!currentTab.error}
-            hasDownstream={hasDownstream}
-            tooltip={currentTab.error ? '重试翻译' : '重新翻译'}
-          />
-        )}
+        <NodeActionBar.Retry
+          onClick={handleTranslate}
+          error={!!currentTab.error}
+          hasDownstream={hasDownstream}
+          tooltip={currentTab.error ? '重试翻译' : '重新翻译'}
+        />
         {currentTab.output.trim() && (
-          <NodeActionBar.Copy
-            text={currentTab.output}
-            tooltip="复制翻译结果"
-            toastMessage="翻译结果已复制到剪贴板"
-          />
+          <>
+            <NodeActionBar.Copy
+              text={currentTab.output}
+              tooltip="复制翻译结果"
+              toastMessage="翻译结果已复制到剪贴板"
+            />
+            {!hasDownstream && (
+              <NodeActionBar.Eraser
+                onClick={handleClearCurrent}
+                tooltip="清空翻译结果"
+              />
+            )}
+          </>
         )}
       </NodeActionBar>
     );
@@ -200,24 +248,45 @@ const TextTranslationNodeInner: React.FC<TextTranslationNodeProps> = ({
       actionBar={renderActionBar()}
     >
       <div className="h-full flex flex-col flex-1 min-h-0 gap-3">
-        {hasUpstream ? (
-          <div className="flex items-center justify-between p-2.5 rounded-md border border-accent/40 bg-accent/5 shrink-0">
-            <div className="flex items-center gap-2 min-w-0 pr-2">
-              <div className="w-6 h-6 rounded-full bg-accent/15 flex items-center justify-center shrink-0 text-accent">
-                <Link2 size={13} strokeWidth={2} />
-              </div>
-              <div className="min-w-0">
-                <div className="text-[10px] font-serif text-accent uppercase tracking-wider">上级连线输入文本</div>
-                <div className="text-sm font-medium text-ink truncate font-mono max-w-[200px]">{upstreamText}</div>
-              </div>
+        <div
+          className={`rounded-lg border border-dashed bg-paper/40 focus-within:border-accent focus-within:ring-1 focus-within:ring-accent transition-colors p-2 space-y-1 shrink-0 ${
+            hasUpstream ? 'border-accent/40' : 'border-paper-grid'
+          }`}
+        >
+          {hasUpstream && (
+            <div className="flex items-center gap-1.5 text-[10px] font-serif text-accent uppercase tracking-wider">
+              <Link2 size={11} strokeWidth={2} />
+              上级连线已填入，可直接编辑
             </div>
+          )}
+          <div className="relative">
+            <textarea
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onBlur={() => persistInputText(inputText)}
+              onKeyDown={handleInputKeyDown}
+              placeholder="输入或粘贴待翻译文本，也可连线上级文本节点…"
+              rows={3}
+              disabled={currentTab.isGenerating}
+              className="w-full bg-transparent pr-7 text-xs text-ink placeholder:text-ink-faint focus:outline-none font-mono disabled:opacity-50 resize-none leading-relaxed custom-scrollbar"
+            />
+            {inputText && !currentTab.isGenerating && (
+              <button
+                type="button"
+                onClick={handleClearInput}
+                title="清空输入"
+                aria-label="清空输入"
+                className="absolute right-0 top-0 w-6 h-6 flex items-center justify-center rounded text-ink-faint hover:text-error hover:bg-paper-grid/40 transition-colors"
+              >
+                <X size={12} strokeWidth={2} />
+              </button>
+            )}
           </div>
-        ) : (
-          <div className="flex items-center gap-2 p-2.5 rounded-md border border-dashed border-paper-grid bg-paper-grid/10 shrink-0">
-            <Languages size={14} strokeWidth={1.5} className="text-ink-faint shrink-0" />
-            <span className="text-xs text-ink-faint font-sans">请连线上级文本节点获取待翻译文本</span>
+          <div className="flex items-center justify-between pt-1 border-t border-paper-grid/40">
+            <span className="text-[10px] text-ink-faint font-mono">Ctrl/⌘ + ↵ 翻译</span>
+            <span className="text-[10px] text-ink-faint font-mono">{effectiveText.length} 字</span>
           </div>
-        )}
+        </div>
 
         <div className="shrink-0 space-y-2">
           <div className="flex items-center gap-2">
@@ -250,7 +319,7 @@ const TextTranslationNodeInner: React.FC<TextTranslationNodeProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center">
             <div className="flex-1 flex items-center gap-1.5 overflow-x-auto custom-scrollbar py-0.5">
               {SOURCE_OPTIONS.map((opt) => {
                 const isActive = activeSource === opt.value;
@@ -276,20 +345,6 @@ const TextTranslationNodeInner: React.FC<TextTranslationNodeProps> = ({
                 );
               })}
             </div>
-            <button
-              type="button"
-              onClick={handleTranslate}
-              disabled={currentTab.isGenerating || !effectiveText || hasDownstream}
-              title={!effectiveText ? '请连线上级节点获取文本' : '翻译'}
-              className="flex items-center justify-center gap-1.5 px-3 h-9 shrink-0 rounded-md bg-accent text-paper text-xs font-sans hover:bg-accent-hover active:scale-[0.96] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {currentTab.isGenerating ? (
-                <Loader2 size={13} className="animate-spin" strokeWidth={2} />
-              ) : (
-                <Languages size={13} strokeWidth={2} />
-              )}
-              {currentTab.isGenerating ? '翻译中...' : '翻译'}
-            </button>
           </div>
         </div>
 
@@ -309,25 +364,12 @@ const TextTranslationNodeInner: React.FC<TextTranslationNodeProps> = ({
           ) : currentTab.error ? (
             <div className="p-3.5 rounded-md border border-error/20 bg-error/5 flex items-start gap-2.5">
               <AlertTriangle size={15} strokeWidth={2} className="text-error shrink-0 mt-0.5" />
-              <div className="flex-1 min-w-0 space-y-1.5 font-sans">
-                <p className="text-[12px] text-error/90 leading-relaxed break-words">{currentTab.error}</p>
-                <button type="button" onClick={handleTranslate}
-                  className="inline-flex items-center text-[11px] text-error font-medium hover:underline active:scale-[0.96] transition-transform">
-                  重试翻译
-                </button>
-              </div>
+              <p className="flex-1 min-w-0 text-[12px] text-error/90 leading-relaxed break-words font-sans">{currentTab.error}</p>
             </div>
           ) : currentTab.output.trim() ? (
             <div className="space-y-2">
-              <div className="flex items-center justify-between text-[11px] text-ink-faint font-sans">
-                <span>翻译源：{SOURCE_LABEL[currentTab.usedSource] ?? currentTab.usedSource}</span>
-                {!hasDownstream && (
-                  <button type="button" onClick={handleClearCurrent}
-                    className="inline-flex items-center gap-1 text-ink-faint hover:text-error transition-colors">
-                    <Trash2 size={11} strokeWidth={1.5} />
-                    清空
-                  </button>
-                )}
+              <div className="text-[11px] text-ink-faint font-sans">
+                翻译源：{SOURCE_LABEL[currentTab.usedSource] ?? currentTab.usedSource}
               </div>
               <div className="w-full min-w-0 font-mono text-sm leading-relaxed p-3 rounded-md bg-paper/60 border border-dashed border-paper-grid">
                 <Streamdown plugins={{ cjk, code }} isAnimating={false} caret="block" linkSafety={{ enabled: false }}>

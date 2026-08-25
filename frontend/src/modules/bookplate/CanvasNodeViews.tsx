@@ -622,6 +622,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           key={node.id}
           {...common}
           upstreamText={upstreamText}
+          inputText={typeof d.inputText === 'string' ? d.inputText : ''}
           from={typeof d.from === 'string' ? d.from : 'auto'}
           to={typeof d.to === 'string' ? d.to : 'en'}
           source={d.source === 'google' || d.source === 'deeplx' ? d.source : 'random'}
