@@ -185,7 +185,7 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
       id={id}
       initialX={initialX}
       initialY={initialY}
-      title={title || "藏书票图像"}
+      title={title || "图像生成"}
       dotColor={NODE_COLORS.image_generation}
       onRemove={() => onRemove?.(id)}
       onPositionChange={onPositionChange}
@@ -331,7 +331,7 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
                     <div className="w-2.5 h-2.5 rounded-full bg-accent animate-bounce" style={{ animationDelay: '300ms' }} />
                   </div>
                   <span className="text-sm font-serif text-accent tracking-wide drop-shadow-sm text-center">
-                    {referenceImageUrl ? '正在基于参考图生成...' : '正在绘制藏书票...'}
+                    {referenceImageUrl ? '正在基于参考图生成...' : '正在绘制图像...'}
                   </span>
                 </div>
               </div>
@@ -347,7 +347,7 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
                     <Tooltip content="点击全屏查看">
                       <img
                         src={imageUrl}
-                        alt="生成的藏书票"
+                        alt="生成的图像"
                         className="w-full rounded-sm cursor-pointer group-hover:opacity-95 active:scale-[0.99] transition-transform transition-opacity outline outline-1 outline-[oklch(0_0_0/0.1)] outline-offset-[-1px]"
                         loading="lazy"
                       />

@@ -80,7 +80,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'image_generation',
     name: '图像生成',
-    description: '根据提示词生成藏书票图片',
+    description: '根据提示词生成图片',
     category: 'output',
     configurable: true,
     defaultSize: DEFAULT_SIZES.image_generation,

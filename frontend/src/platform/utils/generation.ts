@@ -9,7 +9,7 @@ export function generationMeta(gen: Generation) {
     '';
   const title =
     (typeof meta.title === 'string' && meta.title ? meta.title : null) ||
-    (isbn ? `ISBN ${isbn}` : gen.node_type === 'map_poster' ? '地图海报' : '未命名藏书票');
+    (isbn ? `ISBN ${isbn}` : gen.node_type === 'map_poster' ? '地图海报' : '未命名图像');
   const author =
     (typeof meta.author === 'string' && meta.author ? meta.author : null) ||
     (typeof meta.publisher === 'string' && meta.publisher ? meta.publisher : '') ||

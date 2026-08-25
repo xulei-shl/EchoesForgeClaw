@@ -92,7 +92,7 @@ export const GenerationDetailPanel: React.FC<GenerationDetailPanelProps> = ({
 
       // 2. 生成并下载 Markdown
       const mdParts = [
-        `# ${meta.title || '未命名藏书票'}\n`
+        `# ${meta.title || '未命名图像'}\n`
       ];
 
       const metaFields = [

@@ -220,7 +220,7 @@ export function useNodeHandlers({
         updateNodeData(id, { isSaved: true });
         setSelectedImageId(id);
         recordHistory();
-        showToast('藏书票图像已保存到数据库，已解锁公开与收藏', { type: 'success' });
+        showToast('图像已保存到数据库，已解锁公开与收藏', { type: 'success' });
       } catch (error: any) {
         console.error('Failed to save image to database:', error);
         showToast(error?.message || '保存失败，请重试', { type: 'error' });
