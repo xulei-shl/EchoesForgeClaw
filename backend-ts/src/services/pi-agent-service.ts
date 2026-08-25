@@ -499,7 +499,11 @@ export async function* runPiAgent(opts: RunPiAgentOptions): AsyncGenerator<ChatS
       }
       case 'message_end': {
         const msg = evt.message as { role?: string; errorMessage?: string } | undefined;
-        if (msg?.role === 'assistant' && msg.errorMessage) lastError = msg.errorMessage;
+        if (msg?.role !== 'assistant') break;
+        // 每条 assistant message_end 视为最新结果：auto-retry 恢复后的成功消息必须
+        // 覆盖此前失败尝试的 errorMessage，否则进程正常结束后仍会误报
+        // 「执行失败」——前端会在收尾 error chunk 上回滚整轮已流出的内容。
+        lastError = msg.errorMessage ?? null;
         break;
       }
       case 'auto_retry_end': {

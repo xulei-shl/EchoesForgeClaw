@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync, rmSync, writeFileSync } from 'node:fs';
 
 import {
   preparePiWorkspace,
@@ -17,8 +17,10 @@ const WS_ID = `pi-run_${Date.now()}`;
 const PNG_B64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
-/** 进程内 mock：openai-completions SSE + images generations（无需外部依赖与真实 Key）。 */
-async function startMock(): Promise<{ server: Server; port: number }> {
+/** 进程内 mock：openai-completions SSE + images generations（无需外部依赖与真实 Key）。
+ *  failFirstCompletion > 0 时，前 N 次 chat completions 返回 429（模拟限流，触发 pi auto-retry）。 */
+async function startMock(failFirstCompletion = 0): Promise<{ server: Server; port: number }> {
+  let completions = 0;
   const server = createServer((req, res) => {
     let body = '';
     req.on('data', (c) => (body += c));
@@ -26,6 +28,12 @@ async function startMock(): Promise<{ server: Server; port: number }> {
       if (req.url === '/v1/images/generations') {
         res.writeHead(200, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ data: [{ b64_json: PNG_B64 }] }));
+        return;
+      }
+      completions += 1;
+      if (completions <= failFirstCompletion) {
+        res.writeHead(429, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ code: 429, message: 'Provider returned error' }));
         return;
       }
       const parsed = JSON.parse(body || '{}');
@@ -174,5 +182,48 @@ describe('runPiAgent（pi CLI 子进程端到端）', () => {
       expect(existsSync(path.join(prepared.ws, f.file.path))).toBe(true);
     },
     120_000
+  );
+
+  it(
+    '限流重试轮：429 失败后 auto-retry 恢复成功，不得在流末尾误报 error',
+    async () => {
+      const failMock = await startMock(1);
+      try {
+        const prepared = preparePiWorkspace(UID, WS_ID, {
+          agentId: 1,
+          chatModel: {
+            baseUrl: `http://127.0.0.1:${failMock.port}/v1`,
+            apiKey: 'k',
+            modelName: 'test-model',
+            multimodal: false,
+          },
+          imageModel: null,
+          skillNames: [],
+        });
+        // 缩短 pi auto-retry 退避（默认 2s 起指数退避），并禁用 SDK 层重试以走 pi 的 message_end 错误路径
+        writeFileSync(
+          path.join(prepared.ws, '.pi-agent', 'settings.json'),
+          JSON.stringify({ retry: { enabled: true, maxRetries: 3, baseDelayMs: 20, provider: { maxRetries: 0 } } }),
+          'utf-8'
+        );
+        const events = [];
+        for await (const evt of runPiAgent({
+          userId: UID,
+          workspaceId: WS_ID,
+          ws: prepared.ws,
+          hasPrompt: false,
+          chatModelName: 'test-model',
+          imageGenEnabled: false,
+          message: 'ping',
+        })) {
+          events.push(evt);
+        }
+        expect(events.some((e) => e.type === 'content_delta' && e.delta.includes('pong'))).toBe(true);
+        expect(events.some((e) => e.type === 'error')).toBe(false);
+      } finally {
+        await new Promise<void>((ok) => failMock.server.close(() => ok()));
+      }
+    },
+    90_000
   );
 });
