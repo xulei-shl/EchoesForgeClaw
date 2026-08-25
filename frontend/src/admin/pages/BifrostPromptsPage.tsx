@@ -500,9 +500,6 @@ export const BifrostPromptsPage: React.FC = () => {
                   删除预览图
                 </Button>
               )}
-              <span className="text-xs text-ink-light font-sans ml-auto">
-                图片存于本地（{detail.preview_image ? '已配置' : '未配置'}），画布检索节点悬停 / 详情时展示
-              </span>
             </div>
 
             <div className="flex items-center gap-2 flex-wrap text-xs text-ink-light font-sans -mt-2">
