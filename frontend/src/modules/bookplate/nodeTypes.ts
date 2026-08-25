@@ -446,6 +446,27 @@ export function getNodeTitle(node: { type: CanvasNodeType; configName?: string }
   return node.configName ?? NODE_TEMPLATE_MAP[node.type]?.name ?? node.type;
 }
 
+/**
+ * 获取节点的动态标题：优先取随使用变化的名称
+ * （提示词检索 = 已选提示词名；技能检索 = 首个已选技能名），回退到 getNodeTitle。
+ */
+export function getNodeDynamicTitle(node: {
+  type: CanvasNodeType;
+  configName?: string;
+  data?: any;
+}): string {
+  const d = node.data;
+  if (node.type === 'prompt_search') {
+    const name = d?.promptName;
+    if (typeof name === 'string' && name.trim()) return name.trim();
+  }
+  if (node.type === 'skill_search') {
+    const name = Array.isArray(d?.skillSelections) ? d.skillSelections[0]?.name : undefined;
+    if (typeof name === 'string' && name.trim()) return name.trim();
+  }
+  return getNodeTitle(node);
+}
+
 /* ===================================================================== */
 /* 输入收集（连线即输入：只取直接上级，1 级，不向上追溯）               */
 /* ===================================================================== */

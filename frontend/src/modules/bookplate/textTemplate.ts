@@ -1,5 +1,5 @@
 import type { CanvasNodeType } from '../../platform/types';
-import { getNodeTitle, nodeOutputText, type GraphNode, type PortTypesLookup } from './nodeTypes';
+import { getNodeDynamicTitle, getNodeTitle, nodeOutputText, type GraphNode, type PortTypesLookup } from './nodeTypes';
 
 /**
  * 该节点是否产出可被占位符引用的文本输出：由端口类型声明推导（output ∈ text / any）。
@@ -18,8 +18,9 @@ export function isTextOutputNode(
  * 文本聚合节点：占位符模板引擎
  *
  * 模板中可用 `{别名}` 引用上级节点的对外输出文本（如 `## 标题\n\n{我是节点1的占位符}`），
- * 运行时把占位符替换为对应上级节点的 nodeOutputText。占位符别名默认取上级节点标题
- * （变体名 / 模板名），同名自动加「· 2」后缀；用户可在聚合节点内重命名。
+ * 运行时把占位符替换为对应上级节点的 nodeOutputText。占位符别名默认取上级节点的
+ * 动态标题（如提示词检索的已选提示词名，回退变体名 / 模板名），同名自动加「· 2」后缀；
+ * 用户可在聚合节点内重命名。
  * 未匹配到上级的占位符保留原文（不静默吞掉，方便用户发现模板写错）。
  */
 
@@ -45,7 +46,7 @@ export function toPlaceholderSources(
   return parents
     .filter((p) => isTextOutputNode(p, portTypesOf))
     .map((p) => {
-      const title = getNodeTitle(p);
+      const title = getNodeDynamicTitle(p);
       return { id: p.id, type: p.type, title, alias: placeholders[p.id] ?? title };
     });
 }
@@ -81,14 +82,15 @@ export function extractPlaceholderNames(template: string): string[] {
 }
 
 /**
- * 为上级节点生成默认别名：getNodeTitle + 去重后缀（「文本」「文本 · 2」…）。
+ * 为上级节点生成默认别名：动态标题 + 去重后缀（「翻译助手」「翻译助手 · 2」…）。
+ * 动态标题优先取随使用变化的名称（如提示词检索的已选提示词名），回退 getNodeTitle。
  * @param used 已占用的别名集合（写入新别名后同步更新）
  */
 export function uniqueDefaultAlias(
   parent: GraphNode,
   used: Set<string>
 ): string {
-  const base = getNodeTitle(parent) || parent.type;
+  const base = getNodeDynamicTitle(parent) || parent.type;
   let alias = base;
   let n = 2;
   while (used.has(alias)) {
@@ -101,10 +103,11 @@ export function uniqueDefaultAlias(
 
 /**
  * 同步聚合节点的占位符映射 { 上级节点 id: 别名 }：
- * - 仍在连线的文本输出上级（按端口类型声明判断）：保留用户改过的别名；未配置过的补默认别名；
+ * - 仍在连线的文本输出上级（按端口类型声明判断）：保留用户改过的别名；未配置过的补默认别名（动态标题）；
  * - 无文本输出的上级（类型不匹配连线）不生成占位符；
  * - 已断开的上级：从映射中移除。
- * 别名冲突在重命名入口已被拒绝，此处仅防历史数据中的脏别名（保留第一个、后者回退默认）。
+ * 存量数据兼容：与静态标题（getNodeTitle 及其历史去重后缀）相同的别名视为旧默认值，
+ * 重算为动态默认别名；用户改过的其他别名原样保留。
  * 返回全新对象；调用方比对后仅在变化时写回节点数据。
  */
 export function syncAggregatePlaceholders(
@@ -121,6 +124,7 @@ export function syncAggregatePlaceholders(
     if (
       typeof custom === 'string' &&
       custom.trim() &&
+      !isStaticDefaultAlias(custom.trim(), p) &&
       !used.has(custom.trim())
     ) {
       result[p.id] = custom.trim();
@@ -130,6 +134,13 @@ export function syncAggregatePlaceholders(
     result[p.id] = uniqueDefaultAlias(p, used);
   }
   return result;
+}
+
+/** 是否为旧版静态默认别名：getNodeTitle 本身或其「 · N」去重后缀形式 */
+function isStaticDefaultAlias(alias: string, parent: GraphNode): boolean {
+  const base = getNodeTitle(parent);
+  if (alias === base) return true;
+  return alias.startsWith(base) && /^(?: · \d+)+$/.test(alias.slice(base.length));
 }
 
 /**
