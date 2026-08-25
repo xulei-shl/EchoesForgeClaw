@@ -464,11 +464,14 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
     }
     case 'text': {
       const hasDownstream = hasDownstreamOf(node, h.edges);
+      // 连线即输入：文本输出上级内容写入本节点（连线后仍可手动编辑，与翻译节点同口径）
+      const upstreamText = firstUpstreamText(node, h.nodes, h.edges, h.portTypesOf);
       return (
         <TextNode
           key={node.id}
           {...common}
           content={node.data.content ?? ''}
+          upstreamText={upstreamText}
           hasDownstream={hasDownstream}
           onEditContent={h.handleEditTextFor}
         />

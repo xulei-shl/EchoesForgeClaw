@@ -14,6 +14,8 @@ export interface TextNodeProps {
   title?: string;
   /** Markdown 文本内容 */
   content?: string;
+  /** 连线上级文本节点传入的内容（连线即输入，写入后仍可手动编辑，与文本翻译节点同口径） */
+  upstreamText?: string;
   onRemove?: (id: string) => void;
   /** 保存编辑后的文本 */
   onEditContent?: (id: string, content: string) => void;
@@ -34,6 +36,7 @@ const TextNodeInner: React.FC<TextNodeProps> = ({
   initialY,
   title,
   content = '',
+  upstreamText = '',
   onRemove,
   onEditContent,
   onPositionChange,
@@ -52,6 +55,13 @@ const TextNodeInner: React.FC<TextNodeProps> = ({
   useEffect(() => {
     setEditContent(content);
   }, [content]);
+
+  // 上级连线文本到达时写入内容（内容相同则跳过，避免多余历史记录），仍可手动编辑
+  useEffect(() => {
+    if (upstreamText.trim() && upstreamText !== content) {
+      onEditContent?.(id, upstreamText);
+    }
+  }, [upstreamText, content, id, onEditContent]);
 
   useEffect(() => {
     if (isEditing && textareaRef.current) {

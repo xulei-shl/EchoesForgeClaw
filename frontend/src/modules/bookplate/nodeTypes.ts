@@ -336,7 +336,8 @@ export const NODE_PORT_TYPES: Record<
   { output: NodePortType; outputs?: NodePortType[]; inputs: NodePortType[] }
 > = {
   book_info: { output: 'text', inputs: [] },
-  text: { output: 'text', inputs: [] },
+  // 文本节点：默认手动输入；也可连线文本上级继承其内容（连线即输入，仍可编辑）
+  text: { output: 'text', inputs: ['text'] },
   image_upload: { output: 'image', inputs: [] },
   image_analysis: { output: 'text', inputs: ['image', 'text'] },
   text_generation: { output: 'text', inputs: ['text'] },
