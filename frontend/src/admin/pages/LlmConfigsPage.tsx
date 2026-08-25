@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   CircleAlert,
   CircleCheck,
+  Copy,
   Cpu,
   KeyRound,
   Loader2,
@@ -59,8 +60,7 @@ export const LlmConfigsPage: React.FC = () => {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
-  // 连通性测试：testingId = 列表卡片测试中；testingForm / testResult = 弹窗内测试
-  const [testingId, setTestingId] = useState<number | null>(null);
+  // 连通性测试：testingForm / testResult = 弹窗内测试
   const [testingForm, setTestingForm] = useState(false);
   const [testResult, setTestResult] = useState('');
   const [testOk, setTestOk] = useState<boolean | null>(null);
@@ -115,14 +115,11 @@ export const LlmConfigsPage: React.FC = () => {
 
   /** 列表卡片测试：用已保存的配置（含库中 Key）验证连通性 */
   const handleTestConfig = async (c: LLMConfig) => {
-    setTestingId(c.id);
     try {
       const res = await adminService.testLlmConfig({ id: c.id });
       showToast(res.message, { type: 'success' });
     } catch (e: any) {
       showToast(e?.message || '测试失败，请检查配置', { type: 'error' });
-    } finally {
-      setTestingId(null);
     }
   };
 
@@ -211,6 +208,16 @@ export const LlmConfigsPage: React.FC = () => {
       load();
     } catch (e: any) {
       showToast(e?.message || '操作失败，请重试', { type: 'error' });
+    }
+  };
+
+  const handleDuplicate = async (c: LLMConfig) => {
+    try {
+      await adminService.duplicateLlmConfig(c.id);
+      showToast(`已复制「${c.name}」`, { type: 'success' });
+      load();
+    } catch (e: any) {
+      showToast(e?.message || '复制失败，请重试', { type: 'error' });
     }
   };
 
@@ -408,18 +415,20 @@ export const LlmConfigsPage: React.FC = () => {
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <Toggle checked={c.is_active} onChange={(v) => handleToggleActive(c, v)} label={c.is_active ? '停用' : '启用'} />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      isLoading={testingId === c.id}
+                    <button
+                      onClick={() => handleDuplicate(c)}
+                      title="复制（沿用 Base URL / API Key / 模型名称）"
+                      className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-95"
+                    >
+                      <Copy size={15} strokeWidth={1.5} />
+                    </button>
+                    <button
                       onClick={() => handleTestConfig(c)}
                       title="测试连通性（使用已保存的 API Key）"
-                      className="shrink-0"
+                      className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-95"
                     >
-                      <Zap size={14} strokeWidth={1.5} className="mr-1 shrink-0" />
-                      <span className="whitespace-nowrap">测试</span>
-                    </Button>
+                      <Zap size={15} strokeWidth={1.5} />
+                    </button>
                     <button
                       onClick={() => openEdit(c)}
                       title="编辑"

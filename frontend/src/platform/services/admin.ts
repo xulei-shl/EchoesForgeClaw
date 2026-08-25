@@ -44,6 +44,8 @@ export const adminService = {
     api.patch<LLMConfig, LLMConfig>(`/admin/llm-configs/${id}`, payload),
   deleteLlmConfig: (id: number): Promise<{ message: string }> =>
     api.delete(`/admin/llm-configs/${id}`),
+  duplicateLlmConfig: (id: number): Promise<LLMConfig> =>
+    api.post<LLMConfig, LLMConfig>(`/admin/llm-configs/${id}/duplicate`),
   /** 连通性测试：传 id 用库中保存的 Key，不传则用请求体里的三要素（新建前验证） */
   testLlmConfig: (payload: {
     id?: number;

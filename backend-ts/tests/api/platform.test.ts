@@ -237,6 +237,38 @@ describe('管理端：模型配置', () => {
     expect(patch.json().has_api_key).toBe(true);
   });
 
+  it('复制：带 (副本) 后缀，沿用 Base URL / API Key / 模型名称', async () => {
+    const create = await app.inject({
+      method: 'POST',
+      url: '/api/admin/llm-configs',
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: { name: '复制源', kind: 'image', api_key: 'sk-copy', base_url: 'https://x/v1', model_name: 'img-1' },
+    });
+    const id = (create.json() as { id: number }).id;
+
+    const dup = await app.inject({
+      method: 'POST',
+      url: `/api/admin/llm-configs/${id}/duplicate`,
+      headers: { authorization: `Bearer ${adminToken}` },
+    });
+    expect(dup.statusCode).toBe(200);
+    const dupBody = dup.json();
+    expect(dupBody.name).toBe('复制源 (副本)');
+    expect(dupBody.kind).toBe('image');
+    expect(dupBody.base_url).toBe('https://x/v1');
+    expect(dupBody.model_name).toBe('img-1');
+    expect(dupBody.has_api_key).toBe(true);
+    expect(dupBody.api_key).toBeUndefined();
+
+    // 不存在的 id → 404
+    const missing = await app.inject({
+      method: 'POST',
+      url: '/api/admin/llm-configs/999999/duplicate',
+      headers: { authorization: `Bearer ${adminToken}` },
+    });
+    expect(missing.statusCode).toBe(404);
+  });
+
   it('连通性测试：image 走 /models 探测', async () => {
     const srv = await startMockOpenAIServer(() =>
       JSON.stringify({ data: [{ id: 'm1' }, { id: 'm2' }] })

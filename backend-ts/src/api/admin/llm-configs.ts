@@ -11,6 +11,7 @@ import { classifyAIError } from '../../infrastructure/ai/errors.js';
 /**
  * 大模型配置管理（对应 Python `app/api/admin/llm_configs.py`）：
  * - GET/POST /api/admin/llm-configs（列表/新建）
+ * - POST /api/admin/llm-configs/:id/duplicate（复制，名字加「(副本)」）
  * - PATCH/DELETE /api/admin/llm-configs/:id（修改/删除，删除时解除节点与 Skill Agent 引用）
  * - POST /api/admin/llm-configs/test（连通性测试，不落库）
  */
@@ -89,6 +90,29 @@ export async function registerLLMConfigsAdminRouter(app: FastifyInstance): Promi
       return toOut(row);
     }
   );
+
+  // 复制（沿用 Base URL / API Key / 模型名称，名字加「(副本)」）
+  app.post('/api/admin/llm-configs/:id/duplicate', admin, async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    const db = getDb();
+    const cfg = findConfig(db, id);
+    if (!cfg) return reply.code(404).send({ detail: '模型配置不存在' });
+    const row = db
+      .insert(llmConfigs)
+      .values({
+        name: `${cfg.name} (副本)`,
+        kind: cfg.kind,
+        apiKey: cfg.apiKey,
+        baseUrl: cfg.baseUrl,
+        modelName: cfg.modelName,
+        isActive: cfg.isActive,
+        createdAt: now(),
+        updatedAt: now(),
+      })
+      .returning()
+      .get();
+    return toOut(row);
+  });
 
   // 修改（api_key 留空 = 不修改）
   app.patch(
