@@ -478,6 +478,33 @@ export const BifrostPromptsPage: React.FC = () => {
               )}
             </div>
 
+            {/* 预览图操作：紧跟预览图，便于连贯操作 */}
+            <div className="flex items-center gap-2 flex-wrap -mt-3">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void handleUploadPreview(file);
+                }}
+              />
+              <Button size="sm" isLoading={uploading} onClick={() => fileInputRef.current?.click()}>
+                <Upload size={14} strokeWidth={2} className="mr-1" />
+                上传 / 更换
+              </Button>
+              {detail.preview_image && (
+                <Button size="sm" variant="ghost" onClick={() => void handleDeletePreview()}>
+                  <Trash2 size={14} strokeWidth={2} className="mr-1" />
+                  删除预览图
+                </Button>
+              )}
+              <span className="text-xs text-ink-light font-sans ml-auto">
+                图片存于本地（{detail.preview_image ? '已配置' : '未配置'}），画布检索节点悬停 / 详情时展示
+              </span>
+            </div>
+
             <div className="flex items-center gap-2 flex-wrap text-xs text-ink-light font-sans -mt-2">
               {detail.folder_name && <Badge>{detail.folder_name}</Badge>}
               {typeof detail.version_number === 'number' && (
@@ -543,35 +570,6 @@ export const BifrostPromptsPage: React.FC = () => {
                   {rawData || '（空）'}
                 </pre>
               )}
-            </div>
-
-            <div className="space-y-1.5">
-              <FieldLabel>预览图</FieldLabel>
-              <div className="flex items-center gap-2">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) void handleUploadPreview(file);
-                  }}
-                />
-                <Button size="sm" isLoading={uploading} onClick={() => fileInputRef.current?.click()}>
-                  <Upload size={14} strokeWidth={2} className="mr-1" />
-                  上传 / 更换
-                </Button>
-                {detail.preview_image && (
-                  <Button size="sm" variant="ghost" onClick={() => void handleDeletePreview()}>
-                    <Trash2 size={14} strokeWidth={2} className="mr-1" />
-                    删除预览图
-                  </Button>
-                )}
-              </div>
-              <p className="text-xs text-ink-light font-sans mt-2">
-                图片存于本地（{detail.preview_image ? '已配置' : '未配置'}），画布检索节点悬停 / 详情时展示
-              </p>
             </div>
           </div>
         )}
