@@ -153,6 +153,13 @@ const TextGenerationNodeInner: React.FC<TextGenerationNodeProps> = ({
         {content && onEditContent && (
           <NodeActionBar.Edit onClick={() => setIsEditing(true)} hasDownstream={hasDownstream} />
         )}
+        {content && (
+          <NodeActionBar.Copy
+            text={content}
+            tooltip="复制生成内容"
+            toastMessage="生成内容已复制到剪贴板"
+          />
+        )}
         {onUpdateSettings && settings && (
           <NodeSettingsPopover
             settings={settings}

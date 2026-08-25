@@ -142,6 +142,13 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
             tooltip={error ? '重试' : analysis ? '重新生成' : '运行分析'}
           />
         )}
+        {analysis && (
+          <NodeActionBar.Copy
+            text={analysis}
+            tooltip="复制分析结果"
+            toastMessage="分析结果已复制到剪贴板"
+          />
+        )}
         {onUpdateSettings && settings && (
           <NodeSettingsPopover
             settings={settings}
