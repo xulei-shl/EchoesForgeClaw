@@ -717,6 +717,48 @@ describe('analyze-image 端点', () => {
     expect(sentModel).toBe('override-vision');
     expect(res.body).toContain('分析结果');
   });
+
+  it('纯文本分析：无图片时以上游文本作为用户消息内容', async () => {
+    let sentContent = '';
+    const srv = await startMockOpenAIServer((req) => {
+      expect(req.path).toBe('/v1/chat/completions');
+      sentContent = JSON.stringify(req.body?.messages ?? []);
+      return JSON.stringify({ choices: [{ message: { content: '文本分析结果' } }] });
+    });
+    openServers.push(srv);
+    const configId = await seedNode({
+      nodeType: 'image_analysis',
+      llmConfig: { baseUrl: srv.baseURL, modelName: 'mock-vision-model', kind: 'multimodal' },
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/analyze-image',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        text: '这是一段待分析的上游文本',
+        config_id: configId,
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(sentContent).toContain('这是一段待分析的上游文本');
+    expect(res.body).toContain('文本分析结果');
+  });
+
+  it('既无有效图片也无文本时返回 400', async () => {
+    const configId = await seedNode({
+      nodeType: 'image_analysis',
+      llmConfig: { baseUrl: 'http://127.0.0.1:1/v1', modelName: 'mock-vision-model', kind: 'multimodal' },
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/analyze-image',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { config_id: configId, text: '   ' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
 });
 
 describe('generate-text 端点', () => {

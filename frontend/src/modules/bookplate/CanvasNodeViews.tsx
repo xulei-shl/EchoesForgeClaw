@@ -313,6 +313,20 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
     case 'image_analysis': {
       const config = h.configOf(node);
       const hasDownstream = hasDownstreamOf(node, h.edges);
+      // 上下文注入折叠块：与 图像生成 / AI 对话节点共用构建逻辑，展示本次运行并入
+      // 分析请求的输入（文本类上级 / 图片类上级 / 图书元数据）
+      const contextBlocks = buildInjectedContextBlocks(
+        node,
+        {
+          includeBook: settings.includeBook,
+          includeBookCover: false,
+          includeUpstreamText: true,
+          includeUpstreamImages: true,
+        },
+        h.nodes,
+        h.edges,
+        h.portTypesOf
+      );
       return (
         <ImageAnalysisNode
           key={node.id}
@@ -327,6 +341,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           error={node.data.error ?? null}
           onRun={h.handleRunAnalysisFor}
           settings={settings}
+          contextBlocks={contextBlocks}
           onUpdateSettings={h.handleUpdateRunSettingsFor}
           hasBookInfo={h.hasBookInfo}
           mode={config?.mode}

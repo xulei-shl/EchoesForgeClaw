@@ -28,18 +28,30 @@ export function detectMime(head: Uint8Array): string {
 const MOCK_ANALYSIS =
   'Mock 分析：主题色 #D4945A 和 #2C1810，复古文艺风格，核心元素为书名、作者和装饰纹样。';
 
-/** 多模态分析封面图片，返回主题色/设计风格/核心元素分析文本；失败或未配置返回 Mock/空串。 */
+/** 多模态分析封面图片（可附带文本上下文；纯文本时 imageBytes 传 null），返回分析文本；失败或未配置返回 Mock/空串。 */
 export async function analyzeCover(
-  imageBytes: Uint8Array,
-  config?: VisionModelConfig | null
+  imageBytes: Uint8Array | null,
+  config?: VisionModelConfig | null,
+  text = ''
 ): Promise<string> {
   const apiKey = config?.apiKey ?? '';
   if (!apiKey) return MOCK_ANALYSIS;
 
   const modelName = config?.model_name || 'gpt-4o-mini';
   const systemPrompt = config?.system_prompt || '';
-  const dataUrl = `data:${detectMime(imageBytes.subarray(0, 12))};base64,${toBase64(imageBytes)}`;
   const provider = createAIProvider({ apiKey, base_url: config?.base_url ?? '' });
+
+  // 内容部件：图片（可选）+ 文本上下文（可选）；两者均缺省时仅靠 system 提示词兜底
+  const content: Array<{ type: 'image'; image: string } | { type: 'text'; text: string }> = [];
+  if (imageBytes) {
+    content.push({
+      type: 'image',
+      image: `data:${detectMime(imageBytes.subarray(0, 12))};base64,${toBase64(imageBytes)}`,
+    });
+  }
+  if (text.trim()) {
+    content.push({ type: 'text', text: text.trim() });
+  }
 
   try {
     const result = await generateText({
@@ -48,7 +60,7 @@ export async function analyzeCover(
       messages: [
         {
           role: 'user',
-          content: [{ type: 'image', image: dataUrl }],
+          content,
         },
       ],
       maxOutputTokens: 800,

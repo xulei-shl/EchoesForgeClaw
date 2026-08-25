@@ -29,6 +29,8 @@ export interface ChatRequest {
 export interface AnalyzeImageRequest {
   image?: string | null;
   cover_url?: string | null;
+  /** 上游文本上下文（与图片一并分析；纯文本时可不传图片） */
+  text?: string | null;
   config_id?: number | null;
   node_id?: string | null;
   /** 节点内手动覆盖的模型名（仅 LLM 模式生效；空/缺省 = 跟随节点配置的默认模型） */

@@ -38,10 +38,11 @@ export const DEFAULT_COVER_SYSTEM_PROMPT = loadDefaultPrompt('藏书票封面图
 const envApiKey = () => process.env.OPENAI_API_KEY ?? '';
 
 export class LLMService {
-  /** 多模态分析封面图片，返回主题色/设计风格/核心元素分析文本。 */
+  /** 多模态分析封面图片（可附带文本上下文；纯文本时 imageBytes 传 null），返回分析文本。 */
   async analyzeCover(
-    imageBytes: Uint8Array,
-    config?: VisionModelConfig | null
+    imageBytes: Uint8Array | null,
+    config?: VisionModelConfig | null,
+    text = ''
   ): Promise<string> {
     const apiKey = (config?.apiKey ?? '') || envApiKey();
     const resolved: VisionModelConfig | null = apiKey
@@ -52,7 +53,7 @@ export class LLMService {
           system_prompt: config?.system_prompt || DEFAULT_COVER_SYSTEM_PROMPT,
         }
       : null;
-    return analyzeCover(imageBytes, resolved);
+    return analyzeCover(imageBytes, resolved, text);
   }
 
   /** 文本流式生成（AI 文本生成节点 LLM 模式，对应 Python `generate_text_stream`）。 */

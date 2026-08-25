@@ -12,12 +12,13 @@ import { BeamGlow } from '../../../platform/components/node/BeamGlow';
 import { AgentActivity } from '../../../platform/components/agent/AgentActivity';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
-import type { AgentStep, NodeRunSettings } from '../../../platform/types';
+import type { AgentStep, InjectedContextBlock, NodeRunSettings } from '../../../platform/types';
 import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
 import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
 import { NodeRunPlaceholder } from '../../../platform/components/node/NodeRunPlaceholder';
 import { NODE_COLORS } from '../nodeTypes';
 import { NodeSettingsPopover } from './NodeSettingsPopover';
+import { ContextInjectionBlock } from './ContextInjectionBlock';
 
 // 上传参考图体积上限（与后端 MAX_UPLOAD_IMAGE_BYTES 保持一致）
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
@@ -48,8 +49,10 @@ export interface ImageAnalysisNodeProps {
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
   /** 所属自定义分组（配置了分组时在标题旁展示小标签） */
   group?: string;
-  /** 运行设置（包含图书元数据） */
-  settings?: NodeRunSettings;
+   /** 运行设置（包含图书元数据） */
+   settings?: NodeRunSettings;
+   /** 注入的上下文块（文本上级 / 图片上级 / 图书元数据，折叠卡片展示） */
+   contextBlocks?: InjectedContextBlock[];
   onUpdateSettings?: (id: string, settings: NodeRunSettings) => void;
   /** 画布是否已有图书元数据节点 */
   hasBookInfo?: boolean;
@@ -79,8 +82,9 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
   onDrag,
   footer,
   onContextMenu,
-  group,
-  settings,
+   group,
+   settings,
+   contextBlocks,
   onUpdateSettings,
   hasBookInfo,
   mismatchBadge,
@@ -225,7 +229,7 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
                   <ScanSearch size={16} strokeWidth={1.5} className="opacity-50" />
                 </div>
               }
-              text="连接上游图像并点击 ▶ 运行"
+              text="连接上游 图像 / 文本 节点并点击 ▶ 运行"
               subtext="或在下方直接上传参考图手动分析"
             >
               <input
@@ -277,12 +281,21 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
                 </button>
               )}
             </NodeRunPlaceholder>
-          )}
-        </div>
-      </div>
-    </CanvasNode>
-  );
-};
+           )}
+
+           {/* 底部展示各个上级节点的上下文注入折叠块（与 图像生成 / AI 对话节点同一组件） */}
+           {contextBlocks && contextBlocks.length > 0 && (
+             <div className="space-y-1.5 shrink-0">
+               {contextBlocks.map((block) => (
+                 <ContextInjectionBlock key={block.id} block={block} />
+               ))}
+             </div>
+           )}
+         </div>
+       </div>
+     </CanvasNode>
+   );
+ };
 
 export const ImageAnalysisNode = memo(ImageAnalysisNodeInner);
 ImageAnalysisNode.displayName = 'ImageAnalysisNode';

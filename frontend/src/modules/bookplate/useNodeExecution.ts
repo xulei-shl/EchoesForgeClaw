@@ -44,7 +44,7 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
   const { streamControllers, analysisUploads } = ctx;
 
   /** 图片分析节点：UI Message Stream 流式执行（LLM 一次性返回文本；Agent 透传中间步骤 + 最终文本） */
-  const runImageAnalysis = async (node: NodeData, opts: { image?: string; coverUrl?: string }) => {
+  const runImageAnalysis = async (node: NodeData, opts: { image?: string; coverUrl?: string; text?: string }) => {
     if (streamControllers.current.has(node.id)) return;
     const controller = new AbortController();
     streamControllers.current.set(node.id, controller);
@@ -74,6 +74,8 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
       body: {
         image,
         cover_url: opts.coverUrl,
+        // 上游文本上下文（与图片一并分析；纯文本时可不传图片）
+        text: opts.text ?? null,
         config_id: node.configId ?? null,
         node_id: node.id,
         // 节点内手动选择的模型名（仅 LLM 模式生效；空 = 跟随节点配置的默认模型）
@@ -382,23 +384,28 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
           ctx.edgesRef.current,
           ctx.portTypesRef.current
         );
-        const { book, imageNodes, refImage } = inputs;
+        const { book, imageNodes, refImage, text: upstreamText } = inputs;
         // 注意：必须传豆瓣原始 URL（cover_image），而非本地代理 URL（cover_image_local）——
         // 后端仅接受 doubanio.com 域名做封面抓取/分析
         const coverUrl =
           book?.data?.cover_image || book?.data?.coverUrl || book?.data?.cover_image_local;
         const uploaded = analysisUploads.current.get(node.id);
         // 图片来源优先级：节点内直接上传的参考图 > 上游图片输出节点 > 图书封面。
-        // 显式连接了图片类节点时以该节点为准：暂无图片则保持待运行态，不回退封面
+        // 显式连接了图片类节点时以该节点为准：暂无图片则保持待运行态，不回退封面。
+        // 无图片但有上游文本时允许纯文本分析（该节点本质是 LLM 调用）
         const image = uploaded || refImage;
-        if (!image && (imageNodes.length || !coverUrl)) {
+        if (!image && !upstreamText.trim() && (imageNodes.length || !coverUrl)) {
           return pendingReason(
             node,
-            '缺少可分析的图片（上传参考图，或连线图片类节点 / 开启「包含图书元数据」）'
+            '缺少可分析的图片或文本（上传参考图，连线 图片/文本类节点，或开启「包含图书元数据」）'
           );
         }
-        // 后端同样优先解析 image 字段，cover_url 仅作兜底
-        runImageAnalysis(node, { image, coverUrl: coverUrl || undefined });
+        // 后端同样优先解析 image 字段，cover_url 仅作兜底；text 为上游文本上下文
+        runImageAnalysis(node, {
+          image,
+          coverUrl: coverUrl || undefined,
+          text: upstreamText.trim() || undefined,
+        });
         return '';
       }
       case 'text_generation': {

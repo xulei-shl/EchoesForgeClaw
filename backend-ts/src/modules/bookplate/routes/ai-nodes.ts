@@ -170,7 +170,7 @@ export async function register(app: FastifyInstance): Promise<void> {
       const agentConfig = agentConfigFrom(configId, NODE_TYPES.IMAGE_ANALYSIS, request.authUser!.id);
       const visionConfig = visionConfigFrom(configId, NODE_TYPES.IMAGE_ANALYSIS);
 
-      // 图片来源：上传 base64 > 豆瓣封面 URL（本地缓存 + Referer 下载）
+      // 图片来源：上传 base64 > 豆瓣封面 URL（本地缓存 + Referer 下载）；无图片时允许纯文本分析
       let imageBytes: Uint8Array | null = null;
       if (payload.image) {
         imageBytes = decodeUploadedImage(payload.image);
@@ -181,33 +181,35 @@ export async function register(app: FastifyInstance): Promise<void> {
           isDisconnected: async () => requestAbortSignal(request).aborted,
         });
       }
-      if (!imageBytes) {
-        return reply.code(400).send({ detail: '未提供可分析的图片（上传或封面 URL 均无效）' });
+      const text = (payload.text ?? '').trim();
+      if (!imageBytes && !text) {
+        return reply.code(400).send({ detail: '未提供可分析的图片或文本（上传 / 封面 URL / 上游文本均无效）' });
       }
 
-      const ext = detectImageExt(imageBytes.subarray(0, 12)) || 'jpg';
-      const dataUrl = `data:image/${ext};base64,${Buffer.from(imageBytes).toString('base64')}`;
+      const dataUrl = imageBytes
+        ? `data:image/${detectImageExt(imageBytes.subarray(0, 12)) || 'jpg'};base64,${Buffer.from(imageBytes).toString('base64')}`
+        : null;
 
       if (agentConfig) {
         const cfg = agentConfig;
         const sessionKey = agentSessionKey(request.authUser!.id, payload.node_id);
         async function* agentEvents(): AsyncGenerator<ChatStreamEvent, void, unknown> {
-          let text = '';
+          let analysis = '';
           try {
             for await (const evt of fastclawAgentService.runAgent(
               cfg,
-              '',
+              text,
               sessionKey,
-              [dataUrl],
+              dataUrl ? [dataUrl] : undefined,
               { module: 'bookplate', node_type: NODE_TYPES.IMAGE_ANALYSIS }
             )) {
               if (evt.type === 'content_delta' || evt.type === 'content') {
-                text += evt.data.delta;
+                analysis += evt.data.delta;
                 continue; // 分析文本最后统一产出（避免与中间步骤交错）
               }
               yield* agentEventToStream(evt);
             }
-            if (text.trim()) yield { type: 'content_delta', delta: text };
+            if (analysis.trim()) yield { type: 'content_delta', delta: analysis };
           } catch (err) {
             yield { type: 'error', message: err instanceof FastClawAgentError ? err.message : String(err) };
           }
@@ -223,7 +225,7 @@ export async function register(app: FastifyInstance): Promise<void> {
             payload.model_name && visionConfig
               ? { ...visionConfig, model_name: payload.model_name }
               : visionConfig;
-          const analysis = await llmService.analyzeCover(imageBytes!, config);
+          const analysis = await llmService.analyzeCover(imageBytes, config, text);
           if (analysis) yield { type: 'content_delta', delta: analysis };
         } catch (err) {
           yield { type: 'error', message: err instanceof Error ? err.message : String(err) };
