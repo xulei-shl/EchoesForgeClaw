@@ -92,6 +92,13 @@ const TextNodeInner: React.FC<TextNodeProps> = ({
     return (
       <NodeActionBar>
         <NodeActionBar.Edit onClick={() => setIsEditing(true)} hasDownstream={hasDownstream} />
+        {content.trim() && (
+          <NodeActionBar.Copy
+            text={content}
+            tooltip="复制文本内容"
+            toastMessage="文本内容已复制到剪贴板"
+          />
+        )}
       </NodeActionBar>
     );
   };

@@ -145,6 +145,33 @@ NodeActionBar.SettingsTrigger = React.forwardRef<HTMLButtonElement, Omit<BaseBut
 );
 NodeActionBar.SettingsTrigger.displayName = 'SettingsTrigger';
 
+/** 复制文本到剪贴板，优先 Clipboard API，非安全上下文等场景降级为 execCommand */
+const copyTextToClipboard = async (text: string): Promise<void> => {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch {
+      // 忽略后尝试降级方案
+    }
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  textarea.style.pointerEvents = 'none';
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  try {
+    if (!document.execCommand('copy')) {
+      throw new Error('execCommand copy failed');
+    }
+  } finally {
+    document.body.removeChild(textarea);
+  }
+};
+
 export interface CopyButtonProps extends Omit<BaseButtonProps, 'icon' | 'tooltip'> {
   /** 需要复制的文本内容（与 onCopy 二选一，优先调用 onCopy） */
   text?: string;
@@ -186,7 +213,7 @@ NodeActionBar.Copy = ({
 
     if (text) {
       try {
-        await navigator.clipboard.writeText(text);
+        await copyTextToClipboard(text);
         setCopied(true);
         if (toastMessage) showToast(toastMessage, { type: 'success' });
         setTimeout(() => setCopied(false), 2000);
