@@ -195,13 +195,13 @@ export function seedStartup(): void {
   const seeds = [
     {
       key: 'bookplate.text_generation.default',
-      name: '藏书票图像生成默认提示词',
+      name: '藏书票图像生成提示词',
       nodeType: 'text_generation',
       content: DEFAULT_SYSTEM_PROMPT,
     },
     {
       key: 'bookplate.image_analysis.default',
-      name: '封面分析默认提示词',
+      name: '封面分析提示词',
       nodeType: 'image_analysis',
       content: DEFAULT_COVER_SYSTEM_PROMPT,
     },
