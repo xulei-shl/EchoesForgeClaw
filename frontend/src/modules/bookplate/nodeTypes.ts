@@ -266,7 +266,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'vufind_call_number',
     name: 'VuFind 索书号',
-    description: '通过 Lightpanda 浏览器自动化从 vufind.library.sh.cn 根据 ISBN 获取索书号',
+    description: '根据 ISBN 获取索书号',
     category: 'glam',
     configurable: false,
     defaultSize: DEFAULT_SIZES.vufind_call_number,
