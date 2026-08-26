@@ -133,9 +133,9 @@ export interface NodeViewHelpers {
   handleUpdateMapArtEditorFor: (id: string, patch: Record<string, any>, undoable: boolean) => void;
   /** 图片检索节点：选中图片 → 下载到本地 → 写回 node.data.imageUrl（作为图片输出） */
   handleSelectSearchImageFor: (id: string, url: string, meta: ImageSearchSelection) => Promise<void>;
-  /** 图片检索节点：编辑器状态（provider 等）写入 node.data（仅持久化，不记撤销历史） */
+  /** VuFind 馆藏状态（provider 等）写入 node.data（仅持久化，不记撤销历史） */
   handleUpdateImageSearchEditorFor: (id: string, patch: Record<string, any>, undoable: boolean) => void;
-  /** VuFind 索书号节点：根据 ISBN 获取索书号（ISBN 由页面合并上游文本 / 手动输入） */
+  /** VuFind 馆藏节点：根据 ISBN 获取索书号（ISBN 由页面合并上游文本 / 手动输入） */
   handleFetchVuFindCallNumberFor: (id: string, isbn: string) => void;
   /** VuFind 索书号节点：编辑器状态写入 node.data（仅持久化，不记撤销历史） */
   handleUpdateVuFindEditorFor: (id: string, patch: Record<string, any>) => void;
@@ -747,7 +747,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       );
     }
     case 'receipt_printer': {
-      const d = node.data ?? {};
+      const d = noVuFind 馆藏 {};
       const { upstreamImageUrl, upstreamBookData } = resolveUpstreamImage(node, h);
       // 上游文本节点（如 VuFind 索书号）的 JSON 输出，解析 CALL_NUMBER 填充小票索书号字段
       const upstreamTextExtra = firstExtraJsonUpstreamText(node, h.nodes, h.edges, h.portTypesOf);
@@ -781,7 +781,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       const inputs = collectNodeInputs(node, h.nodes, h.edges, h.portTypesOf);
       const connectedImages = inputs.images
         .filter((p) => p.type !== 'book_info')
-        .map((p) => nodeOutputImages(p)[0])
+        .map((p) =VuFind 馆藏utImages(p)[0])
         .filter((src): src is string => Boolean(src));
       // 上游文本节点（如 VuFind 索书号）的 JSON 输出，供 parseExtraCardFields 解析覆盖
       const upstreamTextExtra = firstExtraJsonUpstreamText(node, h.nodes, h.edges, h.portTypesOf);

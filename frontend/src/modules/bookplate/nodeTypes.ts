@@ -265,8 +265,8 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   },
   {
     type: 'vufind_call_number',
-    name: 'VuFind 索书号',
-    description: '根据 ISBN 获取索书号、书目信息与馆藏（馆藏地/条码/借阅类型/状态）',
+    name: 'VuFind 馆藏',
+    description: '根据 ISBN 获取书目与馆藏信息',
     category: 'glam',
     configurable: false,
     defaultSize: DEFAULT_SIZES.vufind_call_number,
@@ -399,7 +399,7 @@ export const NODE_PORT_TYPES: Record<
   oil_paint: { output: 'image', inputs: ['image', 'text'] },
   // 图片处理：输出处理结果图片；可连线图片或图书元数据作为输入源（连线即输入）
   image_process: { output: 'image', inputs: ['image', 'text'] },
-  // VuFind 索书号：输出获取的索书号文本；可连线图书元数据/文本节点自动读取 ISBN（连线即输入）
+  // VuFind 馆藏：输出获取的索书号文本；可连线图书元数据/文本节点自动读取 ISBN（连线即输入）
   vufind_call_number: { output: 'text', inputs: ['text'] },
 };
 

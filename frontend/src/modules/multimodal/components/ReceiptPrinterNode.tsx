@@ -34,7 +34,7 @@ export interface ReceiptPrinterNodeProps {
   upstreamBookData?: BookMetadataInput | null;
   /** 上游图片输出（图片上传 / 图像生成 / 艺术检索等） */
   upstreamImageUrl?: string | null;
-  /** 上游文本节点原始文本（如 VuFind 索书号节点的 JSON 输出，解析 CALL_NUMBER 填充索书号字段） */
+  /** 上游文本节点原始文本（如 VuFind 馆藏节点的 JSON 输出，解析 CALL_NUMBER 填充索书号字段） */
   upstreamTextExtra?: string;
   isFavorited?: boolean;
   isPublic?: boolean;
@@ -154,7 +154,7 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
     );
   }, [upstreamImageUrl, upstreamBookData]);
 
-  // 上游文本节点提供的索书号（如 VuFind 索书号节点输出 {"CALL_NUMBER": "..."}）由公共核心函数
+  // 上游文本节点提供的索书号（如 VuFind 馆藏节点输出 {"CALL_NUMBER": "..."}）由公共核心函数
   // buildReceiptState 的 upstreamTextExtra 选项统一继承：用户手动填写优先，
   // 空值或模板演示默认值时自动填入上游索书号（所有含 callNumber 字段的模板通用）。
 

@@ -4,7 +4,7 @@ import type { BookMetadataInput, ReceiptState, ReceiptTemplateDef, ReceiptTempla
 import { parseExtraCardFields } from '../bookcard/fields';
 
 /**
- * 解析上游文本节点（如 VuFind 索书号）输出 JSON 中的索书号：{"CALL_NUMBER": "..."}。
+ * 解析上游文本节点（如 VuFind 馆藏）输出 JSON 中的索书号：{"CALL_NUMBER": "..."}。
  * 与图书卡片节点共用 parseExtraCardFields 的解析口径；非 JSON 或无该字段返回空串。
  */
 export function parseUpstreamCallNumber(raw?: string | null): string {
@@ -581,7 +581,7 @@ export function registerReceiptTemplate(template: ReceiptTemplateDef): void {
  * @param book 上游图书元数据
  * @param savedData 用户在当前模板上的局部自定义数据（如用户修改过的文字、纸张颜色、点阵开关等）
  * @param options 可选项：overrideUserEdits（为 true 时强制重置所有用户编辑，回到纯净初始映射）、upstreamImageUrl（有效上游图片 URL）、
- *                upstreamTextExtra（上游文本节点输出的字段 JSON，如 VuFind 索书号的 {"CALL_NUMBER": "..."}）
+ *                upstreamTextExtra（上游文本节点输出的字段 JSON，如 VuFind 馆藏的 {"CALL_NUMBER": "..."}）
  */
 export function buildReceiptState(
   templateId: ReceiptTemplateId = 'book_recommend',

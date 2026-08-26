@@ -17,7 +17,7 @@ interface ReceiptToolbarProps {
   onChange: (patch: Partial<ReceiptState>) => void;
   upstreamBookData?: BookMetadataInput | null;
   upstreamImageUrl?: string | null;
-  /** 上游文本节点输出的字段 JSON（如 VuFind 索书号），切换模板时经 buildReceiptState 继承 */
+  /** 上游文本节点输出的字段 JSON（如 VuFind 馆藏），切换模板时经 buildReceiptState 继承 */
   upstreamTextExtra?: string | null;
   disabled?: boolean;
 }

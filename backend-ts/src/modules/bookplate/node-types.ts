@@ -54,7 +54,7 @@ export const NODE_TYPES = {
   JOURNAL_MAKER: 'journal_maker',
   /** 文本成图（多模态工具）：输入文字并调整字体/字号/颜色/横竖排/描边与背景，浏览器端渲染为图片输出 */
   TEXT_IMAGE: 'text_image',
-  /** VuFind 索书号（GLAM 工具）：根据 ISBN 获取索书号 */
+  /** VuFind 馆藏（GLAM 工具）：根据 ISBN 获取索书号 */
   VUFIND_CALL_NUMBER: 'vufind_call_number',
 } as const;
 
@@ -354,8 +354,8 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
   },
   {
     type: NODE_TYPES.VUFIND_CALL_NUMBER,
-    name: 'VuFind 索书号',
-    description: '根据 ISBN 获取索书号',
+    name: 'VuFind 馆藏',
+    description: '根据 ISBN 获取书目与馆藏信息',
     category: 'glam',
     configurable: false,
     output_type: 'text',

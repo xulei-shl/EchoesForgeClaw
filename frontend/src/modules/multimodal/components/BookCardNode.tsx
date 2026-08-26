@@ -55,7 +55,7 @@ export interface BookCardNodeProps {
   };
   /** 上游图书元数据（直连 book_info，兜底画布根节点） */
   upstreamBookData?: CardBookMetadata | null;
-  /** 上游文本节点原始文本（如 VuFind 索书号节点的 JSON 输出，经 parseExtraCardFields 解析覆盖） */
+  /** 上游文本节点原始文本（如 VuFind 馆藏节点的 JSON 输出，经 parseExtraCardFields 解析覆盖） */
   upstreamTextExtra?: string;
   /** 直连图片输出上级的图片列表（供用户分配封面/装饰角色） */
   connectedImages?: string[];
