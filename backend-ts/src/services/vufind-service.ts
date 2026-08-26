@@ -4,6 +4,13 @@ const LIGHTPANDA_WS_URL = process.env.BROWSER_ADDRESS || 'ws://127.0.0.1:9222';
 const VUFIND_BASE_URL = 'https://vufind.library.sh.cn';
 /** 单页导航超时：检索页 + 详情页两步，需控制在前端 30s 总超时内 */
 const PAGE_TIMEOUT_MS = 15_000;
+/** 强制中文界面：Lightpanda 新会话默认按英文 locale 渲染，馆藏字段（借阅类型/状态）会返回英文 */
+const VUFIND_LANG = 'zh-cn';
+
+/** 给 vufind URL 追加中文语言参数（VuFind 标准语言切换机制） */
+function withZhLang(url: string): string {
+  return `${url}${url.includes('?') ? '&' : '?'}lng=${VUFIND_LANG}`;
+}
 
 export class VuFindError extends Error {
   constructor(message: string) {
@@ -81,10 +88,12 @@ export async function fetchVuFindRecord(isbn: string): Promise<VuFindRecord> {
 async function fetchViaLightpanda(searchUrl: string): Promise<VuFindRecord> {
   const browser = await chromium.connectOverCDP(LIGHTPANDA_WS_URL);
   try {
-    const page = await browser.newPage();
+    const page = await browser.newPage({
+      extraHTTPHeaders: { 'Accept-Language': 'zh-CN,zh;q=0.9' },
+    });
 
     // 第一步：检索页 → 索书号 + 详情页链接
-    await page.goto(searchUrl, { waitUntil: 'networkidle', timeout: PAGE_TIMEOUT_MS });
+    await page.goto(withZhLang(searchUrl), { waitUntil: 'networkidle', timeout: PAGE_TIMEOUT_MS });
     const searchHtml = await page.content();
     const callNumber = extractCallNumber(searchHtml);
 
@@ -98,7 +107,7 @@ async function fetchViaLightpanda(searchUrl: string): Promise<VuFindRecord> {
     if (detailPath) {
       recordUrl = detailPath.startsWith('http') ? detailPath : `${VUFIND_BASE_URL}${detailPath}`;
       try {
-        await page.goto(recordUrl, { waitUntil: 'networkidle', timeout: PAGE_TIMEOUT_MS });
+        await page.goto(withZhLang(recordUrl), { waitUntil: 'networkidle', timeout: PAGE_TIMEOUT_MS });
         // Lightpanda 对 networkidle 支持有限，馆藏可能异步渲染：显式等待复本行出现
         await page
           .waitForSelector('.location-item tr[typeof="Offer"]', { timeout: 8_000 })
@@ -246,6 +255,7 @@ async function fetchViaHttp(url: string): Promise<string> {
     headers: {
       'User-Agent':
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept-Language': 'zh-CN,zh;q=0.9',
     },
   });
   const html = await res.text();
