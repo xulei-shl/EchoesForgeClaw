@@ -36,6 +36,7 @@ export const NODE_COLORS: Record<CanvasNodeType, string> = {
   sticker_maker: 'oklch(0.72 0.15 340)',
   journal_maker: 'oklch(0.7 0.14 150)',
   text_image: 'oklch(0.68 0.15 195)',
+  vufind_call_number: 'oklch(0.62 0.18 280)',
 };
 
 export interface NodeTemplateDef {
@@ -263,6 +264,14 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     defaultSize: DEFAULT_SIZES.map_art,
   },
   {
+    type: 'vufind_call_number',
+    name: 'VuFind 索书号',
+    description: '通过 Lightpanda 浏览器自动化从 vufind.library.sh.cn 根据 ISBN 获取索书号',
+    category: 'glam',
+    configurable: false,
+    defaultSize: DEFAULT_SIZES.vufind_call_number,
+  },
+  {
     type: 'pattern_search',
     name: '中国传统纹样',
     description: '检索/浏览 100 款中国传统纹样（AI生成版）',
@@ -390,6 +399,8 @@ export const NODE_PORT_TYPES: Record<
   oil_paint: { output: 'image', inputs: ['image', 'text'] },
   // 图片处理：输出处理结果图片；可连线图片或图书元数据作为输入源（连线即输入）
   image_process: { output: 'image', inputs: ['image', 'text'] },
+  // VuFind 索书号：输出获取的索书号文本；可连线图书元数据/文本节点自动读取 ISBN（连线即输入）
+  vufind_call_number: { output: 'text', inputs: ['text'] },
 };
 
 /** 节点端口声明：主输出 + 全部输出类型 + 接受的上游输入类型列表 */

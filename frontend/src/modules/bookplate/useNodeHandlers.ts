@@ -511,6 +511,7 @@ export function useNodeHandlers({
     handleFetchZhihuFor,
     handleFetchTranslationFor,
     handleFetchWebSearchFor,
+    handleFetchVuFindCallNumberFor,
   } = useToolHandlers(toolRequestCtx);
 
   // ---------- 图片输出（选中保存/导出落盘） ----------
@@ -627,6 +628,7 @@ export function useNodeHandlers({
     handleUpdateTranslationEditorFor,
     handleFetchWebSearchFor,
     handleUpdateWebSearchEditorFor,
+    handleFetchVuFindCallNumberFor,
     handleUpdateMapPosterEditorFor,
     handleExportMapPosterFor,
     handleUpdateMapArtEditorFor,

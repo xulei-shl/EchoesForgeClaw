@@ -215,6 +215,35 @@ export function firstUpstreamText(
 }
 
 /**
+ * 取「能解析为 JSON 补充字段」的线上级文本（命中即用，多上级逐个尝试）。
+ * 用于图书卡片 / 图书小票等消费「字段 JSON」的节点：若同一节点还连线了图书元数据
+ * （其文本输出是整段 key: value 元数据而非 JSON），需优先取 VuFind 索书号等
+ * 输出 `{"CALL_NUMBER": "..."}` 的专门节点，而非一刀切取第一个上级。
+ * 无命中 JSON 时回退 firstUpstreamText（兼容普通文本上级）。
+ */
+export function firstExtraJsonUpstreamText(
+  node: NodeData,
+  nodes: NodeData[],
+  edges: EdgeData[],
+  portTypesOf: PortTypesLookup
+): string {
+  const texts = collectNodeInputs(node, nodes, edges, portTypesOf)
+    .text.map((p) => nodeOutputText(p))
+    .filter((v) => v.trim());
+  for (const t of texts) {
+    const trimmed = t.trim();
+    if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) continue;
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return trimmed;
+    } catch {
+      // 非 JSON 文本，跳过继续
+    }
+  }
+  return texts[0] ?? '';
+}
+
+/**
  * 参考图来源解析（图生图）：从「图片输出上级」分组中取第一张可用图片作为参考图。
  * data URL（图片上传）优先——无需转换即可直接使用；本地路径（如 /static/generated）
  * 其次，发起请求前由调用方转 data URL。返回空 = 无可用参考图。

@@ -54,6 +54,8 @@ export const NODE_TYPES = {
   JOURNAL_MAKER: 'journal_maker',
   /** 文本成图（多模态工具）：输入文字并调整字体/字号/颜色/横竖排/描边与背景，浏览器端渲染为图片输出 */
   TEXT_IMAGE: 'text_image',
+  /** VuFind 索书号（GLAM 工具）：通过 Lightpanda 浏览器自动化从 vufind.library.sh.cn 根据 ISBN 获取索书号 */
+  VUFIND_CALL_NUMBER: 'vufind_call_number',
 } as const;
 
 export type NodeType = (typeof NODE_TYPES)[keyof typeof NODE_TYPES];
@@ -349,5 +351,14 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     category: 'multimodal',
     configurable: false,
     output_type: 'image',
+  },
+  {
+    type: NODE_TYPES.VUFIND_CALL_NUMBER,
+    name: 'VuFind 索书号',
+    description: '通过 Lightpanda 浏览器自动化从 vufind.library.sh.cn 根据 ISBN 获取索书号，可连线图书元数据节点自动读取 ISBN，也可手动输入',
+    category: 'glam',
+    configurable: false,
+    output_type: 'text',
+    input_types: ['text'],
   },
 ];

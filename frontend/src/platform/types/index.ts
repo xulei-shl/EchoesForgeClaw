@@ -245,7 +245,9 @@ export type CanvasNodeType =
   /** 湿油彩效果节点：图片合成带颜料厚度与湿润高光的湿油彩效果 */
   | 'oil_paint'
   /** 图片处理节点：噪点 / ASCII / 网点 / 抖动（多模态工具） */
-  | 'image_process';
+  | 'image_process'
+  /** VuFind 索书号节点：通过 Lightpanda 浏览器自动化从 vufind.library.sh.cn 根据 ISBN 获取索书号（GLAM 工具） */
+  | 'vufind_call_number';
 
 /**
  * 节点端口类型（输入/输出）：text / image 为当前实际使用的类型，

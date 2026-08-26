@@ -70,6 +70,7 @@ stamp_cutter:       { width: 440, height: 560 },
   color_search:      { width: 480, height: 620 },
   oil_paint:         { width: 440, height: 560 },
   image_process:     { width: 440, height: 560 },
+  vufind_call_number: { width: 420, height: 400 },
 };
 
 /** 节点间水平间距（px） */

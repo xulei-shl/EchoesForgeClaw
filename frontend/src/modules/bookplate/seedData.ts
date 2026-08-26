@@ -234,5 +234,13 @@ export function seedDataFor(type: NodeType, parent?: NodeData): any {
         isSaved: false,
         error: null,
       };
+    case 'vufind_call_number':
+      return {
+        isbn: '',
+        callNumber: '',
+        output: '',
+        isGenerating: false,
+        error: null,
+      };
   }
 }

@@ -303,6 +303,24 @@ const TRANSLATION_CONFIG: TabbedToolConfig<TranslationRequest> = {
   errLabel: '翻译',
 };
 
+const VUFIND_CALL_NUMBER_CONFIG: SimpleToolConfig<string> = {
+  nodeType: 'vufind_call_number',
+  endpoint: '/modules/bookplate/vufind-call-number',
+  // ISBN 由组件/画布层解析（连线图书元数据优先 → 根图书元数据兜底 → 线上级纯 ISBN 文本兜底），
+  // 传入的 payload 即最终有效 ISBN，无需再经 firstUpstreamText 重推（book_info 的文本是整段元数据）。
+  upstream: false,
+  resolveInput: (isbn) => (typeof isbn === 'string' ? isbn.trim() : ''),
+  startExtras: (isbn) => ({ isbn, callNumber: '', output: '' }),
+  buildBody: (_isbn: string, input: string) => ({ isbn: input }),
+  okExtras: (res) => {
+    const callNumber = typeof res?.call_number === 'string' ? res.call_number : '';
+    const output = callNumber ? JSON.stringify({ CALL_NUMBER: callNumber }) : '';
+    return { callNumber, output };
+  },
+  checkEmpty: false,
+  errLabel: 'VuFind 索书号获取',
+};
+
 const WEB_SEARCH_CONFIG: TabbedToolConfig<WebSearchRequest> = {
   nodeType: 'web_search',
   endpoint: '/modules/bookplate/web-search',
@@ -329,6 +347,7 @@ export interface ToolHandlers {
   handleFetchZhihuFor: (id: string, payload: ZhihuSearchRequest) => void;
   handleFetchTranslationFor: (id: string, payload: TranslationRequest) => void;
   handleFetchWebSearchFor: (id: string, payload: WebSearchRequest) => void;
+  handleFetchVuFindCallNumberFor: (id: string, isbn: string) => void;
 }
 
 export function useToolHandlers(ctx: ToolRequestCtx): ToolHandlers {
@@ -339,6 +358,7 @@ export function useToolHandlers(ctx: ToolRequestCtx): ToolHandlers {
   const handleFetchZhihuFor = useTabbedToolHandler(ctx, ZHIHU_CONFIG);
   const handleFetchTranslationFor = useTabbedToolHandler(ctx, TRANSLATION_CONFIG);
   const handleFetchWebSearchFor = useTabbedToolHandler(ctx, WEB_SEARCH_CONFIG);
+  const handleFetchVuFindCallNumberFor = useSimpleToolHandler(ctx, VUFIND_CALL_NUMBER_CONFIG);
 
   const handleOpenWikipediaArticleFor = useCallback(
     (id: string, title: string, summary?: boolean) => {
@@ -355,5 +375,6 @@ export function useToolHandlers(ctx: ToolRequestCtx): ToolHandlers {
     handleFetchZhihuFor,
     handleFetchTranslationFor,
     handleFetchWebSearchFor,
+    handleFetchVuFindCallNumberFor,
   };
 }

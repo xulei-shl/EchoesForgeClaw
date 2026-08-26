@@ -15,6 +15,7 @@ import { ZhihuSearchNode, type ZhihuSearchRequest } from './components/ZhihuSear
 import { WikipediaSearchNode, type WikipediaSearchRequest } from './components/WikipediaSearchNode';
 import { TextTranslationNode, type TranslationRequest } from './components/TextTranslationNode';
 import { WebSearchNode, type WebSearchRequest, type WebSearchSource } from './components/WebSearchNode';
+import { VuFindCallNumberNode } from './components/VuFindCallNumberNode';
 import { MapPosterNode } from '../../modules/multimodal/components/MapPosterNode';
 import { ImageSearchNode, type ImageSearchSelection } from '../../modules/multimodal/components/ImageSearchNode';
 import { ArtImageSearchNode, type GlamSearchSelection } from '../../modules/multimodal/components/ArtImageSearchNode';
@@ -42,6 +43,7 @@ import {
 import {
   DEFAULT_RUN_SETTINGS,
   collectNodeInputs,
+  firstExtraJsonUpstreamText,
   firstUpstreamText,
   resolveReferenceImage,
   type PortTypesLookup,
@@ -131,6 +133,8 @@ export interface NodeViewHelpers {
   handleSelectSearchImageFor: (id: string, url: string, meta: ImageSearchSelection) => Promise<void>;
   /** 图片检索节点：编辑器状态（provider 等）写入 node.data（仅持久化，不记撤销历史） */
   handleUpdateImageSearchEditorFor: (id: string, patch: Record<string, any>, undoable: boolean) => void;
+  /** VuFind 索书号节点：根据 ISBN 获取索书号（ISBN 由页面合并上游文本 / 手动输入） */
+  handleFetchVuFindCallNumberFor: (id: string, isbn: string) => void;
   /** 艺术图片检索节点：选中图片 → 下载到本地 → 写回 node.data.imageUrl（作为图片输出） */
   handleSelectGlamImageFor: (id: string, url: string, meta: GlamSearchSelection) => Promise<void>;
   /** 艺术图片检索节点：编辑器状态（provider 等）写入 node.data（仅持久化，不记撤销历史） */
@@ -741,6 +745,8 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
     case 'receipt_printer': {
       const d = node.data ?? {};
       const { upstreamImageUrl, upstreamBookData } = resolveUpstreamImage(node, h);
+      // 上游文本节点（如 VuFind 索书号）的 JSON 输出，解析 CALL_NUMBER 填充小票索书号字段
+      const upstreamTextExtra = firstExtraJsonUpstreamText(node, h.nodes, h.edges, h.portTypesOf);
       return (
         <ReceiptPrinterNode
           key={node.id}
@@ -748,6 +754,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           data={d}
           upstreamBookData={upstreamBookData}
           upstreamImageUrl={upstreamImageUrl}
+          upstreamTextExtra={upstreamTextExtra}
           isFavorited={!!h.favoritedState[node.id]}
           isPublic={!!h.publishedState[node.id]}
           isSelected={node.id === h.activeImage?.id}
@@ -772,12 +779,15 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
         .filter((p) => p.type !== 'book_info')
         .map((p) => nodeOutputImages(p)[0])
         .filter((src): src is string => Boolean(src));
+      // 上游文本节点（如 VuFind 索书号）的 JSON 输出，供 parseExtraCardFields 解析覆盖
+      const upstreamTextExtra = firstExtraJsonUpstreamText(node, h.nodes, h.edges, h.portTypesOf);
       return (
         <BookCardNode
           key={node.id}
           {...common}
           data={d}
           upstreamBookData={upstreamBookData}
+          upstreamTextExtra={upstreamTextExtra}
           connectedImages={connectedImages}
           isFavorited={!!h.favoritedState[node.id]}
           isPublic={!!h.publishedState[node.id]}
@@ -997,6 +1007,36 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           hasDownstream={hasDownstreamOf(node, h.edges)}
           onSelectColor={h.handleSelectColorFor}
           onUpdateEditor={h.handleUpdateColorEditorFor}
+        />
+      );
+    }
+
+    case 'vufind_call_number': {
+      const d = node.data ?? {};
+      // ISBN 来源优先级（连线穿透或兜底的根节点）：
+      // 1) 沿连线向上追溯实际连通的图书元数据节点 → 取其 isbn；
+      // 2) 无连通时回退画布根图书元数据节点 → 取其 isbn；
+      // 3) 再回退任意线上级文本（如直接连线的文本节点输入 ISBN）。
+      // firstUpstreamText 对 book_info 返回的是「整段 key: value 元数据文本」而非 isbn 单值，
+      // 故不直接用其作为 ISBN，仅在文本上级恰好是纯 ISBN 时兜底。
+      const connectedBook = findConnectedBookInfoUpstream(node.id, h.nodes, h.edges);
+      const rootBook = findRootBookInfo(h.nodes, h.edges);
+      const connectedIsbn = typeof connectedBook?.data?.isbn === 'string' ? connectedBook.data.isbn.trim() : '';
+      const rootIsbn = typeof rootBook?.data?.isbn === 'string' ? rootBook.data.isbn.trim() : '';
+      const upstreamText = firstUpstreamText(node, h.nodes, h.edges, h.portTypesOf).trim();
+      const upstreamIsbn = connectedIsbn || rootIsbn || (/^[\dXx-]{10,17}$/.test(upstreamText) ? upstreamText : '');
+      return (
+        <VuFindCallNumberNode
+          key={node.id}
+          {...common}
+          isbn={typeof d.isbn === 'string' ? d.isbn : ''}
+          upstreamIsbn={upstreamIsbn}
+          callNumber={typeof d.callNumber === 'string' ? d.callNumber : ''}
+          output={typeof d.output === 'string' ? d.output : ''}
+          isGenerating={!!d.isGenerating}
+          error={d.error ?? null}
+          hasDownstream={hasDownstreamOf(node, h.edges)}
+          onFetch={h.handleFetchVuFindCallNumberFor}
         />
       );
     }

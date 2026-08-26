@@ -17,6 +17,7 @@ import {
   getBookCardTemplate,
   hasDecorImages,
   measureCardRoot,
+  parseExtraCardFields,
   prepareCardDocument,
   randomDecorIndex,
   renderCardToDataUrl,
@@ -54,6 +55,8 @@ export interface BookCardNodeProps {
   };
   /** 上游图书元数据（直连 book_info，兜底画布根节点） */
   upstreamBookData?: CardBookMetadata | null;
+  /** 上游文本节点原始文本（如 VuFind 索书号节点的 JSON 输出，经 parseExtraCardFields 解析覆盖） */
+  upstreamTextExtra?: string;
   /** 直连图片输出上级的图片列表（供用户分配封面/装饰角色） */
   connectedImages?: string[];
   isFavorited?: boolean;
@@ -84,6 +87,7 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
   title,
   data = {},
   upstreamBookData,
+  upstreamTextExtra,
   connectedImages = [],
   isFavorited = false,
   isPublic = false,
@@ -192,7 +196,8 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const fields = mergeBookCardFields(upstreamBookData, metaFields, extraFields, fieldOptions);
+      const upstreamExtra = parseExtraCardFields(upstreamTextExtra ?? null);
+      const fields = mergeBookCardFields(upstreamBookData, metaFields, extraFields, fieldOptions, upstreamExtra);
       let qrcodeUrl: string | null = null;
       if (fields.CALL_NUMBER) {
         try {
@@ -216,7 +221,7 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [templateId, upstreamBookData, metaFields, extraFields, coverUrl, decorUrl, fieldOptions]);
+  }, [templateId, upstreamBookData, upstreamTextExtra, metaFields, extraFields, coverUrl, decorUrl, fieldOptions]);
 
   // ---------- 预览（缩放 iframe） ----------
   const containerRef = useRef<HTMLDivElement>(null);
