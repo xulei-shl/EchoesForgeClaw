@@ -399,6 +399,26 @@ const BookplatePage: React.FC = () => {
     fetchBookInfo(isbn);
   };
 
+  /** 手动上传封面兜底：落盘 runtime/covers 并回写 book_cache.cover_image_local，成功后刷新节点展示 */
+  const uploadBookCover = useCallback(
+    async (nodeId: string, isbn: string, file: File) => {
+      try {
+        const form = new FormData();
+        form.append('file', file);
+        const res: any = await api.post(`/modules/bookplate/isbn/${isbn}/cover`, form, {
+          timeout: 30000,
+        });
+        recordHistory();
+        updateNodeData(nodeId, { cover_image_local: res.cover_image_local });
+        showToast('封面已上传并写入缓存', { type: 'success', position: 'top-right' });
+      } catch (e: any) {
+        showToast(e?.detail || e?.message || '封面上传失败，请重试', { type: 'error', position: 'top-right' });
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
   /** 收集节点的全部子孙节点 id（沿出边 BFS，含自身）；分支/级联删除用 */
 
   const handleRemoveEdge = useCallback(
@@ -701,6 +721,7 @@ const BookplatePage: React.FC = () => {
     handleRetryBookFor,
     handleFetchBookFor,
     handleForceRefreshBookFor,
+    handleUploadCoverFor,
     handleDownloadBookData,
     handleEditContent,
     handleRetryPromptFor,
@@ -767,7 +788,7 @@ const BookplatePage: React.FC = () => {
     setNodes, setEdges, setNodeSizes, setFavoritedState, setPublishedState,
     setSelectedImageId, setStaleRecordIds, updateNodeData, recordHistory,
     runNode, runImageGeneration, addChildNode, toggleFavoriteForImage, togglePublicForImage,
-    showToast, dialog, fetchBookInfo, removingRef, setCtxMenu, autoSaveGeneration
+    showToast, dialog, fetchBookInfo, uploadBookCover, removingRef, setCtxMenu, autoSaveGeneration
   });
 
   // ---------- 侧边操作栏 ----------
@@ -929,6 +950,7 @@ const BookplatePage: React.FC = () => {
     handleRetryBookFor,
     handleFetchBookFor,
     handleForceRefreshBookFor,
+    handleUploadCoverFor,
     handleDownloadBookData,
     handleRunAnalysisFor,
     handleRetryPromptFor,

@@ -35,6 +35,8 @@ export interface NodeHandlersDeps {
   showToast: (message: string, opts?: any) => void;
   dialog: { confirm: (opts: any) => Promise<boolean> };
   fetchBookInfo: (isbn: string, nodeId?: string, opts?: { force?: boolean }) => Promise<void>;
+  /** 图书元数据节点：手动上传封面兜底（落盘 + 回写 book_cache，由页面实现请求） */
+  uploadBookCover: (nodeId: string, isbn: string, file: File) => Promise<void>;
   removingRef: React.MutableRefObject<boolean>;
   setCtxMenu: React.Dispatch<React.SetStateAction<{ x: number; y: number; nodeId: string } | null>>;
   autoSaveGeneration: (imageNodeId: string, imageUrl: string) => Promise<number | null>;
@@ -53,7 +55,7 @@ export function useNodeHandlers({
   setNodes, setEdges, setNodeSizes, setFavoritedState, setPublishedState,
   setSelectedImageId, setStaleRecordIds, updateNodeData, recordHistory,
   runNode, runImageGeneration, addChildNode, toggleFavoriteForImage, togglePublicForImage,
-  showToast, dialog, fetchBookInfo, removingRef, setCtxMenu, autoSaveGeneration
+  showToast, dialog, fetchBookInfo, uploadBookCover, removingRef, setCtxMenu, autoSaveGeneration
 }: NodeHandlersDeps) {
   // ---------- 删除节点（含级联） ----------
   /** 批量删除节点（含子孙）：中止进行中请求，清理连线/尺寸/收藏/公开/generation 关联 */
@@ -135,6 +137,14 @@ export function useNodeHandlers({
     const isbn = node?.data?.isbn;
     if (!isbn) return;
     fetchBookInfo(isbn, id, { force: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  /** 图书元数据节点：手动上传封面（请求与数据回写由页面 uploadBookCover 实现） */
+  const handleUploadCoverFor = useCallback((id: string, file: File) => {
+    const node = nodesRef.current.find((n) => n.id === id);
+    const isbn = node?.data?.isbn;
+    if (!isbn) return;
+    void uploadBookCover(id, isbn, file);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const handleDownloadBookData = useCallback((id: string) => {
@@ -589,6 +599,7 @@ export function useNodeHandlers({
     handleRetryBookFor,
     handleFetchBookFor,
     handleForceRefreshBookFor,
+    handleUploadCoverFor,
     handleDownloadBookData,
     handleEditContent,
     handleRetryPromptFor,

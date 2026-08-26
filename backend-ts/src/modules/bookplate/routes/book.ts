@@ -6,6 +6,7 @@ import {
   coverLocalMissing,
   downloadDoubanCover,
   backgroundCoverTask,
+  saveManualCover,
 } from '../covers.js';
 import {
   findBookByIsbn,
@@ -91,6 +92,26 @@ export async function register(app: FastifyInstance): Promise<void> {
       }
       book.isbn = isbn;
       return book;
+    }
+  );
+
+  // ---- 手动上传封面（自动下载失败时的兜底：落盘 runtime/covers 并回写 book_cache） ----
+  app.post(
+    '/api/modules/bookplate/isbn/:isbn/cover',
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const isbn = (request.params as { isbn: string }).isbn;
+      if (!findBookByIsbn(getDb(), isbn)) {
+        return reply.code(404).send({ detail: 'book_cache 中不存在该 ISBN 的记录' });
+      }
+      const data = await request.file();
+      if (!data) return reply.code(400).send({ detail: '缺少上传文件（字段名 file）' });
+      const bytes = new Uint8Array(await data.toBuffer());
+      const local = saveManualCover(isbn, bytes);
+      if (!local) {
+        return reply.code(400).send({ detail: '仅支持 JPG / PNG / GIF / WebP 图片，且不超过 5MB' });
+      }
+      return { cover_image_local: local };
     }
   );
 }

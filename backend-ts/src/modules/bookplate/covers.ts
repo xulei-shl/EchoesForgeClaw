@@ -160,6 +160,37 @@ export async function fetchCoverBytes(url: string, opts: CoverFetchOptions = {})
   }
 }
 
+/**
+ * 手动上传封面兜底：校验图片魔数后落盘 runtime/covers（沿用 digest 命名规则，
+ * 以 `manual:{isbn}` 为摘要来源，同一 ISBN 稳定同名、可覆盖旧扩展名），
+ * 并回写 book_cache.cover_image_local；非法图片返回 null。
+ */
+export function saveManualCover(isbn: string, bytes: Uint8Array): string | null {
+  const ext = detectImageExt(bytes.subarray(0, 12));
+  if (!ext) return null;
+  if (bytes.length > MAX_COVER_BYTES) return null;
+  const filename = `${digestOf(`manual:${isbn}`)}${ext}`;
+  mkdirSync(COVERS_DIR, { recursive: true });
+  // 扩展名可能变化：覆盖前清掉同基名的所有历史文件
+  for (const name of readdirSync(COVERS_DIR)) {
+    if (name.split('.')[0] === digestOf(`manual:${isbn}`)) {
+      try {
+        unlinkSync(path.join(COVERS_DIR, name));
+      } catch {
+        /* 忽略清理失败 */
+      }
+    }
+  }
+  writeFileSync(path.join(COVERS_DIR, filename), bytes);
+  const local = `${COVERS_PREFIX}/${filename}`;
+  getDb()
+    .update(bookCache)
+    .set({ coverImageLocal: local })
+    .where(eq(bookCache.isbn, isbn))
+    .run();
+  return local;
+}
+
 /** 后台任务：下载封面到本地缓存并回写 book_cache.cover_image_local。 */
 export async function backgroundCoverTask(
   isbn: string,

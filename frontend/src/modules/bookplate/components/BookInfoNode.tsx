@@ -1,5 +1,5 @@
-import React, { memo, useEffect, useState } from 'react';
-import { BookOpen, ExternalLink, Loader2, AlertTriangle, Search, RefreshCw } from 'lucide-react';
+import React, { memo, useEffect, useRef, useState } from 'react';
+import { BookOpen, ExternalLink, Loader2, AlertTriangle, Search, RefreshCw, ImagePlus } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { BeamGlow } from '../../../platform/components/node/BeamGlow';
@@ -46,6 +46,8 @@ export interface BookInfoNodeProps {
   onDownload?: (id: string) => void;
   /** 强制重新从豆瓣 API 获取数据并覆盖缓存 */
   onForceRefresh?: (id: string) => void;
+  /** 手动上传封面（自动下载失败兜底）：落盘 runtime/covers 并回写 book_cache */
+  onUploadCover?: (id: string, file: File) => void;
   onPositionChange?: (id: string, x: number, y: number) => void;
   onSizeChange?: (id: string, width: number, height: number) => void;
   onDrag?: (id: string, x: number, y: number) => void;
@@ -70,6 +72,7 @@ const BookInfoNodeInner: React.FC<BookInfoNodeProps> = ({
   onFetch,
   onDownload,
   onForceRefresh,
+  onUploadCover,
   onPositionChange,
   onSizeChange,
   onDrag,
@@ -81,6 +84,7 @@ const BookInfoNodeInner: React.FC<BookInfoNodeProps> = ({
   const [coverFailed, setCoverFailed] = useState(false);
   // 空态内联 ISBN 输入
   const [isbnInput, setIsbnInput] = useState('');
+  const coverInputRef = useRef<HTMLInputElement>(null);
   const coverUrl = data.cover_image_local || data.cover_image || data.coverUrl;
   const publishDate = data.pub_year || data.publishDate;
   const description = data.summary || data.description;
@@ -230,6 +234,30 @@ const BookInfoNodeInner: React.FC<BookInfoNodeProps> = ({
                   )}
                   {data.rating != null && data.rating !== '' && (
                     <div className="text-xs text-ink-faint text-center tabular-nums">★ {String(data.rating)}</div>
+                  )}
+                  {data.isbn && onUploadCover && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => coverInputRef.current?.click()}
+                        className="flex items-center justify-center gap-1 h-7 rounded-sm border border-dashed border-paper-grid text-xs text-ink-faint hover:text-ink hover:border-accent transition-colors"
+                        title="手动上传封面（自动下载失败时的兜底）"
+                      >
+                        <ImagePlus size={13} strokeWidth={1.5} />
+                        上传封面
+                      </button>
+                      <input
+                        ref={coverInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/gif,image/webp"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) onUploadCover(id, file);
+                          e.target.value = '';
+                        }}
+                      />
+                    </>
                   )}
                 </div>
 
