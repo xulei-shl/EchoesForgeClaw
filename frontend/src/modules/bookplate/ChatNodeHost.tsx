@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useChat } from '@ai-sdk/react';
-import { DefaultChatTransport, type UIMessage } from 'ai';
+import { DefaultChatTransport } from 'ai';
 import { nodesRef, edgesRef } from '../../platform/stores/useCanvasState';
 import { ChatNode } from './components/ChatNode';
 import { getNodeTitle } from './nodeTypes';
@@ -19,6 +19,7 @@ import {
   uiToStore,
 } from './chatMessages';
 import { mismatchBadgeOf, hasDownstreamOf, type NodeViewHelpers } from './CanvasNodeViews';
+import { mergeAgentFiles } from './workspaceFiles';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import type { AgentFile, ChatMessage, ChatNodeSettings, InjectedContextBlock, SkillSelection } from '../../platform/types';
 import type { NodeData } from './graphTypes';
@@ -130,6 +131,9 @@ export function ChatNodeHost({
   const interruptPendingRef = useRef(false);
   const forcedErrorRef = useRef<string | null>(null);
   const idleRef = useRef<{ idle: ReturnType<typeof makeIdleTimeout>; controller: AbortController } | null>(null);
+  // 本轮 skill 产物文件缓冲：流中只入队（流中写状态会与事件处理竞态丢失），
+  // 流结束后一次性并入最后一条 assistant 消息（metadata + store 镜像）
+  const pendingFilesRef = useRef<Map<string, AgentFile>>(new Map());
 
   const chat = useChat({
     id: nodeId,
@@ -244,7 +248,7 @@ export function ChatNodeHost({
       if (name === 'agent_file') {
         const file = (part.data ?? {}) as AgentFile;
         if (file && typeof file.url === 'string' && file.url) {
-          appendAgentFile(nodeId, file, setNodes, setMessages);
+          pendingFilesRef.current.set(file.url, file);
         }
         return;
       }
@@ -315,6 +319,33 @@ export function ChatNodeHost({
     const forced = forcedErrorRef.current;
     const errMsg = forced ?? (status === 'error' ? (chatError?.message ?? '对话失败，请重试') : null);
     const nodeSteps = Array.isArray(node.data?.agentSteps) ? node.data.agentSteps : [];
+
+    // 流已结束：把缓冲的本轮产物文件一次性并入最后一条 assistant 消息 metadata。
+    // 此处 setMessages 在流收尾后执行（流中写入会与事件处理竞态导致后续 chunk / 元数据丢失）；
+    // 写入后 uiMessages 变更会再次触发本 effect，下一轮镜像即携带文件落盘。
+    if (!streaming && pendingFilesRef.current.size && uiMessages.length) {
+      const lastUi = uiMessages[uiMessages.length - 1];
+      if (lastUi.role === 'assistant') {
+        const buf = [...pendingFilesRef.current.values()];
+        pendingFilesRef.current.clear();
+        setMessages((prev) => {
+          const idx = prev.length - 1;
+          if (idx < 0 || prev[idx].role !== 'assistant') return prev;
+          const bookplate = {
+            ...((prev[idx].metadata as { bookplate?: Record<string, unknown> } | undefined)
+              ?.bookplate ?? {}),
+            files: mergeAgentFiles(
+              ((prev[idx].metadata as { bookplate?: { files?: AgentFile[] } } | undefined)?.bookplate
+                ?.files) ?? [],
+              buf
+            ),
+          };
+          const copy = [...prev];
+          copy[idx] = { ...prev[idx], metadata: { bookplate } };
+          return copy;
+        });
+      }
+    }
 
     let next = uiToStore(uiMessages);
 
@@ -438,7 +469,8 @@ export function ChatNodeHost({
       if (statusRef.current === 'submitted' || statusRef.current === 'streaming') return;
       const nodeNow = nodesRef.current.find((n) => n.id === nodeId);
       if (!nodeNow || nodeNow.type !== 'chat') return;
-      // 重置本轮状态（agent 步骤 / 错误横幅），标记 isGenerating: true
+      // 重置本轮状态（agent 步骤 / 产物文件缓冲 / 错误横幅），标记 isGenerating: true
+      pendingFilesRef.current.clear();
       setNodes((prev) =>
         prev.map((n) =>
           n.id === nodeId
@@ -486,6 +518,8 @@ export function ChatNodeHost({
   const nodeSteps = Array.isArray(node.data?.agentSteps) ? node.data.agentSteps : [];
 
   // 计算展示消息：流式中直接由 uiMessages 实时转换，并在最后一条 assistant 注入 streaming 标志与 agentSteps
+  // 本轮缓冲的产物文件（尚未随流收尾并入 metadata）在流式分支实时并入最后一条 assistant 展示
+  const bufFiles = pendingFilesRef.current.size ? [...pendingFilesRef.current.values()] : [];
   let messages: ChatMessage[];
   if (isStreaming) {
     let next = uiToStore(uiMessages);
@@ -496,6 +530,7 @@ export function ChatNodeHost({
           ...next[lastIdx],
           streaming: true,
           agentSteps: nodeSteps.length ? nodeSteps : next[lastIdx].agentSteps,
+          ...(bufFiles.length ? { files: mergeAgentFiles(next[lastIdx].files, bufFiles) } : {}),
         };
       }
     }
@@ -541,6 +576,7 @@ export function ChatNodeHost({
       title={getNodeTitle(node)}
       messages={messages}
       contextBlocks={contextBlocks}
+      workspaceId={typeof node.data?.workspaceId === 'string' ? node.data.workspaceId : null}
       agentName={
         config?.mode === 'agent'
           ? (config.agent_name ?? undefined)
@@ -570,42 +606,4 @@ export function ChatNodeHost({
       onContextMenu={(e) => h.handleNodeContextMenu(e, node.id)}
     />
   );
-}
-
-/** 把 skill 执行产生的文件附加到最后一条 assistant 消息（store + useChat metadata 双写，去重）。 */
-function appendAgentFile(
-  nodeId: string,
-  file: AgentFile,
-  setNodes: Dispatch<SetStateAction<NodeData[]>>,
-  setMessages: Dispatch<SetStateAction<UIMessage[]>>
-): void {
-  setNodes((prev) =>
-    prev.map((n) => {
-      if (n.id !== nodeId) return n;
-      const msgs = Array.isArray(n.data.messages) ? [...n.data.messages] : [];
-      const last = msgs[msgs.length - 1];
-      if (!last || last.role !== 'assistant') return n;
-      const files = Array.isArray(last.files) ? [...last.files] : [];
-      if (!files.some((f) => f.url === file.url)) files.push(file);
-      msgs[msgs.length - 1] = { ...last, files };
-      return { ...n, data: { ...n.data, messages: msgs } };
-    })
-  );
-  // 同步进 useChat metadata，保证镜像写回 store 时不丢
-  setMessages((prev) => {
-    const idx = prev.length - 1;
-    if (idx < 0 || prev[idx].role !== 'assistant') return prev;
-    const meta = {
-      ...((prev[idx].metadata as { bookplate?: Record<string, unknown> } | undefined)
-        ?.bookplate ?? {}),
-      files: [
-        ...(((prev[idx].metadata as { bookplate?: { files?: AgentFile[] } } | undefined)
-          ?.bookplate?.files) ?? []),
-        file,
-      ],
-    };
-    const copy = [...prev];
-    copy[idx] = { ...prev[idx], metadata: { bookplate: meta } };
-    return copy;
-  });
 }

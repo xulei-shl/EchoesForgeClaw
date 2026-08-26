@@ -331,8 +331,14 @@ const MIME_BY_EXT: Record<string, string> = {
   '.mov': 'video/quicktime',
 };
 
-function mimeOf(fileName: string): string {
+/** 按扩展名返回 MIME（未知扩展名按二进制处理）；供 skill-files 接口与 agent_file 事件共用。 */
+export function mimeOf(fileName: string): string {
   return MIME_BY_EXT[path.extname(fileName).toLowerCase()] ?? 'application/octet-stream';
+}
+
+/** skill-files 下载/预览 URL（工作区相对路径 + workspace_id；agent_file 事件统一口径）。 */
+export function skillFileDownloadUrl(rel: string, workspaceId: string): string {
+  return `/api/modules/bookplate/skill-files?path=${encodeURIComponent(rel)}&workspace_id=${encodeURIComponent(workspaceId)}`;
 }
 
 /** 解析 data URL 图片并落盘到 ws/inputs/img-N.ext；返回供 @file 附加的相对路径。 */
@@ -613,11 +619,10 @@ export async function* runPiAgent(opts: RunPiAgentOptions): AsyncGenerator<ChatS
       if (isDiffExcluded(rel)) continue;
       const prev = before.get(rel);
       if (prev && prev.size === stamp.size && prev.mtimeMs === stamp.mtimeMs) continue;
-      const url = `/api/modules/bookplate/skill-files?path=${encodeURIComponent(rel)}&workspace_id=${encodeURIComponent(opts.workspaceId)}`;
       yield {
         type: 'agent_file',
         file: {
-          url,
+          url: skillFileDownloadUrl(rel, opts.workspaceId),
           name: path.basename(rel),
           mime: mimeOf(rel),
           size: stamp.size,

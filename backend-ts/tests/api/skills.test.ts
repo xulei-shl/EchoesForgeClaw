@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { hashSync } from 'bcryptjs';
-import { cpSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { cpSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import AdmZip from 'adm-zip';
@@ -284,6 +284,20 @@ describe('skill-files 下载', () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.body).toContain('hello file');
+    expect(res.headers['content-type']).toContain('text/plain');
+
+    // 图片产物：按扩展名返回 image/png；中文文件名经 filename*（RFC 5987）携带
+    mkdirSync(`${ws}/outputs`, { recursive: true });
+    writeFileSync(`${ws}/outputs/藏书票.png`, Buffer.from('89504e47', 'hex'));
+    const img = await app.inject({
+      method: 'GET',
+      url: `/api/modules/bookplate/skill-files?path=${encodeURIComponent('outputs/藏书票.png')}&workspace_id=ws_test_1`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(img.statusCode).toBe(200);
+    expect(img.headers['content-type']).toContain('image/png');
+    expect(img.headers['content-disposition']).toContain(`filename*=UTF-8''${encodeURIComponent('藏书票.png')}`);
+    rmSync(`${ws}/outputs`, { recursive: true, force: true });
 
     // 未装配的路径（仅存在于登记目录，不在工作区）→ 404
     const miss = await app.inject({

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { getDb } from '../../../config/database.js';
-import { readFileSync, existsSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 import {
   RESOURCE_TYPE_BIFROST_SKILL,
@@ -25,6 +25,7 @@ import {
   removeSkill,
   resolveSkillAbs,
 } from '../../../services/skill-agent-service.js';
+import { mimeOf } from '../../../services/pi-agent-service.js';
 
 export async function register(app: FastifyInstance): Promise<void> {
   // ---- Skill 工作区（Skill Agent 的 skill 来源） ----
@@ -160,9 +161,17 @@ export async function register(app: FastifyInstance): Promise<void> {
       if (!target || !existsSync(target) || !statSync(target).isFile()) {
         return reply.code(404).send({ detail: '文件不存在' });
       }
-      reply.type('application/octet-stream');
-      reply.header('Content-Disposition', `attachment; filename="${path.basename(target)}"`);
-      return reply.send(readFileSync(target));
+      const fileName = path.basename(target);
+      // 按扩展名返回真实 Content-Type（前端 blob 预览 / 未来内嵌 PDF 等依赖准确类型）
+      reply.type(mimeOf(fileName));
+      // RFC 6266/5987：非 ASCII 文件名（如中文产物）用 filename* 携带，ASCII 兜底防旧客户端乱码
+      const asciiFallback = fileName.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
+      reply.header(
+        'Content-Disposition',
+        `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(fileName)}`
+      );
+      // 流式发送：避免大文件整读进内存并阻塞事件循环
+      return reply.send(createReadStream(target));
     }
   );
 }

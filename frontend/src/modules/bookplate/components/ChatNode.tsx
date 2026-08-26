@@ -21,6 +21,11 @@ import {
   fileToDataUrl,
   optimizeDataUrl,
 } from '../imageUpload';
+import {
+  extractWorkspaceFiles,
+  mergeAgentFiles,
+  stripUnrenderableImages,
+} from '../workspaceFiles';
 
 // 单轮最多附带的图片数（与后端透传上限保持一致）
 const MAX_ATTACHMENTS = 4;
@@ -275,6 +280,8 @@ interface ChatMessageItemProps {
   idx: number;
   isLast: boolean;
   agentName?: string;
+  /** 当前节点工作区 id（从正文提取工作区产物文件时用于换算接口 URL） */
+  workspaceId?: string | null;
   onCopy: (content: string, idx: number) => void;
   isCopied: boolean;
   onRetry?: () => void;
@@ -286,6 +293,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
   idx,
   isLast,
   agentName,
+  workspaceId,
   onCopy,
   isCopied,
   onRetry,
@@ -320,6 +328,8 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
   const hasContent = Boolean(msg.content && msg.content.trim().length > 0);
   // 正在等待 AI 返回正文（处于流式生成中但正文尚未开始输出，涵盖首字等待与思考过程输出阶段）
   const isWaitingResponse = Boolean(msg.streaming && !hasContent);
+  // 正文引用的工作区产物（渲染时提取，与事件上报的 msg.files 合并去重）→ 文件卡片
+  const cardFiles = mergeAgentFiles(msg.files, extractWorkspaceFiles(msg.content, workspaceId));
 
   return (
     <div className={`flex flex-col items-start gap-1 relative group ${!msg.streaming ? 'msg-enter-anim' : ''}`}>
@@ -361,7 +371,9 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
               caret="block"
               linkSafety={{ enabled: false }}
             >
-              {normalizeMarkdown(msg.content) || (msg.interrupted ? '已中断' : '')}
+              {/* 剔除指向本地文件系统的图片语法（浏览器无法加载，由下方文件卡片展示） */}
+              {normalizeMarkdown(stripUnrenderableImages(msg.content, workspaceId)) ||
+                (msg.interrupted ? '已中断' : '')}
             </Streamdown>
           )}
         </div>
@@ -377,10 +389,10 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
           </div>
         )}
       </div>
-      {/* Skill Agent 执行产生的文件：图片缩略预览 + 下载卡片 */}
-      {msg.files && msg.files.length > 0 && (
+      {/* Skill Agent 执行产生的文件：图片缩略预览 + 下载卡片（事件上报 + 正文提取合并） */}
+      {cardFiles.length > 0 && (
         <div className="flex flex-wrap gap-2 mt-1 w-full pl-0.5">
-          {msg.files.map((f) => (
+          {cardFiles.map((f) => (
             <SkillFileCard key={f.url} file={f} />
           ))}
         </div>
@@ -416,6 +428,8 @@ export interface ChatNodeProps {
   messages?: ChatMessage[];
   /** 注入的结构化上下文块（按各上级节点分别展示） */
   contextBlocks?: InjectedContextBlock[];
+  /** 当前节点工作区 id（Skill Agent 产物文件提取/下载归属） */
+  workspaceId?: string | null;
   /** Agent 名称（该节点配置为 agent 模式时展示） */
   agentName?: string;
   /**
@@ -464,6 +478,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
   title,
   messages = [],
   contextBlocks = [],
+  workspaceId,
   agentName,
   agentSteps = [],
   isGenerating,
@@ -760,6 +775,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                   idx={idx}
                   isLast={idx === messages.length - 1}
                   agentName={agentName}
+                  workspaceId={workspaceId}
                   onCopy={handleCopy}
                   isCopied={copiedId === idx}
                   onRetry={() => onRetry?.(id)}

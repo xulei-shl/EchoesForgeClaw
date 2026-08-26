@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import path from 'node:path';
 import { llmService } from '../../../services/llm-service.js';
 import { imageService } from '../../../services/image-service.js';
 import {
@@ -15,7 +16,9 @@ import {
   agentConfigFromWithOverride,
   skillAgentConfigFrom,
 } from '../../../services/node-config-service.js';
-import { preparePiWorkspace, runPiAgent } from '../../../services/pi-agent-service.js';
+import { preparePiWorkspace, runPiAgent, mimeOf, skillFileDownloadUrl } from '../../../services/pi-agent-service.js';
+import { nodeWorkspace } from '../../../services/skill-agent-service.js';
+import { fastclawDataRoot, harvestFastclawArtifacts } from '../../../services/fastclaw-artifacts.js';
 import { chatStreamToResponse, type ChatStreamEvent } from '../stream.js';
 import { NODE_TYPES } from '../node-types.js';
 import { ImageGenerationError } from '../../../infrastructure/ai/errors.js';
@@ -117,7 +120,12 @@ export async function register(app: FastifyInstance): Promise<void> {
       if (agentConfig) {
         const cfg = agentConfig;
         const sessionKey = agentSessionKey(request.authUser!.id, payload.node_id, payload.epoch ?? 0);
+        // 节点工作区（FastClaw 产物桥接的落盘目标；workspace_id 由前端首轮生成并持久化）
+        const ws = nodeWorkspace(request.authUser!.id, payload.workspace_id ?? `${payload.node_id ?? 'node'}_${Date.now()}`);
+        // 收集本轮 tool_result 与最终正文，供流结束后做产物路径收割
+        const turnTexts: string[] = [];
         async function* agentEvents(): AsyncGenerator<ChatStreamEvent, void, unknown> {
+          let finalText = '';
           try {
             for await (const evt of fastclawAgentService.runAgent(
               cfg,
@@ -126,10 +134,40 @@ export async function register(app: FastifyInstance): Promise<void> {
               payload.images?.length ? payload.images : undefined,
               { module: 'bookplate', node_type: NODE_TYPES.CHAT }
             )) {
+              if (evt.type === 'tool_result') turnTexts.push(evt.data.result);
+              else if (evt.type === 'content_delta' || evt.type === 'content') finalText += evt.data.delta;
               yield* agentEventToStream(evt);
             }
           } catch (err) {
             yield { type: 'error', message: err instanceof FastClawAgentError ? err.message : String(err) };
+            return;
+          }
+          // 产物桥接（同机部署）：FastClaw 引用的本机文件拷入节点工作区 → 以
+          // skill-files URL 发 agent_file，前端预览/下载与 Skill Agent 模式同构。
+          // best-effort：任何失败不影响已完成的对话流。
+          const fcRoot = fastclawDataRoot();
+          if (fcRoot) {
+            turnTexts.push(finalText);
+            try {
+              for (const art of harvestFastclawArtifacts({
+                root: fcRoot,
+                texts: turnTexts,
+                destDir: path.join(ws, 'outputs'),
+              })) {
+                yield {
+                  type: 'agent_file',
+                  file: {
+                    url: skillFileDownloadUrl(art.rel, path.basename(ws)),
+                    name: art.rel.slice(art.rel.lastIndexOf('/') + 1),
+                    mime: mimeOf(art.rel),
+                    size: art.size,
+                    path: art.rel,
+                  },
+                };
+              }
+            } catch (err) {
+              yield { type: 'status', message: `产物文件桥接失败: ${err instanceof Error ? err.message : String(err)}` };
+            }
           }
         }
         return reply.send(chatStreamToResponse(agentEvents()));
