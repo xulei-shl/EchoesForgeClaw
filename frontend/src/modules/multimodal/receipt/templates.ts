@@ -1,6 +1,15 @@
 import { generateRandomBorrowerRecords } from './borrowerGenerator';
 import { generateRandomSeals } from './sealGenerator';
 import type { BookMetadataInput, ReceiptState, ReceiptTemplateDef, ReceiptTemplateId, ReceiptThemeId } from './types';
+import { parseExtraCardFields } from '../bookcard/fields';
+
+/**
+ * 解析上游文本节点（如 VuFind 索书号）输出 JSON 中的索书号：{"CALL_NUMBER": "..."}。
+ * 与图书卡片节点共用 parseExtraCardFields 的解析口径；非 JSON 或无该字段返回空串。
+ */
+export function parseUpstreamCallNumber(raw?: string | null): string {
+  return parseExtraCardFields(raw).CALL_NUMBER ?? '';
+}
 
 /**
  * 格式化当前日期时间（YYYY-MM-DD HH:mm）
@@ -571,13 +580,18 @@ export function registerReceiptTemplate(template: ReceiptTemplateDef): void {
  * @param templateId 模板 ID
  * @param book 上游图书元数据
  * @param savedData 用户在当前模板上的局部自定义数据（如用户修改过的文字、纸张颜色、点阵开关等）
- * @param options 可选项：overrideUserEdits（为 true 时强制重置所有用户编辑，回到纯净初始映射）、upstreamImageUrl（有效上游图片 URL）
+ * @param options 可选项：overrideUserEdits（为 true 时强制重置所有用户编辑，回到纯净初始映射）、upstreamImageUrl（有效上游图片 URL）、
+ *                upstreamTextExtra（上游文本节点输出的字段 JSON，如 VuFind 索书号的 {"CALL_NUMBER": "..."}）
  */
 export function buildReceiptState(
   templateId: ReceiptTemplateId = 'book_recommend',
   book?: BookMetadataInput | null,
   savedData: Partial<ReceiptState> = {},
-  options: { overrideUserEdits?: boolean; upstreamImageUrl?: string | null } = {}
+  options: {
+    overrideUserEdits?: boolean;
+    upstreamImageUrl?: string | null;
+    upstreamTextExtra?: string | null;
+  } = {}
 ): ReceiptState {
   const template = getReceiptTemplate(templateId);
   const base = template.createInitialState();
@@ -665,7 +679,7 @@ export function buildReceiptState(
     isBottomCustom = false;
   }
 
-  return {
+  const state = {
     ...base,
     ...mergedFromBook,
     ...savedData,
@@ -678,6 +692,18 @@ export function buildReceiptState(
     themeId: (savedData.themeId || base.themeId || 'white') as ReceiptThemeId,
     ditherEnabled: savedData.ditherEnabled ?? base.ditherEnabled ?? false,
   } as ReceiptState;
+
+  // 索书号公共继承逻辑（对所有含 callNumber 字段的模板通用，无需逐模板适配）：
+  // 上游文本节点提供了索书号时，若当前值为空或仍是模板演示默认值（视为未编辑），
+  // 自动继承上游值；用户手动填写过的真实索书号始终优先。
+  const upstreamCallNumber = parseUpstreamCallNumber(options.upstreamTextExtra);
+  if (upstreamCallNumber && typeof state.callNumber === 'string') {
+    const cur = state.callNumber.trim();
+    const def = typeof base.callNumber === 'string' ? base.callNumber.trim() : '';
+    if (!cur || cur === def) state.callNumber = upstreamCallNumber;
+  }
+
+  return state;
 }
 
 /**

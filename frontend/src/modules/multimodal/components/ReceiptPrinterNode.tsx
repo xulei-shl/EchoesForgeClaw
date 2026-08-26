@@ -154,21 +154,9 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
     );
   }, [upstreamImageUrl, upstreamBookData]);
 
-  // 上游文本节点提供的索书号（如 VuFind 索书号节点输出 {"CALL_NUMBER": "K835.465.6/2212-11"}）：
-  // 用户在节点内手动填写优先，未填写时自动填入上游索书号。
-  const upstreamCallNumber = useMemo(() => {
-    if (!upstreamTextExtra) return '';
-    try {
-      const parsed = JSON.parse(upstreamTextExtra);
-      const v =
-        parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-          ? (parsed as Record<string, unknown>).CALL_NUMBER
-          : undefined;
-      return typeof v === 'string' ? v.trim() : '';
-    } catch {
-      return '';
-    }
-  }, [upstreamTextExtra]);
+  // 上游文本节点提供的索书号（如 VuFind 索书号节点输出 {"CALL_NUMBER": "..."}）由公共核心函数
+  // buildReceiptState 的 upstreamTextExtra 选项统一继承：用户手动填写优先，
+  // 空值或模板演示默认值时自动填入上游索书号（所有含 callNumber 字段的模板通用）。
 
   // 构造小票的合成状态函数（统一使用公共核心函数 buildReceiptState）
   const computeMergedState = useCallback(
@@ -177,16 +165,14 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
       return buildReceiptState(
         currentData.templateId,
         upstreamBookData,
-        {
-          ...currentData,
-          callNumber: currentData.callNumber?.trim() ? currentData.callNumber : upstreamCallNumber,
-        },
+        currentData,
         {
           upstreamImageUrl: effectiveUpstreamImageUrl,
+          upstreamTextExtra,
         }
       );
     },
-    [data, upstreamBookData, effectiveUpstreamImageUrl, upstreamCallNumber]
+    [data, upstreamBookData, effectiveUpstreamImageUrl, upstreamTextExtra]
   );
 
   // 本地即时响应状态（保证键盘输入零延迟且不被打断）
@@ -212,17 +198,17 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
           themeId: localState.themeId,
           ditherEnabled: localState.ditherEnabled,
           seals: localState.seals,
-          callNumber: upstreamCallNumber,
         },
         {
           overrideUserEdits: true,
           upstreamImageUrl: effectiveUpstreamImageUrl,
+          upstreamTextExtra,
         }
       );
       setLocalState(next);
       onUpdateState?.(id, next);
     }
-  }, [currentFingerprint, upstreamBookData, localState.templateId, localState.themeId, localState.ditherEnabled, localState.seals, effectiveUpstreamImageUrl, upstreamCallNumber, id, onUpdateState]);
+  }, [currentFingerprint, upstreamBookData, localState.templateId, localState.themeId, localState.ditherEnabled, localState.seals, effectiveUpstreamImageUrl, upstreamTextExtra, id, onUpdateState]);
 
   // 重置为默认：将小票所有字段完整重置到当前模板初始默认态（自动填充图书元数据与上游图片，保留选中的纸张颜色与点阵设置）
   const handleResetToDefault = useCallback(() => {
@@ -233,17 +219,17 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
       {
         themeId: localState.themeId,
         ditherEnabled: localState.ditherEnabled,
-        callNumber: upstreamCallNumber,
       },
       {
         overrideUserEdits: true,
         upstreamImageUrl: effectiveUpstreamImageUrl,
+        upstreamTextExtra,
       }
     );
     setLocalState(freshState);
     onUpdateState?.(id, freshState);
     showToast('小票已重置为默认', { type: 'success' });
-  }, [upstreamBookData, currentFingerprint, localState.templateId, localState.themeId, localState.ditherEnabled, effectiveUpstreamImageUrl, upstreamCallNumber, id, onUpdateState, showToast]);
+  }, [upstreamBookData, currentFingerprint, localState.templateId, localState.themeId, localState.ditherEnabled, effectiveUpstreamImageUrl, upstreamTextExtra, id, onUpdateState, showToast]);
 
   // 状态变更分发：本地即刻响应 + 异步写入画布持久化
   const handleChange = useCallback(
@@ -379,6 +365,7 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
           onChange={handleChange}
           upstreamBookData={upstreamBookData}
           upstreamImageUrl={effectiveUpstreamImageUrl}
+          upstreamTextExtra={upstreamTextExtra}
           disabled={isExporting || hasDownstream}
         />
 
