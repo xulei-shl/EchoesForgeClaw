@@ -9,9 +9,9 @@ export class VuFindError extends Error {
   }
 }
 
-/** 从 vufind 检索结果 HTML 中提取索书号（形如「索书号: K835.465.6/2212-11」） */
+/** 从 vufind 检索结果 HTML 中提取索书号（中文页「索书号: K835.465.6/2212-11」或英文页「Call Number: ...」） */
 function extractCallNumber(html: string): string {
-  const match = html.match(/索书号:\s*([^<\n]+)/);
+  const match = html.match(/(?:索书号|Call Number)\s*[:：]\s*([^<\n]+)/);
   const value = match?.[1]?.trim() ?? '';
   if (!value) {
     throw new VuFindError('未找到索书号');
