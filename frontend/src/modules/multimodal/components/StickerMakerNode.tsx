@@ -55,7 +55,6 @@ export interface StickerMakerNodeProps {
   onDrag?: (id: string, x: number, y: number) => void;
   footer?: React.ReactNode;
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
-  hasDownstream?: boolean;
   mismatchBadge?: string | null;
   /** 状态更新写入 node.data */
   onUpdateState?: (id: string, patch: Partial<StickerMakerState>) => void;
@@ -100,7 +99,6 @@ const StickerMakerNodeInner: React.FC<StickerMakerNodeProps> = ({
   onDrag,
   footer,
   onContextMenu,
-  hasDownstream,
   mismatchBadge,
   onUpdateState,
   onExport,
@@ -350,8 +348,6 @@ const StickerMakerNodeInner: React.FC<StickerMakerNodeProps> = ({
               <NodeActionBar.Retry
                 onClick={() => setIsEditing(true)}
                 disabled={busy}
-                hasDownstream={hasDownstream}
-                downstreamTooltip="有下级节点，不可重新调整"
                 tooltip="返回编辑模式"
                 aria-label="返回编辑模式"
               />
@@ -359,20 +355,16 @@ const StickerMakerNodeInner: React.FC<StickerMakerNodeProps> = ({
                 icon={<Upload size={16} strokeWidth={1.5} />}
                 tooltip="上传/替换本地图片"
                 aria-label="上传/替换本地图片"
-                downstreamTooltip="有下级节点，不可更换图片"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={busy}
-                hasDownstream={hasDownstream}
               />
               {data?.uploadedImage && (
                 <NodeActionBar.Custom
                   icon={<Trash2 size={16} strokeWidth={1.5} className="text-error/80 hover:text-error" />}
                   tooltip="恢复上级继承图片（清空本地上传）"
                   aria-label="恢复上级继承图片"
-                  downstreamTooltip="有下级节点，不可清空图片"
                   onClick={handleClearUpload}
                   disabled={busy}
-                  hasDownstream={hasDownstream}
                 />
               )}
               {/* 独立保存到数据库按钮 */}
@@ -380,8 +372,6 @@ const StickerMakerNodeInner: React.FC<StickerMakerNodeProps> = ({
                 icon={<Check size={16} strokeWidth={isSaved ? 2.5 : 1.5} className={isSaved ? 'text-accent' : ''} />}
                 onClick={handleSaveToDatabase}
                 disabled={busy || isSaved}
-                hasDownstream={hasDownstream}
-                downstreamTooltip="有下级节点，不可保存"
                 tooltip={isSaved ? '已保存到数据库' : '保存到数据库（保存后可公开/收藏）'}
                 aria-label={isSaved ? '已保存到数据库' : '保存到数据库'}
                 className={isSaved ? 'text-accent opacity-70' : 'text-ink-light hover:text-accent'}
@@ -452,8 +442,6 @@ const StickerMakerNodeInner: React.FC<StickerMakerNodeProps> = ({
               <NodeActionBar.Reset
                 onClick={handleReset}
                 disabled={busy}
-                hasDownstream={hasDownstream}
-                downstreamTooltip="有下级节点，不可重置"
                 tooltip="重置参数与结果"
                 aria-label="重置参数与结果"
               />
@@ -470,36 +458,28 @@ const StickerMakerNodeInner: React.FC<StickerMakerNodeProps> = ({
                 }
                 tooltip="生成贴纸"
                 aria-label="生成贴纸"
-                downstreamTooltip="有下级节点，不可生成"
                 onClick={handleGenerate}
                 disabled={!activeImageSrc || busy}
-                hasDownstream={hasDownstream}
               />
               <NodeActionBar.Custom
                 icon={<Upload size={16} strokeWidth={1.5} />}
                 tooltip="上传/替换本地图片"
                 aria-label="上传/替换本地图片"
-                downstreamTooltip="有下级节点，不可更换图片"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={busy}
-                hasDownstream={hasDownstream}
               />
               {data?.uploadedImage && (
                 <NodeActionBar.Custom
                   icon={<Trash2 size={16} strokeWidth={1.5} className="text-error/80 hover:text-error" />}
                   tooltip="恢复上级继承图片（清空本地上传）"
                   aria-label="恢复上级继承图片"
-                  downstreamTooltip="有下级节点，不可清空图片"
                   onClick={handleClearUpload}
                   disabled={busy}
-                  hasDownstream={hasDownstream}
                 />
               )}
               <NodeActionBar.Reset
                 onClick={handleReset}
                 disabled={busy}
-                hasDownstream={hasDownstream}
-                downstreamTooltip="有下级节点，不可重置"
                 tooltip="重置参数"
                 aria-label="重置参数"
               />
@@ -542,7 +522,6 @@ const StickerMakerNodeInner: React.FC<StickerMakerNodeProps> = ({
                     setRemoveBackground(next);
                     updateParam({ removeBackground: next });
                   }}
-                  disabled={hasDownstream}
                   className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition ${
                     removeBackground
                       ? 'bg-accent/15 text-accent font-medium'
@@ -569,7 +548,6 @@ const StickerMakerNodeInner: React.FC<StickerMakerNodeProps> = ({
                     setShadowEnabled(next);
                     updateParam({ shadowEnabled: next });
                   }}
-                  disabled={hasDownstream}
                   className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition ${
                     shadowEnabled
                       ? 'bg-accent/15 text-accent font-medium'
@@ -593,7 +571,6 @@ const StickerMakerNodeInner: React.FC<StickerMakerNodeProps> = ({
                       max={OUTLINE_WIDTH_MAX}
                       step={OUTLINE_WIDTH_STEP}
                       value={outlineWidth}
-                      disabled={hasDownstream}
                       onChange={(next) => {
                         setOutlineWidth(next);
                         updateParam({ outlineWidth: next });
@@ -621,7 +598,6 @@ const StickerMakerNodeInner: React.FC<StickerMakerNodeProps> = ({
                         setOutlineColor(color);
                         updateParam({ outlineColor: color });
                       }}
-                      disabled={hasDownstream}
                       style={{ backgroundColor: color }}
                       className={`w-4 h-4 rounded-full border transition ${
                         outlineColor.toLowerCase() === color
@@ -639,7 +615,6 @@ const StickerMakerNodeInner: React.FC<StickerMakerNodeProps> = ({
                     setOutlineColor(hex);
                     updateParam({ outlineColor: hex });
                   }}
-                  disabled={hasDownstream}
                   align="right"
                 >
                   <Tooltip
@@ -651,7 +626,6 @@ const StickerMakerNodeInner: React.FC<StickerMakerNodeProps> = ({
                   >
                     <button
                       type="button"
-                      disabled={hasDownstream}
                       style={{ backgroundColor: isCustomColor ? outlineColor : undefined }}
                       className={`w-4 h-4 rounded-full border flex items-center justify-center transition ${
                         isCustomColor

@@ -62,7 +62,6 @@ export interface ImageSearchNodeProps {
   onDrag?: (id: string, x: number, y: number) => void;
   footer?: React.ReactNode;
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
-  hasDownstream?: boolean;
 }
 
 const PROVIDERS: { value: string; label: string; title?: string }[] = [
@@ -108,7 +107,6 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
   onDrag,
   footer,
   onContextMenu,
-  hasDownstream,
 }) => {
   const { showToast } = useFeedback();
 
@@ -250,7 +248,7 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
   };
 
   const handleSelect = async (item: ImageSearchItem) => {
-    if (hasDownstream || savingId) return;
+    if (savingId) return;
     setSavingId(item.id);
     const providerMeta = PROVIDERS.find((p) => p.value === item.source);
     const sourceLabel = providerMeta?.value === 'nasa-image' ? 'NASA 图片库' : providerMeta?.label;
@@ -481,12 +479,8 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
                             <button
                               type="button"
                               onClick={() => void handleSelect(item)}
-                              disabled={saving || hasDownstream}
-                              title={
-                                hasDownstream
-                                  ? '有下级节点，不可更换输出（需先断开连线）'
-                                  : '选择此图作为节点输出'
-                              }
+                              disabled={saving}
+                              title="选择此图作为节点输出"
                               className="absolute top-1 right-1 w-6 h-6 rounded-full flex items-center justify-center bg-black/45 text-white/90 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity hover:bg-accent disabled:opacity-40 disabled:hover:bg-black/45 disabled:cursor-not-allowed active:scale-95 z-10"
                             >
                               {saving ? (
@@ -547,11 +541,6 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
                 <div className="min-w-0 flex-1">
                   <p className="text-[11px] font-serif text-ink truncate flex items-center gap-1.5">
                     <span>已选择图片</span>
-                    {hasDownstream && (
-                      <span className="text-[9px] font-sans px-1 py-0.5 rounded border border-dashed border-paper-grid text-ink-faint">
-                        输出已连接
-                      </span>
-                    )}
                     <span className="text-ink-faint text-[10px]">
                       {selectedImage?.sourceLabel ? `· ${selectedImage.sourceLabel}` : selectedImage?.source ? `· ${selectedImage.source}` : ''}
                     </span>
@@ -566,11 +555,6 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
                           ? selectedImage.description.split(',').slice(0, 2).join(', ')
                           : null;
 
-                      if (hasDownstream) {
-                        return metaText
-                          ? `${metaText}（输出已连接到下游）`
-                          : '输出已连接到下游节点，如需更换请先断开连线';
-                      }
                       return metaText || '可作为图片输出给下游节点';
                     })()}
                   </p>

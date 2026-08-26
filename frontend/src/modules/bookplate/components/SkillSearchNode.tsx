@@ -36,7 +36,6 @@ export interface SkillSearchNodeProps {
   onDrag?: (id: string, x: number, y: number) => void;
   footer?: React.ReactNode;
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
-  hasDownstream?: boolean;
 }
 
 const MAX_ZIP_BYTES = 20 * 1024 * 1024;
@@ -54,7 +53,6 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
   onDrag,
   footer,
   onContextMenu,
-  hasDownstream,
 }) => {
   const [pickerOpen, setPickerOpen] = useState(false);
   /** 检索结果（Bifrost） */
@@ -290,7 +288,6 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
         icon={<Search size={16} strokeWidth={1.5} />}
         tooltip="重新选择技能"
         onClick={openPicker}
-        hasDownstream={hasDownstream}
       />
     </NodeActionBar>
   ) : undefined;

@@ -63,7 +63,6 @@ export interface ArtImageSearchNodeProps {
   onDrag?: (id: string, x: number, y: number) => void;
   footer?: React.ReactNode;
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
-  hasDownstream?: boolean;
 }
 
 /** 前端展示层屏蔽的来源（图片服务器在当前网络不可达，检索结果无法返回图片）：
@@ -126,7 +125,6 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
   onDrag,
   footer,
   onContextMenu,
-  hasDownstream,
 }) => {
   const { showToast } = useFeedback();
 
@@ -302,7 +300,7 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
   };
 
   const handleSelect = async (item: GlamSearchItem) => {
-    if (hasDownstream || savingId) return;
+    if (savingId) return;
     setSavingId(item.id);
     try {
       await onSelectImage?.(id, item.previewUrl, {
@@ -530,12 +528,8 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
                             <button
                               type="button"
                               onClick={() => void handleSelect(item)}
-                              disabled={saving || hasDownstream}
-                              title={
-                                hasDownstream
-                                  ? '有下级节点，不可更换输出（需先断开连线）'
-                                  : '选择此作品作为节点输出'
-                              }
+                              disabled={saving}
+                              title="选择此作品作为节点输出"
                               className="absolute top-1 right-1 w-6 h-6 rounded-full flex items-center justify-center bg-black/45 text-white/90 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity hover:bg-accent disabled:opacity-40 disabled:hover:bg-black/45 disabled:cursor-not-allowed active:scale-95 z-10"
                             >
                               {saving ? (
@@ -598,23 +592,14 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
                 <div className="min-w-0 flex-1">
                   <p className="text-[11px] font-serif text-ink truncate flex items-center gap-1.5">
                     <span>已选择作品</span>
-                    {hasDownstream && (
-                      <span className="text-[9px] font-sans px-1 py-0.5 rounded border border-dashed border-paper-grid text-ink-faint">
-                        输出已连接
-                      </span>
-                    )}
                     {selectedImage?.sourceLabel && (
                       <span className="text-ink-faint text-[10px]">· {selectedImage.sourceLabel}</span>
                     )}
                   </p>
                   <p className="text-[10px] text-ink-faint font-sans truncate" title={selectedImage?.description || selectedImage?.photographer || ''}>
-                    {hasDownstream
-                      ? (selectedImage?.description
-                        ? `${selectedImage.description}（输出已连接到下游）`
-                        : '输出已连接到下游节点，如需更换请先断开连线')
-                      : (selectedImage?.description
-                        ? selectedImage.description
-                        : '可作为图片输出给下游节点')}
+                    {selectedImage?.description
+                      ? selectedImage.description
+                      : '可作为图片输出给下游节点'}
                   </p>
                 </div>
               </>

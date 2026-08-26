@@ -14,7 +14,7 @@ import {
   attachSkillsToLastUser,
   uiToStore,
 } from './chatMessages';
-import { mismatchBadgeOf, hasDownstreamOf, type NodeViewHelpers } from './CanvasNodeViews';
+import { mismatchBadgeOf, type NodeViewHelpers } from './CanvasNodeViews';
 import { mergeAgentFiles } from './workspaceFiles';
 import {
   MAX_CHAT_IMAGES,
@@ -623,33 +623,21 @@ export function PiChatNodeHost({
   const config = h.configOf(node);
   const settings: ChatNodeSettings = node.data?.settings ?? DEFAULT_CHAT_SETTINGS;
 
-  const firstUser = messages.find((m: ChatMessage) => m.role === 'user');
-  const contextBlocks =
-    messages.length > 0 && firstUser
-      ? firstUser.contextBlocks ??
-        (firstUser.context || firstUser.contextImages?.length
-          ? [
-              {
-                id: 'injected_context',
-                title: '注入上下文',
-                text: firstUser.context,
-                images: firstUser.contextImages,
-              },
-            ]
-          : [])
-      : buildInjectedContextBlocks(
-          node,
-          {
-            includeBook: settings.includeBook,
-            includeBookCover: settings.includeBookCover !== false,
-            includeUpstreamText: settings.includeUpstream !== false,
-            includeUpstreamImages: settings.includeUpstreamImages !== false,
-            includeSkills: true,
-          },
-          h.nodes,
-          h.edges,
-          portTypesRef.current
-        );
+  // 上下文块展示：始终实时根据画布连线与配置动态重算，上级重新生成时折叠卡片同步更新。
+  // 仅展示层实时；首轮发送仍按当时快照注入会话（服务端真相源），清空对话后重新注入最新。
+  const contextBlocks = buildInjectedContextBlocks(
+    node,
+    {
+      includeBook: settings.includeBook,
+      includeBookCover: settings.includeBookCover !== false,
+      includeUpstreamText: settings.includeUpstream !== false,
+      includeUpstreamImages: settings.includeUpstreamImages !== false,
+      includeSkills: true,
+    },
+    h.nodes,
+    h.edges,
+    portTypesRef.current
+  );
 
   return (
     <ChatNode
@@ -666,7 +654,6 @@ export function PiChatNodeHost({
       agentSteps={nodeSteps}
       group={config?.group?.trim() || undefined}
       mismatchBadge={mismatchBadgeOf(node, h)}
-      hasDownstream={hasDownstreamOf(node, h.edges)}
       isGenerating={!!node.data?.isGenerating}
       error={node.data?.error ?? null}
       settings={settings}

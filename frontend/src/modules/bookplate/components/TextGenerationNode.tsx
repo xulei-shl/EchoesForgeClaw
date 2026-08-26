@@ -39,7 +39,6 @@ export interface TextGenerationNodeProps {
   onUpdateSettings?: (id: string, settings: NodeRunSettings) => void;
   hasBookInfo?: boolean;
   mismatchBadge?: string | null;
-  hasDownstream?: boolean;
   mode?: 'llm' | 'agent' | 'skill_agent';
   configId?: number | null;
 }
@@ -69,7 +68,6 @@ const TextGenerationNodeInner: React.FC<TextGenerationNodeProps> = ({
   onUpdateSettings,
   hasBookInfo,
   mismatchBadge,
-  hasDownstream,
   mode,
   configId,
 }) => {
@@ -114,7 +112,7 @@ const TextGenerationNodeInner: React.FC<TextGenerationNodeProps> = ({
     if (isEditing) {
       return (
         <NodeActionBar>
-          <NodeActionBar.Save onClick={handleSave} disabled={hasDownstream} />
+          <NodeActionBar.Save onClick={handleSave} />
           <NodeActionBar.Cancel onClick={handleCancel} />
         </NodeActionBar>
       );
@@ -124,13 +122,12 @@ const TextGenerationNodeInner: React.FC<TextGenerationNodeProps> = ({
       return (
         <NodeActionBar>
           {onRun && (
-            <NodeActionBar.Run onClick={() => onRun?.(id)} hasDownstream={hasDownstream} />
+            <NodeActionBar.Run onClick={() => onRun?.(id)} />
           )}
           {onUpdateSettings && settings && (
             <NodeSettingsPopover
               settings={settings}
               onChange={(s) => onUpdateSettings?.(id, s)}
-              disabled={hasDownstream}
               hasBookInfo={hasBookInfo}
               showModelOption
               mode={mode}
@@ -146,12 +143,11 @@ const TextGenerationNodeInner: React.FC<TextGenerationNodeProps> = ({
         {(error || content) && onRetry && (
           <NodeActionBar.Retry
             onClick={() => onRetry?.(id)}
-            hasDownstream={hasDownstream}
             error={!!error}
           />
         )}
         {content && onEditContent && (
-          <NodeActionBar.Edit onClick={() => setIsEditing(true)} hasDownstream={hasDownstream} />
+          <NodeActionBar.Edit onClick={() => setIsEditing(true)} />
         )}
         {content && (
           <NodeActionBar.Copy
@@ -164,7 +160,7 @@ const TextGenerationNodeInner: React.FC<TextGenerationNodeProps> = ({
           <NodeSettingsPopover
             settings={settings}
             onChange={(s) => onUpdateSettings?.(id, s)}
-            disabled={isGenerating || hasDownstream}
+            disabled={isGenerating}
             hasBookInfo={hasBookInfo}
             showModelOption
             mode={mode}

@@ -29,8 +29,6 @@ export interface WeatherNodeProps {
   /** 卡片底部「+」插槽 */
   footer?: React.ReactNode;
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
-  /** 是否有下级节点关联（有下级时禁用影响输出的动作） */
-  hasDownstream?: boolean;
 }
 
 /** 常用城市快捷预设 */
@@ -53,7 +51,6 @@ const WeatherNodeInner: React.FC<WeatherNodeProps> = ({
   onDrag,
   footer,
   onContextMenu,
-  hasDownstream,
 }) => {
   const [cityInput, setCityInput] = useState(city);
 
@@ -93,7 +90,6 @@ const WeatherNodeInner: React.FC<WeatherNodeProps> = ({
           <NodeActionBar.Retry
             onClick={() => handleQuery()}
             error={!!error}
-            hasDownstream={hasDownstream}
             tooltip={error ? '重试查询' : '重新获取天气'}
           />
         )}
@@ -147,8 +143,8 @@ const WeatherNodeInner: React.FC<WeatherNodeProps> = ({
               <button
                 type="button"
                 onClick={() => handleQuery(upstreamCity)}
-                disabled={isGenerating || hasDownstream}
-                title={hasDownstream ? '有下级节点，不可修改输出' : '重新查询此城市天气'}
+                disabled={isGenerating}
+                title="重新查询此城市天气"
                 className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-accent text-paper text-xs font-sans hover:bg-accent-hover active:scale-[0.96] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Search size={12} strokeWidth={2} />
@@ -180,8 +176,8 @@ const WeatherNodeInner: React.FC<WeatherNodeProps> = ({
                 </div>
                 <button
                   type="submit"
-                  disabled={isGenerating || hasDownstream}
-                  title={hasDownstream ? '有下级节点，不可修改输出' : '查询天气'}
+                  disabled={isGenerating}
+                  title="查询天气"
                   className="flex items-center justify-center w-10 h-10 shrink-0 rounded-md bg-accent text-paper hover:bg-accent-hover active:scale-[0.96] transition-all disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 >
                   <Search size={15} strokeWidth={2} />
@@ -197,7 +193,7 @@ const WeatherNodeInner: React.FC<WeatherNodeProps> = ({
                     <button
                       key={c}
                       type="button"
-                      disabled={isGenerating || hasDownstream}
+                      disabled={isGenerating}
                       onClick={() => handleSelectPopularCity(c)}
                       className={`shrink-0 px-2 py-0.5 rounded-full text-[11px] font-sans border transition-all active:scale-[0.96] ${
                         isSelected

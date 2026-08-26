@@ -70,7 +70,6 @@ export interface WebSearchNodeProps {
   onDrag?: (id: string, x: number, y: number) => void;
   footer?: React.ReactNode;
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
-  hasDownstream?: boolean;
 }
 
 const WebSearchNodeInner: React.FC<WebSearchNodeProps> = ({
@@ -78,7 +77,7 @@ const WebSearchNodeInner: React.FC<WebSearchNodeProps> = ({
   upstreamQuery = '', source = 'random',
   tabData = {},
   onFetch, onUpdateEditor, onRemove, onPositionChange, onSizeChange, onDrag,
-  footer, onContextMenu, hasDownstream,
+  footer, onContextMenu,
 }) => {
   const { showToast } = useFeedback();
   const [queryInput, setQueryInput] = useState('');
@@ -93,7 +92,7 @@ const WebSearchNodeInner: React.FC<WebSearchNodeProps> = ({
 
   const hasUpstream = upstreamQuery.trim().length > 0;
   const effectiveQuery = hasUpstream ? upstreamQuery.trim() : queryInput.trim();
-  const canSubmit = effectiveQuery.length > 0 && !currentTab.isGenerating && !hasDownstream;
+  const canSubmit = effectiveQuery.length > 0 && !currentTab.isGenerating;
 
   /** 切换检索源：同步将目标 Tab 缓存的数据推送至 node.data，使下游节点实时联动 */
   const handleSourceChange = (src: WebSearchSource) => {
@@ -109,9 +108,9 @@ const WebSearchNodeInner: React.FC<WebSearchNodeProps> = ({
   };
 
   const handleSearch = useCallback(() => {
-    if (currentTab.isGenerating || hasDownstream || !effectiveQuery) return;
+    if (currentTab.isGenerating || !effectiveQuery) return;
     onFetch?.(id, { query: effectiveQuery, count: currentTab.count ?? 5, source: activeSource });
-  }, [activeSource, currentTab.count, currentTab.isGenerating, effectiveQuery, hasDownstream, id, onFetch]);
+  }, [activeSource, currentTab.count, currentTab.isGenerating, effectiveQuery, id, onFetch]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -120,7 +119,7 @@ const WebSearchNodeInner: React.FC<WebSearchNodeProps> = ({
 
   /** 清空当前 Tab 结果，并同步清空对外输出 */
   const handleClearCurrent = () => {
-    if (hasDownstream || currentTab.isGenerating) return;
+    if (currentTab.isGenerating) return;
     const nextTab = { ...TAB_INITIAL, count: currentTab.count ?? 5 };
     const nextTabData = { ...tabData, [activeSource]: nextTab };
     onUpdateEditor?.(id, {
@@ -141,9 +140,7 @@ const WebSearchNodeInner: React.FC<WebSearchNodeProps> = ({
           <NodeActionBar.Retry
             onClick={handleSearch}
             error={hasError}
-            hasDownstream={hasDownstream}
             tooltip={hasError ? '重试检索' : '重新检索'}
-            downstreamTooltip="有下级节点，不可重新检索"
           />
         )}
         {hasOutput && (
@@ -157,9 +154,7 @@ const WebSearchNodeInner: React.FC<WebSearchNodeProps> = ({
           <NodeActionBar.Eraser
             onClick={handleClearCurrent}
             disabled={currentTab.isGenerating}
-            hasDownstream={hasDownstream}
             tooltip="清空当前结果"
-            downstreamTooltip="有下级节点，不可清空"
           />
         )}
       </NodeActionBar>
@@ -213,7 +208,7 @@ const WebSearchNodeInner: React.FC<WebSearchNodeProps> = ({
                 type="button"
                 onClick={handleSearch}
                 disabled={!canSubmit}
-                title={hasDownstream ? '有下级节点，不可修改输出' : '以连线内容检索'}
+                title="以连线内容检索"
                 className="flex items-center justify-center gap-1 px-2.5 h-7 rounded-md bg-accent text-paper text-xs font-sans hover:bg-accent-hover active:scale-[0.96] transition-transform disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
               >
                 {currentTab.isGenerating ? (
@@ -260,7 +255,7 @@ const WebSearchNodeInner: React.FC<WebSearchNodeProps> = ({
             <button
               type="submit"
               disabled={!canSubmit}
-              title={hasDownstream ? '有下级节点，不可修改输出' : '点击或按 Enter 检索'}
+              title="点击或按 Enter 检索"
               className="flex items-center justify-center gap-1 px-2.5 h-8 shrink-0 rounded-lg bg-accent text-paper text-xs font-sans hover:bg-accent-hover active:scale-[0.96] transition-transform disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
             >
               {currentTab.isGenerating ? (

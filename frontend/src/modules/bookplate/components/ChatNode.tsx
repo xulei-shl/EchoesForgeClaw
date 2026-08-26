@@ -576,8 +576,6 @@ export interface ChatNodeProps {
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
   /** 所属自定义分组（配置了分组时在标题旁展示小标签） */
   group?: string;
-  /** 是否有下级节点关联 */
-  hasDownstream?: boolean;
   /** 标题旁的类型不匹配提示 */
   mismatchBadge?: string | null;
   /** 节点执行模式：LLM 模式下展示「模型」下拉（Agent 模式由 Agent 侧决定模型，不展示） */
@@ -620,7 +618,6 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
   onContextMenu,
   group,
   mismatchBadge,
-  hasDownstream,
   mode,
   configId,
   workspaceFiles,
@@ -818,7 +815,6 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
           <NodeActionBar.Eraser
             onClick={() => onClearChat?.(id)}
             disabled={isGenerating}
-            hasDownstream={hasDownstream}
           />
         )}
       </NodeActionBar>

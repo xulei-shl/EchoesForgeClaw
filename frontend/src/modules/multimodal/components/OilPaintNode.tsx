@@ -40,7 +40,6 @@ export interface OilPaintNodeProps {
   onDrag?: (id: string, x: number, y: number) => void;
   footer?: React.ReactNode;
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
-  hasDownstream?: boolean;
   mismatchBadge?: string | null;
   /** 状态更新写入 node.data */
   onUpdateState?: (id: string, patch: Partial<OilPaintState>) => void;
@@ -68,7 +67,6 @@ const OilPaintNodeInner: React.FC<OilPaintNodeProps> = ({
   onDrag,
   footer,
   onContextMenu,
-  hasDownstream,
   mismatchBadge,
   onUpdateState,
   onExport,
@@ -333,26 +331,20 @@ const OilPaintNodeInner: React.FC<OilPaintNodeProps> = ({
               <NodeActionBar.Retry
                 onClick={() => setIsEditing(true)}
                 disabled={isExporting}
-                hasDownstream={hasDownstream}
-                downstreamTooltip="有下级节点，不可重新调整"
                 tooltip="重新调整参数"
               />
               <NodeActionBar.Custom
                 icon={<Upload size={16} strokeWidth={1.5} />}
                 tooltip="上传/替换本地图片"
-                downstreamTooltip="有下级节点，不可更换图片"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isExporting}
-                hasDownstream={hasDownstream}
               />
               {data?.uploadedImage && (
                 <NodeActionBar.Custom
                   icon={<Trash2 size={16} strokeWidth={1.5} className="text-error/80 hover:text-error" />}
                   tooltip="恢复上级继承图片（清空本地上传）"
-                  downstreamTooltip="有下级节点，不可清空图片"
                   onClick={handleClearUpload}
                   disabled={isExporting}
-                  hasDownstream={hasDownstream}
                 />
               )}
               {/* 独立保存到数据库按钮 */}
@@ -360,8 +352,6 @@ const OilPaintNodeInner: React.FC<OilPaintNodeProps> = ({
                 icon={<Check size={16} strokeWidth={1.5} className={isSaved ? 'text-accent' : ''} />}
                 onClick={handleSaveToDatabase}
                 disabled={isExporting || isSaved}
-                hasDownstream={hasDownstream}
-                downstreamTooltip="有下级节点，不可保存"
                 tooltip={isSaved ? '已保存到数据库' : '保存到数据库（保存后可公开/收藏）'}
                 className={isSaved ? 'text-accent opacity-70' : 'text-ink-light hover:text-accent'}
               />
@@ -416,8 +406,6 @@ const OilPaintNodeInner: React.FC<OilPaintNodeProps> = ({
               <NodeActionBar.Reset
                 onClick={() => patchParam({ imageUrl: null, isSaved: false })}
                 disabled={isExporting}
-                hasDownstream={hasDownstream}
-                downstreamTooltip="有下级节点，不可重置"
                 tooltip="清空结果回到参数编辑态"
               />
             </>
@@ -432,27 +420,21 @@ const OilPaintNodeInner: React.FC<OilPaintNodeProps> = ({
                   )
                 }
                 tooltip="生成湿油彩效果"
-                downstreamTooltip="有下级节点，不可生成"
                 onClick={handleGenerate}
                 disabled={!activeImageSrc || isGenerating}
-                hasDownstream={hasDownstream}
               />
               <NodeActionBar.Custom
                 icon={<Upload size={16} strokeWidth={1.5} />}
                 tooltip="上传/替换本地图片"
-                downstreamTooltip="有下级节点，不可更换图片"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isGenerating}
-                hasDownstream={hasDownstream}
               />
               {data?.uploadedImage && (
                 <NodeActionBar.Custom
                   icon={<Trash2 size={16} strokeWidth={1.5} className="text-error/80 hover:text-error" />}
                   tooltip="恢复上级继承图片（清空本地上传）"
-                  downstreamTooltip="有下级节点，不可清空图片"
                   onClick={handleClearUpload}
                   disabled={isGenerating}
-                  hasDownstream={hasDownstream}
                 />
               )}
             </>
@@ -485,7 +467,7 @@ const OilPaintNodeInner: React.FC<OilPaintNodeProps> = ({
                 max={2.5}
                 step={0.1}
                 display={`${strokeSize.toFixed(1)}x`}
-                disabled={hasDownstream || isGenerating}
+                disabled={isGenerating}
                 onChange={(v) => patchParam({ strokeSize: v })}
               />
               <SliderRow
@@ -495,7 +477,7 @@ const OilPaintNodeInner: React.FC<OilPaintNodeProps> = ({
                 max={24}
                 step={1}
                 display={`${strokeCountK}k`}
-                disabled={hasDownstream || isGenerating}
+                disabled={isGenerating}
                 onChange={(v) => patchParam({ strokeCountK: v })}
               />
             </div>
@@ -507,7 +489,7 @@ const OilPaintNodeInner: React.FC<OilPaintNodeProps> = ({
                 max={1}
                 step={0.05}
                 display={`${Math.round(dryness * 100)}%`}
-                disabled={hasDownstream || isGenerating}
+                disabled={isGenerating}
                 onChange={(v) => patchParam({ dryness: v })}
               />
               <div className="flex items-center gap-1 shrink-0" role="radiogroup" aria-label="湿油彩风格">
@@ -519,7 +501,7 @@ const OilPaintNodeInner: React.FC<OilPaintNodeProps> = ({
                     role="radio"
                     aria-checked={style === s}
                     onClick={() => patchParam({ style: s })}
-                    disabled={hasDownstream || isGenerating}
+                    disabled={isGenerating}
                     className={`px-2 py-0.5 rounded text-xs transition-colors duration-150 active:scale-[0.96] ${
                       style === s
                         ? 'bg-accent/15 text-accent font-medium'
@@ -596,16 +578,14 @@ const OilPaintNodeInner: React.FC<OilPaintNodeProps> = ({
                       alt="湿油彩效果预览"
                       className="max-w-full max-h-[440px] object-contain drop-shadow-md select-none pointer-events-none rounded"
                     />
-                    {!hasDownstream && (
-                      <button
-                        type="button"
-                        onClick={() => setIsEditing(true)}
-                        className="absolute bottom-3 right-3 px-2.5 py-1.5 rounded-full bg-paper/90 backdrop-blur text-ink text-xs shadow-md border border-paper-grid/40 hover:bg-white hover:text-accent active:scale-[0.96] transition-[opacity,transform,background-color,color] flex items-center gap-1.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent duration-150"
-                      >
-                        <Pencil size={12} strokeWidth={1.5} />
-                        <span>调整参数</span>
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => setIsEditing(true)}
+                      className="absolute bottom-3 right-3 px-2.5 py-1.5 rounded-full bg-paper/90 backdrop-blur text-ink text-xs shadow-md border border-paper-grid/40 hover:bg-white hover:text-accent active:scale-[0.96] transition-[opacity,transform,background-color,color] flex items-center gap-1.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent duration-150"
+                    >
+                      <Pencil size={12} strokeWidth={1.5} />
+                      <span>调整参数</span>
+                    </button>
                   </div>
                 ) : (
                   <div className="text-xs text-ink-faint">暂无湿油彩生成结果</div>

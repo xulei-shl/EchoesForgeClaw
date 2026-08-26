@@ -84,7 +84,6 @@ export interface JournalMakerNodeProps {
   onDrag?: (id: string, x: number, y: number) => void;
   footer?: React.ReactNode;
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
-  hasDownstream?: boolean;
   mismatchBadge?: string | null;
   /** 状态更新写入 node.data（undoable=true 记撤销历史，用于用户排版动作） */
   onUpdateState?: (
@@ -142,7 +141,6 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
   onDrag,
   footer,
   onContextMenu,
-  hasDownstream,
   mismatchBadge,
   onUpdateState,
   onExport,
@@ -337,7 +335,6 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
 
   // 添加文字素材（默认手写体、墨色、横向排版）
   const handleAddText = () => {
-    if (hasDownstream) return;
     const maxZ = items.reduce((m, it) => Math.max(m, it.z), -1);
     const textItems = items.filter((it) => it.kind === 'text');
     const newItem: JournalMakerItem = {
@@ -398,7 +395,6 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
 
   // 删除单个拼贴项：上传图彻底移除；上级/封面来源记入 dismissedSources 防自动回填
   const deleteItem = (item: JournalMakerItem) => {
-    if (hasDownstream) return;
     const nextItems = items.filter((it) => it.id !== item.id);
     setItems(nextItems);
     setSelectedId(null);
@@ -419,7 +415,6 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
 
   // 图层操作：上移/下移一层，置顶/置底（z 重排为连续序）
   const bumpLayer = (itemId: string, mode: 'up' | 'down' | 'top' | 'bottom') => {
-    if (hasDownstream) return;
     const sorted = [...items].sort((a, b) => a.z - b.z);
     const idx = sorted.findIndex((it) => it.id === itemId);
     if (idx < 0) return;
@@ -438,7 +433,6 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
 
   // 旋转操作：顺时针/逆时针步进 90 度并自动对齐摆正
   const rotateStepItem = (itemId: string, direction: 'cw' | 'ccw') => {
-    if (hasDownstream) return;
     const nextItems = items.map((it) => {
       if (it.id !== itemId) return it;
       const nextAngle = direction === 'cw' ? snapRotateCw(it.angle) : snapRotateCcw(it.angle);
@@ -450,7 +444,7 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
 
   // 随机布局：位置/大小/旋转/z 序全量重排
   const handleRandomize = () => {
-    if (items.length === 0 || hasDownstream) return;
+    if (items.length === 0) return;
     const nextItems = randomizeLayout(items);
     setItems(nextItems);
     commit({ items: nextItems }, true);
@@ -463,7 +457,7 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
     item: JournalMakerItem,
     mode: GestureMode
   ) => {
-    if (hasDownstream || e.button !== 0) return;
+    if (e.button !== 0) return;
     e.stopPropagation();
     e.preventDefault();
     onSelect?.(id);
@@ -718,7 +712,6 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
           <Tooltip key={mode} content={tip}>
             <button
               type="button"
-              disabled={hasDownstream}
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
@@ -734,7 +727,6 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
         <Tooltip content="逆时针旋转 90° (摆正)">
           <button
             type="button"
-            disabled={hasDownstream}
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
@@ -748,7 +740,6 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
         <Tooltip content="顺时针旋转 90° (摆正)">
           <button
             type="button"
-            disabled={hasDownstream}
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
@@ -763,7 +754,6 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
         <Tooltip content="移除该素材">
           <button
             type="button"
-            disabled={hasDownstream}
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
@@ -807,8 +797,6 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
               <NodeActionBar.Retry
                 onClick={() => setIsEditing(true)}
                 disabled={busy}
-                hasDownstream={hasDownstream}
-                downstreamTooltip="有下级节点，不可重新调整"
                 tooltip="返回编辑模式"
                 aria-label="返回编辑模式"
               />
@@ -816,37 +804,29 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                 icon={<Upload size={16} strokeWidth={1.5} />}
                 tooltip="添加图片（可多选）"
                 aria-label="添加图片（可多选）"
-                downstreamTooltip="有下级节点，不可更换图片"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={busy}
-                hasDownstream={hasDownstream}
               />
               <NodeActionBar.Custom
                 icon={<Type size={16} strokeWidth={1.5} />}
                 tooltip="添加文字（手写字体）"
                 aria-label="添加文字"
-                downstreamTooltip="有下级节点，不可添加文字"
                 onClick={handleAddText}
                 disabled={busy}
-                hasDownstream={hasDownstream}
               />
               {uploadedImages.length > 0 && (
                 <NodeActionBar.Custom
                   icon={<Trash2 size={16} strokeWidth={1.5} className="text-error/80 hover:text-error" />}
                   tooltip="清空本地上传素材"
                   aria-label="清空本地上传素材"
-                  downstreamTooltip="有下级节点，不可清空图片"
                   onClick={handleClearUploads}
                   disabled={busy}
-                  hasDownstream={hasDownstream}
                 />
               )}
               <NodeActionBar.Custom
                 icon={<Check size={16} strokeWidth={isSaved ? 2.5 : 1.5} className={isSaved ? 'text-accent' : ''} />}
                 onClick={handleSaveToDatabase}
                 disabled={busy || isSaved}
-                hasDownstream={hasDownstream}
-                downstreamTooltip="有下级节点，不可保存"
                 tooltip={isSaved ? '已保存到数据库' : '保存到数据库（保存后可公开/收藏）'}
                 aria-label={isSaved ? '已保存到数据库' : '保存到数据库'}
                 className={isSaved ? 'text-accent opacity-70' : 'text-ink-light hover:text-accent'}
@@ -888,8 +868,6 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
               <NodeActionBar.Reset
                 onClick={handleReset}
                 disabled={busy}
-                hasDownstream={hasDownstream}
-                downstreamTooltip="有下级节点，不可重置"
                 tooltip="重置素材与结果"
                 aria-label="重置素材与结果"
               />
@@ -906,54 +884,42 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                 }
                 tooltip="生成手账"
                 aria-label="生成手账"
-                downstreamTooltip="有下级节点，不可生成"
                 onClick={handleGenerate}
                 disabled={items.length === 0 || busy}
-                hasDownstream={hasDownstream}
               />
               <NodeActionBar.Custom
                 icon={<Shuffle size={16} strokeWidth={1.5} />}
                 tooltip="随机布局（位置/大小/旋转/图层全量重排）"
                 aria-label="随机布局"
-                downstreamTooltip="有下级节点，不可调整"
                 onClick={handleRandomize}
                 disabled={items.length === 0 || busy}
-                hasDownstream={hasDownstream}
               />
               <NodeActionBar.Custom
                 icon={<Type size={16} strokeWidth={1.5} />}
                 tooltip="添加文字（手写字体）"
                 aria-label="添加文字"
-                downstreamTooltip="有下级节点，不可添加文字"
                 onClick={handleAddText}
                 disabled={busy}
-                hasDownstream={hasDownstream}
               />
               <NodeActionBar.Custom
                 icon={<Upload size={16} strokeWidth={1.5} />}
                 tooltip="添加图片（可多选）"
                 aria-label="添加图片（可多选）"
-                downstreamTooltip="有下级节点，不可更换图片"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={busy}
-                hasDownstream={hasDownstream}
               />
               {uploadedImages.length > 0 && (
                 <NodeActionBar.Custom
                   icon={<Trash2 size={16} strokeWidth={1.5} className="text-error/80 hover:text-error" />}
                   tooltip="清空本地上传素材"
                   aria-label="清空本地上传素材"
-                  downstreamTooltip="有下级节点，不可清空图片"
                   onClick={handleClearUploads}
                   disabled={busy}
-                  hasDownstream={hasDownstream}
                 />
               )}
               <NodeActionBar.Reset
                 onClick={handleReset}
                 disabled={busy}
-                hasDownstream={hasDownstream}
-                downstreamTooltip="有下级节点，不可重置"
                 tooltip="重置素材与参数"
                 aria-label="重置素材与参数"
               />
@@ -992,7 +958,6 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                     setRemoveBackground(next);
                     updateParam({ removeBackground: next });
                   }}
-                  disabled={hasDownstream}
                   className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.96] shrink-0 ${
                     removeBackground
                       ? 'bg-accent/15 text-accent font-medium'
@@ -1016,7 +981,6 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                           setPageSize(p.id);
                           updateParam({ pageSize: p.id });
                         }}
-                        disabled={hasDownstream}
                         className={`flex-1 px-1.5 py-0.5 rounded border text-[11px] transition-[background-color,border-color,color,transform] duration-150 ease-out active:scale-[0.96] ${
                           pageSize === p.id
                             ? 'bg-accent/15 border-accent/50 text-accent font-medium'
@@ -1043,7 +1007,6 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                       max={100}
                       step={5}
                       value={background.opacity ?? 75}
-                      disabled={hasDownstream}
                       onChange={(nextOpacity) => {
                         const nextBg = updateBackgroundOpacity(background, nextOpacity);
                         setBackground(nextBg);
@@ -1070,7 +1033,6 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                         setBackground(nextBg);
                         updateParam({ background: nextBg });
                       }}
-                      disabled={hasDownstream}
                       style={{ background: journalBackgroundCss(p.bg, false) }}
                       className={`w-4 h-4 rounded-full border transition-[border-color,transform,box-shadow] duration-150 ease-out active:scale-[0.96] ${
                         journalBackgroundKey(background) === journalBackgroundKey(p.bg)
@@ -1089,7 +1051,6 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                     setBackground(nextBg);
                     updateParam({ background: nextBg });
                   }}
-                  disabled={hasDownstream}
                   align="right"
                 >
                   <Tooltip
@@ -1101,7 +1062,6 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                   >
                     <button
                       type="button"
-                      disabled={hasDownstream}
                       style={{
                         background: background.tintHex
                           ? `radial-gradient(circle, ${background.tintHex} 40%, rgba(255,255,255,0.8) 100%)`
@@ -1194,11 +1154,10 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                       )}
 
                       {/* 选中文本时的悬浮微交互工具栏（字体、颜色、横竖排、字号、图层与删除） */}
-                      {selectedItem && selectedItem.kind === 'text' && !hasDownstream && (
+                      {selectedItem && selectedItem.kind === 'text' && (
                         <div className="absolute top-2 left-1/2 -translate-x-1/2 z-40 max-w-[94%] pointer-events-auto">
                           <JournalTextToolbar
                             item={selectedItem}
-                            disabled={hasDownstream}
                             onUpdate={(patch) => handleUpdateItem(selectedItem.id, patch)}
                             onOpenEdit={() => {
                               setEditingTextId(selectedItem.id);
@@ -1225,7 +1184,6 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                               selected={selected}
                               isGesturing={isGesturingThis}
                               stageWidth={stageSize.w}
-                              disabled={hasDownstream}
                               onSelect={() => {
                                 onSelect?.(id);
                                 setSelectedId(item.id);

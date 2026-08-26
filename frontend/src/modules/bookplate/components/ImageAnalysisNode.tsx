@@ -60,7 +60,6 @@ export interface ImageAnalysisNodeProps {
   showBookCoverOption?: boolean;
   /** 标题旁的类型不匹配提示 */
   mismatchBadge?: string | null;
-  hasDownstream?: boolean;
   /** 节点执行模式：仅 LLM 模式展示「模型」下拉（Agent 模式由 Agent 侧决定模型） */
   mode?: 'llm' | 'agent' | 'skill_agent';
   /** 绑定的节点配置 id（拉取服务商模型列表用） */
@@ -91,7 +90,6 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
   hasBookInfo,
   showBookCoverOption,
   mismatchBadge,
-  hasDownstream,
   mode,
   configId,
 }) => {
@@ -140,7 +138,6 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
           <NodeActionBar.Retry
             onClick={() => onRun?.(id)}
             error={!!error}
-            hasDownstream={hasDownstream}
             icon={error || analysis ? <RefreshCw size={16} strokeWidth={1.5} /> : <Play size={16} strokeWidth={1.5} />}
             tooltip={error ? '重试' : analysis ? '重新生成' : '运行分析'}
           />
@@ -156,7 +153,6 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
           <NodeSettingsPopover
             settings={settings}
             onChange={(s) => onUpdateSettings?.(id, s)}
-            hasDownstream={hasDownstream}
             hasBookInfo={hasBookInfo}
             showModelOption
             showBookCoverOption={showBookCoverOption}

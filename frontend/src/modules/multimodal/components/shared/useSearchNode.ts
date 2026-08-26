@@ -11,7 +11,7 @@ export function useSearchNode(initialQuery = '') {
 
   const effectiveQuery = (upstreamKeyword: string) => upstreamKeyword || query.trim();
 
-  const isLocked = (hasDownstream: boolean, imageUrl: string | null) => hasDownstream && !!imageUrl;
+  const isLocked = (imageUrl: string | null | undefined) => !!imageUrl;
 
   return {
     query, setQuery,

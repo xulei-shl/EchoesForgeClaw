@@ -98,7 +98,6 @@ export interface TextTranslationNodeProps {
   onDrag?: (id: string, x: number, y: number) => void;
   footer?: React.ReactNode;
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
-  hasDownstream?: boolean;
 }
 
 const TextTranslationNodeInner: React.FC<TextTranslationNodeProps> = ({
@@ -106,7 +105,7 @@ const TextTranslationNodeInner: React.FC<TextTranslationNodeProps> = ({
   upstreamText = '', inputText: inputTextProp = '', from = 'auto', to = 'en', source = 'random',
   tabData = {},
   onFetch, onUpdateEditor, onRemove, onPositionChange, onSizeChange, onDrag,
-  footer, onContextMenu, hasDownstream,
+  footer, onContextMenu,
 }) => {
   const [fromLan, setFromLan] = useState(from);
   const [toLan, setToLan] = useState(to);
@@ -142,10 +141,10 @@ const TextTranslationNodeInner: React.FC<TextTranslationNodeProps> = ({
   };
 
   const handleTranslate = useCallback(() => {
-    if (currentTab.isGenerating || hasDownstream || !effectiveText) return;
+    if (currentTab.isGenerating || !effectiveText) return;
     if (inputText !== inputTextProp) onUpdateEditor?.(id, { inputText });
     onFetch?.(id, { text: effectiveText, from: fromLan, to: toLan, source: activeSource });
-  }, [activeSource, currentTab.isGenerating, effectiveText, fromLan, hasDownstream, id, onFetch, toLan, inputText, inputTextProp, onUpdateEditor]);
+  }, [activeSource, currentTab.isGenerating, effectiveText, fromLan, id, onFetch, toLan, inputText, inputTextProp, onUpdateEditor]);
 
   /** 清空输入框（同步持久化） */
   const handleClearInput = () => {
@@ -168,7 +167,7 @@ const TextTranslationNodeInner: React.FC<TextTranslationNodeProps> = ({
   };
 
   const handleClearCurrent = () => {
-    if (hasDownstream || currentTab.isGenerating) return;
+    if (currentTab.isGenerating) return;
     const nextTab = { ...TAB_INITIAL };
     const nextTabData = { ...tabData, [activeSource]: nextTab };
     onUpdateEditor?.(id, {
@@ -187,7 +186,6 @@ const TextTranslationNodeInner: React.FC<TextTranslationNodeProps> = ({
           <NodeActionBar.Run
             onClick={handleTranslate}
             disabled={!effectiveText}
-            hasDownstream={hasDownstream}
             tooltip={effectiveText ? '翻译 (Ctrl+Enter)' : '请输入或连线上级节点获取待翻译文本'}
           />
         </NodeActionBar>
@@ -199,7 +197,6 @@ const TextTranslationNodeInner: React.FC<TextTranslationNodeProps> = ({
         <NodeActionBar.Retry
           onClick={handleTranslate}
           error={!!currentTab.error}
-          hasDownstream={hasDownstream}
           tooltip={currentTab.error ? '重试翻译' : '重新翻译'}
         />
         {currentTab.output.trim() && (
@@ -209,12 +206,10 @@ const TextTranslationNodeInner: React.FC<TextTranslationNodeProps> = ({
               tooltip="复制翻译结果"
               toastMessage="翻译结果已复制到剪贴板"
             />
-            {!hasDownstream && (
-              <NodeActionBar.Eraser
-                onClick={handleClearCurrent}
-                tooltip="清空翻译结果"
-              />
-            )}
+            <NodeActionBar.Eraser
+              onClick={handleClearCurrent}
+              tooltip="清空翻译结果"
+            />
           </>
         )}
       </NodeActionBar>

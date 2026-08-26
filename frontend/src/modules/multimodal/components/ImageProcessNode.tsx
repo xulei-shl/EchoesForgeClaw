@@ -64,7 +64,6 @@ export interface ImageProcessNodeProps {
   onDrag?: (id: string, x: number, y: number) => void;
   footer?: React.ReactNode;
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
-  hasDownstream?: boolean;
   mismatchBadge?: string | null;
   /** 状态更新写入 node.data */
   onUpdateState?: (id: string, patch: Partial<ImageProcessState>) => void;
@@ -97,7 +96,6 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
   onDrag,
   footer,
   onContextMenu,
-  hasDownstream,
   mismatchBadge,
   onUpdateState,
   onExport,
@@ -366,26 +364,20 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
               <NodeActionBar.Retry
                 onClick={() => setIsEditing(true)}
                 disabled={isExporting}
-                hasDownstream={hasDownstream}
-                downstreamTooltip="有下级节点，不可重新调整"
                 tooltip="重新调整参数"
               />
               <NodeActionBar.Custom
                 icon={<Upload size={16} strokeWidth={1.5} />}
                 tooltip="上传/替换本地图片"
-                downstreamTooltip="有下级节点，不可更换图片"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isExporting}
-                hasDownstream={hasDownstream}
               />
               {data?.uploadedImage && (
                 <NodeActionBar.Custom
                   icon={<Trash2 size={16} strokeWidth={1.5} className="text-error/80 hover:text-error" />}
                   tooltip="恢复上级继承图片（清空本地上传）"
-                  downstreamTooltip="有下级节点，不可清空图片"
                   onClick={handleClearUpload}
                   disabled={isExporting}
-                  hasDownstream={hasDownstream}
                 />
               )}
               {/* 独立保存到数据库按钮 */}
@@ -393,8 +385,6 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
                 icon={<Check size={16} strokeWidth={1.5} className={isSaved ? 'text-accent' : ''} />}
                 onClick={handleSaveToDatabase}
                 disabled={isExporting || isSaved}
-                hasDownstream={hasDownstream}
-                downstreamTooltip="有下级节点，不可保存"
                 tooltip={isSaved ? '已保存到数据库' : '保存到数据库（保存后可公开/收藏）'}
                 className={isSaved ? 'text-accent opacity-70' : 'text-ink-light hover:text-accent'}
               />
@@ -449,8 +439,6 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
               <NodeActionBar.Reset
                 onClick={() => patchState({ imageUrl: null, isSaved: false })}
                 disabled={isExporting}
-                hasDownstream={hasDownstream}
-                downstreamTooltip="有下级节点，不可重置"
                 tooltip="清空结果回到参数编辑态"
               />
             </>
@@ -465,27 +453,21 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
                   )
                 }
                 tooltip={`生成${effect.name}效果`}
-                downstreamTooltip="有下级节点，不可生成"
                 onClick={handleGenerate}
                 disabled={!activeImageSrc || isGenerating}
-                hasDownstream={hasDownstream}
               />
               <NodeActionBar.Custom
                 icon={<Upload size={16} strokeWidth={1.5} />}
                 tooltip="上传/替换本地图片"
-                downstreamTooltip="有下级节点，不可更换图片"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isGenerating}
-                hasDownstream={hasDownstream}
               />
               {data?.uploadedImage && (
                 <NodeActionBar.Custom
                   icon={<Trash2 size={16} strokeWidth={1.5} className="text-error/80 hover:text-error" />}
                   tooltip="恢复上级继承图片（清空本地上传）"
-                  downstreamTooltip="有下级节点，不可清空图片"
                   onClick={handleClearUpload}
                   disabled={isGenerating}
-                  hasDownstream={hasDownstream}
                 />
               )}
             </>
@@ -514,7 +496,7 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
                 <Select
                   size="sm"
                   value={effect.id}
-                  disabled={hasDownstream || isGenerating}
+                  disabled={isGenerating}
                   onChange={handleEffectChange}
                   options={effectOptions}
                   className="w-28 shrink-0 text-xs"
@@ -556,7 +538,7 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
                           <Select
                             size="sm"
                             value={String(params[def.key] ?? def.default)}
-                            disabled={hasDownstream || isGenerating}
+                            disabled={isGenerating}
                             onChange={(val) => setParam(def.key, val)}
                             options={def.options}
                             className="flex-1 min-w-0 text-xs"
@@ -583,7 +565,7 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
                                     role="radio"
                                     aria-checked={isChecked}
                                     onClick={() => setParam(def.key, opt.value)}
-                                    disabled={hasDownstream || isGenerating}
+                                    disabled={isGenerating}
                                     className={`px-1.5 py-0.5 rounded text-[10px] font-medium leading-none text-center transition-[background-color,color,box-shadow,transform] duration-150 active:scale-[0.96] ${
                                       isChecked
                                         ? 'bg-paper text-accent font-medium shadow-2xs border border-paper-grid/40'
@@ -607,7 +589,7 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
                     <CustomPaletteEditor
                       value={String(params.customPalette ?? '#000000,#ffffff')}
                       onChange={(nextPalette) => setParam('customPalette', nextPalette)}
-                      disabled={hasDownstream || isGenerating}
+                      disabled={isGenerating}
                       imageSrc={activeImageSrc}
                     />
                   )}
@@ -624,7 +606,7 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
                           max={def.max}
                           step={def.step}
                           display={def.display ? def.display(Number(params[def.key])) : String(params[def.key])}
-                          disabled={hasDownstream || isGenerating}
+                          disabled={isGenerating}
                           onChange={(v) => setParam(def.key, v)}
                         />
                       ))}
@@ -705,16 +687,14 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
                         />
                       </PhotoView>
                     </PhotoProvider>
-                    {!hasDownstream && (
-                      <button
-                        type="button"
-                        onClick={() => setIsEditing(true)}
-                        className="absolute bottom-3 right-3 px-2.5 py-1.5 rounded-full bg-paper/90 backdrop-blur text-ink text-xs shadow-md border border-paper-grid/40 hover:bg-white hover:text-accent active:scale-[0.96] transition-[opacity,transform,background-color,color] flex items-center gap-1.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent duration-150"
-                      >
-                        <Pencil size={12} strokeWidth={1.5} />
-                        <span>调整参数</span>
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => setIsEditing(true)}
+                      className="absolute bottom-3 right-3 px-2.5 py-1.5 rounded-full bg-paper/90 backdrop-blur text-ink text-xs shadow-md border border-paper-grid/40 hover:bg-white hover:text-accent active:scale-[0.96] transition-[opacity,transform,background-color,color] flex items-center gap-1.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent duration-150"
+                    >
+                      <Pencil size={12} strokeWidth={1.5} />
+                      <span>调整参数</span>
+                    </button>
                   </div>
                 ) : (
                   <div className="text-xs text-ink-faint">暂无处理结果</div>

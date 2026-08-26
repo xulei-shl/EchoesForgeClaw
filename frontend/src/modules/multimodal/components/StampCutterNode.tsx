@@ -51,7 +51,6 @@ export interface StampCutterNodeProps {
   onDrag?: (id: string, x: number, y: number) => void;
   footer?: React.ReactNode;
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
-  hasDownstream?: boolean;
   mismatchBadge?: string | null;
   /** 状态更新写入 node.data */
   onUpdateState?: (id: string, patch: Partial<StampCutterState>) => void;
@@ -87,7 +86,6 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
   onDrag,
   footer,
   onContextMenu,
-  hasDownstream,
   mismatchBadge,
   onUpdateState,
   onExport,
@@ -458,26 +456,20 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
               <NodeActionBar.Retry
                 onClick={() => setIsEditing(true)}
                 disabled={isExporting}
-                hasDownstream={hasDownstream}
-                downstreamTooltip="有下级节点，不可重新裁剪"
                 tooltip="重新调整选框"
               />
               <NodeActionBar.Custom
                 icon={<Upload size={16} strokeWidth={1.5} />}
                 tooltip="上传/替换本地图片"
-                downstreamTooltip="有下级节点，不可更换图片"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isExporting}
-                hasDownstream={hasDownstream}
               />
               {data?.uploadedImage && (
                 <NodeActionBar.Custom
                   icon={<Trash2 size={16} strokeWidth={1.5} className="text-error/80 hover:text-error" />}
                   tooltip="恢复上级继承图片（清空本地上传）"
-                  downstreamTooltip="有下级节点，不可清空图片"
                   onClick={handleClearUpload}
                   disabled={isExporting}
-                  hasDownstream={hasDownstream}
                 />
               )}
               {/* 独立保存到数据库按钮 */}
@@ -485,8 +477,6 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
                 icon={<Check size={16} strokeWidth={isSaved ? 2.5 : 1.5} className={isSaved ? 'text-accent' : ''} />}
                 onClick={handleSaveToDatabase}
                 disabled={isExporting || isSaved}
-                hasDownstream={hasDownstream}
-                downstreamTooltip="有下级节点，不可保存"
                 tooltip={isSaved ? '已保存到数据库' : '保存到数据库（保存后可公开/收藏）'}
                 className={isSaved ? 'text-accent opacity-70' : 'text-ink-light hover:text-accent'}
               />
@@ -541,8 +531,6 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
               <NodeActionBar.Reset
                 onClick={handleResetCrop}
                 disabled={isExporting}
-                hasDownstream={hasDownstream}
-                downstreamTooltip="有下级节点，不可重置"
                 tooltip="重置为初始选框态"
               />
             </>
@@ -557,34 +545,26 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
                   )
                 }
                 tooltip="截取并生成邮票"
-                downstreamTooltip="有下级节点，不可裁剪"
                 onClick={handleExecuteCrop}
                 disabled={!activeImageSrc || isExporting || isAnimatingCrop}
-                hasDownstream={hasDownstream}
               />
               <NodeActionBar.Custom
                 icon={<Upload size={16} strokeWidth={1.5} />}
                 tooltip="上传/替换本地图片"
-                downstreamTooltip="有下级节点，不可更换图片"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isExporting || isAnimatingCrop}
-                hasDownstream={hasDownstream}
               />
               {data?.uploadedImage && (
                 <NodeActionBar.Custom
                   icon={<Trash2 size={16} strokeWidth={1.5} className="text-error/80 hover:text-error" />}
                   tooltip="恢复上级继承图片（清空本地上传）"
-                  downstreamTooltip="有下级节点，不可清空图片"
                   onClick={handleClearUpload}
                   disabled={isExporting || isAnimatingCrop}
-                  hasDownstream={hasDownstream}
                 />
               )}
               <NodeActionBar.Reset
                 onClick={handleResetCrop}
                 disabled={isExporting || isAnimatingCrop}
-                hasDownstream={hasDownstream}
-                downstreamTooltip="有下级节点，不可重置"
                 tooltip="重置选框位置"
               />
             </>
@@ -612,7 +592,6 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
                   key={r}
                   type="button"
                   onClick={() => handleRatioChange(r)}
-                  disabled={hasDownstream}
                   className={`px-1.5 py-0.5 rounded transition ${
                     aspectRatio === r
                       ? 'bg-accent/15 text-accent font-medium'
@@ -628,7 +607,6 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
               <button
                 type="button"
                 onClick={handleToggleMargin}
-                disabled={hasDownstream}
                 className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition ${
                   withMargin
                     ? 'bg-accent/15 text-accent font-medium'
@@ -777,16 +755,14 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
                     />
 
                     {/* 快捷悬浮重新编辑按钮 */}
-                    {!hasDownstream && (
-                      <button
-                        type="button"
-                        onClick={() => setIsEditing(true)}
-                        className="absolute bottom-3 right-3 px-2.5 py-1 rounded-full bg-paper/90 backdrop-blur text-ink text-xs shadow-md border border-paper-grid/40 hover:bg-white hover:text-accent transition flex items-center gap-1.5 opacity-0 group-hover:opacity-100 duration-150"
-                      >
-                        <Pencil size={12} />
-                        <span>重新裁剪</span>
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => setIsEditing(true)}
+                      className="absolute bottom-3 right-3 px-2.5 py-1 rounded-full bg-paper/90 backdrop-blur text-ink text-xs shadow-md border border-paper-grid/40 hover:bg-white hover:text-accent transition flex items-center gap-1.5 opacity-0 group-hover:opacity-100 duration-150"
+                    >
+                      <Pencil size={12} />
+                      <span>重新裁剪</span>
+                    </button>
                   </div>
                 ) : (
                   <div className="text-xs text-ink-faint">暂无邮票生成结果</div>

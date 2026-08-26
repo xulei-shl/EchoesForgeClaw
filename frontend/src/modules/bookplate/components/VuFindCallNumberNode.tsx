@@ -61,7 +61,6 @@ export interface VuFindCallNumberNodeProps {
   onDrag?: (id: string, x: number, y: number) => void;
   footer?: React.ReactNode;
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
-  hasDownstream?: boolean;
 }
 
 /** VuFind ISBN 检索页 URL 模板（与后端 fetchVuFindRecord 同一模板） */
@@ -91,7 +90,6 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
   onDrag,
   footer,
   onContextMenu,
-  hasDownstream,
 }) => {
   const [isbnInput, setIsbnInput] = useState(isbn);
 
@@ -122,13 +120,13 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
   };
 
   const handleQuery = useCallback(() => {
-    if (isGenerating || hasDownstream) return;
+    if (isGenerating) return;
     const i = isbnInput.trim();
     if (!i) return;
     persistIsbn(isbnInput);
     onFetch?.(id, i);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isbnInput, id, isGenerating, hasDownstream, onFetch, isbn, onUpdateEditor]);
+  }, [isbnInput, id, isGenerating, onFetch, isbn, onUpdateEditor]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -149,9 +147,7 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
           <NodeActionBar.Run
             onClick={handleQuery}
             disabled={!hasIsbn}
-            hasDownstream={hasDownstream}
             tooltip={hasIsbn ? '获取索书号与馆藏' : '输入或连线上级节点获取 ISBN'}
-            downstreamTooltip="有下级节点，不可修改输出"
           />
           {vuFindUrl && (
             <NodeActionBar.ExternalLink href={vuFindUrl} tooltip="在 VuFind 中查看" />
@@ -165,8 +161,6 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
         <NodeActionBar.Retry
           onClick={handleQuery}
           error={!!error}
-          hasDownstream={hasDownstream}
-          downstreamTooltip="有下级节点，不可修改输出"
           tooltip={error ? '重试获取' : '重新获取'}
         />
         {output.trim() && (

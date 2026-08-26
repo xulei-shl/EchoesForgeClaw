@@ -68,7 +68,6 @@ export interface PatternSearchNodeProps {
   onDrag?: (id: string, x: number, y: number) => void;
   footer?: React.ReactNode;
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
-  hasDownstream?: boolean;
 }
 
 const PER_PAGE_RANDOM = 24;
@@ -102,7 +101,6 @@ const PatternSearchNodeInner: React.FC<PatternSearchNodeProps> = ({
   onDrag,
   footer,
   onContextMenu,
-  hasDownstream,
 }) => {
   const { showToast } = useFeedback();
 
@@ -232,8 +230,8 @@ const PatternSearchNodeInner: React.FC<PatternSearchNodeProps> = ({
     void load(activeCategory, effectiveQuery, 'refresh', true);
   };
 
-  /** 仅当已选图且有下游连线时才锁定，未选图时始终允许用户选择 */
-  const isLocked = Boolean(hasDownstream && imageUrl);
+  /** 仅当已选图时才锁定，未选图时始终允许用户选择 */
+  const isLocked = Boolean(imageUrl);
 
   const handleSelect = async (item: PatternItem) => {
     if (isLocked || savingId) return;
@@ -514,11 +512,6 @@ const PatternSearchNodeInner: React.FC<PatternSearchNodeProps> = ({
                         · {selectedPattern.category}
                       </span>
                     )}
-                    {hasDownstream && (
-                      <span className="text-[9px] font-sans px-1 py-0.5 rounded border border-dashed border-paper-grid text-ink-faint">
-                        输出已连接
-                      </span>
-                    )}
                   </p>
                   <p
                     className="text-[10px] text-ink-faint font-sans truncate"
@@ -530,9 +523,6 @@ const PatternSearchNodeInner: React.FC<PatternSearchNodeProps> = ({
                       }
                       if (selectedPattern?.summary) {
                         return selectedPattern.summary;
-                      }
-                      if (hasDownstream) {
-                        return '输出已连接到下游节点，如需更换请先断开连线';
                       }
                       return '已输出纹样图片与详情说明文本';
                     })()}

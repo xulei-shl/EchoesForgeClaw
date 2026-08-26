@@ -74,8 +74,6 @@ export interface ImageNodeProps {
   hasBookInfo?: boolean;
   /** 标题旁的类型不匹配提示 */
   mismatchBadge?: string | null;
-  /** 是否有下级节点关联（有下级时禁用输出影响按钮） */
-  hasDownstream?: boolean;
   /** 节点执行模式：仅 LLM 模式展示「模型」下拉（Agent 模式由 Agent 侧决定模型） */
   mode?: 'llm' | 'agent' | 'skill_agent';
   /** 绑定的节点配置 id（拉取服务商模型列表用） */
@@ -130,7 +128,6 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
   showBookCoverOption = false,
   hasBookInfo,
   mismatchBadge,
-  hasDownstream,
   mode,
   configId,
 }) => {
@@ -208,13 +205,11 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
             <NodeActionBar.Run
               onClick={() => onRun?.(id)}
               disabled={isGenerating}
-              hasDownstream={hasDownstream}
             />
           ) : (
             <NodeActionBar.Retry
               onClick={() => onRetry?.(id)}
               disabled={isGenerating}
-              hasDownstream={hasDownstream}
               error={!!displayError}
             />
           )}
@@ -223,7 +218,6 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
               settings={settings}
               onChange={(s) => onUpdateSettings?.(id, s)}
               disabled={isGenerating}
-              hasDownstream={hasDownstream}
               hasBookInfo={hasBookInfo}
               showImageParams={showImageParams}
               showBookCoverOption={showBookCoverOption}
@@ -243,8 +237,6 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
             }
             onClick={handleSave}
             disabled={!imageUrl || isGenerating || isSaved || isMock || isSaving}
-            hasDownstream={hasDownstream}
-            downstreamTooltip="有下级节点，不可保存"
             tooltip={isSaved ? '已保存到数据库' : '保存到数据库（保存后可公开/收藏）'}
             className={isSaved ? 'text-accent opacity-70' : 'text-ink-light hover:text-accent'}
           />

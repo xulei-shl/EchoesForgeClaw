@@ -72,7 +72,6 @@ export interface BookCardNodeProps {
   onDrag?: (id: string, x: number, y: number) => void;
   footer?: React.ReactNode;
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
-  hasDownstream?: boolean;
   mismatchBadge?: string | null;
   /** 状态更新写入 node.data（持久化） */
   onUpdateState?: (id: string, patch: Partial<BookCardState>) => void;
@@ -102,7 +101,6 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
   onDrag,
   footer,
   onContextMenu,
-  hasDownstream,
   mismatchBadge,
   onUpdateState,
   onExport,
@@ -444,10 +442,8 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
               )
             }
             tooltip="生成并保存卡片（记录到数据库）"
-            downstreamTooltip="有下级节点，不可保存"
             onClick={handleGenerateAndSave}
             disabled={busy}
-            hasDownstream={hasDownstream}
           />
           <NodeActionBar.Custom
             icon={<Heart size={16} strokeWidth={1.5} className={isFavorited ? 'fill-accent text-accent' : ''} />}
@@ -477,7 +473,7 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
             <Select
               size="sm"
               value={templateId}
-              disabled={busy || hasDownstream}
+              disabled={busy}
               onChange={handleTemplateChange}
               options={templateOptions}
               className="w-28 sm:w-32 min-w-[100px]"
@@ -485,7 +481,7 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
             <button
               type="button"
               onClick={handleShuffleDecor}
-              disabled={busy || hasDownstream || (!usingConnectedDecor && !hasDecorImages())}
+              disabled={busy || (!usingConnectedDecor && !hasDecorImages())}
               title={
                 usingConnectedDecor
                   ? '清除装饰图角色分配，恢复图池随机'
@@ -504,26 +500,25 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
           <button
             type="button"
             onClick={() => setIsEditing(true)}
-            disabled={busy || hasDownstream}
-            title={hasDownstream ? '有下级节点，不可编辑元数据' : '编辑卡片元数据（题名、作者、索书号等）'}
+            disabled={busy}
+            title="编辑卡片元数据（题名、作者、索书号等）"
             className="flex items-center gap-1 h-8 px-2 rounded-md border border-dashed border-paper-grid hover:border-accent hover:text-accent text-ink-faint active:scale-[0.96] transition-all text-xs shrink-0 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Pencil size={13} strokeWidth={1.5} />
             <span>编辑</span>
           </button>
 
-          {/* 字段处理选项（行内紧凑放置，受 hasDownstream 控制） */}
+          {/* 字段处理选项（行内紧凑放置） */}
           <div className="flex items-center gap-2.5 text-[11px] text-ink-faint shrink-0">
             <label
               className={`flex items-center gap-1 select-none transition-colors ${
-                busy || hasDownstream ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:text-ink'
+                busy ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:text-ink'
               }`}
-              title={hasDownstream ? '有下级节点，不可修改选项' : undefined}
             >
               <input
                 type="checkbox"
                 checked={fieldOptions.showSubtitle !== false}
-                disabled={busy || hasDownstream}
+                disabled={busy}
                 onChange={(e) => patchFieldOption({ showSubtitle: e.target.checked })}
                 className="accent-accent w-3.5 h-3.5 disabled:cursor-not-allowed"
               />
@@ -531,14 +526,13 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
             </label>
             <label
               className={`flex items-center gap-1 select-none transition-colors ${
-                busy || hasDownstream ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:text-ink'
+                busy ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:text-ink'
               }`}
-              title={hasDownstream ? '有下级节点，不可修改选项' : undefined}
             >
               <input
                 type="checkbox"
                 checked={fieldOptions.firstAuthorOnly === true}
-                disabled={busy || hasDownstream}
+                disabled={busy}
                 onChange={(e) => patchFieldOption({ firstAuthorOnly: e.target.checked })}
                 className="accent-accent w-3.5 h-3.5 disabled:cursor-not-allowed"
               />
@@ -558,7 +552,7 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
               const isCover = coverImageIndex === idx;
               const isDecor = decorImageIndex === idx;
               const hasRole = isCover || isDecor;
-              const roleDisabled = busy || hasDownstream;
+              const roleDisabled = busy;
               return (
                 <div
                   key={idx}
@@ -583,7 +577,7 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
                       type="button"
                       onClick={() => patchState({ coverImageIndex: isCover ? null : idx, imageUrl: null })}
                       disabled={roleDisabled}
-                      title={hasDownstream ? '有下级节点，不可修改角色' : isCover ? '点击取消设为封面' : '设为卡片封面'}
+                      title={isCover ? '点击取消设为封面' : '设为卡片封面'}
                       className={`px-2 py-0.5 rounded text-[10px] font-sans transition-all active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-40 ${
                         isCover
                           ? 'bg-accent text-white font-medium shadow-xs'
@@ -596,7 +590,7 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
                       type="button"
                       onClick={() => patchState({ decorImageIndex: isDecor ? null : idx, imageUrl: null })}
                       disabled={roleDisabled}
-                      title={hasDownstream ? '有下级节点，不可修改角色' : isDecor ? '点击取消设为装饰图' : '设为卡片装饰图'}
+                      title={isDecor ? '点击取消设为装饰图' : '设为卡片装饰图'}
                       className={`px-2 py-0.5 rounded text-[10px] font-sans transition-all active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-40 ${
                         isDecor
                           ? 'bg-accent text-white font-medium shadow-xs'
@@ -613,7 +607,7 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
         )}
 
         {/* 编辑元数据浮层 */}
-        {isEditing && !busy && !hasDownstream && (
+        {isEditing && !busy && (
           <div className="absolute inset-0 z-40 bg-paper/98 backdrop-blur-sm p-3 flex flex-col rounded shadow-2xl border border-paper-grid/60 overflow-hidden select-text">
             <div className="flex items-center justify-between border-b border-paper-grid/40 pb-2 mb-2 shrink-0">
               <span className="text-[12px] font-bold text-ink flex items-center gap-1.5">

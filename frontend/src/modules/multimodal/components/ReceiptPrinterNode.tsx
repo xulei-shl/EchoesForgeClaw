@@ -55,7 +55,6 @@ export interface ReceiptPrinterNodeProps {
   onResizeLive?: (id: string, width: number, height: number) => void;
   footer?: React.ReactNode;
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
-  hasDownstream?: boolean;
   mismatchBadge?: string | null;
   /** 状态更新写入 node.data（持久化） */
   onUpdateState?: (id: string, patch: Partial<ReceiptState>) => void;
@@ -86,7 +85,6 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
   onResizeLive,
   footer,
   onContextMenu,
-  hasDownstream,
   mismatchBadge,
   onUpdateState,
   onExport,
@@ -302,8 +300,6 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
             <NodeActionBar.Retry
               onClick={handleExportAndSave}
               disabled={isExporting}
-              hasDownstream={hasDownstream}
-              downstreamTooltip="有下级节点，不可保存"
               tooltip="重新生成并保存小票（记录到数据库）"
             />
           ) : (
@@ -316,10 +312,8 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
                 )
               }
               tooltip="生成并保存小票（记录到数据库）"
-              downstreamTooltip="有下级节点，不可保存"
               onClick={handleExportAndSave}
               disabled={isExporting}
-              hasDownstream={hasDownstream}
             />
           )}
           <NodeActionBar.Custom
@@ -337,10 +331,8 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
           <NodeActionBar.Custom
             icon={<Sparkles size={16} strokeWidth={1.5} />}
             tooltip={localState.ditherEnabled ? '点阵滤镜（已开启）' : '点阵滤镜（已关闭）'}
-            downstreamTooltip="有下级节点，不可切换点阵滤镜"
             className={localState.ditherEnabled ? 'text-accent bg-accent/10 hover:bg-accent/20' : ''}
             onClick={() => handleChange({ ditherEnabled: !localState.ditherEnabled })}
-            hasDownstream={hasDownstream}
             disabled={isExporting}
           />
           <NodeActionBar.Download
@@ -351,8 +343,6 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
           <NodeActionBar.Reset
             onClick={handleResetToDefault}
             disabled={isExporting}
-            hasDownstream={hasDownstream}
-            downstreamTooltip="有下级节点，不可重置"
             tooltip="重置为当前模板默认内容"
           />
         </NodeActionBar>
@@ -366,7 +356,7 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
           upstreamBookData={upstreamBookData}
           upstreamImageUrl={effectiveUpstreamImageUrl}
           upstreamTextExtra={upstreamTextExtra}
-          disabled={isExporting || hasDownstream}
+          disabled={isExporting}
         />
 
         {/* 主体小票预览与就地编辑区域（已生成 PNG 时右上角浮钮可全屏查看最近一次导出结果） */}
@@ -377,7 +367,7 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
               state={localState}
               onChange={handleChange}
               upstreamImageUrl={effectiveUpstreamImageUrl}
-              disabled={isExporting || hasDownstream}
+              disabled={isExporting}
             />
           </div>
           {hasGeneratedImage && !isExporting && data?.imageUrl && (

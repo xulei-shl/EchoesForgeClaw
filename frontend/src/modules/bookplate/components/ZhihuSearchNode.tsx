@@ -80,8 +80,6 @@ export interface ZhihuSearchNodeProps {
   /** 卡片底部「+」插槽 */
   footer?: React.ReactNode;
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
-  /** 是否有下级节点关联（有下级时禁用影响输出的动作） */
-  hasDownstream?: boolean;
 }
 
 /** 模式页签配置（交互入口：2 类检索一键切换） */
@@ -151,7 +149,6 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
   onDrag,
   footer,
   onContextMenu,
-  hasDownstream,
 }) => {
   const { showToast } = useFeedback();
 
@@ -205,7 +202,7 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
   const hasUpstream = upstreamQuery.trim().length > 0;
   // 生效关键词：连线文本优先，其次手动输入
   const effectiveQuery = hasUpstream ? upstreamQuery.trim() : queryInput.trim();
-  const canSubmit = effectiveQuery.length > 0 && !currentTab.isGenerating && !hasDownstream;
+  const canSubmit = effectiveQuery.length > 0 && !currentTab.isGenerating;
 
   // 任意 Tab 是否正在生成中（用于光晕/动画展示）
   const anyGenerating = Object.values(localTabData).some((t) => t.isGenerating);
@@ -250,7 +247,7 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
   /** 触发检索：提交当前激活 Tab 的请求 */
   const handleQuery = useCallback(
     (targetQuery?: string) => {
-      if (currentTab.isGenerating || hasDownstream) return;
+      if (currentTab.isGenerating) return;
       const q = targetQuery !== undefined ? targetQuery.trim() : effectiveQuery;
       if (!q) return;
 
@@ -274,7 +271,7 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
         model: requestModel,
       });
     },
-    [activeMode, currentTab, effectiveQuery, hasDownstream, id, onFetch]
+    [activeMode, currentTab, effectiveQuery, id, onFetch]
   );
 
   /** 搜索表单提交 */
@@ -293,7 +290,7 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
 
   /** 清空当前 Tab 结果 */
   const handleClearCurrentOutput = () => {
-    if (hasDownstream || currentTab.isGenerating) return;
+    if (currentTab.isGenerating) return;
     setLocalTabData((prev) => {
       const nextTab = { ...prev[activeMode], output: '', error: null };
       const nextMap = { ...prev, [activeMode]: nextTab };
@@ -323,14 +320,12 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
           <NodeActionBar.Retry
             onClick={() => handleQuery()}
             error={hasCurrentError}
-            hasDownstream={hasDownstream}
             tooltip={hasCurrentError ? '重试当前检索' : '重新检索当前 Tab'}
           />
         )}
         {hasCurrentOutput && (
           <NodeActionBar.Eraser
             onClick={handleClearCurrentOutput}
-            hasDownstream={hasDownstream}
             tooltip="清空当前 Tab 结果"
           />
         )}
@@ -442,7 +437,7 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
               type="button"
               onClick={() => handleQuery(upstreamQuery)}
               disabled={!canSubmit}
-              title={hasDownstream ? '有下级节点，不可修改输出' : `以连线内容${isZhida ? '提问' : '检索'}`}
+              title={`以连线内容${isZhida ? '提问' : '检索'}`}
               className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-md bg-accent text-paper text-xs font-sans hover:bg-accent-hover active:scale-[0.96] transition-transform disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
             >
               {isZhida ? <Sparkles size={11} strokeWidth={2} /> : <Search size={11} strokeWidth={2} />}
@@ -513,7 +508,7 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
                     type="button"
                     onClick={() => handleQuery()}
                     disabled={!canSubmit}
-                    title={hasDownstream ? '有下级节点，不可修改输出' : '提问直答 (Ctrl+Enter)'}
+                    title="提问直答 (Ctrl+Enter)"
                     className="shrink-0 flex items-center justify-center gap-1 px-3 h-7 rounded-md bg-accent text-paper text-xs font-sans hover:bg-accent-hover active:scale-[0.96] transition-transform disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
                   >
                     <Sparkles size={11} strokeWidth={2} />
@@ -558,7 +553,7 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
                   <button
                     type="submit"
                     disabled={!canSubmit}
-                    title={hasDownstream ? '有下级节点，不可修改输出' : '回车直接检索'}
+                    title="回车直接检索"
                     className="flex items-center justify-center w-8 h-8 shrink-0 rounded-lg bg-accent text-paper hover:bg-accent-hover active:scale-[0.96] transition-transform disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent shadow-xs"
                   >
                     <Search size={13} strokeWidth={2} />

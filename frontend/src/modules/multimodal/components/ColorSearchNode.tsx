@@ -90,7 +90,6 @@ export interface ColorSearchNodeProps {
   onDrag?: (id: string, x: number, y: number) => void;
   footer?: React.ReactNode;
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
-  hasDownstream?: boolean;
 }
 
 export const DEFAULT_HUE_CATEGORIES = [
@@ -389,7 +388,6 @@ const ColorSearchNodeInner: React.FC<ColorSearchNodeProps> = ({
   onDrag,
   footer,
   onContextMenu,
-  hasDownstream = false,
 }) => {
   const { showToast } = useFeedback();
 
@@ -420,9 +418,6 @@ const ColorSearchNodeInner: React.FC<ColorSearchNodeProps> = ({
 
   /** 生效关键词：连线上级文本优先，其次当前手动输入 */
   const effectiveQuery = upstreamKeyword.trim() || query.trim();
-
-  /** 有下级节点时锁定影响输出的修改操作（符合 NodeActionBar 统一规范） */
-  const isLocked = Boolean(hasDownstream);
 
   // 1. 获取分类列表
   useEffect(() => {
@@ -511,7 +506,6 @@ const ColorSearchNodeInner: React.FC<ColorSearchNodeProps> = ({
   // 3. 生成 5 色调色板
   const generatePalette = useCallback(
     async (anchorId?: string, nextMethod = method, curPalette = palette) => {
-      if (isLocked) return;
       setGeneratorLoading(true);
       try {
         const anchor = anchorId || selectedColor?.id || curPalette[0]?.id || '001';
@@ -548,7 +542,7 @@ const ColorSearchNodeInner: React.FC<ColorSearchNodeProps> = ({
         setGeneratorLoading(false);
       }
     },
-    [id, method, palette, selectedColor, isLocked, onUpdateEditor]
+    [id, method, palette, selectedColor, onUpdateEditor]
   );
 
   // 如果初始没有 palette 且有 selectedColor，自动生成一组
@@ -649,7 +643,7 @@ const ColorSearchNodeInner: React.FC<ColorSearchNodeProps> = ({
 
   // 选中一个颜色/色板为主色并输出
   const handleSelect = async (color: ColorItem, curPalette = palette) => {
-    if (isLocked || savingId) return;
+    if (savingId) return;
     setSavingId(color.id);
     try {
       await onSelectColor?.(id, color, curPalette.length > 0 ? curPalette : undefined);
@@ -669,8 +663,6 @@ const ColorSearchNodeInner: React.FC<ColorSearchNodeProps> = ({
 
   // 调色板中单色快速替换（补全完整 ColorItem 元数据以持续提供 harmonies 搭配圆点）
   const replaceSingleColor = async (index: number, replacement: ColorHarmonyItem) => {
-    if (isLocked) return;
-
     const cid = replacement.id || replacement.name;
     const padId = replacement.id ? String(replacement.id).padStart(3, '0') : '';
 
@@ -963,12 +955,8 @@ const ColorSearchNodeInner: React.FC<ColorSearchNodeProps> = ({
                                   e.stopPropagation();
                                   void handleSelect(color);
                                 }}
-                                disabled={savingId === color.id || isLocked}
-                                title={
-                                  isLocked
-                                    ? '有下级节点，不可更换输出'
-                                    : '选用此传统色作为基准色并输出'
-                                }
+                                disabled={savingId === color.id}
+                                title="选用此传统色作为基准色并输出"
                                 className="absolute top-1 right-1 w-6 h-6 rounded-full flex items-center justify-center bg-black/45 text-white/90 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity hover:bg-accent disabled:opacity-40 disabled:hover:bg-black/45 disabled:cursor-not-allowed active:scale-95 z-10"
                               >
                                 {savingId === color.id ? (
@@ -1021,7 +1009,6 @@ const ColorSearchNodeInner: React.FC<ColorSearchNodeProps> = ({
                     <button
                       key={m.key}
                       type="button"
-                      disabled={isLocked}
                       onClick={() => {
                         setMethod(m.key);
                         void generatePalette(selectedColor?.id, m.key);
@@ -1031,7 +1018,7 @@ const ColorSearchNodeInner: React.FC<ColorSearchNodeProps> = ({
                           ? 'bg-paper text-ink font-bold shadow-xs'
                           : 'text-ink-muted hover:text-ink'
                       } disabled:opacity-40 disabled:cursor-not-allowed`}
-                      title={isLocked ? '有下级节点，不可更换算法' : m.desc}
+                      title={m.desc}
                     >
                       {m.label}
                     </button>
@@ -1042,9 +1029,9 @@ const ColorSearchNodeInner: React.FC<ColorSearchNodeProps> = ({
                   <button
                     type="button"
                     onClick={() => generatePalette(selectedColor?.id, method)}
-                    disabled={generatorLoading || isLocked}
+                    disabled={generatorLoading}
                     className="flex items-center gap-1 px-2.5 py-1 bg-paper border border-paper-grid/60 hover:border-accent/60 text-ink rounded-md text-xs font-serif shadow-xs hover:bg-ink/5 active:scale-[0.96] transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                    title={isLocked ? '有下级节点，不可更换色板' : '换一组搭配'}
+                    title="换一组搭配"
                   >
                     <RefreshCw className={`w-3 h-3 ${generatorLoading ? 'animate-spin' : ''}`} />
                     <span>换一组</span>
@@ -1100,11 +1087,10 @@ const ColorSearchNodeInner: React.FC<ColorSearchNodeProps> = ({
                           <button
                             key={sIdx}
                             type="button"
-                            disabled={isLocked}
                             onClick={() => void replaceSingleColor(index, sug)}
                             className="w-3.5 h-3.5 rounded-full border border-white/60 shadow-xs hover:scale-125 transition-transform disabled:opacity-30 disabled:hover:scale-100 disabled:cursor-not-allowed cursor-pointer"
                             style={{ backgroundColor: sug.hex }}
-                            title={isLocked ? '有下级节点，不可替换单色' : `替换为: ${sug.name} (${sug.hex})`}
+                            title={`替换为: ${sug.name} (${sug.hex})`}
                           />
                         ))}
                       </div>

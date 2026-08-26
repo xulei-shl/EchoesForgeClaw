@@ -41,8 +41,6 @@ export interface NodeSettingsPopoverProps {
   disabled?: boolean;
   /** 画布是否已存在图书元数据节点（无根节点时禁用「包含图书元数据」） */
   hasBookInfo?: boolean;
-  /** 是否有下级节点关联（有下级时禁用设置，避免影响下游输出） */
-  hasDownstream?: boolean;
   /** 是否展示图像参数（尺寸/宽高比）区块：仅图像生成节点传入 */
   showImageParams?: boolean;
   /** 是否展示「加载图书封面图片」开关：仅图像生成节点传入（chat 节点有独立设置弹层） */
@@ -62,7 +60,6 @@ const NodeSettingsPopoverInner: React.FC<NodeSettingsPopoverProps> = ({
   onChange,
   disabled,
   hasBookInfo = true,
-  hasDownstream,
   showImageParams = false,
   showBookCoverOption = false,
   showModelOption = false,
@@ -115,7 +112,6 @@ const NodeSettingsPopoverInner: React.FC<NodeSettingsPopoverProps> = ({
         ref={btnRef}
         onClick={toggleOpen}
         disabled={disabled}
-        hasDownstream={hasDownstream}
         className={className}
         tooltip="运行设置"
       />

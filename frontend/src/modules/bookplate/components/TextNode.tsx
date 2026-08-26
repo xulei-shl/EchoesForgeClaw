@@ -26,8 +26,6 @@ export interface TextNodeProps {
   footer?: React.ReactNode;
   /** 根节点右键菜单回调 */
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
-  /** 是否有下级关联节点 */
-  hasDownstream?: boolean;
 }
 
 const TextNodeInner: React.FC<TextNodeProps> = ({
@@ -44,7 +42,6 @@ const TextNodeInner: React.FC<TextNodeProps> = ({
   onDrag,
   footer,
   onContextMenu,
-  hasDownstream,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // 空内容（新建节点）时直接进入编辑态，方便即输即存
@@ -106,7 +103,7 @@ const TextNodeInner: React.FC<TextNodeProps> = ({
     }
     return (
       <NodeActionBar>
-        <NodeActionBar.Edit onClick={() => setIsEditing(true)} hasDownstream={hasDownstream} />
+        <NodeActionBar.Edit onClick={() => setIsEditing(true)} />
         {content.trim() && (
           <NodeActionBar.Copy
             text={content}
@@ -168,8 +165,6 @@ const TextNodeInner: React.FC<TextNodeProps> = ({
                 <p className="text-xs text-ink-faint font-sans">暂无内容</p>
                 <button
                   onClick={() => setIsEditing(true)}
-                  disabled={hasDownstream}
-                  title={hasDownstream ? "有下级节点，不可编辑" : undefined}
                   className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-sans text-accent border border-dashed border-accent/40 hover:bg-accent/10 active:scale-95 transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Pencil size={11} strokeWidth={2} />

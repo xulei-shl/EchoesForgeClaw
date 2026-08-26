@@ -55,8 +55,6 @@ export interface BookInfoNodeProps {
   footer?: React.ReactNode;
   /** 根节点右键菜单回调 */
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
-  /** 是否有下级节点关联（有下级时禁用输出影响按钮） */
-  hasDownstream?: boolean;
 }
 
 const BookInfoNodeInner: React.FC<BookInfoNodeProps> = ({
@@ -78,7 +76,6 @@ const BookInfoNodeInner: React.FC<BookInfoNodeProps> = ({
   onDrag,
   footer,
   onContextMenu,
-  hasDownstream,
 }) => {
   // 封面加载失败时显示占位图（豆瓣限流/缓存缺失时避免破图）
   const [coverFailed, setCoverFailed] = useState(false);
@@ -131,7 +128,6 @@ const BookInfoNodeInner: React.FC<BookInfoNodeProps> = ({
               onClick={() => onRetry?.(id)}
               disabled={isGenerating}
               error={true}
-              hasDownstream={hasDownstream}
             />
           )}
           {!error && data.isbn && onDownload && (
@@ -147,7 +143,6 @@ const BookInfoNodeInner: React.FC<BookInfoNodeProps> = ({
               tooltip="强制更新（重新从豆瓣获取并覆盖缓存）"
               onClick={() => onForceRefresh?.(id)}
               disabled={isGenerating}
-              hasDownstream={hasDownstream}
             />
           )}
           {!error && data.url && (

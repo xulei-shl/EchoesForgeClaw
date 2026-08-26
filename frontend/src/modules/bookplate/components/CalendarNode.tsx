@@ -48,8 +48,6 @@ export interface CalendarNodeProps {
   /** 卡片底部「+」插槽 */
   footer?: React.ReactNode;
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
-  /** 是否有下级节点关联（有下级时禁用影响输出的动作） */
-  hasDownstream?: boolean;
 }
 
 const QUICK_PRESETS = [
@@ -74,7 +72,6 @@ const CalendarNodeInner: React.FC<CalendarNodeProps> = ({
   onDrag,
   footer,
   onContextMenu,
-  hasDownstream,
 }) => {
   const [dateInput, setDateInput] = useState(() => date || todayLocal());
 
@@ -111,7 +108,6 @@ const CalendarNodeInner: React.FC<CalendarNodeProps> = ({
           <NodeActionBar.Retry
             onClick={() => handleQuery()}
             error={!!error}
-            hasDownstream={hasDownstream}
             tooltip={error ? '重试查询' : '重新查询'}
           />
         )}
@@ -160,8 +156,8 @@ const CalendarNodeInner: React.FC<CalendarNodeProps> = ({
             </div>
             <button
               type="submit"
-              disabled={!dateInput.trim() || isGenerating || hasDownstream}
-              title={hasDownstream ? '有下级节点，不可修改输出' : '查询此日期'}
+              disabled={!dateInput.trim() || isGenerating}
+              title="查询此日期"
               className="flex items-center justify-center w-10 h-10 shrink-0 rounded-md bg-accent text-paper hover:bg-accent-hover active:scale-[0.96] transition-all disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
               <Search size={15} strokeWidth={2} />
@@ -178,7 +174,7 @@ const CalendarNodeInner: React.FC<CalendarNodeProps> = ({
                 <button
                   key={preset.label}
                   type="button"
-                  disabled={isGenerating || hasDownstream}
+                  disabled={isGenerating}
                   onClick={() => handleQuickPreset(preset.getDays)}
                   className={`shrink-0 px-2 py-0.5 rounded-full text-[11px] font-sans border transition-all active:scale-[0.96] ${
                     isSelected

@@ -324,13 +324,8 @@ export function useNodeHandlers({
       const node = nodesRef.current.find((n) => n.id === id);
       if (!node || node.type !== 'image_upload') return;
 
-      const descIds = collectDescendantIds(id, edgesRef.current);
-      const hasDownstream = descIds.length > 1;
-
       if (imageUrl === null) {
         handleRemoveNode(id);
-        return;
-      } else if (node.data?.imageUrl && hasDownstream) {
         return;
       }
 

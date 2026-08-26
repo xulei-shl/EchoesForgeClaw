@@ -81,7 +81,6 @@ export interface MapPosterNodeProps {
   onDrag?: (id: string, x: number, y: number) => void;
   footer?: React.ReactNode;
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
-  hasDownstream?: boolean;
   onUpdateEditor?: (id: string, patch: Record<string, any>, undoable: boolean) => void;
   onExport?: (id: string, dataUrl: string) => Promise<void>;
 }
@@ -106,7 +105,6 @@ const MapPosterNodeInner: React.FC<MapPosterNodeProps> = ({
   onDrag,
   footer,
   onContextMenu,
-  hasDownstream,
   onUpdateEditor,
   onExport,
 }) => {
@@ -233,8 +231,6 @@ const MapPosterNodeInner: React.FC<MapPosterNodeProps> = ({
               <NodeActionBar.Retry
                 onClick={handleGenerate}
                 disabled={generating}
-                hasDownstream={hasDownstream}
-                downstreamTooltip="有下级节点，不可重新生成"
                 tooltip="重新生成地图海报"
                 error={!!error}
               />
@@ -253,10 +249,8 @@ const MapPosterNodeInner: React.FC<MapPosterNodeProps> = ({
                 )
               }
               tooltip="生成地图海报"
-              downstreamTooltip="有下级节点，不可生成"
               onClick={handleGenerate}
               disabled={generating}
-              hasDownstream={hasDownstream}
             />
           )}
         </NodeActionBar>

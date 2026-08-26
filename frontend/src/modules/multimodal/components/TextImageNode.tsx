@@ -58,7 +58,6 @@ export interface TextImageNodeProps {
   onDrag?: (id: string, x: number, y: number) => void;
   footer?: React.ReactNode;
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
-  hasDownstream?: boolean;
   mismatchBadge?: string | null;
   /** 样式更新写入 node.data（undoable=true 记撤销历史，用于离散样式选择） */
   onUpdateState?: (
@@ -176,7 +175,6 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
   onDrag,
   footer,
   onContextMenu,
-  hasDownstream,
   mismatchBadge,
   onUpdateState,
   onExport,
@@ -293,7 +291,7 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
   const hasGenerated = Boolean(data?.imageUrl && !isEditing);
   const isSaved = Boolean(data?.isSaved);
   const busy = isWorking || isExporting;
-  const locked = Boolean(hasDownstream);
+  const locked = false;
 
   return (
     <CanvasNode
@@ -324,8 +322,6 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
               <NodeActionBar.Retry
                 onClick={() => setIsEditing(true)}
                 disabled={busy}
-                hasDownstream={hasDownstream}
-                downstreamTooltip="有下级节点，不可重新调整"
                 tooltip="返回编辑模式"
                 aria-label="返回编辑模式"
               />
@@ -333,8 +329,6 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
                 icon={<Check size={16} strokeWidth={isSaved ? 2.5 : 1.5} className={isSaved ? 'text-accent' : ''} />}
                 onClick={handleSaveToDatabase}
                 disabled={busy || isSaved}
-                hasDownstream={hasDownstream}
-                downstreamTooltip="有下级节点，不可保存"
                 tooltip={isSaved ? '已保存到数据库' : '保存到数据库（保存后可公开/收藏）'}
                 aria-label={isSaved ? '已保存到数据库' : '保存到数据库'}
                 className={isSaved ? 'text-accent opacity-70' : 'text-ink-light hover:text-accent'}
@@ -372,8 +366,6 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
               <NodeActionBar.Reset
                 onClick={handleReset}
                 disabled={busy}
-                hasDownstream={hasDownstream}
-                downstreamTooltip="有下级节点，不可重置"
                 tooltip="重置文字与结果"
                 aria-label="重置文字与结果"
               />
@@ -390,16 +382,12 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
                 }
                 tooltip="生成图片"
                 aria-label="生成图片"
-                downstreamTooltip="有下级节点，不可生成"
                 onClick={handleGenerate}
                 disabled={busy || locked}
-                hasDownstream={hasDownstream}
               />
               <NodeActionBar.Reset
                 onClick={handleReset}
                 disabled={busy}
-                hasDownstream={hasDownstream}
-                downstreamTooltip="有下级节点，不可重置"
                 tooltip="重置文字与样式"
                 aria-label="重置文字与样式"
               />

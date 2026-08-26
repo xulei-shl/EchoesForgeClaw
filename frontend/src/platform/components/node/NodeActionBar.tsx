@@ -19,29 +19,25 @@ export interface NodeActionBarProps {
 export interface BaseButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   tooltip: string;
   icon: React.ReactNode;
-  hasDownstream?: boolean;
-  downstreamTooltip?: string;
   error?: boolean;
 }
 
 const BaseButton = React.forwardRef<HTMLButtonElement, BaseButtonProps>(
   (
-    { tooltip, icon, hasDownstream, downstreamTooltip, error, className = '', disabled, ...props },
+    { tooltip, icon, error, className = '', disabled, ...props },
     ref
   ) => {
-    const finalTooltip = (hasDownstream && downstreamTooltip) ? downstreamTooltip : tooltip;
-    const finalDisabled = disabled || hasDownstream;
     let combinedClass = `${ACTION_BTN_CLASS} ${className}`;
-    
+
     if (error) {
       combinedClass += ' text-error hover:text-error hover:bg-error/10';
     }
 
     return (
-      <Tooltip content={finalTooltip}>
+      <Tooltip content={tooltip}>
         <button
           ref={ref}
-          disabled={finalDisabled}
+          disabled={disabled}
           className={combinedClass}
           {...props}
         >
@@ -62,34 +58,31 @@ export const NodeActionBar = ({ children, className = '' }: NodeActionBarProps) 
 };
 
 // Preset Buttons
-NodeActionBar.Run = ({ tooltip, downstreamTooltip, ...props }: Omit<BaseButtonProps, 'icon' | 'tooltip' | 'downstreamTooltip'> & { hasDownstream?: boolean; tooltip?: string; downstreamTooltip?: string }) => (
+NodeActionBar.Run = ({ tooltip, ...props }: Omit<BaseButtonProps, 'icon' | 'tooltip'> & { tooltip?: string }) => (
   <BaseButton
     icon={<Play size={16} strokeWidth={1.5} />}
     tooltip={tooltip || '运行'}
-    downstreamTooltip={downstreamTooltip || '有下级节点，不可运行'}
     {...props}
   />
 );
 
-NodeActionBar.Retry = (props: Omit<BaseButtonProps, 'icon' | 'tooltip' | 'downstreamTooltip'> & { hasDownstream?: boolean, error?: boolean, tooltip?: string, downstreamTooltip?: string, icon?: React.ReactNode }) => (
+NodeActionBar.Retry = (props: Omit<BaseButtonProps, 'icon' | 'tooltip'> & { error?: boolean, tooltip?: string, icon?: React.ReactNode }) => (
   <BaseButton
     icon={props.icon || <RefreshCw size={16} strokeWidth={1.5} />}
     tooltip={props.tooltip || (props.error ? '重试' : '重新生成')}
-    downstreamTooltip={props.downstreamTooltip || "有下级节点，不可重新生成"}
     {...props}
   />
 );
 
-NodeActionBar.Edit = (props: Omit<BaseButtonProps, 'icon' | 'tooltip' | 'downstreamTooltip'> & { hasDownstream?: boolean }) => (
+NodeActionBar.Edit = (props: Omit<BaseButtonProps, 'icon' | 'tooltip'>) => (
   <BaseButton
     icon={<Pencil size={16} strokeWidth={1.5} />}
     tooltip="编辑"
-    downstreamTooltip="有下级节点，不可编辑"
     {...props}
   />
 );
 
-NodeActionBar.Save = (props: Omit<BaseButtonProps, 'icon' | 'tooltip' | 'downstreamTooltip'>) => (
+NodeActionBar.Save = (props: Omit<BaseButtonProps, 'icon' | 'tooltip'>) => (
   <BaseButton
     icon={<Check size={16} strokeWidth={1.5} />}
     tooltip="保存 (Ctrl+Enter)"
@@ -97,7 +90,7 @@ NodeActionBar.Save = (props: Omit<BaseButtonProps, 'icon' | 'tooltip' | 'downstr
   />
 );
 
-NodeActionBar.Cancel = (props: Omit<BaseButtonProps, 'icon' | 'tooltip' | 'downstreamTooltip'>) => (
+NodeActionBar.Cancel = (props: Omit<BaseButtonProps, 'icon' | 'tooltip'>) => (
   <BaseButton
     icon={<X size={16} strokeWidth={1.5} />}
     tooltip="取消 (Esc)"
@@ -105,7 +98,7 @@ NodeActionBar.Cancel = (props: Omit<BaseButtonProps, 'icon' | 'tooltip' | 'downs
   />
 );
 
-NodeActionBar.Download = (props: Omit<BaseButtonProps, 'icon' | 'tooltip' | 'downstreamTooltip'> & { tooltip?: string }) => (
+NodeActionBar.Download = (props: Omit<BaseButtonProps, 'icon' | 'tooltip'> & { tooltip?: string }) => (
   <BaseButton
     icon={<Download size={16} strokeWidth={1.5} />}
     tooltip={props.tooltip || "导出"}
@@ -113,31 +106,28 @@ NodeActionBar.Download = (props: Omit<BaseButtonProps, 'icon' | 'tooltip' | 'dow
   />
 );
 
-NodeActionBar.Eraser = (props: Omit<BaseButtonProps, 'icon' | 'tooltip' | 'downstreamTooltip'> & { hasDownstream?: boolean; tooltip?: string; downstreamTooltip?: string }) => (
+NodeActionBar.Eraser = (props: Omit<BaseButtonProps, 'icon' | 'tooltip'> & { tooltip?: string }) => (
   <BaseButton
     icon={<Eraser size={16} strokeWidth={1.5} />}
     tooltip={props.tooltip || "清空"}
-    downstreamTooltip={props.downstreamTooltip || "有下级节点，不可清空"}
     {...props}
   />
 );
 
-NodeActionBar.Reset = (props: Omit<BaseButtonProps, 'icon' | 'tooltip' | 'downstreamTooltip'> & { hasDownstream?: boolean; tooltip?: string; downstreamTooltip?: string }) => (
+NodeActionBar.Reset = (props: Omit<BaseButtonProps, 'icon' | 'tooltip'> & { tooltip?: string }) => (
   <BaseButton
     icon={<RotateCcw size={16} strokeWidth={1.5} />}
     tooltip={props.tooltip || "重置为默认"}
-    downstreamTooltip={props.downstreamTooltip || "有下级节点，不可重置"}
     {...props}
   />
 );
 
-NodeActionBar.SettingsTrigger = React.forwardRef<HTMLButtonElement, Omit<BaseButtonProps, 'icon' | 'tooltip' | 'downstreamTooltip'> & { hasDownstream?: boolean, active?: boolean, tooltip?: string, downstreamTooltip?: string }>(
-  ({ active, className = '', tooltip, downstreamTooltip, ...props }, ref) => (
+NodeActionBar.SettingsTrigger = React.forwardRef<HTMLButtonElement, Omit<BaseButtonProps, 'icon' | 'tooltip'> & { active?: boolean, tooltip?: string }>(
+  ({ active, className = '', tooltip, ...props }, ref) => (
     <BaseButton
       ref={ref}
       icon={<Settings2 size={16} strokeWidth={1.5} />}
       tooltip={tooltip || "设置"}
-      downstreamTooltip={downstreamTooltip || "有下级节点，不可修改设置"}
       className={active ? `opacity-60 ${className}` : className}
       {...props}
     />

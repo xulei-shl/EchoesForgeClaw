@@ -39,7 +39,6 @@ export interface PromptSearchNodeProps {
   onDrag?: (id: string, x: number, y: number) => void;
   footer?: React.ReactNode;
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
-  hasDownstream?: boolean;
 }
 
 const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
@@ -60,7 +59,6 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
   onDrag,
   footer,
   onContextMenu,
-  hasDownstream,
 }) => {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [prompts, setPrompts] = useState<BifrostPrompt[]>([]);
@@ -361,7 +359,6 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
         icon={<Search size={16} strokeWidth={1.5} />}
         tooltip="重新选择提示词"
         onClick={openPicker}
-        hasDownstream={hasDownstream}
       />
       {content.trim() && (
         <NodeActionBar.Copy

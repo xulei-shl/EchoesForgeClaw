@@ -216,12 +216,6 @@ export function mismatchBadgeOf(node: NodeData, h: NodeViewHelpers): string | nu
   return count > 0 ? `类型不匹配 ×${count}` : null;
 }
 
-/** 某节点是否有下级节点（沿出边判断）：有下级时节点组件禁用「影响输出」类操作（重跑 / 编辑 / 清空等）。
- *  各节点共用同一口径，抽成公共判定避免重复计算。 */
-export function hasDownstreamOf(node: { id: string }, edges: EdgeData[]): boolean {
-  return edges.some((e) => e.source === node.id);
-}
-
 /** 小票/邮票节点上游图片解析（共用同一口径，避免两处重复） */
 function resolveUpstreamImage(node: NodeData, h: NodeViewHelpers): {
   upstreamImageUrl: string | null;
@@ -305,7 +299,6 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
 
   switch (node.type) {
     case 'book_info': {
-      const hasDownstream = hasDownstreamOf(node, h.edges);
       return (
         <BookInfoNode
           key={node.id}
@@ -313,7 +306,6 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           data={node.data}
           isGenerating={!!node.data.isGenerating}
           error={node.data.error ?? null}
-          hasDownstream={hasDownstream}
           onRetry={h.handleRetryBookFor}
           onFetch={h.handleFetchBookFor}
           onForceRefresh={h.handleForceRefreshBookFor}
@@ -324,7 +316,6 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
     }
     case 'image_analysis': {
       const config = h.configOf(node);
-      const hasDownstream = hasDownstreamOf(node, h.edges);
       // 上下文注入折叠块：与 图像生成 / AI 对话节点共用构建逻辑，展示本次运行并入
       // 分析请求的输入（文本类上级 / 图片类上级 / 图书元数据与封面）。封面注入与
       // 图像生成节点同口径：includeBookCover 默认开启（旧节点 undefined 视为开启）
@@ -349,7 +340,6 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           agentName={config?.mode === 'agent' ? (config.agent_name ?? undefined) : undefined}
           group={config?.group?.trim() || undefined}
           mismatchBadge={mismatchBadge}
-          hasDownstream={hasDownstream}
           isGenerating={!!node.data.isGenerating}
           error={node.data.error ?? null}
           onRun={h.handleRunAnalysisFor}
@@ -365,7 +355,6 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
     }
     case 'text_generation': {
       const config = h.configOf(node);
-      const hasDownstream = hasDownstreamOf(node, h.edges);
       // 上下文注入折叠块：与 AI 对话 / 图像生成节点共用构建逻辑，展示本次运行并入提示词的输入
       const contextBlocks = buildInjectedContextBlocks(
         node,
@@ -389,7 +378,6 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           agentName={config?.mode === 'agent' ? (config.agent_name ?? undefined) : undefined}
           group={config?.group?.trim() || undefined}
           mismatchBadge={mismatchBadge}
-          hasDownstream={hasDownstream}
           isGenerating={!!node.data.isGenerating}
           error={node.data.error ?? null}
           onRetry={h.handleRetryPromptFor}
@@ -422,7 +410,6 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
               ? '等待上传参考图（上传后点击运行）'
               : '等待上级图片输出'
           : undefined;
-      const hasDownstream = hasDownstreamOf(node, h.edges);
       // 上下文注入折叠块：与 AI 对话节点共用构建逻辑，展示本次运行实际并入提示词的输入
       // （提示词节点 / 图片分析 / 文本类上级 / 图书元数据与封面 / 参考图）。与 chat 同口径
       // （所见即所得）：除图书元数据走 includeBook 穿透外，任何直连上级的文本/图片都并入。
@@ -448,7 +435,6 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           agentName={config?.mode === 'agent' ? (config.agent_name ?? undefined) : undefined}
           group={config?.group?.trim() || undefined}
           mismatchBadge={mismatchBadge}
-          hasDownstream={hasDownstream}
           referenceImageUrl={refImage ?? null}
           referenceNote={referenceNote}
           referenceWaiting={imageParents.length > 0 && !refImage}
@@ -477,7 +463,6 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       );
     }
     case 'text': {
-      const hasDownstream = hasDownstreamOf(node, h.edges);
       // 连线即输入：文本输出上级内容写入本节点（连线后仍可手动编辑，与翻译节点同口径）
       const upstreamText = firstUpstreamText(node, h.nodes, h.edges, h.portTypesOf);
       return (
@@ -486,20 +471,17 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           {...common}
           content={node.data.content ?? ''}
           upstreamText={upstreamText}
-          hasDownstream={hasDownstream}
           onEditContent={h.handleEditTextFor}
         />
       );
     }
     case 'image_upload': {
-      const hasDownstream = hasDownstreamOf(node, h.edges);
       return (
         <ImageUploadNode
           key={node.id}
           {...common}
           imageUrl={node.data.imageUrl ?? null}
           imageName={node.data.imageName ?? ''}
-          hasDownstream={hasDownstream}
           onImageChange={h.handleImageChangeFor}
         />
       );
@@ -530,7 +512,6 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       );
     }
     case 'prompt_search': {
-      const hasDownstream = hasDownstreamOf(node, h.edges);
       return (
         <PromptSearchNode
           key={node.id}
@@ -540,13 +521,11 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           promptName={typeof node.data?.promptName === 'string' ? node.data.promptName : ''}
           content={typeof node.data?.content === 'string' ? node.data.content : ''}
           promptImage={typeof node.data?.promptImage === 'string' ? node.data.promptImage : null}
-          hasDownstream={hasDownstream}
           onUpdatePrompt={h.handleUpdatePromptFor}
         />
       );
     }
     case 'skill_search': {
-      const hasDownstream = hasDownstreamOf(node, h.edges);
       // 已选 skill 集合（多选）；存量节点仍是旧单数字段 -> 空数组（重新编辑即迁移）
       const selections: SkillSelection[] = Array.isArray(node.data?.skillSelections)
         ? node.data.skillSelections
@@ -557,13 +536,11 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           {...common}
           title={selections.length > 0 && selections[0].name ? selections[0].name : common.title}
           selections={selections}
-          hasDownstream={hasDownstream}
           onUpdateSkills={h.handleUpdateSkillsFor}
         />
       );
     }
     case 'calendar': {
-      const hasDownstream = hasDownstreamOf(node, h.edges);
       return (
         <CalendarNode
           key={node.id}
@@ -572,13 +549,11 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           output={typeof node.data?.output === 'string' ? node.data.output : ''}
           isGenerating={!!node.data.isGenerating}
           error={node.data.error ?? null}
-          hasDownstream={hasDownstream}
           onFetch={h.handleFetchCalendarFor}
         />
       );
     }
     case 'weather': {
-      const hasDownstream = hasDownstreamOf(node, h.edges);
       // 连线即输入：文本输出上级内容作为城市（collectNodeInputs 按端口类型统一分组，
       // 取第一个非空），优先于手动输入
       const upstreamCity = firstUpstreamText(node, h.nodes, h.edges, h.portTypesOf);
@@ -591,13 +566,11 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           output={typeof node.data?.output === 'string' ? node.data.output : ''}
           isGenerating={!!node.data.isGenerating}
           error={node.data.error ?? null}
-          hasDownstream={hasDownstream}
           onFetch={h.handleFetchWeatherFor}
         />
       );
     }
     case 'zhihu_search': {
-      const hasDownstream = hasDownstreamOf(node, h.edges);
       const d = node.data ?? {};
       // 连线即输入：文本输出上级内容作为检索关键词 / 直答问题（collectNodeInputs
       // 按端口类型统一分组，取第一个非空），优先于手动输入（与天气节点同口径）
@@ -615,14 +588,12 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           output={typeof d.output === 'string' ? d.output : ''}
           isGenerating={!!d.isGenerating}
           error={d.error ?? null}
-          hasDownstream={hasDownstream}
           onFetch={h.handleFetchZhihuFor}
           onUpdateEditor={h.handleUpdateZhihuEditorFor}
         />
       );
     }
     case 'wikipedia_search': {
-      const hasDownstream = hasDownstreamOf(node, h.edges);
       const d = node.data ?? {};
       // 连线即输入：文本输出上级内容作为检索关键词（collectNodeInputs
       // 按端口类型统一分组，取第一个非空），优先于手动输入（与天气节点同口径）
@@ -641,7 +612,6 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           upstreamKeyword={upstreamKeyword}
           isGenerating={!!d.isGenerating}
           error={d.error ?? null}
-          hasDownstream={hasDownstream}
           onSearch={h.handleSearchWikipediaFor}
           summaryMode={typeof d.summaryMode === 'boolean' ? d.summaryMode : false}
           onOpenArticle={h.handleOpenWikipediaArticleFor}
@@ -651,7 +621,6 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       );
     }
     case 'text_translation': {
-      const hasDownstream = hasDownstreamOf(node, h.edges);
       const d = node.data ?? {};
       const upstreamText = firstUpstreamText(node, h.nodes, h.edges, h.portTypesOf);
       return (
@@ -667,14 +636,12 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           output={typeof d.output === 'string' ? d.output : ''}
           isGenerating={!!d.isGenerating}
           error={d.error ?? null}
-          hasDownstream={hasDownstream}
           onFetch={h.handleFetchTranslationFor}
           onUpdateEditor={h.handleUpdateTranslationEditorFor}
         />
       );
     }
     case 'web_search': {
-      const hasDownstream = hasDownstreamOf(node, h.edges);
       const d = node.data ?? {};
       const upstreamQuery = firstUpstreamText(node, h.nodes, h.edges, h.portTypesOf);
       const validSources: WebSearchSource[] = ['random', 'zhihu_global', 'tavily', 'exa', 'anysearch', 'doubao'];
@@ -689,7 +656,6 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           output={typeof d.output === 'string' ? d.output : ''}
           isGenerating={!!d.isGenerating}
           error={d.error ?? null}
-          hasDownstream={hasDownstream}
           onFetch={h.handleFetchWebSearchFor}
           onUpdateEditor={h.handleUpdateWebSearchEditorFor}
         />
@@ -710,7 +676,6 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           countryName={typeof d.countryName === 'string' ? d.countryName : MAP_POSTER_DEFAULTS.countryName}
           lat={typeof d.lat === 'number' ? d.lat : MAP_POSTER_DEFAULTS.lat}
           lon={typeof d.lon === 'number' ? d.lon : MAP_POSTER_DEFAULTS.lon}
-          hasDownstream={hasDownstreamOf(node, h.edges)}
           onUpdateEditor={h.handleUpdateMapPosterEditorFor}
           onExport={h.handleExportMapPosterFor}
         />
@@ -729,7 +694,6 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           provider={d.provider === 'pixabay' ? 'pixabay' : 'unsplash'}
           upstreamKeyword={upstreamKeyword}
           error={d.error ?? null}
-          hasDownstream={hasDownstreamOf(node, h.edges)}
           onSelectImage={h.handleSelectSearchImageFor}
           onUpdateEditor={h.handleUpdateImageSearchEditorFor}
         />
@@ -748,7 +712,6 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           provider={typeof d.provider === 'string' ? d.provider : 'all'}
           upstreamKeyword={upstreamKeyword}
           error={d.error ?? null}
-          hasDownstream={hasDownstreamOf(node, h.edges)}
           onSelectImage={h.handleSelectGlamImageFor}
           onUpdateEditor={h.handleUpdateGlamEditorFor}
         />
@@ -774,7 +737,6 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           onSelect={h.handleSelectImage}
           onToggleFavorite={h.handleToggleFavoriteFor}
           onTogglePublic={h.handleTogglePublicFor}
-          hasDownstream={hasDownstreamOf(node, h.edges)}
           mismatchBadge={mismatchBadge}
           onUpdateState={h.handleUpdateReceiptStateFor}
           onExport={h.handleExportReceiptFor}
@@ -808,7 +770,6 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           onSelect={h.handleSelectImage}
           onToggleFavorite={h.handleToggleFavoriteFor}
           onTogglePublic={h.handleTogglePublicFor}
-          hasDownstream={hasDownstreamOf(node, h.edges)}
           mismatchBadge={mismatchBadge}
           onUpdateState={h.handleUpdateBookCardStateFor}
           onExport={h.handleExportBookCardFor}
@@ -830,7 +791,6 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           query={typeof d.query === 'string' ? d.query : ''}
           lat={typeof d.lat === 'number' ? d.lat : MAP_ART_DEFAULTS.lat}
           lon={typeof d.lon === 'number' ? d.lon : MAP_ART_DEFAULTS.lon}
-          hasDownstream={hasDownstreamOf(node, h.edges)}
           onUpdateEditor={h.handleUpdateMapArtEditorFor}
           onExport={h.handleExportMapArtFor}
         />
@@ -853,7 +813,6 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           onSelect={h.handleSelectImage}
           onToggleFavorite={h.handleToggleFavoriteFor}
           onTogglePublic={h.handleTogglePublicFor}
-          hasDownstream={hasDownstreamOf(node, h.edges)}
           mismatchBadge={mismatchBadge}
           onUpdateState={h.handleUpdateStampStateFor}
           onExport={h.handleExportStampFor}
@@ -877,7 +836,6 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           onSelect={h.handleSelectImage}
           onToggleFavorite={h.handleToggleFavoriteFor}
           onTogglePublic={h.handleTogglePublicFor}
-          hasDownstream={hasDownstreamOf(node, h.edges)}
           mismatchBadge={mismatchBadge}
           onUpdateState={h.handleUpdateStickerMakerStateFor}
           onExport={h.handleExportStickerFor}
@@ -901,7 +859,6 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           onSelect={h.handleSelectImage}
           onToggleFavorite={h.handleToggleFavoriteFor}
           onTogglePublic={h.handleTogglePublicFor}
-          hasDownstream={hasDownstreamOf(node, h.edges)}
           mismatchBadge={mismatchBadge}
           onUpdateState={h.handleUpdateJournalMakerStateFor}
           onExport={h.handleExportJournalFor}
@@ -923,7 +880,6 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           onSelect={h.handleSelectImage}
           onToggleFavorite={h.handleToggleFavoriteFor}
           onTogglePublic={h.handleTogglePublicFor}
-          hasDownstream={hasDownstreamOf(node, h.edges)}
           mismatchBadge={mismatchBadge}
           onUpdateState={h.handleUpdateTextImageStateFor}
           onExport={h.handleExportTextImageFor}
@@ -944,7 +900,6 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           category={typeof d.category === 'string' ? d.category : ''}
           upstreamKeyword={upstreamKeyword}
           error={d.error ?? null}
-          hasDownstream={hasDownstreamOf(node, h.edges)}
           onSelectPattern={h.handleSelectPatternFor}
           onUpdateEditor={h.handleUpdatePatternEditorFor}
         />
@@ -967,7 +922,6 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           onSelect={h.handleSelectImage}
           onToggleFavorite={h.handleToggleFavoriteFor}
           onTogglePublic={h.handleTogglePublicFor}
-          hasDownstream={hasDownstreamOf(node, h.edges)}
           mismatchBadge={mismatchBadge}
           onUpdateState={h.handleUpdateOilPaintStateFor}
           onExport={h.handleExportOilPaintFor}
@@ -991,7 +945,6 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           onSelect={h.handleSelectImage}
           onToggleFavorite={h.handleToggleFavoriteFor}
           onTogglePublic={h.handleTogglePublicFor}
-          hasDownstream={hasDownstreamOf(node, h.edges)}
           mismatchBadge={mismatchBadge}
           onUpdateState={h.handleUpdateImageProcessStateFor}
           onExport={h.handleExportImageProcessFor}
@@ -1016,7 +969,6 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           paletteMethod={d.paletteMethod ?? 'auto'}
           upstreamKeyword={upstreamKeyword}
           error={d.error ?? null}
-          hasDownstream={hasDownstreamOf(node, h.edges)}
           onSelectColor={h.handleSelectColorFor}
           onUpdateEditor={h.handleUpdateColorEditorFor}
         />
@@ -1060,7 +1012,6 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           output={typeof d.output === 'string' ? d.output : ''}
           isGenerating={!!d.isGenerating}
           error={d.error ?? null}
-          hasDownstream={hasDownstreamOf(node, h.edges)}
           onFetch={h.handleFetchVuFindCallNumberFor}
           onUpdateEditor={h.handleUpdateVuFindEditorFor}
           onDownload={h.handleDownloadVuFindData}

@@ -51,7 +51,6 @@ export interface MapArtNodeProps {
   onDrag?: (id: string, x: number, y: number) => void;
   footer?: React.ReactNode;
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
-  hasDownstream?: boolean;
   onUpdateEditor?: (id: string, patch: Record<string, any>, undoable: boolean) => void;
   onExport?: (id: string, imageUrl: string) => Promise<void>;
 }
@@ -75,7 +74,6 @@ const MapArtNodeInner: React.FC<MapArtNodeProps> = ({
   onDrag,
   footer,
   onContextMenu,
-  hasDownstream,
   onUpdateEditor,
   onExport,
 }) => {
@@ -198,8 +196,6 @@ const MapArtNodeInner: React.FC<MapArtNodeProps> = ({
               <NodeActionBar.Retry
                 onClick={handleGenerate}
                 disabled={generating}
-                hasDownstream={hasDownstream}
-                downstreamTooltip="有下级节点，不可重新生成"
                 tooltip="重新生成艺术地图"
                 error={!!error}
               />
@@ -218,10 +214,8 @@ const MapArtNodeInner: React.FC<MapArtNodeProps> = ({
                 )
               }
               tooltip="生成艺术地图"
-              downstreamTooltip="有下级节点，不可生成"
               onClick={handleGenerate}
               disabled={generating}
-              hasDownstream={hasDownstream}
             />
           )}
         </NodeActionBar>

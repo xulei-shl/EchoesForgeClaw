@@ -16,7 +16,7 @@ import {
   storeToUI,
   uiToStore,
 } from './chatMessages';
-import { mismatchBadgeOf, hasDownstreamOf, type NodeViewHelpers } from './CanvasNodeViews';
+import { mismatchBadgeOf, type NodeViewHelpers } from './CanvasNodeViews';
 import { mergeAgentFiles } from './workspaceFiles';
 import {
   MAX_CHAT_IMAGES,
@@ -531,34 +531,22 @@ export function ChatNodeHost({
     messages = Array.isArray(node.data?.messages) ? node.data.messages : [];
   }
 
-  // 计算上下文块：未发消息时实时根据画布连线与配置动态重算；已发消息时从首条 user 消息获取已锁定的上下文
-  const firstUser = messages.find((m: ChatMessage) => m.role === 'user');
-  const contextBlocks: InjectedContextBlock[] =
-    messages.length > 0 && firstUser
-      ? firstUser.contextBlocks ??
-        (firstUser.context || firstUser.contextImages?.length
-          ? [
-              {
-                id: 'injected_context',
-                title: '注入上下文',
-                text: firstUser.context,
-                images: firstUser.contextImages,
-              },
-            ]
-          : [])
-      : buildInjectedContextBlocks(
-          node,
-          {
-            includeBook: settings.includeBook,
-            includeBookCover: settings.includeBookCover !== false,
-            includeUpstreamText: settings.includeUpstream !== false,
-            includeUpstreamImages: settings.includeUpstreamImages !== false,
-            includeSkills: true,
-          },
-          h.nodes,
-          h.edges,
-          portTypesRef.current
-        );
+  // 计算上下文块：始终实时根据画布连线与配置动态重算，上级重新生成时折叠卡片同步更新。
+  // 仅展示层实时；发送时首轮仍按当时快照注入并持久化到首条 user 消息（对话历史不可追溯
+  // 改写），清空对话后下一轮自然注入最新上下文。
+  const contextBlocks: InjectedContextBlock[] = buildInjectedContextBlocks(
+    node,
+    {
+      includeBook: settings.includeBook,
+      includeBookCover: settings.includeBookCover !== false,
+      includeUpstreamText: settings.includeUpstream !== false,
+      includeUpstreamImages: settings.includeUpstreamImages !== false,
+      includeSkills: true,
+    },
+    h.nodes,
+    h.edges,
+    portTypesRef.current
+  );
 
   return (
     <ChatNode
@@ -581,7 +569,6 @@ export function ChatNodeHost({
       agentSteps={Array.isArray(node.data?.agentSteps) ? node.data.agentSteps : []}
       group={config?.group?.trim() || undefined}
       mismatchBadge={mismatchBadgeOf(node, h)}
-      hasDownstream={hasDownstreamOf(node, h.edges)}
       isGenerating={!!node.data?.isGenerating}
       error={node.data?.error ?? null}
       settings={settings}

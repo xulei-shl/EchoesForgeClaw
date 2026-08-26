@@ -75,8 +75,6 @@ export interface WikipediaSearchNodeProps {
   /** 卡片底部「+」插槽 */
   footer?: React.ReactNode;
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
-  /** 是否有下级节点关联（有下级时禁用影响输出的动作） */
-  hasDownstream?: boolean;
 }
 
 /** 常用 Wikipedia 语言版本 */
@@ -129,7 +127,6 @@ const WikipediaSearchNodeInner: React.FC<WikipediaSearchNodeProps> = ({
   onDrag,
   footer,
   onContextMenu,
-  hasDownstream,
 }) => {
   // 编辑器草稿态（本地输入）；外部内容变化（撤销/重做/历史恢复）时同步
   const [languageInput, setLanguageInput] = useState(language);
@@ -145,16 +142,16 @@ const WikipediaSearchNodeInner: React.FC<WikipediaSearchNodeProps> = ({
   const effectiveQuery = hasUpstream ? upstreamKeyword.trim() : queryInput.trim();
   // 全文视图：已打开（或正在打开）某篇文章
   const articleOpen = articleTitle.trim().length > 0;
-  const canSubmit = effectiveQuery.length > 0 && !isGenerating && !hasDownstream;
+  const canSubmit = effectiveQuery.length > 0 && !isGenerating;
 
   const handleSearch = useCallback(
     (targetQuery?: string) => {
-      if (isGenerating || hasDownstream) return;
+      if (isGenerating) return;
       const q = targetQuery !== undefined ? targetQuery.trim() : effectiveQuery;
       if (!q) return;
       onSearch?.(id, { query: q, language: languageInput, limit: Math.min(limitInput, 50) });
     },
-    [effectiveQuery, id, isGenerating, hasDownstream, languageInput, limitInput, onSearch]
+    [effectiveQuery, id, isGenerating, languageInput, limitInput, onSearch]
   );
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -164,10 +161,10 @@ const WikipediaSearchNodeInner: React.FC<WikipediaSearchNodeProps> = ({
 
   const handleOpenArticle = useCallback(
     (t: string) => {
-      if (isGenerating || hasDownstream) return;
+      if (isGenerating) return;
       onOpenArticle?.(id, t, summaryMode);
     },
-    [id, isGenerating, hasDownstream, onOpenArticle, summaryMode]
+    [id, isGenerating, onOpenArticle, summaryMode]
   );
 
   /** 重试：全文视图失败 → 重拉该文章；否则重新检索当前关键词 */
@@ -187,7 +184,6 @@ const WikipediaSearchNodeInner: React.FC<WikipediaSearchNodeProps> = ({
           <NodeActionBar.Retry
             onClick={handleRetry}
             error={!!error}
-            hasDownstream={hasDownstream}
             tooltip={error ? '重试' : '重新检索'}
           />
         )}
@@ -242,7 +238,7 @@ const WikipediaSearchNodeInner: React.FC<WikipediaSearchNodeProps> = ({
                 type="button"
                 onClick={() => handleSearch(upstreamKeyword)}
                 disabled={!canSubmit}
-                title={hasDownstream ? '有下级节点，不可修改输出' : '以该关键词检索'}
+                title="以该关键词检索"
                 className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-accent text-paper text-xs font-sans hover:bg-accent-hover active:scale-[0.96] transition-transform disabled:opacity-40 disabled:cursor-not-allowed shrink-0 shadow-xs"
               >
                 <Search size={12} strokeWidth={2} />
@@ -290,7 +286,7 @@ const WikipediaSearchNodeInner: React.FC<WikipediaSearchNodeProps> = ({
               <button
                 type="submit"
                 disabled={!canSubmit}
-                title={hasDownstream ? '有下级节点，不可修改输出' : '回车直接检索'}
+                title="回车直接检索"
                 className="flex items-center justify-center h-8 px-2.5 shrink-0 rounded-lg bg-accent text-paper text-xs font-sans hover:bg-accent-hover active:scale-[0.96] transition-transform disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent gap-1 shadow-xs"
               >
                 <Search size={13} strokeWidth={2} />
@@ -337,7 +333,7 @@ const WikipediaSearchNodeInner: React.FC<WikipediaSearchNodeProps> = ({
             <div className="relative flex items-center rounded-lg border border-dashed border-paper-grid p-0.5 bg-paper/40 shrink-0">
               <button
                 type="button"
-                disabled={isGenerating || hasDownstream}
+                disabled={isGenerating}
                 onClick={() => onUpdateEditor?.(id, { summaryMode: false })}
                 className="relative px-2.5 py-0.5 rounded-md text-[11px] font-sans transition-colors active:scale-[0.96] transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
                 title="全文模式：点击词条拉取完整正文"
@@ -356,7 +352,7 @@ const WikipediaSearchNodeInner: React.FC<WikipediaSearchNodeProps> = ({
 
               <button
                 type="button"
-                disabled={isGenerating || hasDownstream}
+                disabled={isGenerating}
                 onClick={() => onUpdateEditor?.(id, { summaryMode: true })}
                 className="relative px-2.5 py-0.5 rounded-md text-[11px] font-sans transition-colors active:scale-[0.96] transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
                 title="简介模式：点击词条仅拉取摘要简介"
@@ -469,9 +465,9 @@ const WikipediaSearchNodeInner: React.FC<WikipediaSearchNodeProps> = ({
                   <button
                     key={r.pageid}
                     type="button"
-                    disabled={isGenerating || hasDownstream}
+                    disabled={isGenerating}
                     onClick={() => handleOpenArticle(r.title)}
-                    title={hasDownstream ? '有下级节点，不可修改输出' : `查看「${r.title}」${summaryMode ? '简介' : '全文'}`}
+                    title={`查看「${r.title}」${summaryMode ? '简介' : '全文'}`}
                     className="w-full text-left p-2.5 rounded-lg border border-dashed border-paper-grid bg-paper/40 hover:border-accent/50 hover:bg-accent/5 active:scale-[0.98] transition-transform transition-colors disabled:opacity-40 disabled:cursor-not-allowed group"
                   >
                     <div className="flex items-center gap-1.5 min-w-0">
