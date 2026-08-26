@@ -99,9 +99,24 @@ async function fetchViaLightpanda(searchUrl: string): Promise<VuFindRecord> {
       recordUrl = detailPath.startsWith('http') ? detailPath : `${VUFIND_BASE_URL}${detailPath}`;
       try {
         await page.goto(recordUrl, { waitUntil: 'networkidle', timeout: PAGE_TIMEOUT_MS });
-        holdings = await parseHoldings(page);
-      } catch {
+        // Lightpanda 对 networkidle 支持有限，馆藏可能异步渲染：显式等待复本行出现
+        await page
+          .waitForSelector('.location-item tr[typeof="Offer"]', { timeout: 8_000 })
+          .catch(() => {});
+        const locationItemCount = await countLocationItems(page);
+        holdings = await parseHoldingsViaDom(page);
+        if (holdings.length === 0) {
+          // DOM 解析为空（Lightpanda 选择器/evaluate 兼容性问题）→ 纯正则兑底解析 HTML
+          console.warn(
+            `[vufind] DOM 馆藏解析为空（location-item=${locationItemCount}），改用正则兑底: ${recordUrl}`
+          );
+          holdings = parseHoldingsFromHtml(await page.content());
+        }
+      } catch (err) {
         // 详情页打开失败或无馆藏：保留索书号部分结果，不整体报错
+        console.warn(
+          `[vufind] 详情页馆藏抓取失败（保留索书号部分结果）: ${err instanceof Error ? err.message : String(err)}`
+        );
         holdings = [];
       }
     }
@@ -112,8 +127,19 @@ async function fetchViaLightpanda(searchUrl: string): Promise<VuFindRecord> {
   }
 }
 
-/** 解析详情页馆藏：按 .location-item 分组，桌面表格行去重（同页含移动端重复 DOM） */
-async function parseHoldings(page: import('playwright-core').Page): Promise<VuFindHoldingGroup[]> {
+async function countLocationItems(page: import('playwright-core').Page): Promise<number> {
+  try {
+    return await page.evaluate((): number => {
+      const doc = (globalThis as unknown as { document?: EvalDocument }).document;
+      return doc ? doc.querySelectorAll('.branch .location-item').length : -1;
+    });
+  } catch {
+    return -1;
+  }
+}
+
+/** DOM 解析详情页馆藏：按 .location-item 分组，条码全局去重 */
+async function parseHoldingsViaDom(page: import('playwright-core').Page): Promise<VuFindHoldingGroup[]> {
   return page.evaluate((): VuFindHoldingGroup[] => {
     const doc = (globalThis as unknown as { document?: EvalDocument }).document;
     if (!doc) return [];
@@ -123,8 +149,8 @@ async function parseHoldings(page: import('playwright-core').Page): Promise<VuFi
     doc.querySelectorAll('.branch .location-item').forEach((loc) => {
       const location = loc.querySelector('h3')?.textContent?.trim() ?? '';
       const items: VuFindHoldingItem[] = [];
-      // 仅取桌面端表格行，避免移动端 div 布局的重复复本
-      loc.querySelectorAll('.visible-lg-block tr[typeof="Offer"]').forEach((tr) => {
+      // 移动端复本是 div.row 而非 tr，天然不会重复；条码去重再兕底
+      loc.querySelectorAll('tr[typeof="Offer"]').forEach((tr) => {
         const fieldText = (cls: string): string => {
           const el = tr.querySelector(`.holding-field.${cls}`);
           if (!el) return '';
@@ -153,6 +179,65 @@ async function parseHoldings(page: import('playwright-core').Page): Promise<VuFi
 
     return groups;
   });
+}
+
+/** 去除标签与实体，压缩空白后取首个非空行 */
+function extractTextField(raw: string): string {
+  const text = raw
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean)[0];
+  return text ?? '';
+}
+
+/**
+ * 正则兑底解析馆藏 HTML（不依赖浏览器 DOM 实现，用于 Lightpanda evaluate/选择器异常时）。
+ * 结构依据 vufind 详情页：每个 <div class="location-item"> 块内含一个 h3 馆藏地标题，
+ * 桌面端复本为 <tr typeof="Offer"> 行（移动端为 div.row，天然不会被匹配）。
+ */
+export function parseHoldingsFromHtml(html: string): VuFindHoldingGroup[] {
+  const seenBarcodes = new Set<string>();
+  const groups: VuFindHoldingGroup[] = [];
+
+  const chunks = html.split('<div class="location-item').slice(1);
+  for (const chunk of chunks) {
+    const rawLocation = chunk.match(/<h3[^>]*>([\s\S]*?)<\/h3>/)?.[1] ?? '';
+    const location = extractTextField(rawLocation);
+    const items: VuFindHoldingItem[] = [];
+
+    const rowRe = /<tr[^>]*typeof="Offer"[^>]*>([\s\S]*?)<\/tr>/g;
+    let rowMatch: RegExpExecArray | null;
+    while ((rowMatch = rowRe.exec(chunk)) !== null) {
+      const row = rowMatch[1] ?? '';
+      const fieldRaw = (cls: string): string =>
+        row.match(new RegExp(`<span class="holding-field ${cls}">([\\s\\S]*?)</span>`))?.[1] ?? '';
+
+      // 状态列优先取可见的 text-success / text-danger 标签文本
+      let status = '';
+      const availRaw = fieldRaw('availability');
+      const statusTag = availRaw.match(/<span class="text-(?:success|danger)">\s*([^<]*?)\s*</);
+      if (statusTag?.[1] != null) {
+        status = statusTag[1].trim();
+      } else {
+        status = extractTextField(availRaw);
+      }
+
+      const barcode = extractTextField(fieldRaw('barcode'));
+      if (!barcode || seenBarcodes.has(barcode)) continue;
+      seenBarcodes.add(barcode);
+      items.push({
+        callnumber: extractTextField(fieldRaw('callnumber')),
+        barcode,
+        loanType: extractTextField(fieldRaw('loanType')),
+        status,
+      });
+    }
+    if (items.length > 0) groups.push({ location, items });
+  }
+
+  return groups;
 }
 
 async function fetchViaHttp(url: string): Promise<string> {
