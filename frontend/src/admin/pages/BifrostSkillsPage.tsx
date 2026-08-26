@@ -424,7 +424,7 @@ export const BifrostSkillsPage: React.FC = () => {
             {/* 我的评分与私有备注 */}
             <div className="rounded-lg border border-dashed border-paper-grid bg-paper-grid/20 p-3 space-y-2.5">
               <div className="flex items-center justify-between">
-                <FieldLabel>我的打标评分</FieldLabel>
+                <FieldLabel>我的评分</FieldLabel>
                 <RatingStars
                   value={detail.user_rating || 0}
                   onChange={(r) => void handleUpdateRating(detail.name, r, detail.user_note ?? detail.note)}
@@ -435,7 +435,7 @@ export const BifrostSkillsPage: React.FC = () => {
               <div className="space-y-1.5 pt-1">
                 <FieldLabel>
                   <StickyNote size={13} className="inline mr-1" />
-                  我的私有备注（仅当前账户可见）
+                  我的备注
                 </FieldLabel>
                 <div className="flex gap-2 items-start">
                   <Textarea

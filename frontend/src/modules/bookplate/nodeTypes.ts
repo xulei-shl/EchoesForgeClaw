@@ -89,7 +89,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'text',
     name: '文本',
-    description: '手动输入 / 编辑 Markdown 文本，作为工作流中的笔记或说明',
+    description: '手动输入 / 编辑 Markdown 文本',
     category: 'input',
     configurable: false,
     defaultSize: DEFAULT_SIZES.text,
@@ -97,7 +97,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'image_upload',
     name: '图片上传',
-    description: '手动上传一张图片到画布，作为工作流中的参考素材',
+    description: '手动上传一张图片到画布',
     category: 'input',
     configurable: false,
     defaultSize: DEFAULT_SIZES.image_upload,
