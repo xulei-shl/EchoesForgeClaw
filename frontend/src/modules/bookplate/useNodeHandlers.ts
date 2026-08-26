@@ -428,6 +428,7 @@ export function useNodeHandlers({
   const handleUpdateWikipediaEditorFor = useEditorPatchHandler(['wikipedia_search'], editorPatchFns);
   const handleUpdateTranslationEditorFor = useEditorPatchHandler(['text_translation'], editorPatchFns);
   const handleUpdateWebSearchEditorFor = useEditorPatchHandler(['web_search'], editorPatchFns);
+  const handleUpdateVuFindEditorFor = useEditorPatchHandler(['vufind_call_number'], editorPatchFns);
   const handleUpdateStampStateFor = useEditorPatchHandler(['stamp_cutter'], editorPatchFns);
   const handleUpdateStickerMakerStateFor = useEditorPatchHandler(['sticker_maker'], editorPatchFns);
   const handleUpdateJournalMakerStateFor = useEditorPatchHandler(['journal_maker'], editorPatchFns);
@@ -629,6 +630,7 @@ export function useNodeHandlers({
     handleFetchWebSearchFor,
     handleUpdateWebSearchEditorFor,
     handleFetchVuFindCallNumberFor,
+    handleUpdateVuFindEditorFor,
     handleUpdateMapPosterEditorFor,
     handleExportMapPosterFor,
     handleUpdateMapArtEditorFor,

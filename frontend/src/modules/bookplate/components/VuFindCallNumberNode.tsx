@@ -1,5 +1,5 @@
-import React, { memo, useEffect, useState, useCallback } from 'react';
-import { BookOpen, Loader2, Search, AlertTriangle, Link2, X } from 'lucide-react';
+import React, { memo, useEffect, useRef, useState, useCallback } from 'react';
+import { BookOpen, Loader2, AlertTriangle, Link2, X } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { BeamGlow } from '../../../platform/components/node/BeamGlow';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
@@ -12,7 +12,7 @@ export interface VuFindCallNumberNodeProps {
   title?: string;
   /** 手动输入的 ISBN（写入 data.isbn） */
   isbn?: string;
-  /** 连线上级文本节点提供的 ISBN（连线即输入，优先于手动输入） */
+  /** 连线继承的 ISBN（到达时自动填入输入框一次，仍可手动编辑） */
   upstreamIsbn?: string;
   /** 获取的索书号结果（写入 data.callNumber，对外输出为 data.output = JSON） */
   callNumber?: string;
@@ -22,6 +22,8 @@ export interface VuFindCallNumberNodeProps {
   error?: string | null;
   /** 提交查询 */
   onFetch?: (id: string, isbn: string) => void;
+  /** 编辑器状态写入 node.data（持久化 ISBN 手动输入 / 继承注入） */
+  onUpdateEditor?: (id: string, patch: Record<string, any>) => void;
   onRemove?: (id: string) => void;
   onPositionChange?: (id: string, x: number, y: number) => void;
   onSizeChange?: (id: string, width: number, height: number) => void;
@@ -43,6 +45,7 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
   isGenerating = false,
   error = null,
   onFetch,
+  onUpdateEditor,
   onRemove,
   onPositionChange,
   onSizeChange,
@@ -53,22 +56,40 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
 }) => {
   const [isbnInput, setIsbnInput] = useState(isbn);
 
+  // 撤销 / 重做 / 历史恢复时同步草稿
   useEffect(() => {
     setIsbnInput(isbn);
   }, [isbn]);
 
-  const hasUpstream = upstreamIsbn.trim().length > 0;
-  const effectiveIsbn = hasUpstream ? upstreamIsbn.trim() : isbnInput.trim();
+  // 上级连线 ISBN 到达时写入输入框；仅在上游 ISBN 本身变化时注入一次，
+  // 手动编辑后的内容不被覆盖（与文本节点同口径）
+  const lastUpstreamRef = useRef<string | null>(null);
+  useEffect(() => {
+    const up = upstreamIsbn.trim();
+    if (!up || lastUpstreamRef.current === up) return;
+    lastUpstreamRef.current = up;
+    if (up !== isbn) {
+      setIsbnInput(up);
+      onUpdateEditor?.(id, { isbn: up });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [upstreamIsbn]);
 
-  const handleQuery = useCallback(
-    (targetIsbn?: string) => {
-      if (isGenerating) return;
-      const i = targetIsbn !== undefined ? targetIsbn.trim() : effectiveIsbn;
-      if (!i) return;
-      onFetch?.(id, i);
-    },
-    [effectiveIsbn, id, isGenerating, onFetch]
-  );
+  const hasUpstream = upstreamIsbn.trim().length > 0;
+
+  /** 持久化手动输入（失焦 / 清空时落盘，避免每次击键写 node.data） */
+  const persistIsbn = (value: string) => {
+    if (value !== isbn) onUpdateEditor?.(id, { isbn: value });
+  };
+
+  const handleQuery = useCallback(() => {
+    if (isGenerating || hasDownstream) return;
+    const i = isbnInput.trim();
+    if (!i) return;
+    persistIsbn(isbnInput);
+    onFetch?.(id, i);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isbnInput, id, isGenerating, hasDownstream, onFetch, isbn, onUpdateEditor]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,16 +98,31 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
 
   const renderActionBar = () => {
     if (isGenerating) return undefined;
+    const hasIsbn = isbnInput.trim().length > 0;
+
+    if (!output.trim() && !error) {
+      return (
+        <NodeActionBar>
+          <NodeActionBar.Run
+            onClick={handleQuery}
+            disabled={!hasIsbn}
+            hasDownstream={hasDownstream}
+            tooltip={hasIsbn ? '获取索书号' : '输入或连线上级节点获取 ISBN'}
+            downstreamTooltip="有下级节点，不可修改输出"
+          />
+        </NodeActionBar>
+      );
+    }
+
     return (
       <NodeActionBar>
-        {(output.trim() || error) && (
-          <NodeActionBar.Retry
-            onClick={() => handleQuery()}
-            error={!!error}
-            hasDownstream={hasDownstream}
-            tooltip={error ? '重试获取' : '重新获取索书号'}
-          />
-        )}
+        <NodeActionBar.Retry
+          onClick={handleQuery}
+          error={!!error}
+          hasDownstream={hasDownstream}
+          downstreamTooltip="有下级节点，不可修改输出"
+          tooltip={error ? '重试获取' : '重新获取索书号'}
+        />
         {output.trim() && (
           <NodeActionBar.Copy
             text={callNumber || output}
@@ -120,59 +156,37 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
       actionBar={renderActionBar()}
     >
       <div className="h-full flex flex-col flex-1 min-h-0 gap-3">
-        <div className="shrink-0 space-y-2">
-          {hasUpstream ? (
-            <div className="flex items-center justify-between p-2.5 rounded-md border border-accent/40 bg-accent/5">
-              <div className="flex items-center gap-2 min-w-0 pr-2">
-                <div className="w-6 h-6 rounded-full bg-accent/15 flex items-center justify-center shrink-0 text-accent">
-                  <Link2 size={13} strokeWidth={2} />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-[10px] font-serif text-accent uppercase tracking-wider">上级连线输入 ISBN</div>
-                  <div className="text-sm font-medium text-ink truncate font-mono">{upstreamIsbn}</div>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleQuery(upstreamIsbn)}
-                disabled={isGenerating || hasDownstream}
-                title={hasDownstream ? '有下级节点，不可修改输出' : '获取索书号'}
-                className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-accent text-paper text-xs font-sans hover:bg-accent-hover active:scale-[0.96] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <Search size={12} strokeWidth={2} />
-                获取
-              </button>
+        <div className="shrink-0 space-y-1.5">
+          <form onSubmit={handleSubmit} className="flex gap-2">
+            <div className="relative flex-1 min-w-0">
+              <input
+                value={isbnInput}
+                onChange={(e) => setIsbnInput(e.target.value)}
+                onBlur={() => persistIsbn(isbnInput.trim())}
+                placeholder="输入 ISBN（如 9787544799317）"
+                disabled={isGenerating}
+                className="w-full h-10 rounded-md border border-dashed border-paper-grid bg-transparent pl-3 pr-8 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors font-mono disabled:opacity-50"
+              />
+              {isbnInput && !isGenerating && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsbnInput('');
+                    persistIsbn('');
+                  }}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-ink-faint hover:text-error hover:bg-paper-grid/40 transition-colors"
+                  title="清除"
+                >
+                  <X size={13} strokeWidth={2} />
+                </button>
+              )}
             </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="flex gap-2">
-              <div className="relative flex-1 min-w-0">
-                <input
-                  value={isbnInput}
-                  onChange={(e) => setIsbnInput(e.target.value)}
-                  placeholder="输入 ISBN（如 9787544799317）"
-                  disabled={isGenerating}
-                  className="w-full h-10 rounded-md border border-dashed border-paper-grid bg-transparent pl-3 pr-8 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors font-mono disabled:opacity-50"
-                />
-                {isbnInput && !isGenerating && (
-                  <button
-                    type="button"
-                    onClick={() => setIsbnInput('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-ink-faint hover:text-error hover:bg-paper-grid/40 transition-colors"
-                    title="清除"
-                  >
-                    <X size={13} strokeWidth={2} />
-                  </button>
-                )}
-              </div>
-              <button
-                type="submit"
-                disabled={isGenerating || !effectiveIsbn || hasDownstream}
-                title={hasDownstream ? '有下级节点，不可修改输出' : '获取索书号'}
-                className="flex items-center justify-center w-10 h-10 shrink-0 rounded-md bg-accent text-paper hover:bg-accent-hover active:scale-[0.96] transition-all disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-              >
-                <Search size={15} strokeWidth={2} />
-              </button>
-            </form>
+          </form>
+          {hasUpstream && (
+            <div className="flex items-center gap-1 px-0.5 text-[10px] font-sans text-accent">
+              <Link2 size={10} strokeWidth={2} />
+              ISBN 已从上级连线自动填入，可手动修改
+            </div>
           )}
         </div>
 
@@ -184,7 +198,7 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
               </div>
               <div className="space-y-1">
                 <p className="text-xs font-serif text-accent font-medium">正在从 vufind 检索索书号...</p>
-                <p className="text-[11px] font-mono text-ink-faint">ISBN：{effectiveIsbn}</p>
+                <p className="text-[11px] font-mono text-ink-faint">ISBN：{isbnInput.trim()}</p>
               </div>
             </div>
           ) : error ? (

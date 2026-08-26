@@ -135,6 +135,8 @@ export interface NodeViewHelpers {
   handleUpdateImageSearchEditorFor: (id: string, patch: Record<string, any>, undoable: boolean) => void;
   /** VuFind 索书号节点：根据 ISBN 获取索书号（ISBN 由页面合并上游文本 / 手动输入） */
   handleFetchVuFindCallNumberFor: (id: string, isbn: string) => void;
+  /** VuFind 索书号节点：编辑器状态写入 node.data（仅持久化，不记撤销历史） */
+  handleUpdateVuFindEditorFor: (id: string, patch: Record<string, any>) => void;
   /** 艺术图片检索节点：选中图片 → 下载到本地 → 写回 node.data.imageUrl（作为图片输出） */
   handleSelectGlamImageFor: (id: string, url: string, meta: GlamSearchSelection) => Promise<void>;
   /** 艺术图片检索节点：编辑器状态（provider 等）写入 node.data（仅持久化，不记撤销历史） */
@@ -1037,6 +1039,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           error={d.error ?? null}
           hasDownstream={hasDownstreamOf(node, h.edges)}
           onFetch={h.handleFetchVuFindCallNumberFor}
+          onUpdateEditor={h.handleUpdateVuFindEditorFor}
         />
       );
     }
