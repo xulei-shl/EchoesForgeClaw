@@ -157,7 +157,28 @@ const BookInfoNodeInner: React.FC<BookInfoNodeProps> = ({
               disabled={isGenerating}
             />
           )}
+          {!error && data.isbn && onUploadCover && (
+            <NodeActionBar.Custom
+              icon={<ImagePlus size={16} strokeWidth={1.5} />}
+              tooltip="上传封面（自动下载失败时的兜底）"
+              onClick={() => coverInputRef.current?.click()}
+              disabled={isGenerating}
+            />
+          )}
         </NodeActionBar>
+        {data.isbn && onUploadCover && (
+          <input
+            ref={coverInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/gif,image/webp"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) onUploadCover(id, file);
+              e.target.value = '';
+            }}
+          />
+        )}
       }
     >
       <div className="h-full flex flex-col flex-1 min-h-0">
@@ -235,30 +256,7 @@ const BookInfoNodeInner: React.FC<BookInfoNodeProps> = ({
                   {data.rating != null && data.rating !== '' && (
                     <div className="text-xs text-ink-faint text-center tabular-nums">★ {String(data.rating)}</div>
                   )}
-                  {data.isbn && onUploadCover && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => coverInputRef.current?.click()}
-                        className="flex items-center justify-center gap-1 h-7 rounded-sm border border-dashed border-paper-grid text-xs text-ink-faint hover:text-ink hover:border-accent transition-colors"
-                        title="手动上传封面（自动下载失败时的兜底）"
-                      >
-                        <ImagePlus size={13} strokeWidth={1.5} />
-                        上传封面
-                      </button>
-                      <input
-                        ref={coverInputRef}
-                        type="file"
-                        accept="image/jpeg,image/png,image/gif,image/webp"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) onUploadCover(id, file);
-                          e.target.value = '';
-                        }}
-                      />
-                    </>
-                  )}
+
                 </div>
 
                 {/* Metadata（不含摘要） */}
