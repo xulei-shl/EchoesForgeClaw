@@ -135,6 +135,10 @@ describe('runPiAgent（pi CLI 子进程端到端）', () => {
       }
       expect(events.some((e) => e.type === 'content_delta' && e.delta.includes('pong'))).toBe(true);
       expect(events.some((e) => e.type === 'error')).toBe(false);
+      // 会话文件必须落在 .pi-agent/run/ 子目录：agentDir 根下的 *.jsonl 会被 pi 启动迁移移入
+      // sessions/{cwd编码}/，导致下一轮上下文静默重置
+      expect(existsSync(path.join(prepared.ws, '.pi-agent', 'run', 'chat.jsonl'))).toBe(true);
+      expect(existsSync(path.join(prepared.ws, '.pi-agent', 'chat.jsonl'))).toBe(false);
     },
     90_000
   );

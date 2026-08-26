@@ -17,6 +17,7 @@ import {
   userSkillsRoot,
 } from '../../src/services/skill-agent-service.js';
 import {
+  clearPiSession,
   preparePiWorkspace,
   resolveImageGenExtension,
   resolvePiBin,
@@ -200,6 +201,37 @@ describe('preparePiWorkspace 装配', () => {
       readFileSync(path.join(wsPath(), '.pi-agent', 'settings.json'), 'utf-8')
     );
     expect(settings['pi-image-gen']).toBeUndefined();
+  });
+});
+
+describe('clearPiSession（清空对话语义）', () => {
+  it('清除 run/、根级残留 chat.jsonl 与 sessions/，保留装配物与产物；幂等', () => {
+    preparePiWorkspace(UID, WS_ID, {
+      agentId: 1,
+      chatModel: CHAT_MODEL,
+      imageModel: null,
+      skillNames: [],
+    });
+    const agentDir = path.join(wsPath(), '.pi-agent');
+    // 三处会话历史：当前落点 + 历史版本根级文件 + pi 迁移/自管目录
+    mkdirSync(path.join(agentDir, 'run'), { recursive: true });
+    writeFileSync(path.join(agentDir, 'run', 'chat.jsonl'), '{"type":"session"}\n');
+    writeFileSync(path.join(agentDir, 'chat.jsonl'), '{"type":"session"}\n');
+    mkdirSync(path.join(agentDir, 'sessions', '--opt-enc--'), { recursive: true });
+    writeFileSync(path.join(agentDir, 'sessions', '--opt-enc--', 'chat.jsonl'), '{"type":"session"}\n');
+    // 装配物与产物必须保留
+    mkdirSync(path.join(wsPath(), 'outputs'), { recursive: true });
+    writeFileSync(path.join(wsPath(), 'outputs', 'art.txt'), 'x');
+
+    expect(clearPiSession(UID, WS_ID)).toBe(true);
+    expect(existsSync(path.join(agentDir, 'run'))).toBe(false);
+    expect(existsSync(path.join(agentDir, 'chat.jsonl'))).toBe(false);
+    expect(existsSync(path.join(agentDir, 'sessions'))).toBe(false);
+    expect(existsSync(path.join(wsPath(), '.pi-agent', 'models.json'))).toBe(true);
+    expect(existsSync(path.join(wsPath(), 'outputs', 'art.txt'))).toBe(true);
+
+    // 幂等：无残留时返回 false
+    expect(clearPiSession(UID, WS_ID)).toBe(false);
   });
 });
 

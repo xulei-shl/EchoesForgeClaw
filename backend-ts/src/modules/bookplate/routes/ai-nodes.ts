@@ -16,8 +16,14 @@ import {
   agentConfigFromWithOverride,
   skillAgentConfigFrom,
 } from '../../../services/node-config-service.js';
-import { preparePiWorkspace, runPiAgent, mimeOf, skillFileDownloadUrl } from '../../../services/pi-agent-service.js';
-import { nodeWorkspace } from '../../../services/skill-agent-service.js';
+import {
+  clearPiSession,
+  preparePiWorkspace,
+  runPiAgent,
+  mimeOf,
+  skillFileDownloadUrl,
+} from '../../../services/pi-agent-service.js';
+import { nodeWorkspace, sanitizeWorkspaceId } from '../../../services/skill-agent-service.js';
 import { fastclawDataRoot, harvestFastclawArtifacts } from '../../../services/fastclaw-artifacts.js';
 import { chatStreamToResponse, type ChatStreamEvent } from '../stream.js';
 import { NODE_TYPES } from '../node-types.js';
@@ -195,6 +201,20 @@ export async function register(app: FastifyInstance): Promise<void> {
         }
       }
       return reply.send(chatStreamToResponse(llmEvents()));
+    }
+  );
+
+  // ---- AI 对话节点：清空会话（Skill Agent 模式删除 pi 会话历史，下次对话从零开始）----
+  app.post(
+    '/api/modules/bookplate/chat/clear',
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const payload = (request.body ?? {}) as ChatRequest;
+      const workspaceId = sanitizeWorkspaceId(payload.workspace_id ?? '');
+      if (!workspaceId) {
+        return reply.code(400).send({ detail: 'workspace_id 不能为空' });
+      }
+      return { cleared: clearPiSession(request.authUser!.id, workspaceId) };
     }
   );
 

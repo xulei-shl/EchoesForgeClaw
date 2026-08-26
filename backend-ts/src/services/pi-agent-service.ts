@@ -29,7 +29,7 @@ import {
  * 装配进 runtime/{uid}/workspace/{chatid}/，以该目录为 cwd 子进程运行：
  *
  *   pi --mode json --no-context-files [--append-system-prompt AGENTS.md] [-e pi-image-gen]
- *      --session .pi-agent/chat.jsonl --provider bookforge --model bookforge/<model> <消息>
+ *      --session .pi-agent/run/chat.jsonl --provider bookforge --model bookforge/<model> <消息>
  *
  * JSONL 事件流归一化为 ChatStreamEvent；进程退出后快照差分工作区产物 → agent_file 事件。
  * 多轮记忆由 pi 会话文件承载（忽略前端回传的 messages）；abort = 杀进程树。
@@ -43,6 +43,14 @@ const BACKEND_ROOT = path.join(REPO_ROOT, 'backend-ts');
 const IMAGE_GEN_SETTINGS_KEY = 'pi-image-gen';
 /** 绘图产物目录（相对工作区根；默认隐藏目录不利于差分上报与下载卡片）。 */
 const IMAGE_OUTPUT_DIR = 'outputs';
+
+/**
+ * pi 会话文件落点（相对工作区根）。必须放在 .pi-agent 根目录之下的子目录：
+ * pi 每次启动都会把 {agentDir} 根下散落的 *.jsonl 迁移进 sessions/{cwd编码}/
+ * （migrateSessionsFromAgentRoot），放根下会导致下一轮运行开始时历史被移走、
+ * 上下文静默重置一次。子目录不在迁移扫描范围内，且 .pi-agent/ 整体被产物差分排除。
+ */
+const PI_SESSION_REL = path.join('.pi-agent', 'run', 'chat.jsonl');
 
 // ---------------------------------------------------------------------------
 // 二进制 / 扩展定位
@@ -262,6 +270,31 @@ export function preparePiWorkspace(
   return { ws, hasPrompt: existsSync(realAgentsMd), mountedSkills, skippedSkills };
 }
 
+/**
+ * 清空 Skill Agent 节点会话（「清空对话」语义）：删除全部会话历史，下次对话从零开始；
+ * 保留 skills/models/settings 等装配物与 outputs/inputs 产物。
+ * 覆盖三处：当前会话（.pi-agent/run/）、历史版本落在 agentDir 根的 chat.jsonl、
+ * pi 自管/启动迁移产生的 .pi-agent/sessions/。幂等；无任何会话残留时返回 false。
+ */
+export function clearPiSession(userId: number, workspaceId: string): boolean {
+  const ws = nodeWorkspace(userId, workspaceId);
+  const agentDir = path.join(ws, '.pi-agent');
+  let cleared = false;
+  const targets = [path.join(agentDir, 'run'), path.join(agentDir, 'sessions')];
+  for (const dir of targets) {
+    if (existsSync(dir)) {
+      rmSync(dir, { recursive: true, force: true });
+      cleared = true;
+    }
+  }
+  const legacyRootSession = path.join(agentDir, 'chat.jsonl');
+  if (existsSync(legacyRootSession)) {
+    removePathSafe(legacyRootSession);
+    cleared = true;
+  }
+  return cleared;
+}
+
 // ---------------------------------------------------------------------------
 // 快照差分（产物探测）
 // ---------------------------------------------------------------------------
@@ -429,9 +462,11 @@ export async function* runPiAgent(opts: RunPiAgentOptions): AsyncGenerator<ChatS
     const ext = resolveImageGenExtension();
     if (ext) args.push('-e', ext);
   }
+  const sessionFile = path.join(opts.ws, PI_SESSION_REL);
+  mkdirSync(path.dirname(sessionFile), { recursive: true });
   args.push(
     '--session',
-    path.join(opts.ws, '.pi-agent', 'chat.jsonl'),
+    sessionFile,
     '--provider',
     'bookforge',
     '--model',
