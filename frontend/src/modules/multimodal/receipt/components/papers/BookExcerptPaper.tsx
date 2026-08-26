@@ -279,6 +279,21 @@ export const BookExcerptPaper = React.forwardRef<HTMLDivElement, BookExcerptPape
                 className="w-full text-right text-[12px] font-normal tracking-tight opacity-75 bg-transparent outline-none border-b border-transparent hover:border-dashed hover:border-current disabled:cursor-not-allowed disabled:hover:border-transparent"
               />
             </div>
+
+            {/* ④ 索书号（等宽字体，与序号同字体家族，最弱层级收尾） */}
+            <div className="w-full flex justify-end pt-0.5">
+              <input
+                type="text"
+                value={state.callNumber || ''}
+                disabled={disabled}
+                onChange={(e) => onChange({ callNumber: e.target.value })}
+                onMouseDown={stopEvent}
+                onPointerDown={stopEvent}
+                placeholder="索书号 Call No."
+                className="w-full text-right text-[11px] font-mono tracking-wider opacity-65 bg-transparent outline-none border-b border-transparent hover:border-dashed hover:border-current disabled:cursor-not-allowed disabled:hover:border-transparent placeholder:opacity-60"
+                style={{ color: theme.faint || theme.text }}
+              />
+            </div>
           </div>
         </div>
       </div>

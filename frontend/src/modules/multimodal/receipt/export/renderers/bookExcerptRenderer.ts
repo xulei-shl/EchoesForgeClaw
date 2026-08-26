@@ -219,7 +219,7 @@ export async function exportBookExcerptImage(
 
   const totalLinedRows = Math.max(4, cnLines.length + 1);
   const totalContentHeight = totalLinedRows * cnLineHeight;
-  const metaTopY = baseHeight - innerMargin - 90;
+  const metaTopY = baseHeight - innerMargin - 94;
 
   // 动态垂直居中起始 Y
   const startExcerptY =
@@ -252,7 +252,7 @@ export async function exportBookExcerptImage(
   const authorVal = metaFields.find((f) => f.key === 'author')?.value || '崔恩荣';
   const pubInfoVal = metaFields.find((f) => f.key === 'pub_info')?.value || '光启书局 · 2026';
 
-  let metaY = baseHeight - innerMargin - 88;
+  let metaY = baseHeight - innerMargin - 92;
   ctx.textAlign = 'right';
 
   // ① 题名（明朝体，无书名号）
@@ -279,6 +279,17 @@ export async function exportBookExcerptImage(
   ctx.font = `400 13px ${minchoFont}`;
   ctx.fillText(pubInfoVal, contentRight, metaY);
   ctx.restore();
+
+  // ④ 索书号（等宽字体，最弱层级收尾；留空不绘制）
+  const callNoVal = (state.callNumber || '').trim();
+  if (callNoVal) {
+    metaY += 19;
+    ctx.save();
+    ctx.fillStyle = theme.faint;
+    ctx.font = "400 11px 'JetBrains Mono', 'Cutive Mono', monospace";
+    ctx.fillText(callNoVal, contentRight, metaY);
+    ctx.restore();
+  }
 
   // 7. 底部锯齿撕纸边
   const toothSize = 8;

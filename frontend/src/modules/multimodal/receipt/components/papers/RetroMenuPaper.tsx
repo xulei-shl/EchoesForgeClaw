@@ -147,6 +147,24 @@ export const RetroMenuPaper = React.forwardRef<HTMLDivElement, RetroMenuPaperPro
                   />
                 </div>
               ))}
+
+              {/* 索书号（固定行，与条目行共享对齐边与间距节奏） */}
+              <div className="flex justify-between items-start gap-2 text-[12px]">
+                <span className="shrink-0 opacity-70" style={{ color: theme.faint || theme.text }}>
+                  索书号:
+                </span>
+                <input
+                  type="text"
+                  value={state.callNumber || ''}
+                  disabled={disabled}
+                  onChange={(e) => onChange({ callNumber: e.target.value })}
+                  onMouseDown={stopEvent}
+                  onPointerDown={stopEvent}
+                  placeholder="[未填写]"
+                  className="text-right flex-1 bg-transparent outline-none font-semibold placeholder:text-opacity-40 border-b border-transparent hover:border-dashed hover:border-current focus:border-solid disabled:cursor-not-allowed disabled:hover:border-transparent"
+                  style={{ color: theme.accent || theme.text }}
+                />
+              </div>
             </div>
           </div>
         </div>

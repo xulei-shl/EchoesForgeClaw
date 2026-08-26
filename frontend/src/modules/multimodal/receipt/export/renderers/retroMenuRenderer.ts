@@ -58,6 +58,9 @@ export async function exportRetroMenuImage(
   topBlockHeight += 38; // 副标题/作者
   const items = state.items || [];
   topBlockHeight += Math.max(1, items.length) * 28 + 24;
+  if (state.callNumber && state.callNumber.trim() !== '') {
+    topBlockHeight += 26; // 索书号行
+  }
 
   const middleH = 40; // 中间齿孔区域高度
 
@@ -177,6 +180,20 @@ export async function exportRetroMenuImage(
     ctx.font = "bold 14px 'JetBrains Mono', 'Courier New', monospace";
     ctx.fillText(item.value || '', baseWidth - padX - 4, curY + 6);
     ctx.font = "14px 'JetBrains Mono', 'Courier New', 'Noto Sans Mono', monospace";
+    curY += 26;
+  }
+
+  // 索书号（固定行，与条目行共享对齐边：标签左对齐淡色，值右对齐加粗）
+  const callNoVal = (state.callNumber || '').trim();
+  if (callNoVal) {
+    ctx.fillStyle = `color-mix(in srgb, ${theme.text} 75%, transparent)`;
+    ctx.textAlign = 'left';
+    ctx.fillText('索书号:', padX + 4, curY + 6);
+
+    ctx.fillStyle = theme.text;
+    ctx.textAlign = 'right';
+    ctx.font = "bold 14px 'JetBrains Mono', 'Courier New', monospace";
+    ctx.fillText(callNoVal, baseWidth - padX - 4, curY + 6);
     curY += 26;
   }
   ctx.restore();
