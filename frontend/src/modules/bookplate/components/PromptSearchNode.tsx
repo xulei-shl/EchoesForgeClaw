@@ -357,7 +357,19 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
 
   const actionBar = promptId ? (
     <NodeActionBar>
-      <NodeActionBar.Edit onClick={openPicker} hasDownstream={hasDownstream} />
+      <NodeActionBar.Custom
+        icon={<Search size={16} strokeWidth={1.5} />}
+        tooltip="重新选择提示词"
+        onClick={openPicker}
+        hasDownstream={hasDownstream}
+      />
+      {content.trim() && (
+        <NodeActionBar.Copy
+          text={content}
+          tooltip="复制提示词内容"
+          toastMessage="提示词内容已复制到剪贴板"
+        />
+      )}
     </NodeActionBar>
   ) : undefined;
 

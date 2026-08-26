@@ -286,7 +286,12 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
 
   const actionBar = selections.length > 0 ? (
     <NodeActionBar>
-      <NodeActionBar.Edit onClick={openPicker} hasDownstream={hasDownstream} />
+      <NodeActionBar.Custom
+        icon={<Search size={16} strokeWidth={1.5} />}
+        tooltip="重新选择技能"
+        onClick={openPicker}
+        hasDownstream={hasDownstream}
+      />
     </NodeActionBar>
   ) : undefined;
 
