@@ -447,6 +447,23 @@ interface PiJsonEvent {
   [key: string]: unknown;
 }
 
+/** 把 pi/provider 的原始错误摘要为用户可读的中文短语（原始细节仍附在最终错误里）。 */
+function friendlyProviderError(raw: string): string {
+  if (/\b429\b|rate.?limit|too many requests/i.test(raw)) return '模型服务繁忙（限流）';
+  if (/\b40[13]\b|unauthorized|forbidden|invalid.{0,12}api.?key/i.test(raw)) return '模型鉴权失败（请检查 API Key）';
+  if (/\b404\b|not found|no endpoints|model.*not.*exist/i.test(raw)) return '模型不存在或不可用';
+  if (/\b402\b|insufficient|quota|credit|balance/i.test(raw)) return '模型配额/余额不足';
+  if (/timed? ?out|timeout/i.test(raw)) return '模型请求超时';
+  if (/\b5\d\d\b|bad gateway|service unavailable/i.test(raw)) return '模型服务异常';
+  if (/aborted/i.test(raw)) return '请求已中断';
+  return '模型请求失败';
+}
+
+/** 组装节点展示的失败文案：友好原因在前，原始错误细节在后（便于排查）。 */
+function formatPiFailure(lastError: string): string {
+  return `${friendlyProviderError(lastError)}：${lastError}`;
+}
+
 /** pi json 事件流 → ChatStreamEvent 异步生成器；结束后差分产物推 agent_file。 */
 export async function* runPiAgent(opts: RunPiAgentOptions): AsyncGenerator<ChatStreamEvent> {
   const { cmd, args: binArgs } = resolvePiBin();
@@ -547,10 +564,22 @@ export async function* runPiAgent(opts: RunPiAgentOptions): AsyncGenerator<ChatS
         lastError = msg.errorMessage ?? null;
         break;
       }
+      case 'auto_retry_start': {
+        // 重试退避期间向节点推状态（否则数十秒静默，用户看不到任何进展）
+        const attempt = Number(evt.attempt ?? 0);
+        const maxAttempts = Number(evt.maxAttempts ?? 0);
+        const delaySec = Math.max(1, Math.round(Number(evt.delayMs ?? 0) / 1000));
+        const reason = typeof evt.errorMessage === 'string' ? friendlyProviderError(evt.errorMessage) : '上游请求失败';
+        yield {
+          type: 'status',
+          message: `${reason}，${delaySec}s 后自动重试（第 ${attempt}/${maxAttempts} 次）`,
+        };
+        break;
+      }
       case 'auto_retry_end': {
         if (evt.success === false && lastError) {
           emittedError = true;
-          yield { type: 'error', message: `pi agent 执行失败: ${lastError}` };
+          yield { type: 'error', message: formatPiFailure(lastError) };
         }
         break;
       }
@@ -638,12 +667,16 @@ export async function* runPiAgent(opts: RunPiAgentOptions): AsyncGenerator<ChatS
         const code = await exitCode;
         if (code !== 0 || lastError) {
           emittedError = true;
-          const detail = lastError ?? `退出码 ${code}`;
-          const tail = stderrTailRef.value.trim();
-          yield {
-            type: 'error',
-            message: `pi agent 执行失败: ${detail}${tail ? `\n${tail.split('\n').at(-1)}` : ''}`,
-          };
+          if (lastError) {
+            yield { type: 'error', message: formatPiFailure(lastError) };
+          } else {
+            // 无模型错误（进程崩溃 / CLI 缺失等）：附 stderr 末行辅助定位
+            const tail = stderrTailRef.value.trim();
+            yield {
+              type: 'error',
+              message: `pi agent 执行失败（退出码 ${code}）${tail ? `\n${tail.split('\n').at(-1)}` : ''}`,
+            };
+          }
         }
       }
     }

@@ -77,8 +77,12 @@ describe('preparePiWorkspace 装配', () => {
     mkdirSync(wsPath(), { recursive: true });
     writeFileSync(path.join(wsPath(), 'AGENTS.md'), 'stale');
 
+    const agentDir = path.join(REAL_AGENTS_ROOT, '90012345');
+    rmSync(agentDir, { recursive: true, force: true });
+
     const r1 = preparePiWorkspace(UID, WS_ID, {
-      agentId: 1,
+      // 用测试专用 agentId（先确保其提示词目录不存在）：agentId=1 可能是真实环境已配置提示词的 Agent
+      agentId: 90012345,
       chatModel: CHAT_MODEL,
       imageModel: null,
       skillNames: [],
@@ -87,7 +91,6 @@ describe('preparePiWorkspace 装配', () => {
     expect(existsSync(path.join(wsPath(), 'AGENTS.md'))).toBe(false);
 
     // 物化真实提示词后再装配
-    const agentDir = path.join(REAL_AGENTS_ROOT, '90012345');
     mkdirSync(agentDir, { recursive: true });
     try {
       writeFileSync(path.join(agentDir, 'AGENTS.md'), '# 测试提示词');

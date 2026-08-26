@@ -18,7 +18,8 @@ const PNG_B64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
 /** 进程内 mock：openai-completions SSE + images generations（无需外部依赖与真实 Key）。
- *  failFirstCompletion > 0 时，前 N 次 chat completions 返回 429（模拟限流，触发 pi auto-retry）。 */
+ *  failFirstCompletion > 0 时，前 N 次 chat completions 返回 429（模拟限流，触发 pi auto-retry）；
+ *  failFirstCompletion < 0 时，所有 chat completions 一律 429（模拟上游持续不可用）。 */
 async function startMock(failFirstCompletion = 0): Promise<{ server: Server; port: number }> {
   let completions = 0;
   const server = createServer((req, res) => {
@@ -31,7 +32,7 @@ async function startMock(failFirstCompletion = 0): Promise<{ server: Server; por
         return;
       }
       completions += 1;
-      if (completions <= failFirstCompletion) {
+      if (failFirstCompletion > 0 ? completions <= failFirstCompletion : failFirstCompletion < 0) {
         res.writeHead(429, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ code: 429, message: 'Provider returned error' }));
         return;
@@ -224,6 +225,56 @@ describe('runPiAgent（pi CLI 子进程端到端）', () => {
         }
         expect(events.some((e) => e.type === 'content_delta' && e.delta.includes('pong'))).toBe(true);
         expect(events.some((e) => e.type === 'error')).toBe(false);
+      } finally {
+        await new Promise<void>((ok) => failMock.server.close(() => ok()));
+      }
+    },
+    90_000
+  );
+
+  it(
+    '持续限流轮：重试期间推 status 进展，最终错误文案友好可读',
+    async () => {
+      const failMock = await startMock(-1);
+      try {
+        const prepared = preparePiWorkspace(UID, WS_ID, {
+          agentId: 1,
+          chatModel: {
+            baseUrl: `http://127.0.0.1:${failMock.port}/v1`,
+            apiKey: 'k',
+            modelName: 'test-model',
+            multimodal: false,
+          },
+          imageModel: null,
+          skillNames: [],
+        });
+        // 快速退避：总耗时可控，仍走完「失败 → 重试 → 再失败」完整链路
+        writeFileSync(
+          path.join(prepared.ws, '.pi-agent', 'settings.json'),
+          JSON.stringify({ retry: { enabled: true, maxRetries: 2, baseDelayMs: 20, provider: { maxRetries: 0 } } }),
+          'utf-8'
+        );
+        const events = [];
+        for await (const evt of runPiAgent({
+          userId: UID,
+          workspaceId: WS_ID,
+          ws: prepared.ws,
+          hasPrompt: false,
+          chatModelName: 'test-model',
+          imageGenEnabled: false,
+          message: 'ping',
+        })) {
+          events.push(evt);
+        }
+        // 重试进展对用户可见（节点活动日志）
+        expect(events.some((e) => e.type === 'status' && /自动重试/.test(e.message))).toBe(true);
+        // 重试原因已翻译为友好文案
+        expect(events.some((e) => e.type === 'status' && /模型服务繁忙（限流）.*自动重试/.test(e.message))).toBe(true);
+        // 收尾 error 事件恰好一条：友好原因 + 原始细节都在
+        const errMsgs = events.flatMap((e) => (e.type === 'error' ? [e.message] : []));
+        expect(errMsgs.length).toBe(1);
+        expect(errMsgs[0]).toContain('模型服务繁忙（限流）');
+        expect(errMsgs[0]).toContain('429');
       } finally {
         await new Promise<void>((ok) => failMock.server.close(() => ok()));
       }

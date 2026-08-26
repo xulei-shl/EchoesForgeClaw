@@ -354,11 +354,26 @@ export function ChatNodeHost({
       const i = next.length - 1;
       if (next[i].role === 'assistant') next[i] = { ...next[i], streaming: true };
     }
-    // 错误且无任何产出：移除空的 assistant 占位（保留已流出的部分）
-    if (status === 'error' && next.length) {
+    // 本轮结束仍无产出（限流/中断等零输出失败）：移除末尾空的 assistant 占位，
+    // 保留此前全部内容以便从断点继续；并同步移除 useChat 内的残留，
+    // 否则该空气泡会在下一轮变成夹在中间的脏历史（镜像只在 error 态剥离挡不住它）
+    if (!streaming && next.length) {
       const i = next.length - 1;
       const last = next[i];
-      if (last.role === 'assistant' && !last.content && !last.reasoning) next = next.slice(0, -1);
+      if (
+        last.role === 'assistant' &&
+        !last.content &&
+        !last.reasoning &&
+        !(last.agentSteps && last.agentSteps.length)
+      ) {
+        next = next.slice(0, -1);
+        setMessages((prev) => {
+          if (!prev.length || prev[prev.length - 1].role !== 'assistant') return prev;
+          const lastUi = prev[prev.length - 1];
+          const hasVisible = lastUi.parts.some((p) => p.type === 'text' || p.type === 'reasoning');
+          return hasVisible ? prev : prev.slice(0, -1);
+        });
+      }
     }
     // 用户主动停止：保留已流出部分并标记中断（展示「重试」入口），不写入输出
     if (interruptPendingRef.current && !streaming && next.length) {
