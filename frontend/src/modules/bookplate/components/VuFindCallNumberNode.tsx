@@ -33,6 +33,10 @@ export interface VuFindCallNumberNodeProps {
   hasDownstream?: boolean;
 }
 
+/** VuFind ISBN 检索页 URL 模板（与后端 fetchCallNumber 同一模板） */
+const VUFIND_ISBN_URL_TEMPLATE =
+  'https://vufind.library.sh.cn/Search/Results?searchtype=vague&lookfor={isbn}&type=AllFields&limit=20';
+
 const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
   id,
   initialX,
@@ -99,6 +103,10 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
   const renderActionBar = () => {
     if (isGenerating) return undefined;
     const hasIsbn = isbnInput.trim().length > 0;
+    const linkIsbn = isbnInput.trim() || isbn.trim();
+    const vuFindUrl = linkIsbn
+      ? VUFIND_ISBN_URL_TEMPLATE.replace('{isbn}', encodeURIComponent(linkIsbn))
+      : '';
 
     if (!output.trim() && !error) {
       return (
@@ -110,6 +118,9 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
             tooltip={hasIsbn ? '获取索书号' : '输入或连线上级节点获取 ISBN'}
             downstreamTooltip="有下级节点，不可修改输出"
           />
+          {vuFindUrl && (
+            <NodeActionBar.ExternalLink href={vuFindUrl} tooltip="在 VuFind 中查看" />
+          )}
         </NodeActionBar>
       );
     }
@@ -129,6 +140,9 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
             tooltip="复制索书号"
             toastMessage="索书号已复制到剪贴板"
           />
+        )}
+        {vuFindUrl && (
+          <NodeActionBar.ExternalLink href={vuFindUrl} tooltip="在 VuFind 中查看" />
         )}
       </NodeActionBar>
     );
