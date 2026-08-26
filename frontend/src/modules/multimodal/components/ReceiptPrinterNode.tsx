@@ -280,7 +280,7 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
       id={id}
       initialX={initialX}
       initialY={initialY}
-      title={title || '图书小票生成'}
+      title={title || '图书小票'}
       dotColor={NODE_COLORS.receipt_printer || 'oklch(0.68 0.15 40)'}
       onRemove={() => onRemove?.(id)}
       onPositionChange={onPositionChange}

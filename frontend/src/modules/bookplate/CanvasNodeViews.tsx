@@ -149,9 +149,9 @@ export interface NodeViewHelpers {
   handleSelectColorFor: (id: string, color: ColorItem, palette?: ColorItem[]) => Promise<void>;
   /** 中国传统配色节点：编辑器状态（category/tab/palette 等）写入 node.data */
   handleUpdateColorEditorFor: (id: string, patch: Record<string, any>, undoable?: boolean) => void;
-  /** 图书小票生成节点：导出 PNG data URL 落盘（保存到后端 + 记录数据库历史 + 写回 node.data） */
+  /** 图书小票节点：导出 PNG data URL 落盘（保存到后端 + 记录数据库历史 + 写回 node.data） */
   handleExportReceiptFor: (id: string, dataUrl: string, state: any) => Promise<void>;
-  /** 图书小票生成节点：状态更新写入 node.data（持久化） */
+  /** 图书小票节点：状态更新写入 node.data（持久化） */
   handleUpdateReceiptStateFor: (id: string, patch: Record<string, any>) => void;
   /** 图书卡片节点：导出 PNG data URL 落盘（保存到后端 + 记录数据库历史 + 写回 node.data） */
   handleExportBookCardFor: (id: string, dataUrl: string, state: any) => Promise<void>;

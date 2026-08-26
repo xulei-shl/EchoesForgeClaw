@@ -460,7 +460,7 @@ export function useNodeHandlers({
     []
   );
 
-  /** 图书小票生成节点：状态更新写入 node.data（持久化）。
+  /** 图书小票节点：状态更新写入 node.data（持久化）。
    *  插图（图书封面 / 上游图片 / 本地上传）与「生成输出图」分离：
    *  组件侧统一以 imageUrl 表达插图，此处持久化写入 coverImageUrl，
    *  node.data.imageUrl 保留给导出生成的完整小票（下游 / 画廊读取它），避免互相覆盖。 */

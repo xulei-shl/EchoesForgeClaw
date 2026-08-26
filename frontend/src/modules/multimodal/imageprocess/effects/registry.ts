@@ -1,5 +1,5 @@
 /**
- * 图片处理效果注册表（对齐「图书小票生成」templates.ts 的注册表模式）
+ * 图片处理效果注册表（对齐「图书小票」templates.ts 的注册表模式）
  *
  * - 每个效果一个 ImageFxEffectDef，在此登记后自动出现在效果切换 UI；
  * - getImageFxEffect 对未知 id 兜底首个效果（与 getReceiptTemplate 口径一致）；

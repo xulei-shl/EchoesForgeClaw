@@ -209,7 +209,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   },
   {
     type: 'receipt_printer',
-    name: '图书小票生成',
+    name: '图书小票',
     description: '生成热敏纸小票、借书卡、古籍排版等书目推荐卡片',
     category: 'multimodal',
     configurable: false,
@@ -377,7 +377,7 @@ export const NODE_PORT_TYPES: Record<
   text_translation: { output: 'text', inputs: ['text'] },
   // 网络搜索：输出检索结果文本；可连线文本节点作为检索关键词（连线即输入）
   web_search: { output: 'text', inputs: ['text'] },
-  // 图书小票生成：输出生成的小票图片；可连线图书元数据/文本作为内容输入，图片作为插图输入（连线即输入）
+  // 图书小票：输出生成的小票图片；可连线图书元数据/文本作为内容输入，图片作为插图输入（连线即输入）
   receipt_printer: { output: 'image', inputs: ['text', 'image'] },
   // 图书卡片：输出生成的卡片图片；可连线图书元数据（封面兜底根节点）与文本/图片上级（连线即输入）
   book_card: { output: 'image', inputs: ['text', 'image'] },

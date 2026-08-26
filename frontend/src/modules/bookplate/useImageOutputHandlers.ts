@@ -309,7 +309,7 @@ export function useImageOutputHandlers(ctx: ImageOutputCtx): ImageOutputHandlers
     nodeType: 'receipt_printer',
     historyNodeType: 'receipt_printer',
     promptOf: (state) =>
-      state?.storeName ? `${state.storeName} - ${state.subtitle || '图书小票'}` : '图书小票生成',
+      state?.storeName ? `${state.storeName} - ${state.subtitle || '图书小票'}` : '图书小票',
     okExtras: (state) => ({
       coverImageUrl:
         state && typeof state.imageUrl === 'string' && state.imageUrl.trim() !== ''

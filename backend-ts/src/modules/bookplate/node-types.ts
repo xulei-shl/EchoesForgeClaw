@@ -32,7 +32,7 @@ export const NODE_TYPES = {
   TEXT_TRANSLATION: 'text_translation',
   /** 网络搜索（文本工具）：知乎全网 / Tavily / Exa / 豆包等多源网络检索 */
   WEB_SEARCH: 'web_search',
-  /** 图书小票生成（多模态工具）：生成热敏纸小票、借书卡、古籍排版等书目推荐卡片 */
+  /** 图书小票（多模态工具）：生成热敏纸小票、借书卡、古籍排版等书目推荐卡片 */
   RECEIPT_PRINTER: 'receipt_printer',
   /** 图书卡片（多模态工具）：书目元数据 + 封面填入 HTML 模板，浏览器端截图为图片输出 */
   BOOK_CARD: 'book_card',
@@ -254,7 +254,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
   },
   {
     type: NODE_TYPES.RECEIPT_PRINTER,
-    name: '图书小票生成',
+    name: '图书小票',
     description: '生成热敏纸小票、借书卡、古籍排版等书目推荐卡片',
     category: 'multimodal',
     configurable: false,

@@ -52,7 +52,7 @@ export function useGenerationHistory(ctx: GenerationHistoryContext): GenerationH
 
       const promptText =
         imageNode.type === 'receipt_printer'
-          ? (imageNode.data?.storeName ? `${imageNode.data.storeName} - ${imageNode.data?.subtitle || '图书小票'}` : '图书小票生成')
+          ? (imageNode.data?.storeName ? `${imageNode.data.storeName} - ${imageNode.data?.subtitle || '图书小票'}` : '图书小票')
           : imageNode.type === 'book_card'
             ? '图书卡片生成'
             : imageNode.type === 'stamp_cutter'

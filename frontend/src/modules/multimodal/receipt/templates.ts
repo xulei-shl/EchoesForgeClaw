@@ -134,7 +134,7 @@ export const TEMPLATE_BOOK_RECOMMEND: ReceiptTemplateDef = {
  */
 export const TEMPLATE_READING_LOG: ReceiptTemplateDef = {
   id: 'reading_log',
-  name: '借阅打卡小票',
+  name: '借阅记录卡',
   description: '复古图书馆借书卡排版，展示作者、题名、出版年，右上角继承 ISBN 后四位，含打卡流水记录',
   createInitialState: () => ({
     templateId: 'reading_log',

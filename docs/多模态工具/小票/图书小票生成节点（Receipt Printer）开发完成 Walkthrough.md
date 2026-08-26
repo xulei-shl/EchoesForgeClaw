@@ -1,6 +1,6 @@
-# 图书小票生成节点（Receipt Printer）开发完成 Walkthrough
+# 图书小票节点（Receipt Printer）开发完成 Walkthrough
 
-在 EchoesForgeClaw 画板中新增了专门用于阅读推广、书目推荐与复古借阅打卡凭证生成的 **「图书小票生成节点（`receipt_printer`）」**。
+在 EchoesForgeClaw 画板中新增了专门用于阅读推广、书目推荐与复古借阅打卡凭证生成的 **「图书小票节点（`receipt_printer`）」**。
 
 ---
 
@@ -50,7 +50,7 @@ frontend/src/modules/multimodal/receipt/
 ### 3. 灵活的预设模板与主题配色
 * **4 套预设场景模板**：
   1. `book_recommend`：**书目推荐小票**（阅读推广、馆藏推荐、图书凭证）；
-  2. `reading_log`：**借阅打卡小票**（借阅记录、打卡心得、阅读星级）；
+  2. `reading_log`：**借阅记录卡**（借阅记录、打卡心得、阅读星级）；
   3. `itemized`：**经典清单小票**（品名、数量、价格、TOTAL 总计）；
   4. `retro_menu`：**复古菜单**（复刻复古纸质菜单排版，上下双图并支持点阵滤镜，具备锯齿边框缺口样式，文本映射图书元数据为菜品）。
 * **5 套热敏纸配色**：

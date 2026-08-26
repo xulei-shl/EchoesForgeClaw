@@ -1,7 +1,7 @@
 /**
  * 图片处理（Image Process）效果引擎模块
  *
- * 架构参照「图书小票生成」多模板模式：效果注册表（effects/registry.ts）
+ * 架构参照「图书小票」多模板模式：效果注册表（effects/registry.ts）
  * + 声明式参数 + 统一渲染分发；状态语义见 state.ts。
  */
 
