@@ -124,7 +124,8 @@ const BookInfoNodeInner: React.FC<BookInfoNodeProps> = ({
       showRightAnchor={true}
       footer={footer}
       actionBar={
-        <NodeActionBar>
+        <>
+          <NodeActionBar>
           {error && (
             <NodeActionBar.Retry
               onClick={() => onRetry?.(id)}
@@ -165,20 +166,21 @@ const BookInfoNodeInner: React.FC<BookInfoNodeProps> = ({
               disabled={isGenerating}
             />
           )}
-        </NodeActionBar>
-        {data.isbn && onUploadCover && (
-          <input
-            ref={coverInputRef}
-            type="file"
-            accept="image/jpeg,image/png,image/gif,image/webp"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) onUploadCover(id, file);
-              e.target.value = '';
-            }}
-          />
-        )}
+          </NodeActionBar>
+          {data.isbn && onUploadCover && (
+            <input
+              ref={coverInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) onUploadCover(id, file);
+                e.target.value = '';
+              }}
+            />
+          )}
+        </>
       }
     >
       <div className="h-full flex flex-col flex-1 min-h-0">

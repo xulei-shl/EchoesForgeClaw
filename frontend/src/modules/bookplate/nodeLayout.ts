@@ -35,7 +35,8 @@ export type NodeType =
   | 'pattern_search'
   | 'color_search'
   | 'oil_paint'
-  | 'image_process';
+  | 'image_process'
+  | 'vufind_call_number';
 
 /** 各节点模板类型的默认尺寸（必须与组件 defaultSize 一致） */
 export const NODE_SIZES: Record<NodeType, { width: number; height: number }> = {
