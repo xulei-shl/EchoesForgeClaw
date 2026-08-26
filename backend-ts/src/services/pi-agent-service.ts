@@ -44,6 +44,35 @@ const IMAGE_GEN_SETTINGS_KEY = 'pi-image-gen';
 /** 绘图产物目录（相对工作区根；默认隐藏目录不利于差分上报与下载卡片）。 */
 const IMAGE_OUTPUT_DIR = 'outputs';
 
+// ---------------------------------------------------------------------------
+// 运行时调优默认值（env 可覆盖；写入 .pi-agent/settings.json 固化，防上游默认漂移）
+// ---------------------------------------------------------------------------
+
+function envInt(name: string, fallback: number): number {
+  const raw = Number(process.env[name]);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : fallback;
+}
+
+/** 压缩触发预留 token（阈值 = 模型上下文窗 − 该值；pi 默认 16384）。 */
+const COMPACTION_RESERVE_TOKENS = envInt('PI_COMPACTION_RESERVE_TOKENS', 16384);
+/** 压缩切割时保留的近期原文 token 量（pi 默认 20000）。 */
+const COMPACTION_KEEP_RECENT_TOKENS = envInt('PI_COMPACTION_KEEP_RECENT_TOKENS', 20000);
+/** 上游请求失败自动重试次数（pi 默认 3；云端限流场景适当放宽）。 */
+const RETRY_MAX_RETRIES = envInt('PI_RETRY_MAX_RETRIES', 5);
+/** 重试退避基值 ms（pi 默认 2000，指数退避）。 */
+const RETRY_BASE_DELAY_MS = envInt('PI_RETRY_BASE_DELAY_MS', 2000);
+/**
+ * 工具黑名单（逗号分隔工具名，如 "bash,write"）→ 运行参数 -xt 注入。
+ * pi 子进程模式没有审批门，多租户风险收敛只能靠 allowlist/denylist。
+ */
+const DISABLED_TOOLS = (process.env.PI_DISABLED_TOOLS ?? '')
+  .split(',')
+  .map((t) => t.trim())
+  .filter(Boolean);
+
+/** 合法 thinking level（与 pi CLI --thinking 取值一致）。 */
+export const PI_THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
+
 /**
  * pi 会话文件落点（相对工作区根）。必须放在 .pi-agent 根目录之下的子目录：
  * pi 每次启动都会把 {agentDir} 根下散落的 *.jsonl 迁移进 sessions/{cwd编码}/
@@ -265,6 +294,24 @@ export function preparePiWorkspace(
   } else {
     delete settings[IMAGE_GEN_SETTINGS_KEY];
   }
+
+  // 运行时调优段：自动压缩 + 自动重试（显式固化，json 子进程模式同样生效）
+  settings['compaction'] = {
+    ...(typeof settings['compaction'] === 'object' && settings['compaction'] !== null
+      ? (settings['compaction'] as Record<string, unknown>)
+      : {}),
+    enabled: true,
+    reserveTokens: COMPACTION_RESERVE_TOKENS,
+    keepRecentTokens: COMPACTION_KEEP_RECENT_TOKENS,
+  };
+  settings['retry'] = {
+    ...(typeof settings['retry'] === 'object' && settings['retry'] !== null
+      ? (settings['retry'] as Record<string, unknown>)
+      : {}),
+    enabled: true,
+    maxRetries: RETRY_MAX_RETRIES,
+    baseDelayMs: RETRY_BASE_DELAY_MS,
+  };
   writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
 
   return { ws, hasPrompt: existsSync(realAgentsMd), mountedSkills, skippedSkills };
@@ -311,6 +358,93 @@ const DIFF_EXCLUDED_FILES = new Set(['AGENTS.md']);
 function isDiffExcluded(rel: string): boolean {
   if (DIFF_EXCLUDED_FILES.has(rel)) return true;
   return DIFF_EXCLUDED_PREFIXES.some((p) => rel.startsWith(p));
+}
+
+// ---------------------------------------------------------------------------
+// 产物清单（manifest）与工作区产物列表
+// ---------------------------------------------------------------------------
+
+/**
+ * 工作区产物清单落点（相对工作区根）。放 .pi-agent/ 下可复用差分排除前缀，
+ * 清单不会自报自录；append-only JSONL，读取端按 rel 去重取最新。
+ */
+export const PI_ARTIFACTS_REL = path.join('.pi-agent', 'artifacts.jsonl');
+
+export interface ArtifactRecord {
+  rel: string;
+  mime: string;
+  size: number;
+  mtimeMs: number;
+}
+
+/** 把本轮差分出的产物追加进 manifest（best-effort：失败不影响对话流）。 */
+export function appendArtifactManifest(ws: string, records: ArtifactRecord[]): void {
+  if (!records.length) return;
+  const file = path.join(ws, PI_ARTIFACTS_REL);
+  try {
+    mkdirSync(path.dirname(file), { recursive: true });
+    const lines = records
+      .map((r) => JSON.stringify({ ...r, ts: Date.now() }))
+      .join('\n');
+    writeFileSync(file, `${lines}\n`, { flag: 'a', encoding: 'utf-8' });
+  } catch {
+    /* 磁盘异常等：清单是可再生的辅助索引，静默跳过 */
+  }
+}
+
+export interface WorkspaceArtifact extends Omit<ArtifactRecord, 'rel'> {
+  /** 工作区相对路径（正斜杠口径，与 agent_file 事件的 path 字段一致） */
+  path: string;
+  name: string;
+  url: string;
+  exists: boolean;
+}
+
+/**
+ * 列出工作区当前产物（差分同口径排除装配物/会话/inputs），并与 manifest 历史
+ * 条目合并（文件已被删除的历史产物保留并标 exists=false，维持可追溯）。
+ */
+export function listWorkspaceArtifacts(ws: string, workspaceId: string): WorkspaceArtifact[] {
+  const byRel = new Map<string, WorkspaceArtifact>();
+  for (const [rel, stamp] of snapshotWorkspace(ws)) {
+    if (isDiffExcluded(rel)) continue;
+    byRel.set(rel, {
+      path: rel,
+      mime: mimeOf(rel),
+      size: stamp.size,
+      mtimeMs: stamp.mtimeMs,
+      name: path.basename(rel),
+      url: skillFileDownloadUrl(rel, workspaceId),
+      exists: true,
+    });
+  }
+  const manifestFile = path.join(ws, PI_ARTIFACTS_REL);
+  try {
+    const raw = readFileSync(manifestFile, 'utf-8');
+    for (const line of raw.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('{')) continue;
+      let rec: Partial<ArtifactRecord>;
+      try {
+        rec = JSON.parse(trimmed) as Partial<ArtifactRecord>;
+      } catch {
+        continue;
+      }
+      if (typeof rec.rel !== 'string' || !rec.rel || byRel.has(rec.rel)) continue;
+      byRel.set(rec.rel, {
+        path: rec.rel,
+        mime: rec.mime ?? mimeOf(rec.rel),
+        size: rec.size ?? 0,
+        mtimeMs: rec.mtimeMs ?? 0,
+        name: path.basename(rec.rel),
+        url: skillFileDownloadUrl(rec.rel, workspaceId),
+        exists: false,
+      });
+    }
+  } catch {
+    /* 无 manifest 或不可读：仅返回当前快照 */
+  }
+  return [...byRel.values()].sort((a, b) => a.path.localeCompare(b.path));
 }
 
 function walkWorkspace(root: string, out: Map<string, FileStamp>, dir = root, prefix = ''): void {
@@ -439,12 +573,112 @@ export interface RunPiAgentOptions {
   imageGenEnabled: boolean;
   message: string;
   images?: string[];
+  /** thinking level（off..max，非法值忽略 = 跟随 pi 默认） */
+  thinkingLevel?: string | null;
   signal?: AbortSignal;
 }
 
 interface PiJsonEvent {
   type: string;
   [key: string]: unknown;
+}
+
+/** 事件映射的跨事件状态（message_end 捕获的最新模型错误，供 auto_retry_end / 收尾判定）。 */
+export interface PiEventMapperState {
+  lastError: string | null;
+}
+
+const COMPACTION_REASON_TEXT: Record<string, string> = {
+  manual: '手动',
+  threshold: '达到上下文阈值',
+  overflow: '上下文溢出',
+};
+
+/**
+ * pi json 事件 → ChatStreamEvent 归一化映射（纯函数，可单测）。
+ * 覆盖：流式增量 / 工具调用 / 自动重试（结构化）/ 上下文压缩（开始与完成）/
+ * 错误捕获；未知事件静默忽略。
+ */
+export function* mapPiJsonEvent(
+  evt: PiJsonEvent,
+  state: PiEventMapperState
+): Generator<ChatStreamEvent> {
+  switch (evt.type) {
+    case 'message_update': {
+      const ame = evt.assistantMessageEvent as { type?: string; delta?: string } | undefined;
+      if (ame?.type === 'text_delta' && typeof ame.delta === 'string') {
+        yield { type: 'content_delta', delta: ame.delta };
+      } else if (ame?.type === 'thinking_delta' && typeof ame.delta === 'string') {
+        yield { type: 'reasoning_delta', delta: ame.delta };
+      }
+      break;
+    }
+    case 'tool_execution_start': {
+      yield {
+        type: 'tool_call',
+        id: String(evt.toolCallId ?? ''),
+        name: String(evt.toolName ?? ''),
+        arguments: JSON.stringify(evt.args ?? {}),
+      };
+      break;
+    }
+    case 'tool_execution_end': {
+      yield {
+        type: 'tool_result',
+        id: String(evt.toolCallId ?? ''),
+        name: String(evt.toolName ?? ''),
+        result: JSON.stringify(evt.result ?? null),
+      };
+      break;
+    }
+    case 'compaction_start': {
+      const reason = String(evt.reason ?? 'threshold');
+      yield {
+        type: 'status',
+        message: `上下文压缩中（${COMPACTION_REASON_TEXT[reason] ?? reason}），正在摘要归档更早日志…`,
+      };
+      break;
+    }
+    case 'compaction_end': {
+      // aborted：用户中断导致的压缩放弃，不提示；失败细节由 errorMessage 承载
+      if (evt.aborted) break;
+      if (typeof evt.errorMessage === 'string' && evt.errorMessage) {
+        yield { type: 'status', message: `上下文压缩失败：${evt.errorMessage}` };
+        break;
+      }
+      yield { type: 'status', message: '上下文压缩完成，更早对话已摘要归档' };
+      break;
+    }
+    case 'message_end': {
+      const msg = evt.message as { role?: string; errorMessage?: string } | undefined;
+      if (msg?.role !== 'assistant') break;
+      // 每条 assistant message_end 视为最新结果：auto-retry 恢复后的成功消息必须
+      // 覆盖此前失败尝试的 errorMessage，否则进程正常结束后仍会误报
+      // 「执行失败」——前端会在收尾 error chunk 上回滚整轮已流出的内容。
+      state.lastError = msg.errorMessage ?? null;
+      break;
+    }
+    case 'auto_retry_start': {
+      // 结构化重试事件：前端渲染倒计时横幅（attempt/delayMs 驱动），不再用纯文本步骤
+      const attempt = Number(evt.attempt ?? 0);
+      const maxAttempts = Number(evt.maxAttempts ?? 0);
+      const delaySec = Math.max(1, Math.round(Number(evt.delayMs ?? 0) / 1000));
+      const reason =
+        typeof evt.errorMessage === 'string' ? friendlyProviderError(evt.errorMessage) : '上游请求失败';
+      yield { type: 'agent_retry', attempt, maxAttempts, delaySec, reason };
+      break;
+    }
+    case 'auto_retry_end': {
+      if (evt.success === false && state.lastError) {
+        yield { type: 'error', message: formatPiFailure(state.lastError) };
+      } else if (evt.success === true) {
+        yield { type: 'status', message: '已自动恢复，继续生成…' };
+      }
+      break;
+    }
+    default:
+      break;
+  }
 }
 
 /** 把 pi/provider 的原始错误摘要为用户可读的中文短语（原始细节仍附在最终错误里）。 */
@@ -478,6 +712,19 @@ export async function* runPiAgent(opts: RunPiAgentOptions): AsyncGenerator<ChatS
   if (opts.imageGenEnabled) {
     const ext = resolveImageGenExtension();
     if (ext) args.push('-e', ext);
+  }
+  // thinking level（节点设置覆盖；非法值静默忽略 = pi 默认）
+  const thinking =
+    typeof opts.thinkingLevel === 'string' &&
+    (PI_THINKING_LEVELS as readonly string[]).includes(opts.thinkingLevel)
+      ? opts.thinkingLevel
+      : null;
+  if (thinking && thinking !== 'off') {
+    args.push('--thinking', thinking);
+  }
+  // 工具黑名单（多租户风险收敛；pi 子进程模式无审批门，仅 allowlist/denylist 可控）
+  for (const tool of DISABLED_TOOLS) {
+    args.push('--exclude-tools', tool);
   }
   const sessionFile = path.join(opts.ws, PI_SESSION_REL);
   mkdirSync(path.dirname(sessionFile), { recursive: true });
@@ -521,72 +768,10 @@ export async function* runPiAgent(opts: RunPiAgentOptions): AsyncGenerator<ChatS
 
   // 事件队列：stdout 行解析线程安全地入队，生成器按序出队
   const queue: ChatStreamEvent[] = [];
-  let lastError: string | null = null;
+  const mapperState: PiEventMapperState = { lastError: null };
   let emittedError = false;
   let stdoutEnded = false;
   let childClosed = false;
-
-  const toStreamEvents = function* (evt: PiJsonEvent): Generator<ChatStreamEvent> {
-    switch (evt.type) {
-      case 'message_update': {
-        const ame = evt.assistantMessageEvent as { type?: string; delta?: string } | undefined;
-        if (ame?.type === 'text_delta' && typeof ame.delta === 'string') {
-          yield { type: 'content_delta', delta: ame.delta };
-        } else if (ame?.type === 'thinking_delta' && typeof ame.delta === 'string') {
-          yield { type: 'reasoning_delta', delta: ame.delta };
-        }
-        break;
-      }
-      case 'tool_execution_start': {
-        yield {
-          type: 'tool_call',
-          id: String(evt.toolCallId ?? ''),
-          name: String(evt.toolName ?? ''),
-          arguments: JSON.stringify(evt.args ?? {}),
-        };
-        break;
-      }
-      case 'tool_execution_end': {
-        yield {
-          type: 'tool_result',
-          id: String(evt.toolCallId ?? ''),
-          name: String(evt.toolName ?? ''),
-          result: JSON.stringify(evt.result ?? null),
-        };
-        break;
-      }
-      case 'message_end': {
-        const msg = evt.message as { role?: string; errorMessage?: string } | undefined;
-        if (msg?.role !== 'assistant') break;
-        // 每条 assistant message_end 视为最新结果：auto-retry 恢复后的成功消息必须
-        // 覆盖此前失败尝试的 errorMessage，否则进程正常结束后仍会误报
-        // 「执行失败」——前端会在收尾 error chunk 上回滚整轮已流出的内容。
-        lastError = msg.errorMessage ?? null;
-        break;
-      }
-      case 'auto_retry_start': {
-        // 重试退避期间向节点推状态（否则数十秒静默，用户看不到任何进展）
-        const attempt = Number(evt.attempt ?? 0);
-        const maxAttempts = Number(evt.maxAttempts ?? 0);
-        const delaySec = Math.max(1, Math.round(Number(evt.delayMs ?? 0) / 1000));
-        const reason = typeof evt.errorMessage === 'string' ? friendlyProviderError(evt.errorMessage) : '上游请求失败';
-        yield {
-          type: 'status',
-          message: `${reason}，${delaySec}s 后自动重试（第 ${attempt}/${maxAttempts} 次）`,
-        };
-        break;
-      }
-      case 'auto_retry_end': {
-        if (evt.success === false && lastError) {
-          emittedError = true;
-          yield { type: 'error', message: formatPiFailure(lastError) };
-        }
-        break;
-      }
-      default:
-        break;
-    }
-  };
 
   // 事件唤醒：入队 / stdout 结束 / 进程退出时唤醒等待中的生成器（单线程语义下无竞态）
   let notify: (() => void) | null = null;
@@ -610,7 +795,10 @@ export async function* runPiAgent(opts: RunPiAgentOptions): AsyncGenerator<ChatS
     } catch {
       return;
     }
-    for (const e of toStreamEvents(evt)) pushEvent(e);
+    for (const e of mapPiJsonEvent(evt, mapperState)) {
+      if (e.type === 'error') emittedError = true;
+      pushEvent(e);
+    }
   };
 
   stdout?.on('data', (c: Buffer) => {
@@ -665,6 +853,7 @@ export async function* runPiAgent(opts: RunPiAgentOptions): AsyncGenerator<ChatS
         yield { type: 'status', message: '已中断' };
       } else {
         const code = await exitCode;
+        const lastError = mapperState.lastError;
         if (code !== 0 || lastError) {
           emittedError = true;
           if (lastError) {
@@ -681,12 +870,14 @@ export async function* runPiAgent(opts: RunPiAgentOptions): AsyncGenerator<ChatS
       }
     }
 
-    // 产物差分（新增或修改的文件）→ agent_file 卡片
+    // 产物差分（新增或修改的文件）→ agent_file 卡片 + manifest 落盘（服务端可再到达）
     const after = snapshotWorkspace(opts.ws);
+    const artifacts: ArtifactRecord[] = [];
     for (const [rel, stamp] of after) {
       if (isDiffExcluded(rel)) continue;
       const prev = before.get(rel);
       if (prev && prev.size === stamp.size && prev.mtimeMs === stamp.mtimeMs) continue;
+      artifacts.push({ rel, mime: mimeOf(rel), size: stamp.size, mtimeMs: stamp.mtimeMs });
       yield {
         type: 'agent_file',
         file: {
@@ -698,6 +889,7 @@ export async function* runPiAgent(opts: RunPiAgentOptions): AsyncGenerator<ChatS
         },
       };
     }
+    appendArtifactManifest(opts.ws, artifacts);
   } finally {
     opts.signal?.removeEventListener('abort', onAbort);
     killTree(child);

@@ -289,6 +289,8 @@ export interface ChatMessage {
   agentSteps?: AgentStep[];
   /** Skill Agent 执行产生的文件（agent_file 事件），渲染为下载/预览卡片 */
   files?: AgentFile[];
+  /** 本轮装配的 Skill 名（发送时记录，用户气泡下方展示 chips；历史水合轮无此信息） */
+  skills?: string[];
 }
 
 /** 注入 AI 对话节点的单项上下文块（由各上级节点或图书元数据生成） */
@@ -326,6 +328,11 @@ export interface ChatNodeSettings {
    * 仅 Agent 模式生效。undefined = 跟随节点配置。
    */
   agentOverride?: number;
+  /**
+   * thinking level（off/minimal/low/medium/high/xhigh/max）；仅 Skill Agent 模式生效，
+   * 随请求透传为 pi --thinking 参数。undefined/空 = 跟随 pi 默认。
+   */
+  piThinking?: string;
 }
 
 /** 可执行节点（图片分析 / 提示词生成 / 图像生成）的运行设置（节点内可开关） */
@@ -599,4 +606,9 @@ export interface AgentFile {
   mime: string;
   size: number;
   path: string;
+  /**
+   * 服务端文件是否仍存在（仅 /chat/files 工作区产物列表携带；
+   * manifest 历史条目对应文件被删除时为 false，面板侧过滤不展示）
+   */
+  exists?: boolean;
 }

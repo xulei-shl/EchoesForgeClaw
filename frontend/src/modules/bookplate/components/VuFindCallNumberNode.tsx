@@ -182,7 +182,7 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
             />
           </>
         )}
-        {recordUrl && (VuFind 馆藏
+        {recordUrl && (
           <NodeActionBar.ExternalLink href={recordUrl} tooltip="在 VuFind 中查看详情页" />
         )}
         {!recordUrl && vuFindUrl && (

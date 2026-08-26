@@ -24,6 +24,11 @@ export interface ChatRequest {
   model_name?: string | null;
   /** 节点内手动选择的 FastClaw Agent 配置 id（仅 Agent 模式生效；空/缺省 = 跟随节点配置） */
   agent_config_id?: number | null;
+  /**
+   * thinking level（仅 Skill Agent 模式生效；off/minimal/low/medium/high/xhigh/max；
+   * 空/缺省 = pi 默认。非法值由执行器静默忽略）
+   */
+  thinking?: string | null;
 }
 
 export interface AnalyzeImageRequest {

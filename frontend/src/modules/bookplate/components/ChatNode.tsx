@@ -1,6 +1,6 @@
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, Eraser, ImagePlus, MessageSquare, Send, Copy, Check, Loader2, Square, RefreshCw, ChevronUp, ChevronDown, Lock, X, FileText, Download, Brain } from 'lucide-react';
+import { AlertTriangle, Eraser, ImagePlus, MessageSquare, Send, Copy, Check, Loader2, Square, RefreshCw, ChevronUp, ChevronDown, Lock, X, FileText, Download, Brain, FolderOpen, Clock, Zap } from 'lucide-react';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
 import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
@@ -9,6 +9,7 @@ import { NodeActionBar, copyTextToClipboard } from '../../../platform/components
 import { AgentActivity } from '../../../platform/components/agent/AgentActivity';
 import { Toggle } from '../../../platform/components/ui/Toggle';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
+import { useSmoothStream } from '../../../platform/hooks/useSmoothStream';
 import type { AgentFile, AgentStep, ChatMessage, ChatNodeSettings, InjectedContextBlock } from '../../../platform/types';
 import { ContextInjectionBlock } from './ContextInjectionBlock';
 import { AgentOverrideField } from './AgentOverrideField';
@@ -139,6 +140,74 @@ const SkillFileCard: React.FC<{ file: AgentFile }> = memo(({ file }) => {
   );
 });
 SkillFileCard.displayName = 'SkillFileCard';
+
+/** 自动重试横幅：倒计时自走（delaySec 递减），可展开查看原因；借鉴 Proma RetryingNotice。 */
+const RetryNoticeBanner: React.FC<{ notice: ChatRetryNotice }> = ({ notice }) => {
+  const [remaining, setRemaining] = useState(notice.delaySec);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    setRemaining(notice.delaySec);
+    const timer = setInterval(() => {
+      setRemaining((v) => (v > 0 ? v - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [notice.attempt, notice.delaySec]);
+  return (
+    <div className="mb-2 p-2 rounded-md border border-accent/25 bg-accent/5">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-2 text-left"
+        title="点击查看详情"
+      >
+        <RefreshCw size={12} strokeWidth={2} className="text-accent animate-spin shrink-0" />
+        <span className="flex-1 min-w-0 text-[11px] font-sans text-accent/90 leading-snug">
+          {notice.reason}，{remaining}s 后自动重试（第 {notice.attempt}/{notice.maxAttempts || '?'} 次）
+        </span>
+        <ChevronDown
+          size={11}
+          strokeWidth={2}
+          className={`shrink-0 text-accent/70 transition-transform ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+      {open && (
+        <p className="mt-1.5 pl-[22px] text-[10px] font-sans text-ink-light leading-relaxed break-all select-text">
+          上游错误：{notice.reason}。pi 正以指数退避自动重试，期间无需操作；多次失败将以错误横幅提示。
+        </p>
+      )}
+    </div>
+  );
+};
+
+/** 排队消息行：撤回 / 立即发送（流式中发送的消息先进队列，借鉴 Proma AgentMessageQueue）。 */
+const QueuedMessageRow: React.FC<{
+  item: { id: number; text: string; images?: string[] };
+  onRecall: (id: number) => void;
+  onSendNow: (id: number) => void;
+}> = ({ item, onRecall, onSendNow }) => (
+  <div className="flex items-center gap-1.5 max-w-full rounded-lg border border-paper-grid bg-paper-grid/20 px-2 py-1 group/queue">
+    <Clock size={11} strokeWidth={2} className="text-ink-faint shrink-0" />
+    <p className="flex-1 min-w-0 truncate text-[11px] font-sans text-ink-light" title={item.text}>
+      {item.text || `图片 ×${item.images?.length ?? 0}`}
+    </p>
+    {!!item.images?.length && item.text && (
+      <span className="shrink-0 text-[9px] font-sans text-ink-faint">+{item.images.length}图</span>
+    )}
+    <button
+      onClick={() => onSendNow(item.id)}
+      title="立即发送"
+      className="shrink-0 flex items-center justify-center w-5 h-5 rounded-md text-ink-faint hover:text-accent hover:bg-accent/10 active:scale-95 transition opacity-60 group-hover/queue:opacity-100"
+    >
+      <Send size={10} strokeWidth={2} />
+    </button>
+    <button
+      onClick={() => onRecall(item.id)}
+      title="撤回"
+      className="shrink-0 flex items-center justify-center w-5 h-5 rounded-md text-ink-faint hover:text-error hover:bg-error/10 active:scale-95 transition opacity-60 group-hover/queue:opacity-100"
+    >
+      <X size={10} strokeWidth={2.5} />
+    </button>
+  </div>
+);
 
 /** 模型思考过程（reasoning）折叠块：弱化样式、默认收起，点击展开。
  *
@@ -285,6 +354,8 @@ interface ChatMessageItemProps {
   onCopy: (content: string, idx: number) => void;
   isCopied: boolean;
   onRetry?: () => void;
+  /** 正文打字机平滑渲染（仅流式中的最后一条 assistant 开启） */
+  smooth?: boolean;
 }
 
 /** 单条对话消息气泡：memo 隔离，流式更新时非活动历史消息跳过 re-render */
@@ -297,10 +368,30 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
   onCopy,
   isCopied,
   onRetry,
+  smooth = false,
 }) => {
+  // Hook 顺序约束：useSmoothStream 必须在任何条件分支之前调用
+  // （用户消息 / 非流式消息 smoothActive=false，直接返回原文）
+  const smoothActive = Boolean(smooth && msg.role === 'assistant' && msg.streaming);
+  const smoothContent = useSmoothStream(msg.content, smoothActive, smooth);
   if (msg.role === 'user') {
     return (
       <div className="flex flex-col items-end gap-0.5 msg-enter-anim">
+        {/* 本轮装配的 Skill chips（Skill Agent 模式发送时记录） */}
+        {!!msg.skills?.length && (
+          <div className="flex flex-wrap justify-end gap-1 max-w-[85%]">
+            {msg.skills.map((s) => (
+              <span
+                key={s}
+                className="inline-flex items-center gap-0.5 rounded-full bg-accent/10 border border-accent/20 px-1.5 py-0.5 text-[9px] font-sans text-accent"
+                title={`本轮装配技能：${s}`}
+              >
+                <Zap size={8} strokeWidth={2} />
+                {s}
+              </span>
+            ))}
+          </div>
+        )}
         {msg.images && msg.images.length > 0 && (
           <div className="flex flex-wrap justify-end gap-1.5 max-w-[85%]">
             {msg.images.map((img, i) => (
@@ -371,8 +462,8 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
               caret="block"
               linkSafety={{ enabled: false }}
             >
-              {/* 剔除指向本地文件系统的图片语法（浏览器无法加载，由下方文件卡片展示） */}
-              {normalizeMarkdown(stripUnrenderableImages(msg.content, workspaceId)) ||
+              {/* 平滑渲染：流式中按 rAF 节奏逐字展示（useSmoothStream），结束/历史直接全文 */}
+              {normalizeMarkdown(stripUnrenderableImages(smoothContent, workspaceId)) ||
                 (msg.interrupted ? '已中断' : '')}
             </Streamdown>
           )}
@@ -418,6 +509,30 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
   );
 });
 ChatMessageItem.displayName = 'ChatMessageItem';
+
+/** 自动重试横幅数据（Skill Agent 结构化 agent_retry 事件驱动；倒计时在横幅内自走） */
+export interface ChatRetryNotice {
+  attempt: number;
+  maxAttempts: number;
+  delaySec: number;
+  reason: string;
+}
+
+/** 排队消息（流式中发送进入队列，当前轮结束后自动依次发出） */
+export interface ChatMessageQueue {
+  items: { id: number; text: string; images?: string[] }[];
+  onRecall: (id: number) => void;
+  onSendNow: (id: number) => void;
+}
+
+/** 工作区产物面板（skill_agent 模式专用；数据由宿主从服务端拉取，其他模式不传即不渲染） */
+export interface ChatWorkspaceFilesPanel {
+  open: boolean;
+  loading: boolean;
+  files: AgentFile[];
+  onToggle: () => void;
+  onRefresh: () => void;
+}
 
 export interface ChatNodeProps {
   id: string;
@@ -469,6 +584,14 @@ export interface ChatNodeProps {
   mode?: 'llm' | 'agent' | 'skill_agent';
   /** 绑定的节点配置 id（拉取服务商模型列表用） */
   configId?: number | null;
+  /** 工作区产物面板（skill_agent 模式：服务端 outputs/ ∪ manifest 历史） */
+  workspaceFiles?: ChatWorkspaceFilesPanel | null;
+  /** 自动重试横幅（skill_agent 模式；null = 无） */
+  retryNotice?: ChatRetryNotice | null;
+  /** 排队消息（skill_agent 模式；不传 = 不启用排队） */
+  messageQueue?: ChatMessageQueue | null;
+  /** 正文打字机平滑渲染（仅流式中的最后一条 assistant 生效；默认关闭） */
+  smoothText?: boolean;
 }
 
 const ChatNodeInner: React.FC<ChatNodeProps> = ({
@@ -500,6 +623,10 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
   hasDownstream,
   mode,
   configId,
+  workspaceFiles,
+  retryNotice,
+  messageQueue,
+  smoothText = false,
 }) => {
   const [draft, setDraft] = useState('');
   // 本轮待发送的图片附件（data URL），随消息发送后在气泡内展示
@@ -722,6 +849,8 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
     >
       <style dangerouslySetInnerHTML={{ __html: STYLE_INJECTIONS }} />
       <div className="relative h-full flex flex-col flex-1 min-h-0">
+        {/* 自动重试横幅（Skill Agent 结构化事件；优先级高于错误横幅——重试期间不显示错误态） */}
+        {retryNotice && isGenerating && <RetryNoticeBanner notice={retryNotice} />}
         {error && !isGenerating && (
           <div className="mb-2 p-2.5 rounded-md border border-error/20 bg-error/5 flex items-start gap-2">
             <AlertTriangle size={13} strokeWidth={2} className="text-error shrink-0 mt-0.5" />
@@ -779,6 +908,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                   onCopy={handleCopy}
                   isCopied={copiedId === idx}
                   onRetry={() => onRetry?.(id)}
+                  smooth={smoothText && idx === messages.length - 1}
                 />
               ))
             )}
@@ -803,6 +933,69 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
             <ScrollButton direction="down" onClick={() => listRef.current?.scrollTo({ top: listRef.current?.scrollHeight, behavior: 'smooth' })} title="回到底部" />
           </div>
         </div>
+
+        {/* 工作区产物面板（skill_agent）：服务端 outputs/ 快照 ∪ manifest 历史 */}
+        {workspaceFiles && (
+          <div className="shrink-0 mt-1.5">
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={workspaceFiles.onToggle}
+                className="flex items-center gap-1.5 text-[11px] font-sans text-ink-faint hover:text-accent transition-colors"
+              >
+                <FolderOpen size={12} strokeWidth={2} />
+                <span>
+                  工作区文件
+                  {workspaceFiles.files.length > 0 && ` (${workspaceFiles.files.length})`}
+                </span>
+                {workspaceFiles.open ? (
+                  <ChevronDown size={11} strokeWidth={2} className="rotate-180" />
+                ) : (
+                  <ChevronDown size={11} strokeWidth={2} />
+                )}
+              </button>
+              {workspaceFiles.open && (
+                <button
+                  onClick={() => workspaceFiles.onRefresh()}
+                  disabled={workspaceFiles.loading}
+                  title="刷新产物列表"
+                  className="flex items-center justify-center w-5 h-5 rounded-md text-ink-faint hover:text-accent hover:bg-accent/10 active:scale-95 transition disabled:opacity-40"
+                >
+                  <RefreshCw size={10} strokeWidth={2} className={workspaceFiles.loading ? 'animate-spin' : ''} />
+                </button>
+              )}
+            </div>
+            {workspaceFiles.open && (
+              <div className="mt-1.5 max-h-40 overflow-y-auto flex flex-wrap gap-2 pr-0.5">
+                {workspaceFiles.loading && !workspaceFiles.files.length ? (
+                  <div className="flex items-center gap-1.5 text-[10px] font-sans text-ink-faint py-1">
+                    <Loader2 size={11} className="animate-spin" /> 加载中…
+                  </div>
+                ) : workspaceFiles.files.length === 0 ? (
+                  <p className="text-[10px] font-sans text-ink-faint py-1">暂无产物文件</p>
+                ) : (
+                  workspaceFiles.files.map((f) => <SkillFileCard key={f.url || f.path} file={f} />)
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 排队消息（skill_agent）：流式中发送的消息先入队，当前轮结束后自动依次发出 */}
+        {messageQueue && messageQueue.items.length > 0 && (
+          <div className="shrink-0 mt-1.5 space-y-1">
+            <p className="text-[10px] font-sans text-ink-faint">
+              排队中 ({messageQueue.items.length})，当前轮结束后自动发送
+            </p>
+            {messageQueue.items.map((item) => (
+              <QueuedMessageRow
+                key={item.id}
+                item={item}
+                onRecall={messageQueue.onRecall}
+                onSendNow={messageQueue.onSendNow}
+              />
+            ))}
+          </div>
+        )}
 
         {/* 输入区：文本 + 图片附件 */}
         <div className="shrink-0 mt-2 pt-2 border-t border-solid border-black/5 dark:border-white/5">
@@ -957,6 +1150,33 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                       configId={configId}
                       disabled={messages.length > 0}
                     />
+                  </div>
+                )}
+                {/* Thinking level：仅 Skill Agent 模式（pi --thinking 透传；对话开始后锁定） */}
+                {mode === 'skill_agent' && (
+                  <div className="space-y-1.5">
+                    <div>
+                      <p className="text-xs font-sans text-ink">思考深度</p>
+                      <p className="text-[10px] text-ink-faint font-sans mt-0.5 leading-snug">
+                        越高推理越强但更慢；留空 = 模型默认
+                      </p>
+                    </div>
+                    <select
+                      value={settings.piThinking ?? ''}
+                      onChange={(e) =>
+                        onUpdateSettings?.(id, { ...settings, piThinking: e.target.value || undefined })
+                      }
+                      disabled={messages.length > 0}
+                      className="w-full rounded-md border border-paper-grid bg-paper px-2 py-1.5 text-xs font-sans text-ink disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                    >
+                      <option value="">默认</option>
+                      <option value="minimal">minimal（最浅）</option>
+                      <option value="low">low</option>
+                      <option value="medium">medium</option>
+                      <option value="high">high</option>
+                      <option value="xhigh">xhigh</option>
+                      <option value="max">max（最深）</option>
+                    </select>
                   </div>
                 )}
                 {messages.length > 0 ? (

@@ -4,12 +4,10 @@ import { DefaultChatTransport } from 'ai';
 import { nodesRef, edgesRef } from '../../platform/stores/useCanvasState';
 import { ChatNode } from './components/ChatNode';
 import { getNodeTitle } from './nodeTypes';
-import type { PortTypesLookup } from './execution';
 import { buildInjectedContextBlocks } from './contextBlocks';
 import { toWireChatMessages } from './graphTypes';
 import { handleAgentSseMessage } from './agentSteps';
 import { authHeaders, handleUnauthorized } from './authUtils';
-import { urlToDataUrl } from './imageUpload';
 import { makeIdleTimeout } from './idleTimeout';
 import { PROMPT_SSE_IDLE_TIMEOUT_MS } from '../../platform/utils/timeouts';
 import {
@@ -20,92 +18,20 @@ import {
 } from './chatMessages';
 import { mismatchBadgeOf, hasDownstreamOf, type NodeViewHelpers } from './CanvasNodeViews';
 import { mergeAgentFiles } from './workspaceFiles';
-import type { Dispatch, RefObject, SetStateAction } from 'react';
-import type { AgentFile, ChatMessage, ChatNodeSettings, InjectedContextBlock, SkillSelection } from '../../platform/types';
+import {
+  MAX_CHAT_IMAGES,
+  DEFAULT_CHAT_SETTINGS,
+  buildChatContext,
+  buildChatImagesFromBlocks,
+  collectSkillNames,
+  capWireImages,
+  type ChatHostDeps,
+} from './chatSendHelpers';
+import type { AgentFile, ChatMessage, ChatNodeSettings, InjectedContextBlock } from '../../platform/types';
 import type { NodeData } from './graphTypes';
 
-// AI 对话单轮携带的图片上限（附件 + 上下文图片合计）：防止超大 base64 请求体拖垮传输
-const MAX_CHAT_IMAGES = 4;
-
-/** 运行设置兜底（旧节点持久化的 settings 缺少 includeUpstreamImages / includeBookCover，undefined 视为开启） */
-const DEFAULT_CHAT_SETTINGS: ChatNodeSettings = {
-  includeBook: false,
-  includeUpstream: true,
-  includeUpstreamImages: true,
-  includeBookCover: true,
-};
-
-/** ChatHost 依赖（画布注入：state setter + 端口类型查找；nodesRef/edgesRef 为模块级单例） */
-export interface ChatHostDeps {
-  setNodes: Dispatch<SetStateAction<NodeData[]>>;
-  portTypesRef: RefObject<PortTypesLookup>;
-}
-
-/** 从上下文块拼接送给模型的文本上下文。 */
-function buildChatContext(blocks: InjectedContextBlock[]): string {
-  const seen = new Set<string>();
-  const parts: string[] = [];
-  for (const b of blocks) {
-    if (!b.text || seen.has(b.text)) continue;
-    seen.add(b.text);
-    parts.push(`【${b.title}】\n${b.text}`);
-  }
-  return parts.join('\n\n');
-}
-
-/** 收集对话上下文图片：直接父节点的图片输出（受设置开关控制），本地静态路径转 data URL。 */
-async function buildChatImagesFromBlocks(blocks: InjectedContextBlock[]): Promise<string[]> {
-  const urls: string[] = [];
-  for (const b of blocks) {
-    for (const u of b.images ?? []) {
-      if (!urls.includes(u)) urls.push(u);
-    }
-  }
-  const result: string[] = [];
-  for (const u of urls) {
-    if (result.length >= MAX_CHAT_IMAGES) break;
-    if (u.startsWith('data:')) {
-      result.push(u);
-      continue;
-    }
-    try {
-      const dataUrl = await urlToDataUrl(u);
-      if (dataUrl && result.length < MAX_CHAT_IMAGES) result.push(dataUrl);
-    } catch {
-      // 无法访问 / 非图片的 URL 直接跳过，不阻断对话
-    }
-  }
-  return result;
-}
-
-/** 收集连线上游「Skill 检索」节点选中的 skill 名（Skill Agent 模式按需加载；空 = 全部已装 skill）。 */
-function collectSkillNames(node: NodeData): string[] {
-  const names: string[] = [];
-  for (const p of nodesRef.current) {
-    if (
-      p.type === 'skill_search' &&
-      edgesRef.current.some((e) => e.target === node.id && e.source === p.id)
-    ) {
-      const selections: SkillSelection[] = Array.isArray(p.data?.skillSelections)
-        ? p.data.skillSelections
-        : [];
-      for (const s of selections) {
-        if (s && typeof s.name === 'string' && s.name && !names.includes(s.name)) {
-          names.push(s.name);
-        }
-      }
-    }
-  }
-  return names;
-}
-
-/** 单条消息图片数截断到上限（上下文与附件合计）。 */
-const capWireImages = (msgs: ChatMessage[]): ChatMessage[] =>
-  msgs.map((m) =>
-    m.images && m.images.length > MAX_CHAT_IMAGES
-      ? { ...m, images: m.images.slice(0, MAX_CHAT_IMAGES) }
-      : m
-  );
+// AI SDK 依赖的共享发送辅助已抽至 chatSendHelpers.ts（与 PiChatNodeHost 复用）
+export type { ChatHostDeps } from './chatSendHelpers';
 
 /**
  * AI 对话节点宿主（useChat 迁移核心）：
@@ -270,10 +196,21 @@ export function ChatNodeHost({
   const { status, messages: uiMessages, error: chatError, setMessages } = chat;
   const { sendMessage, regenerate, clearError, stop: chatStop } = chat;
   statusRef.current = status;
+  // 外部变更检测 effect 经此读取最新 useChat 消息（不进依赖数组，避免流式高频重跑）
+  const uiMessagesRef = useRef(uiMessages);
+  uiMessagesRef.current = uiMessages;
 
   // 首次渲染时的 store 快照作为镜像基线（挂载恢复 = 持久化消息 → useChat）
   const lastMirroredRef = useRef<string>(
     JSON.stringify(Array.isArray(node.data?.messages) ? node.data.messages : [])
+  );
+  // 最近一次落 store 时的消息条数（方案 A：流式中条数变化也立即持久化）与
+  // 最近一次镜像时的 workspaceId（方案 B：区分「主动清空」与「意外回滚」）
+  const lastFlushedCountRef = useRef<number>(
+    Array.isArray(node.data?.messages) ? node.data.messages.length : 0
+  );
+  const mirroredWsRef = useRef<string | null>(
+    typeof node.data?.workspaceId === 'string' ? node.data.workspaceId : null
   );
 
   // 节流写入顶层 store 的定时器与最新待写入状态
@@ -295,6 +232,7 @@ export function ChatNodeHost({
     if (!patch) return;
     pendingPatchRef.current = null;
     lastMirroredRef.current = patch.json;
+    lastFlushedCountRef.current = patch.next.length;
     setNodes((prev) =>
       prev.map((n) =>
         n.id === nodeId
@@ -356,7 +294,8 @@ export function ChatNodeHost({
     }
     // 本轮结束仍无产出（限流/中断等零输出失败）：移除末尾空的 assistant 占位，
     // 保留此前全部内容以便从断点继续；并同步移除 useChat 内的残留，
-    // 否则该空气泡会在下一轮变成夹在中间的脏历史（镜像只在 error 态剥离挡不住它）
+    // 否则该空气泡会在下一轮变成夹在中间的脏历史（镜像只在 error 态剥离挡不住它）。
+    // 携带产物文件的消息不视为空（纯生图零文本零步骤的轮次靠 files 承载卡片）
     if (!streaming && next.length) {
       const i = next.length - 1;
       const last = next[i];
@@ -364,13 +303,18 @@ export function ChatNodeHost({
         last.role === 'assistant' &&
         !last.content &&
         !last.reasoning &&
-        !(last.agentSteps && last.agentSteps.length)
+        !(last.agentSteps && last.agentSteps.length) &&
+        !(last.files && last.files.length)
       ) {
         next = next.slice(0, -1);
         setMessages((prev) => {
           if (!prev.length || prev[prev.length - 1].role !== 'assistant') return prev;
           const lastUi = prev[prev.length - 1];
-          const hasVisible = lastUi.parts.some((p) => p.type === 'text' || p.type === 'reasoning');
+          const meta = (lastUi.metadata as { bookplate?: { files?: unknown[] } } | undefined)
+            ?.bookplate;
+          const hasVisible =
+            lastUi.parts.some((p) => p.type === 'text' || p.type === 'reasoning') ||
+            !!(meta?.files && meta.files.length);
           return hasVisible ? prev : prev.slice(0, -1);
         });
       }
@@ -446,9 +390,11 @@ export function ChatNodeHost({
     if (stateChanged) {
       pendingPatchRef.current = { next, streaming, errMsg, output, json };
 
-      // 仅在非流式状态（生成结束/报错/中断）时立即写入顶层 store；
-      // 流式进行期间仅在 ChatNodeHost 本地实时渲染，完全避免高频 setNodes 引发整板重绘
-      if (!streaming) {
+      // 非流式状态（生成结束/报错/中断）立即写入顶层 store；流式进行期间仅在本地
+      // 实时渲染，避免高频 setNodes 引发整板重绘——但消息条数变化（每轮 user/
+      // assistant 各落定一次，频率极低）仍立即 flush：刷新/HMR 重挂载后 store 至少
+      // 保有已完成轮次，不再从零开始（docs/pi-skill-agent-会话连续性与节点状态分析.md 方案 A）
+      if (!streaming || next.length !== lastFlushedCountRef.current) {
         flushPendingPatch();
       }
     }
@@ -458,15 +404,46 @@ export function ChatNodeHost({
   // ---------- 外部变更检测：清空对话 / 撤销 / 恢复时 store 与 useChat 不同步 ----------
   useEffect(() => {
     const storeMsgs = Array.isArray(node.data?.messages) ? node.data.messages : [];
+    const wsNow =
+      typeof node.data?.workspaceId === 'string' && node.data.workspaceId
+        ? node.data.workspaceId
+        : null;
     const json = JSON.stringify(storeMsgs);
-    if (json === lastMirroredRef.current) return;
+    if (json === lastMirroredRef.current) {
+      mirroredWsRef.current = wsNow;
+      return;
+    }
     // 流式中 store 的 agentSteps 等增量写入不视为外部变更（镜像会收敛）
     if (status === 'submitted' || status === 'streaming') return;
+
+    // 方案 B 空 store 采纳保护：store 历史为空、本地仍持有会话、且 workspaceId 未再生，
+    // 判定为快照回退（意外清空）而非主动操作 → 不采纳空历史，反向用本地恢复 store。
+    // 真正的「清空对话」必然伴随 workspaceId 再生 → 守卫放行，行为不变；
+    // 历史保住则 hasContextInStore 成立，上下文重复注入问题随之消失。
+    // （uiMessages 经 ref 读取：不进依赖数组，避免流式期间每 delta 重跑本 effect）
+    if (
+      !storeMsgs.length &&
+      uiMessagesRef.current.length &&
+      mirroredWsRef.current !== null &&
+      wsNow === mirroredWsRef.current
+    ) {
+      const recovered = uiToStore(uiMessagesRef.current);
+      lastMirroredRef.current = JSON.stringify(recovered);
+      lastFlushedCountRef.current = recovered.length;
+      setNodes((prev) =>
+        prev.map((n) =>
+          n.id === nodeId ? { ...n, data: { ...n.data, messages: recovered } } : n
+        )
+      );
+      return;
+    }
+
+    mirroredWsRef.current = wsNow;
     lastMirroredRef.current = json;
     setMessages(storeToUI(storeMsgs));
     if (status === 'error') clearError();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [node.data?.messages, status, nodeId, setMessages]);
+  }, [node.data?.messages, node.data?.workspaceId, status, nodeId, setMessages, setNodes]);
 
   // 卸载清理：空闲计时器与节流定时器（立即 flush 待提交数据）
   useEffect(

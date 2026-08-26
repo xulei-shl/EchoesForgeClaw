@@ -42,6 +42,14 @@ export type ChatStreamEvent =
   | { type: 'tool_call'; id: string; name: string; arguments: string }
   | { type: 'tool_result'; id: string; name: string; result: string }
   | { type: 'status'; message: string }
+  /** pi 自动重试结构化事件（前端渲染倒计时横幅；仅 Skill Agent 模式产生） */
+  | {
+      type: 'agent_retry';
+      attempt: number;
+      maxAttempts: number;
+      delaySec: number;
+      reason: string;
+    }
   | { type: 'agent_file'; file: AgentFilePayload }
   | { type: 'agent_image'; url: string }
   | { type: 'error'; message: string };
@@ -92,6 +100,18 @@ export function chatStreamToResponse(
               break;
             case 'status':
               writer.write({ type: 'data-agent_status', data: { message: evt.message }, transient: true });
+              break;
+            case 'agent_retry':
+              writer.write({
+                type: 'data-agent_retry',
+                data: {
+                  attempt: evt.attempt,
+                  maxAttempts: evt.maxAttempts,
+                  delaySec: evt.delaySec,
+                  reason: evt.reason,
+                },
+                transient: true,
+              });
               break;
             case 'agent_file':
               writer.write({ type: 'data-agent_file', data: evt.file, transient: true });

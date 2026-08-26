@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import path from 'node:path';
+import { statSync } from 'node:fs';
 import { llmService } from '../../../services/llm-service.js';
 import { imageService } from '../../../services/image-service.js';
 import {
@@ -17,12 +18,15 @@ import {
   skillAgentConfigFrom,
 } from '../../../services/node-config-service.js';
 import {
+  appendArtifactManifest,
   clearPiSession,
+  listWorkspaceArtifacts,
   preparePiWorkspace,
   runPiAgent,
   mimeOf,
   skillFileDownloadUrl,
 } from '../../../services/pi-agent-service.js';
+import { hydratePiSession, readSessionImageBlock } from '../../../services/pi-session-hydrate.js';
 import { nodeWorkspace, sanitizeWorkspaceId } from '../../../services/skill-agent-service.js';
 import { fastclawDataRoot, harvestFastclawArtifacts } from '../../../services/fastclaw-artifacts.js';
 import { chatStreamToResponse, type ChatStreamEvent } from '../stream.js';
@@ -103,6 +107,7 @@ export async function register(app: FastifyInstance): Promise<void> {
               imageGenEnabled: !!saCfg.image,
               message: payload.message ?? '',
               images: payload.images?.length ? payload.images : undefined,
+              thinkingLevel: payload.thinking ?? null,
               signal: requestAbortSignal(request),
             })) {
               yield evt;
@@ -160,6 +165,16 @@ export async function register(app: FastifyInstance): Promise<void> {
                 texts: turnTexts,
                 destDir: path.join(ws, 'outputs'),
               })) {
+                // manifest 落盘（best-effort）：产物在服务端可再到达（与 pi 模式同构）
+                let mtimeMs = 0;
+                try {
+                  mtimeMs = statSync(path.join(ws, art.rel)).mtimeMs;
+                } catch {
+                  /* 刚拷入的文件 stat 失败不影响记录 */
+                }
+                appendArtifactManifest(ws, [
+                  { rel: art.rel, mime: mimeOf(art.rel), size: art.size, mtimeMs },
+                ]);
                 yield {
                   type: 'agent_file',
                   file: {
@@ -215,6 +230,52 @@ export async function register(app: FastifyInstance): Promise<void> {
         return reply.code(400).send({ detail: 'workspace_id 不能为空' });
       }
       return { cleared: clearPiSession(request.authUser!.id, workspaceId) };
+    }
+  );
+
+  // ---- AI 对话节点：会话水合（服务端 pi 会话 jsonl → UI 历史；服务端为真相源）----
+  // uid 取自鉴权态（非查询参数），workspace 经 sanitize + nodeWorkspace 防目录穿越
+  app.get(
+    '/api/modules/bookplate/chat/session',
+    { preHandler: app.authenticate },
+    async (request) => {
+      const q = (request.query ?? {}) as { workspace_id?: string };
+      const ws = nodeWorkspace(request.authUser!.id, sanitizeWorkspaceId(q.workspace_id ?? ''));
+      return hydratePiSession(ws, sanitizeWorkspaceId(q.workspace_id ?? ''));
+    }
+  );
+
+  // ---- 会话内联图片块（水合历史的鉴权取图：<img> 无法带 Authorization，前端 fetch→blob）----
+  app.get(
+    '/api/modules/bookplate/chat/session/image',
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const q = (request.query ?? {}) as {
+        workspace_id?: string;
+        entry?: string;
+        block?: string;
+      };
+      const block = Number(q.block);
+      if (!q.entry || !Number.isInteger(block)) {
+        return reply.code(400).send({ detail: 'entry 与 block 参数不能为空' });
+      }
+      const ws = nodeWorkspace(request.authUser!.id, sanitizeWorkspaceId(q.workspace_id ?? ''));
+      const img = readSessionImageBlock(ws, q.entry, block);
+      if (!img) return reply.code(404).send({ detail: '图片不存在' });
+      reply.type(img.mime);
+      return reply.send(img.data);
+    }
+  );
+
+  // ---- 工作区产物列表（当前快照 ∪ manifest 历史；「工作区文件」面板数据源）----
+  app.get(
+    '/api/modules/bookplate/chat/files',
+    { preHandler: app.authenticate },
+    async (request) => {
+      const q = (request.query ?? {}) as { workspace_id?: string };
+      const workspaceId = sanitizeWorkspaceId(q.workspace_id ?? '');
+      const ws = nodeWorkspace(request.authUser!.id, workspaceId);
+      return { files: listWorkspaceArtifacts(ws, workspaceId) };
     }
   );
 

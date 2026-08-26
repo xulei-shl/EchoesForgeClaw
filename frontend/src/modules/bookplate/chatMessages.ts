@@ -24,6 +24,8 @@ export interface BookplateMeta {
   files?: unknown[];
   interrupted?: boolean;
   streaming?: boolean;
+  /** 本轮装配的 Skill 名（Skill Agent 模式，用户气泡下方 chips 展示） */
+  skills?: string[];
 }
 
 const metaOf = (m: UIMessage): BookplateMeta =>
@@ -58,6 +60,7 @@ export function storeToUI(msgs: ChatMessage[]): UIMessage[] {
     if (m.images?.length) meta.images = m.images;
     if (m.agentSteps?.length) meta.agentSteps = m.agentSteps;
     if (m.files?.length) meta.files = m.files;
+    if (m.skills?.length) meta.skills = m.skills;
     if (m.interrupted) meta.interrupted = true;
     if (m.streaming) meta.streaming = true;
     return {
@@ -85,6 +88,7 @@ export function uiToStore(ui: UIMessage[]): ChatMessage[] {
     if (meta.images?.length) msg.images = meta.images;
     if (meta.agentSteps?.length) msg.agentSteps = meta.agentSteps as ChatMessage['agentSteps'];
     if (meta.files?.length) msg.files = meta.files as ChatMessage['files'];
+    if (meta.skills?.length) msg.skills = meta.skills as ChatMessage['skills'];
     if (meta.interrupted) msg.interrupted = true;
     if (meta.streaming) msg.streaming = true;
     return msg;
@@ -114,4 +118,18 @@ export function attachContextToFirstUser(
 export function hasContextInStore(msgs: ChatMessage[]): boolean {
   const first = msgs.find((m) => m.role === 'user');
   return !!first && !!(first.context || first.contextImages?.length || first.contextBlocks?.length);
+}
+
+/** 把本轮装配的 Skill 名合并到最后一条 user 消息 metadata（去重追加；发送时调用）。 */
+export function attachSkillsToLastUser(ui: UIMessage[], skills: string[]): UIMessage[] {
+  if (!skills.length) return ui;
+  const idx = ui.findLastIndex((m) => m.role === 'user');
+  if (idx === -1) return ui;
+  const last = ui[idx];
+  const meta: BookplateMeta = { ...metaOf(last) };
+  const merged = new Set([...(meta.skills ?? []), ...skills]);
+  meta.skills = [...merged];
+  const next = [...ui];
+  next[idx] = { ...last, metadata: { bookplate: meta } };
+  return next;
 }

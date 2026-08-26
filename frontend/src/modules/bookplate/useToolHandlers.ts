@@ -327,7 +327,7 @@ const VUFIND_CALL_NUMBER_CONFIG: SimpleToolConfig<string> = {
           title: typeof biblio.title === 'string' ? biblio.title : '',
           author: typeof biblio.author === 'string' ? biblio.author : '',
           contributor: typeof biblio.contributor === 'string' ? biblio.contributor : '',
-          pubVuFind 馆藏peof biblio.publisher === 'string' ? biblio.publisher : '',
+          publisher: typeof biblio.publisher === 'string' ? biblio.publisher : '',
           pubYear: typeof biblio.pubYear === 'string' ? biblio.pubYear : '',
         }
       : null;

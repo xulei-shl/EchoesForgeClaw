@@ -266,10 +266,15 @@ describe('runPiAgent（pi CLI 子进程端到端）', () => {
         })) {
           events.push(evt);
         }
-        // 重试进展对用户可见（节点活动日志）
-        expect(events.some((e) => e.type === 'status' && /自动重试/.test(e.message))).toBe(true);
-        // 重试原因已翻译为友好文案
-        expect(events.some((e) => e.type === 'status' && /模型服务繁忙（限流）.*自动重试/.test(e.message))).toBe(true);
+        // 重试进展对用户可见：结构化 agent_retry 事件（前端渲染倒计时横幅）
+        const retryEvents = events.flatMap((e) => (e.type === 'agent_retry' ? [e] : []));
+        expect(retryEvents.length).toBeGreaterThanOrEqual(1);
+        expect(retryEvents[0]).toMatchObject({
+          attempt: 1,
+          maxAttempts: 2,
+          reason: '模型服务繁忙（限流）',
+        });
+        expect(typeof retryEvents[0]!.delaySec).toBe('number');
         // 收尾 error 事件恰好一条：友好原因 + 原始细节都在
         const errMsgs = events.flatMap((e) => (e.type === 'error' ? [e.message] : []));
         expect(errMsgs.length).toBe(1);

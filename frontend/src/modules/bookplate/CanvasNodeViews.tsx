@@ -3,6 +3,7 @@ import { BookInfoNode } from './components/BookInfoNode';
 import { ImageAnalysisNode } from './components/ImageAnalysisNode';
 import { TextGenerationNode } from './components/TextGenerationNode';
 import { ChatNodeHost, type ChatHostDeps } from './ChatNodeHost';
+import { PiChatNodeHost } from './PiChatNodeHost';
 import { ImageNode } from './components/ImageNode';
 import { TextNode } from './components/TextNode';
 import { ImageUploadNode } from './components/ImageUploadNode';
@@ -504,7 +505,12 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       );
     }
     case 'chat': {
-      // AI 对话节点：每节点一个 ChatNodeHost（useChat 实例），内部渲染 ChatNode 并镜像消息回 store
+      // AI 对话节点宿主按模式分派：skill_agent（pi）走服务端真相源专用宿主，
+      // LLM / FastClaw 维持 useChat 镜像宿主；展示组件 ChatNode 完全复用
+      const chatConfig = h.configOf(node);
+      if (chatConfig?.mode === 'skill_agent') {
+        return <PiChatNodeHost key={node.id} node={node} h={h} deps={h.chatDeps} />;
+      }
       return <ChatNodeHost key={node.id} node={node} h={h} deps={h.chatDeps} />;
     }
     case 'text_aggregate': {
