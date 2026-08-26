@@ -75,13 +75,55 @@ function writeBytes(userId: number, name: string, content: Uint8Array): void {
   writeFileSync(path.join(dir, name), content);
 }
 
-/** 解析 /static/generated/{userId}/{file} 为绝对路径（userId 必须为纯数字，防目录穿越）。 */
-function resolveGeneratedPath(urlPath: string): string | null {
-  const rest = urlPath.slice(STATIC_PREFIX.length).replace(/^\/+/, '');
-  if (!rest) return null;
-  const parts = rest.split('/').filter(Boolean);
-  if (parts.length !== 2 || !/^\d+$/.test(parts[0]!) || !parts[1] || parts[1].includes('..')) return null;
-  return path.join(userGeneratedDir(Number(parts[0])), parts[1]!);
+/**
+ * 用户图片目录与 /static 前缀的映射（历史级联删除 / GC 引用扫描共用）。
+ * generated 为最终产出（generations 表引用）；search-images / map-posters / map-arts 为中间结果。
+ */
+const USER_IMAGE_PREFIXES: ReadonlyArray<{ prefix: string; dirOf: (userId: number) => string }> = [
+  { prefix: STATIC_PREFIX, dirOf: userGeneratedDir },
+  { prefix: MAP_POSTER_STATIC_PREFIX, dirOf: userMapPosterDir },
+  { prefix: SEARCH_IMAGE_STATIC_PREFIX, dirOf: userSearchImageDir },
+  { prefix: MAP_ART_STATIC_PREFIX, dirOf: userMapArtDir },
+];
+
+/** 受管子目录名（由前缀推导，GC 扫描与 URL 抽取共用，保证单一事实来源）。 */
+export const RUNTIME_IMAGE_SUBDIRS = USER_IMAGE_PREFIXES.map((p) => p.prefix.replace('/static/', ''));
+
+/** 解析 /static/{generated|search-images|map-posters|map-arts}/{userId}/{file} 为绝对路径（userId 必须为纯数字，防目录穿越）。 */
+function resolveUserImagePath(urlPath: string): string | null {
+  for (const { prefix, dirOf } of USER_IMAGE_PREFIXES) {
+    if (!urlPath.startsWith(`${prefix}/`)) continue;
+    const parts = urlPath.slice(prefix.length).split('/').filter(Boolean);
+    if (parts.length !== 2 || !/^\d+$/.test(parts[0]!) || !parts[1] || parts[1].includes('..')) return null;
+    return path.join(dirOf(Number(parts[0])), parts[1]!);
+  }
+  return null;
+}
+
+/**
+ * 从文本/JSON 结构中抽取受管目录的用户图片 URL（去重）。
+ * 历史记录级联删除与 GC 引用集合共用：stage_results 为自由 JSON blob，
+ * 逐字段挑选会漏（agent_steps / markdown 内嵌等），故对序列化全文做正则抽取。
+ */
+export function extractRuntimeImageUrls(inputs: unknown[]): string[] {
+  const pattern = new RegExp(`/static/(?:${RUNTIME_IMAGE_SUBDIRS.join('|')})/\\d+/[A-Za-z0-9._-]+`, 'g');
+  const found = new Set<string>();
+  for (const input of inputs) {
+    let text: string;
+    if (typeof input === 'string') {
+      text = input;
+    } else if (input == null) {
+      continue;
+    } else {
+      try {
+        text = JSON.stringify(input);
+      } catch {
+        text = String(input);
+      }
+    }
+    for (const match of text.matchAll(pattern)) found.add(match[0]);
+  }
+  return [...found];
 }
 
 export class ImageService {
@@ -206,10 +248,9 @@ export class ImageService {
     return `${SEARCH_IMAGE_STATIC_PREFIX}/${userId}/${name}`;
   }
 
-  /** 删除生成图片（生成历史清理用；仅 /static/generated/{userId}/{file} 新格式）。 */
+  /** 删除用户图片文件（生成历史级联清理用；支持全部四个受管 /static 前缀）。 */
   deleteFile(urlPath: string): boolean {
-    if (!urlPath || !urlPath.startsWith(STATIC_PREFIX)) return false;
-    const abs = resolveGeneratedPath(urlPath);
+    const abs = urlPath ? resolveUserImagePath(urlPath) : null;
     if (!abs) return false;
     if (existsSync(abs)) {
       unlinkSync(abs);
@@ -221,7 +262,7 @@ export class ImageService {
   /** 读取生成图片字节（测试/内部用）。 */
   readFile(urlPath: string): Uint8Array | null {
     if (!urlPath || !urlPath.startsWith(STATIC_PREFIX)) return null;
-    const abs = resolveGeneratedPath(urlPath);
+    const abs = resolveUserImagePath(urlPath);
     if (!abs) return null;
     if (existsSync(abs)) return new Uint8Array(readFileSync(abs));
     return null;

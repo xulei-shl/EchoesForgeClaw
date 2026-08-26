@@ -14,6 +14,7 @@ import { registerBookplateRouter } from './modules/bookplate/router.js';
 import { userGeneratedDir, userMapPosterDir, userSearchImageDir, userMapArtDir } from './services/image-service.js';
 import { COVERS_DIR } from './modules/bookplate/covers.js';
 import { PREVIEW_DIR, migrateLegacyPreviewFiles } from './services/bifrost-service.js';
+import { scheduleRuntimeGc } from './services/runtime-gc.js';
 import { registerUsersRouter } from './api/users.js';
 import { registerGenerationsRouter } from './api/generations.js';
 import { registerFavoritesRouter } from './api/favorites.js';
@@ -206,6 +207,8 @@ export async function buildApp() {
 // Windows 下 argv[1] 为反斜杠路径，需经 pathToFileURL 归一化后再比较。
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const app = await buildApp();
+  // 运行时图片 GC：启动后延迟首跑 + 每日清扫（runtime/{userId} 下四个受管目录，DB 引用文件受保护）
+  scheduleRuntimeGc();
   const port = Number(process.env.PORT ?? 8000);
   try {
     await app.listen({ port, host: '0.0.0.0' });

@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { getDb, type DB } from '../config/database.js';
 import { favorites, generations, publicShares, users } from '../db/schema.js';
 import { now, parseJsonColumn, stringifyJsonColumn, toIso } from '../shared/datetime.js';
-import { imageService } from '../services/image-service.js';
+import { extractRuntimeImageUrls, imageService } from '../services/image-service.js';
 
 /**
  * 生成记录接口（对应 Python `app/api/generations.py`）：
@@ -54,17 +54,9 @@ export function extractGenerationName(stageResults: unknown, nodeType: string): 
   return '';
 }
 
-/** 收集生成记录关联的静态资源 URL（删除时一并清理文件）。 */
+/** 收集生成记录关联的静态资源 URL（删除时一并清理文件；覆盖 stage_results 任意嵌套位置，如 agent_steps / markdown 内嵌）。 */
 function collectArtifactUrls(gen: GenerationRow): string[] {
-  const urls: string[] = [];
-  if (gen.resultUrl) urls.push(gen.resultUrl);
-  const sr = parseJsonColumn<Record<string, any>>(gen.stageResults);
-  const stage3 = sr.stage3;
-  if (stage3 && typeof stage3 === 'object') {
-    const u = stage3.image_url;
-    if (u) urls.push(String(u));
-  }
-  return urls;
+  return extractRuntimeImageUrls([gen.resultUrl, gen.stageResults]);
 }
 
 /** 生成记录 → 对外响应（附带当前用户的收藏/公开状态，可选用户名）。 */

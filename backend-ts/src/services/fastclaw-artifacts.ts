@@ -45,7 +45,7 @@ export function extractFastclawPathCandidates(text: string): string[] {
   for (const m of text.matchAll(
     /(?:^|[\s(`"'>\]【（「『，。；：])((?:\/[A-Za-z0-9_@.+-]+)+\.[A-Za-z0-9]+)(?=$|[\s)`"'<\],.;!?、。，；：！？】》）」』])/gm
   )) {
-    const candidate = m[1];
+    const candidate = m[1]!; // 捕获组 1 在整体命中时必存在
     if (mimeOf(candidate) !== 'application/octet-stream') out.add(candidate);
   }
   return [...out];
