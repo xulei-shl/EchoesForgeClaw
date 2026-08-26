@@ -1,5 +1,35 @@
 import { describe, expect, it } from 'vitest';
-import { parseHoldingsFromHtml } from '../../src/services/vufind-service.js';
+import {
+  extractBibliographic,
+  parseHoldingsFromHtml,
+} from '../../src/services/vufind-service.js';
+
+/** 依据 vufind 检索结果项（result-body）真实结构精简的样例 */
+const SEARCH_ITEM_HTML = `
+<div class="result-body">
+  <div>
+    <a href="/Record/5c47909a-4c25-489c-b4ab-06d2154cc25a?ids=5c47909a-4c25-489c-b4ab-06d2154cc25a" class="title getFull" data-view="full">
+      但丁 = Dante
+    </a>
+  </div>
+  <div>
+    著者:
+    <span class="author-data" property="author">
+      <a href="/Search/Results?lookfor=x&amp;type=Author">
+        (意) 巴尔贝罗 Barbero, Alessandro</a>
+      <span class="author-property-role">(著)</span></span>
+    <br>
+    其他责任者:
+    <span class="author-data" property="contributor">
+      <a href="/Search/Results?lookfor=y&amp;type=Author">
+        梁慈恩</a>
+      <span class="author-property-role">(译)</span></span>
+    <br>
+    出版社: 译林出版社<br>
+    出版时间: 2024<br>
+    索书号: K835.465.6/2212-11<br>
+  </div>
+</div>`;
 
 /**
  * 依据 vufind 详情页真实结构精简的样例：
@@ -88,5 +118,15 @@ describe('parseHoldingsFromHtml', () => {
 
   it('无馆藏块时返回空数组', () => {
     expect(parseHoldingsFromHtml('<html><body>没有馆藏信息</body></html>')).toEqual([]);
+  });
+
+  it('extractBibliographic 提取题名/著者/其他责任者/出版社/出版年', () => {
+    expect(extractBibliographic(SEARCH_ITEM_HTML)).toEqual({
+      title: '但丁 = Dante',
+      author: '(意) 巴尔贝罗 Barbero, Alessandro (著)',
+      contributor: '梁慈恩 (译)',
+      publisher: '译林出版社',
+      pubYear: '2024',
+    });
   });
 });

@@ -78,6 +78,8 @@ export interface NodeViewHelpers {
   /** 图书元数据节点：手动上传封面兜底（落盘 + 回写 book_cache） */
   handleUploadCoverFor: (id: string, file: File) => void;
   handleDownloadBookData: (id: string) => void;
+  /** VuFind 索书号节点：下载获取到的元数据 JSON */
+  handleDownloadVuFindData: (id: string) => void;
   handleRunAnalysisFor: (id: string, image?: string) => void;
   handleRetryPromptFor: (id: string) => void;
   handleEditContent: (id: string, content: string) => void;
@@ -1034,6 +1036,17 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           isbn={typeof d.isbn === 'string' ? d.isbn : ''}
           upstreamIsbn={upstreamIsbn}
           callNumber={typeof d.callNumber === 'string' ? d.callNumber : ''}
+          bibliographic={
+            d.bibliographic && typeof d.bibliographic === 'object'
+              ? (d.bibliographic as {
+                  title?: string;
+                  author?: string;
+                  contributor?: string;
+                  publisher?: string;
+                  pubYear?: string;
+                })
+              : null
+          }
           recordUrl={typeof d.recordUrl === 'string' ? d.recordUrl : ''}
           holdings={Array.isArray(d.holdings) ? d.holdings : []}
           output={typeof d.output === 'string' ? d.output : ''}
@@ -1042,6 +1055,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           hasDownstream={hasDownstreamOf(node, h.edges)}
           onFetch={h.handleFetchVuFindCallNumberFor}
           onUpdateEditor={h.handleUpdateVuFindEditorFor}
+          onDownload={h.handleDownloadVuFindData}
         />
       );
     }

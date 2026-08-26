@@ -32,6 +32,16 @@ interface EvalDocument {
   querySelectorAll(sel: string): EvalElement[];
 }
 
+/** 检索结果页提取的书目信息（与索书号同源，无需二次请求） */
+export interface VuFindBiblio {
+  title: string;
+  author: string;
+  /** 其他责任者（译者等） */
+  contributor: string;
+  publisher: string;
+  pubYear: string;
+}
+
 /** 单条复本的馆藏信息 */
 export interface VuFindHoldingItem {
   callnumber: string;
@@ -49,11 +59,15 @@ export interface VuFindHoldingGroup {
 export interface VuFindRecord {
   /** 索书号（检索结果页即可取得，始终尽力返回） */
   callNumber: string;
+  /** 书目信息（检索页同步提取；缺失字段为空串） */
+  bibliographic: VuFindBiblio;
   /** 图书详情页 URL（馆藏信息来源；仅索书号场景可能为空） */
   recordUrl: string;
   /** 馆藏分组列表；详情页无馆藏信息时为空数组（不算失败） */
   holdings: VuFindHoldingGroup[];
 }
+
+const EMPTY_BIBLIO: VuFindBiblio = { title: '', author: '', contributor: '', publisher: '', pubYear: '' };
 
 /** 从 vufind 检索结果 HTML 中提取索书号（中文页「索书号: K835.465.6/2212-11」或英文页「Call Number: ...」） */
 function extractCallNumber(html: string): string {
@@ -63,6 +77,41 @@ function extractCallNumber(html: string): string {
     throw new VuFindError('未找到索书号');
   }
   return value;
+}
+
+/** 去标签、去实体、压缩空白 */
+function stripHtmlTags(raw: string): string {
+  return raw
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * 从检索结果 HTML 提取首条结果的书目信息（纯字符串解析，DOM/HTTP 兑底路径均可用）。
+ * 结构依据 vufind 检索项 result-body：a.title.getFull 为题名，各字段「label: value <br>」排列。
+ */
+export function extractBibliographic(html: string): VuFindBiblio {
+  const title = stripHtmlTags(html.match(/class="title getFull"[^>]*>([\s\S]*?)<\/a>/)?.[1] ?? '');
+  // 著者等字段的值含嵌套标签（链接、角色标注），取标签后到 <br> 的片段再剥标签
+  const labelValue = (...labels: string[]): string => {
+    for (const label of labels) {
+      const m = html.match(new RegExp(`${label}\\s*[:：]\\s*([\\s\\S]*?)<br`));
+      if (!m) continue;
+      const value = stripHtmlTags(m[1] ?? '');
+      if (value) return value;
+    }
+    return '';
+  };
+
+  return {
+    title,
+    author: labelValue('著者', 'Author'),
+    contributor: labelValue('其他责任者', 'Contributor(s)?'),
+    publisher: labelValue('出版社', 'Publisher'),
+    pubYear: labelValue('出版时间', 'Publication Year', 'Year'),
+  };
 }
 
 /**
@@ -81,7 +130,7 @@ export async function fetchVuFindRecord(isbn: string): Promise<VuFindRecord> {
     // 索书号都没拿到（检索无结果等）才是真失败
     if (err instanceof VuFindError) throw err;
     const callNumber = await fetchCallNumberViaHttp(url);
-    return { callNumber, recordUrl: '', holdings: [] };
+    return { callNumber, bibliographic: EMPTY_BIBLIO, recordUrl: '', holdings: [] };
   }
 }
 
@@ -96,6 +145,7 @@ async function fetchViaLightpanda(searchUrl: string): Promise<VuFindRecord> {
     await page.goto(withZhLang(searchUrl), { waitUntil: 'networkidle', timeout: PAGE_TIMEOUT_MS });
     const searchHtml = await page.content();
     const callNumber = extractCallNumber(searchHtml);
+    const bibliographic = extractBibliographic(searchHtml);
 
     const detailPath = await page.evaluate((): string => {
       const doc = (globalThis as unknown as { document?: EvalDocument }).document;
@@ -130,7 +180,7 @@ async function fetchViaLightpanda(searchUrl: string): Promise<VuFindRecord> {
       }
     }
 
-    return { callNumber, recordUrl, holdings };
+    return { callNumber, bibliographic, recordUrl, holdings };
   } finally {
     await browser.close();
   }

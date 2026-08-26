@@ -19,6 +19,15 @@ export interface VuFindHoldingGroup {
   items?: VuFindHoldingItem[];
 }
 
+/** 检索页同步提取的书目信息（与后端 VuFindBiblio 对应） */
+export interface VuFindBiblioInfo {
+  title?: string;
+  author?: string;
+  contributor?: string;
+  publisher?: string;
+  pubYear?: string;
+}
+
 export interface VuFindCallNumberNodeProps {
   id: string;
   initialX?: number;
@@ -30,6 +39,8 @@ export interface VuFindCallNumberNodeProps {
   upstreamIsbn?: string;
   /** 获取的索书号结果（写入 data.callNumber，对外输出为 data.output = JSON） */
   callNumber?: string;
+  /** 书目信息（题名/著者/其他责任者/出版社/出版年） */
+  bibliographic?: VuFindBiblioInfo | null;
   /** 图书详情页 URL（馆藏信息来源） */
   recordUrl?: string;
   /** 馆藏分组列表（馆藏地 → 复本列表） */
@@ -42,6 +53,8 @@ export interface VuFindCallNumberNodeProps {
   onFetch?: (id: string, isbn: string) => void;
   /** 编辑器状态写入 node.data（持久化 ISBN 手动输入 / 继承注入） */
   onUpdateEditor?: (id: string, patch: Record<string, any>) => void;
+  /** 下载获取到的元数据 JSON */
+  onDownload?: (id: string) => void;
   onRemove?: (id: string) => void;
   onPositionChange?: (id: string, x: number, y: number) => void;
   onSizeChange?: (id: string, width: number, height: number) => void;
@@ -63,6 +76,7 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
   isbn = '',
   upstreamIsbn = '',
   callNumber = '',
+  bibliographic = null,
   recordUrl = '',
   holdings = [],
   output = '',
@@ -70,6 +84,7 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
   error = null,
   onFetch,
   onUpdateEditor,
+  onDownload,
   onRemove,
   onPositionChange,
   onSizeChange,
@@ -155,11 +170,17 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
           tooltip={error ? '重试获取' : '重新获取'}
         />
         {output.trim() && (
-          <NodeActionBar.Copy
-            text={output}
-            tooltip="复制 JSON 数据"
-            toastMessage="JSON 已复制到剪贴板"
-          />
+          <>
+            <NodeActionBar.Download
+              onClick={() => onDownload?.(id)}
+              tooltip="下载元数据"
+            />
+            <NodeActionBar.Copy
+              text={output}
+              tooltip="复制 JSON 数据"
+              toastMessage="JSON 已复制到剪贴板"
+            />
+          </>
         )}
         {recordUrl && (
           <NodeActionBar.ExternalLink href={recordUrl} tooltip="在 VuFind 中查看详情页" />
@@ -190,7 +211,7 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
       onDrag={onDrag}
       onContextMenu={onContextMenu}
       resizable
-      defaultSize={{ width: 480, height: 560 }}
+      defaultSize={{ width: 480, height: 640 }}
       className={isGenerating && !error ? 'transition-[box-shadow,border-color,opacity] duration-200 border-transparent' : ''}
       glowOverlay={isGenerating && !error ? <BeamGlow /> : undefined}
       showLeftAnchor
@@ -269,6 +290,21 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
                 <BookOpen size={20} strokeWidth={1.5} className="text-accent shrink-0 opacity-70" />
               </div>
 
+              {/* 书目信息（检索页同步提取，缺失字段不显示） */}
+              {bibliographic &&
+                (bibliographic.title || bibliographic.author || bibliographic.contributor || bibliographic.publisher || bibliographic.pubYear) && (
+                  <div className="shrink-0 rounded-md border border-dashed border-paper-grid bg-transparent px-3 py-2 space-y-1">
+                    <p className="text-[10px] font-serif text-ink-faint uppercase tracking-wider">书目信息</p>
+                    <div className="text-[11px] font-sans space-y-0.5">
+                      <MetaRow label="题名" value={bibliographic.title} wide />
+                      <MetaRow label="著者" value={bibliographic.author} wide />
+                      <MetaRow label="其他责任者" value={bibliographic.contributor} wide />
+                      <MetaRow label="出版社" value={bibliographic.publisher} wide />
+                      <MetaRow label="出版年" value={bibliographic.pubYear} wide />
+                    </div>
+                  </div>
+                )}
+
               {/* 馆藏分组列表 */}
               {holdings.length > 0 ? (
                 <div className="space-y-3 pb-1">
@@ -342,6 +378,16 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
         </div>
       </div>
     </CanvasNode>
+  );
+};
+
+const MetaRow: React.FC<{ label: string; value?: string; wide?: boolean }> = ({ label, value, wide }) => {
+  if (!value) return null;
+  return (
+    <div className="flex gap-2">
+      <span className={`shrink-0 text-ink-faint ${wide ? 'w-16' : 'w-14'}`}>{label}</span>
+      <span className="flex-1 min-w-0 break-words">{value}</span>
+    </div>
   );
 };
 

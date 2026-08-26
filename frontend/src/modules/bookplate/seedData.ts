@@ -238,6 +238,7 @@ export function seedDataFor(type: NodeType, parent?: NodeData): any {
       return {
         isbn: '',
         callNumber: '',
+        bibliographic: null,
         recordUrl: '',
         holdings: [],
         output: '',

@@ -167,6 +167,26 @@ export function useNodeHandlers({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** VuFind 索书号节点：下载获取到的元数据 JSON（同 handleDownloadBookData 口径） */
+  const handleDownloadVuFindData = useCallback((id: string) => {
+    const node = nodesRef.current.find((n) => n.id === id);
+    if (!node || !node.data) return;
+    const apiData = { ...node.data };
+    delete apiData.isGenerating;
+    delete apiData.error;
+    const json = JSON.stringify(apiData, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `vufind-${node.data.isbn || node.data.callNumber || Date.now()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ---------- 文本生成 / 图片分析 / 图像生成 ----------
   /** 保存编辑文本：若该提示词节点已有子图像节点，则分支新建节点保留旧分支；否则原地保存 */
   const handleEditContent = useCallback((id: string, content: string) => {
@@ -602,6 +622,7 @@ export function useNodeHandlers({
     handleForceRefreshBookFor,
     handleUploadCoverFor,
     handleDownloadBookData,
+    handleDownloadVuFindData,
     handleEditContent,
     handleRetryPromptFor,
     handleRunAnalysisFor,

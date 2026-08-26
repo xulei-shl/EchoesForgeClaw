@@ -16,6 +16,7 @@ export async function register(app: FastifyInstance): Promise<void> {
         // call_number 字段保持向后兼容（旧下游只读索书号）
         return {
           call_number: record.callNumber,
+          bibliographic: record.bibliographic,
           record_url: record.recordUrl,
           holdings: record.holdings,
         };

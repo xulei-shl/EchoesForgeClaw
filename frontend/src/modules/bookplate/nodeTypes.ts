@@ -266,7 +266,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'vufind_call_number',
     name: 'VuFind 索书号',
-    description: '根据 ISBN 获取索书号与馆藏（馆藏地/条码/借阅类型/状态）',
+    description: '根据 ISBN 获取索书号、书目信息与馆藏（馆藏地/条码/借阅类型/状态）',
     category: 'glam',
     configurable: false,
     defaultSize: DEFAULT_SIZES.vufind_call_number,
