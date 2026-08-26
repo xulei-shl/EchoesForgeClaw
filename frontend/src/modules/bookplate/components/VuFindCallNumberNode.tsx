@@ -1,9 +1,23 @@
 import React, { memo, useEffect, useRef, useState, useCallback } from 'react';
-import { BookOpen, Loader2, AlertTriangle, Link2, X } from 'lucide-react';
+import { BookOpen, Loader2, AlertTriangle, Link2, X, MapPin, Barcode, BookMarked, CircleDot } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { BeamGlow } from '../../../platform/components/node/BeamGlow';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { NODE_COLORS } from '../nodeTypes';
+
+/** 单条复本馆藏（与后端 VuFindHoldingItem 对应） */
+export interface VuFindHoldingItem {
+  callnumber?: string;
+  barcode?: string;
+  loanType?: string;
+  status?: string;
+}
+
+/** 按馆藏地分组的复本列表（与后端 VuFindHoldingGroup 对应） */
+export interface VuFindHoldingGroup {
+  location?: string;
+  items?: VuFindHoldingItem[];
+}
 
 export interface VuFindCallNumberNodeProps {
   id: string;
@@ -16,6 +30,10 @@ export interface VuFindCallNumberNodeProps {
   upstreamIsbn?: string;
   /** 获取的索书号结果（写入 data.callNumber，对外输出为 data.output = JSON） */
   callNumber?: string;
+  /** 图书详情页 URL（馆藏信息来源） */
+  recordUrl?: string;
+  /** 馆藏分组列表（馆藏地 → 复本列表） */
+  holdings?: VuFindHoldingGroup[];
   /** 对外输出文本（data.output，JSON 格式） */
   output?: string;
   isGenerating?: boolean;
@@ -33,7 +51,7 @@ export interface VuFindCallNumberNodeProps {
   hasDownstream?: boolean;
 }
 
-/** VuFind ISBN 检索页 URL 模板（与后端 fetchCallNumber 同一模板） */
+/** VuFind ISBN 检索页 URL 模板（与后端 fetchVuFindRecord 同一模板） */
 const VUFIND_ISBN_URL_TEMPLATE =
   'https://vufind.library.sh.cn/Search/Results?searchtype=vague&lookfor={isbn}&type=AllFields&limit=20';
 
@@ -45,6 +63,8 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
   isbn = '',
   upstreamIsbn = '',
   callNumber = '',
+  recordUrl = '',
+  holdings = [],
   output = '',
   isGenerating = false,
   error = null,
@@ -115,7 +135,7 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
             onClick={handleQuery}
             disabled={!hasIsbn}
             hasDownstream={hasDownstream}
-            tooltip={hasIsbn ? '获取索书号' : '输入或连线上级节点获取 ISBN'}
+            tooltip={hasIsbn ? '获取索书号与馆藏' : '输入或连线上级节点获取 ISBN'}
             downstreamTooltip="有下级节点，不可修改输出"
           />
           {vuFindUrl && (
@@ -132,20 +152,29 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
           error={!!error}
           hasDownstream={hasDownstream}
           downstreamTooltip="有下级节点，不可修改输出"
-          tooltip={error ? '重试获取' : '重新获取索书号'}
+          tooltip={error ? '重试获取' : '重新获取'}
         />
         {output.trim() && (
           <NodeActionBar.Copy
-            text={callNumber || output}
-            tooltip="复制索书号"
-            toastMessage="索书号已复制到剪贴板"
+            text={output}
+            tooltip="复制 JSON 数据"
+            toastMessage="JSON 已复制到剪贴板"
           />
         )}
-        {vuFindUrl && (
+        {recordUrl && (
+          <NodeActionBar.ExternalLink href={recordUrl} tooltip="在 VuFind 中查看详情页" />
+        )}
+        {!recordUrl && vuFindUrl && (
           <NodeActionBar.ExternalLink href={vuFindUrl} tooltip="在 VuFind 中查看" />
         )}
       </NodeActionBar>
     );
+  };
+
+  /** 在架判定：状态含「在架/已归还/可借」视为在架，其余（已借出等）为不在架 */
+  const isAvailable = (status?: string): boolean | null => {
+    if (!status) return null;
+    return /在架|已归还|可借|Available/i.test(status);
   };
 
   return (
@@ -153,7 +182,7 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
       id={id}
       initialX={initialX}
       initialY={initialY}
-      title={title || 'VuFind 索书号'}
+      title={title || 'VuFind 索书号与馆藏'}
       dotColor={NODE_COLORS.vufind_call_number}
       onRemove={() => onRemove?.(id)}
       onPositionChange={onPositionChange}
@@ -161,7 +190,7 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
       onDrag={onDrag}
       onContextMenu={onContextMenu}
       resizable
-      defaultSize={{ width: 420, height: 400 }}
+      defaultSize={{ width: 480, height: 560 }}
       className={isGenerating && !error ? 'transition-[box-shadow,border-color,opacity] duration-200 border-transparent' : ''}
       glowOverlay={isGenerating && !error ? <BeamGlow /> : undefined}
       showLeftAnchor
@@ -211,7 +240,7 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
                 <Loader2 className="w-5 h-5 text-accent animate-spin" strokeWidth={1.5} />
               </div>
               <div className="space-y-1">
-                <p className="text-xs font-serif text-accent font-medium">正在从 vufind 检索索书号...</p>
+                <p className="text-xs font-serif text-accent font-medium">正在从 vufind 检索索书号与馆藏...</p>
                 <p className="text-[11px] font-mono text-ink-faint">ISBN：{isbnInput.trim()}</p>
               </div>
             </div>
@@ -230,14 +259,74 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
               </div>
             </div>
           ) : callNumber ? (
-            <div className="h-full flex flex-col items-center justify-center gap-3 text-center min-h-[140px]">
-              <div className="w-14 h-14 rounded-full border border-dashed border-accent/40 bg-accent/5 flex items-center justify-center text-accent">
-                <BookOpen size={24} strokeWidth={1.5} />
+            <div className="h-full flex flex-col gap-3 min-h-[140px]">
+              {/* 索书号高亮区 */}
+              <div className="shrink-0 rounded-md border border-dashed border-paper-grid bg-paper-grid/10 px-3 py-2.5 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-serif text-ink-faint uppercase tracking-wider">索书号</p>
+                  <p className="text-base font-mono font-bold text-ink tracking-wide truncate">{callNumber}</p>
+                </div>
+                <BookOpen size={20} strokeWidth={1.5} className="text-accent shrink-0 opacity-70" />
               </div>
-              <div className="space-y-1">
-                <p className="text-[10px] font-serif text-ink-faint uppercase tracking-wider">索书号</p>
-                <p className="text-lg font-mono font-bold text-ink tracking-wide">{callNumber}</p>
-              </div>
+
+              {/* 馆藏分组列表 */}
+              {holdings.length > 0 ? (
+                <div className="space-y-3 pb-1">
+                  <p className="text-[10px] font-serif text-ink-faint uppercase tracking-wider">
+                    馆藏信息 · {holdings.length} 个馆藏地 ·{' '}
+                    {holdings.reduce((n, g) => n + (g.items?.length ?? 0), 0)} 条复本
+                  </p>
+                  {holdings.map((group, gi) => (
+                    <div key={`${group.location}-${gi}`} className="space-y-1.5">
+                      <div className="flex items-start gap-1.5 px-0.5">
+                        <MapPin size={11} strokeWidth={2} className="text-accent shrink-0 mt-[3px]" />
+                        <p className="text-[11px] font-sans font-medium text-ink-light leading-snug break-words">
+                          {group.location || '未知馆藏地'}
+                        </p>
+                      </div>
+                      {(group.items ?? []).map((item, ii) => {
+                        const avail = isAvailable(item.status);
+                        return (
+                          <div
+                            key={`${item.barcode}-${ii}`}
+                            className="rounded-sm border border-paper-grid/60 bg-transparent px-2 py-1.5 space-y-1"
+                          >
+                            <div className="flex items-center gap-1.5 text-[11px] font-mono text-ink min-w-0">
+                              <Barcode size={11} strokeWidth={2} className="text-ink-faint shrink-0" />
+                              <span className="truncate">{item.barcode || '—'}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-[10px] font-sans text-ink-light min-w-0">
+                              <BookMarked size={10} strokeWidth={2} className="text-ink-faint shrink-0" />
+                              <span className="truncate">{item.loanType || '—'}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-[10px] font-sans min-w-0">
+                              <CircleDot
+                                size={10}
+                                strokeWidth={2}
+                                className={`shrink-0 ${avail === true ? 'text-success' : avail === false ? 'text-error' : 'text-ink-faint'}`}
+                              />
+                              <span
+                                className={`truncate ${
+                                  avail === true ? 'text-success' : avail === false ? 'text-error' : 'text-ink-faint'
+                                }`}
+                              >
+                                {item.status || '状态未知'}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center gap-2 text-center min-h-[100px]">
+                  <div className="w-12 h-12 rounded-full border border-dashed border-paper-grid bg-paper-grid/20 flex items-center justify-center text-ink-faint">
+                    <MapPin size={20} strokeWidth={1.5} />
+                  </div>
+                  <p className="text-xs font-sans text-ink-faint">该馆暂无馆藏信息，仅获取到索书号</p>
+                </div>
+              )}
             </div>
           ) : (
             <div className="h-full flex flex-col items-center justify-center gap-3 text-center min-h-[140px]">
@@ -245,7 +334,7 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
                 <BookOpen size={24} strokeWidth={1.5} />
               </div>
               <div className="space-y-1">
-                <p className="text-sm font-serif text-ink-light">输入 ISBN 获取索书号</p>
+                <p className="text-sm font-serif text-ink-light">输入 ISBN 获取索书号与馆藏</p>
                 <p className="text-xs text-ink-faint font-sans">可连线上级图书元数据节点自动读取 ISBN</p>
               </div>
             </div>

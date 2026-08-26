@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { fetchCallNumber, VuFindError } from '../../../services/vufind-service.js';
+import { fetchVuFindRecord, VuFindError } from '../../../services/vufind-service.js';
 
 export async function register(app: FastifyInstance): Promise<void> {
   app.post(
@@ -12,8 +12,13 @@ export async function register(app: FastifyInstance): Promise<void> {
         return reply.code(400).send({ detail: 'ISBN 不能为空' });
       }
       try {
-        const callNumber = await fetchCallNumber(isbn);
-        return { call_number: callNumber };
+        const record = await fetchVuFindRecord(isbn);
+        // call_number 字段保持向后兼容（旧下游只读索书号）
+        return {
+          call_number: record.callNumber,
+          record_url: record.recordUrl,
+          holdings: record.holdings,
+        };
       } catch (err) {
         if (err instanceof VuFindError) {
           return reply.code(502).send({ detail: err.message });

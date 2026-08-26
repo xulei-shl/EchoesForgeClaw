@@ -1034,6 +1034,8 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           isbn={typeof d.isbn === 'string' ? d.isbn : ''}
           upstreamIsbn={upstreamIsbn}
           callNumber={typeof d.callNumber === 'string' ? d.callNumber : ''}
+          recordUrl={typeof d.recordUrl === 'string' ? d.recordUrl : ''}
+          holdings={Array.isArray(d.holdings) ? d.holdings : []}
           output={typeof d.output === 'string' ? d.output : ''}
           isGenerating={!!d.isGenerating}
           error={d.error ?? null}

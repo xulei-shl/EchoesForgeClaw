@@ -310,12 +310,21 @@ const VUFIND_CALL_NUMBER_CONFIG: SimpleToolConfig<string> = {
   // 传入的 payload 即最终有效 ISBN，无需再经 firstUpstreamText 重推（book_info 的文本是整段元数据）。
   upstream: false,
   resolveInput: (isbn) => (typeof isbn === 'string' ? isbn.trim() : ''),
-  startExtras: (isbn) => ({ isbn, callNumber: '', output: '' }),
+  startExtras: (isbn) => ({ isbn, callNumber: '', recordUrl: '', holdings: [], output: '' }),
   buildBody: (_isbn: string, input: string) => ({ isbn: input }),
   okExtras: (res) => {
     const callNumber = typeof res?.call_number === 'string' ? res.call_number : '';
-    const output = callNumber ? JSON.stringify({ CALL_NUMBER: callNumber }) : '';
-    return { callNumber, output };
+    const recordUrl = typeof res?.record_url === 'string' ? res.record_url : '';
+    const holdings = Array.isArray(res?.holdings)
+      ? res.holdings.filter(
+          (g: any) => g && typeof g.location === 'string' && Array.isArray(g.items)
+        )
+      : [];
+    // output JSON：CALL_NUMBER 保持首键（小票/图书卡现有继承逻辑只读该键），新字段供后续按需提取
+    const output = callNumber
+      ? JSON.stringify({ CALL_NUMBER: callNumber, RECORD_URL: recordUrl, HOLDINGS: holdings })
+      : '';
+    return { callNumber, recordUrl, holdings, output };
   },
   checkEmpty: false,
   errLabel: 'VuFind 索书号获取',
