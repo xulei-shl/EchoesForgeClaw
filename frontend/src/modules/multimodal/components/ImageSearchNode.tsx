@@ -264,7 +264,7 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
         downloadUrl: item.downloadUrl,
         previewUrl: item.previewUrl,
       });
-      showToast('已选择图片，可连线输出到下游节点', { type: 'success', position: 'top-right' });
+      showToast('已选择图片，可连线输出到下游节点', { type: 'success' });
     } catch {
       // 页面 handler 已写入 node.data.error 并 toast，无需重复提示
     } finally {

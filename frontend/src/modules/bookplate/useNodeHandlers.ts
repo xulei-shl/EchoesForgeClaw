@@ -328,7 +328,7 @@ export function useNodeHandlers({
     const node = nodesRef.current.find((n) => n.id === id);
     if (!node || node.data?.isGenerating) return;
     const reason = runNode(node);
-    if (reason) showToast(reason, { type: 'warning', position: 'top-right' });
+    if (reason) showToast(reason, { type: 'warning' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   /** Skill 检索节点：整块替换已选 skill 集合（写入 data.skillSelections；未变化不记历史）。
@@ -394,7 +394,6 @@ export function useNodeHandlers({
       if (conflict) {
         showToast('该占位符别名已被其他上级节点使用，请换一个', {
           type: 'warning',
-          position: 'top-right',
         });
         return;
       }

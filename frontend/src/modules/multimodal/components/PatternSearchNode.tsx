@@ -242,7 +242,6 @@ const PatternSearchNodeInner: React.FC<PatternSearchNodeProps> = ({
       await onSelectPattern?.(id, item);
       showToast(`已选择纹样「${item.name_cn}」，图片与说明已输出给下游节点`, {
         type: 'success',
-        position: 'top-right',
       });
     } catch {
       // handler 会设置 error 并展示

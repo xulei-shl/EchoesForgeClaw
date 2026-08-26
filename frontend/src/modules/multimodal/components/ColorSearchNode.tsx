@@ -655,7 +655,6 @@ const ColorSearchNodeInner: React.FC<ColorSearchNodeProps> = ({
       await onSelectColor?.(id, color, curPalette.length > 0 ? curPalette : undefined);
       showToast(`已选用传统色「${color.name}」(${color.hex})，配色方案已同步`, {
         type: 'success',
-        position: 'top-right',
       });
       // 带入生成器作为 anchor（若非当前 anchor）
       if (color.id !== selectedColor?.id) {
@@ -732,7 +731,6 @@ const ColorSearchNodeInner: React.FC<ColorSearchNodeProps> = ({
     );
     showToast(`色块 0${index + 1} 已替换为「${replacement.name}」，方案已实时生效`, {
       type: 'info',
-      position: 'top-right',
     });
   };
 

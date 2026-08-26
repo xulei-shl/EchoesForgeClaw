@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { Dialog } from './Dialog';
 import { Button } from './Button';
 import { Input } from './Input';
-import { Toast, type ToastPosition, type ToastType } from './Toast';
+import { Toast, type ToastType } from './Toast';
 
 /* ========== 弹窗 ========== */
 
@@ -30,8 +30,6 @@ interface PendingDialog extends DialogBaseOptions {
 export interface ToastOptions {
   /** 提示类型（决定图标与颜色），缺省 info */
   type?: ToastType;
-  /** 显示位置，缺省底部居中 */
-  position?: ToastPosition;
   /** 自动关闭时长（毫秒），缺省 2600 */
   duration?: number;
 }
@@ -40,7 +38,6 @@ interface PendingToast {
   id: number;
   text: string;
   type: ToastType;
-  position: ToastPosition;
 }
 
 /* ========== 统一 API ========== */
@@ -133,7 +130,6 @@ export const FeedbackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         id: ++toastIdRef.current,
         text,
         type: options?.type ?? 'info',
-        position: options?.position ?? 'bottom-center',
       });
       toastTimerRef.current = window.setTimeout(dismissToast, options?.duration ?? 2600);
     },
@@ -218,7 +214,7 @@ export const FeedbackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         )}
       </Dialog>
 
-      {toast && <Toast key={toast.id} text={toast.text} type={toast.type} position={toast.position} />}
+      {toast && <Toast key={toast.id} text={toast.text} type={toast.type} />}
     </FeedbackContext.Provider>
   );
 };

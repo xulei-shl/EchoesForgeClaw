@@ -13,7 +13,7 @@ export interface ManualConnectionContext {
   portTypesRef: RefObject<PortTypesLookup>;
   setEdges: (edges: EdgeData[] | ((prev: EdgeData[]) => EdgeData[])) => void;
   recordHistory: () => void;
-  showToast: (text: string, opts?: { type?: 'warning'; position?: 'top-right' }) => void;
+  showToast: (text: string, opts?: { type?: 'warning' }) => void;
 }
 
 export interface ManualConnection {
@@ -102,12 +102,12 @@ export function useManualConnection(ctx: ManualConnectionContext): ManualConnect
 
       // 防重复：同一 source→target 已连线
       if (edgesRef.current.some((e) => e.source === sourceId && e.target === targetId)) {
-        showToast('这两个节点已存在连线', { type: 'warning', position: 'top-right' });
+        showToast('这两个节点已存在连线', { type: 'warning' });
         return;
       }
       // 防环：新增连线会让 target 能回到 source
       if (wouldCreateCycle(sourceId, targetId)) {
-        showToast('该连线会形成循环，已忽略', { type: 'warning', position: 'top-right' });
+        showToast('该连线会形成循环，已忽略', { type: 'warning' });
         return;
       }
 

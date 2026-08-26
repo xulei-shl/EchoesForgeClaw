@@ -410,9 +410,9 @@ const BookplatePage: React.FC = () => {
         });
         recordHistory();
         updateNodeData(nodeId, { cover_image_local: res.cover_image_local });
-        showToast('封面已上传并写入缓存', { type: 'success', position: 'top-right' });
+        showToast('封面已上传并写入缓存', { type: 'success' });
       } catch (e: any) {
-        showToast(e?.detail || e?.message || '封面上传失败，请重试', { type: 'error', position: 'top-right' });
+        showToast(e?.detail || e?.message || '封面上传失败，请重试', { type: 'error' });
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -798,14 +798,14 @@ const BookplatePage: React.FC = () => {
     const target = activeImage;
     if (!target) return;
     if (target.data?.imageUrl && !target.data?.isSaved) {
-      showToast('请先保存到数据库后再收藏', { type: 'warning', position: 'top-right' });
+      showToast('请先保存到数据库后再收藏', { type: 'warning' });
       return;
     }
     try {
       const next = await toggleFavoriteForImage(target.id);
-      showToast(next ? '已收藏到「我的收藏」' : '已取消收藏', { type: 'success', position: 'top-right' });
+      showToast(next ? '已收藏到「我的收藏」' : '已取消收藏', { type: 'success' });
     } catch (e: any) {
-      showToast(e?.message || '收藏失败，请重试', { type: 'error', position: 'top-right' });
+      showToast(e?.message || '收藏失败，请重试', { type: 'error' });
     }
   };
 
@@ -813,14 +813,14 @@ const BookplatePage: React.FC = () => {
     const target = activeImage;
     if (!target) return;
     if (target.data?.imageUrl && !target.data?.isSaved) {
-      showToast('请先保存到数据库后再公开', { type: 'warning', position: 'top-right' });
+      showToast('请先保存到数据库后再公开', { type: 'warning' });
       return;
     }
     try {
       const next = await togglePublicForImage(target.id);
-      showToast(next ? '已公开到画廊' : '已从画廊撤下', { type: 'success', position: 'top-right' });
+      showToast(next ? '已公开到画廊' : '已从画廊撤下', { type: 'success' });
     } catch (e: any) {
-      showToast(e?.message || '公开失败，请重试', { type: 'error', position: 'top-right' });
+      showToast(e?.message || '公开失败，请重试', { type: 'error' });
     }
   };
 
