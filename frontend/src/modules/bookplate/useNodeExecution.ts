@@ -385,10 +385,13 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
           ctx.portTypesRef.current
         );
         const { book, imageNodes, refImage, text: upstreamText } = inputs;
-        // 注意：必须传豆瓣原始 URL（cover_image），而非本地代理 URL（cover_image_local）——
-        // 后端仅接受 doubanio.com 域名做封面抓取/分析
-        const coverUrl =
-          book?.data?.cover_image || book?.data?.coverUrl || book?.data?.cover_image_local;
+        // 图书封面作为兑底分析图：与图像生成节点同口径，includeBookCover 开启时才注入
+        // （默认开启，旧节点 undefined 视为开启）。注意必须传豆瓣原始 URL（cover_image），
+        // 而非本地代理 URL（cover_image_local）——后端仅接受 doubanio.com 域名做封面抓取/分析
+        const includeCover = node.data?.settings?.includeBookCover !== false;
+        const coverUrl = includeCover
+          ? book?.data?.cover_image || book?.data?.coverUrl || book?.data?.cover_image_local
+          : '';
         const uploaded = analysisUploads.current.get(node.id);
         // 图片来源优先级：节点内直接上传的参考图 > 上游图片输出节点 > 图书封面。
         // 显式连接了图片类节点时以该节点为准：暂无图片则保持待运行态，不回退封面。

@@ -56,6 +56,8 @@ export interface ImageAnalysisNodeProps {
   onUpdateSettings?: (id: string, settings: NodeRunSettings) => void;
   /** 画布是否已有图书元数据节点 */
   hasBookInfo?: boolean;
+  /** 是否展示「加载图书封面图片」开关（与图像生成节点同口径，默认不展示） */
+  showBookCoverOption?: boolean;
   /** 标题旁的类型不匹配提示 */
   mismatchBadge?: string | null;
   hasDownstream?: boolean;
@@ -87,6 +89,7 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
    contextBlocks,
   onUpdateSettings,
   hasBookInfo,
+  showBookCoverOption,
   mismatchBadge,
   hasDownstream,
   mode,
@@ -156,6 +159,7 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
             hasDownstream={hasDownstream}
             hasBookInfo={hasBookInfo}
             showModelOption
+            showBookCoverOption={showBookCoverOption}
             mode={mode}
             configId={configId}
           />

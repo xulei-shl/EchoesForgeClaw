@@ -325,12 +325,13 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       const config = h.configOf(node);
       const hasDownstream = hasDownstreamOf(node, h.edges);
       // 上下文注入折叠块：与 图像生成 / AI 对话节点共用构建逻辑，展示本次运行并入
-      // 分析请求的输入（文本类上级 / 图片类上级 / 图书元数据）
+      // 分析请求的输入（文本类上级 / 图片类上级 / 图书元数据与封面）。封面注入与
+      // 图像生成节点同口径：includeBookCover 默认开启（旧节点 undefined 视为开启）
       const contextBlocks = buildInjectedContextBlocks(
         node,
         {
           includeBook: settings.includeBook,
-          includeBookCover: false,
+          includeBookCover: settings.includeBookCover !== false,
           includeUpstreamText: true,
           includeUpstreamImages: true,
         },
@@ -355,6 +356,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           contextBlocks={contextBlocks}
           onUpdateSettings={h.handleUpdateRunSettingsFor}
           hasBookInfo={h.hasBookInfo}
+          showBookCoverOption
           mode={config?.mode}
           configId={node.configId ?? null}
         />
@@ -747,7 +749,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       );
     }
     case 'receipt_printer': {
-      const d = noVuFind 馆藏 {};
+      const d = node.data ?? {};
       const { upstreamImageUrl, upstreamBookData } = resolveUpstreamImage(node, h);
       // 上游文本节点（如 VuFind 索书号）的 JSON 输出，解析 CALL_NUMBER 填充小票索书号字段
       const upstreamTextExtra = firstExtraJsonUpstreamText(node, h.nodes, h.edges, h.portTypesOf);
@@ -781,7 +783,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       const inputs = collectNodeInputs(node, h.nodes, h.edges, h.portTypesOf);
       const connectedImages = inputs.images
         .filter((p) => p.type !== 'book_info')
-        .map((p) =VuFind 馆藏utImages(p)[0])
+        .map((p) => nodeOutputImages(p)[0])
         .filter((src): src is string => Boolean(src));
       // 上游文本节点（如 VuFind 索书号）的 JSON 输出，供 parseExtraCardFields 解析覆盖
       const upstreamTextExtra = firstExtraJsonUpstreamText(node, h.nodes, h.edges, h.portTypesOf);
