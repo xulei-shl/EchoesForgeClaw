@@ -420,7 +420,10 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
   // 正在等待 AI 返回正文（处于流式生成中但正文尚未开始输出，涵盖首字等待与思考过程输出阶段）
   const isWaitingResponse = Boolean(msg.streaming && !hasContent);
   // 正文引用的工作区产物（渲染时提取，与事件上报的 msg.files 合并去重）→ 文件卡片
-  const cardFiles = mergeAgentFiles(msg.files, extractWorkspaceFiles(msg.content, workspaceId));
+  const cardFiles = mergeAgentFiles(
+    Array.isArray(msg.files) ? msg.files : [],
+    extractWorkspaceFiles(msg.content, workspaceId)
+  );
 
   return (
     <div className={`flex flex-col items-start gap-1 relative group ${!msg.streaming ? 'msg-enter-anim' : ''}`}>

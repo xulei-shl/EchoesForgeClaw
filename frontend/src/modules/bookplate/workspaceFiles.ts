@@ -152,7 +152,9 @@ export function stripUnrenderableImages(content: string, workspaceId?: string | 
 /** 合并两组文件卡片数据并按 url 去重（保持原有顺序在前）。 */
 export function mergeAgentFiles(a?: AgentFile[], b?: AgentFile[]): AgentFile[] {
   const out = new Map<string, AgentFile>();
-  for (const f of a ?? []) out.set(f.url, f);
-  for (const f of b ?? []) if (!out.has(f.url)) out.set(f.url, f);
+  for (const f of [...(Array.isArray(a) ? a : []), ...(Array.isArray(b) ? b : [])]) {
+    if (!f || typeof f.url !== 'string' || !f.url) continue;
+    out.set(f.url, f);
+  }
   return [...out.values()];
 }
