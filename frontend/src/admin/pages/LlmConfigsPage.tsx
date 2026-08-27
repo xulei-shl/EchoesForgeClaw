@@ -283,6 +283,7 @@ export const LlmConfigsPage: React.FC = () => {
       <Dialog
         open={showCreate || !!editing}
         onClose={resetForm}
+        panelClassName="max-w-2xl"
         title={
           <div className="flex items-center gap-2">
             <Cpu size={18} strokeWidth={1.5} className="text-accent" />
@@ -291,7 +292,7 @@ export const LlmConfigsPage: React.FC = () => {
         }
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <FieldLabel required>配置名称</FieldLabel>
               <Input
@@ -354,7 +355,7 @@ export const LlmConfigsPage: React.FC = () => {
                 agnes 选 qwen-chat-template，deepseek 选 deepseek；Anthropic 格式下忽略
               </p>
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 sm:col-span-2">
               <FieldLabel>{editing?.has_api_key ? 'API Key（留空保持原 Key 不变）' : 'API Key'}</FieldLabel>
               <Input
                 type="password"
