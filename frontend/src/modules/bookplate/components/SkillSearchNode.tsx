@@ -324,10 +324,10 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
           return (
             <div
               key={s.id}
-              className={`flex items-start gap-3 p-2.5 rounded-md border transition-colors cursor-pointer active:scale-[0.98] ${
+              className={`flex items-start gap-3 p-2.5 rounded-md border cursor-pointer active:scale-[0.96] transition-transform duration-100 ease-out ${
                 isSelected
                   ? 'border-accent/50 bg-accent-surface/60'
-                  : 'border-transparent hover:border-paper-grid hover:bg-paper-grid/30'
+                  : 'border-transparent hover:border-paper-grid hover:bg-paper-grid/30 transition-colors'
               }`}
               onClick={() => void handleInstallBifrost(s)}
             >

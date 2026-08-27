@@ -60,8 +60,8 @@ const NodeContextMenu: React.FC<NodeContextMenuProps> = ({
   return (
     <div
       ref={ref}
-      className="fixed z-[100] w-[480px] bg-paper border border-paper-grid rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-100"
-      style={{ left, top }}
+      className="fixed z-[100] w-[480px] bg-paper border border-paper-grid rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 ease-out"
+      style={{ left, top, transformOrigin: 'top left' }}
       onContextMenu={(e) => e.preventDefault()}
     >
       <div className="px-3.5 py-2.5 border-b border-dashed border-paper-grid bg-paper-grid/10 flex items-center justify-between">
@@ -79,7 +79,7 @@ const NodeContextMenu: React.FC<NodeContextMenuProps> = ({
             e.stopPropagation();
             onDelete();
           }}
-          className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-sans text-error hover:bg-error/10 active:scale-[0.98] transition-all"
+          className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-sans text-error hover:bg-error/10 active:scale-[0.96] transition-transform duration-100 ease-out"
         >
           <Trash2 size={13} strokeWidth={2} />
           删除此节点（含后续连线子节点）

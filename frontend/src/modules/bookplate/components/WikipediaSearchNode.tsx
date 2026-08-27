@@ -5,7 +5,6 @@ import {
   Loader2,
   Search,
   AlertTriangle,
-  Link2,
   X,
   ChevronLeft,
   FileText,
@@ -18,6 +17,7 @@ import { Select, type SelectOption } from '../../../platform/components/ui/Selec
 import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
 import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
 import { NODE_COLORS } from '../nodeTypes';
+import { UpstreamLinkCard } from './common/SearchNodeScaffold';
 
 /** Wikipedia 检索结果项（与后端 wikipedia-service 一致） */
 export interface WikipediaSearchItem {
@@ -224,27 +224,13 @@ const WikipediaSearchNodeInner: React.FC<WikipediaSearchNodeProps> = ({
         <div className="shrink-0 space-y-2">
           {hasUpstream ? (
             /* 连线即输入模式：高光提示卡片 */
-            <div className="flex items-center justify-between p-2 rounded-lg border border-accent/40 bg-accent/5">
-              <div className="flex items-center gap-2 min-w-0 pr-2">
-                <div className="w-5 h-5 rounded-full bg-accent/15 flex items-center justify-center shrink-0 text-accent">
-                  <Link2 size={12} strokeWidth={2} />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-[10px] font-serif text-accent uppercase tracking-wider">上级连线输入关键词</div>
-                  <div className="text-xs font-medium text-ink truncate font-mono">{upstreamKeyword}</div>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleSearch(upstreamKeyword)}
-                disabled={!canSubmit}
-                title="以该关键词检索"
-                className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-accent text-paper text-xs font-sans hover:bg-accent-hover active:scale-[0.96] transition-transform disabled:opacity-40 disabled:cursor-not-allowed shrink-0 shadow-xs"
-              >
-                <Search size={12} strokeWidth={2} />
-                <span>检索</span>
-              </button>
-            </div>
+            <UpstreamLinkCard
+              label="上级连线输入关键词"
+              content={upstreamKeyword}
+              onTrigger={() => handleSearch(upstreamKeyword)}
+              disabled={!canSubmit}
+              buttonText="检索"
+            />
           ) : (
             /* 手动输入模式：第 1 行 语言 + 关键词输入框 + 检索按钮 复合行 */
             <form onSubmit={handleSubmit} className="flex items-center gap-1.5">
@@ -468,7 +454,7 @@ const WikipediaSearchNodeInner: React.FC<WikipediaSearchNodeProps> = ({
                     disabled={isGenerating}
                     onClick={() => handleOpenArticle(r.title)}
                     title={`查看「${r.title}」${summaryMode ? '简介' : '全文'}`}
-                    className="w-full text-left p-2.5 rounded-lg border border-dashed border-paper-grid bg-paper/40 hover:border-accent/50 hover:bg-accent/5 active:scale-[0.98] transition-transform transition-colors disabled:opacity-40 disabled:cursor-not-allowed group"
+                    className="w-full text-left p-2.5 rounded-lg border border-dashed border-paper-grid bg-paper/40 hover:border-accent/50 hover:bg-accent/5 active:scale-[0.96] transition-transform duration-100 ease-out disabled:opacity-40 disabled:cursor-not-allowed group"
                   >
                     <div className="flex items-center gap-1.5 min-w-0">
                       <FileText size={12} strokeWidth={2} className="text-accent shrink-0" />

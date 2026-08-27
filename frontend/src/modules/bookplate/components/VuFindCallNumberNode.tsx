@@ -1,9 +1,14 @@
 import React, { memo, useEffect, useRef, useState, useCallback } from 'react';
-import { BookOpen, Loader2, AlertTriangle, Link2, X, MapPin, Barcode, BookMarked, CircleDot } from 'lucide-react';
+import { BookOpen, Link2, X, MapPin, Barcode, BookMarked, CircleDot } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { BeamGlow } from '../../../platform/components/node/BeamGlow';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { NODE_COLORS } from '../nodeTypes';
+import {
+  SearchNodeLoadingView,
+  SearchNodeErrorView,
+  SearchNodeEmptyView,
+} from './common/SearchNodeScaffold';
 
 /** 单条复本馆藏（与后端 VuFindHoldingItem 对应） */
 export interface VuFindHoldingItem {
@@ -250,29 +255,16 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
 
         <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 custom-scrollbar">
           {isGenerating ? (
-            <div className="h-full flex flex-col items-center justify-center gap-3 text-center min-h-[140px]">
-              <div className="w-12 h-12 rounded-full border border-dashed border-accent/40 bg-accent/5 flex items-center justify-center">
-                <Loader2 className="w-5 h-5 text-accent animate-spin" strokeWidth={1.5} />
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs font-serif text-accent font-medium">正在从 vufind 检索索书号与馆藏...</p>
-                <p className="text-xs font-mono text-ink-faint">ISBN：{isbnInput.trim()}</p>
-              </div>
-            </div>
+            <SearchNodeLoadingView
+              text="正在从 vufind 检索索书号与馆藏..."
+              subtext={`ISBN：${isbnInput.trim()}`}
+            />
           ) : error ? (
-            <div className="p-3.5 rounded-md border border-error/20 bg-error/5 flex items-start gap-2.5">
-              <AlertTriangle size={15} strokeWidth={2} className="text-error shrink-0 mt-0.5" />
-              <div className="flex-1 min-w-0 space-y-1.5 font-sans">
-                <p className="text-xs text-error/90 leading-relaxed break-words">{error}</p>
-                <button
-                  type="button"
-                  onClick={() => handleQuery()}
-                  className="inline-flex items-center text-xs text-error font-medium hover:underline active:scale-[0.96] transition-transform"
-                >
-                  重试
-                </button>
-              </div>
-            </div>
+            <SearchNodeErrorView
+              error={error}
+              onRetry={() => handleQuery()}
+              retryText="重试"
+            />
           ) : callNumber ? (
             <div className="h-full flex flex-col gap-3 min-h-[140px]">
               {/* 索书号高亮区 */}
@@ -359,15 +351,11 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
               )}
             </div>
           ) : (
-            <div className="h-full flex flex-col items-center justify-center gap-3 text-center min-h-[140px]">
-              <div className="w-14 h-14 rounded-full border border-dashed border-paper-grid bg-paper-grid/20 flex items-center justify-center text-ink-faint">
-                <BookOpen size={24} strokeWidth={1.5} />
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm font-serif text-ink-light">输入 ISBN 获取索书号与馆藏</p>
-                <p className="text-xs text-ink-faint font-sans">可连线上级图书元数据节点自动读取 ISBN</p>
-              </div>
-            </div>
+            <SearchNodeEmptyView
+              icon={<BookOpen size={24} strokeWidth={1.5} />}
+              title="输入 ISBN 获取索书号与馆藏"
+              description="可连线上级图书元数据节点自动读取 ISBN"
+            />
           )}
         </div>
       </div>

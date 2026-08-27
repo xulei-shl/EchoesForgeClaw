@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useState, useCallback } from 'react';
-import { CalendarDays, Loader2, Search, AlertTriangle, Sparkles } from 'lucide-react';
+import { CalendarDays, Search, Sparkles } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { BeamGlow } from '../../../platform/components/node/BeamGlow';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
@@ -7,6 +7,11 @@ import { DatePicker } from '../../../platform/components/ui/DatePicker';
 import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
 import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
 import { NODE_COLORS } from '../nodeTypes';
+import {
+  SearchNodeLoadingView,
+  SearchNodeErrorView,
+  SearchNodeEmptyView,
+} from './common/SearchNodeScaffold';
 
 /** 格式化日期为 YYYY-MM-DD */
 function formatDate(d: Date): string {
@@ -158,7 +163,7 @@ const CalendarNodeInner: React.FC<CalendarNodeProps> = ({
               type="submit"
               disabled={!dateInput.trim() || isGenerating}
               title="查询此日期"
-              className="flex items-center justify-center w-10 h-10 shrink-0 rounded-md bg-accent text-paper hover:bg-accent-hover active:scale-[0.96] transition-all disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              className="flex items-center justify-center w-10 h-10 shrink-0 rounded-md bg-accent text-paper hover:bg-accent-hover active:scale-[0.96] transition-transform duration-100 ease-out disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent shadow-xs"
             >
               <Search size={15} strokeWidth={2} />
             </button>
@@ -176,7 +181,7 @@ const CalendarNodeInner: React.FC<CalendarNodeProps> = ({
                   type="button"
                   disabled={isGenerating}
                   onClick={() => handleQuickPreset(preset.getDays)}
-                  className={`shrink-0 px-2 py-0.5 rounded-full text-[11px] font-sans border transition-all active:scale-[0.96] ${
+                  className={`shrink-0 px-2 py-0.5 rounded-full text-[11px] font-sans border transition-colors active:scale-[0.96] transition-transform duration-100 ease-out ${
                     isSelected
                       ? 'border-accent/60 bg-accent/10 text-accent font-medium'
                       : 'border-dashed border-paper-grid text-ink-light hover:border-paper-grid hover:text-ink hover:bg-paper-grid/20'
@@ -192,29 +197,16 @@ const CalendarNodeInner: React.FC<CalendarNodeProps> = ({
         {/* 结果 / 加载 / 错误区 */}
         <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 custom-scrollbar">
           {isGenerating ? (
-            <div className="h-full flex flex-col items-center justify-center gap-3 text-center min-h-[160px]">
-              <div className="w-12 h-12 rounded-full border border-dashed border-accent/40 bg-accent/5 flex items-center justify-center">
-                <Loader2 className="w-5 h-5 text-accent animate-spin" strokeWidth={1.5} />
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs font-serif text-accent font-medium">正在研读历法与节气...</p>
-                <p className="text-[11px] font-mono text-ink-faint tabular-nums">{dateInput}</p>
-              </div>
-            </div>
+            <SearchNodeLoadingView
+              text="正在研读历法与节气..."
+              subtext={dateInput}
+            />
           ) : error ? (
-            <div className="p-3.5 rounded-md border border-error/20 bg-error/5 flex items-start gap-2.5">
-              <AlertTriangle size={15} strokeWidth={2} className="text-error shrink-0 mt-0.5" />
-              <div className="flex-1 min-w-0 space-y-1.5 font-sans">
-                <p className="text-[12px] text-error/90 leading-relaxed break-words">{error}</p>
-                <button
-                  type="button"
-                  onClick={() => handleQuery()}
-                  className="inline-flex items-center text-[11px] text-error font-medium hover:underline active:scale-[0.96] transition-transform"
-                >
-                  重试查询
-                </button>
-              </div>
-            </div>
+            <SearchNodeErrorView
+              error={error}
+              onRetry={() => handleQuery()}
+              retryText="重试查询"
+            />
           ) : output.trim() ? (
             <div className="w-full min-w-0 font-sans text-sm leading-relaxed p-3 rounded-md bg-paper/60 border border-dashed border-paper-grid">
               <Streamdown
@@ -227,23 +219,21 @@ const CalendarNodeInner: React.FC<CalendarNodeProps> = ({
               </Streamdown>
             </div>
           ) : (
-            <div className="h-full flex flex-col items-center justify-center gap-3 text-center min-h-[180px]">
-              <div className="w-14 h-14 rounded-full border border-dashed border-paper-grid bg-paper-grid/20 flex items-center justify-center text-ink-faint">
-                <CalendarDays size={24} strokeWidth={1.5} />
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm font-serif text-ink-light">选择日期查询节假日与农历万年历</p>
-                <p className="text-xs text-ink-faint font-sans">支持查询法定节假日放假安排、生肖干支与廿四节气</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleQuickPreset(0)}
-                className="mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-serif text-accent border border-dashed border-accent/40 bg-accent/5 hover:bg-accent/10 active:scale-[0.96] transition-all"
-              >
-                <Sparkles size={13} strokeWidth={1.75} />
-                查询今日万年历
-              </button>
-            </div>
+            <SearchNodeEmptyView
+              icon={<CalendarDays size={24} strokeWidth={1.5} />}
+              title="选择日期查询节假日与农历万年历"
+              description="支持查询法定节假日放假安排、生肖干支与廿四节气"
+              actionButton={
+                <button
+                  type="button"
+                  onClick={() => handleQuickPreset(0)}
+                  className="mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-serif text-accent border border-dashed border-accent/40 bg-accent/5 hover:bg-accent/10 active:scale-[0.96] transition-transform duration-100 ease-out shadow-xs"
+                >
+                  <Sparkles size={13} strokeWidth={1.75} />
+                  查询今日万年历
+                </button>
+              }
+            />
           )}
         </div>
       </div>

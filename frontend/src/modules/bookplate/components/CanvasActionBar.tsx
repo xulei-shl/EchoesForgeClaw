@@ -46,10 +46,10 @@ export const CanvasActionBar: React.FC<CanvasActionBarProps> = ({
   onFocus,
 }) => {
   const btnClass = (disabled: boolean) =>
-    `flex items-center justify-center w-10 h-10 rounded-md transition active:scale-[0.96] ` +
+    `flex items-center justify-center w-10 h-10 rounded-md active:scale-[0.96] transition-transform duration-100 ease-out ` +
     (disabled
       ? 'text-ink-faint opacity-40 cursor-not-allowed'
-      : 'text-ink-light hover:text-ink hover:bg-paper-grid/30') +
+      : 'text-ink-light hover:text-ink hover:bg-paper-grid/30 transition-colors') +
     ' focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent';
 
   return (

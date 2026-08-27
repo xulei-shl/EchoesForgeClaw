@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useCanvas } from '../canvas/CanvasContext';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, X } from 'lucide-react';
 
 /** 拖拽激活阈值（px），防止点击头部时轻微抖动误触发 */
 const DRAG_THRESHOLD = 3;
@@ -326,7 +326,7 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
       ref={rootRef}
       id={id}
       data-node-id={id}
-      className={`absolute bg-node-bg border-dashed-grid border rounded-md shadow-sm flex flex-col pointer-events-auto transition-shadow duration-150 ${
+      className={`absolute bg-node-bg border-dashed-grid border rounded-xl shadow-sm flex flex-col pointer-events-auto transition-shadow duration-150 ${
         isActive ? 'ring-1 ring-accent/60 shadow-md' : ''
       } ${className}`}
       style={{
@@ -368,12 +368,12 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
         }
       `}</style>
 
-      {/* 左右连接点（输出/输入端口） */}
+      {/* 左右连接点（输出/输入端口），通过伪元素扩展触控热区至 40x40px */}
       {showLeftAnchor && (
         <div
           data-anchor-input={id}
           title="拖拽连线到此：作为本节点的上级输入"
-          className="absolute top-1/2 -left-[10px] w-5 h-5 -translate-y-1/2 z-30 flex items-center justify-center rounded-full cursor-crosshair group/anchor"
+          className="absolute top-1/2 -left-[10px] w-5 h-5 -translate-y-1/2 z-30 flex items-center justify-center rounded-full cursor-crosshair group/anchor before:absolute before:-inset-2.5 before:content-['']"
           style={{ touchAction: 'none' }}
         >
           <div className="w-3 h-3 bg-paper border-[1.5px] border-accent rounded-full shadow-sm transition-transform duration-150 group-hover/anchor:scale-125" />
@@ -383,7 +383,7 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
         <div
           data-anchor-output={id}
           title="按住拖拽到目标节点的左侧连接点创建连线"
-          className="absolute top-1/2 -right-[10px] w-5 h-5 -translate-y-1/2 z-30 flex items-center justify-center rounded-full cursor-crosshair group/anchor"
+          className="absolute top-1/2 -right-[10px] w-5 h-5 -translate-y-1/2 z-30 flex items-center justify-center rounded-full cursor-crosshair group/anchor before:absolute before:-inset-2.5 before:content-['']"
           style={{ touchAction: 'none' }}
           onPointerDown={(e) => {
             if (e.button !== 0) return;
@@ -400,7 +400,7 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
 
       {/* 头部拖拽区 */}
       <div
-        className="relative z-10 node-drag-handle h-8 bg-paper border-b border-dashed border-paper-grid flex items-center justify-between px-3 cursor-grab active:cursor-grabbing rounded-t-md select-none"
+        className="relative z-10 node-drag-handle h-8 bg-paper border-b border-dashed border-paper-grid flex items-center justify-between px-3 cursor-grab active:cursor-grabbing rounded-t-xl select-none"
         style={{ touchAction: 'none' }}
       >
         <div className="flex gap-1.5 items-center min-w-0">
@@ -437,10 +437,11 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
               onRemove();
             }}
             disabled={disableRemove}
-            title={disableRemove ? '有下级节点关联，不可删除' : '删除'}
-            className={`p-1 transition-colors ${disableRemove ? 'text-ink-faint/40 cursor-not-allowed' : 'text-ink-light hover:text-error'}`}
+            title={disableRemove ? '有下级节点关联，不可删除' : '删除节点'}
+            aria-label="删除节点"
+            className={`p-1 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-error ${disableRemove ? 'text-ink-faint/40 cursor-not-allowed' : 'text-ink-light hover:text-error hover:bg-error/10 active:scale-[0.96] transition-transform'}`}
           >
-            ✕
+            <X size={13} strokeWidth={2} />
           </button>
         )}
       </div>

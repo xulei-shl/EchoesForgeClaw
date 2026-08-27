@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useState, useCallback, useMemo } from 'react';
-import { Search, Loader2, AlertTriangle, Link2, Shuffle, Globe } from 'lucide-react';
+import { Search, Loader2, Shuffle, Globe } from 'lucide-react';
 import { Select, type SelectOption } from '../../../platform/components/ui/Select';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { BeamGlow } from '../../../platform/components/node/BeamGlow';
@@ -8,6 +8,12 @@ import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
 import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
 import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
 import { NODE_COLORS } from '../nodeTypes';
+import {
+  UpstreamLinkCard,
+  SearchNodeLoadingView,
+  SearchNodeErrorView,
+  SearchNodeEmptyView,
+} from './common/SearchNodeScaffold';
 
 export type WebSearchSource = 'random' | 'zhihu_global' | 'tavily' | 'exa' | 'anysearch' | 'doubao';
 
@@ -185,17 +191,14 @@ const WebSearchNodeInner: React.FC<WebSearchNodeProps> = ({
       <div className="h-full flex flex-col flex-1 min-h-0 gap-2.5">
         {/* 顶部检索触发与参数栏 */}
         {hasUpstream ? (
-          <div className="flex items-center justify-between p-2 rounded-lg border border-accent/30 bg-accent/5 shrink-0 gap-2">
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              <div className="w-6 h-6 rounded-full bg-accent/15 flex items-center justify-center shrink-0 text-accent">
-                <Link2 size={12} strokeWidth={2} />
-              </div>
-              <div className="min-w-0">
-                <div className="text-[10px] font-serif text-accent uppercase tracking-wider">上级传入关键词</div>
-                <div className="text-xs font-medium text-ink truncate font-mono" title={upstreamQuery}>{upstreamQuery}</div>
-              </div>
-            </div>
-            <div className="flex items-center gap-1.5 shrink-0">
+          <UpstreamLinkCard
+            label="上级传入关键词"
+            content={upstreamQuery}
+            onTrigger={handleSearch}
+            disabled={!canSubmit}
+            isLoading={currentTab.isGenerating}
+            buttonText="检索"
+            extraControls={
               <Select
                 value={String(currentTab.count ?? 5)}
                 onChange={(v) => onUpdateEditor?.(id, { tabData: { ...tabData, [activeSource]: { ...currentTab, count: Number(v) } } })}
@@ -204,22 +207,8 @@ const WebSearchNodeInner: React.FC<WebSearchNodeProps> = ({
                 size="sm"
                 className="w-[72px]"
               />
-              <button
-                type="button"
-                onClick={handleSearch}
-                disabled={!canSubmit}
-                title="以连线内容检索"
-                className="flex items-center justify-center gap-1 px-2.5 h-7 rounded-md bg-accent text-paper text-xs font-sans hover:bg-accent-hover active:scale-[0.96] transition-transform disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
-              >
-                {currentTab.isGenerating ? (
-                  <Loader2 size={11} className="animate-spin" strokeWidth={2} />
-                ) : (
-                  <Search size={11} strokeWidth={2} />
-                )}
-                <span>{currentTab.isGenerating ? '检索中' : '检索'}</span>
-              </button>
-            </div>
-          </div>
+            }
+          />
         ) : (
           <form onSubmit={handleSubmit} className="flex items-center gap-1.5 shrink-0">
             <div className="relative flex-1 min-w-0">
@@ -300,31 +289,16 @@ const WebSearchNodeInner: React.FC<WebSearchNodeProps> = ({
         {/* 内容/结果展示区域 */}
         <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 custom-scrollbar">
           {currentTab.isGenerating ? (
-            <div className="h-full flex flex-col items-center justify-center gap-3 text-center min-h-[140px]">
-              <div className="w-12 h-12 rounded-full border border-dashed border-accent/40 bg-accent/5 flex items-center justify-center">
-                <Loader2 className="w-5 h-5 text-accent animate-spin" strokeWidth={1.5} />
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs font-serif text-accent font-medium">正在网络检索...</p>
-                <p className="text-[11px] font-mono text-ink-faint">
-                  {activeSource === 'random' ? '随机选择检索源' : SOURCE_LABEL[activeSource] ?? activeSource}
-                </p>
-              </div>
-            </div>
+            <SearchNodeLoadingView
+              text="正在网络检索..."
+              subtext={activeSource === 'random' ? '随机选择检索源' : SOURCE_LABEL[activeSource] ?? activeSource}
+            />
           ) : currentTab.error ? (
-            <div className="p-3.5 rounded-md border border-error/20 bg-error/5 flex items-start gap-2.5">
-              <AlertTriangle size={15} strokeWidth={2} className="text-error shrink-0 mt-0.5" />
-              <div className="flex-1 min-w-0 space-y-1.5 font-sans">
-                <p className="text-[12px] text-error/90 leading-relaxed break-words">{currentTab.error}</p>
-                <button
-                  type="button"
-                  onClick={handleSearch}
-                  className="inline-flex items-center text-[11px] text-error font-medium hover:underline active:scale-[0.96] transition-transform"
-                >
-                  重试检索
-                </button>
-              </div>
-            </div>
+            <SearchNodeErrorView
+              error={currentTab.error}
+              onRetry={handleSearch}
+              retryText="重试检索"
+            />
           ) : currentTab.output.trim() ? (
             <div className="space-y-1.5">
               <div className="flex items-center text-[11px] text-ink-faint font-sans pb-0.5">
@@ -337,15 +311,11 @@ const WebSearchNodeInner: React.FC<WebSearchNodeProps> = ({
               </div>
             </div>
           ) : (
-            <div className="h-full flex flex-col items-center justify-center gap-3 text-center min-h-[140px]">
-              <div className="w-14 h-14 rounded-full border border-dashed border-paper-grid bg-paper-grid/20 flex items-center justify-center text-ink-faint">
-                <Globe size={24} strokeWidth={1.5} />
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm font-serif text-ink-light">输入关键词开始多源检索</p>
-                <p className="text-xs text-ink-faint font-sans">支持随机源或指定各平台源，各源独立缓存</p>
-              </div>
-            </div>
+            <SearchNodeEmptyView
+              icon={<Globe size={24} strokeWidth={1.5} />}
+              title="输入关键词开始多源检索"
+              description="支持随机源或指定各平台源，各源独立缓存"
+            />
           )}
         </div>
       </div>

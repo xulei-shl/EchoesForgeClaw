@@ -280,6 +280,32 @@ function resolveUpstreamImages(node: NodeData, h: NodeViewHelpers): string[] {
   });
 }
 
+let latestHandleRemove: ((id: string) => void) | null = null;
+let latestContextMenu: ((e: React.MouseEvent, id: string) => void) | null = null;
+
+const removeCallbackCache = new Map<string, () => void>();
+const contextMenuCallbackCache = new Map<string, (e: React.MouseEvent) => void>();
+
+function getStableRemove(id: string, h: NodeViewHelpers): () => void {
+  latestHandleRemove = h.handleRemove;
+  let cb = removeCallbackCache.get(id);
+  if (!cb) {
+    cb = () => latestHandleRemove?.(id);
+    removeCallbackCache.set(id, cb);
+  }
+  return cb;
+}
+
+function getStableContextMenu(id: string, h: NodeViewHelpers): (e: React.MouseEvent) => void {
+  latestContextMenu = h.handleNodeContextMenu;
+  let cb = contextMenuCallbackCache.get(id);
+  if (!cb) {
+    cb = (e: React.MouseEvent) => latestContextMenu?.(e, id);
+    contextMenuCallbackCache.set(id, cb);
+  }
+  return cb;
+}
+
 /** 画布节点渲染：按节点类型分发到对应组件（bookplate 模块唯一渲染入口） */
 export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.ReactNode {
   const common = {
@@ -287,12 +313,12 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
     initialX: node.x,
     initialY: node.y,
     title: getNodeTitle(node),
-    onRemove: () => h.handleRemove(node.id),
+    onRemove: getStableRemove(node.id, h),
     onPositionChange: h.handlePositionChange,
     onSizeChange: h.handleSizeChange,
     onDrag: h.handleNodeDrag,
     onResizeLive: h.handleNodeResizeLive,
-    onContextMenu: (e: React.MouseEvent) => h.handleNodeContextMenu(e, node.id),
+    onContextMenu: getStableContextMenu(node.id, h),
     footer: h.renderFooter(node),
   };
   const mismatchBadge = mismatchBadgeOf(node, h);

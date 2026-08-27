@@ -267,10 +267,10 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
           return (
             <div
               key={p.id}
-              className={`flex items-center gap-3 p-2.5 rounded-md cursor-pointer transition border active:scale-[0.99] ${
+              className={`flex items-center gap-3 p-2.5 rounded-md cursor-pointer border active:scale-[0.96] transition-transform duration-100 ease-out ${
                 isSelected
                   ? 'border-accent/50 bg-accent-surface/60'
-                  : 'border-transparent hover:border-paper-grid hover:bg-paper-grid/30'
+                  : 'border-transparent hover:border-paper-grid hover:bg-paper-grid/30 transition-colors'
               }`}
               onClick={() => handleSelect(p)}
               onMouseEnter={(e) =>

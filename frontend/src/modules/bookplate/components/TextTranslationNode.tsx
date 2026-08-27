@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useState, useCallback, useMemo } from 'react';
-import { Languages, Loader2, ArrowLeftRight, AlertTriangle, Link2, Shuffle, Globe, X } from 'lucide-react';
+import { Languages, ArrowLeftRight, Link2, Shuffle, Globe, X } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { BeamGlow } from '../../../platform/components/node/BeamGlow';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
@@ -7,6 +7,11 @@ import { Select } from '../../../platform/components/ui/Select';
 import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
 import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
 import { NODE_COLORS } from '../nodeTypes';
+import {
+  SearchNodeLoadingView,
+  SearchNodeErrorView,
+  SearchNodeEmptyView,
+} from './common/SearchNodeScaffold';
 
 export type TranslationSource = 'random' | 'google' | 'deeplx';
 
@@ -325,7 +330,7 @@ const TextTranslationNodeInner: React.FC<TextTranslationNodeProps> = ({
                     key={opt.value}
                     type="button"
                     onClick={() => handleSourceChange(opt.value)}
-                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-sans border transition-all active:scale-[0.96] shrink-0 ${
+                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-sans border transition-colors active:scale-[0.96] transition-transform duration-100 ease-out shrink-0 ${
                       isActive
                         ? 'border-accent/60 bg-accent/10 text-accent font-medium'
                         : 'border-dashed border-paper-grid text-ink-light hover:border-paper-grid hover:text-ink hover:bg-paper-grid/20'
@@ -345,22 +350,16 @@ const TextTranslationNodeInner: React.FC<TextTranslationNodeProps> = ({
 
         <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 custom-scrollbar">
           {currentTab.isGenerating ? (
-            <div className="h-full flex flex-col items-center justify-center gap-3 text-center min-h-[120px]">
-              <div className="w-12 h-12 rounded-full border border-dashed border-accent/40 bg-accent/5 flex items-center justify-center">
-                <Loader2 className="w-5 h-5 text-accent animate-spin" strokeWidth={1.5} />
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs font-serif text-accent font-medium">正在翻译...</p>
-                <p className="text-[11px] font-mono text-ink-faint">
-                  {activeSource === 'random' ? '随机选择翻译源' : SOURCE_LABEL[activeSource] ?? activeSource}
-                </p>
-              </div>
-            </div>
+            <SearchNodeLoadingView
+              text="正在翻译..."
+              subtext={activeSource === 'random' ? '随机选择翻译源' : SOURCE_LABEL[activeSource] ?? activeSource}
+            />
           ) : currentTab.error ? (
-            <div className="p-3.5 rounded-md border border-error/20 bg-error/5 flex items-start gap-2.5">
-              <AlertTriangle size={15} strokeWidth={2} className="text-error shrink-0 mt-0.5" />
-              <p className="flex-1 min-w-0 text-[12px] text-error/90 leading-relaxed break-words font-sans">{currentTab.error}</p>
-            </div>
+            <SearchNodeErrorView
+              error={currentTab.error}
+              onRetry={handleTranslate}
+              retryText="重试翻译"
+            />
           ) : currentTab.output.trim() ? (
             <div className="space-y-2">
               <div className="text-[11px] text-ink-faint font-sans">
@@ -373,15 +372,11 @@ const TextTranslationNodeInner: React.FC<TextTranslationNodeProps> = ({
               </div>
             </div>
           ) : (
-            <div className="h-full flex flex-col items-center justify-center gap-3 text-center min-h-[120px]">
-              <div className="w-14 h-14 rounded-full border border-dashed border-paper-grid bg-paper-grid/20 flex items-center justify-center text-ink-faint">
-                <Languages size={24} strokeWidth={1.5} />
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm font-serif text-ink-light">选择语言后点击翻译</p>
-                <p className="text-xs text-ink-faint font-sans">可连线上级文本节点自动获取待翻译文本</p>
-              </div>
-            </div>
+            <SearchNodeEmptyView
+              icon={<Languages size={24} strokeWidth={1.5} />}
+              title="选择语言后点击翻译"
+              description="可连线上级文本节点自动获取待翻译文本"
+            />
           )}
         </div>
       </div>

@@ -225,7 +225,7 @@ const BookInfoNodeInner: React.FC<BookInfoNodeProps> = ({
                 <button
                   type="submit"
                   disabled={!isbnInput.trim() || isGenerating}
-                  className="flex items-center justify-center w-10 h-10 rounded-md bg-accent text-paper hover:bg-accent-hover active:scale-95 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="flex items-center justify-center w-10 h-10 rounded-md bg-accent text-paper hover:bg-accent-hover active:scale-[0.96] transition-transform duration-100 ease-out disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
                   title="查询"
                 >
                   <Search size={15} strokeWidth={2} />

@@ -5,7 +5,6 @@ import {
   Sparkles,
   Loader2,
   AlertTriangle,
-  Link2,
   X,
   RotateCw,
 } from 'lucide-react';
@@ -17,6 +16,7 @@ import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
 import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
 import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
 import { NODE_COLORS } from '../nodeTypes';
+import { UpstreamLinkCard } from './common/SearchNodeScaffold';
 
 /** 知乎检索的 2 类模式：站内搜索 / 直答 */
 export type ZhihuSearchMode = 'zhihu' | 'zhida';
@@ -377,12 +377,12 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
                 key={tab.value}
                 type="button"
                 onClick={() => switchMode(tab.value)}
-                className="relative flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-sans transition-colors active:scale-[0.96] transition-transform"
+                className="relative flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-sans active:scale-[0.96] transition-transform duration-100 ease-out"
               >
-                {/* Framer Motion 激活滑动胶囊指示器 */}
+                {/* Framer Motion 激活滑动胶囊指示器（以节点 id 隔离，避免多节点冲突） */}
                 {active && (
                   <motion.div
-                    layoutId="zhihu-active-tab-pill"
+                    layoutId={`zhihu-active-tab-pill-${id}`}
                     className="absolute inset-0 rounded-lg bg-accent shadow-sm"
                     transition={{ type: 'spring', duration: 0.28, bounce: 0 }}
                   />
@@ -390,7 +390,7 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
 
                 <span
                   className={`relative z-10 flex items-center justify-center gap-1.5 ${
-                    active ? 'text-paper font-medium' : 'text-ink-light hover:text-ink'
+                    active ? 'text-paper font-medium' : 'text-ink-light hover:text-ink transition-colors'
                   }`}
                 >
                   {isGen ? (
@@ -421,29 +421,14 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
 
         {/* 上级连线提示卡片（当有上游连线时常驻置顶，与参数配置解耦） */}
         {hasUpstream && (
-          <div className="shrink-0 flex items-center justify-between p-2 rounded-lg border border-accent/40 bg-accent/5">
-            <div className="flex items-center gap-2 min-w-0 pr-2">
-              <div className="w-5 h-5 rounded-full bg-accent/15 flex items-center justify-center shrink-0 text-accent">
-                <Link2 size={12} strokeWidth={2} />
-              </div>
-              <div className="min-w-0">
-                <div className="text-[10px] font-serif text-accent uppercase tracking-wider">
-                  上级连线传入{isZhida ? '问题' : '关键词'}
-                </div>
-                <div className="text-xs font-medium text-ink truncate font-mono">{upstreamQuery}</div>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => handleQuery(upstreamQuery)}
-              disabled={!canSubmit}
-              title={`以连线内容${isZhida ? '提问' : '检索'}`}
-              className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-md bg-accent text-paper text-xs font-sans hover:bg-accent-hover active:scale-[0.96] transition-transform disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
-            >
-              {isZhida ? <Sparkles size={11} strokeWidth={2} /> : <Search size={11} strokeWidth={2} />}
-              <span>{isZhida ? '提问' : '检索'}</span>
-            </button>
-          </div>
+          <UpstreamLinkCard
+            label={`上级连线传入${isZhida ? '问题' : '关键词'}`}
+            content={upstreamQuery}
+            onTrigger={() => handleQuery(upstreamQuery)}
+            disabled={!canSubmit}
+            buttonText={isZhida ? '提问' : '检索'}
+            buttonIcon={isZhida ? <Sparkles size={11} strokeWidth={2} /> : <Search size={11} strokeWidth={2} />}
+          />
         )}
 
         {/* 查询控制区：根据当前模式自适应（无连线时展示输入框，有连线时展示参数调节） */}

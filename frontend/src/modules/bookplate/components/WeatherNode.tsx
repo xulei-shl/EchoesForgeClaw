@@ -1,11 +1,17 @@
 import React, { memo, useEffect, useState, useCallback } from 'react';
-import { CloudSun, Loader2, Search, AlertTriangle, Link2, MapPin, X } from 'lucide-react';
+import { CloudSun, Search, MapPin, X } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { BeamGlow } from '../../../platform/components/node/BeamGlow';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
 import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
 import { NODE_COLORS } from '../nodeTypes';
+import {
+  UpstreamLinkCard,
+  SearchNodeLoadingView,
+  SearchNodeErrorView,
+  SearchNodeEmptyView,
+} from './common/SearchNodeScaffold';
 
 export interface WeatherNodeProps {
   id: string;
@@ -129,28 +135,14 @@ const WeatherNodeInner: React.FC<WeatherNodeProps> = ({
         {/* 查询控制区：根据是否有上游连线自适应 */}
         <div className="shrink-0 space-y-2">
           {hasUpstream ? (
-            /* 连线即输入模式：高光提示卡片 */
-            <div className="flex items-center justify-between p-2.5 rounded-md border border-accent/40 bg-accent/5">
-              <div className="flex items-center gap-2 min-w-0 pr-2">
-                <div className="w-6 h-6 rounded-full bg-accent/15 flex items-center justify-center shrink-0 text-accent">
-                  <Link2 size={13} strokeWidth={2} />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-[10px] font-serif text-accent uppercase tracking-wider">上级连线输入城市</div>
-                  <div className="text-sm font-medium text-ink truncate font-mono">{upstreamCity}</div>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleQuery(upstreamCity)}
-                disabled={isGenerating}
-                title="重新查询此城市天气"
-                className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-accent text-paper text-xs font-sans hover:bg-accent-hover active:scale-[0.96] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <Search size={12} strokeWidth={2} />
-                查询
-              </button>
-            </div>
+            /* 连线即输入模式：通用高光提示卡片 */
+            <UpstreamLinkCard
+              label="上级连线输入城市"
+              content={upstreamCity}
+              onTrigger={() => handleQuery(upstreamCity)}
+              disabled={isGenerating}
+              buttonText="查询"
+            />
           ) : (
             /* 手动输入模式：输入框 + 快捷城市胶囊 */
             <>
@@ -178,7 +170,7 @@ const WeatherNodeInner: React.FC<WeatherNodeProps> = ({
                   type="submit"
                   disabled={isGenerating}
                   title="查询天气"
-                  className="flex items-center justify-center w-10 h-10 shrink-0 rounded-md bg-accent text-paper hover:bg-accent-hover active:scale-[0.96] transition-all disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                  className="flex items-center justify-center w-10 h-10 shrink-0 rounded-md bg-accent text-paper hover:bg-accent-hover active:scale-[0.96] transition-transform duration-100 ease-out disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent shadow-xs"
                 >
                   <Search size={15} strokeWidth={2} />
                 </button>
@@ -195,7 +187,7 @@ const WeatherNodeInner: React.FC<WeatherNodeProps> = ({
                       type="button"
                       disabled={isGenerating}
                       onClick={() => handleSelectPopularCity(c)}
-                      className={`shrink-0 px-2 py-0.5 rounded-full text-[11px] font-sans border transition-all active:scale-[0.96] ${
+                      className={`shrink-0 px-2 py-0.5 rounded-full text-[11px] font-sans border transition-colors active:scale-[0.96] transition-transform duration-100 ease-out ${
                         isSelected
                           ? 'border-accent/60 bg-accent/10 text-accent font-medium'
                           : 'border-dashed border-paper-grid text-ink-light hover:border-paper-grid hover:text-ink hover:bg-paper-grid/20'
@@ -213,31 +205,16 @@ const WeatherNodeInner: React.FC<WeatherNodeProps> = ({
         {/* 结果 / 加载 / 错误区 */}
         <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1 custom-scrollbar">
           {isGenerating ? (
-            <div className="h-full flex flex-col items-center justify-center gap-3 text-center min-h-[160px]">
-              <div className="w-12 h-12 rounded-full border border-dashed border-accent/40 bg-accent/5 flex items-center justify-center">
-                <Loader2 className="w-5 h-5 text-accent animate-spin" strokeWidth={1.5} />
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs font-serif text-accent font-medium">正在观测气象与云图...</p>
-                <p className="text-[11px] font-mono text-ink-faint">
-                  {effectiveCity ? `目标：${effectiveCity}` : '正在根据 IP 自动定位'}
-                </p>
-              </div>
-            </div>
+            <SearchNodeLoadingView
+              text="正在观测气象与云图..."
+              subtext={effectiveCity ? `目标：${effectiveCity}` : '正在根据 IP 自动定位'}
+            />
           ) : error ? (
-            <div className="p-3.5 rounded-md border border-error/20 bg-error/5 flex items-start gap-2.5">
-              <AlertTriangle size={15} strokeWidth={2} className="text-error shrink-0 mt-0.5" />
-              <div className="flex-1 min-w-0 space-y-1.5 font-sans">
-                <p className="text-[12px] text-error/90 leading-relaxed break-words">{error}</p>
-                <button
-                  type="button"
-                  onClick={() => handleQuery()}
-                  className="inline-flex items-center text-[11px] text-error font-medium hover:underline active:scale-[0.96] transition-transform"
-                >
-                  重试查询
-                </button>
-              </div>
-            </div>
+            <SearchNodeErrorView
+              error={error}
+              onRetry={() => handleQuery()}
+              retryText="重试查询"
+            />
           ) : output.trim() ? (
             <div className="w-full min-w-0 font-mono text-sm leading-relaxed p-3 rounded-md bg-paper/60 border border-dashed border-paper-grid">
               <Streamdown
@@ -250,23 +227,21 @@ const WeatherNodeInner: React.FC<WeatherNodeProps> = ({
               </Streamdown>
             </div>
           ) : (
-            <div className="h-full flex flex-col items-center justify-center gap-3 text-center min-h-[180px]">
-              <div className="w-14 h-14 rounded-full border border-dashed border-paper-grid bg-paper-grid/20 flex items-center justify-center text-ink-faint">
-                <CloudSun size={24} strokeWidth={1.5} />
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm font-serif text-ink-light">输入城市查询实时天气与天气预报</p>
-                <p className="text-xs text-ink-faint font-sans">可连线上级文本节点传入城市；留空按网络 IP 自动定位</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleQuery('')}
-                className="mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-serif text-accent border border-dashed border-accent/40 bg-accent/5 hover:bg-accent/10 active:scale-[0.96] transition-all"
-              >
-                <MapPin size={13} strokeWidth={1.75} />
-                自动定位查询天气
-              </button>
-            </div>
+            <SearchNodeEmptyView
+              icon={<CloudSun size={24} strokeWidth={1.5} />}
+              title="输入城市查询实时天气与天气预报"
+              description="可连线上级文本节点传入城市；留空按网络 IP 自动定位"
+              actionButton={
+                <button
+                  type="button"
+                  onClick={() => handleQuery('')}
+                  className="mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-serif text-accent border border-dashed border-accent/40 bg-accent/5 hover:bg-accent/10 active:scale-[0.96] transition-transform duration-100 ease-out shadow-xs"
+                >
+                  <MapPin size={13} strokeWidth={1.75} />
+                  自动定位查询天气
+                </button>
+              }
+            />
           )}
         </div>
       </div>

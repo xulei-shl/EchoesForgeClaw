@@ -74,7 +74,7 @@ const AddNodeButtonInner: React.FC<AddNodeButtonProps> = ({ items, onPick, pendi
           toggleOpen();
         }}
         title="添加下一级节点"
-        className="group flex items-center justify-center w-7 h-7 rounded-full bg-paper border border-dashed border-paper-grid text-ink-light shadow-sm hover:text-accent hover:border-accent/50 hover:shadow-md active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        className="group relative flex items-center justify-center w-7 h-7 rounded-full bg-paper border border-dashed border-paper-grid text-ink-light shadow-sm hover:text-accent hover:border-accent/50 hover:shadow-md active:scale-[0.96] transition-transform duration-100 ease-out before:absolute before:-inset-1.5 before:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       >
         <Plus size={15} strokeWidth={2} className="transition-transform duration-200 group-hover:rotate-90" />
       </button>
@@ -92,8 +92,12 @@ const AddNodeButtonInner: React.FC<AddNodeButtonProps> = ({ items, onPick, pendi
           return (
             <div 
               ref={popupRef}
-              className="fixed z-[9999] w-[480px] animate-in fade-in zoom-in-95 duration-100" 
-              style={{ left, top }}
+              className="fixed z-[9999] w-[480px] animate-in fade-in zoom-in-95 duration-150 ease-out" 
+              style={{
+                left,
+                top,
+                transformOrigin: isRightOverflow ? 'right center' : 'left center',
+              }}
             >
               <div className="bg-paper border border-paper-grid rounded-xl shadow-2xl overflow-hidden">
                 <div className="px-3.5 py-2.5 border-b border-dashed border-paper-grid bg-paper-grid/10 flex items-center justify-between">
