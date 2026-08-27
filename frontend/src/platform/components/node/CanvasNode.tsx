@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useCanvas, type NodeMove } from '../canvas/CanvasContext';
+import { useCanvas } from '../canvas/CanvasContext';
 import { AlertCircle } from 'lucide-react';
 
 /** 拖拽激活阈值（px），防止点击头部时轻微抖动误触发 */
@@ -83,9 +83,6 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
     selectedIds,
     selectNode,
     toggleNodeSelection,
-    resolveDragGroup,
-    onMultiDrag,
-    onMultiPositionChange,
   } = useCanvas();
   // 多选集合优先：在集合内即高亮；旧接入方（未提供集合）回退单选 activeNodeId
   const isActive = selectedIds ? selectedIds.has(id) : activeNodeId === id;
@@ -119,10 +116,6 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
   const pointerDown = useRef<{ x: number; y: number } | null>(null);
   const dragStart = useRef({ pointerX: 0, pointerY: 0, nodeX: 0, nodeY: 0 });
   const rafId = useRef<number | null>(null);
-  // 整体拖动成员（含自身在首位）：拖动开始时按分组/多选解析一次，之后全程复用
-  const dragMembers = useRef<Array<{ id: string; startX: number; startY: number; el: HTMLElement | null }>>([]);
-  // 按下时的 Alt 状态：拖分组内节点时按住 Alt = 仅移动当前节点（精细调整）
-  const altDownRef = useRef(false);
 
   // 调整尺寸状态（最终提交的 React 状态）
   const [size, setSize] = useState<{ w: number; h: number } | null>(
@@ -178,31 +171,15 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
     return () => observer.disconnect();
   }, [id, onSizeChange]);
 
-  /** 将实时位置应用到 DOM（GPU 合成）并通知父级更新连线（多成员时批量带动 + 批量重绘） */
+  /** 将实时位置应用到 DOM（GPU 合成）并通知父级更新连线 */
   const applyTransform = useCallback(() => {
     rafId.current = null;
     const el = rootRef.current;
     if (!el) return;
     const { x, y } = dragPos.current;
     el.style.transform = `translate3d(${x}px, ${y}px, 0)`;
-    const members = dragMembers.current;
-    if (members.length > 1) {
-      // 整体拖动：把同一 delta 命令式应用到其他成员 DOM（提交时才写回 store）
-      const dx = x - members[0].startX;
-      const dy = y - members[0].startY;
-      const moves: NodeMove[] = [{ id, x, y }];
-      for (let i = 1; i < members.length; i++) {
-        const m = members[i];
-        const nx = m.startX + dx;
-        const ny = m.startY + dy;
-        m.el?.style.setProperty('transform', `translate3d(${nx}px, ${ny}px, 0)`);
-        moves.push({ id: m.id, x: nx, y: ny });
-      }
-      onMultiDrag?.(moves);
-    } else {
-      onDrag?.(id, x, y);
-    }
-  }, [id, onDrag, onMultiDrag]);
+    onDrag?.(id, x, y);
+  }, [id, onDrag]);
 
   /** 将实时尺寸应用到 DOM 并通知父级更新连线（0 React 渲染开销） */
   const applyResizeTransform = useCallback(() => {
@@ -223,17 +200,6 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
       nodeX: dragPos.current.x,
       nodeY: dragPos.current.y,
     };
-    // 解析整体拖动成员：分组联动 / 多选联动 / 仅自身（Alt 强制仅自身）。
-    // 自身固定在首位，其他成员按起始坐标记录，拖动中只做命令式 DOM 位移。
-    const group = resolveDragGroup?.(id, altDownRef.current) ?? [
-      { id, x: dragPos.current.x, y: dragPos.current.y },
-    ];
-    dragMembers.current = group.map((m, i) => ({
-      id: m.id,
-      startX: m.x,
-      startY: m.y,
-      el: i === 0 ? rootRef.current : document.getElementById(m.id),
-    }));
     rootRef.current?.classList.add('node-dragging');
   };
 
@@ -248,21 +214,6 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
     applyTransform();
     const { x, y } = dragPos.current;
     setPosition({ x, y });
-    const members = dragMembers.current;
-    if (members.length > 1) {
-      // 整体拖动提交：一次历史 + 一次批量位置更新（members[0] 即自身）
-      const dx = x - members[0].startX;
-      const dy = y - members[0].startY;
-      const moves: NodeMove[] = [{ id, x, y }];
-      for (let i = 1; i < members.length; i++) {
-        const m = members[i];
-        moves.push({ id: m.id, x: m.startX + dx, y: m.startY + dy });
-      }
-      dragMembers.current = [];
-      onMultiPositionChange?.(moves);
-      return;
-    }
-    dragMembers.current = [];
     onPositionChange?.(id, x, y);
   };
 
@@ -291,7 +242,6 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     // 仅响应主键（左键）：右键/中键留给画布菜单等交互，避免误触发拖拽
     if (e.button !== 0) return;
-    altDownRef.current = e.altKey;
     const target = e.target as HTMLElement;
     // 命中右下角调整尺寸手柄 → 进入 resize 模式
     if (resizeHandleRef.current?.contains(target)) {

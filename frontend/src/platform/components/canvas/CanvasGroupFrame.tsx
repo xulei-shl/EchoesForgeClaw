@@ -24,10 +24,10 @@ interface CanvasGroupFrameProps {
   onColorChange: (color: string) => void;
   /** 解散分组（仅删除组记录，节点与连线不动） */
   onDisband: () => void;
-  /** 点击标题：选中整组成员 */
-  onTitleSelect: () => void;
-  /** 标题按下开始整组拖动（指针循环由页面协调器接管，需 stopPropagation 防画布平移） */
-  onTitleDragStart: (e: ReactPointerEvent) => void;
+  /** 点击标题/分组框：选中整组成员 */
+  onSelect: () => void;
+  /** 标题或分组框按下开始整组拖动（指针循环由页面协调器接管） */
+  onDragStart: (e: ReactPointerEvent) => void;
 }
 
 /** 名称清空时的回退值 */
@@ -35,9 +35,9 @@ const FALLBACK_NAME = '未命名分组';
 
 /**
  * 画布分组框（软分组的视觉/操作载体）：
- * - 容器 pointer-events:none，不遮挡节点与连线；仅标题 chip 可交互
+ * - 容器 pointer-events-auto，可直接按住背景或边框平移整组
  * - 背景高透明（8%）、边框中透明（68%），色值经 color-mix 混入，纸感低饱和
- * - zIndex=1：位于普通连线（zIndex 0）之上、节点（zIndex 10+）之下
+ * - zIndex=1：位于普通连线（zIndex 0）之上、节点（zIndex 10+）之下，不阻挡节点自身点击/拖拽
  */
 export const CanvasGroupFrame: React.FC<CanvasGroupFrameProps> = ({
   id,
@@ -52,8 +52,8 @@ export const CanvasGroupFrame: React.FC<CanvasGroupFrameProps> = ({
   onNameChange,
   onColorChange,
   onDisband,
-  onTitleSelect,
-  onTitleDragStart,
+  onSelect,
+  onDragStart,
 }) => {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
@@ -96,7 +96,7 @@ export const CanvasGroupFrame: React.FC<CanvasGroupFrameProps> = ({
   return (
     <div
       data-group-frame={id}
-      className="absolute pointer-events-none"
+      className="absolute pointer-events-auto cursor-grab"
       style={{
         left: x,
         top: y,
@@ -109,10 +109,32 @@ export const CanvasGroupFrame: React.FC<CanvasGroupFrameProps> = ({
         boxShadow: active ? `0 0 0 1px color-mix(in srgb, ${color} 30%, transparent)` : undefined,
         transition: 'border-color 150ms ease, box-shadow 150ms ease',
       }}
+      onPointerDown={(e) => {
+        // 仅主键（左键）拖拽；按住 Shift 留给画布框选
+        if (e.button !== 0 || e.shiftKey) return;
+        const target = e.target as HTMLElement;
+        if (target.closest('button, input, textarea, a')) return;
+        e.stopPropagation();
+        onDragStart(e);
+      }}
+      onClick={(e) => {
+        const target = e.target as HTMLElement;
+        if (target.closest('button, input, textarea, a')) return;
+        e.stopPropagation();
+        onSelect();
+      }}
+      title="拖动移动整组 · 单击选中整组"
     >
+      <style>{`
+        [data-group-frame="${id}"].group-dragging {
+          transition: none !important;
+          user-select: none !important;
+          cursor: grabbing !important;
+        }
+      `}</style>
       {/* 左上角标题 chip：略微压住边框 */}
       <div
-        className="absolute -top-3 left-3 flex items-center gap-1 pointer-events-auto max-w-[calc(100%-48px)] h-7 px-1.5 rounded-md select-none"
+        className="absolute -top-3 left-3 flex items-center gap-1 pointer-events-auto max-w-[calc(100%-48px)] h-7 px-1.5 rounded-md select-none cursor-grab active:cursor-grabbing"
         style={{
           background: `color-mix(in srgb, ${color} 14%, var(--color-paper))`,
           border: `1px solid color-mix(in srgb, ${color} 55%, transparent)`,
@@ -123,7 +145,7 @@ export const CanvasGroupFrame: React.FC<CanvasGroupFrameProps> = ({
           const target = e.target as HTMLElement;
           if (editing || target.closest('button, input')) return;
           e.stopPropagation();
-          onTitleDragStart(e);
+          onDragStart(e);
         }}
         onDoubleClick={(e) => {
           e.stopPropagation();
@@ -132,7 +154,7 @@ export const CanvasGroupFrame: React.FC<CanvasGroupFrameProps> = ({
         }}
         onClick={(e) => {
           e.stopPropagation();
-          if (!editing) onTitleSelect();
+          if (!editing) onSelect();
         }}
         title="拖动移动整组 · 双击重命名 · 单击选中整组"
       >

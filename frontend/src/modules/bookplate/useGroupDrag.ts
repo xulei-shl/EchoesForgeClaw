@@ -18,23 +18,32 @@ interface GroupDragDeps {
   edgeHandlesRef: RefObject<Map<string, NodeEdgeHandle>>;
   setNodes: Dispatch<SetStateAction<NodeData[]>>;
   recordHistory: () => void;
+  scaleRef: { current: number };
 }
 
 /**
- * 分组标题拖动协调器：按住组标题整体移动组内全部成员。
- * 与 CanvasNode 拖拽同一套性能策略：rAF 命令式更新成员 DOM + 相关连线，松手时
- * 一次 recordHistory + 批量 setNodes（一条撤销记录，React 渲染开销仅一次）。
+ * 分组整体拖动协调器：按住组标题或分组框空白区域整体移动组内全部成员与分组框。
+ * 与 CanvasNode 拖拽同一套性能策略：
+ * 1. 增量基于画布 scale 换算，保证 1:1 精确跟手；
+ * 2. rAF 命令式更新分组框 DOM、所有成员 DOM + 相关连线，松手时一次 recordHistory + 批量 setNodes。
  */
-export function useGroupDrag({ nodesRef, edgesRef, edgeHandlesRef, setNodes, recordHistory }: GroupDragDeps) {
+export function useGroupDrag({ nodesRef, edgesRef, edgeHandlesRef, setNodes, recordHistory, scaleRef }: GroupDragDeps) {
   const dragging = useRef(false);
   const pointerStart = useRef({ x: 0, y: 0 });
   const lastDelta = useRef({ x: 0, y: 0 });
   const members = useRef<DragMember[]>([]);
+  const frameElRef = useRef<HTMLElement | null>(null);
   const rafId = useRef<number | null>(null);
 
   const applyFrame = useCallback(() => {
     rafId.current = null;
     const { x: dx, y: dy } = lastDelta.current;
+
+    // 分组框本体实时平移（标题 chip / 背景 / 边框同步跟手）
+    if (frameElRef.current) {
+      frameElRef.current.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
+    }
+
     const changed: Array<{ id: string; x: number; y: number }> = [];
     for (const m of members.current) {
       if (!m.el) continue;
@@ -62,9 +71,9 @@ export function useGroupDrag({ nodesRef, edgesRef, edgeHandlesRef, setNodes, rec
     }
   }, [edgeHandlesRef, edgesRef, nodesRef]);
 
-  /** 标题 onPointerDown 入口：捕获指针并解析成员（组内全部节点） */
+  /** 拖拽开始入口：捕获指针并解析成员（组内全部节点与分组框 DOM） */
   const beginGroupDrag = useCallback(
-    (e: ReactPointerEvent, groupMemberIds: string[]) => {
+    (e: ReactPointerEvent, groupId: string, groupMemberIds: string[]) => {
       if (e.button !== 0) return;
       const els: DragMember[] = [];
       for (const mid of groupMemberIds) {
@@ -75,6 +84,10 @@ export function useGroupDrag({ nodesRef, edgesRef, edgeHandlesRef, setNodes, rec
       if (els.length === 0) return;
       dragging.current = true;
       members.current = els;
+      const frameEl = document.querySelector(`[data-group-frame="${groupId}"]`) as HTMLElement | null;
+      frameElRef.current = frameEl;
+      frameEl?.classList.add('group-dragging');
+
       pointerStart.current = { x: e.clientX, y: e.clientY };
       lastDelta.current = { x: 0, y: 0 };
       try {
@@ -86,12 +99,20 @@ export function useGroupDrag({ nodesRef, edgesRef, edgeHandlesRef, setNodes, rec
     [nodesRef]
   );
 
-  /** 提交：一次历史 + 批量位置更新（React 渲染仅一次） */
+  /** 提交：清除临时 DOM transform，一次历史 + 批量位置更新（React 渲染仅一次） */
   const commit = useCallback(() => {
     const { x: dx, y: dy } = lastDelta.current;
     const starts = members.current;
     members.current = [];
-    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return; // 单击标题：无位移不记历史
+
+    // 复位分组框临时 transform（松手后由 React 基于最新 bounds 渲染对应 left/top）
+    if (frameElRef.current) {
+      frameElRef.current.classList.remove('group-dragging');
+      frameElRef.current.style.transform = '';
+      frameElRef.current = null;
+    }
+
+    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) return; // 单击：无位移不记历史
     recordHistory();
     const moved = new Map(starts.map((m) => [m.id, { x: m.startX + dx, y: m.startY + dy }]));
     setNodes((prev) => prev.map((n) => (moved.has(n.id) ? { ...n, ...moved.get(n.id)! } : n)));
@@ -99,11 +120,15 @@ export function useGroupDrag({ nodesRef, edgesRef, edgeHandlesRef, setNodes, rec
 
   const handlePointerMove = useCallback((e: PointerEvent) => {
     if (!dragging.current) return;
-    lastDelta.current = { x: e.clientX - pointerStart.current.x, y: e.clientY - pointerStart.current.y };
+    const s = scaleRef.current || 1;
+    lastDelta.current = {
+      x: (e.clientX - pointerStart.current.x) / s,
+      y: (e.clientY - pointerStart.current.y) / s,
+    };
     if (rafId.current === null) {
       rafId.current = requestAnimationFrame(applyFrame);
     }
-  }, [applyFrame]);
+  }, [applyFrame, scaleRef]);
 
   const handlePointerUp = useCallback((e: PointerEvent) => {
     if (!dragging.current) return;

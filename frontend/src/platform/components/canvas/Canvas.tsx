@@ -1,6 +1,5 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import { CanvasContext } from './CanvasContext';
-import type { NodeMove } from './CanvasContext';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 
 /** 框选候选节点矩形（画布坐标） */
@@ -27,12 +26,6 @@ interface CanvasProps {
   selectNode?: (id: string | null) => void;
   /** Ctrl/Cmd+点击切换多选成员 */
   toggleNodeSelection?: (id: string) => void;
-  /** 解析与指定节点一起拖动的节点集合（分组联动 / 多选联动） */
-  resolveDragGroup?: (id: string, altKey: boolean) => NodeMove[];
-  /** 整体拖动中（每帧）批量重绘连线 */
-  onMultiDrag?: (moves: NodeMove[]) => void;
-  /** 整体拖动提交（一条历史 + 批量更新） */
-  onMultiPositionChange?: (moves: NodeMove[]) => void;
   /** 框选候选节点矩形（画布坐标，含实时尺寸）；不提供则 Shift+拖拽退化为平移 */
   getMarqueeCandidates?: () => MarqueeCandidate[];
   /** 框选完成：命中节点 id 列表；空数组 = 未命中（清空选择） */
@@ -52,9 +45,6 @@ export const Canvas: React.FC<CanvasProps> = ({
   selectedIds,
   selectNode,
   toggleNodeSelection,
-  resolveDragGroup,
-  onMultiDrag,
-  onMultiPositionChange,
   getMarqueeCandidates,
   onMarqueeSelect,
   onAnchorPointerDown,
@@ -190,14 +180,20 @@ export const Canvas: React.FC<CanvasProps> = ({
   };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    // 仅响应鼠标左键（0）或中键（1），且仅当命中画布背景或 wrapper 自身时触发平移
+    // 仅响应鼠标左键（0）或中键（1）
     if (e.button !== 0 && e.button !== 1) return;
-    if (e.target === e.currentTarget || e.target === bgRef.current) {
-      // Shift+左键拖拽 = 框选（不破坏现有左键平移习惯）；未提供候选集时退化为平移
-      if (e.button === 0 && e.shiftKey && candidatesRef.current) {
-        startMarquee(e);
-        return;
-      }
+    const target = e.target as HTMLElement;
+    const isDirectCanvas = target === e.currentTarget || target === bgRef.current;
+    const isGroupFrameBg = Boolean(target.closest('[data-group-frame]') && !target.closest('.node-drag-handle, button, input, textarea, a'));
+
+    // Shift+左键拖拽 = 框选（支持在空白画布或分组框背景空白处起笔）
+    if (e.button === 0 && e.shiftKey && candidatesRef.current && (isDirectCanvas || isGroupFrameBg)) {
+      startMarquee(e);
+      return;
+    }
+
+    // 中键在画布/分组框背景上平移，或左键在纯空白画布上平移
+    if ((e.button === 1 && (isDirectCanvas || isGroupFrameBg)) || (e.button === 0 && isDirectCanvas)) {
       // 记录起始位置，不在此处同步清空选中态，避免起步帧发生全画布 React 重渲染
       isDragging.current = true;
       pointerDownPos.current = { x: e.clientX, y: e.clientY };
@@ -324,9 +320,6 @@ export const Canvas: React.FC<CanvasProps> = ({
         selectedIds,
         selectNode,
         toggleNodeSelection,
-        resolveDragGroup,
-        onMultiDrag,
-        onMultiPositionChange,
         onAnchorPointerDown,
       }}
     >

@@ -10,7 +10,6 @@ import { useAuth } from '../../platform/stores/authStore';
 import { Navbar } from '../../platform/components/layout/Navbar';
 import { Canvas } from '../../platform/components/canvas/Canvas';
 import type { MarqueeCandidate } from '../../platform/components/canvas/Canvas';
-import type { NodeMove } from '../../platform/components/canvas/CanvasContext';
 import CanvasGroupFrame from '../../platform/components/canvas/CanvasGroupFrame';
 import {
   GROUP_COLORS,
@@ -334,69 +333,6 @@ const BookplatePage: React.FC = () => {
   );
   const { undo, redo, recordHistory, canUndo, canRedo } = useCanvasHistory(historyCtx);
 
-  /** 节点所属分组（至多一个） */
-  const groupOfNode = useCallback(
-    (id: string) => groupsRef.current.find((g) => g.memberIds.includes(id)),
-    []
-  );
-
-  /** 整体拖动解析：分组内节点 → 整组；多选集内 → 全部选中；Alt 强制仅自身 */
-  const resolveDragGroup = useCallback(
-    (id: string, altKey: boolean): NodeMove[] => {
-      const node = nodesRef.current.find((n) => n.id === id);
-      if (!node) return [{ id, x: 0, y: 0 }];
-      if (!altKey) {
-        const group = groupOfNode(id);
-        if (group) {
-          return group.memberIds
-            .map((mid) => nodesRef.current.find((n) => n.id === mid))
-            .filter((n): n is NodeData => Boolean(n))
-            .map((n) => ({ id: n.id, x: n.x, y: n.y }));
-        }
-        if (selectedIds.has(id) && selectedIds.size > 1) {
-          return [...selectedIds]
-            .map((mid) => nodesRef.current.find((n) => n.id === mid))
-            .filter((n): n is NodeData => Boolean(n))
-            .map((n) => ({ id: n.id, x: n.x, y: n.y }));
-        }
-      }
-      return [{ id, x: node.x, y: node.y }];
-    },
-    [groupOfNode, selectedIds]
-  );
-
-  /** 整体拖动中：批量命令式重绘涉及节点连线（不触发渲染） */
-  const handleMultiDrag = useCallback((moves: NodeMove[]) => {
-    const moved = new Map(moves.map((m) => [m.id, m]));
-    for (const edge of edgesRef.current) {
-      const a = moved.get(edge.source);
-      const b = moved.get(edge.target);
-      if (!a && !b) continue;
-      const handle = edgeRefs.current.get(edge.id);
-      if (!handle) continue;
-      const source = nodesRef.current.find((n) => n.id === edge.source);
-      const target = nodesRef.current.find((n) => n.id === edge.target);
-      if (!source || !target) continue;
-      handle.setPositions(a ? a.x : source.x, a ? a.y : source.y, b ? b.x : target.x, b ? b.y : target.y);
-    }
-  }, []);
-
-  /** 整体拖动提交：一次历史 + 一次批量位置更新（一条撤销记录） */
-  const handleMultiPositionChange = useCallback(
-    (moves: NodeMove[]) => {
-      // 无实际移动（单纯点击）不记历史
-      const changed = moves.filter((m) => {
-        const cur = nodesRef.current.find((n) => n.id === m.id);
-        return !cur || Math.abs(cur.x - m.x) >= 0.5 || Math.abs(cur.y - m.y) >= 0.5;
-      });
-      if (changed.length === 0) return;
-      const moved = new Map(changed.map((m) => [m.id, { x: m.x, y: m.y }]));
-      recordHistory();
-      setNodes((prev) => prev.map((n) => (moved.has(n.id) ? { ...n, ...moved.get(n.id)! } : n)));
-    },
-    [recordHistory, setNodes]
-  );
-
   /** 创建分组：从当前多选集合（≥2 个节点） */
   const createGroupFromSelection = useCallback(() => {
     const ids = [...selectedIds].filter((id) => nodesRef.current.some((n) => n.id === id));
@@ -409,7 +345,7 @@ const BookplatePage: React.FC = () => {
     };
     recordHistory();
     setGroups((prev) => [...prev, group]);
-    showToast(`已创建「${group.name}」，拖动标题可整体移动`, { type: 'success' });
+    showToast(`已创建「${group.name}」，拖动标题或背景可整体移动`, { type: 'success' });
   }, [selectedIds, recordHistory, setGroups, showToast]);
 
   /** 解散分组：仅删除组记录，节点与连线保留（可撤销） */
@@ -430,20 +366,21 @@ const BookplatePage: React.FC = () => {
     [recordHistory, setGroups]
   );
 
-  /** 单击组标题：选中整组成员（首个为主选中节点） */
+  /** 单击组标题/分组框：选中整组成员（首个为主选中节点） */
   const selectGroupMembers = useCallback((group: CanvasGroup) => {
     const ids = group.memberIds.filter((id) => nodesRef.current.some((n) => n.id === id));
     setSelectedIds(new Set(ids));
     setActiveNodeId(ids[0] ?? null);
   }, []);
 
-  // 分组标题整组拖动协调器（rAF 命令式 + 一次提交）
+  // 分组整体拖动协调器（rAF 命令式 + 一次提交 + 结合画布缩放）
   const { beginGroupDrag } = useGroupDrag({
     nodesRef,
     edgesRef,
     edgeHandlesRef: edgeRefs,
     setNodes,
     recordHistory,
+    scaleRef,
   });
 
   /** 删除节点后同步清理分组引用（组内成员 < 2 时自动解散，避免空壳组） */
@@ -1274,9 +1211,6 @@ const BookplatePage: React.FC = () => {
           selectedIds={selectedIds}
           selectNode={selectNode}
           toggleNodeSelection={toggleNodeSelection}
-          resolveDragGroup={resolveDragGroup}
-          onMultiDrag={handleMultiDrag}
-          onMultiPositionChange={handleMultiPositionChange}
           getMarqueeCandidates={getMarqueeCandidates}
           onMarqueeSelect={handleMarqueeSelect}
           onAnchorPointerDown={onAnchorPointerDown}
@@ -1332,7 +1266,7 @@ const BookplatePage: React.FC = () => {
             );
           })}
 
-          {/* 分组框（软分组视觉层）：zIndex 1，普通连线上方、节点下方；标题 chip 可交互 */}
+          {/* 分组框（软分组视觉层）：zIndex 1，普通连线上方、节点下方；标题 chip 与背景均可交互 */}
           {groupFrames.map(({ group, bounds, active }) => (
             <CanvasGroupFrame
               key={group.id}
@@ -1348,8 +1282,8 @@ const BookplatePage: React.FC = () => {
               onNameChange={(name) => updateGroup(group.id, { name })}
               onColorChange={(color) => updateGroup(group.id, { color })}
               onDisband={() => disbandGroup(group.id)}
-              onTitleSelect={() => selectGroupMembers(group)}
-              onTitleDragStart={(e) => beginGroupDrag(e, group.memberIds)}
+              onSelect={() => selectGroupMembers(group)}
+              onDragStart={(e) => beginGroupDrag(e, group.id, group.memberIds)}
             />
           ))}
 
