@@ -200,6 +200,8 @@ export function PiChatNodeHost({
   sessionMsgsRef.current = sessionMsgs;
   const wsIdRef = useRef(wsId);
   wsIdRef.current = wsId;
+  /** 当前 live 请求实际使用的工作区，避免 setNodes 异步更新导致收尾读取旧值 */
+  const activeRequestWsRef = useRef<string | null>(wsId);
 
   // ---------- 工作区文件面板 ----------
   const [panelOpen, setPanelOpen] = useState(false);
@@ -292,8 +294,12 @@ export function PiChatNodeHost({
 
         // 节点工作区标识：首轮生成并持久化（Skill Agent 产物/文件跨轮保留）
         let ws = typeof cur?.data?.workspaceId === 'string' ? cur.data.workspaceId : '';
-        if (cur && !ws) {
+        if (!ws) {
           ws = `${nodeId}_${Date.now()}`;
+        }
+        // 先写 ref，再异步持久化到节点 store；本轮收尾必须使用同一个工作区。
+        activeRequestWsRef.current = ws;
+        if (cur && cur.data?.workspaceId !== ws) {
           setNodes((prev) =>
             prev.map((n) =>
               n.id === nodeId ? { ...n, data: { ...n.data, workspaceId: ws } } : n
@@ -381,7 +387,7 @@ export function PiChatNodeHost({
   const finishRun = useCallback(() => {
     setRetryNotice(null);
     const seq = ++swapSeqRef.current;
-    const ws = wsIdRef.current;
+    const ws = activeRequestWsRef.current ?? wsIdRef.current;
     if (!ws) return;
     void fetchPiSessionMessages(ws)
       .then((msgs) => {
@@ -390,6 +396,7 @@ export function PiChatNodeHost({
         setSessionMsgs(msgs);
         setMessages([]);
         pendingFilesRef.current.clear();
+        activeRequestWsRef.current = ws;
         setRunSeq((v) => v + 1); // 丢弃旧 live 实例
         setPanelVersion((v) => v + 1);
         if (panelOpenRef.current) void loadPanel();
@@ -437,6 +444,7 @@ export function PiChatNodeHost({
     setPanelFiles(null);
     forcedErrorRef.current = null;
     pendingFilesRef.current.clear();
+    activeRequestWsRef.current = wsId;
   }, [wsId, setMessages]);
 
   // 卸载清理：空闲计时器
