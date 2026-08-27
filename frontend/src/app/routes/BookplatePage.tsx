@@ -1237,6 +1237,17 @@ const BookplatePage: React.FC = () => {
     []
   );
 
+  /** 当前选中集合恰好属于同一分组时，底部多选栏改为「解散分组」而非「创建分组」 */
+  const selectedGroup = useMemo(() => {
+    if (selectedIds.size === 0) return undefined;
+    const covering = groups.filter(
+      (g) =>
+        [...selectedIds].every((id) => g.memberIds.includes(id)) &&
+        g.memberIds.some((id) => selectedIds.has(id))
+    );
+    return covering.length === 1 ? covering[0] : undefined;
+  }, [groups, selectedIds]);
+
   /** 分组框渲染数据：成员实时包围盒（内边距已含） */
   const groupFrames = useMemo(() => {
     return groups.map((g) => ({
@@ -1345,16 +1356,25 @@ const BookplatePage: React.FC = () => {
           {nodes.map((node) => renderCanvasNode(node, nodeViewHelpers))}
         </Canvas>
 
-        {/* 多选操作栏：≥2 个节点选中时提供创建分组入口 */}
+        {/* 多选操作栏：≥2 个节点选中时提供分组入口（已属同一组时显示「解散分组」） */}
         {selectedIds.size > 1 && (
           <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[9998] flex items-center gap-2 bg-paper border border-paper-grid rounded-full shadow-lg px-4 py-2 animate-in fade-in zoom-in-95 duration-100">
             <span className="text-xs font-sans text-ink-light">已选 {selectedIds.size} 个节点</span>
-            <button
-              onClick={createGroupFromSelection}
-              className="text-xs font-sans font-medium text-paper bg-accent rounded-full px-3 py-1 transition-opacity hover:opacity-90"
-            >
-              创建分组
-            </button>
+            {selectedGroup ? (
+              <button
+                onClick={() => disbandGroup(selectedGroup.id)}
+                className="text-xs font-sans font-medium text-paper bg-error rounded-full px-3 py-1 transition-opacity hover:opacity-90"
+              >
+                解散分组
+              </button>
+            ) : (
+              <button
+                onClick={createGroupFromSelection}
+                className="text-xs font-sans font-medium text-paper bg-accent rounded-full px-3 py-1 transition-opacity hover:opacity-90"
+              >
+                创建分组
+              </button>
+            )}
             <button
               onClick={clearSelection}
               className="text-xs font-sans text-ink-light hover:text-ink transition-colors"
