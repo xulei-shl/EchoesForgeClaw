@@ -10,7 +10,11 @@ import { useEffect, useRef, useState } from 'react';
  * 仅用于正在流式输出的最后一条 assistant 消息；历史消息 enabled=false 直接原文返回。
  */
 export function useSmoothStream(target: string, active: boolean, enabled = true): string {
-  const [shownLen, setShownLen] = useState<number>(() => (enabled && active ? 0 : target.length));
+  const [shownLen, setShownLen] = useState<number>(() => {
+    if (!enabled || !active) return target.length;
+    // 初始挂载时若已有大段文本（如重新切入页面），跳过开头慢打字，保留末尾 60 字平滑
+    return target.length > 200 ? target.length - 60 : 0;
+  });
   const shownLenRef = useRef(shownLen);
   const rafRef = useRef<number | null>(null);
 
@@ -33,6 +37,13 @@ export function useSmoothStream(target: string, active: boolean, enabled = true)
       if (cancelled) return;
       const remaining = target.length - shownLenRef.current;
       if (remaining <= 0) return; // 已追平，等待下次 target 变化重启 effect
+      // 突发大文本（如网络重连、工具调用返回大块内容）：直接快进至末尾 60 字符，避免长时间漫长打字
+      if (remaining > 500) {
+        shownLenRef.current = target.length - 60;
+        setShownLen(shownLenRef.current);
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
       // 动态步进：剩余 1/6，下限 2 字符——长段积压加速排空，尾部细腻
       const step = Math.max(2, Math.ceil(remaining / 6));
       shownLenRef.current = Math.min(target.length, shownLenRef.current + step);

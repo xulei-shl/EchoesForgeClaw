@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, Eraser, ImagePlus, MessageSquare, Send, Copy, Check, Loader2, Square, RefreshCw, ChevronUp, ChevronDown, Lock, X, FileText, Download, Brain, FolderOpen, Clock, Zap } from 'lucide-react';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
@@ -431,6 +431,12 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
     extractWorkspaceFiles(msg.content, workspaceId)
   );
 
+  // 流式代码块降级：流式期间仅启用 cjk 插件，暂缓昂贵的 Shiki 语法高亮；待本轮流式结束后一次性高亮渲染
+  const streamPlugins = useMemo(
+    () => (msg.streaming ? { cjk } : { cjk, code }),
+    [msg.streaming]
+  );
+
   return (
     <div className={`flex flex-col items-start gap-1 relative group ${!msg.streaming ? 'msg-enter-anim' : ''}`}>
       {msg.agentSteps && msg.agentSteps.length > 0 && (
@@ -467,7 +473,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
             </div>
           ) : (
             <Streamdown
-              plugins={{ cjk, code }}
+              plugins={streamPlugins}
               isAnimating={!!msg.streaming}
               caret="block"
               linkSafety={{ enabled: false }}
@@ -726,6 +732,26 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
     });
   }, []);
 
+  // 用户主动向上滚动时（鼠标滚轮或触摸往下滑），立即解除贴底吸附，防止被流式高频拉底干扰阅读
+  const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    if (e.deltaY < 0) {
+      stickBottomRef.current = false;
+    }
+  }, []);
+
+  const touchStartYRef = useRef<number | null>(null);
+  const handleTouchStart = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    touchStartYRef.current = e.touches[0]?.clientY ?? null;
+  }, []);
+  const handleTouchMove = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    if (touchStartYRef.current != null) {
+      const currentY = e.touches[0]?.clientY ?? touchStartYRef.current;
+      if (currentY > touchStartYRef.current + 8) {
+        stickBottomRef.current = false;
+      }
+    }
+  }, []);
+
   // 新消息 / 流式增量 / agent 步骤到达时自动滚到底（贴底状态下使用 rAF 异步滚动，消除 Forced Reflow）
   useEffect(() => {
     const el = listRef.current;
@@ -799,6 +825,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
   const handleSend = () => {
     const text = draft.trim();
     if ((!text && attachments.length === 0) || isGenerating) return;
+    stickBottomRef.current = true;
     onSend?.(id, text, attachments.length ? attachments : undefined);
     setDraft('');
     setAttachments([]);
@@ -869,7 +896,10 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
             {/* 无用户消息时没有可重试的轮次（如异常初始状态），隐藏重试避免空转 */}
             {messages.some((m) => m.role === 'user') && (
               <button
-                onClick={() => onRetry?.(id)}
+                onClick={() => {
+                  stickBottomRef.current = true;
+                  onRetry?.(id);
+                }}
                 title="重新发送最后一轮对话"
                 className="shrink-0 flex items-center gap-1 rounded-md border border-error/25 px-2 py-1 text-[10px] font-sans text-error hover:bg-error/10 active:scale-[0.96] transition"
               >
@@ -885,6 +915,9 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
           <div
             ref={listRef}
             onScroll={handleScroll}
+            onWheel={handleWheel}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
             className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden space-y-2.5 pr-0.5 chat-scroll-container"
           >
             {/* 顶部展示各个上级节点的上下文注入折叠块 */}
@@ -944,7 +977,14 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
             <ScrollButton direction="up" onClick={() => listRef.current?.scrollTo({ top: 0, behavior: 'smooth' })} title="回到顶部" />
           </div>
           <div className={`transition-all duration-200 ${showScrollBottom ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2 pointer-events-none'}`}>
-            <ScrollButton direction="down" onClick={() => listRef.current?.scrollTo({ top: listRef.current?.scrollHeight, behavior: 'smooth' })} title="回到底部" />
+            <ScrollButton
+              direction="down"
+              onClick={() => {
+                stickBottomRef.current = true;
+                listRef.current?.scrollTo({ top: listRef.current?.scrollHeight, behavior: 'smooth' });
+              }}
+              title="回到底部"
+            />
           </div>
         </div>
 
