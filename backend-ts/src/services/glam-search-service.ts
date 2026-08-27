@@ -79,6 +79,30 @@ export interface GlamSearchParams {
   limit?: number;
   /** 关键词检索的分页偏移（0 起；无关键词随机模式下忽略） */
   offset?: number;
+  /** 聚合模式（provider='all'）：各来源各自维护的偏移（key=来源名）。用于「加载更多」时
+   *  让每个来源只推进自己已返回的条数，避免共用一个全局偏移导致跳过中间结果。 */
+  offsets?: Record<string, number>;
+}
+
+/** 单个来源的检索结果（供聚合模式逐源推进偏移与总数判断）。 */
+export interface GlamSourceResult {
+  items: GlamSearchItem[];
+  /** 该源查询命中总数（官方 API 提供时；否则 null，前端回退启发式 hasMore） */
+  total: number | null;
+  /** 下次应传给该源的 offset（各来源按自身分页语义推进，保证不重不漏） */
+  nextOffset: number;
+}
+
+/** 聚合模式下每个来源的推进信息（路由透传给前端，前端回传 offsets 用）。 */
+export interface GlamPerSourceInfo {
+  /** 该源本批实际返回条数 */
+  count: number;
+  /** 该源是否还有更多 */
+  hasMore: boolean;
+  /** 该源查询命中总数（官方提供时） */
+  total: number | null;
+  /** 该源下次 offset */
+  nextOffset: number;
 }
 
 /** 检索结果（含是否可能还有更多，供前端「加载更多」）。 */
@@ -86,6 +110,12 @@ export interface GlamSearchResult {
   items: GlamSearchItem[];
   /** 关键词检索且来源支持分页时，是否还有更多可继续拉取 */
   hasMore: boolean;
+  /** 单源模式下该源命中总数（官方 API 提供时；否则 null） */
+  total: number | null;
+  /** 单源模式下该源下次 offset（前端回传 offset 用） */
+  nextOffset: number;
+  /** 聚合模式（provider='all'）下逐来源推进信息 */
+  perSource?: Record<string, GlamPerSourceInfo>;
 }
 
 /** 无可靠分页的来源：Rijks（单批上限 24、检索接口无分页）、Paris（GraphQL 不支持 offset），
@@ -210,32 +240,42 @@ function toItem(
 
 /** 各源搜索 / 随机实现（返回已过滤公有领域 + 有图的作品列表） */
 
-async function searchMet(query: string, limit: number, offset: number): Promise<GlamSearchItem[]> {
+async function searchMet(query: string, limit: number, offset: number): Promise<GlamSourceResult> {
   if (query) {
     const json = await jsonGet(
       `https://collectionapi.metmuseum.org/public/collection/v1/search?q=${encodeURIComponent(query)}&hasImages=true`
     );
-    // 分页：MET 检索一次性返回全部 objectID，按 offset 切片取下一批
-    const ids: number[] = Array.isArray(json.objectIDs) ? json.objectIDs.slice(offset, offset + MAX_PER_PAGE * 2) : [];
-    const objects = await Promise.allSettled(
-      ids.map(async (id) => jsonGet(`https://collectionapi.metmuseum.org/public/collection/v1/objects/${id}`))
-    );
-    return objects
-      .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled')
-      .map((r) => r.value)
-      .filter((o) => o.isPublicDomain && (o.primaryImageSmall || o.primaryImage))
-      .slice(0, limit)
-      .map((o) =>
-        toItem(
+    // 分页：MET 检索一次性返回全部 objectID（含官方 total）。按 offset 逐段扫描原始 ID 列表，
+    // 收集 limit 个「公有领域 + 有图」作品；用已扫描的原始 ID 数作为 nextOffset，保证后续批次不重不漏。
+    const ids: number[] = Array.isArray(json.objectIDs) ? json.objectIDs : [];
+    const total = typeof json.total === 'number' ? json.total : null;
+    const items: GlamSearchItem[] = [];
+    let i = offset;
+    while (i < ids.length && items.length < limit) {
+      const batchEnd = Math.min(i + MAX_PER_PAGE * 2, ids.length);
+      const objects = await Promise.allSettled(
+        ids.slice(i, batchEnd).map(async (id) =>
+          jsonGet(`https://collectionapi.metmuseum.org/public/collection/v1/objects/${id}`)
+        )
+      );
+      for (const r of objects) {
+        if (r.status !== 'fulfilled') continue;
+        const o = r.value;
+        if (!(o?.isPublicDomain && (o.primaryImageSmall || o.primaryImage))) continue;
+        const item = toItem(
           'met',
           o.title,
           o.primaryImage || o.primaryImageSmall,
           o.objectURL,
           o.artistDisplayName || o.artistAlphaSort || '',
           o.primaryImageSmall || o.primaryImage
-        )
-      )
-      .filter((i): i is GlamSearchItem => i !== null);
+        );
+        if (item) items.push(item);
+        if (items.length >= limit) break;
+      }
+      i = batchEnd;
+    }
+    return { items, total, nextOffset: i };
   }
   // 随机：从全量 Object ID 抽样（每张图一次请求，控制并发与条数）
   const all = await jsonGet('https://collectionapi.metmuseum.org/public/collection/v1/objects');
@@ -250,7 +290,7 @@ async function searchMet(query: string, limit: number, offset: number): Promise<
       jsonGet(`https://collectionapi.metmuseum.org/public/collection/v1/objects/${id}`)
     )
   );
-  return objects
+  const items = objects
     .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled')
     .map((r) => r.value)
     .filter((o) => o.isPublicDomain && (o.primaryImageSmall || o.primaryImage))
@@ -266,12 +306,13 @@ async function searchMet(query: string, limit: number, offset: number): Promise<
       )
     )
     .filter((i): i is GlamSearchItem => i !== null);
+  return { items, total: null, nextOffset: 0 };
 }
 
 // Rijksmuseum 新一代 Linked Art API：检索只回 Object ID，每件作品需 2~3 次子请求
 const RIJKS_OBJECT_CAP = 24;
 
-async function searchRijks(query: string, limit: number): Promise<GlamSearchItem[]> {
+async function searchRijks(query: string, limit: number): Promise<GlamSourceResult> {
   const fields = query ? ['title', 'description'] : [];
   const searches = await Promise.allSettled(
     fields.map((field) =>
@@ -321,14 +362,15 @@ async function searchRijks(query: string, limit: number): Promise<GlamSearchItem
       }
     })
   );
-  return objects
+  const items = objects
     .filter((r): r is PromiseFulfilledResult<GlamSearchItem | null> => r.status === 'fulfilled' && r.value !== null)
     .map((r) => r.value as GlamSearchItem)
     .slice(0, limit);
+  return { items, total: null, nextOffset: 0 };
 }
 
 // 芝加哥艺术学院：全文检索（is_public_domain 客户端过滤）；随机取浏览列表随机页
-async function searchAiChicago(query: string, limit: number, offset: number): Promise<GlamSearchItem[]> {
+async function searchAiChicago(query: string, limit: number, offset: number): Promise<GlamSourceResult> {
   const IMAGE_URL = (id: string) => `https://www.artic.edu/iiif/2/${id}/full/843,/0/default.jpg`;
   const shape = (data: any[]): GlamSearchItem[] =>
     data
@@ -345,64 +387,71 @@ async function searchAiChicago(query: string, limit: number, offset: number): Pr
     const json = await jsonGet(
       `https://api.artic.edu/api/v1/artworks/search?q=${encodeURIComponent(query)}&limit=100&page=${page}&fields=title,image_id,id,is_public_domain,_score`
     );
-    let items = shape(json.data ?? []);
+    let filtered = shape(json.data ?? []);
     const last = (json.data ?? [])[json.data.length - 1];
     // 首页尾条分数仍高且有下一页时再拉一页补足（与原来的页 2 增强逻辑一致）
     if (page === 1 && last && last._score > 0.5 && json.pagination?.total_pages > page) {
       const json2 = await jsonGet(
         `https://api.artic.edu/api/v1/artworks/search?q=${encodeURIComponent(query)}&limit=100&page=${page + 1}&fields=title,image_id,id,is_public_domain,_score`
       );
-      items = items.concat(shape(json2.data ?? []));
+      filtered = filtered.concat(shape(json2.data ?? []));
     }
-    return items.slice(within, within + limit);
+    const items = filtered.slice(within, within + limit);
+    const total = typeof json.pagination?.total === 'number' ? json.pagination.total : null;
+    return { items, total, nextOffset: offset + limit };
   }
   // 随机：浏览列表随机页（作品约 10 万件，页 1..100）
   const page = 1 + Math.floor(Math.random() * 100);
   const json = await jsonGet(
     `https://api.artic.edu/api/v1/artworks?page=${page}&limit=100&fields=title,image_id,id,is_public_domain`
   );
-  return shape((json.data ?? []).map((d: any) => ({ ...d, _score: 1 }))).slice(0, limit);
+  const items = shape((json.data ?? []).map((d: any) => ({ ...d, _score: 1 }))).slice(0, limit);
+  return { items, total: null, nextOffset: 0 };
 }
 
 // 明尼阿波利斯美术馆：Elasticsearch 接口（query 为空 = 全量公有领域有图作品）
-async function searchArtsmia(query: string, limit: number, offset: number): Promise<GlamSearchItem[]> {
+async function searchArtsmia(query: string, limit: number, offset: number): Promise<GlamSourceResult> {
   const IMAGE_URL = (id: string) => `https://${Number(id) % 7}.api.artsmia.org/800/${id}.jpg`;
   const q = `${query} rights_type:"Public Domain" image:valid`.trim();
   const json = await jsonGet(
     `https://search.artsmia.org/${encodeURIComponent(q)}?size=${Math.min(limit * 3, 300)}&from=${offset}`
   );
-  return (json.hits?.hits ?? [])
+  const items = (json.hits?.hits ?? [])
     .filter((item: any) => item._score > 0.5)
     .map((item: any) =>
       toItem('artsmia', item._source?.title || '', IMAGE_URL(item._id), `https://collections.artsmia.org/art/${item._id}`)
     )
     .filter((i: any): i is GlamSearchItem => i !== null)
     .slice(0, limit);
+  const total = Number.isFinite(json?.hits?.total?.value) ? json.hits.total.value : null;
+  return { items, total, nextOffset: offset + limit };
 }
 
 // 克利夫兰美术馆：cc0 + 有图；随机 = 随机 skip 偏移浏览
-async function searchCleveland(query: string, limit: number, offset: number): Promise<GlamSearchItem[]> {
+async function searchCleveland(query: string, limit: number, offset: number): Promise<GlamSourceResult> {
   // 分页：关键词检索时 skip = offset；随机浏览时随机 skip 偏移
   const skip = query ? offset : Math.floor(Math.random() * 500) * 100;
   const json = await jsonGet(
     `https://openaccess-api.clevelandart.org/api/artworks/?q=${encodeURIComponent(query)}&has_image=1&limit=${Math.min(limit * 3, 100)}&cc0=1&skip=${skip}`
   );
-  return (json.data ?? [])
+  const items = (json.data ?? [])
     .filter((item: any) => item.images?.web?.url)
     .map((item: any) =>
       toItem('cleveland', item.title || '', item.images.web.url, item.url || '')
     )
     .filter((i: any): i is GlamSearchItem => i !== null)
     .slice(0, limit);
+  const total = Number.isFinite(json?.info?.total) ? json.info.total : null;
+  return { items, total, nextOffset: query ? offset + limit : 0 };
 }
 
 // 丹麦国立美术馆（SMK）：公有领域 + 有图；随机 = keys=* 全量
-async function searchSmk(query: string, limit: number, offset: number): Promise<GlamSearchItem[]> {
+async function searchSmk(query: string, limit: number, offset: number): Promise<GlamSourceResult> {
   const keys = query || '*';
   const json = await jsonGet(
     `https://api.smk.dk/api/v1/art/search?keys=${encodeURIComponent(keys)}&filters=%5Bpublic_domain%3Atrue%5D,%5Bhas_image%3Atrue%5D&rows=${Math.min(limit * 3, 100)}&offset=${offset}`
   );
-  return (json.items ?? [])
+  const items = (json.items ?? [])
     .filter((item: any) => item.image_thumbnail && item.titles?.[0]?.title)
     .map((item: any) =>
       toItem(
@@ -414,33 +463,37 @@ async function searchSmk(query: string, limit: number, offset: number): Promise<
     )
     .filter((i: any): i is GlamSearchItem => i !== null)
     .slice(0, limit);
+  const total = Number.isFinite(json?.found) ? json.found : null;
+  return { items, total, nextOffset: offset + limit };
 }
 
 // Wellcome 收藏：CC0 / PDM 图像；随机 = 无关键词全量
-async function searchWellcome(query: string, limit: number, offset: number): Promise<GlamSearchItem[]> {
+async function searchWellcome(query: string, limit: number, offset: number): Promise<GlamSourceResult> {
   const IMAGE_URL = (infoUrl: string) => infoUrl.replace('/info.json', '/full/!760,760/0/default.jpg');
-  const pageSize = Math.min(limit * 3, 100);
+  const pageSize = limit;
   const page = Math.floor(offset / pageSize) + 1;
   const json = await jsonGet(
     `https://api.wellcomecollection.org/catalogue/v2/images?${query ? `query=${encodeURIComponent(query)}&` : ''}locations.license=cc0,pdm&pageSize=${pageSize}&page=${page}`
   );
-  return (json.results ?? [])
+  const items = (json.results ?? [])
     .filter((item: any) => item.thumbnail?.url && item.source?.title)
     .map((item: any) =>
       toItem('wellcome', item.source.title, IMAGE_URL(item.thumbnail.url), `https://wellcomecollection.org/works/${item.source.id}`)
     )
     .filter((i: any): i is GlamSearchItem => i !== null)
     .slice(0, limit);
+  const total = Number.isFinite(json?.totalResults) ? json.totalResults : null;
+  return { items, total, nextOffset: offset + limit };
 }
 
 // 哈佛艺术博物馆（需 harvard.api_key）
-async function searchHarvard(apiKey: string, query: string, limit: number, offset: number): Promise<GlamSearchItem[]> {
-  const size = Math.min(limit * 3, 100);
+async function searchHarvard(apiKey: string, query: string, limit: number, offset: number): Promise<GlamSourceResult> {
+  const size = limit;
   const page = Math.floor(offset / size) + 1;
   const json = await jsonGet(
     `https://api.harvardartmuseums.org/object?apikey=${encodeURIComponent(apiKey)}&q=${encodeURIComponent(query)}&hasimage=1&size=${size}&page=${page}`
   );
-  return (json.records ?? [])
+  const items = (json.records ?? [])
     .filter((item: any) => Array.isArray(item.images) && item.images.length > 0)
     .map((item: any) => {
       const imgs = item.images.filter((i: any) => i.baseimageurl);
@@ -449,14 +502,16 @@ async function searchHarvard(apiKey: string, query: string, limit: number, offse
     })
     .filter((i: any): i is GlamSearchItem => i !== null)
     .slice(0, limit);
+  const total = Number.isFinite(json?.info?.totalrecords) ? json.info.totalrecords : null;
+  return { items, total, nextOffset: offset + limit };
 }
 
 // 纽约公共图书馆（需 nypl.api_key）
-async function searchNypl(apiKey: string, query: string, limit: number, offset: number): Promise<GlamSearchItem[]> {
+async function searchNypl(apiKey: string, query: string, limit: number, offset: number): Promise<GlamSourceResult> {
   // 注意：必须用 https。api.repo.nypl.org 对 http 返回 301 跳转 https，跨源跳转时 fetch 会剥掉
   // Authorization 头导致 401（token 本身有效）。images.nypl.org 同样仅用 https。
   const IMAGE_URL = (id: string) => `https://images.nypl.org/index.php?id=${id}&t=w`;
-  const perPage = Math.min(limit * 3, 100);
+  const perPage = limit;
   const page = Math.floor(offset / perPage) + 1;
   const json = await jsonGet(
     `https://api.repo.nypl.org/api/v2/items/search?q=${encodeURIComponent(query)}&publicDomainOnly=true&per_page=${perPage}&page=${page}`,
@@ -464,21 +519,25 @@ async function searchNypl(apiKey: string, query: string, limit: number, offset: 
   );
   const result = json?.nyplAPI?.response?.result;
   const list = Array.isArray(result) ? result : result ? [result] : [];
-  return list
+  const items = list
     .map((item: any) =>
       item?.imageID ? toItem('nypl', item.title || '', IMAGE_URL(item.imageID), item.itemLink || '') : null
     )
     .filter((i: any): i is GlamSearchItem => i !== null)
     .slice(0, limit);
+  const total = Number.isFinite(json?.nyplAPI?.response?.numResults)
+    ? json.nyplAPI.response.numResults
+    : null;
+  return { items, total, nextOffset: offset + limit };
 }
 
 // 史密森尼学会（需 smithsonian.api_key）
-async function searchSmithsonian(apiKey: string, query: string, limit: number, offset: number): Promise<GlamSearchItem[]> {
+async function searchSmithsonian(apiKey: string, query: string, limit: number, offset: number): Promise<GlamSourceResult> {
   const IMAGE_URL = (mediaUrl: string) => `${mediaUrl}&max_w=800`;
   const json = await jsonGet(
     `https://api.si.edu/openaccess/api/v1.0/search?q=${encodeURIComponent(query)}%20AND%20online_media_type:%22Images%22%20AND%20media_usage:%22CC0%22&api_key=${encodeURIComponent(apiKey)}&rows=${Math.min(limit * 3, 100)}&start=${offset}`
   );
-  return (json?.response?.rows ?? [])
+  const items = (json?.response?.rows ?? [])
     .map((item: any) => {
       const record = item?.content?.descriptiveNonRepeating;
       const media = record?.online_media?.media;
@@ -489,10 +548,12 @@ async function searchSmithsonian(apiKey: string, query: string, limit: number, o
     })
     .filter((i: any): i is GlamSearchItem => i !== null)
     .slice(0, limit);
+  // 官方响应仅提供 rowCount（本批行数），无命中总数，total 置 null（前端回退启发式 hasMore）
+  return { items, total: null, nextOffset: offset + limit };
 }
 
 // 巴黎博物馆（需 paris.api_key）
-async function searchParis(apiKey: string, query: string, limit: number): Promise<GlamSearchItem[]> {
+async function searchParis(apiKey: string, query: string, limit: number): Promise<GlamSourceResult> {
   const gql = (term: string) => `{
     nodeQuery(
       filter: {
@@ -522,28 +583,32 @@ async function searchParis(apiKey: string, query: string, limit: number): Promis
   });
   if (!res.ok) throw new GlamSearchError(`Paris Musées 请求失败（HTTP ${res.status}）`);
   const json: any = await res.json();
-  return (json?.data?.nodeQuery?.entities ?? [])
+  const items = (json?.data?.nodeQuery?.entities ?? [])
     .map((item: any) => {
       const visuel = item?.fieldVisuels?.[0]?.entity;
       return item?.title && visuel?.url ? toItem('paris', item.title, visuel.url, item.url || '') : null;
     })
     .filter((i: any): i is GlamSearchItem => i !== null)
     .slice(0, limit);
+  // Paris GraphQL 无 offset / 总数，不可分页
+  return { items, total: null, nextOffset: 0 };
 }
 
 // Europeana（需 europeana.api_key）
-async function searchEuropeana(apiKey: string, query: string, limit: number, offset: number): Promise<GlamSearchItem[]> {
+async function searchEuropeana(apiKey: string, query: string, limit: number, offset: number): Promise<GlamSourceResult> {
   // Europeana 的 start 从 1 开始
   const json = await jsonGet(
     `https://api.europeana.eu/record/v2/search.json?wskey=${encodeURIComponent(apiKey)}&query=${encodeURIComponent(query)}&qf=TYPE:IMAGE&reusability=open&media=true&thumbnail=true&rows=${Math.min(limit * 3, 100)}&start=${offset + 1}`
   );
-  return (json?.items ?? [])
+  const items = (json?.items ?? [])
     .filter((item: any) => item.title?.[0] && item.edmPreview?.[0])
     .map((item: any) =>
       toItem('europeana', item.title[0], item.edmPreview[0], item.guid || '')
     )
     .filter((i: any): i is GlamSearchItem => i !== null)
     .slice(0, limit);
+  const total = Number.isFinite(json?.totalResults) ? json.totalResults : null;
+  return { items, total, nextOffset: offset + limit };
 }
 
 // 美国国会图书馆（LoC）：无需凭据。JSON API 官方限流 20 次/分钟（建议 ≤15），
@@ -653,7 +718,7 @@ async function fetchLocJson(url: string, proxy: string): Promise<any> {
   throw new GlamSearchError('LoC 检索返回异常（响应不完整或超时），请重试');
 }
 
-async function searchLoc(query: string, limit: number, offset: number, proxy: string): Promise<GlamSearchItem[]> {
+async function searchLoc(query: string, limit: number, offset: number, proxy: string): Promise<GlamSourceResult> {
   await locBucket.take();
   const c = Math.min(Math.max(limit * 3, 3), 100);
   let sp: number;
@@ -680,13 +745,71 @@ async function searchLoc(query: string, limit: number, offset: number, proxy: st
     item.photographer = locField(r, 'contributor') || locField(r, 'creator');
     filtered.push(item);
   }
-  return query ? filtered.slice(within, within + limit) : filtered.slice(0, limit);
+  const items = query ? filtered.slice(within, within + limit) : filtered.slice(0, limit);
+  // LoC 官方 pagination.of = 命中总数
+  const total = Number.isFinite(json?.pagination?.of) ? json.pagination.of : null;
+  return { items, total, nextOffset: query ? offset + limit : 0 };
+}
+
+/** 单源检索分发（不含密钥检查）。返回 { items, total, nextOffset }。 */
+async function searchSingleSource(
+  provider: GlamProvider,
+  creds: GlamCredentials,
+  query: string,
+  limit: number,
+  offset: number
+): Promise<GlamSourceResult> {
+  switch (provider) {
+    case 'met':
+      return searchMet(query, limit, offset);
+    case 'rijks':
+      return searchRijks(query, limit);
+    case 'ai-chicago':
+      return searchAiChicago(query, limit, offset);
+    case 'artsmia':
+      return searchArtsmia(query, limit, offset);
+    case 'cleveland':
+      return searchCleveland(query, limit, offset);
+    case 'smk':
+      return searchSmk(query, limit, offset);
+    case 'wellcome':
+      return searchWellcome(query, limit, offset);
+    case 'harvard':
+      return searchHarvard(creds.harvardApiKey, query, limit, offset);
+    case 'nypl':
+      return searchNypl(creds.nyplApiKey, query, limit, offset);
+    case 'smithsonian':
+      return searchSmithsonian(creds.smithsonianApiKey, query, limit, offset);
+    case 'paris':
+      return searchParis(creds.parisApiKey, query, limit);
+    case 'europeana':
+      return searchEuropeana(creds.europeanaApiKey, query, limit, offset);
+    case 'loc':
+      return searchLoc(query, limit, offset, creds.locProxy);
+  }
+}
+
+/** 该源是否还有更多：优先用官方 total 精确判断（nextOffset < total）；官方未提供 total 时
+ *  回退「本批有返回」启发式（配合 nextOffset 游标会自然终止，不会无限加载）。 */
+function sourceHasMore(
+  query: string,
+  total: number | null,
+  nextOffset: number,
+  provider: GlamProvider,
+  items: GlamSearchItem[]
+): boolean {
+  if (!query || NO_PAGINATION_PROVIDERS.includes(provider)) return false;
+  if (total != null) return nextOffset < total;
+  return items.length > 0;
 }
 
 /** 统一入口：按源分发检索（无关键词 = 随机；未配置凭据给出明确指引）。
  *  provider='all' 时并发聚合全部已配置来源，跳过未配置 Key 的源，单源失败不影响其余。
- *  关键词检索支持按 offset 继续拉取（「加载更多」）：hasMore 仅在有关键词且来源可分页时成立，
- *  用「是否拉满整批」作为可能还有更多的信号（无关键词随机模式不提供加载更多）。 */
+ *  关键词检索支持按 offset 继续拉取（「加载更多」）：
+ *  - 单源：hasMore 用官方 total 精确判断（无 total 时回退启发式）；返回 nextOffset 供前端回传。
+ *  - 聚合：各来源使用各自维护的 offset（params.offsets）推进，避免共用一个全局偏移跳过中间结果，
+ *    返回 perSource 逐源推进信息（count / hasMore / total / nextOffset）。
+ *  无关键词随机模式不提供加载更多。 */
 export async function searchGlamImages(
   provider: GlamProvider | 'all',
   creds: GlamCredentials,
@@ -699,16 +822,29 @@ export async function searchGlamImages(
   if (provider === 'all') {
     const included = availableGlamProviders(creds);
     const perSource = Math.max(4, Math.ceil(limit / Math.max(1, included.length)));
+    const offsets = params.offsets ?? {};
     const settled = await Promise.allSettled(
-      included.map((p) => searchGlamImages(p, creds, { query, offset, limit: perSource }))
+      included.map((p) => searchSingleSource(p, creds, query, perSource, offsets[p] ?? 0))
     );
-    const fulfilled = settled.filter(
-      (r): r is PromiseFulfilledResult<GlamSearchResult> => r.status === 'fulfilled'
-    );
+    const items: GlamSearchItem[] = [];
+    const perSourceInfo: Record<string, GlamPerSourceInfo> = {};
+    included.forEach((p, i) => {
+      const r = settled[i];
+      if (r?.status !== 'fulfilled') return;
+      perSourceInfo[p] = {
+        count: r.value.items.length,
+        hasMore: sourceHasMore(query, r.value.total, r.value.nextOffset, p, r.value.items),
+        total: r.value.total,
+        nextOffset: r.value.nextOffset,
+      };
+      items.push(...r.value.items);
+    });
     return {
-      items: fulfilled.flatMap((r) => r.value.items),
-      // 聚合：任一源还有更多即可继续加载（各源按同一 offset 继续拉）
-      hasMore: fulfilled.some((r) => r.value.hasMore),
+      items,
+      hasMore: Object.values(perSourceInfo).some((s) => s.hasMore),
+      total: null,
+      nextOffset: 0,
+      perSource: perSourceInfo,
     };
   }
 
@@ -719,51 +855,12 @@ export async function searchGlamImages(
     );
   }
   try {
-    let items: GlamSearchItem[];
-    switch (provider) {
-      case 'met':
-        items = await searchMet(query, limit, offset);
-        break;
-      case 'rijks':
-        items = await searchRijks(query, limit);
-        break;
-      case 'ai-chicago':
-        items = await searchAiChicago(query, limit, offset);
-        break;
-      case 'artsmia':
-        items = await searchArtsmia(query, limit, offset);
-        break;
-      case 'cleveland':
-        items = await searchCleveland(query, limit, offset);
-        break;
-      case 'smk':
-        items = await searchSmk(query, limit, offset);
-        break;
-      case 'wellcome':
-        items = await searchWellcome(query, limit, offset);
-        break;
-      case 'harvard':
-        items = await searchHarvard(creds.harvardApiKey, query, limit, offset);
-        break;
-      case 'nypl':
-        items = await searchNypl(creds.nyplApiKey, query, limit, offset);
-        break;
-      case 'smithsonian':
-        items = await searchSmithsonian(creds.smithsonianApiKey, query, limit, offset);
-        break;
-      case 'paris':
-        items = await searchParis(creds.parisApiKey, query, limit);
-        break;
-      case 'europeana':
-        items = await searchEuropeana(creds.europeanaApiKey, query, limit, offset);
-        break;
-      case 'loc':
-        items = await searchLoc(query, limit, offset, creds.locProxy);
-        break;
-    }
+    const result = await searchSingleSource(provider, creds, query, limit, offset);
     return {
-      items,
-      hasMore: !!query && !NO_PAGINATION_PROVIDERS.includes(provider) && items.length === limit,
+      items: result.items,
+      total: result.total,
+      nextOffset: result.nextOffset,
+      hasMore: sourceHasMore(query, result.total, result.nextOffset, provider, result.items),
     };
   } catch (err) {
     // 源级失败（网络 / 服务异常）：包装为可读错误，供路由返回 502

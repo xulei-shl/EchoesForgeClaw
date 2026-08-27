@@ -137,6 +137,7 @@ export async function register(app: FastifyInstance): Promise<void> {
         query?: string;
         limit?: number;
         offset?: number;
+        offsets?: Record<string, number>;
       };
       const provider: GlamProvider | 'all' =
         payload.provider === 'all' || GLAM_PROVIDERS.includes(payload.provider as GlamProvider)
@@ -154,13 +155,16 @@ export async function register(app: FastifyInstance): Promise<void> {
             europeanaApiKey: s['europeana.api_key'] ?? '',
             locProxy: getServiceProxy(s, 'loc'),
           },
-          { query: payload.query, limit: payload.limit, offset: payload.offset }
+          { query: payload.query, limit: payload.limit, offset: payload.offset, offsets: payload.offsets }
         );
         return {
           provider,
           label: provider === 'all' ? GLAM_ALL_LABEL : GLAM_PROVIDER_LABELS[provider],
           items: result.items,
           has_more: result.hasMore,
+          total: result.total,
+          next_offset: result.nextOffset,
+          ...(result.perSource ? { per_source: result.perSource } : {}),
         };
       } catch (err) {
         if (err instanceof GlamSearchError) {
