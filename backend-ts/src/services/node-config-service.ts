@@ -132,6 +132,10 @@ export interface SkillAgentRuntimeConfig {
     apiFormat: string | null;
     /** OpenAI 兼容路径思考 wire 格式（空 = 默认 reasoning_effort）。 */
     thinkingFormat: string | null;
+    /** 模型上下文窗口大小（token；留空默认 128000）。 */
+    contextWindow?: number | null;
+    /** 模型最大输出 token（留空默认 16384）。 */
+    maxTokens?: number | null;
   } | null;
   /** 绘图模型（kind='image'）；未绑定且无全局启用项时为 null = 不加载绘图工具。 */
   image: { baseUrl: string; apiKey: string; modelName: string } | null;

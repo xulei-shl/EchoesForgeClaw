@@ -45,6 +45,10 @@ export interface LLMConfigRow {
   apiFormat: string | null;
   /** pi 集成 OpenAI 兼容路径思考 wire 格式；空 = 默认 reasoning_effort。 */
   thinkingFormat: string | null;
+  /** 模型上下文窗口大小（token；留空默认 128000）。 */
+  contextWindow?: number | null;
+  /** 模型最大单次输出 token（留空默认 16384）。 */
+  maxTokens?: number | null;
   isActive: boolean | null;
 }
 
