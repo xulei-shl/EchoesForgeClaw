@@ -30,7 +30,7 @@ import { Toggle } from '../../platform/components/ui/Toggle';
 import { Badge } from '../../platform/components/ui/Badge';
 import { FieldLabel, PageHeader } from '../components/AdminBits';
 import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
-import { NODE_TEMPLATES, NODE_TEMPLATE_MAP, NODE_PORT_TYPES, PORT_TYPE_LABELS, CATEGORY_LABELS } from '../../modules/bookplate/nodeTypes';
+import { NODE_TEMPLATES, NODE_PORT_TYPES, PORT_TYPE_LABELS, CATEGORY_LABELS } from '../../modules/bookplate/nodeTypes';
 import { Sparkles } from 'lucide-react';
 
 /** 模型类型短标签（下拉选项展示） */
@@ -649,10 +649,7 @@ export const NodeConfigsPage: React.FC = () => {
                     options={[
                       { label: '请选择提示词模板', value: '' },
                       ...availablePrompts.map((p) => ({
-                        label:
-                          form.node_type === 'chat'
-                            ? `${p.name}（${NODE_TEMPLATE_MAP[p.node_type as CanvasNodeType]?.name ?? p.node_type}）`
-                            : p.name,
+                        label: p.name,
                         value: String(p.id),
                       })),
                     ]}
