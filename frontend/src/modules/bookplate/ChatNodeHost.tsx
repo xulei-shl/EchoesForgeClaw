@@ -408,11 +408,17 @@ export function ChatNodeHost({
   }, [uiMessages, status, nodeId, setNodes, setMessages, flushPendingPatch]);
 
   // ---------- 外部变更检测：清空对话 / 撤销 / 恢复时 store 与 useChat 不同步 ----------
+  // store 真相必须读模块级 nodesRef（setNodes 同步更新）而非本提交的 node prop：
+  // 流结束的同一提交里，镜像 effect 先 flush（nodesRef 已是最新），而 node prop 仍滞后一帧——
+  // 若按 prop 采纳，会把镜像刚写入的最终消息误判为「外部变更」回灌 useChat（覆盖实时消息，
+  // 空尾逻辑随后把刚流出的回复从 store/useChat 一起永久剥离，整段回复消失）。
+  // nodesRef 永远是 store 最新值：镜像自写（lastMirroredRef 匹配）与真正的外部变更自然区分。
   useEffect(() => {
-    const storeMsgs = Array.isArray(node.data?.messages) ? node.data.messages : [];
+    const nodeNow = nodesRef.current.find((n) => n.id === nodeId);
+    const storeMsgs = Array.isArray(nodeNow?.data?.messages) ? nodeNow.data.messages : [];
     const wsNow =
-      typeof node.data?.workspaceId === 'string' && node.data.workspaceId
-        ? node.data.workspaceId
+      typeof nodeNow?.data?.workspaceId === 'string' && nodeNow.data.workspaceId
+        ? nodeNow.data.workspaceId
         : null;
     const json = JSON.stringify(storeMsgs);
     if (json === lastMirroredRef.current) {
