@@ -439,6 +439,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
             steps={msg.agentSteps}
             agentName={agentName}
             running={!!msg.streaming}
+            defaultOpen={false}
           />
         </div>
       )}
@@ -926,7 +927,12 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
               agentSteps.length > 0 &&
               !messages[messages.length - 1]?.agentSteps?.length && (
                 <div className="w-full">
-                  <AgentActivity steps={agentSteps} agentName={agentName} running />
+                  <AgentActivity
+                    steps={agentSteps}
+                    agentName={agentName}
+                    running
+                    defaultOpen={false}
+                  />
                 </div>
               )}
           </div>

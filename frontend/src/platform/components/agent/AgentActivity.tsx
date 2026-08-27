@@ -14,13 +14,19 @@ export interface AgentActivityProps {
   agentName?: string;
   /** 是否正在运行（末尾显示动画） */
   running?: boolean;
+  /** 默认是否展开（未指定时，运行中展开、结束后折叠） */
+  defaultOpen?: boolean;
 }
 
-const AgentActivityInner: React.FC<AgentActivityProps> = ({ steps = [], agentName, running }) => {
-  // 运行中默认展开（工具调用 / 结果实时可见）；用户手动开合后尊重用户选择；
-  // 结束后未手动操作则收起为摘要条，避免撑爆节点
+const AgentActivityInner: React.FC<AgentActivityProps> = ({
+  steps = [],
+  agentName,
+  running,
+  defaultOpen,
+}) => {
+  // 展开状态逻辑：若用户手动开合则尊重用户选择；若未手动操作且指定了 defaultOpen 则以 defaultOpen 为准；未指定则运行中展开、结束后折叠
   const [userToggledOpen, setUserToggledOpen] = useState<boolean | null>(null);
-  const open = userToggledOpen ?? !!running;
+  const open = userToggledOpen ?? (defaultOpen !== undefined ? defaultOpen : !!running);
 
   if (steps.length === 0 && !running) return null;
 
