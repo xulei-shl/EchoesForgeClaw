@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 import { Plus, X, Upload, RefreshCw, Trash2, Dices } from 'lucide-react';
 import { getReceiptTheme } from '../../themes';
-import { generateRandomBorrowerRecords, isChineseName } from '../../borrowerGenerator';
+import { generateRandomBorrowerRecords, isChineseName, CHINESE_BORROWER_FONTS } from '../../borrowerGenerator';
 import type { BorrowerRecordItem, ReceiptState } from '../../types';
 import { stopEvent } from './common/stopEvent';
 
@@ -81,7 +81,21 @@ export const LibraryCardPaper = React.forwardRef<HTMLDivElement, LibraryCardPape
       const updated = records.map((r) => {
         if (r.id !== id) return r;
         const nextName = patch.name !== undefined ? patch.name : r.name;
-        const fontClass = isChineseName(nextName) ? 'font-handwriting-cn' : 'font-handwriting-en';
+        const isCn = isChineseName(nextName);
+        let fontClass = patch.fontClass !== undefined ? patch.fontClass : r.fontClass;
+
+        if (!isCn) {
+          fontClass = 'font-handwriting-en';
+        } else if (!fontClass || fontClass === 'font-handwriting-en') {
+          // 若之前是英文或未设置字体，分配一个当前卡片未使用的中文字体
+          const usedFonts = new Set(records.filter((rec) => rec.id !== id).map((rec) => rec.fontClass));
+          const available = CHINESE_BORROWER_FONTS.filter((f) => !usedFonts.has(f.id));
+          fontClass =
+            available.length > 0
+              ? available[Math.floor(Math.random() * available.length)].id
+              : CHINESE_BORROWER_FONTS[Math.floor(Math.random() * CHINESE_BORROWER_FONTS.length)].id;
+        }
+
         return { ...r, ...patch, fontClass };
       });
       onChange({ borrowerRecords: updated });
@@ -95,12 +109,19 @@ export const LibraryCardPaper = React.forwardRef<HTMLDivElement, LibraryCardPape
     const handleAddRecord = () => {
       if (disabled) return;
       const nowStr = new Date().toISOString().slice(0, 10);
+      const usedFonts = new Set(records.map((r) => r.fontClass));
+      const available = CHINESE_BORROWER_FONTS.filter((f) => !usedFonts.has(f.id));
+      const fontClass =
+        available.length > 0
+          ? available[Math.floor(Math.random() * available.length)].id
+          : CHINESE_BORROWER_FONTS[Math.floor(Math.random() * CHINESE_BORROWER_FONTS.length)].id;
+
       const newRecord: BorrowerRecordItem = {
         id: `rec-${Date.now()}`,
         date: nowStr,
         name: '某读者',
         rotation: 'rotate-1',
-        fontClass: 'font-handwriting-cn',
+        fontClass,
       };
       onChange({ borrowerRecords: [...records, newRecord] });
     };

@@ -1,5 +1,5 @@
 import { getReceiptTheme } from '../../themes';
-import { isChineseName } from '../../borrowerGenerator';
+import { isChineseName, CHINESE_BORROWER_FONTS } from '../../borrowerGenerator';
 import type { ReceiptState } from '../../types';
 import { ensureFontsReady, loadImageSafe } from '../common/canvasUtils';
 
@@ -10,8 +10,26 @@ export async function exportLibraryCardImage(
   state: ReceiptState,
   scale = 2
 ): Promise<string> {
-  // 1. 等待 Web 字体加载完成（确保 Zhi Mang Xing / Caveat / Special Elite 渲染正常）
+  // 1. 等待 Web 字体加载完成（确保各类手写字体、Special Elite 渲染正常）
   await ensureFontsReady();
+
+  if (typeof document !== 'undefined' && document.fonts) {
+    const records = state.borrowerRecords || [];
+    const fontLoadPromises = records
+      .filter((r) => isChineseName(r.name))
+      .map((r) => {
+        const fontDef = CHINESE_BORROWER_FONTS.find((f) => f.id === r.fontClass);
+        if (fontDef) {
+          return document.fonts.load(`26px ${fontDef.fontFamily}`);
+        }
+        return Promise.resolve([]);
+      });
+    try {
+      await Promise.all(fontLoadPromises);
+    } catch {
+      // 忽略单字体载入异常，继续 Canvas 绘制
+    }
+  }
 
   const theme = getReceiptTheme(state.themeId, state.customThemeColor);
   const baseWidth = 540;
@@ -247,13 +265,17 @@ export async function exportLibraryCardImage(
       ctx.fillText(record.date, 0, 0);
       ctx.restore();
 
-      // Borrower's Name（中英文区分手写字体：中文 Zhi Mang Xing，英文 Caveat）
+      // Borrower's Name（中英文区分手写字体：中文 8 种手写字体动态映射，英文 Caveat）
       ctx.save();
       ctx.fillStyle = theme.text;
       const isCn = isChineseName(record.name);
-      ctx.font = isCn
-        ? "26px 'Zhi Mang Xing', cursive, serif"
-        : "bold 26px 'Caveat', cursive, sans-serif";
+      if (isCn) {
+        const fontDef = CHINESE_BORROWER_FONTS.find((f) => f.id === record.fontClass);
+        const fontStack = fontDef ? fontDef.fontFamily : "'钟齐志莽行书', 'Zhi Mang Xing', cursive";
+        ctx.font = `26px ${fontStack}`;
+      } else {
+        ctx.font = "bold 26px 'Caveat', cursive, sans-serif";
+      }
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       ctx.fillText(record.name, splitX + 24, rowY + rowHeight / 2 + 2);

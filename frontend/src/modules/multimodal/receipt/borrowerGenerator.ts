@@ -103,6 +103,41 @@ function randomInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+export interface BorrowerFontOption {
+  id: string;
+  name: string;
+  fontFamily: string;
+}
+
+/** 8 款复古与手写借阅字体清单（互不重复轮换） */
+export const CHINESE_BORROWER_FONTS: readonly BorrowerFontOption[] = [
+  { id: 'font-handwriting-hetang', name: '荷塘月色手写体', fontFamily: "'荷塘月色手写体', 'Zhi Mang Xing', cursive" },
+  { id: 'font-handwriting-jinnian', name: '今年也要加油鸭', fontFamily: "'今年也要加油鸭', 'Zhi Mang Xing', cursive" },
+  { id: 'font-handwriting-feiyang', name: '平方赖江湖飞扬体', fontFamily: "'平方赖江湖飞扬体', 'Zhi Mang Xing', cursive" },
+  { id: 'font-handwriting-pingfang', name: '平方乔木体', fontFamily: "'平方乔木体', 'Zhi Mang Xing', cursive" },
+  { id: 'font-handwriting-yangrendong', name: '杨任东竹石体', fontFamily: "'杨任东竹石体', 'Zhi Mang Xing', cursive" },
+  { id: 'font-handwriting-yansiyuan', name: '余思源颜黄体', fontFamily: "'余思源颜黄体', 'Zhi Mang Xing', cursive" },
+  { id: 'font-handwriting-yunfeng', name: '云峰寒蝉体', fontFamily: "'云峰寒蝉体', 'Zhi Mang Xing', cursive" },
+  { id: 'font-handwriting-cn', name: '钟齐志莽行书', fontFamily: "'钟齐志莽行书', 'Zhi Mang Xing', cursive" },
+] as const;
+
+/**
+ * 随机生成一组互不重复的借阅人手写字体序列
+ */
+export function generateDistinctFontClasses(count: number): string[] {
+  let pool = [...CHINESE_BORROWER_FONTS].sort(() => 0.5 - Math.random());
+  const result: string[] = [];
+
+  for (let i = 0; i < count; i++) {
+    if (pool.length === 0) {
+      pool = [...CHINESE_BORROWER_FONTS].sort(() => 0.5 - Math.random());
+    }
+    result.push(pool.pop()!.id);
+  }
+
+  return result;
+}
+
 /**
  * 随机生成借书卡的借阅记录
  *
@@ -134,6 +169,9 @@ export function generateRandomBorrowerRecords(
   const pickedChinese = [...CHINESE_NAMES].sort(() => 0.5 - Math.random());
   const pickedEnglish = [...ENGLISH_NAMES].sort(() => 0.5 - Math.random());
 
+  // 提前生成各行互不重复的手写字体序列
+  const fontSequence = generateDistinctFontClasses(count);
+
   const records: BorrowerRecordItem[] = [];
 
   for (let i = 0; i < count; i++) {
@@ -144,7 +182,7 @@ export function generateRandomBorrowerRecords(
 
     const dateStr = formatDate(new Date(timestamps[i]));
     const rotation = ROTATION_CLASSES[randomInt(0, ROTATION_CLASSES.length - 1)];
-    const fontClass = isCn ? 'font-handwriting-cn' : 'font-handwriting-en';
+    const fontClass = isCn ? fontSequence[i] : 'font-handwriting-en';
 
     records.push({
       id: `record-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
@@ -157,3 +195,4 @@ export function generateRandomBorrowerRecords(
 
   return records;
 }
+

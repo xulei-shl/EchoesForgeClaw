@@ -586,13 +586,16 @@ body.is-connecting [data-node-id]:hover {
   font-family: '又又意宋', 'Noto Serif SC', serif;
 }
 .font-handwriting-cn {
-  font-family: 'Zhi Mang Xing', cursive;
+  font-family: '钟齐志莽行书', 'Zhi Mang Xing', cursive;
 }
 .font-handwriting-yunfeng {
   font-family: '云峰寒蝉体', 'Zhi Mang Xing', cursive;
 }
 .font-handwriting-pingfang {
   font-family: '平方乔木体', 'Zhi Mang Xing', cursive;
+}
+.font-handwriting-feiyang {
+  font-family: '平方赖江湖飞扬体', 'Zhi Mang Xing', cursive;
 }
 .font-handwriting-hetang {
   font-family: '荷塘月色手写体', 'Zhi Mang Xing', cursive;
@@ -601,7 +604,10 @@ body.is-connecting [data-node-id]:hover {
   font-family: '今年也要加油鸭', 'Zhi Mang Xing', cursive;
 }
 .font-handwriting-yangrendong {
-  font-family: '杨任东竹石体-Regular', 'Zhi Mang Xing', cursive;
+  font-family: '杨任东竹石体', 'Zhi Mang Xing', cursive;
+}
+.font-handwriting-yansiyuan {
+  font-family: '余思源颜黄体', 'Zhi Mang Xing', cursive;
 }
 .font-typewriter {
   font-family: 'Cutive Mono', 'Courier New', monospace;
