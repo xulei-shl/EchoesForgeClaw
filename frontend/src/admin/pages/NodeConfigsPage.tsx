@@ -440,7 +440,7 @@ export const NodeConfigsPage: React.FC = () => {
                 <Link2 size={13} strokeWidth={1.5} className="inline mr-1 -mt-0.5" />
                 提示词 + 大模型
               </p>
-              <p className="text-xs text-ink-faint font-sans mt-1">绑定提示词模板与 OpenAI 兼容模型</p>
+              <p className="text-xs text-ink-faint font-sans mt-1">绑定提示词与大模型</p>
             </button>
             <button
               type="button"
@@ -455,7 +455,7 @@ export const NodeConfigsPage: React.FC = () => {
                 <Bot size={13} strokeWidth={1.5} className="inline mr-1 -mt-0.5" />
                 Agent 模式
               </p>
-              <p className="text-xs text-ink-faint font-sans mt-1">调用 FastClaw Agent（工具/思考）</p>
+              <p className="text-xs text-ink-faint font-sans mt-1">调用 FastClaw Agent</p>
             </button>
             <button
               type="button"
@@ -472,7 +472,7 @@ export const NodeConfigsPage: React.FC = () => {
                 <Sparkles size={13} strokeWidth={1.5} className="inline mr-1 -mt-0.5" />
                 Skill Agent
               </p>
-              <p className="text-xs text-ink-faint font-sans mt-1">openai-agents 多步执行（skill 工具）</p>
+              <p className="text-xs text-ink-faint font-sans mt-1">绑定 Pi Agent</p>
             </button>
           </div>
 
@@ -667,7 +667,7 @@ export const NodeConfigsPage: React.FC = () => {
                         className="overflow-hidden"
                       >
                         <p className="text-xs text-ink-faint font-sans pt-1.5">
-                          暂无可用提示词模板，将使用内置默认提示词；可先在「提示词管理」中创建
+                          暂无可用提示词，可先在「提示词管理」中创建
                         </p>
                       </motion.div>
                     )}
