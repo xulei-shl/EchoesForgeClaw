@@ -114,8 +114,14 @@ const SkillFileCard: React.FC<{ file: AgentFile }> = memo(({ file }) => {
         </button>
       </div>
     );
-    // 图片加载完成（objectURL 可用）后才挂 PhotoView，避免 src 为空时点击出错
-    return objectUrl ? <PhotoView src={objectUrl}>{thumb}</PhotoView> : thumb;
+    // 图片加载完成（objectURL 可用）后才挂 PhotoView，避免 src 为空时点击出错。
+    // 自带 PhotoProvider：SkillFileCard 也会渲染在工作区产物面板（消息列表 Provider 之外），
+    // 不自带的话 PhotoView 在 Provider 外取不到 context，会抛 nextId undefined 崩溃。
+    return objectUrl ? (
+      <PhotoProvider maskOpacity={0.8} bannerVisible={false}>
+        <PhotoView src={objectUrl}>{thumb}</PhotoView>
+      </PhotoProvider>
+    ) : thumb;
   }
 
   return (
