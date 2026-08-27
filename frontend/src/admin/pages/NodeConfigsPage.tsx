@@ -30,7 +30,7 @@ import { Toggle } from '../../platform/components/ui/Toggle';
 import { Badge } from '../../platform/components/ui/Badge';
 import { FieldLabel, PageHeader } from '../components/AdminBits';
 import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
-import { NODE_TEMPLATES, NODE_PORT_TYPES, PORT_TYPE_LABELS, CATEGORY_LABELS } from '../../modules/bookplate/nodeTypes';
+import { NODE_TEMPLATES, NODE_TEMPLATE_MAP, NODE_PORT_TYPES, PORT_TYPE_LABELS, CATEGORY_LABELS } from '../../modules/bookplate/nodeTypes';
 import { Sparkles } from 'lucide-react';
 
 /** 模型类型短标签（下拉选项展示） */
@@ -69,6 +69,7 @@ const NODE_TYPE_LABEL: Record<string, string> = {
   image_analysis: '图片分析',
   text_generation: 'AI 文本生成',
   image_generation: '图像生成',
+  chat: 'AI 对话',
   book_info: '图书元数据',
 };
 
@@ -133,9 +134,15 @@ export const NodeConfigsPage: React.FC = () => {
     []
   );
 
-  /** 提示词模板候选：按所选节点模板过滤；已绑定提示词兜底显示，避免 select 为空 */
+  /**
+   * 提示词模板候选：非 AI 对话节点按所选节点模板类型过滤；
+   * AI 对话为通用多模态对话节点（文本/图片输入，system prompt 与具体模板类型无关），
+   * 展示全部类型提示词（与 Skill Agent 提示词可选口径一致）。
+   * 已绑定提示词始终兜底显示，避免 select 为空。
+   */
   const availablePrompts = useMemo(() => {
-    const filtered = prompts.filter((p) => p.node_type === form.node_type);
+    const filtered =
+      form.node_type === 'chat' ? prompts : prompts.filter((p) => p.node_type === form.node_type);
     if (editing && form.prompt_id !== '') {
       const bound = prompts.find((p) => p.id === form.prompt_id);
       if (bound && !filtered.some((p) => p.id === bound.id)) {
@@ -642,7 +649,10 @@ export const NodeConfigsPage: React.FC = () => {
                     options={[
                       { label: '请选择提示词模板', value: '' },
                       ...availablePrompts.map((p) => ({
-                        label: p.name,
+                        label:
+                          form.node_type === 'chat'
+                            ? `${p.name}（${NODE_TEMPLATE_MAP[p.node_type as CanvasNodeType]?.name ?? p.node_type}）`
+                            : p.name,
                         value: String(p.id),
                       })),
                     ]}
@@ -657,7 +667,7 @@ export const NodeConfigsPage: React.FC = () => {
                         className="overflow-hidden"
                       >
                         <p className="text-xs text-ink-faint font-sans pt-1.5">
-                          当前模板类型暂无提示词模板，将使用内置默认提示词；可先在「提示词管理」中创建
+                          暂无可用提示词模板，将使用内置默认提示词；可先在「提示词管理」中创建
                         </p>
                       </motion.div>
                     )}

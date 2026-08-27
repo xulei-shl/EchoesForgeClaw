@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { adminService } from '../../platform/services/admin';
 import type { PromptTemplate } from '../../platform/types';
+import { NODE_TEMPLATES } from '../../modules/bookplate/nodeTypes';
 import { Select } from '../../platform/components/ui/Select';
 import { Button } from '../../platform/components/ui/Button';
 import { Dialog } from '../../platform/components/ui/Dialog';
@@ -20,11 +21,14 @@ import { Textarea } from '../../platform/components/ui/Textarea';
 import { FieldLabel, PageHeader } from '../components/AdminBits';
 import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
 
-const NODE_TYPE_OPTIONS: { label: string; value: string }[] = [
-  { label: 'AI 文本生成', value: 'text_generation' },
-  { label: '图片分析', value: 'image_analysis' },
-  { label: '图像生成', value: 'image_generation' },
-];
+/**
+ * 可绑定提示词的节点模板类型：LLM 驱动的可配置模板
+ * （AI 文本生成 / 图片分析 / 图像生成 / AI 对话），
+ * 由 NODE_TEMPLATES.configurable 推导，随模板声明自动增减，避免硬编码漏类型。
+ */
+const NODE_TYPE_OPTIONS: { label: string; value: string }[] = NODE_TEMPLATES.filter(
+  (t) => t.configurable
+).map((t) => ({ label: t.name, value: t.type }));
 
 const NODE_TYPE_LABEL: Record<string, string> = Object.fromEntries(
   NODE_TYPE_OPTIONS.map((o) => [o.value, o.label])
