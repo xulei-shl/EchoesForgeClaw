@@ -314,8 +314,8 @@ export interface ChatNodeSettings {
    */
   includeUpstreamImages?: boolean;
   /**
-   * 随图书元数据注入封面图作为视觉上下文（镜像图片分析节点的封面传递）；
-   * 仅当 includeBook 开启且封面可用时生效。默认开启：undefined 视为开启。
+   * 注入图书封面图作为视觉上下文（镜像图片分析节点的封面传递）；
+   * 独立于「继承图书元数据」，开启时解析图书并取封面。默认开启：undefined 视为开启。
    */
   includeBookCover?: boolean;
   /**
@@ -337,10 +337,11 @@ export interface ChatNodeSettings {
 
 /** 可执行节点（图片分析 / 提示词生成 / 图像生成）的运行设置（节点内可开关） */
 export interface NodeRunSettings {
-  /** 包含图书元数据：关闭时不注入图书元数据（直接连线同样受控）；开启时直接连线优先，未连线时注入连线上游图书元数据，无连通时注入画布根节点 */
+  /** 包含图书元数据（元数据文本）：关闭时不注入元数据文本；开启时直接连线优先，未连线时注入连线上游图书元数据，无连通时注入画布根节点 */
   includeBook: boolean;
   /**
-   * 随图书元数据注入封面图作为图生图参考（与 AI 对话节点同口径，仅当 includeBook 开启且封面可用时生效）。
+   * 注入图书封面图作为图生图参考（独立于「包含图书元数据」，与 AI 对话节点同口径；
+   * 开启时解析图书并取封面，直连/兜底解析与元数据一致）。
    * 默认开启：旧节点持久化的设置未含该字段，undefined 视为开启。
    */
   includeBookCover?: boolean;

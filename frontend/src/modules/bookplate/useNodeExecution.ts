@@ -6,11 +6,13 @@ import {
   IMAGE_GENERATION_TIMEOUT_MS,
 } from '../../platform/utils/timeouts';
 import {
+  DEFAULT_RUN_SETTINGS,
   collectMismatchParents,
   resolveNodeRunInputs,
   withMismatchHint,
   type PortTypesLookup,
 } from './execution';
+import type { NodeRunSettings } from '../../platform/types';
 import type { EdgeData, NodeData } from './graphTypes';
 import { handleAgentSseMessage } from './agentSteps';
 import { makeIdleTimeout } from './idleTimeout';
@@ -418,14 +420,18 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
           ctx.edgesRef.current,
           ctx.portTypesRef.current
         );
-        if (!inputs.book?.data?.isbn && !inputs.analysis && !inputs.text) {
+        // 元数据文本仅受「包含图书元数据」控制：封面开关开启时 book 可能已被解析，
+        // 但文本生成不使用封面，仍按 includeBook 决定是否注入元数据。
+        const settings: NodeRunSettings = node.data?.settings ?? DEFAULT_RUN_SETTINGS;
+        const hasBookMeta = settings.includeBook && !!inputs.book?.data?.isbn;
+        if (!hasBookMeta && !inputs.analysis && !inputs.text) {
           return pendingReason(
             node,
             '缺少上游输入（连线 文本输出节点 / 图片分析，或开启「包含图书元数据」）'
           );
         }
         runPromptGeneration(node, {
-          metadata: inputs.book?.data ?? {},
+          metadata: settings.includeBook ? inputs.book?.data ?? {} : {},
           analysis: inputs.analysis,
           text: inputs.text,
         });
@@ -448,7 +454,8 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
         if (inputs.imageNodes.length && !inputs.refImage) {
           return '图片类上级暂无可用图片（等待上传或生成完成）';
         }
-        // 图书封面图：与 AI 对话节点同口径（穿透 + 兜底均由 includeBook 解析的 book 承载），
+        // 图书封面图：与 AI 对话节点同口径（封面独立于「包含图书元数据」开关，由 includeBookCover
+        // 控制；book 由 includeBook / includeBookCover 任一开启解析，直连优先、无则连线上游/根节点兜底），
         // includeBookCover 默认开启（旧节点 undefined 视为开启）
         const includeCover = node.data?.settings?.includeBookCover !== false;
         const coverUrl =

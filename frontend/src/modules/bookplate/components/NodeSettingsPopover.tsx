@@ -146,16 +146,14 @@ const NodeSettingsPopoverInner: React.FC<NodeSettingsPopoverProps> = ({
                     <div className="min-w-0">
                       <p className="text-xs font-sans text-ink">加载图书封面图片</p>
                       <p className="text-[10px] text-ink-faint font-sans mt-0.5 leading-snug">
-                        {settings.includeBook
-                          ? '随图书元数据注入封面图作为图生图参考（穿透/兜底与图书元数据一致）'
-                          : '需先开启「包含图书元数据」'}
+                        独立于「包含图书元数据」，开启时注入封面图（直连优先，无则连线上游/画布根节点兜底）
                       </p>
                     </div>
                     <Toggle
                       checked={settings.includeBookCover !== false}
                       onChange={(v) => onChange({ ...settings, includeBookCover: v })}
                       label="加载图书封面图片"
-                      disabled={disabled || !settings.includeBook}
+                      disabled={disabled}
                     />
                   </div>
                 )}

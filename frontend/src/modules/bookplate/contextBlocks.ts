@@ -45,16 +45,18 @@ export function buildInjectedContextBlocks(
 ): InjectedContextBlock[] {
   const blocks: InjectedContextBlock[] = [];
 
-  // 1. 图书元数据与图书封面（拆分为独立条目注入）
+  // 1. 图书元数据与图书封面（拆分为独立条目注入；两个开关独立——「包含图书元数据」控文本、
+  //    「加载图书封面图片」控封面，任一开启即解析图书：直接连线的 book_info 优先，
+  //    无则连线上游，再兜底画布根节点）
   let injectedBookId: string | null = null;
-  if (opts.includeBook) {
+  if (opts.includeBook || opts.includeBookCover) {
     const book = resolveNodeRunInputs(node, nodes, edges, portTypesOf).book;
     if (book) {
       injectedBookId = book.id;
       const rawTitle = getNodeTitle(book);
       const titleSuffix = rawTitle && rawTitle !== '图书元数据' ? ` · ${rawTitle}` : '';
 
-      // (1) 图书封面图条目：开启「加载图书封面图片」且封面可用时注入
+      // (1) 图书封面图条目：仅受「加载图书封面图片」控制（独立于文本元数据开关）
       const cover = opts.includeBookCover ? bookCoverImage(book.data) : '';
       if (cover) {
         blocks.push({
@@ -65,14 +67,16 @@ export function buildInjectedContextBlocks(
         });
       }
 
-      // (2) 图书元数据条目：结构化文本内容
-      const metaText = bookMetadataText(book.data).trim();
-      blocks.push({
-        id: `book_meta_${book.id}`,
-        title: `图书元数据${titleSuffix}`,
-        nodeType: 'book_info',
-        text: metaText || undefined,
-      });
+      // (2) 图书元数据条目：仅受「包含图书元数据」控制（结构化文本内容）
+      if (opts.includeBook) {
+        const metaText = bookMetadataText(book.data).trim();
+        blocks.push({
+          id: `book_meta_${book.id}`,
+          title: `图书元数据${titleSuffix}`,
+          nodeType: 'book_info',
+          text: metaText || undefined,
+        });
+      }
     }
   }
 
@@ -109,9 +113,9 @@ export function buildInjectedContextBlocks(
     for (const p of parents) {
       if (opts.parentFilter && !opts.parentFilter(p.type)) continue;
       // 图书元数据节点只经图书通道注入（includeBook / includeBookCover 开关注入）：
-      // includeBook 关闭时不允许其文本/封面经父节点通道绕过开关再次注入，
+      // 两个开关都关闭时不允许其文本/封面经父节点通道绕过开关再次注入，
       // 避免出现「关闭包含图书元数据后上下文仍显示图书元数据」的假象。
-      if (p.type === 'book_info' && !opts.includeBook) continue;
+      if (p.type === 'book_info' && !opts.includeBook && !opts.includeBookCover) continue;
       // 若该直连父节点已作为图书元数据/封面注入，跳过以避免重复注入
       if (injectedBookId && p.id === injectedBookId) continue;
       const isText = textOutputs.includes(p);

@@ -1099,10 +1099,10 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                 />
                 <SettingsToggleRow
                   label="加载图书封面图片"
-                  description={settings.includeBook ? '随图书元数据注入封面图作为视觉上下文' : '需先开启「继承图书元数据」'}
+                  description="独立于「继承图书元数据」，开启时注入封面图作为视觉上下文"
                   checked={settings.includeBookCover !== false}
                   onChange={(v) => onUpdateSettings?.(id, { ...settings, includeBookCover: v })}
-                  disabled={messages.length > 0 || !settings.includeBook}
+                  disabled={messages.length > 0}
                 />
                 <SettingsToggleRow
                   label="加载直接上级文本"
