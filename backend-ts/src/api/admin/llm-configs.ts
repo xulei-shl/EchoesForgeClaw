@@ -212,23 +212,55 @@ export async function registerLLMConfigsAdminRouter(app: FastifyInstance): Promi
     async (request, reply) => {
       const { model_name } = (request.body ?? {}) as { model_name?: string };
       if (!model_name?.trim()) return reply.code(400).send({ detail: '模型名称不能为空' });
-      const name = model_name.trim();
+      const rawName = model_name.trim();
+
+      // 第一层：本地离线预设字典秒级匹配（0 延迟、抗断网）
+      const localMatch = matchLocalPreset(rawName);
+      if (localMatch) {
+        return {
+          found: true,
+          source: 'local' as const,
+          ...localMatch,
+        };
+      }
+
+      // 第二层：Models.dev 全量线上查询（3 秒短超时 + 名称归一化匹配）
       try {
         const catalog = await getModelsDevCatalog();
+        const normalized = normalizeModelName(rawName);
         const entries = Object.entries(catalog);
-        // 优先：key 末段精确匹配（如 deepseek/deepseek-v4-pro → deepseek-v4-pro）
-        let match = entries.find(([k]) => k.endsWith('/' + name));
-        // 回退：key 全文匹配
-        if (!match) match = entries.find(([k]) => k === name);
+
+        // 匹配策略：
+        // 1. key 末段精确匹配（如 deepseek/deepseek-v4-pro 对比 deepseek-v4-pro）
+        // 2. 归一化后的末段匹配（如 claude-3-5-sonnet-20241022 归一化后匹配 claude-3-5-sonnet）
+        // 3. 全文包含匹配
+        let match = entries.find(([k]) => {
+          const keyTail = k.includes('/') ? k.split('/').pop()! : k;
+          return keyTail.toLowerCase() === rawName.toLowerCase();
+        });
+        if (!match) {
+          match = entries.find(([k]) => {
+            const keyTail = k.includes('/') ? k.split('/').pop()! : k;
+            return normalizeModelName(keyTail) === normalized;
+          });
+        }
+        if (!match) {
+          match = entries.find(([k]) => k.toLowerCase().includes(normalized));
+        }
+
         if (!match) return { found: false };
         const m = match[1] as Record<string, unknown>;
         const limit = m.limit as Record<string, number> | undefined;
+        const modalities = m.modalities as { input?: string[]; output?: string[] } | undefined;
+        const isMultimodal = Array.isArray(modalities?.input) && modalities.input.includes('image');
+
         return {
           found: true,
+          source: 'remote' as const,
           context_window: limit?.context ?? null,
           max_tokens: limit?.output ?? null,
-          reasoning: m.reasoning ?? null,
-          modalities: m.modalities ?? null,
+          reasoning: m.reasoning === true,
+          is_multimodal: isMultimodal,
         };
       } catch (err) {
         request.log.warn('Models.dev 查询失败: %s', err instanceof Error ? err.message : String(err));
@@ -327,8 +359,83 @@ async function runConnectivityTest(apiKey: string, baseUrl: string, modelName: s
 }
 
 // ---------------------------------------------------------------------------
-// Models.dev 缓存（30 分钟 TTL，避免重复请求）
+// 本地离线预设字典 + Models.dev 缓存（双层查询容灾）
 // ---------------------------------------------------------------------------
+
+interface PresetModelSpec {
+  context_window: number;
+  max_tokens: number;
+  reasoning: boolean;
+  is_multimodal: boolean;
+}
+
+/** 常见主流大模型离线预设（抗断网、0 延迟、免海外请求） */
+const LOCAL_PRESETS: Record<string, PresetModelSpec> = {
+  // DeepSeek
+  'deepseek-chat': { context_window: 1_000_000, max_tokens: 384_000, reasoning: false, is_multimodal: false },
+  'deepseek-reasoner': { context_window: 1_000_000, max_tokens: 384_000, reasoning: true, is_multimodal: false },
+  'deepseek-v3': { context_window: 1_000_000, max_tokens: 384_000, reasoning: false, is_multimodal: false },
+  'deepseek-r1': { context_window: 1_000_000, max_tokens: 384_000, reasoning: true, is_multimodal: false },
+  'deepseek-v4-pro': { context_window: 1_000_000, max_tokens: 384_000, reasoning: true, is_multimodal: false },
+  'deepseek-v4-flash': { context_window: 1_000_000, max_tokens: 384_000, reasoning: true, is_multimodal: false },
+
+  // OpenAI
+  'gpt-4o': { context_window: 128_000, max_tokens: 16_384, reasoning: false, is_multimodal: true },
+  'gpt-4o-mini': { context_window: 128_000, max_tokens: 16_384, reasoning: false, is_multimodal: true },
+  'gpt-4-turbo': { context_window: 128_000, max_tokens: 4_096, reasoning: false, is_multimodal: true },
+  'o1': { context_window: 200_000, max_tokens: 100_000, reasoning: true, is_multimodal: true },
+  'o3-mini': { context_window: 200_000, max_tokens: 100_000, reasoning: true, is_multimodal: false },
+
+  // Anthropic
+  'claude-3-5-sonnet': { context_window: 200_000, max_tokens: 8_192, reasoning: false, is_multimodal: true },
+  'claude-3-7-sonnet': { context_window: 200_000, max_tokens: 64_000, reasoning: true, is_multimodal: true },
+  'claude-3-opus': { context_window: 200_000, max_tokens: 4_096, reasoning: false, is_multimodal: true },
+  'claude-opus-4-6': { context_window: 200_000, max_tokens: 32_000, reasoning: true, is_multimodal: true },
+  'claude-3-5-haiku': { context_window: 200_000, max_tokens: 8_192, reasoning: false, is_multimodal: true },
+
+  // Google
+  'gemini-2.0-flash': { context_window: 1_048_576, max_tokens: 8_192, reasoning: false, is_multimodal: true },
+  'gemini-2.5-flash': { context_window: 1_048_576, max_tokens: 65_536, reasoning: true, is_multimodal: true },
+  'gemini-1.5-pro': { context_window: 2_097_152, max_tokens: 8_192, reasoning: false, is_multimodal: true },
+  'gemini-2.5-pro': { context_window: 1_048_576, max_tokens: 65_536, reasoning: true, is_multimodal: true },
+
+  // 通义千问 / Qwen
+  'qwen-2.5-72b-instruct': { context_window: 131_072, max_tokens: 8_192, reasoning: false, is_multimodal: false },
+  'qwen-plus': { context_window: 131_072, max_tokens: 8_192, reasoning: false, is_multimodal: false },
+  'qwen-max': { context_window: 32_768, max_tokens: 8_192, reasoning: false, is_multimodal: false },
+  'qwen-turbo': { context_window: 131_072, max_tokens: 8_192, reasoning: false, is_multimodal: false },
+
+  // 智谱 / GLM
+  'glm-4-plus': { context_window: 128_000, max_tokens: 4_096, reasoning: false, is_multimodal: false },
+  'glm-4-flash': { context_window: 128_000, max_tokens: 4_096, reasoning: false, is_multimodal: false },
+};
+
+/** 名称归一化：小写、去除厂商前缀、去除日期快照后缀（如 -20241022、-0125 等） */
+function normalizeModelName(raw: string): string {
+  let name = raw.trim().toLowerCase();
+  // 去除组织/路径前缀（如 openai/gpt-4o → gpt-4o, deepseek-ai/deepseek-v3 → deepseek-v3）
+  if (name.includes('/')) {
+    name = name.split('/').pop()!;
+  }
+  // 去除常见日期/版本后缀（如 -20241022, -20250514, -0125, -0806 等 4-8 位纯数字结尾）
+  name = name.replace(/-\d{4,8}$/, '');
+  // 去除常见 preview/latest 冗余修饰以提高命中率
+  name = name.replace(/-(preview|latest)$/, '');
+  return name;
+}
+
+/** 本地预设匹配 */
+function matchLocalPreset(rawName: string): PresetModelSpec | null {
+  const norm = normalizeModelName(rawName);
+  if (LOCAL_PRESETS[norm]) return LOCAL_PRESETS[norm];
+  // 遍历别名模糊匹配
+  for (const [key, spec] of Object.entries(LOCAL_PRESETS)) {
+    if (norm === key || norm.includes(key) || key.includes(norm)) {
+      return spec;
+    }
+  }
+  return null;
+}
 
 let _modelsDevCache: Record<string, unknown> | null = null;
 let _modelsDevCacheTs = 0;
@@ -338,8 +445,9 @@ async function getModelsDevCatalog(): Promise<Record<string, unknown>> {
   if (_modelsDevCache && Date.now() - _modelsDevCacheTs < MODELS_DEV_TTL_MS) {
     return _modelsDevCache;
   }
+  // 3 秒严格超时：海外 API 无法访问时快速失败走兜底，绝不挂起界面
   const resp = await fetch('https://models.dev/models.json', {
-    signal: AbortSignal.timeout(15_000),
+    signal: AbortSignal.timeout(3_000),
   });
   if (!resp.ok) throw new Error(`Models.dev HTTP ${resp.status}`);
   _modelsDevCache = (await resp.json()) as Record<string, unknown>;

@@ -149,6 +149,8 @@ function skillAgentChatModel(db: ReturnType<typeof getDb>, cfg: typeof skillAgen
         kind: llm.kind ?? 'text',
         apiFormat: llm.apiFormat ?? null,
         thinkingFormat: llm.thinkingFormat ?? null,
+        contextWindow: llm.contextWindow ?? null,
+        maxTokens: llm.maxTokens ?? null,
       };
     }
     return null;
@@ -162,6 +164,8 @@ function skillAgentChatModel(db: ReturnType<typeof getDb>, cfg: typeof skillAgen
       kind: 'text',
       apiFormat: null,
       thinkingFormat: null,
+      contextWindow: null,
+      maxTokens: null,
     };
   }
   return null;

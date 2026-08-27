@@ -61,13 +61,14 @@ export const adminService = {
       { timeout: 60000 }
     ),
 
-  /** Models.dev 模型参数查询（辅助自动填充 context_window / max_tokens，查不到不阻塞） */
+  /** Models.dev / 离线预设模型参数查询（辅助自动填充 context_window / max_tokens，查不到不阻塞） */
   lookupModel: (modelName: string): Promise<{
     found: boolean;
+    source?: 'local' | 'remote';
     context_window?: number;
     max_tokens?: number;
     reasoning?: boolean;
-    modalities?: { input: string[]; output: string[] };
+    is_multimodal?: boolean;
   }> =>
     api.post('/admin/llm-configs/lookup-model', { model_name: modelName }),
 

@@ -212,7 +212,7 @@ describe('收藏 / 公开画廊', () => {
 });
 
 describe('管理端：模型配置', () => {
-  it('CRUD：api_key 永不回传，留空保存不修改', async () => {
+  it('CRUD：api_key 永不回传，留空保存不修改，支持 context_window 与 max_tokens', async () => {
     const create = await app.inject({
       method: 'POST',
       url: '/api/admin/llm-configs',
@@ -225,6 +225,8 @@ describe('管理端：模型配置', () => {
         model_name: 'deepseek-chat',
         api_format: 'openai',
         thinking_format: 'deepseek',
+        context_window: 1000000,
+        max_tokens: 384000,
       },
     });
     expect(create.statusCode).toBe(200);
@@ -233,28 +235,46 @@ describe('管理端：模型配置', () => {
     expect(cfg.api_key).toBeUndefined();
     expect(cfg.api_format).toBe('openai');
     expect(cfg.thinking_format).toBe('deepseek');
+    expect(cfg.context_window).toBe(1000000);
+    expect(cfg.max_tokens).toBe(384000);
     const id = cfg.id as number;
 
-    // 修改不传 api_key → 保留；api_format/thinking_format 可清空（传空串 → null）
+    // 修改不传 api_key → 保留；修改 context_window
     const patch = await app.inject({
       method: 'PATCH',
       url: `/api/admin/llm-configs/${id}`,
       headers: { authorization: `Bearer ${adminToken}` },
-      payload: { name: 'DeepSeek 改', api_key: '', api_format: 'anthropic', thinking_format: '' },
+      payload: {
+        name: 'DeepSeek 改',
+        api_key: '',
+        api_format: 'anthropic',
+        thinking_format: '',
+        context_window: 128000,
+      },
     });
     expect(patch.statusCode).toBe(200);
     expect(patch.json().name).toBe('DeepSeek 改');
     expect(patch.json().has_api_key).toBe(true);
     expect(patch.json().api_format).toBe('anthropic');
     expect(patch.json().thinking_format).toBeNull();
+    expect(patch.json().context_window).toBe(128000);
+    expect(patch.json().max_tokens).toBe(384000); // 未修改时保留原值
   });
 
-  it('复制：带 (副本) 后缀，沿用 Base URL / API Key / 模型名称', async () => {
+  it('复制：带 (副本) 后缀，沿用 Base URL / API Key / 模型名称 / context_window', async () => {
     const create = await app.inject({
       method: 'POST',
       url: '/api/admin/llm-configs',
       headers: { authorization: `Bearer ${adminToken}` },
-      payload: { name: '复制源', kind: 'image', api_key: 'sk-copy', base_url: 'https://x/v1', model_name: 'img-1' },
+      payload: {
+        name: '复制源',
+        kind: 'image',
+        api_key: 'sk-copy',
+        base_url: 'https://x/v1',
+        model_name: 'img-1',
+        context_window: 65536,
+        max_tokens: 4096,
+      },
     });
     const id = (create.json() as { id: number }).id;
 
@@ -271,6 +291,8 @@ describe('管理端：模型配置', () => {
     expect(dupBody.model_name).toBe('img-1');
     expect(dupBody.has_api_key).toBe(true);
     expect(dupBody.api_key).toBeUndefined();
+    expect(dupBody.context_window).toBe(65536);
+    expect(dupBody.max_tokens).toBe(4096);
 
     // 不存在的 id → 404
     const missing = await app.inject({
@@ -279,6 +301,53 @@ describe('管理端：模型配置', () => {
       headers: { authorization: `Bearer ${adminToken}` },
     });
     expect(missing.statusCode).toBe(404);
+  });
+
+  it('lookup-model：本地预设与归一化匹配', async () => {
+    // 1. 本地标准名匹配
+    const res1 = await app.inject({
+      method: 'POST',
+      url: '/api/admin/llm-configs/lookup-model',
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: { model_name: 'deepseek-chat' },
+    });
+    expect(res1.statusCode).toBe(200);
+    const data1 = res1.json();
+    expect(data1.found).toBe(true);
+    expect(data1.source).toBe('local');
+    expect(data1.context_window).toBe(1000000);
+    expect(data1.max_tokens).toBe(384000);
+
+    // 2. 带日期快照后缀与厂商前缀归一化匹配（如 anthropic/claude-3-5-sonnet-20241022）
+    const res2 = await app.inject({
+      method: 'POST',
+      url: '/api/admin/llm-configs/lookup-model',
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: { model_name: 'anthropic/claude-3-5-sonnet-20241022' },
+    });
+    expect(res2.statusCode).toBe(200);
+    const data2 = res2.json();
+    expect(data2.found).toBe(true);
+    expect(data2.context_window).toBe(200000);
+    expect(data2.is_multimodal).toBe(true);
+
+    // 3. 空参数或不存在的模型
+    const resEmpty = await app.inject({
+      method: 'POST',
+      url: '/api/admin/llm-configs/lookup-model',
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: { model_name: '' },
+    });
+    expect(resEmpty.statusCode).toBe(400);
+
+    const resNotFound = await app.inject({
+      method: 'POST',
+      url: '/api/admin/llm-configs/lookup-model',
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: { model_name: 'non-existent-model-xyz' },
+    });
+    expect(resNotFound.statusCode).toBe(200);
+    expect(resNotFound.json().found).toBe(false);
   });
 
   it('连通性测试：image 走 /models 探测', async () => {

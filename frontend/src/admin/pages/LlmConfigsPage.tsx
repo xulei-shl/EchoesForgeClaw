@@ -11,6 +11,7 @@ import {
   RefreshCw,
   Trash2,
   Zap,
+  Search,
 } from 'lucide-react';
 import { adminService } from '../../platform/services/admin';
 import type { LLMConfig, LLMKind } from '../../platform/types';
@@ -98,7 +99,7 @@ export const LlmConfigsPage: React.FC = () => {
     }
   }, []);
 
-  /** Models.dev 模型参数查询：自动填充 context_window / max_tokens */
+  /** Models.dev / 本地预设模型参数查询：自动填充 context_window / max_tokens */
   const handleLookupModel = useCallback(async (silent = false) => {
     const name = form.model_name.trim();
     if (!name) return;
@@ -110,17 +111,23 @@ export const LlmConfigsPage: React.FC = () => {
           ...prev,
           context_window: res.context_window != null ? String(res.context_window) : prev.context_window,
           max_tokens: res.max_tokens != null ? String(res.max_tokens) : prev.max_tokens,
+          // 若识别为支持视觉且当前为纯文本，自动建议升级为多模态
+          kind: res.is_multimodal && prev.kind === 'text' ? 'multimodal' : prev.kind,
         }));
-        if (!silent) showToast('已从 Models.dev 获取模型参数', 'success');
+        if (!silent) {
+          const src = res.source === 'local' ? '离线预设' : 'Models.dev';
+          const extra = res.is_multimodal && form.kind === 'text' ? '（已自动切换为多模态）' : '';
+          showToast(`已从 ${src} 获取参数${extra}`, { type: 'success' });
+        }
       } else if (!silent) {
-        showToast('Models.dev 中未找到该模型，请手动填写', 'warning');
+        showToast('未匹配到该模型参数，请手动填写', { type: 'warning' });
       }
     } catch {
-      if (!silent) showToast('Models.dev 查询失败', 'error');
+      if (!silent) showToast('模型参数查询失败', { type: 'error' });
     } finally {
       setLookingUp(false);
     }
-  }, [form.model_name, showToast]);
+  }, [form.model_name, form.kind, showToast]);
 
   useEffect(() => {
     load();
@@ -406,13 +413,15 @@ export const LlmConfigsPage: React.FC = () => {
                     className="flex-1"
                   />
                   <Button
+                    type="button"
                     size="sm"
-                    variant="outline"
+                    variant="secondary"
                     onClick={() => handleLookupModel()}
                     disabled={lookingUp || !form.model_name.trim()}
-                    title="从 Models.dev 自动获取"
+                    title="从 Models.dev / 离线预设自动获取参数"
+                    className="px-2.5 shrink-0"
                   >
-                    {lookingUp ? '…' : '🔍'}
+                    {lookingUp ? <Loader2 size={14} className="animate-spin text-accent" /> : <Search size={14} />}
                   </Button>
                 </div>
               </div>
@@ -532,6 +541,7 @@ export const LlmConfigsPage: React.FC = () => {
                       </span>
                       <span>api: {c.api_format === 'anthropic' ? 'anthropic' : 'openai'}</span>
                       {c.thinking_format && <span>thinking: {c.thinking_format}</span>}
+                      {c.context_window && <span>ctx: {c.context_window.toLocaleString()}</span>}
                       <span className="flex items-center gap-1">
                         <KeyRound size={11} strokeWidth={1.5} />
                         {c.has_api_key ? '已配置 Key' : '未配置 Key'}

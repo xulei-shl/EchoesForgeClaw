@@ -332,13 +332,24 @@ export function preparePiWorkspace(
   }
 
   // 运行时调优段：自动压缩 + 自动重试（显式固化，json 子进程模式同样生效）
+  const modelContext = opts.chatModel.contextWindow || 128000;
+  // 动态安全保护：预留 token 不能超过总窗口的 20%，且不小于 512（防小模型如 8k/16k 首轮陷入压缩死循环）
+  const safeReserveTokens = Math.min(
+    COMPACTION_RESERVE_TOKENS,
+    Math.max(512, Math.floor(modelContext * 0.2))
+  );
+  const safeKeepTokens = Math.min(
+    COMPACTION_KEEP_RECENT_TOKENS,
+    Math.max(1024, Math.floor((modelContext - safeReserveTokens) * 0.5))
+  );
+
   settings['compaction'] = {
     ...(typeof settings['compaction'] === 'object' && settings['compaction'] !== null
       ? (settings['compaction'] as Record<string, unknown>)
       : {}),
     enabled: true,
-    reserveTokens: COMPACTION_RESERVE_TOKENS,
-    keepRecentTokens: COMPACTION_KEEP_RECENT_TOKENS,
+    reserveTokens: safeReserveTokens,
+    keepRecentTokens: safeKeepTokens,
   };
   settings['retry'] = {
     ...(typeof settings['retry'] === 'object' && settings['retry'] !== null
