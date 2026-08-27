@@ -132,7 +132,7 @@ const NodeSettingsPopoverInner: React.FC<NodeSettingsPopoverProps> = ({
                     <p className="text-xs font-sans text-ink">包含图书元数据</p>
                     <p className="text-[10px] text-ink-faint font-sans mt-0.5 leading-snug">
                       {hasBookInfo
-                        ? '开启时注入图书元数据（直接连线优先，未连线取连线上游，无连通取画布根节点）'
+                        ? '上游穿透的图书节点或兜底的图书节点的元数据'
                         : '画布中还没有图书元数据节点'}
                     </p>
                   </div>
@@ -149,7 +149,7 @@ const NodeSettingsPopoverInner: React.FC<NodeSettingsPopoverProps> = ({
                     <div className="min-w-0">
                       <p className="text-xs font-sans text-ink">加载图书封面图片</p>
                       <p className="text-[10px] text-ink-faint font-sans mt-0.5 leading-snug">
-                        独立于「包含图书元数据」，开启时注入封面图（直连优先，无则连线上游/画布根节点兜底）
+                        上游穿透的图书节点或兜底的图书节点的封面图
                       </p>
                     </div>
                     <Toggle
@@ -194,7 +194,7 @@ const NodeSettingsPopoverInner: React.FC<NodeSettingsPopoverProps> = ({
                     <div>
                       <p className="text-xs font-sans text-ink">模型</p>
                       <p className="text-[10px] text-ink-faint font-sans mt-0.5 leading-snug">
-                        切换为后台已配置的其他模型；留空 = 节点配置的默认模型
+                        切换为后台已配置的其他模型
                       </p>
                     </div>
                     <ModelOverrideField

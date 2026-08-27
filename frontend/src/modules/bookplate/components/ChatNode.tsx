@@ -1127,7 +1127,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                     <div>
                       <p className="text-xs font-sans text-ink">模型</p>
                       <p className="text-[10px] text-ink-faint font-sans mt-0.5 leading-snug">
-                        切换为后台已配置的其他模型；留空 = 节点配置的默认模型
+                        切换为后台已配置的其他模型
                       </p>
                     </div>
                     <ModelOverrideField
@@ -1147,7 +1147,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                     <div>
                       <p className="text-xs font-sans text-ink">Agent</p>
                       <p className="text-[10px] text-ink-faint font-sans mt-0.5 leading-snug">
-                        切换 FastClaw Agent；留空 = 节点配置的默认 Agent
+                        切换为后台已配置的其他 FastClaw Agent
                       </p>
                     </div>
                     <AgentOverrideField
@@ -1189,7 +1189,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                   <div className="flex items-start gap-1.5 p-2 rounded-md bg-paper-grid/40 border border-paper-grid text-ink-light">
                     <Lock size={12} strokeWidth={1.5} className="shrink-0 mt-0.5" />
                     <p className="text-[10px] font-sans leading-snug flex-1">
-                      对话已开始，上下文配置已锁定。如需修改，请先清空对话。
+                      对话已开始，上下文配置已锁定。
                     </p>
                   </div>
                 ) : (
