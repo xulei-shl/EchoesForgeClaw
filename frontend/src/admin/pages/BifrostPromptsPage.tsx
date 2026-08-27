@@ -4,7 +4,6 @@ import {
   BookOpen,
   Braces,
   ImageOff,
-  Loader2,
   RefreshCw,
   Search,
   Trash2,
@@ -27,10 +26,14 @@ import { FieldLabel, PageHeader } from '../components/AdminBits';
 import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
 import { Pagination } from '../../platform/components/ui/Pagination';
 
+/** 内存级 SWR 缓存：页面切换 0ms 瞬间秒开 */
+let cachedBifrostFoldersData: BifrostFolder[] | null = null;
+let cachedBifrostPromptsData: BifrostPrompt[] | null = null;
+
 export const BifrostPromptsPage: React.FC = () => {
-  const [folders, setFolders] = useState<BifrostFolder[]>([]);
-  const [prompts, setPrompts] = useState<BifrostPrompt[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [folders, setFolders] = useState<BifrostFolder[]>(() => cachedBifrostFoldersData ?? []);
+  const [prompts, setPrompts] = useState<BifrostPrompt[]>(() => cachedBifrostPromptsData ?? []);
+  const [loading, setLoading] = useState(() => !cachedBifrostPromptsData);
   const [error, setError] = useState('');
 
   const [q, setQ] = useState('');
@@ -104,12 +107,10 @@ export const BifrostPromptsPage: React.FC = () => {
     }
   };
 
-
-
   /** force=true 绕过 TTL 缓存强制拉取 Bifrost（供「刷新」按钮使用） */
   const load = useCallback(
-    async (force = false) => {
-      setLoading(true);
+    async (force = false, showLoading = true) => {
+      if (showLoading && !cachedBifrostPromptsData) setLoading(true);
       setError('');
       try {
         const [folderRes, promptRes] = await Promise.all([
@@ -120,10 +121,12 @@ export const BifrostPromptsPage: React.FC = () => {
             force,
           }),
         ]);
+        cachedBifrostFoldersData = folderRes.folders;
+        if (!folderId && !q) cachedBifrostPromptsData = promptRes.prompts;
         setFolders(folderRes.folders);
         setPrompts(promptRes.prompts);
       } catch (e: any) {
-        setError(e?.message || '加载失败，请重试');
+        if (!cachedBifrostPromptsData) setError(e?.message || '加载失败，请重试');
       } finally {
         setLoading(false);
       }
@@ -137,12 +140,12 @@ export const BifrostPromptsPage: React.FC = () => {
   useEffect(() => {
     if (!mountedRef.current) {
       mountedRef.current = true;
-      void load();
+      void load(false, !cachedBifrostPromptsData);
       return;
     }
     if (prevFolderRef.current !== folderId) {
       prevFolderRef.current = folderId;
-      void load();
+      void load(false, false);
     }
   }, [folderId, load]);
 
@@ -317,22 +320,34 @@ export const BifrostPromptsPage: React.FC = () => {
               setFolderId('');
               setRatingFilter('');
             }}
-            className="text-sm text-accent hover:text-accent-hover font-sans active:scale-95 transition"
+            className="text-sm text-accent hover:text-accent-hover font-sans active:scale-[0.96] transition-colors"
           >
             清除筛选
           </button>
         )}
       </div>
 
-      {/* 加载态 */}
-      {loading && (
-        <Card className="p-10 flex items-center justify-center gap-2 text-ink-light text-sm font-sans">
-          <Loader2 className="w-4 h-4 animate-spin text-accent" strokeWidth={1.5} />
-          加载中...
-        </Card>
+      {/* 首次冷启动骨架屏 */}
+      {loading && prompts.length === 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 animate-pulse" aria-busy="true" aria-label="正在加载提示词">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="p-4 rounded-2xl border border-dashed border-paper-grid bg-node-bg space-y-3">
+              <div className="flex justify-between items-start">
+                <div className="h-5 w-32 bg-paper-grid/50 rounded" />
+                <div className="h-4 w-16 bg-paper-grid/35 rounded" />
+              </div>
+              <div className="h-4 w-full bg-paper-grid/30 rounded" />
+              <div className="h-4 w-4/5 bg-paper-grid/25 rounded" />
+              <div className="flex justify-between items-center pt-2">
+                <div className="h-5 w-16 bg-paper-grid/40 rounded" />
+                <div className="h-3 w-16 bg-paper-grid/20 rounded" />
+              </div>
+            </div>
+          ))}
+        </div>
       )}
 
-      {!loading && error && !notConfigured && (
+      {error && prompts.length === 0 && !notConfigured && (
         <div className="py-12 flex flex-col items-center gap-3">
           <span className="text-sm text-error font-sans">{error}</span>
           <Button variant="ghost" size="sm" onClick={() => void load(true)}>
@@ -343,7 +358,7 @@ export const BifrostPromptsPage: React.FC = () => {
       )}
 
       {/* 提示词网格 */}
-      {!loading && !error && (
+      {(prompts.length > 0 || (!loading && !error)) && (
         <div>
           {filteredPrompts.length === 0 ? (
             <Card className="py-14 flex flex-col items-center gap-3 text-center">
@@ -360,7 +375,7 @@ export const BifrostPromptsPage: React.FC = () => {
               {currentPrompts.map((p) => (
                 <Card
                   key={p.id}
-                  className="p-2.5 rounded-2xl cursor-pointer transition hover:shadow-md active:scale-[0.98] flex flex-col"
+                  className="p-2.5 rounded-2xl cursor-pointer transition-colors duration-150 hover:border-accent/40 active:scale-[0.98] flex flex-col shadow-xs"
                   onClick={() => {
                     // 切换详情时重置原始响应调试区，避免展示上一个提示词的残留数据
                     if (detail?.id !== p.id) {

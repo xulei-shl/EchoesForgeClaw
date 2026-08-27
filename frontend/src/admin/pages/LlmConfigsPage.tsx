@@ -68,9 +68,12 @@ const EMPTY_FORM: FormState = {
   is_active: true,
 };
 
+/** 内存级 SWR 缓存：页面切换 0ms 瞬间秒开 */
+let cachedLlmConfigsData: LLMConfig[] | null = null;
+
 export const LlmConfigsPage: React.FC = () => {
-  const [items, setItems] = useState<LLMConfig[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<LLMConfig[]>(() => cachedLlmConfigsData ?? []);
+  const [loading, setLoading] = useState(() => !cachedLlmConfigsData);
   const [error, setError] = useState('');
 
   const [editing, setEditing] = useState<LLMConfig | null>(null);
@@ -86,14 +89,16 @@ export const LlmConfigsPage: React.FC = () => {
   const [lookingUp, setLookingUp] = useState(false);
   const { dialog, showToast } = useFeedback();
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (force = false) => {
+    const hasCache = !force && !!cachedLlmConfigsData;
+    if (!hasCache) setLoading(true);
     setError('');
     try {
       const res = await adminService.listLlmConfigs();
+      cachedLlmConfigsData = res;
       setItems(res);
     } catch (e: any) {
-      setError(e?.message || '加载失败，请重试');
+      if (!cachedLlmConfigsData) setError(e?.message || '加载失败，请重试');
     } finally {
       setLoading(false);
     }
@@ -285,7 +290,7 @@ export const LlmConfigsPage: React.FC = () => {
     try {
       await adminService.duplicateLlmConfig(c.id);
       showToast(`已复制「${c.name}」`, { type: 'success' });
-      load();
+      void load(true);
     } catch (e: any) {
       showToast(e?.message || '复制失败，请重试', { type: 'error' });
     }
@@ -302,7 +307,12 @@ export const LlmConfigsPage: React.FC = () => {
     try {
       await adminService.deleteLlmConfig(c.id);
       showToast('模型配置已删除', { type: 'success' });
-      load();
+      setItems((prev) => {
+        const next = prev.filter((it) => it.id !== c.id);
+        cachedLlmConfigsData = next;
+        return next;
+      });
+      void load(true);
     } catch (e: any) {
       showToast(e?.message || '删除失败，请重试', { type: 'error' });
     }
@@ -493,18 +503,25 @@ export const LlmConfigsPage: React.FC = () => {
         </form>
       </Dialog>
 
-      {/* 加载态 */}
-      {loading && (
-        <Card className="p-10 flex items-center justify-center gap-2 text-ink-light text-sm font-sans">
-          <Loader2 className="w-4 h-4 animate-spin text-accent" strokeWidth={1.5} />
-          加载中...
-        </Card>
+      {/* 首次冷启动骨架屏 */}
+      {loading && items.length === 0 && (
+        <div className="space-y-3 animate-pulse" aria-busy="true" aria-label="正在加载模型配置">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="p-4 rounded-lg border border-dashed border-paper-grid bg-node-bg space-y-2.5">
+              <div className="flex justify-between items-center">
+                <div className="h-5 w-48 bg-paper-grid/50 rounded" />
+                <div className="h-4 w-16 bg-paper-grid/35 rounded" />
+              </div>
+              <div className="h-4 w-80 bg-paper-grid/30 rounded" />
+            </div>
+          ))}
+        </div>
       )}
 
-      {!loading && error && (
+      {error && items.length === 0 && (
         <div className="py-12 flex flex-col items-center gap-3">
           <span className="text-sm text-error font-sans">{error}</span>
-          <Button variant="ghost" size="sm" onClick={load}>
+          <Button variant="ghost" size="sm" onClick={() => void load(true)}>
             <RefreshCw size={14} strokeWidth={1.5} className="mr-1" />
             重试
           </Button>
@@ -512,87 +529,87 @@ export const LlmConfigsPage: React.FC = () => {
       )}
 
       {/* 列表 */}
-      {!loading && !error && (
+      {items.length > 0 && (
         <div className="space-y-3">
-          {items.length === 0 ? (
-            <Card className="py-14 flex flex-col items-center gap-3 text-center">
-              <Cpu size={36} strokeWidth={1} className="text-ink-faint" />
-              <p className="font-serif text-base text-ink">还没有模型配置</p>
-              <p className="text-sm text-ink-light font-sans">配置后可在「阶段配置」中为各阶段绑定模型</p>
-            </Card>
-          ) : (
-            items.map((c) => (
-              <Card key={c.id} className="p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-serif text-base font-semibold text-ink">{c.name}</span>
-                      <span className="text-xs text-ink-light border border-dashed border-paper-grid rounded-pill px-2 py-px font-sans">
-                        {KIND_LABEL[c.kind] ?? c.kind}
-                      </span>
-                      <Badge variant={c.is_active ? 'success' : 'default'} showDot>
-                    {c.is_active ? '启用' : '停用'}
-                  </Badge>
-                    </div>
-                    <div className="mt-1.5 flex items-center gap-3 flex-wrap text-xs text-ink-faint font-mono">
-                      <span>model: {c.model_name || '—'}</span>
-                      <span className="max-w-[260px] truncate" title={c.base_url}>
-                        base_url: {c.base_url || '默认'}
-                      </span>
-                      <span>api: {c.api_format === 'anthropic' ? 'anthropic' : 'openai'}</span>
-                      {c.thinking_format && <span>thinking: {c.thinking_format}</span>}
-                      {c.context_window && <span>ctx: {c.context_window.toLocaleString()}</span>}
-                      <span className="flex items-center gap-1">
-                        <KeyRound size={11} strokeWidth={1.5} />
-                        {c.has_api_key ? '已配置 Key' : '未配置 Key'}
-                      </span>
-                    </div>
+          {items.map((c) => (
+            <Card key={c.id} className="p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-serif text-base font-semibold text-ink">{c.name}</span>
+                    <span className="text-xs text-ink-light border border-dashed border-paper-grid rounded-pill px-2 py-px font-sans">
+                      {KIND_LABEL[c.kind] ?? c.kind}
+                    </span>
+                    <Badge variant={c.is_active ? 'success' : 'default'} showDot>
+                      {c.is_active ? '启用' : '停用'}
+                    </Badge>
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <Toggle checked={c.is_active} onChange={(v) => handleToggleActive(c, v)} label={c.is_active ? '停用' : '启用'} />
-                    <button
-                      onClick={() => handleDuplicate(c)}
-                      title="复制（沿用 Base URL / API Key / 模型名称）"
-                      className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-95"
-                    >
-                      <Copy size={15} strokeWidth={1.5} />
-                    </button>
-                    <button
-                      onClick={() => handleTestConfig(c)}
-                      title={testingId === c.id ? '正在测试连接…' : '测试连通性（使用已保存的 API Key）'}
-                      disabled={testingId !== null}
-                      aria-busy={testingId === c.id}
-                      className="inline-flex items-center gap-1.5 p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-95 disabled:opacity-70 disabled:cursor-wait disabled:hover:bg-transparent disabled:hover:text-ink-light"
-                    >
-                      {testingId === c.id ? (
-                        <>
-                          <Loader2 size={15} strokeWidth={1.5} className="animate-spin text-accent" />
-                          <span className="text-xs text-accent whitespace-nowrap">测试中</span>
-                        </>
-                      ) : (
-                        <Zap size={15} strokeWidth={1.5} />
-                      )}
-                    </button>
-                    <button
-                      onClick={() => openEdit(c)}
-                      title="编辑"
-                      className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-95"
-                    >
-                      <Pencil size={15} strokeWidth={1.5} />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(c)}
-                      title="删除"
-                      className="p-1.5 rounded-md text-ink-light hover:text-error hover:bg-error/5 transition-colors active:scale-95"
-                    >
-                      <Trash2 size={15} strokeWidth={1.5} />
-                    </button>
+                  <div className="mt-1.5 flex items-center gap-3 flex-wrap text-xs text-ink-faint font-mono">
+                    <span>model: {c.model_name || '—'}</span>
+                    <span className="max-w-[260px] truncate" title={c.base_url}>
+                      base_url: {c.base_url || '默认'}
+                    </span>
+                    <span>api: {c.api_format === 'anthropic' ? 'anthropic' : 'openai'}</span>
+                    {c.thinking_format && <span>thinking: {c.thinking_format}</span>}
+                    {c.context_window && <span>ctx: {c.context_window.toLocaleString()}</span>}
+                    <span className="flex items-center gap-1">
+                      <KeyRound size={11} strokeWidth={1.5} />
+                      {c.has_api_key ? '已配置 Key' : '未配置 Key'}
+                    </span>
                   </div>
                 </div>
-              </Card>
-            ))
-          )}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Toggle checked={c.is_active} onChange={(v) => handleToggleActive(c, v)} label={c.is_active ? '停用' : '启用'} />
+                  <button
+                    onClick={() => handleDuplicate(c)}
+                    title="复制（沿用 Base URL / API Key / 模型名称）"
+                    className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-[0.96]"
+                  >
+                    <Copy size={15} strokeWidth={1.5} />
+                  </button>
+                  <button
+                    onClick={() => handleTestConfig(c)}
+                    title={testingId === c.id ? '正在测试连接…' : '测试连通性（使用已保存的 API Key）'}
+                    disabled={testingId !== null}
+                    aria-busy={testingId === c.id}
+                    className="inline-flex items-center gap-1.5 p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-[0.96] disabled:opacity-70 disabled:cursor-wait disabled:hover:bg-transparent disabled:hover:text-ink-light"
+                  >
+                    {testingId === c.id ? (
+                      <>
+                        <Loader2 size={15} strokeWidth={1.5} className="animate-spin text-accent" />
+                        <span className="text-xs text-accent whitespace-nowrap">测试中</span>
+                      </>
+                    ) : (
+                      <Zap size={15} strokeWidth={1.5} />
+                    )}
+                  </button>
+                  <button
+                    onClick={() => openEdit(c)}
+                    title="编辑"
+                    className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-[0.96]"
+                  >
+                    <Pencil size={15} strokeWidth={1.5} />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(c)}
+                    title="删除"
+                    className="p-1.5 rounded-md text-ink-light hover:text-error hover:bg-error/5 transition-colors active:scale-[0.96]"
+                  >
+                    <Trash2 size={15} strokeWidth={1.5} />
+                  </button>
+                </div>
+              </div>
+            </Card>
+          ))}
         </div>
+      )}
+
+      {!loading && !error && items.length === 0 && (
+        <Card className="py-14 flex flex-col items-center gap-3 text-center">
+          <Cpu size={36} strokeWidth={1} className="text-ink-faint" />
+          <p className="font-serif text-base text-ink">还没有模型配置</p>
+          <p className="text-sm text-ink-light font-sans">配置后可在「阶段配置」中为各阶段绑定模型</p>
+        </Card>
       )}
 
     </div>

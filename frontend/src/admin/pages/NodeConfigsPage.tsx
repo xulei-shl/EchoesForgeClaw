@@ -7,7 +7,6 @@ import {
   ChevronRight,
   GripVertical,
   Link2,
-  Loader2,
   Pencil,
   Plus,
   RefreshCw,
@@ -85,13 +84,22 @@ const EMPTY_FORM: FormState = {
   is_active: true,
 };
 
+/** 内存级 SWR 缓存：页面切换 0ms 瞬间秒开 */
+let cachedNodeConfigsData: NodeConfig[] | null = null;
+let cachedDropdownsData: {
+  llmConfigs: LLMConfig[];
+  prompts: PromptTemplate[];
+  fastclawAgents: FastClawAgentConfig[];
+  skillAgentConfigs: SkillAgentConfig[];
+} | null = null;
+
 export const NodeConfigsPage: React.FC = () => {
-  const [items, setItems] = useState<NodeConfig[]>([]);
-  const [llmConfigs, setLlmConfigs] = useState<LLMConfig[]>([]);
-  const [prompts, setPrompts] = useState<PromptTemplate[]>([]);
-  const [fastclawAgents, setFastclawAgents] = useState<FastClawAgentConfig[]>([]);
-  const [skillAgentConfigs, setSkillAgentConfigs] = useState<SkillAgentConfig[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<NodeConfig[]>(() => cachedNodeConfigsData ?? []);
+  const [llmConfigs, setLlmConfigs] = useState<LLMConfig[]>(() => cachedDropdownsData?.llmConfigs ?? []);
+  const [prompts, setPrompts] = useState<PromptTemplate[]>(() => cachedDropdownsData?.prompts ?? []);
+  const [fastclawAgents, setFastclawAgents] = useState<FastClawAgentConfig[]>(() => cachedDropdownsData?.fastclawAgents ?? []);
+  const [skillAgentConfigs, setSkillAgentConfigs] = useState<SkillAgentConfig[]>(() => cachedDropdownsData?.skillAgentConfigs ?? []);
+  const [loading, setLoading] = useState(() => !cachedNodeConfigsData);
   const [error, setError] = useState('');
 
   const [editing, setEditing] = useState<NodeConfig | null>(null);
@@ -101,31 +109,53 @@ export const NodeConfigsPage: React.FC = () => {
   const [formError, setFormError] = useState('');
   const { dialog, showToast } = useFeedback();
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  // 1. 优先加载节点列表：毫秒级响应，先行出屏，不被弹窗字典阻塞
+  const loadNodes = useCallback(async (silent = false) => {
+    if (!silent && !cachedNodeConfigsData) setLoading(true);
     setError('');
     try {
-      const [nodeRes, llmRes, promptRes, agentRes, skillRes] = await Promise.all([
-        adminService.listNodeConfigs(),
-        adminService.listLlmConfigs(),
-        adminService.listPrompts(),
-        adminService.listFastClawAgents(),
-        adminService.listSkillAgentConfigs(),
-      ]);
+      const nodeRes = await adminService.listNodeConfigs();
+      cachedNodeConfigsData = nodeRes;
       setItems(nodeRes);
-      setLlmConfigs(llmRes);
-      setPrompts(promptRes);
-      setFastclawAgents(agentRes);
-      setSkillAgentConfigs(skillRes);
     } catch (e: any) {
-      setError(e?.message || '加载失败，请重试');
+      if (!cachedNodeConfigsData) setError(e?.message || '加载失败，请重试');
     } finally {
       setLoading(false);
     }
   }, []);
 
+  // 2. 独立异步后台加载弹窗下拉字典（静默拉取，不阻塞主列表展示）
+  const loadDropdowns = useCallback(async () => {
+    try {
+      const [llmRes, promptRes, agentRes, skillRes] = await Promise.all([
+        adminService.listLlmConfigs(),
+        adminService.listPrompts(),
+        adminService.listFastClawAgents(),
+        adminService.listSkillAgentConfigs(),
+      ]);
+      cachedDropdownsData = {
+        llmConfigs: llmRes,
+        prompts: promptRes,
+        fastclawAgents: agentRes,
+        skillAgentConfigs: skillRes,
+      };
+      setLlmConfigs(llmRes);
+      setPrompts(promptRes);
+      setFastclawAgents(agentRes);
+      setSkillAgentConfigs(skillRes);
+    } catch {
+      /* 字典加载异常不影响主列表呈现 */
+    }
+  }, []);
+
+  const load = useCallback(async (force = false) => {
+    const isCached = !force && !!cachedNodeConfigsData;
+    void loadNodes(isCached);
+    void loadDropdowns();
+  }, [loadNodes, loadDropdowns]);
+
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   /** 可配置的模板（基础节点如图书元数据不需要 llm/agent 绑定） */
@@ -218,7 +248,7 @@ export const NodeConfigsPage: React.FC = () => {
       resetForm();
       // 保存成功后清除分组筛选：改组的配置若被当前筛选排除会“消失”，看起来像保存未生效
       setGroupFilter('');
-      load();
+      void loadNodes(true);
     } catch (err: any) {
       setFormError(err?.message || '保存失败，请重试');
     } finally {
@@ -230,7 +260,7 @@ export const NodeConfigsPage: React.FC = () => {
     try {
       await adminService.updateNodeConfig(nc.id, { is_active: next });
       showToast(next ? `已启用 ${nc.name}` : `已停用 ${nc.name}`, { type: 'success' });
-      load();
+      void loadNodes(true);
     } catch (e: any) {
       showToast(e?.message || '操作失败，请重试', { type: 'error' });
     }
@@ -247,7 +277,12 @@ export const NodeConfigsPage: React.FC = () => {
     try {
       await adminService.deleteNodeConfig(nc.id);
       showToast('节点配置已删除', { type: 'success' });
-      load();
+      setItems((prev) => {
+        const next = prev.filter((it) => it.id !== nc.id);
+        cachedNodeConfigsData = next;
+        return next;
+      });
+      void loadNodes(true);
     } catch (e: any) {
       showToast(e?.message || '删除失败，请重试', { type: 'error' });
     }
@@ -689,18 +724,32 @@ export const NodeConfigsPage: React.FC = () => {
         </form>
       </Dialog>
 
-      {/* 加载态 */}
-      {loading && (
-        <Card className="p-10 flex items-center justify-center gap-2 text-ink-light text-sm font-sans">
-          <Loader2 className="w-4 h-4 animate-spin text-accent" strokeWidth={1.5} />
-          加载中...
-        </Card>
+      {/* 首次冷启动骨架屏 */}
+      {loading && items.length === 0 && (
+        <div className="space-y-4 animate-pulse" aria-busy="true" aria-label="正在加载节点配置">
+          <div className="flex justify-between items-center pb-2">
+            <div className="h-4 w-36 bg-paper-grid/50 rounded" />
+            <div className="h-8 w-44 bg-paper-grid/40 rounded-lg" />
+          </div>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="space-y-2">
+              <div className="h-6 w-28 bg-paper-grid/45 rounded mb-2" />
+              <div className="p-4 rounded-lg border border-dashed border-paper-grid bg-node-bg space-y-2">
+                <div className="flex justify-between">
+                  <div className="h-5 w-48 bg-paper-grid/50 rounded" />
+                  <div className="h-4 w-12 bg-paper-grid/35 rounded" />
+                </div>
+                <div className="h-4 w-72 bg-paper-grid/30 rounded" />
+              </div>
+            </div>
+          ))}
+        </div>
       )}
 
-      {!loading && error && (
+      {error && items.length === 0 && (
         <div className="py-12 flex flex-col items-center gap-3">
           <span className="text-sm text-error font-sans">{error}</span>
-          <Button variant="ghost" size="sm" onClick={load}>
+          <Button variant="ghost" size="sm" onClick={() => void load(true)}>
             <RefreshCw size={14} strokeWidth={1.5} className="mr-1" />
             重试
           </Button>
@@ -708,7 +757,7 @@ export const NodeConfigsPage: React.FC = () => {
       )}
 
       {/* 列表（分组优先展示，组可折叠） */}
-      {!loading && !error && (
+      {items.length > 0 && (
         <div className="space-y-6">
           {/* 分组筛选工具栏 */}
           {items.length > 0 && (
@@ -862,14 +911,14 @@ export const NodeConfigsPage: React.FC = () => {
                           <button
                             onClick={() => openEdit(nc)}
                             title="编辑"
-                            className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-95"
+                            className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-[0.96]"
                           >
                             <Pencil size={15} strokeWidth={1.5} />
                           </button>
                           <button
                             onClick={() => handleDelete(nc)}
                             title="删除"
-                            className="p-1.5 rounded-md text-ink-light hover:text-error hover:bg-error/5 transition-colors active:scale-95"
+                            className="p-1.5 rounded-md text-ink-light hover:text-error hover:bg-error/5 transition-colors active:scale-[0.96]"
                           >
                             <Trash2 size={15} strokeWidth={1.5} />
                           </button>
@@ -890,6 +939,16 @@ export const NodeConfigsPage: React.FC = () => {
             </p>
           )}
         </div>
+      )}
+
+      {!loading && !error && items.length === 0 && (
+        <Card className="py-14 flex flex-col items-center gap-3 text-center">
+          <Boxes size={36} strokeWidth={1} className="text-ink-faint" />
+          <p className="font-serif text-base text-ink">还没有节点配置</p>
+          <p className="text-sm text-ink-light font-sans">
+            创建节点配置后，画板「+」菜单中即可添加对应节点
+          </p>
+        </Card>
       )}
     </div>
   );

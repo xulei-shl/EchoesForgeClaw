@@ -173,9 +173,13 @@ interface EditState {
 
 const EMPTY_EDIT: EditState = { id: null, key: '', value: '', description: '', sensitive: false };
 
+/** 内存级 SWR 缓存：支持路由切换/返回时 0ms 瞬间直出，并在后台静默更新 */
+let cachedSettingsData: AppSetting[] | null = null;
+let cachedBifrostFoldersData: BifrostFolder[] | null = null;
+
 export const SettingsPage: React.FC = () => {
-  const [items, setItems] = useState<AppSetting[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<AppSetting[]>(() => cachedSettingsData ?? []);
+  const [loading, setLoading] = useState(() => !cachedSettingsData);
   const [error, setError] = useState('');
 
   const [activeTab, setActiveTab] = useState<string>('all');
@@ -188,52 +192,108 @@ export const SettingsPage: React.FC = () => {
   const { dialog, showToast } = useFeedback();
 
   // Bifrost 白名单文件夹（bifrost.allowed_folders）专用配置 UI
-  const [bifrostFolders, setBifrostFolders] = useState<BifrostFolder[]>([]);
+  const [bifrostFolders, setBifrostFolders] = useState<BifrostFolder[]>(() => cachedBifrostFoldersData ?? []);
+  const [bifrostLoading, setBifrostLoading] = useState(false);
   const [wlOpen, setWlOpen] = useState(false);
-  const [wlSelected, setWlSelected] = useState<Set<string>>(new Set());
-  const [wlSaving, setWlSaving] = useState(false);
-  const [wlLoadError, setWlLoadError] = useState('');
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    setWlLoadError('');
-    try {
-      const [res, folderRes] = await Promise.all([
-        adminService.listSettings(),
-        adminService
-          .listBifrostFolders({ all: true })
-          .catch((e: any) => {
-            setWlLoadError(e?.message || 'Bifrost 未配置或不可用');
-            return null;
-          }),
-      ]);
-      setItems(res);
-      const folders = folderRes?.folders ?? [];
-      setBifrostFolders(folders);
-      // 同步白名单回显（卡片与弹窗共用同一状态）
-      const raw = (res.find((s) => s.key === 'bifrost.allowed_folders')?.value || '')
+  const [wlSelected, setWlSelected] = useState<Set<string>>(() => {
+    if (cachedSettingsData && cachedBifrostFoldersData) {
+      const raw = (cachedSettingsData.find((s) => s.key === 'bifrost.allowed_folders')?.value || '')
         .split(',')
         .map((s) => s.trim().toLowerCase())
         .filter(Boolean);
       const selected = new Set<string>();
       if (raw.length) {
-        for (const f of folders) {
+        for (const f of cachedBifrostFoldersData) {
           if (raw.includes(String(f.id).toLowerCase()) || raw.includes((f.name || '').toLowerCase())) {
             selected.add(f.id);
           }
         }
       }
-      setWlSelected(selected);
+      return selected;
+    }
+    return new Set();
+  });
+  const [wlSaving, setWlSaving] = useState(false);
+  const [wlLoadError, setWlLoadError] = useState('');
+
+  // 1. 加载本地系统设置：毫秒级响应，优先渲染主界面，不被外部网关阻塞
+  const loadSettings = useCallback(async (silent = false) => {
+    if (!silent && !cachedSettingsData) {
+      setLoading(true);
+    }
+    setError('');
+    try {
+      const res = await adminService.listSettings();
+      cachedSettingsData = res;
+      setItems(res);
+      // 同步回显白名单勾选（基于当前已有的 bifrostFolders）
+      setBifrostFolders((currFolders) => {
+        const raw = (res.find((s) => s.key === 'bifrost.allowed_folders')?.value || '')
+          .split(',')
+          .map((s) => s.trim().toLowerCase())
+          .filter(Boolean);
+        const selected = new Set<string>();
+        if (raw.length && currFolders.length) {
+          for (const f of currFolders) {
+            if (raw.includes(String(f.id).toLowerCase()) || raw.includes((f.name || '').toLowerCase())) {
+              selected.add(f.id);
+            }
+          }
+        }
+        setWlSelected(selected);
+        return currFolders;
+      });
     } catch (e: any) {
-      setError(e?.message || '加载失败，请重试');
+      if (!cachedSettingsData) {
+        setError(e?.message || '加载失败，请重试');
+      }
     } finally {
       setLoading(false);
     }
   }, []);
 
+  // 2. 独立异步后台加载 Bifrost 文件夹：网络抖动或服务不可用绝不影响主系统设置
+  const loadBifrostFolders = useCallback(async (force = false) => {
+    setBifrostLoading(true);
+    setWlLoadError('');
+    try {
+      const folderRes = await adminService.listBifrostFolders({ all: true, force });
+      const folders = folderRes?.folders ?? [];
+      cachedBifrostFoldersData = folders;
+      setBifrostFolders(folders);
+
+      // 同步白名单勾选项
+      setItems((currItems) => {
+        const raw = (currItems.find((s) => s.key === 'bifrost.allowed_folders')?.value || '')
+          .split(',')
+          .map((s) => s.trim().toLowerCase())
+          .filter(Boolean);
+        const selected = new Set<string>();
+        if (raw.length) {
+          for (const f of folders) {
+            if (raw.includes(String(f.id).toLowerCase()) || raw.includes((f.name || '').toLowerCase())) {
+              selected.add(f.id);
+            }
+          }
+        }
+        setWlSelected(selected);
+        return currItems;
+      });
+    } catch (e: any) {
+      setWlLoadError(e?.message || 'Bifrost 未配置或不可用');
+    } finally {
+      setBifrostLoading(false);
+    }
+  }, []);
+
+  const load = useCallback(async (force = false) => {
+    const isCached = !force && !!cachedSettingsData;
+    void loadSettings(isCached);
+    void loadBifrostFolders(force);
+  }, [loadSettings, loadBifrostFolders]);
+
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   /** 统计各 Tab 项的数量与定义列表 */
@@ -336,18 +396,28 @@ export const SettingsPage: React.FC = () => {
     setFormError('');
     try {
       if (edit.id !== null) {
-        await adminService.updateSetting(edit.key, { value: edit.value, description: edit.description });
+        const updated = await adminService.updateSetting(edit.key, { value: edit.value, description: edit.description });
         showToast('设置已更新', { type: 'success' });
+        setItems((prev) => {
+          const next = prev.map((it) => (it.key === edit.key ? updated : it));
+          cachedSettingsData = next;
+          return next;
+        });
       } else {
-        await adminService.createSetting({
+        const created = await adminService.createSetting({
           key: edit.key.trim(),
           value: edit.value,
           description: edit.description,
         });
         showToast('设置已创建', { type: 'success' });
+        setItems((prev) => {
+          const next = [...prev, created];
+          cachedSettingsData = next;
+          return next;
+        });
       }
       resetForm();
-      load();
+      void loadSettings(true);
     } catch (err: any) {
       setFormError(err?.message || '保存失败，请重试');
     } finally {
@@ -355,27 +425,26 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
-  /** 打开白名单编辑：回显当前设置值（兼容 ID 或名称） */
-  const openWhitelistEditor = async () => {
-    try {
-      const res = await adminService.listSettings();
-      const raw = (res.find((s) => s.key === 'bifrost.allowed_folders')?.value || '')
-        .split(',')
-        .map((s) => s.trim().toLowerCase())
-        .filter(Boolean);
-      const selected = new Set<string>();
-      if (raw.length) {
-        for (const f of bifrostFolders) {
-          if (raw.includes(String(f.id).toLowerCase()) || raw.includes((f.name || '').toLowerCase())) {
-            selected.add(f.id);
-          }
+  /** 打开白名单编辑：直接基于当前已加载的配置回显，不发起多余网络请求 */
+  const openWhitelistEditor = () => {
+    // 如果尚未获取文件夹数据且不在加载中，触发后台拉取
+    if (bifrostFolders.length === 0 && !bifrostLoading) {
+      void loadBifrostFolders();
+    }
+    const raw = (items.find((s) => s.key === 'bifrost.allowed_folders')?.value || '')
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
+    const selected = new Set<string>();
+    if (raw.length) {
+      for (const f of bifrostFolders) {
+        if (raw.includes(String(f.id).toLowerCase()) || raw.includes((f.name || '').toLowerCase())) {
+          selected.add(f.id);
         }
       }
-      setWlSelected(selected);
-      setWlOpen(true);
-    } catch (e: any) {
-      showToast(e?.message || '加载白名单失败', { type: 'error' });
     }
+    setWlSelected(selected);
+    setWlOpen(true);
   };
 
   const toggleWhitelist = (folderId: string) => {
@@ -404,7 +473,15 @@ export const SettingsPage: React.FC = () => {
         type: 'success',
       });
       setWlOpen(false);
-      load();
+      // 即时局部更新状态与内存缓存
+      setItems((prev) => {
+        const next = prev.map((it) =>
+          it.key === 'bifrost.allowed_folders' ? { ...it, value: ids.join(',') } : it
+        );
+        cachedSettingsData = next;
+        return next;
+      });
+      void loadSettings(true);
     } catch (e: any) {
       showToast(e?.message || '保存白名单失败，请重试', { type: 'error' });
     } finally {
@@ -423,7 +500,12 @@ export const SettingsPage: React.FC = () => {
     try {
       await adminService.deleteSetting(s.key);
       showToast('设置项已删除', { type: 'success' });
-      load();
+      setItems((prev) => {
+        const next = prev.filter((it) => it.key !== s.key);
+        cachedSettingsData = next;
+        return next;
+      });
+      void loadSettings(true);
     } catch (e: any) {
       showToast(e?.message || '删除失败，请重试', { type: 'error' });
     }
@@ -435,7 +517,12 @@ export const SettingsPage: React.FC = () => {
     try {
       await adminService.updateSetting(s.key, { value: nextVal });
       showToast(`已${nextVal === 'true' ? '启用' : '关闭'}代理`, { type: 'success' });
-      load();
+      setItems((prev) => {
+        const next = prev.map((it) => (it.key === s.key ? { ...it, value: nextVal } : it));
+        cachedSettingsData = next;
+        return next;
+      });
+      void loadSettings(true);
     } catch (err: any) {
       showToast(err?.message || '更新失败', { type: 'error' });
     }
@@ -542,26 +629,58 @@ export const SettingsPage: React.FC = () => {
         </form>
       </Dialog>
 
-      {/* 加载态 */}
-      {loading && (
-        <Card className="p-10 flex items-center justify-center gap-2 text-ink-light text-sm font-sans">
-          <Loader2 className="w-4 h-4 animate-spin text-accent" strokeWidth={1.5} />
-          加载中...
-        </Card>
+      {/* 首次冷启动骨架屏（保持两栏同构布局，消除 CLS 视效跳跃） */}
+      {loading && items.length === 0 && (
+        <div className="flex flex-col md:flex-row items-start gap-8 animate-pulse" aria-busy="true" aria-label="正在加载系统设置">
+          {/* 左侧侧栏骨架 */}
+          <aside className="w-full md:w-52 shrink-0 space-y-2">
+            <div className="h-4 w-16 bg-paper-grid/60 rounded px-3 py-1.5 mb-2" />
+            <div className="space-y-1.5">
+              {Array.from({ length: 7 }).map((_, i) => (
+                <div key={i} className="h-8 w-full bg-paper-grid/35 rounded-lg" />
+              ))}
+            </div>
+            <div className="pt-3 mt-4 border-t border-dashed border-paper-grid px-3 flex justify-between">
+              <div className="h-3 w-16 bg-paper-grid/40 rounded" />
+              <div className="h-3 w-10 bg-paper-grid/40 rounded" />
+            </div>
+          </aside>
+
+          {/* 右侧内容区骨架 */}
+          <div className="flex-1 min-w-0 w-full space-y-4">
+            <div className="flex justify-between items-center pb-3 border-b border-dashed border-paper-grid">
+              <div className="h-9 w-64 bg-paper-grid/45 rounded-lg" />
+              <div className="h-9 w-28 bg-paper-grid/45 rounded-lg" />
+            </div>
+            <div className="h-16 w-full bg-paper-grid/25 rounded-lg border border-dashed border-paper-grid" />
+            <div className="space-y-3">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="p-5 rounded-lg border border-dashed border-paper-grid bg-node-bg space-y-3">
+                  <div className="flex justify-between items-center">
+                    <div className="h-5 w-40 bg-paper-grid/50 rounded" />
+                    <div className="h-4 w-28 bg-paper-grid/35 rounded" />
+                  </div>
+                  <div className="h-8 w-full bg-paper-grid/25 rounded" />
+                  <div className="h-3.5 w-3/4 bg-paper-grid/35 rounded" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
 
-      {!loading && error && (
+      {error && items.length === 0 && (
         <div className="py-12 flex flex-col items-center gap-3">
           <span className="text-sm text-error font-sans">{error}</span>
-          <Button variant="ghost" size="sm" onClick={load}>
+          <Button variant="ghost" size="sm" onClick={() => void load(true)}>
             <RefreshCw size={14} strokeWidth={1.5} className="mr-1" />
             重试
           </Button>
         </div>
       )}
 
-      {/* 核心配置两栏工作台：左侧极简 Sticky 导航 + 右侧主内容区 */}
-      {!loading && !error && (
+      {/* 核心配置两栏工作台：有数据时立即渲染（支持 SWR 零等待直出） */}
+      {items.length > 0 && (
         <div className="flex flex-col md:flex-row items-start gap-8">
           {/* 左侧一体化极简分类侧栏 (Sticky 固定) */}
           <aside className="w-full md:w-52 shrink-0 md:sticky md:top-6 space-y-1">
@@ -579,7 +698,7 @@ export const SettingsPage: React.FC = () => {
                     role="tab"
                     aria-selected={isActive}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-sans transition-all duration-150 active:scale-[0.96] text-left ${
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-sans transition-colors duration-150 active:scale-[0.96] text-left ${
                       isActive
                         ? 'bg-accent text-white font-medium shadow-xs'
                         : 'text-ink-light hover:text-ink hover:bg-paper-grid/40'
@@ -676,7 +795,7 @@ export const SettingsPage: React.FC = () => {
             <div className="space-y-3">
               {/* Bifrost 白名单文件夹专用卡片 */}
               {shouldShowBifrostWhitelistCard && (
-                <Card className="p-5 transition-all hover:border-accent/40 shadow-xs">
+                <Card className="p-5 transition-colors duration-150 hover:border-accent/40 shadow-xs">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2 flex-wrap min-w-0">
                       <span className="font-mono text-xs font-semibold text-accent bg-accent/8 border border-dashed border-accent/30 rounded-md px-2.5 py-1">
@@ -694,12 +813,21 @@ export const SettingsPage: React.FC = () => {
                   </div>
 
                   <div className="mt-3 px-3 py-2 rounded-md bg-paper-grid/25 border border-dashed border-paper-grid/80 font-sans text-xs text-ink">
-                    {wlSelected.size > 0
-                      ? `当前白名单：${bifrostFolders
+                    {bifrostLoading && bifrostFolders.length === 0 ? (
+                      <span className="flex items-center gap-2 text-ink-faint">
+                        <Loader2 size={12} className="animate-spin text-accent" />
+                        <span>正在同步 Bifrost 文件夹...</span>
+                      </span>
+                    ) : wlSelected.size > 0 ? (
+                      `当前白名单：${bifrostFolders
                           .filter((f) => wlSelected.has(f.id))
                           .map((f) => f.name)
-                          .join('、') || '已选择但文件夹不可用'}`
-                      : '未配置（允许全部文件夹）'}
+                          .join('、') || (
+                            items.find((s) => s.key === 'bifrost.allowed_folders')?.value || '已选择'
+                          )}`
+                    ) : (
+                      '未配置（允许全部文件夹）'
+                    )}
                   </div>
 
                   <p className="mt-2 text-xs text-ink-light font-sans">
@@ -715,7 +843,7 @@ export const SettingsPage: React.FC = () => {
               {filteredItems
                 .filter((s) => s.key !== 'bifrost.allowed_folders')
                 .map((s) => (
-                  <Card key={s.id} className="p-5 transition-all hover:border-accent/40 shadow-xs">
+                  <Card key={s.id} className="p-5 transition-colors duration-150 hover:border-accent/40 shadow-xs">
                     {/* 第一层：Key 徽章 + 时间戳 + 操作按钮 */}
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2.5 flex-wrap min-w-0">
@@ -750,7 +878,7 @@ export const SettingsPage: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => void handleToggleSetting(s)}
-                          className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-150 active:scale-[0.97] ${
+                          className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-150 active:scale-[0.97] ${
                             s.value === 'true'
                               ? 'bg-accent/15 text-accent border border-accent/30 hover:bg-accent/20'
                               : 'bg-paper-grid/40 text-ink-light border border-dashed border-paper-grid hover:text-ink'
@@ -795,7 +923,7 @@ export const SettingsPage: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => setSearchQuery('')}
-                        className="text-accent underline hover:opacity-80 transition"
+                        className="text-accent underline hover:opacity-80 transition-opacity"
                       >
                         清空搜索条件
                       </button>
@@ -822,7 +950,12 @@ export const SettingsPage: React.FC = () => {
             勾选后仅这些文件夹下的提示词会出现在 Bifrost 管理页与画布检索列表；不选 = 允许全部
           </p>
           <div className="max-h-72 overflow-y-auto border border-dashed border-paper-grid rounded-md p-1 custom-scrollbar">
-            {bifrostFolders.length === 0 ? (
+            {bifrostLoading && bifrostFolders.length === 0 ? (
+              <div className="py-8 flex flex-col items-center justify-center gap-2 text-ink-light text-xs font-sans">
+                <Loader2 size={16} className="animate-spin text-accent" />
+                <span>正在加载 Bifrost 文件夹...</span>
+              </div>
+            ) : bifrostFolders.length === 0 ? (
               <p className="py-6 text-center text-sm text-ink-faint font-sans">
                 {wlLoadError ? wlLoadError : '未获取到文件夹（请确认 Bifrost 已配置）'}
               </p>

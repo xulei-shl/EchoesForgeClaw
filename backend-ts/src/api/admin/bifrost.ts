@@ -44,11 +44,11 @@ function bifrostErrorHttp(err: unknown): { code: number; body: { detail: string 
 export async function registerBifrostAdminRouter(app: FastifyInstance): Promise<void> {
   const admin = { preHandler: app.requireAdmin };
 
-  // 文件夹列表
+  // 文件夹列表（支持 force=1 绕过 TTL 缓存）
   app.get('/api/admin/bifrost/folders', admin, async (request, reply) => {
-    const q = (request.query ?? {}) as { all?: string };
+    const q = (request.query ?? {}) as { all?: string; force?: string };
     try {
-      const folders = await listFolders(getDb(), q.all === 'true');
+      const folders = await listFolders(getDb(), q.all === 'true', q.force === '1' || q.force === 'true');
       return { folders };
     } catch (err) {
       const e = bifrostErrorHttp(err);

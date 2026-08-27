@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   KeyRound,
-  Loader2,
   Pencil,
   Plus,
   RefreshCw,
@@ -37,10 +36,13 @@ interface FormState {
 
 const EMPTY_FORM: FormState = { username: '', password: '', role: 'user', is_active: true };
 
+/** 内存级 SWR 缓存：页面切换 0ms 瞬间秒开 */
+let cachedUsersData: User[] | null = null;
+
 export const UsersPage: React.FC = () => {
   const { user: me } = useAuth();
-  const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [users, setUsers] = useState<User[]>(() => cachedUsersData ?? []);
+  const [loading, setLoading] = useState(() => !cachedUsersData);
   const [error, setError] = useState('');
 
   // 新建 / 编辑表单
@@ -51,21 +53,23 @@ export const UsersPage: React.FC = () => {
   const [formError, setFormError] = useState('');
   const { dialog, showToast } = useFeedback();
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (force = false) => {
+    const hasCache = !force && !!cachedUsersData;
+    if (!hasCache) setLoading(true);
     setError('');
     try {
       const res = await adminService.listUsers();
+      cachedUsersData = res;
       setUsers(res);
     } catch (e: any) {
-      setError(e?.message || '加载失败，请重试');
+      if (!cachedUsersData) setError(e?.message || '加载失败，请重试');
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   const resetForm = () => {
@@ -167,7 +171,12 @@ export const UsersPage: React.FC = () => {
     try {
       await adminService.deleteUser(u.id);
       showToast('用户已删除', { type: 'success' });
-      load();
+      setUsers((prev) => {
+        const next = prev.filter((it) => it.id !== u.id);
+        cachedUsersData = next;
+        return next;
+      });
+      void load(true);
     } catch (e: any) {
       showToast(e?.message || '删除失败，请重试', { type: 'error' });
     }
@@ -256,19 +265,33 @@ export const UsersPage: React.FC = () => {
         </form>
       </Dialog>
 
-      {/* 加载态 */}
-      {loading && (
-        <Card className="p-10 flex items-center justify-center gap-2 text-ink-light text-sm font-sans">
-          <Loader2 className="w-4 h-4 animate-spin text-accent" strokeWidth={1.5} />
-          加载中...
+      {/* 首次冷启动表格骨架屏 */}
+      {loading && users.length === 0 && (
+        <Card className="overflow-hidden p-4 space-y-3 animate-pulse" aria-busy="true" aria-label="正在加载用户列表">
+          <div className="flex justify-between items-center pb-2 border-b border-dashed border-paper-grid">
+            <div className="h-4 w-20 bg-paper-grid/50 rounded" />
+            <div className="h-4 w-12 bg-paper-grid/35 rounded" />
+            <div className="h-4 w-12 bg-paper-grid/35 rounded" />
+            <div className="h-4 w-24 bg-paper-grid/30 rounded" />
+            <div className="h-4 w-16 bg-paper-grid/35 rounded" />
+          </div>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="flex justify-between items-center py-2.5 border-b border-dashed border-paper-grid/60 last:border-b-0">
+              <div className="h-4 w-28 bg-paper-grid/45 rounded" />
+              <div className="h-4 w-12 bg-paper-grid/30 rounded" />
+              <div className="h-5 w-14 bg-paper-grid/35 rounded-full" />
+              <div className="h-3.5 w-24 bg-paper-grid/25 rounded" />
+              <div className="h-6 w-20 bg-paper-grid/30 rounded" />
+            </div>
+          ))}
         </Card>
       )}
 
       {/* 错误态 */}
-      {!loading && error && (
+      {error && users.length === 0 && (
         <div className="py-12 flex flex-col items-center gap-3">
           <span className="text-sm text-error font-sans">{error}</span>
-          <Button variant="ghost" size="sm" onClick={load}>
+          <Button variant="ghost" size="sm" onClick={() => void load(true)}>
             <RefreshCw size={14} strokeWidth={1.5} className="mr-1" />
             重试
           </Button>
@@ -276,83 +299,85 @@ export const UsersPage: React.FC = () => {
       )}
 
       {/* 用户表格 */}
-      {!loading && !error && (
+      {users.length > 0 && (
         <Card className="overflow-hidden">
-          {users.length === 0 ? (
-            <div className="py-14 flex flex-col items-center gap-3 text-center">
-              <UsersIcon size={36} strokeWidth={1} className="text-ink-faint" />
-              <p className="font-serif text-base text-ink">还没有用户</p>
-              <p className="text-sm text-ink-light font-sans">点击「新建用户」创建第一个账号</p>
-            </div>
-          ) : (
-            <table className="w-full text-sm font-sans">
-              <thead>
-                <tr className="border-b border-dashed border-paper-grid text-left text-xs text-ink-light">
-                  <th className="px-5 py-3 font-medium">用户名</th>
-                  <th className="px-3 py-3 font-medium">角色</th>
-                  <th className="px-3 py-3 font-medium">状态</th>
-                  <th className="px-3 py-3 font-medium">创建时间</th>
-                  <th className="px-5 py-3 font-medium text-right">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((u) => {
-                  const isMe = u.id === me?.id;
-                  return (
-                    <tr key={String(u.id)} className="border-b border-dashed border-paper-grid last:border-b-0 hover:bg-accent-surface/40 transition-colors">
-                      <td className="px-5 py-3">
-                        <div className="flex items-center gap-2">
-                          <span className="text-ink font-medium">{u.username}</span>
-                          {isMe && (
-                            <span className="text-[11px] text-accent border border-dashed border-accent/50 rounded-pill px-1.5 py-px">当前账号</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-3 py-3 text-ink-light">{ROLE_LABEL[u.role ?? 'user'] ?? u.role}</td>
-                      <td className="px-3 py-3">
-                        <Badge variant={u.is_active ? 'success' : 'default'} showDot>
-                          {u.is_active ? '启用' : '停用'}
-                        </Badge>
-                      </td>
-                      <td className="px-3 py-3 text-ink-faint tabular-nums text-xs">{fmtTime(u.created_at)}</td>
-                      <td className="px-5 py-3">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <Toggle
-                            checked={u.is_active ?? true}
-                            onChange={(v) => handleToggleActive(u, v)}
-                            disabled={isMe}
-                            label={u.is_active ? '停用' : '启用'}
-                          />
-                          <button
-                            onClick={() => handleResetPassword(u)}
-                            title="重置密码"
-                            className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-95"
-                          >
-                            <KeyRound size={15} strokeWidth={1.5} />
-                          </button>
-                          <button
-                            onClick={() => openEdit(u)}
-                            title="编辑"
-                            className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-95"
-                          >
-                            <Pencil size={15} strokeWidth={1.5} />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(u)}
-                            title={isMe ? '不能删除当前账号' : '删除'}
-                            disabled={isMe}
-                            className="p-1.5 rounded-md text-ink-light hover:text-error hover:bg-error/5 transition-colors active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed"
-                          >
-                            <Trash2 size={15} strokeWidth={1.5} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
+          <table className="w-full text-sm font-sans">
+            <thead>
+              <tr className="border-b border-dashed border-paper-grid text-left text-xs text-ink-light">
+                <th className="px-5 py-3 font-medium">用户名</th>
+                <th className="px-3 py-3 font-medium">角色</th>
+                <th className="px-3 py-3 font-medium">状态</th>
+                <th className="px-3 py-3 font-medium">创建时间</th>
+                <th className="px-5 py-3 font-medium text-right">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((u) => {
+                const isMe = u.id === me?.id;
+                return (
+                  <tr key={String(u.id)} className="border-b border-dashed border-paper-grid last:border-b-0 hover:bg-accent-surface/40 transition-colors">
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-ink font-medium">{u.username}</span>
+                        {isMe && (
+                          <span className="text-[11px] text-accent border border-dashed border-accent/50 rounded-pill px-1.5 py-px">当前账号</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 text-ink-light">{ROLE_LABEL[u.role ?? 'user'] ?? u.role}</td>
+                    <td className="px-3 py-3">
+                      <Badge variant={u.is_active ? 'success' : 'default'} showDot>
+                        {u.is_active ? '启用' : '停用'}
+                      </Badge>
+                    </td>
+                    <td className="px-3 py-3 text-ink-faint tabular-nums text-xs">{fmtTime(u.created_at)}</td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <Toggle
+                          checked={u.is_active ?? true}
+                          onChange={(v) => handleToggleActive(u, v)}
+                          disabled={isMe}
+                          label={u.is_active ? '停用' : '启用'}
+                        />
+                        <button
+                          onClick={() => handleResetPassword(u)}
+                          title="重置密码"
+                          className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-[0.96]"
+                        >
+                          <KeyRound size={15} strokeWidth={1.5} />
+                        </button>
+                        <button
+                          onClick={() => openEdit(u)}
+                          title="编辑"
+                          className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-[0.96]"
+                        >
+                          <Pencil size={15} strokeWidth={1.5} />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(u)}
+                          title={isMe ? '不能删除当前账号' : '删除'}
+                          disabled={isMe}
+                          className="p-1.5 rounded-md text-ink-light hover:text-error hover:bg-error/5 transition-colors active:scale-[0.96] disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                          <Trash2 size={15} strokeWidth={1.5} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </Card>
+      )}
+
+      {!loading && !error && users.length === 0 && (
+        <Card className="overflow-hidden">
+          <div className="py-14 flex flex-col items-center gap-3 text-center">
+            <UsersIcon size={36} strokeWidth={1} className="text-ink-faint" />
+            <p className="font-serif text-base text-ink">还没有用户</p>
+            <p className="text-sm text-ink-light font-sans">点击「新建用户」创建第一个账号</p>
+          </div>
         </Card>
       )}
 

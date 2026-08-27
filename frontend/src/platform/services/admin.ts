@@ -125,8 +125,8 @@ export const adminService = {
 
   /* ---------------- Bifrost 提示词 ---------------- */
 
-  /** all=true 时返回全部文件夹（不过滤白名单），供配置白名单多选用 */
-  listBifrostFolders: (params?: { all?: boolean }): Promise<{ folders: BifrostFolder[] }> =>
+  /** all=true 时返回全部文件夹（不过滤白名单），供配置白名单多选用；force=true 绕过 TTL 缓存 */
+  listBifrostFolders: (params?: { all?: boolean; force?: boolean }): Promise<{ folders: BifrostFolder[] }> =>
     api.get<{ folders: BifrostFolder[] }, { folders: BifrostFolder[] }>('/admin/bifrost/folders', { params }),
   /** force=true 绕过 TTL 缓存强制拉取 Bifrost（供「刷新」按钮使用） */
   listBifrostPrompts: (params?: { folder_id?: string; q?: string; force?: boolean }): Promise<{ prompts: BifrostPrompt[] }> =>

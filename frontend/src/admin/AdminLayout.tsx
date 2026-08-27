@@ -69,7 +69,7 @@ export const AdminLayout: React.FC = () => {
               key={item.to}
               to={item.to}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-sans transition active:scale-[0.97] border border-transparent ${
+                `flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-sans transition-colors active:scale-[0.97] border border-transparent ${
                   isActive
                     ? 'bg-accent-surface text-accent border-dashed border-accent/40 font-medium'
                     : 'text-ink-light hover:text-ink hover:bg-paper-grid/30'

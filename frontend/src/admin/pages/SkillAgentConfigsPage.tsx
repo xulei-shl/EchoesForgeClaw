@@ -3,7 +3,6 @@ import {
   Bot,
   Copy,
   KeyRound,
-  Loader2,
   Pencil,
   Plus,
   RefreshCw,
@@ -47,11 +46,18 @@ const EMPTY_FORM: FormState = {
   is_active: true,
 };
 
+/** 内存级 SWR 缓存：页面切换 0ms 瞬间秒开 */
+let cachedSkillAgentsData: SkillAgentConfig[] | null = null;
+let cachedSkillDropdownsData: {
+  llmConfigs: LLMConfig[];
+  prompts: PromptTemplate[];
+} | null = null;
+
 export const SkillAgentConfigsPage: React.FC = () => {
-  const [items, setItems] = useState<SkillAgentConfig[]>([]);
-  const [llmConfigs, setLlmConfigs] = useState<LLMConfig[]>([]);
-  const [prompts, setPrompts] = useState<PromptTemplate[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<SkillAgentConfig[]>(() => cachedSkillAgentsData ?? []);
+  const [llmConfigs, setLlmConfigs] = useState<LLMConfig[]>(() => cachedSkillDropdownsData?.llmConfigs ?? []);
+  const [prompts, setPrompts] = useState<PromptTemplate[]>(() => cachedSkillDropdownsData?.prompts ?? []);
+  const [loading, setLoading] = useState(() => !cachedSkillAgentsData);
   const [error, setError] = useState('');
 
   const [editing, setEditing] = useState<SkillAgentConfig | null>(null);
@@ -61,27 +67,44 @@ export const SkillAgentConfigsPage: React.FC = () => {
   const [formError, setFormError] = useState('');
   const { dialog, showToast } = useFeedback();
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  // 1. 优先加载 Skill Agent 列表：毫秒级直出，不被弹窗依赖阻塞
+  const loadAgents = useCallback(async (silent = false) => {
+    if (!silent && !cachedSkillAgentsData) setLoading(true);
     setError('');
     try {
-      const [res, llmRes, promptRes] = await Promise.all([
-        adminService.listSkillAgentConfigs(),
-        adminService.listLlmConfigs(),
-        adminService.listPrompts(),
-      ]);
+      const res = await adminService.listSkillAgentConfigs();
+      cachedSkillAgentsData = res;
       setItems(res);
-      setLlmConfigs(llmRes);
-      setPrompts(promptRes);
     } catch (e: any) {
-      setError(e?.message || '加载失败，请重试');
+      if (!cachedSkillAgentsData) setError(e?.message || '加载失败，请重试');
     } finally {
       setLoading(false);
     }
   }, []);
 
+  // 2. 独立异步后台加载弹窗下拉字典
+  const loadDropdowns = useCallback(async () => {
+    try {
+      const [llmRes, promptRes] = await Promise.all([
+        adminService.listLlmConfigs(),
+        adminService.listPrompts(),
+      ]);
+      cachedSkillDropdownsData = { llmConfigs: llmRes, prompts: promptRes };
+      setLlmConfigs(llmRes);
+      setPrompts(promptRes);
+    } catch {
+      /* 字典加载异常不影响主列表呈现 */
+    }
+  }, []);
+
+  const load = useCallback(async (force = false) => {
+    const isCached = !force && !!cachedSkillAgentsData;
+    void loadAgents(isCached);
+    void loadDropdowns();
+  }, [loadAgents, loadDropdowns]);
+
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   /** 可选的模型配置：仅启用且已配置 Key 的（Skill Agent 的 url/key/model 全部来自它）。
@@ -163,7 +186,7 @@ export const SkillAgentConfigsPage: React.FC = () => {
         showToast('Skill Agent 配置已创建', { type: 'success' });
       }
       resetForm();
-      load();
+      void loadAgents(true);
     } catch (err: any) {
       setFormError(err?.message || '保存失败，请重试');
     } finally {
@@ -175,7 +198,7 @@ export const SkillAgentConfigsPage: React.FC = () => {
     try {
       await adminService.updateSkillAgentConfig(c.id, { is_active: next });
       showToast(next ? `已启用 ${c.name}` : `已停用 ${c.name}`, { type: 'success' });
-      load();
+      void loadAgents(true);
     } catch (e: any) {
       showToast(e?.message || '操作失败，请重试', { type: 'error' });
     }
@@ -192,7 +215,12 @@ export const SkillAgentConfigsPage: React.FC = () => {
     try {
       await adminService.deleteSkillAgentConfig(c.id);
       showToast('Skill Agent 配置已删除', { type: 'success' });
-      load();
+      setItems((prev) => {
+        const next = prev.filter((it) => it.id !== c.id);
+        cachedSkillAgentsData = next;
+        return next;
+      });
+      void loadAgents(true);
     } catch (e: any) {
       showToast(e?.message || '删除失败，请重试', { type: 'error' });
     }
@@ -202,7 +230,7 @@ export const SkillAgentConfigsPage: React.FC = () => {
     try {
       await adminService.duplicateSkillAgentConfig(c.id);
       showToast(`已复制「${c.name}」`, { type: 'success' });
-      load();
+      void loadAgents(true);
     } catch (e: any) {
       showToast(e?.message || '复制失败，请重试', { type: 'error' });
     }
@@ -317,107 +345,116 @@ export const SkillAgentConfigsPage: React.FC = () => {
         </form>
       </Dialog>
 
-      {loading && (
-        <Card className="p-10 flex items-center justify-center gap-2 text-ink-light text-sm font-sans">
-          <Loader2 className="w-4 h-4 animate-spin text-accent" strokeWidth={1.5} />
-          加载中...
-        </Card>
+      {/* 首次冷启动骨架屏 */}
+      {loading && items.length === 0 && (
+        <div className="space-y-3 animate-pulse" aria-busy="true" aria-label="正在加载 Skill Agent">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="p-4 rounded-lg border border-dashed border-paper-grid bg-node-bg space-y-2.5">
+              <div className="flex justify-between items-center">
+                <div className="h-5 w-48 bg-paper-grid/50 rounded" />
+                <div className="h-4 w-12 bg-paper-grid/35 rounded" />
+              </div>
+              <div className="h-4 w-72 bg-paper-grid/30 rounded" />
+              <div className="h-3 w-52 bg-paper-grid/25 rounded" />
+            </div>
+          ))}
+        </div>
       )}
 
-      {!loading && error && (
+      {error && items.length === 0 && (
         <div className="py-12 flex flex-col items-center gap-3">
           <span className="text-sm text-error font-sans">{error}</span>
-          <Button variant="ghost" size="sm" onClick={load}>
+          <Button variant="ghost" size="sm" onClick={() => void load(true)}>
             <RefreshCw size={14} strokeWidth={1.5} className="mr-1" />
             重试
           </Button>
         </div>
       )}
 
-      {!loading && !error && (
+      {items.length > 0 && (
         <div className="space-y-3">
-          {items.length === 0 ? (
-            <Card className="py-14 flex flex-col items-center gap-3 text-center">
-              <Bot size={36} strokeWidth={1} className="text-ink-faint" />
-              <p className="font-serif text-base text-ink">还没有 Skill Agent 配置</p>
-              <p className="text-sm text-ink-light font-sans">
-                配置后可在「节点管理」中为 AI 对话节点选择 Skill Agent 模式
-              </p>
-            </Card>
-          ) : (
-            items.map((c) => (
-              <Card key={c.id} className="p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-serif text-base font-semibold text-ink">{c.name}</span>
-                      <span className="text-xs text-ink-light border border-dashed border-paper-grid rounded-pill px-2 py-px font-sans">
-                        Skill Agent
-                      </span>
-                      <Badge variant={c.is_active ? 'success' : 'default'} showDot>
-                        {c.is_active ? '启用' : '停用'}
-                      </Badge>
-                    </div>
-                    <div className="mt-1.5 flex items-center gap-3 flex-wrap text-xs text-ink-faint font-mono">
-                      <span className="inline-flex items-center gap-1">
-                        <Sparkles size={11} strokeWidth={1.5} className="text-accent" />
-                        模型：{c.model_name || '—'}
-                        {c.llm_config_name && <span className="text-ink-faint/70">（{c.llm_config_name}）</span>}
-                      </span>
-                      <span className="max-w-[240px] truncate" title={c.base_url}>
-                        {c.base_url || '官方地址'}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <KeyRound size={11} strokeWidth={1.5} />
-                        {c.has_api_key ? '已配置 Key' : '未配置 Key'}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs text-ink-light font-sans">
-                      提示词：
-                      {c.prompt_name ? (
-                        <span className="text-ink">{c.prompt_name}</span>
-                      ) : (
-                        <span className="text-ink-faint">无（仅由已加载 skill 的 SKILL.md 指令驱动）</span>
-                      )}
-                    </p>
-                    <p className="mt-0.5 text-xs text-ink-light font-sans">
-                      绘图模型：
-                      {c.image_llm_config_name ? (
-                        <span className="text-ink">{c.image_llm_config_name}</span>
-                      ) : (
-                        <span className="text-ink-faint">无（不启用绘图工具）</span>
-                      )}
-                    </p>
+          {items.map((c) => (
+            <Card key={c.id} className="p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-serif text-base font-semibold text-ink">{c.name}</span>
+                    <span className="text-xs text-ink-light border border-dashed border-paper-grid rounded-pill px-2 py-px font-sans">
+                      Skill Agent
+                    </span>
+                    <Badge variant={c.is_active ? 'success' : 'default'} showDot>
+                      {c.is_active ? '启用' : '停用'}
+                    </Badge>
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <Toggle checked={c.is_active} onChange={(v) => handleToggleActive(c, v)} label={c.is_active ? '停用' : '启用'} />
-                    <button
-                      onClick={() => handleDuplicate(c)}
-                      title="复制（沿用模型 / 提示词引用）"
-                      className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-95"
-                    >
-                      <Copy size={15} strokeWidth={1.5} />
-                    </button>
-                    <button
-                      onClick={() => openEdit(c)}
-                      title="编辑"
-                      className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-95"
-                    >
-                      <Pencil size={15} strokeWidth={1.5} />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(c)}
-                      title="删除"
-                      className="p-1.5 rounded-md text-ink-light hover:text-error hover:bg-error/5 transition-colors active:scale-95"
-                    >
-                      <Trash2 size={15} strokeWidth={1.5} />
-                    </button>
+                  <div className="mt-1.5 flex items-center gap-3 flex-wrap text-xs text-ink-faint font-mono">
+                    <span className="inline-flex items-center gap-1">
+                      <Sparkles size={11} strokeWidth={1.5} className="text-accent" />
+                      模型：{c.model_name || '—'}
+                      {c.llm_config_name && <span className="text-ink-faint/70">（{c.llm_config_name}）</span>}
+                    </span>
+                    <span className="max-w-[240px] truncate" title={c.base_url}>
+                      {c.base_url || '官方地址'}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <KeyRound size={11} strokeWidth={1.5} />
+                      {c.has_api_key ? '已配置 Key' : '未配置 Key'}
+                    </span>
                   </div>
+                  <p className="mt-1 text-xs text-ink-light font-sans">
+                    提示词：
+                    {c.prompt_name ? (
+                      <span className="text-ink">{c.prompt_name}</span>
+                    ) : (
+                      <span className="text-ink-faint">无（仅由已加载 skill 的 SKILL.md 指令驱动）</span>
+                    )}
+                  </p>
+                  <p className="mt-0.5 text-xs text-ink-light font-sans">
+                    绘图模型：
+                    {c.image_llm_config_name ? (
+                      <span className="text-ink">{c.image_llm_config_name}</span>
+                    ) : (
+                      <span className="text-ink-faint">无（不启用绘图工具）</span>
+                    )}
+                  </p>
                 </div>
-              </Card>
-            ))
-          )}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Toggle checked={c.is_active} onChange={(v) => handleToggleActive(c, v)} label={c.is_active ? '停用' : '启用'} />
+                  <button
+                    onClick={() => handleDuplicate(c)}
+                    title="复制（沿用模型 / 提示词引用）"
+                    className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-[0.96]"
+                  >
+                    <Copy size={15} strokeWidth={1.5} />
+                  </button>
+                  <button
+                    onClick={() => openEdit(c)}
+                    title="编辑"
+                    className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-[0.96]"
+                  >
+                    <Pencil size={15} strokeWidth={1.5} />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(c)}
+                    title="删除"
+                    className="p-1.5 rounded-md text-ink-light hover:text-error hover:bg-error/5 transition-colors active:scale-[0.96]"
+                  >
+                    <Trash2 size={15} strokeWidth={1.5} />
+                  </button>
+                </div>
+              </div>
+            </Card>
+          ))}
         </div>
+      )}
+
+      {!loading && !error && items.length === 0 && (
+        <Card className="py-14 flex flex-col items-center gap-3 text-center">
+          <Bot size={36} strokeWidth={1} className="text-ink-faint" />
+          <p className="font-serif text-base text-ink">还没有 Skill Agent 配置</p>
+          <p className="text-sm text-ink-light font-sans">
+            配置后可在「节点管理」中为 AI 对话节点选择 Skill Agent 模式
+          </p>
+        </Card>
       )}
     </div>
   );

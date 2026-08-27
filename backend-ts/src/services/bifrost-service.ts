@@ -286,17 +286,6 @@ function compactPrompt(prompt: Record<string, any>, previewImage: string | null)
   };
 }
 
-/** 列出文件夹（配置白名单时默认仅返回白名单文件夹）。 */
-export async function listFolders(db: DB, includeAll = false): Promise<Record<string, any>[]> {
-  const cfg = requireConfig(db);
-  const payload = await getJson(cfg, '/api/prompt-repo/folders');
-  let folders = asList(payload, 'folders');
-  if (cfg.allowed_folders.length && !includeAll) {
-    folders = folders.filter((f) => f && folderAllowed(cfg, f.id, f.name));
-  }
-  return folders;
-}
-
 // 列表 / 检索的 TTL 内存缓存（对应 Python async_ttl_cache，300s）
 const ttlCache = new Map<string, { value: unknown; expiresAt: number }>();
 const TTL_MS = 300_000;
@@ -311,6 +300,18 @@ function cached<T>(key: string, compute: () => Promise<T>, force = false): Promi
     ttlCache.set(key, { value, expiresAt: now + TTL_MS });
     return value;
   });
+}
+
+/** 列出文件夹（配置白名单时默认仅返回白名单文件夹）。支持 300s TTL 缓存，force=true 时强制穿透。 */
+export async function listFolders(db: DB, includeAll = false, force = false): Promise<Record<string, any>[]> {
+  const cfg = requireConfig(db);
+  const cacheKey = `folders:${cfg.base_url}`;
+  const payload = await cached(cacheKey, () => getJson(cfg, '/api/prompt-repo/folders'), force);
+  let folders = asList(payload, 'folders');
+  if (cfg.allowed_folders.length && !includeAll) {
+    folders = folders.filter((f) => f && folderAllowed(cfg, f.id, f.name));
+  }
+  return folders;
 }
 
 /** 列出提示词（可选按文件夹过滤 / 关键词 q 对名称+正文过滤），合并本地预览图。

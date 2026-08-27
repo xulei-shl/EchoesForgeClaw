@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   FileText,
-  Loader2,
   Pencil,
   Plus,
   RefreshCw,
@@ -48,9 +47,12 @@ const EMPTY_FORM: FormState = {
   is_active: true,
 };
 
+/** 内存级 SWR 缓存：页面切换 0ms 瞬间秒开 */
+let cachedPromptsData: PromptTemplate[] | null = null;
+
 export const PromptsPage: React.FC = () => {
-  const [items, setItems] = useState<PromptTemplate[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<PromptTemplate[]>(() => cachedPromptsData ?? []);
+  const [loading, setLoading] = useState(() => !cachedPromptsData);
   const [error, setError] = useState('');
 
   const [nodeTypeFilter, setNodeTypeFilter] = useState('');
@@ -62,23 +64,25 @@ export const PromptsPage: React.FC = () => {
   const [formError, setFormError] = useState('');
   const { dialog, showToast } = useFeedback();
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (force = false) => {
+    const hasCache = !force && !nodeTypeFilter && !!cachedPromptsData;
+    if (!hasCache) setLoading(true);
     setError('');
     try {
       const params: { node_type?: string } = {};
       if (nodeTypeFilter) params.node_type = nodeTypeFilter;
       const res = await adminService.listPrompts(params);
+      if (!nodeTypeFilter) cachedPromptsData = res;
       setItems(res);
     } catch (e: any) {
-      setError(e?.message || '加载失败，请重试');
+      if (!cachedPromptsData) setError(e?.message || '加载失败，请重试');
     } finally {
       setLoading(false);
     }
   }, [nodeTypeFilter]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   const resetForm = () => {
@@ -156,7 +160,12 @@ export const PromptsPage: React.FC = () => {
     try {
       await adminService.deletePrompt(p.id);
       showToast('提示词模板已删除', { type: 'success' });
-      load();
+      setItems((prev) => {
+        const next = prev.filter((it) => it.id !== p.id);
+        cachedPromptsData = next;
+        return next;
+      });
+      void load(true);
     } catch (e: any) {
       showToast(e?.message || '删除失败，请重试', { type: 'error' });
     }
@@ -191,7 +200,7 @@ export const PromptsPage: React.FC = () => {
         {nodeTypeFilter && (
           <button
             onClick={() => setNodeTypeFilter('')}
-            className="text-sm text-accent hover:text-accent-hover font-sans active:scale-95 transition"
+            className="text-sm text-accent hover:text-accent-hover font-sans active:scale-[0.96] transition-colors"
           >
             清除筛选
           </button>
@@ -251,18 +260,26 @@ export const PromptsPage: React.FC = () => {
         </form>
       </Dialog>
 
-      {/* 加载态 */}
-      {loading && (
-        <Card className="p-10 flex items-center justify-center gap-2 text-ink-light text-sm font-sans">
-          <Loader2 className="w-4 h-4 animate-spin text-accent" strokeWidth={1.5} />
-          加载中...
-        </Card>
+      {/* 首次冷启动骨架屏 */}
+      {loading && items.length === 0 && (
+        <div className="space-y-3 animate-pulse" aria-busy="true" aria-label="正在加载提示词模板">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="p-4 rounded-lg border border-dashed border-paper-grid bg-node-bg space-y-2.5">
+              <div className="flex justify-between items-center">
+                <div className="h-5 w-40 bg-paper-grid/50 rounded" />
+                <div className="h-4 w-16 bg-paper-grid/35 rounded" />
+              </div>
+              <div className="h-4 w-full bg-paper-grid/30 rounded" />
+              <div className="h-4 w-3/4 bg-paper-grid/25 rounded" />
+            </div>
+          ))}
+        </div>
       )}
 
-      {!loading && error && (
+      {error && items.length === 0 && (
         <div className="py-12 flex flex-col items-center gap-3">
           <span className="text-sm text-error font-sans">{error}</span>
-          <Button variant="ghost" size="sm" onClick={load}>
+          <Button variant="ghost" size="sm" onClick={() => void load(true)}>
             <RefreshCw size={14} strokeWidth={1.5} className="mr-1" />
             重试
           </Button>
@@ -270,54 +287,54 @@ export const PromptsPage: React.FC = () => {
       )}
 
       {/* 列表 */}
-      {!loading && !error && (
+      {items.length > 0 && (
         <div className="space-y-3">
-          {items.length === 0 ? (
-            <Card className="py-14 flex flex-col items-center gap-3 text-center">
-              <FileText size={36} strokeWidth={1} className="text-ink-faint" />
-              <p className="font-serif text-base text-ink">没有匹配的提示词模板</p>
-              <p className="text-sm text-ink-light font-sans">点击「新建模板」创建第一条提示词</p>
-            </Card>
-          ) : (
-            items.map((p) => (
-              <Card key={p.id} className="p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-serif text-base font-semibold text-ink">{p.name}</span>
-                      <span className="text-xs text-ink-light border border-dashed border-paper-grid rounded-pill px-2 py-px font-mono">
-                        {NODE_TYPE_LABEL[p.node_type] ?? p.node_type}
-                      </span>
-                      <Badge variant={p.is_active ? 'success' : 'default'} showDot>
-                        {p.is_active ? '启用' : '停用'}
-                      </Badge>
-                    </div>
-                    <p className="mt-1.5 text-sm text-ink-light font-sans line-clamp-2 whitespace-pre-wrap">
-                      {p.content || '（空内容）'}
-                    </p>
+          {items.map((p) => (
+            <Card key={p.id} className="p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-serif text-base font-semibold text-ink">{p.name}</span>
+                    <span className="text-xs text-ink-light border border-dashed border-paper-grid rounded-pill px-2 py-px font-mono">
+                      {NODE_TYPE_LABEL[p.node_type] ?? p.node_type}
+                    </span>
+                    <Badge variant={p.is_active ? 'success' : 'default'} showDot>
+                      {p.is_active ? '启用' : '停用'}
+                    </Badge>
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <Toggle checked={p.is_active} onChange={(v) => handleToggleActive(p, v)} label={p.is_active ? '停用' : '启用'} />
-                    <button
-                      onClick={() => openEdit(p)}
-                      title="编辑"
-                      className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-95"
-                    >
-                      <Pencil size={15} strokeWidth={1.5} />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(p)}
-                      title="删除"
-                      className="p-1.5 rounded-md text-ink-light hover:text-error hover:bg-error/5 transition-colors active:scale-95"
-                    >
-                      <Trash2 size={15} strokeWidth={1.5} />
-                    </button>
-                  </div>
+                  <p className="mt-1.5 text-sm text-ink-light font-sans line-clamp-2 whitespace-pre-wrap">
+                    {p.content || '（空内容）'}
+                  </p>
                 </div>
-              </Card>
-            ))
-          )}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Toggle checked={p.is_active} onChange={(v) => handleToggleActive(p, v)} label={p.is_active ? '停用' : '启用'} />
+                  <button
+                    onClick={() => openEdit(p)}
+                    title="编辑"
+                    className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-[0.96]"
+                  >
+                    <Pencil size={15} strokeWidth={1.5} />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(p)}
+                    title="删除"
+                    className="p-1.5 rounded-md text-ink-light hover:text-error hover:bg-error/5 transition-colors active:scale-[0.96]"
+                  >
+                    <Trash2 size={15} strokeWidth={1.5} />
+                  </button>
+                </div>
+              </div>
+            </Card>
+          ))}
         </div>
+      )}
+
+      {!loading && !error && items.length === 0 && (
+        <Card className="py-14 flex flex-col items-center gap-3 text-center">
+          <FileText size={36} strokeWidth={1} className="text-ink-faint" />
+          <p className="font-serif text-base text-ink">没有匹配的提示词模板</p>
+          <p className="text-sm text-ink-light font-sans">点击「新建模板」创建第一条提示词</p>
+        </Card>
       )}
     </div>
   );

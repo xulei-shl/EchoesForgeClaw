@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Boxes, FolderSync, Loader2, RefreshCw, Search, StickyNote, Trash2, FileText, FolderTree } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Boxes, FolderSync, RefreshCw, Search, StickyNote, Trash2, FileText, FolderTree } from 'lucide-react';
 import { adminService, annotationService } from '../../platform/services/admin';
 import type { CachedBifrostSkill } from '../../platform/types';
 import { Button } from '../../platform/components/ui/Button';
@@ -13,9 +13,12 @@ import { RatingStars } from '../../platform/components/ui/RatingStars';
 import { PageHeader, FieldLabel } from '../components/AdminBits';
 import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
 
+/** 内存级 SWR 缓存：页面切换 0ms 瞬间秒开 */
+let cachedBifrostSkillsData: CachedBifrostSkill[] | null = null;
+
 export const BifrostSkillsPage: React.FC = () => {
-  const [skills, setSkills] = useState<CachedBifrostSkill[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [skills, setSkills] = useState<CachedBifrostSkill[]>(() => cachedBifrostSkillsData ?? []);
+  const [loading, setLoading] = useState(() => !cachedBifrostSkillsData);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [syncingAll, setSyncingAll] = useState(false);
@@ -85,17 +88,19 @@ export const BifrostSkillsPage: React.FC = () => {
     }
   };
 
-  /** 拉取列表（force=true 绕过后端 TTL 缓存强制刷新远端；搜索词变化自动触发） */
+  /** 拉取列表（force=true 绕过后端 TTL 缓存强制刷新远端） */
   const load = useCallback(
-    async (force = false) => {
-      setLoading(true);
+    async (force = false, showLoading = true) => {
+      if (showLoading && !cachedBifrostSkillsData) setLoading(true);
       setError('');
       try {
         const res = await adminService.listBifrostSkills({ q: q.trim() || undefined, force });
-        setSkills(res.skills ?? []);
+        const fetched = res.skills ?? [];
+        if (!q.trim()) cachedBifrostSkillsData = fetched;
+        setSkills(fetched);
         setRemoteAvailable(res.remote_available !== false);
       } catch (e: any) {
-        setError(e?.message || '加载失败，请重试');
+        if (!cachedBifrostSkillsData) setError(e?.message || '加载失败，请重试');
       } finally {
         setLoading(false);
       }
@@ -103,13 +108,19 @@ export const BifrostSkillsPage: React.FC = () => {
     [q]
   );
 
-  // 初始加载 + 搜索防抖（停止输入 350ms 后重新拉取；刷新按钮走 force 直调）
+  // 初次挂载立即拉取（零延迟），仅搜索词变化时防抖 350ms
+  const mountedRef = useRef(false);
   useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      void load(false, !cachedBifrostSkillsData);
+      return;
+    }
     const t = window.setTimeout(() => {
-      void load();
+      void load(false, false);
     }, 350);
     return () => window.clearTimeout(t);
-  }, [load]);
+  }, [q, load]);
 
   const markBusy = useCallback((name: string, on: boolean) => {
     setBusy((prev) => {
@@ -236,14 +247,24 @@ export const BifrostSkillsPage: React.FC = () => {
         }
       />
 
-      {loading && (
-        <Card className="p-10 flex items-center justify-center gap-2 text-ink-light text-sm font-sans">
-          <Loader2 className="w-4 h-4 animate-spin text-accent" strokeWidth={1.5} />
-          加载中...
-        </Card>
+      {/* 首次冷启动骨架屏 */}
+      {loading && skills.length === 0 && (
+        <div className="space-y-3 animate-pulse" aria-busy="true" aria-label="正在加载 Skills">
+          <div className="h-9 w-64 bg-paper-grid/45 rounded-lg mb-4" />
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="p-4 rounded-lg border border-dashed border-paper-grid bg-node-bg space-y-2.5">
+              <div className="flex justify-between items-center">
+                <div className="h-5 w-40 bg-paper-grid/50 rounded" />
+                <div className="h-4 w-20 bg-paper-grid/35 rounded" />
+              </div>
+              <div className="h-4 w-3/4 bg-paper-grid/30 rounded" />
+              <div className="h-3 w-32 bg-paper-grid/25 rounded" />
+            </div>
+          ))}
+        </div>
       )}
 
-      {!loading && error && (
+      {error && skills.length === 0 && (
         <div className="py-12 flex flex-col items-center gap-3">
           <span className="text-sm text-error font-sans">{error}</span>
           <Button variant="ghost" size="sm" onClick={() => void load(true)}>
@@ -253,7 +274,7 @@ export const BifrostSkillsPage: React.FC = () => {
         </div>
       )}
 
-      {!loading && !error && (
+      {(skills.length > 0 || (!loading && !error)) && (
         <div>
           {/* 工具栏：搜索与星级过滤 */}
           <div className="flex items-center gap-3 mb-3 flex-wrap">
@@ -290,7 +311,7 @@ export const BifrostSkillsPage: React.FC = () => {
                   setQ('');
                   setRatingFilter('');
                 }}
-                className="text-sm text-accent hover:text-accent-hover font-sans active:scale-95 transition"
+                className="text-sm text-accent hover:text-accent-hover font-sans active:scale-[0.96] transition-colors"
               >
                 清除筛选
               </button>
@@ -326,7 +347,7 @@ export const BifrostSkillsPage: React.FC = () => {
                 return (
                   <Card 
                     key={s.name} 
-                    className="p-4 cursor-pointer transition hover:shadow-md active:scale-[0.98]"
+                    className="p-4 cursor-pointer transition-colors duration-150 hover:border-accent/40 active:scale-[0.98] shadow-xs"
                     onClick={() => setDetail(s)}
                   >
                     <div className="flex items-start justify-between gap-4">
