@@ -413,7 +413,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
           </div>
         )}
         {msg.content && (
-          <div className="max-w-[85%] px-3 py-2 rounded-2xl rounded-br-sm bg-accent text-white text-[13px] leading-relaxed whitespace-pre-wrap break-words font-sans shadow-sm select-text">
+          <div className="max-w-[85%] px-3 py-2 rounded-2xl rounded-br-sm bg-accent text-white text-sm leading-relaxed whitespace-pre-wrap break-words font-sans shadow-sm select-text">
             {msg.content}
           </div>
         )}
@@ -451,7 +451,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
         />
       )}
       <div className="flex items-end w-full min-w-0">
-        <div className={`max-w-[92%] px-3 py-2 rounded-2xl rounded-bl-sm bg-paper-grid/25 border border-paper-grid/60 text-[13px] leading-relaxed font-sans min-w-0 select-text ${isWaitingResponse ? 'flex items-center text-ink-light' : ''}`}>
+        <div className={`max-w-[92%] px-3 py-2 rounded-2xl rounded-bl-sm bg-paper-grid/25 border border-paper-grid/60 text-sm leading-relaxed font-sans min-w-0 select-text ${isWaitingResponse ? 'flex items-center text-ink-light' : ''}`}>
           {isWaitingResponse ? (
             <div className="flex items-center gap-2 py-0.5 text-ink-light select-none">
               <div className="flex items-center gap-1.5 text-accent">
@@ -1060,7 +1060,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
               disabled={isGenerating}
               rows={1}
               placeholder={isGenerating ? '回复生成中…' : '输入消息，Enter 发送，Shift+Enter 换行'}
-              className="flex-1 min-w-0 min-h-[36px] max-h-32 overflow-y-auto resize-none rounded-lg border border-dashed border-paper-grid bg-node-bg px-3 py-1.5 text-[13px] font-sans text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors disabled:opacity-60"
+              className="flex-1 min-w-0 min-h-[36px] max-h-32 overflow-y-auto resize-none rounded-lg border border-dashed border-paper-grid bg-node-bg px-3 py-1.5 text-sm font-sans text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors disabled:opacity-60"
             />
             {isGenerating ? (
               <button
