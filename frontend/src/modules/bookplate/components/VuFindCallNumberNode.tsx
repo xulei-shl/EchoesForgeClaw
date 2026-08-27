@@ -241,8 +241,8 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
             </div>
           </form>
           {hasUpstream && (
-            <div className="flex items-center gap-1 px-0.5 text-[10px] font-sans text-accent">
-              <Link2 size={10} strokeWidth={2} />
+            <div className="flex items-center gap-1 px-0.5 text-xs font-sans text-accent">
+              <Link2 size={12} strokeWidth={2} />
               ISBN 已从上级连线自动填入，可手动修改
             </div>
           )}
@@ -256,18 +256,18 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
               </div>
               <div className="space-y-1">
                 <p className="text-xs font-serif text-accent font-medium">正在从 vufind 检索索书号与馆藏...</p>
-                <p className="text-[11px] font-mono text-ink-faint">ISBN：{isbnInput.trim()}</p>
+                <p className="text-xs font-mono text-ink-faint">ISBN：{isbnInput.trim()}</p>
               </div>
             </div>
           ) : error ? (
             <div className="p-3.5 rounded-md border border-error/20 bg-error/5 flex items-start gap-2.5">
               <AlertTriangle size={15} strokeWidth={2} className="text-error shrink-0 mt-0.5" />
               <div className="flex-1 min-w-0 space-y-1.5 font-sans">
-                <p className="text-[12px] text-error/90 leading-relaxed break-words">{error}</p>
+                <p className="text-xs text-error/90 leading-relaxed break-words">{error}</p>
                 <button
                   type="button"
                   onClick={() => handleQuery()}
-                  className="inline-flex items-center text-[11px] text-error font-medium hover:underline active:scale-[0.96] transition-transform"
+                  className="inline-flex items-center text-xs text-error font-medium hover:underline active:scale-[0.96] transition-transform"
                 >
                   重试
                 </button>
@@ -276,20 +276,20 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
           ) : callNumber ? (
             <div className="h-full flex flex-col gap-3 min-h-[140px]">
               {/* 索书号高亮区 */}
-              <div className="shrink-0 rounded-md border border-dashed border-paper-grid bg-paper-grid/10 px-3 py-2.5 flex items-center justify-between gap-2">
+              <div className="shrink-0 rounded-md border border-dashed border-paper-grid bg-paper-grid/10 px-3.5 py-2.5 flex items-center justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="text-[10px] font-serif text-ink-faint uppercase tracking-wider">索书号</p>
-                  <p className="text-base font-mono font-bold text-ink tracking-wide truncate">{callNumber}</p>
+                  <p className="text-xs font-serif text-ink-faint tracking-wider">索书号</p>
+                  <p className="text-lg font-mono font-bold text-ink tracking-wide truncate">{callNumber}</p>
                 </div>
-                <BookOpen size={20} strokeWidth={1.5} className="text-accent shrink-0 opacity-70" />
+                <BookOpen size={22} strokeWidth={1.5} className="text-accent shrink-0 opacity-80" />
               </div>
 
               {/* 书目信息（检索页同步提取，缺失字段不显示） */}
               {bibliographic &&
                 (bibliographic.title || bibliographic.author || bibliographic.contributor || bibliographic.publisher || bibliographic.pubYear) && (
-                  <div className="shrink-0 rounded-md border border-dashed border-paper-grid bg-transparent px-3 py-2 space-y-1">
-                    <p className="text-[10px] font-serif text-ink-faint uppercase tracking-wider">书目信息</p>
-                    <div className="text-[11px] font-sans space-y-0.5">
+                  <div className="shrink-0 rounded-md border border-dashed border-paper-grid bg-transparent px-3 py-2.5 space-y-1.5">
+                    <p className="text-xs font-serif text-ink-faint tracking-wider">书目信息</p>
+                    <div className="text-sm font-sans text-ink space-y-1">
                       <MetaRow label="题名" value={bibliographic.title} wide />
                       <MetaRow label="著者" value={bibliographic.author} wide />
                       <MetaRow label="其他责任者" value={bibliographic.contributor} wide />
@@ -302,15 +302,15 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
               {/* 馆藏分组列表 */}
               {holdings.length > 0 ? (
                 <div className="space-y-3 pb-1">
-                  <p className="text-[10px] font-serif text-ink-faint uppercase tracking-wider">
+                  <p className="text-xs font-serif text-ink-faint tracking-wider">
                     馆藏信息 · {holdings.length} 个馆藏地 ·{' '}
                     {holdings.reduce((n, g) => n + (g.items?.length ?? 0), 0)} 条复本
                   </p>
                   {holdings.map((group, gi) => (
                     <div key={`${group.location}-${gi}`} className="space-y-1.5">
                       <div className="flex items-start gap-1.5 px-0.5">
-                        <MapPin size={11} strokeWidth={2} className="text-accent shrink-0 mt-[3px]" />
-                        <p className="text-[11px] font-sans font-medium text-ink-light leading-snug break-words">
+                        <MapPin size={14} strokeWidth={2} className="text-accent shrink-0 mt-[2px]" />
+                        <p className="text-sm font-sans font-semibold text-ink leading-snug break-words">
                           {group.location || '未知馆藏地'}
                         </p>
                       </div>
@@ -319,24 +319,24 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
                         return (
                           <div
                             key={`${item.barcode}-${ii}`}
-                            className="rounded-sm border border-paper-grid/60 bg-transparent px-2 py-1.5 space-y-1"
+                            className="rounded-sm border border-paper-grid/60 bg-transparent px-2.5 py-2 space-y-1.5"
                           >
-                            <div className="flex items-center gap-1.5 text-[11px] font-mono text-ink min-w-0">
-                              <Barcode size={11} strokeWidth={2} className="text-ink-faint shrink-0" />
+                            <div className="flex items-center gap-1.5 text-xs font-mono text-ink min-w-0">
+                              <Barcode size={13} strokeWidth={2} className="text-ink-faint shrink-0" />
                               <span className="truncate">{item.barcode || '—'}</span>
                             </div>
-                            <div className="flex items-center gap-1.5 text-[10px] font-sans text-ink-light min-w-0">
-                              <BookMarked size={10} strokeWidth={2} className="text-ink-faint shrink-0" />
+                            <div className="flex items-center gap-1.5 text-xs font-sans text-ink-light min-w-0">
+                              <BookMarked size={12} strokeWidth={2} className="text-ink-faint shrink-0" />
                               <span className="truncate">{item.loanType || '—'}</span>
                             </div>
-                            <div className="flex items-center gap-1.5 text-[10px] font-sans min-w-0">
+                            <div className="flex items-center gap-1.5 text-xs font-sans min-w-0">
                               <CircleDot
-                                size={10}
+                                size={12}
                                 strokeWidth={2}
                                 className={`shrink-0 ${avail === true ? 'text-success' : avail === false ? 'text-error' : 'text-ink-faint'}`}
                               />
                               <span
-                                className={`truncate ${
+                                className={`truncate font-medium ${
                                   avail === true ? 'text-success' : avail === false ? 'text-error' : 'text-ink-faint'
                                 }`}
                               >
@@ -379,8 +379,8 @@ const MetaRow: React.FC<{ label: string; value?: string; wide?: boolean }> = ({ 
   if (!value) return null;
   return (
     <div className="flex gap-2">
-      <span className={`shrink-0 text-ink-faint ${wide ? 'w-16' : 'w-14'}`}>{label}</span>
-      <span className="flex-1 min-w-0 break-words">{value}</span>
+      <span className={`shrink-0 text-ink-faint ${wide ? 'w-20' : 'w-16'}`}>{label}</span>
+      <span className="flex-1 min-w-0 break-words text-ink">{value}</span>
     </div>
   );
 };

@@ -501,11 +501,11 @@ body.is-connecting [data-node-id]:hover {
 
 /* ========== Streamdown 标题与引用块排版优化（遵循 better-typography 规范） ========== */
 [data-streamdown="heading-1"] {
-  font-size: 1.25rem !important; /* 20px (text-xl)，相比原 30px 收敛，符合画布卡片尺度 */
+  font-size: 1.125rem !important; /* 18px (text-lg)，主标题起点 */
   line-height: 1.35 !important;
   font-weight: 700 !important;
-  margin-top: 1rem !important;
-  margin-bottom: 0.5rem !important;
+  margin-top: 0.875rem !important;
+  margin-bottom: 0.375rem !important;
   text-wrap: balance !important;
 }
 [data-streamdown="heading-1"]:first-child {
@@ -513,11 +513,11 @@ body.is-connecting [data-node-id]:hover {
 }
 
 [data-streamdown="heading-2"] {
-  font-size: 1.125rem !important; /* 18px (text-lg) */
+  font-size: 1rem !important; /* 16px (text-base)，二级标题 */
   line-height: 1.35 !important;
   font-weight: 600 !important;
-  margin-top: 0.875rem !important;
-  margin-bottom: 0.375rem !important;
+  margin-top: 0.75rem !important;
+  margin-bottom: 0.25rem !important;
   text-wrap: balance !important;
 }
 [data-streamdown="heading-2"]:first-child {
@@ -525,10 +525,10 @@ body.is-connecting [data-node-id]:hover {
 }
 
 [data-streamdown="heading-3"] {
-  font-size: 1rem !important; /* 16px (text-base) 与 BookInfoNode 书名一致 */
+  font-size: 0.9375rem !important; /* 15px，三级标题 */
   line-height: 1.4 !important;
   font-weight: 600 !important;
-  margin-top: 0.75rem !important;
+  margin-top: 0.625rem !important;
   margin-bottom: 0.25rem !important;
   text-wrap: balance !important;
 }
@@ -537,10 +537,10 @@ body.is-connecting [data-node-id]:hover {
 }
 
 [data-streamdown="heading-4"] {
-  font-size: 0.875rem !important; /* 14px (text-sm) 与正文同号加粗 */
+  font-size: 0.875rem !important; /* 14px (text-sm)，与正文等大加粗 */
   line-height: 1.45 !important;
   font-weight: 600 !important;
-  margin-top: 0.625rem !important;
+  margin-top: 0.5rem !important;
   margin-bottom: 0.25rem !important;
 }
 [data-streamdown="heading-4"]:first-child {
@@ -548,9 +548,9 @@ body.is-connecting [data-node-id]:hover {
 }
 
 [data-streamdown="heading-5"] {
-  font-size: 0.8125rem !important; /* 13px */
+  font-size: 0.875rem !important; /* 14px (text-sm)，与正文等大中等字重 */
   line-height: 1.45 !important;
-  font-weight: 600 !important;
+  font-weight: 500 !important;
   margin-top: 0.5rem !important;
   margin-bottom: 0.25rem !important;
 }
@@ -559,8 +559,8 @@ body.is-connecting [data-node-id]:hover {
 }
 
 [data-streamdown="heading-6"] {
-  font-size: 0.75rem !important; /* 12px (text-xs) */
-  line-height: 1.5 !important;
+  font-size: 0.875rem !important; /* 14px (text-sm)，与正文等大弱化字色 */
+  line-height: 1.45 !important;
   font-weight: 500 !important;
   color: var(--color-ink-light) !important;
   margin-top: 0.5rem !important;
