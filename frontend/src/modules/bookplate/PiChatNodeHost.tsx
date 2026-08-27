@@ -397,6 +397,7 @@ export function PiChatNodeHost({
         setSessionMsgs(msgs);
         setMessages([]);
         pendingFilesRef.current.clear();
+        optimisticUserRef.current = null;
         activeRequestWsRef.current = ws;
         setRunSeq((v) => v + 1); // 丢弃旧 live 实例
         setPanelVersion((v) => v + 1);
@@ -458,6 +459,9 @@ export function PiChatNodeHost({
 
   // ---------- 显示消息合成：水合历史 + 当轮 live 段 ----------
   const isStreaming = status === 'submitted' || status === 'streaming';
+  // useChat 在 prepareSendMessagesRequest 执行期间可能尚未把首条 user 消息
+  // 放入 uiMessages；保留发送前的乐观消息，避免 pi 首轮等待服务端/上下文准备时气泡消失。
+  const optimisticUserRef = useRef<ChatMessage | null>(null);
   const nodeSteps: AgentStep[] = Array.isArray(node.data?.agentSteps) ? node.data.agentSteps : [];
   const bufFiles = pendingFilesRef.current.size ? [...pendingFilesRef.current.values()] : [];
 
@@ -478,7 +482,13 @@ export function PiChatNodeHost({
     }
     return cleaned;
   })();
-  const messages: ChatMessage[] = [...(sessionMsgs ?? []), ...liveSegment];
+  const messages: ChatMessage[] = [
+    ...(sessionMsgs ?? []),
+    ...(!liveSegment.length && optimisticUserRef.current && isStreaming
+      ? [optimisticUserRef.current]
+      : []),
+    ...liveSegment,
+  ];
 
   // ---------- 单向镜像：显示消息 → 节点 store（下游 output 与画布持久化） ----------
   const lastMirroredRef = useRef<string>(
@@ -543,6 +553,12 @@ export function PiChatNodeHost({
       interruptedByUserRef.current = false;
       runErroredRef.current = false;
       pendingFilesRef.current.clear();
+      // 立即记录用户消息；不等待 pi 的 prepare 请求、上下文构建或首个 SSE 事件。
+      optimisticUserRef.current = {
+        role: 'user',
+        content: text,
+        ...(images?.length ? { images } : {}),
+      };
       setNodes((prev) =>
         prev.map((n) =>
           n.id === nodeId
