@@ -327,11 +327,35 @@ describe('管理端：模型配置', () => {
     });
     expect(res2.statusCode).toBe(200);
     const data2 = res2.json();
-    expect(data2.found).toBe(true);
-    expect(data2.context_window).toBe(200000);
-    expect(data2.is_multimodal).toBe(true);
+    // 3. Agnes 专属模型匹配与多模态识别
+    const resAgnes = await app.inject({
+      method: 'POST',
+      url: '/api/admin/llm-configs/lookup-model',
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: { model_name: 'agnes-2.5-flash' },
+    });
+    expect(resAgnes.statusCode).toBe(200);
+    const dataAgnes = resAgnes.json();
+    expect(dataAgnes.found).toBe(true);
+    expect(dataAgnes.context_window).toBe(512000);
+    expect(dataAgnes.max_tokens).toBe(65536);
+    expect(dataAgnes.is_multimodal).toBe(true);
 
-    // 3. 空参数或不存在的模型
+    // 4. DeepSeek Vision 视觉特化模型精准匹配（确保多模态识别不被普通版截胡）
+    const resVision = await app.inject({
+      method: 'POST',
+      url: '/api/admin/llm-configs/lookup-model',
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: { model_name: 'deepseek-v4-flash-vision-exp' },
+    });
+    expect(resVision.statusCode).toBe(200);
+    const dataVision = resVision.json();
+    expect(dataVision.found).toBe(true);
+    expect(dataVision.context_window).toBe(1000000);
+    expect(dataVision.max_tokens).toBe(384000);
+    expect(dataVision.is_multimodal).toBe(true);
+
+    // 5. 空参数或不存在的模型
     const resEmpty = await app.inject({
       method: 'POST',
       url: '/api/admin/llm-configs/lookup-model',

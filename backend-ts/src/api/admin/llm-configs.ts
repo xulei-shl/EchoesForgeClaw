@@ -205,7 +205,7 @@ export async function registerLLMConfigsAdminRouter(app: FastifyInstance): Promi
     }
   );
 
-  // Models.dev 模型参数查询（辅助前端自动填充 context_window / max_tokens）
+  // Models.dev / 本地预设模型参数查询（辅助前端自动填充 context_window / max_tokens）
   app.post(
     '/api/admin/llm-configs/lookup-model',
     admin,
@@ -214,7 +214,7 @@ export async function registerLLMConfigsAdminRouter(app: FastifyInstance): Promi
       if (!model_name?.trim()) return reply.code(400).send({ detail: '模型名称不能为空' });
       const rawName = model_name.trim();
 
-      // 第一层：本地离线预设字典秒级匹配（0 延迟、抗断网）
+      // 第一层：本地离线预设字典精确匹配（0 延迟、抗断网）
       const localMatch = matchLocalPreset(rawName);
       if (localMatch) {
         return {
@@ -224,32 +224,28 @@ export async function registerLLMConfigsAdminRouter(app: FastifyInstance): Promi
         };
       }
 
-      // 第二层：Models.dev 全量线上查询（3 秒短超时 + 名称归一化匹配）
+      // 第二层：Models.dev 全量线上查询（覆盖 10,000+ 原生与 Provider 模型）
       try {
-        const catalog = await getModelsDevCatalog();
+        const index = await getModelsDevIndex();
         const normalized = normalizeModelName(rawName);
-        const entries = Object.entries(catalog);
+        const lowerRaw = rawName.toLowerCase();
 
-        // 匹配策略：
-        // 1. key 末段精确匹配（如 deepseek/deepseek-v4-pro 对比 deepseek-v4-pro）
-        // 2. 归一化后的末段匹配（如 claude-3-5-sonnet-20241022 归一化后匹配 claude-3-5-sonnet）
-        // 3. 全文包含匹配
-        let match = entries.find(([k]) => {
-          const keyTail = k.includes('/') ? k.split('/').pop()! : k;
-          return keyTail.toLowerCase() === rawName.toLowerCase();
-        });
-        if (!match) {
-          match = entries.find(([k]) => {
-            const keyTail = k.includes('/') ? k.split('/').pop()! : k;
-            return normalizeModelName(keyTail) === normalized;
-          });
-        }
-        if (!match) {
-          match = entries.find(([k]) => k.toLowerCase().includes(normalized));
+        // 匹配优先级：
+        // 1. 原始名精确查找（如 agnes-2.5-flash 或 deepseek-v4-flash-vision-exp）
+        // 2. 归一化名称精确查找（去厂商前缀/去日期后缀）
+        // 3. 遍历寻找末段完全匹配项（key.endsWith('/' + normalized)）
+        let m = index.get(lowerRaw) ?? index.get(normalized);
+        if (!m) {
+          for (const [k, val] of index.entries()) {
+            if (k.endsWith('/' + lowerRaw) || k.endsWith('/' + normalized)) {
+              m = val;
+              break;
+            }
+          }
         }
 
-        if (!match) return { found: false };
-        const m = match[1] as Record<string, unknown>;
+        if (!m) return { found: false };
+
         const limit = m.limit as Record<string, number> | undefined;
         const modalities = m.modalities as { input?: string[]; output?: string[] } | undefined;
         const isMultimodal = Array.isArray(modalities?.input) && modalities.input.includes('image');
@@ -359,7 +355,7 @@ async function runConnectivityTest(apiKey: string, baseUrl: string, modelName: s
 }
 
 // ---------------------------------------------------------------------------
-// 本地离线预设字典 + Models.dev 缓存（双层查询容灾）
+// 本地离线预设字典 + Models.dev 全量索引（双层容灾）
 // ---------------------------------------------------------------------------
 
 interface PresetModelSpec {
@@ -369,8 +365,13 @@ interface PresetModelSpec {
   is_multimodal: boolean;
 }
 
-/** 常见主流大模型离线预设（抗断网、0 延迟、免海外请求） */
+/** 常见主流大模型离线预设（抗断网、0 延迟、严格精确匹配） */
 const LOCAL_PRESETS: Record<string, PresetModelSpec> = {
+  // Agnes
+  'agnes-2.0-flash': { context_window: 512_000, max_tokens: 65_536, reasoning: true, is_multimodal: true },
+  'agnes-2.5-flash': { context_window: 512_000, max_tokens: 65_536, reasoning: true, is_multimodal: true },
+  'agnes-2.5-pro-alpha': { context_window: 1_000_000, max_tokens: 65_536, reasoning: true, is_multimodal: true },
+
   // DeepSeek
   'deepseek-chat': { context_window: 1_000_000, max_tokens: 384_000, reasoning: false, is_multimodal: false },
   'deepseek-reasoner': { context_window: 1_000_000, max_tokens: 384_000, reasoning: true, is_multimodal: false },
@@ -378,6 +379,7 @@ const LOCAL_PRESETS: Record<string, PresetModelSpec> = {
   'deepseek-r1': { context_window: 1_000_000, max_tokens: 384_000, reasoning: true, is_multimodal: false },
   'deepseek-v4-pro': { context_window: 1_000_000, max_tokens: 384_000, reasoning: true, is_multimodal: false },
   'deepseek-v4-flash': { context_window: 1_000_000, max_tokens: 384_000, reasoning: true, is_multimodal: false },
+  'deepseek-v4-flash-vision-exp': { context_window: 1_000_000, max_tokens: 384_000, reasoning: true, is_multimodal: true },
 
   // OpenAI
   'gpt-4o': { context_window: 128_000, max_tokens: 16_384, reasoning: false, is_multimodal: true },
@@ -424,33 +426,46 @@ function normalizeModelName(raw: string): string {
   return name;
 }
 
-/** 本地预设匹配 */
+/** 本地预设匹配（严格精确匹配，禁止贪婪包含，防止特化模型被基础底模截胡） */
 function matchLocalPreset(rawName: string): PresetModelSpec | null {
   const norm = normalizeModelName(rawName);
+  // 1. 归一化精确匹配
   if (LOCAL_PRESETS[norm]) return LOCAL_PRESETS[norm];
-  // 遍历别名模糊匹配
-  for (const [key, spec] of Object.entries(LOCAL_PRESETS)) {
-    if (norm === key || norm.includes(key) || key.includes(norm)) {
-      return spec;
-    }
-  }
+  // 2. 原始输入小写精确匹配
+  const lower = rawName.trim().toLowerCase();
+  if (LOCAL_PRESETS[lower]) return LOCAL_PRESETS[lower];
   return null;
 }
 
-let _modelsDevCache: Record<string, unknown> | null = null;
-let _modelsDevCacheTs = 0;
+let _modelsDevIndex: Map<string, Record<string, unknown>> | null = null;
+let _modelsDevIndexTs = 0;
 const MODELS_DEV_TTL_MS = 30 * 60 * 1000;
 
-async function getModelsDevCatalog(): Promise<Record<string, unknown>> {
-  if (_modelsDevCache && Date.now() - _modelsDevCacheTs < MODELS_DEV_TTL_MS) {
-    return _modelsDevCache;
+/** 获取 Models.dev 全量模型索引（从 api.json 平铺 10,000+ 原生与 Provider 模型） */
+async function getModelsDevIndex(): Promise<Map<string, Record<string, unknown>>> {
+  if (_modelsDevIndex && Date.now() - _modelsDevIndexTs < MODELS_DEV_TTL_MS) {
+    return _modelsDevIndex;
   }
-  // 3 秒严格超时：海外 API 无法访问时快速失败走兜底，绝不挂起界面
-  const resp = await fetch('https://models.dev/models.json', {
-    signal: AbortSignal.timeout(3_000),
+  // 5 秒超时拉取 api.json（包含全部 100+ Provider）
+  const resp = await fetch('https://models.dev/api.json', {
+    signal: AbortSignal.timeout(5_000),
   });
   if (!resp.ok) throw new Error(`Models.dev HTTP ${resp.status}`);
-  _modelsDevCache = (await resp.json()) as Record<string, unknown>;
-  _modelsDevCacheTs = Date.now();
-  return _modelsDevCache;
+  const providers = (await resp.json()) as Record<string, { models?: Record<string, Record<string, unknown>> }>;
+
+  const index = new Map<string, Record<string, unknown>>();
+  for (const [providerId, p] of Object.entries(providers)) {
+    if (!p.models || typeof p.models !== 'object') continue;
+    for (const [modelId, modelSpec] of Object.entries(p.models)) {
+      const cleanModelId = modelId.toLowerCase();
+      // 支持裸 model_id 查找
+      index.set(cleanModelId, modelSpec);
+      // 支持 provider/model_id 完整路径查找
+      index.set(`${providerId.toLowerCase()}/${cleanModelId}`, modelSpec);
+    }
+  }
+
+  _modelsDevIndex = index;
+  _modelsDevIndexTs = Date.now();
+  return _modelsDevIndex;
 }
