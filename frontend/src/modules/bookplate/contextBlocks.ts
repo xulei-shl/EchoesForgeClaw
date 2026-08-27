@@ -108,6 +108,10 @@ export function buildInjectedContextBlocks(
   if (includeText || includeImages) {
     for (const p of parents) {
       if (opts.parentFilter && !opts.parentFilter(p.type)) continue;
+      // 图书元数据节点只经图书通道注入（includeBook / includeBookCover 开关注入）：
+      // includeBook 关闭时不允许其文本/封面经父节点通道绕过开关再次注入，
+      // 避免出现「关闭包含图书元数据后上下文仍显示图书元数据」的假象。
+      if (p.type === 'book_info' && !opts.includeBook) continue;
       // 若该直连父节点已作为图书元数据/封面注入，跳过以避免重复注入
       if (injectedBookId && p.id === injectedBookId) continue;
       const isText = textOutputs.includes(p);

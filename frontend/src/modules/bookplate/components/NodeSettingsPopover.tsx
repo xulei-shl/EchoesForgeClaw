@@ -129,7 +129,7 @@ const NodeSettingsPopoverInner: React.FC<NodeSettingsPopoverProps> = ({
                     <p className="text-xs font-sans text-ink">包含图书元数据</p>
                     <p className="text-[10px] text-ink-faint font-sans mt-0.5 leading-snug">
                       {hasBookInfo
-                        ? '未直接连线时，优先注入连线上游图书元数据，无连通时取画布根节点'
+                        ? '开启时注入图书元数据（直接连线优先，未连线取连线上游，无连通取画布根节点）'
                         : '画布中还没有图书元数据节点'}
                     </p>
                   </div>

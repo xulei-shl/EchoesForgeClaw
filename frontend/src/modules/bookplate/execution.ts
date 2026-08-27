@@ -38,15 +38,16 @@ function markdownSections(sections: { label: string; values: string[] }[]): stri
 /**
  * 节点运行输入（执行引擎 runNode 与自动运行检查共用）：
  * - 输入 = 所有直接连线的上级节点输出（画线连上即输入，1 级，不向上追溯）；
- * - 图书元数据：直接连线的 book_info 优先；未直接连线时按「包含图书元数据」开关注入——
- *   沿连线向上追溯实际连通的 book_info，无连通时才回退画布根节点；
+ * - 图书元数据：受「包含图书元数据」开关注入（关闭即不注入图书内容，直接连线同样受控）；
+ *   开启时直接连线的 book_info 优先，未直接连线时沿连线向上追溯实际连通的 book_info，
+ *   无连通时才回退画布根节点；
  * - 文本/图片等上级按「输出端口类型」统一分组（collectNodeInputs），文本再按角色配置表
  *   （TEXT_ROLE）分桶：prompt（主提示词）/ analysis（分析）/ 普通文本上下文。
  */
 export interface RunInputs {
   /** 直接上级节点列表 */
   parents: NodeData[];
-  /** 图书元数据节点（直接 book_info；或 includeBook 时优先连线上游、无连通才回退根节点） */
+  /** 图书元数据节点（includeBook 关闭时为 undefined；开启时直接 book_info 优先，无则连线上游，再兜底画布根节点） */
   book?: NodeData;
   /** 图书元数据文本（过滤图片字段） */
   metadataText: string;
@@ -79,14 +80,15 @@ export function resolveNodeRunInputs(
     portTypesOf
   );
   const settings: NodeRunSettings = node.data?.settings ?? DEFAULT_RUN_SETTINGS;
-  // 图书元数据：直接连线的 book_info 优先；未直接连线时按「包含图书元数据」开关注入——
-  // 先沿连线向上追溯实际连通的 book_info（画布可存在多个互不连通的图书元数据节点，
-  // 不能写死取根节点），无连通者才回退画布根节点
-  const book =
-    parents.find((p) => p.type === 'book_info') ??
-    (settings.includeBook
-      ? findConnectedBookInfoUpstream(node.id, nodes, edges) ?? findRootBookInfo(nodes, edges)
-      : undefined);
+  // 图书元数据：受「包含图书元数据」开关注入（直接连线同样受控——关闭即完全不注入图书内容）。
+  // 开启时直接连线的 book_info 优先；未直接连线时沿连线向上追溯实际连通的 book_info
+  // （画布可存在多个互不连通的图书元数据节点，不能写死取根节点），无连通者才回退画布根节点。
+  // 注：历史记录（useGenerationHistory / useImageOutputHandlers）无条件记录图书元数据，不受此开关影响。
+  const book = settings.includeBook
+    ? parents.find((p) => p.type === 'book_info') ??
+      findConnectedBookInfoUpstream(node.id, nodes, edges) ??
+      findRootBookInfo(nodes, edges)
+    : undefined;
   const metadataText = bookMetadataText(book?.data);
   // 文本输出上级按角色配置表（TEXT_ROLE）分桶：book 走图书元数据通道（不并入文本上下文）；
   // prompt = 主提示词来源；analysis = 图片分析；其余文本输出节点（含后续新增类型）默认
