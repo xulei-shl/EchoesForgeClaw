@@ -9,6 +9,16 @@ import {
 import { useAuth } from '../../platform/stores/authStore';
 import { Navbar } from '../../platform/components/layout/Navbar';
 import { Canvas } from '../../platform/components/canvas/Canvas';
+import type { MarqueeCandidate } from '../../platform/components/canvas/Canvas';
+import type { NodeMove } from '../../platform/components/canvas/CanvasContext';
+import CanvasGroupFrame from '../../platform/components/canvas/CanvasGroupFrame';
+import {
+  GROUP_COLORS,
+  nextGroupColor,
+  nextGroupName,
+  computeGroupBounds,
+} from '../../modules/bookplate/canvasGroups';
+import { useGroupDrag } from '../../modules/bookplate/useGroupDrag';
 import { IsbnInput } from '../../modules/bookplate/components/IsbnInput';
 import { CanvasActionBar } from '../../modules/bookplate/components/CanvasActionBar';
 import { AddNodeButton, type NodePickerItem } from '../../modules/bookplate/components/AddNodeButton';
@@ -40,6 +50,7 @@ import {
   DEFAULT_SIZES,
   bookInfoInflight,
   selfHealNode,
+  type CanvasGroup,
   type EdgeData,
   type NodeData,
   type NodeSize,
@@ -69,6 +80,7 @@ const BookplatePage: React.FC = () => {
   const {
     nodes, setNodes,
     edges, setEdges,
+    groups, setGroups,
     nodeSizes, setNodeSizes,
     favoritedState, setFavoritedState,
     publishedState, setPublishedState,
@@ -76,17 +88,57 @@ const BookplatePage: React.FC = () => {
     position, setPosition,
     generationIds,
     clearCanvasState,
-  } = useCanvasState<NodeData, EdgeData, NodeSize>(String(user?.id ?? 'anon'));
+  } = useCanvasState<NodeData, EdgeData, NodeSize, CanvasGroup>(String(user?.id ?? 'anon'));
 
   const [isLoading, setIsLoading] = useState(false);
-  /** 当前激活（点击/聚焦/操作）的节点 ID，用于上下游连线高亮置顶与景深弱化 */
+  /** 主选中节点 ID（单选语义：连线高亮 / 操作栏作用目标） */
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
+  /** 多选节点集合（普通点击单选也在集合内；空集 = 无选中） */
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  // 当激活节点已被删除/撤销消失时，自动清除激活状态
+  /** 普通点击选中：替换整个选择集并设主选中节点；null 清空 */
+  const selectNode = useCallback((id: string | null) => {
+    setActiveNodeId(id);
+    setSelectedIds(id ? new Set([id]) : new Set());
+  }, []);
+
+  /** Ctrl/Cmd+点击：切换多选成员资格（并将其设为主选中节点） */
+  const toggleNodeSelection = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    setActiveNodeId(id);
+  }, []);
+
+  /** 框选完成：整体替换选择集（首个命中为主选中节点；空命中清空） */
+  const handleMarqueeSelect = useCallback((ids: string[]) => {
+    setSelectedIds(new Set(ids));
+    setActiveNodeId(ids[0] ?? null);
+  }, []);
+
+  /** 清空全部选择（空白点击 / Esc） */
+  const clearSelection = useCallback(() => {
+    setActiveNodeId(null);
+    setSelectedIds(new Set());
+  }, []);
+
+  // 当选中节点已被删除/撤销消失时，自动清除选中状态
   useEffect(() => {
     if (activeNodeId && !nodes.some((n) => n.id === activeNodeId)) {
       setActiveNodeId(null);
     }
+    setSelectedIds((prev) => {
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (nodes.some((n) => n.id === id)) next.add(id);
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
   }, [nodes, activeNodeId]);
 
   const nodeSizesRef = useRef(nodeSizes);
@@ -253,10 +305,12 @@ const BookplatePage: React.FC = () => {
     () => ({
       nodesRef,
       edgesRef,
+      groupsRef,
       generationIds,
       streamControllers,
       setNodes,
       setEdges,
+      setGroups,
       setSelectedImageId,
       setStaleRecordIds,
       syncFavoritesFromServer,
@@ -266,12 +320,151 @@ const BookplatePage: React.FC = () => {
       generationIds,
       setNodes,
       setEdges,
+      setGroups,
       setSelectedImageId,
       setStaleRecordIds,
       syncFavoritesFromServer,
     ]
   );
   const { undo, redo, recordHistory, canUndo, canRedo } = useCanvasHistory(historyCtx);
+
+  // ---------- 分组（软分组） ----------
+  // groupsRef：历史快照读取当前分组；每次渲染同步最新值（与 nodeSizesRef 同模式）
+  const groupsRef = useRef<CanvasGroup[]>(groups);
+  groupsRef.current = groups;
+
+  /** 节点所属分组（至多一个） */
+  const groupOfNode = useCallback(
+    (id: string) => groupsRef.current.find((g) => g.memberIds.includes(id)),
+    []
+  );
+
+  /** 整体拖动解析：分组内节点 → 整组；多选集内 → 全部选中；Alt 强制仅自身 */
+  const resolveDragGroup = useCallback(
+    (id: string, altKey: boolean): NodeMove[] => {
+      const node = nodesRef.current.find((n) => n.id === id);
+      if (!node) return [{ id, x: 0, y: 0 }];
+      if (!altKey) {
+        const group = groupOfNode(id);
+        if (group) {
+          return group.memberIds
+            .map((mid) => nodesRef.current.find((n) => n.id === mid))
+            .filter((n): n is NodeData => Boolean(n))
+            .map((n) => ({ id: n.id, x: n.x, y: n.y }));
+        }
+        if (selectedIds.has(id) && selectedIds.size > 1) {
+          return [...selectedIds]
+            .map((mid) => nodesRef.current.find((n) => n.id === mid))
+            .filter((n): n is NodeData => Boolean(n))
+            .map((n) => ({ id: n.id, x: n.x, y: n.y }));
+        }
+      }
+      return [{ id, x: node.x, y: node.y }];
+    },
+    [groupOfNode, selectedIds]
+  );
+
+  /** 整体拖动中：批量命令式重绘涉及节点连线（不触发渲染） */
+  const handleMultiDrag = useCallback((moves: NodeMove[]) => {
+    const moved = new Map(moves.map((m) => [m.id, m]));
+    for (const edge of edgesRef.current) {
+      const a = moved.get(edge.source);
+      const b = moved.get(edge.target);
+      if (!a && !b) continue;
+      const handle = edgeRefs.current.get(edge.id);
+      if (!handle) continue;
+      const source = nodesRef.current.find((n) => n.id === edge.source);
+      const target = nodesRef.current.find((n) => n.id === edge.target);
+      if (!source || !target) continue;
+      handle.setPositions(a ? a.x : source.x, a ? a.y : source.y, b ? b.x : target.x, b ? b.y : target.y);
+    }
+  }, []);
+
+  /** 整体拖动提交：一次历史 + 一次批量位置更新（一条撤销记录） */
+  const handleMultiPositionChange = useCallback(
+    (moves: NodeMove[]) => {
+      // 无实际移动（单纯点击）不记历史
+      const changed = moves.filter((m) => {
+        const cur = nodesRef.current.find((n) => n.id === m.id);
+        return !cur || Math.abs(cur.x - m.x) >= 0.5 || Math.abs(cur.y - m.y) >= 0.5;
+      });
+      if (changed.length === 0) return;
+      const moved = new Map(changed.map((m) => [m.id, { x: m.x, y: m.y }]));
+      recordHistory();
+      setNodes((prev) => prev.map((n) => (moved.has(n.id) ? { ...n, ...moved.get(n.id)! } : n)));
+    },
+    [recordHistory, setNodes]
+  );
+
+  /** 创建分组：从当前多选集合（≥2 个节点） */
+  const createGroupFromSelection = useCallback(() => {
+    const ids = [...selectedIds].filter((id) => nodesRef.current.some((n) => n.id === id));
+    if (ids.length < 2) return;
+    const group: CanvasGroup = {
+      id: `group-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      name: nextGroupName(groupsRef.current),
+      color: nextGroupColor(groupsRef.current),
+      memberIds: ids,
+    };
+    recordHistory();
+    setGroups((prev) => [...prev, group]);
+    showToast(`已创建「${group.name}」，拖动标题可整体移动`, { type: 'success' });
+  }, [selectedIds, recordHistory, setGroups, showToast]);
+
+  /** 解散分组：仅删除组记录，节点与连线保留（可撤销） */
+  const disbandGroup = useCallback(
+    (groupId: string) => {
+      recordHistory();
+      setGroups((prev) => prev.filter((g) => g.id !== groupId));
+    },
+    [recordHistory, setGroups]
+  );
+
+  /** 更新分组名称 / 颜色（可撤销） */
+  const updateGroup = useCallback(
+    (groupId: string, patch: Partial<Pick<CanvasGroup, 'name' | 'color'>>) => {
+      recordHistory();
+      setGroups((prev) => prev.map((g) => (g.id === groupId ? { ...g, ...patch } : g)));
+    },
+    [recordHistory, setGroups]
+  );
+
+  /** 单击组标题：选中整组成员（首个为主选中节点） */
+  const selectGroupMembers = useCallback((group: CanvasGroup) => {
+    const ids = group.memberIds.filter((id) => nodesRef.current.some((n) => n.id === id));
+    setSelectedIds(new Set(ids));
+    setActiveNodeId(ids[0] ?? null);
+  }, []);
+
+  // 分组标题整组拖动协调器（rAF 命令式 + 一次提交）
+  const { beginGroupDrag } = useGroupDrag({
+    nodesRef,
+    edgesRef,
+    edgeHandlesRef: edgeRefs,
+    setNodes,
+    recordHistory,
+  });
+
+  /** 删除节点后同步清理分组引用（组内成员 < 2 时自动解散，避免空壳组） */
+  useEffect(() => {
+    setGroups((prev) => {
+      let dirty = false;
+      const next = prev
+        .map((g) => {
+          const members = g.memberIds.filter((id: string) => nodesRef.current.some((n) => n.id === id));
+          if (members.length !== g.memberIds.length) dirty = true;
+          return { ...g, memberIds: members };
+        })
+        .filter((g) => {
+          if (g.memberIds.length >= 2) return true;
+          if (g.memberIds.length !== 0) dirty = true; // 只剩 1 人也视为解散
+          return false;
+        });
+      return dirty ? next : prev;
+    });
+    // 仅在节点集合变化时运行；setGroups 为稳定引用
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes]);
 
   // 全局快捷键：Ctrl/Cmd+Z 撤销，Ctrl/Cmd+Shift+Z / Ctrl/Cmd+Y 重做（聚焦文本输入区时忽略）
   useEffect(() => {
@@ -1024,15 +1217,36 @@ const BookplatePage: React.FC = () => {
     handleNodeResizeLive,
   };
 
-  // 连线分层与高亮：存在激活节点时，高亮连线在 DOM 层自然置顶渲染
+  // 连线分层与高亮：存在选中节点时，与任一选中节点相连的连线在 DOM 层自然置顶渲染
   const sortedEdges = useMemo(() => {
-    if (!activeNodeId) return edges;
+    if (selectedIds.size === 0) return edges;
     return [...edges].sort((a, b) => {
-      const aHigh = a.source === activeNodeId || a.target === activeNodeId ? 1 : 0;
-      const bHigh = b.source === activeNodeId || b.target === activeNodeId ? 1 : 0;
+      const aHigh = selectedIds.has(a.source) || selectedIds.has(a.target) ? 1 : 0;
+      const bHigh = selectedIds.has(b.source) || selectedIds.has(b.target) ? 1 : 0;
       return aHigh - bHigh;
     });
-  }, [edges, activeNodeId]);
+  }, [edges, selectedIds]);
+
+  /** 框选候选：全部节点的画布坐标包围盒（实时尺寸优先，默认尺寸兑底） */
+  const getMarqueeCandidates = useCallback((): MarqueeCandidate[] =>
+    nodesRef.current.map((n) => {
+      const size = nodeSizesRef.current[n.id] ?? (DEFAULT_SIZES as Record<string, NodeSize>)[n.type] ?? { width: 200, height: 100 };
+      return { id: n.id, x: n.x, y: n.y, width: size.width, height: size.height };
+    }),
+    []
+  );
+
+  /** 分组框渲染数据：成员实时包围盒（内边距已含） */
+  const groupFrames = useMemo(() => {
+    return groups.map((g) => ({
+      group: g,
+      bounds: computeGroupBounds(
+        g.memberIds.map((id) => nodes.find((n) => n.id === id)).filter((n): n is NodeData => Boolean(n)),
+        nodeSizes
+      ),
+      active: g.memberIds.some((id) => selectedIds.has(id)),
+    }));
+  }, [groups, nodes, nodeSizes, selectedIds]);
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
@@ -1044,7 +1258,15 @@ const BookplatePage: React.FC = () => {
           position={position}
           onPositionChange={setPosition}
           activeNodeId={activeNodeId}
-          onActiveNodeChange={setActiveNodeId}
+          onActiveNodeChange={clearSelection}
+          selectedIds={selectedIds}
+          selectNode={selectNode}
+          toggleNodeSelection={toggleNodeSelection}
+          resolveDragGroup={resolveDragGroup}
+          onMultiDrag={handleMultiDrag}
+          onMultiPositionChange={handleMultiPositionChange}
+          getMarqueeCandidates={getMarqueeCandidates}
+          onMarqueeSelect={handleMarqueeSelect}
           onAnchorPointerDown={onAnchorPointerDown}
           onContextMenu={handleCanvasContextMenu}
         >
@@ -1061,8 +1283,8 @@ const BookplatePage: React.FC = () => {
               'mismatch';
 
             const isConnected =
-              activeNodeId !== null && (edge.source === activeNodeId || edge.target === activeNodeId);
-            const isDimmed = activeNodeId !== null && !isConnected;
+              selectedIds.size > 0 && (selectedIds.has(edge.source) || selectedIds.has(edge.target));
+            const isDimmed = selectedIds.size > 0 && !isConnected;
 
             return (
               <NodeEdge
@@ -1098,8 +1320,48 @@ const BookplatePage: React.FC = () => {
             );
           })}
 
+          {/* 分组框（软分组视觉层）：zIndex 1，普通连线上方、节点下方；标题 chip 可交互 */}
+          {groupFrames.map(({ group, bounds, active }) => (
+            <CanvasGroupFrame
+              key={group.id}
+              id={group.id}
+              name={group.name}
+              color={group.color}
+              x={bounds.x}
+              y={bounds.y}
+              width={bounds.width}
+              height={bounds.height}
+              active={active}
+              colors={GROUP_COLORS}
+              onNameChange={(name) => updateGroup(group.id, { name })}
+              onColorChange={(color) => updateGroup(group.id, { color })}
+              onDisband={() => disbandGroup(group.id)}
+              onTitleSelect={() => selectGroupMembers(group)}
+              onTitleDragStart={(e) => beginGroupDrag(e, group.memberIds)}
+            />
+          ))}
+
           {nodes.map((node) => renderCanvasNode(node, nodeViewHelpers))}
         </Canvas>
+
+        {/* 多选操作栏：≥2 个节点选中时提供创建分组入口 */}
+        {selectedIds.size > 1 && (
+          <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[9998] flex items-center gap-2 bg-paper border border-paper-grid rounded-full shadow-lg px-4 py-2 animate-in fade-in zoom-in-95 duration-100">
+            <span className="text-xs font-sans text-ink-light">已选 {selectedIds.size} 个节点</span>
+            <button
+              onClick={createGroupFromSelection}
+              className="text-xs font-sans font-medium text-paper bg-accent rounded-full px-3 py-1 transition-opacity hover:opacity-90"
+            >
+              创建分组
+            </button>
+            <button
+              onClick={clearSelection}
+              className="text-xs font-sans text-ink-light hover:text-ink transition-colors"
+            >
+              取消
+            </button>
+          </div>
+        )}
 
         {/* 手动拖线：待确认的幽灵连线（fixed 覆盖层，命令式跟随指针） */}
         {connecting && <ConnectionGhost ref={ghostRef} sourceId={connecting} />}

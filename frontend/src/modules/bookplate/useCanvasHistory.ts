@@ -1,14 +1,16 @@
 import { useCallback, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
-import { HISTORY_LIMIT, selfHealNode, type EdgeData, type HistorySnapshot, type NodeData } from './graphTypes';
+import { HISTORY_LIMIT, selfHealNode, type CanvasGroup, type EdgeData, type HistorySnapshot, type NodeData } from './graphTypes';
 
 /** 撤销/重做依赖（由画布注入：refs + 稳定 setter） */
 export interface CanvasHistoryContext {
   nodesRef: RefObject<NodeData[]>;
   edgesRef: RefObject<EdgeData[]>;
+  groupsRef: RefObject<CanvasGroup[]>;
   generationIds: RefObject<Record<string, number>>;
   streamControllers: RefObject<Map<string, AbortController>>;
   setNodes: Dispatch<SetStateAction<NodeData[]>>;
   setEdges: Dispatch<SetStateAction<EdgeData[]>>;
+  setGroups: Dispatch<SetStateAction<CanvasGroup[]>>;
   setSelectedImageId: Dispatch<SetStateAction<string | null>>;
   setStaleRecordIds: Dispatch<SetStateAction<Set<string>>>;
   /** 撤销删除/清空后节点集变大时重新同步收藏/公开状态 */
@@ -33,6 +35,7 @@ export function useCanvasHistory(ctx: CanvasHistoryContext): CanvasHistory {
     (): HistorySnapshot => ({
       nodes: ctx.nodesRef.current,
       edges: ctx.edgesRef.current,
+      groups: ctx.groupsRef.current,
       generationIds: { ...ctx.generationIds.current },
     }),
     // ctx 由调用方 useMemo 保证稳定（内部均为模块级 ref / React setter）
@@ -61,6 +64,7 @@ export function useCanvasHistory(ctx: CanvasHistoryContext): CanvasHistory {
     ctx.generationIds.current = { ...snapshot.generationIds };
     ctx.setNodes(snapshot.nodes);
     ctx.setEdges(snapshot.edges);
+    ctx.setGroups(snapshot.groups ?? []);
     // 2. 选中节点若已不在恢复后的画布中则清除
     ctx.setSelectedImageId((prev) => (prev && !restoredMap.has(prev) ? null : prev));
     // 3. 自愈：恢复后标记为生成中但无活动流的节点（清空/中断场景），复位为失败态，避免永久加载

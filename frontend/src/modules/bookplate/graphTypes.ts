@@ -22,6 +22,16 @@ export interface EdgeData {
   target: string;
 }
 
+/** 画布分组（软分组）：不承载节点实体，仅按 memberIds 聚合的视觉/操作单元。
+ *  组边界由成员位置+尺寸实时推导，移动、解散均不影响节点与连线数据。 */
+export interface CanvasGroup {
+  id: string;
+  name: string;
+  /** 分组主题色（hex，低饱和纸感色系，见 canvasGroups.GROUP_COLORS），以高透明度渲染 */
+  color: string;
+  memberIds: string[];
+}
+
 export interface NodeSize {
   width: number;
   height: number;
@@ -35,6 +45,7 @@ export const HISTORY_LIMIT = 50;
 export interface HistorySnapshot {
   nodes: NodeData[];
   edges: EdgeData[];
+  groups: CanvasGroup[];
   generationIds: Record<string, number>;
 }
 

@@ -1,8 +1,10 @@
 import { useSyncExternalStore, type SetStateAction } from 'react';
 
-interface CanvasSnapshot<N, E, S> {
+interface CanvasSnapshot<N, E, S, G = any> {
   nodes: N[];
   edges: E[];
+  /** 软分组（可选：旧快照无此字段，水合时回退空数组） */
+  groups?: G[];
   nodeSizes: Record<string, S>;
   generationIds: Record<string, number>;
   favoritedState: Record<string, boolean>;
@@ -64,6 +66,7 @@ export const generationIdsRef: { current: Record<string, number> } = { current: 
 interface CanvasState {
   nodes: any[];
   edges: any[];
+  groups: any[];
   nodeSizes: Record<string, any>;
   favoritedState: Record<string, boolean>;
   publishedState: Record<string, boolean>;
@@ -74,6 +77,7 @@ interface CanvasState {
 const emptyState = (): CanvasState => ({
   nodes: [],
   edges: [],
+  groups: [],
   nodeSizes: {},
   favoritedState: {},
   publishedState: {},
@@ -103,6 +107,7 @@ function persist() {
   writeSnapshot(currentUserId, {
     nodes: state.nodes,
     edges: state.edges,
+    groups: state.groups,
     nodeSizes: state.nodeSizes,
     generationIds: generationIdsRef.current,
     favoritedState: state.favoritedState,
@@ -129,6 +134,7 @@ function ensureHydrated(userId: string) {
     ...emptyState(),
     nodes: saved?.nodes ?? [],
     edges: saved?.edges ?? [],
+    groups: saved?.groups ?? [],
     nodeSizes: saved?.nodeSizes ?? {},
     favoritedState: saved?.favoritedState ?? {},
     publishedState: saved?.publishedState ?? {},
@@ -149,6 +155,8 @@ const setNodes = (updater: SetStateAction<any[]>) =>
   apply({ nodes: typeof updater === 'function' ? updater(state.nodes) : updater });
 const setEdges = (updater: SetStateAction<any[]>) =>
   apply({ edges: typeof updater === 'function' ? updater(state.edges) : updater });
+const setGroups = (updater: SetStateAction<any[]>) =>
+  apply({ groups: typeof updater === 'function' ? updater(state.groups) : updater });
 const setNodeSizes = (updater: SetStateAction<Record<string, any>>) =>
   apply({ nodeSizes: typeof updater === 'function' ? updater(state.nodeSizes) : updater });
 const setFavoritedState = (updater: SetStateAction<Record<string, boolean>>) =>
@@ -164,7 +172,7 @@ const setPosition = (updater: SetStateAction<{ x: number; y: number }>) =>
 function clearCanvasState() {
   generationIdsRef.current = {};
   clearSnapshot(currentUserId ?? '');
-  apply({ nodes: [], edges: [], nodeSizes: {}, favoritedState: {}, publishedState: {} });
+  apply({ nodes: [], edges: [], groups: [], nodeSizes: {}, favoritedState: {}, publishedState: {} });
 }
 
 /** 立即持久化当前快照：用于 generationIds 映射等「非 apply 路径」的原位变更后强制落盘，
@@ -207,7 +215,7 @@ export function broadcastGenerationDeleted(userId: string, genId: number): void 
 
 /** 画布状态 Hook：订阅模块级 store（组件卸载时 store 保留，重挂载直接续用进行中的状态）。
  *  返回的 setter / generationIds 均为模块级稳定引用，注入执行引擎后流回调在组件卸载期间依然有效。 */
-export function useCanvasState<N = any, E = any, S = any>(userId: string) {
+export function useCanvasState<N = any, E = any, S = any, G = any>(userId: string) {
   ensureHydrated(userId);
   useSyncExternalStore(subscribe, getState, getState);
 
@@ -216,6 +224,8 @@ export function useCanvasState<N = any, E = any, S = any>(userId: string) {
     setNodes,
     edges: state.edges as E[],
     setEdges,
+    groups: state.groups as G[],
+    setGroups,
     nodeSizes: state.nodeSizes as Record<string, S>,
     setNodeSizes,
     favoritedState: state.favoritedState,

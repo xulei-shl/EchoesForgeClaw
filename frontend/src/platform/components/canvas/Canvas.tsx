@@ -1,6 +1,16 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import { CanvasContext } from './CanvasContext';
+import type { NodeMove } from './CanvasContext';
 import type { PointerEvent as ReactPointerEvent } from 'react';
+
+/** 框选候选节点矩形（画布坐标） */
+export interface MarqueeCandidate {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
 interface CanvasProps {
   children: React.ReactNode;
@@ -11,6 +21,22 @@ interface CanvasProps {
   activeNodeId?: string | null;
   /** 激活节点变化回调 */
   onActiveNodeChange?: (id: string | null) => void;
+  /** 多选节点集合（普通点击单选也在集合内） */
+  selectedIds?: Set<string>;
+  /** 普通点击选中（替换选择集；null 清空） */
+  selectNode?: (id: string | null) => void;
+  /** Ctrl/Cmd+点击切换多选成员 */
+  toggleNodeSelection?: (id: string) => void;
+  /** 解析与指定节点一起拖动的节点集合（分组联动 / 多选联动） */
+  resolveDragGroup?: (id: string, altKey: boolean) => NodeMove[];
+  /** 整体拖动中（每帧）批量重绘连线 */
+  onMultiDrag?: (moves: NodeMove[]) => void;
+  /** 整体拖动提交（一条历史 + 批量更新） */
+  onMultiPositionChange?: (moves: NodeMove[]) => void;
+  /** 框选候选节点矩形（画布坐标，含实时尺寸）；不提供则 Shift+拖拽退化为平移 */
+  getMarqueeCandidates?: () => MarqueeCandidate[];
+  /** 框选完成：命中节点 id 列表；空数组 = 未命中（清空选择） */
+  onMarqueeSelect?: (ids: string[]) => void;
   /** 节点输出锚点按下（手动拖线连线起点），经 context 透传给各节点 */
   onAnchorPointerDown?: (nodeId: string, e: ReactPointerEvent) => void;
   onContextMenu?: (e: React.MouseEvent) => void;
@@ -23,6 +49,14 @@ export const Canvas: React.FC<CanvasProps> = ({
   onPositionChange,
   activeNodeId,
   onActiveNodeChange,
+  selectedIds,
+  selectNode,
+  toggleNodeSelection,
+  resolveDragGroup,
+  onMultiDrag,
+  onMultiPositionChange,
+  getMarqueeCandidates,
+  onMarqueeSelect,
   onAnchorPointerDown,
   onContextMenu,
 }) => {
@@ -36,11 +70,25 @@ export const Canvas: React.FC<CanvasProps> = ({
   const dragPos = useRef({ x: position.x, y: position.y });
   const rafId = useRef<number | null>(null);
 
+  // ---------- Shift+框选状态 ----------
+  const marqueeRef = useRef<HTMLDivElement>(null);
+  const marqueeActive = useRef(false);
+  const marqueeStart = useRef({ x: 0, y: 0 }); // wrapper 内屏幕坐标
+  const marqueeLast = useRef({ x: 0, y: 0 });
+  const marqueeWrapperRect = useRef<DOMRect | null>(null);
+  const marqueeRafId = useRef<number | null>(null);
+
   // 保持最新回调引用，避免闭包过期
   const onPositionChangeRef = useRef(onPositionChange);
   useEffect(() => {
     onPositionChangeRef.current = onPositionChange;
   }, [onPositionChange]);
+  const scaleRef = useRef(scale);
+  scaleRef.current = scale;
+  const candidatesRef = useRef(getMarqueeCandidates);
+  candidatesRef.current = getMarqueeCandidates;
+  const onMarqueeSelectRef = useRef(onMarqueeSelect);
+  onMarqueeSelectRef.current = onMarqueeSelect;
   const endDragRef = useRef<(pointerId?: number, currentTarget?: HTMLElement) => void>(() => {});
 
   const applyTransform = useCallback(() => {
@@ -76,10 +124,80 @@ export const Canvas: React.FC<CanvasProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onActiveNodeChange]);
 
+  /** 框选中：rAF 合并更新选区矩形 DOM（wrapper 内屏幕坐标） */
+  const applyMarquee = useCallback(() => {
+    marqueeRafId.current = null;
+    const el = marqueeRef.current;
+    if (!el || !marqueeActive.current) return;
+    const { x: sx, y: sy } = marqueeStart.current;
+    const { x: lx, y: ly } = marqueeLast.current;
+    const left = Math.min(sx, lx);
+    const top = Math.min(sy, ly);
+    el.style.left = `${left}px`;
+    el.style.top = `${top}px`;
+    el.style.width = `${Math.abs(lx - sx)}px`;
+    el.style.height = `${Math.abs(ly - sy)}px`;
+  }, []);
+
+  /** 框选结束：按画布坐标命中测试候选节点，回调选中的 id 列表 */
+  const finishMarquee = useCallback(() => {
+    if (!marqueeActive.current) return;
+    marqueeActive.current = false;
+    if (marqueeRafId.current !== null) {
+      cancelAnimationFrame(marqueeRafId.current);
+      marqueeRafId.current = null;
+    }
+    if (marqueeRef.current) marqueeRef.current.style.display = 'none';
+    const rect = marqueeWrapperRect.current;
+    marqueeWrapperRect.current = null;
+    if (!rect) return;
+    const { x: sx, y: sy } = marqueeStart.current;
+    const { x: lx, y: ly } = marqueeLast.current;
+    const pos = dragPos.current;
+    const s = scaleRef.current;
+    // 屏幕矩形 → 画布坐标矩形（容器 transform：translate(pos) scale(s)）
+    const cx1 = (Math.min(sx, lx) - rect.left - pos.x) / s;
+    const cy1 = (Math.min(sy, ly) - rect.top - pos.y) / s;
+    const cx2 = (Math.max(sx, lx) - rect.left - pos.x) / s;
+    const cy2 = (Math.max(sy, ly) - rect.top - pos.y) / s;
+    const candidates = candidatesRef.current?.() ?? [];
+    const hit = candidates.filter(
+      (c) => c.x < cx2 && c.x + c.width > cx1 && c.y < cy2 && c.y + c.height > cy1
+    );
+    onMarqueeSelectRef.current?.(hit.map((c) => c.id));
+  }, []);
+
+  const startMarquee = (e: React.PointerEvent<HTMLDivElement>) => {
+    const rect = wrapperRef.current?.getBoundingClientRect();
+    if (!rect) return false;
+    marqueeActive.current = true;
+    marqueeWrapperRect.current = rect;
+    marqueeStart.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    marqueeLast.current = { ...marqueeStart.current };
+    if (marqueeRef.current) {
+      marqueeRef.current.style.display = 'block';
+      marqueeRef.current.style.left = '0px';
+      marqueeRef.current.style.top = '0px';
+      marqueeRef.current.style.width = '0px';
+      marqueeRef.current.style.height = '0px';
+    }
+    try {
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    } catch {
+      /* 忽略指针捕获失败 */
+    }
+    return true;
+  };
+
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     // 仅响应鼠标左键（0）或中键（1），且仅当命中画布背景或 wrapper 自身时触发平移
     if (e.button !== 0 && e.button !== 1) return;
     if (e.target === e.currentTarget || e.target === bgRef.current) {
+      // Shift+左键拖拽 = 框选（不破坏现有左键平移习惯）；未提供候选集时退化为平移
+      if (e.button === 0 && e.shiftKey && candidatesRef.current) {
+        startMarquee(e);
+        return;
+      }
       // 记录起始位置，不在此处同步清空选中态，避免起步帧发生全画布 React 重渲染
       isDragging.current = true;
       pointerDownPos.current = { x: e.clientX, y: e.clientY };
@@ -99,6 +217,17 @@ export const Canvas: React.FC<CanvasProps> = ({
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    // 框选分支：rAF 合并更新选区矩形
+    if (marqueeActive.current) {
+      const rect = marqueeWrapperRect.current;
+      if (rect) {
+        marqueeLast.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        if (marqueeRafId.current === null) {
+          marqueeRafId.current = requestAnimationFrame(applyMarquee);
+        }
+      }
+      return;
+    }
     if (!isDragging.current) return;
     const deltaX = e.clientX - lastMousePos.current.x;
     const deltaY = e.clientY - lastMousePos.current.y;
@@ -139,6 +268,18 @@ export const Canvas: React.FC<CanvasProps> = ({
   endDragRef.current = endDrag;
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    // 结束框选：小幅点击空白 = 清空选择；拖拽 = 按命中结果多选
+    if (marqueeActive.current) {
+      const moved = Math.hypot(
+        marqueeLast.current.x - marqueeStart.current.x,
+        marqueeLast.current.y - marqueeStart.current.y
+      );
+      finishMarquee();
+      if (moved < 3) {
+        onActiveNodeChange?.(null);
+      }
+      return;
+    }
     if (isDragging.current) {
       const dx = e.clientX - pointerDownPos.current.x;
       const dy = e.clientY - pointerDownPos.current.y;
@@ -164,6 +305,7 @@ export const Canvas: React.FC<CanvasProps> = ({
       window.removeEventListener('pointerup', onWindowPointerUp);
       window.removeEventListener('pointercancel', onWindowPointerUp);
       if (rafId.current !== null) cancelAnimationFrame(rafId.current);
+      if (marqueeRafId.current !== null) cancelAnimationFrame(marqueeRafId.current);
     };
   }, []);
 
@@ -174,7 +316,20 @@ export const Canvas: React.FC<CanvasProps> = ({
   const bgTy = ((curPos.y % gridSize) + gridSize) % gridSize;
 
   return (
-    <CanvasContext.Provider value={{ scale, activeNodeId, setActiveNodeId: onActiveNodeChange, onAnchorPointerDown }}>
+    <CanvasContext.Provider
+      value={{
+        scale,
+        activeNodeId,
+        setActiveNodeId: onActiveNodeChange,
+        selectedIds,
+        selectNode,
+        toggleNodeSelection,
+        resolveDragGroup,
+        onMultiDrag,
+        onMultiPositionChange,
+        onAnchorPointerDown,
+      }}
+    >
       <div
         ref={wrapperRef}
         className="w-full h-[calc(100vh-64px)] overflow-hidden bg-paper relative flex-1 cursor-grab active:cursor-grabbing select-none"
@@ -199,6 +354,19 @@ export const Canvas: React.FC<CanvasProps> = ({
             zIndex: 9999,
             pointerEvents: 'auto',
             cursor: 'grabbing',
+          }}
+        />
+        {/* Shift+框选矩形（屏幕坐标覆盖层，不参与命中） */}
+        <div
+          ref={marqueeRef}
+          style={{
+            display: 'none',
+            position: 'absolute',
+            zIndex: 9000,
+            border: '1px solid color-mix(in srgb, var(--color-accent) 70%, transparent)',
+            background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)',
+            borderRadius: 2,
+            pointerEvents: 'none',
           }}
         />
         <div
