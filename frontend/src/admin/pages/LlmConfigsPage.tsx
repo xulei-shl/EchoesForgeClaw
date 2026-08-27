@@ -73,10 +73,11 @@ export const LlmConfigsPage: React.FC = () => {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
-  // 连通性测试：testingForm / testResult = 弹窗内测试
+  // 连通性测试：testingForm / testResult = 弹窗内测试；testingId = 列表卡片测试中状态（记录正在测试的配置 id）
   const [testingForm, setTestingForm] = useState(false);
   const [testResult, setTestResult] = useState('');
   const [testOk, setTestOk] = useState<boolean | null>(null);
+  const [testingId, setTestingId] = useState<number | null>(null);
   const { dialog, showToast } = useFeedback();
 
   const load = useCallback(async () => {
@@ -130,11 +131,15 @@ export const LlmConfigsPage: React.FC = () => {
 
   /** 列表卡片测试：用已保存的配置（含库中 Key）验证连通性 */
   const handleTestConfig = async (c: LLMConfig) => {
+    if (testingId !== null) return; // 已有测试进行中，防止并发
+    setTestingId(c.id);
     try {
       const res = await adminService.testLlmConfig({ id: c.id });
       showToast(res.message, { type: 'success' });
     } catch (e: any) {
       showToast(e?.message || '测试失败，请检查配置', { type: 'error' });
+    } finally {
+      setTestingId(null);
     }
   };
 
@@ -472,10 +477,19 @@ export const LlmConfigsPage: React.FC = () => {
                     </button>
                     <button
                       onClick={() => handleTestConfig(c)}
-                      title="测试连通性（使用已保存的 API Key）"
-                      className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-95"
+                      title={testingId === c.id ? '正在测试连接…' : '测试连通性（使用已保存的 API Key）'}
+                      disabled={testingId !== null}
+                      aria-busy={testingId === c.id}
+                      className="inline-flex items-center gap-1.5 p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-95 disabled:opacity-70 disabled:cursor-wait disabled:hover:bg-transparent disabled:hover:text-ink-light"
                     >
-                      <Zap size={15} strokeWidth={1.5} />
+                      {testingId === c.id ? (
+                        <>
+                          <Loader2 size={15} strokeWidth={1.5} className="animate-spin text-accent" />
+                          <span className="text-xs text-accent whitespace-nowrap">测试中</span>
+                        </>
+                      ) : (
+                        <Zap size={15} strokeWidth={1.5} />
+                      )}
                     </button>
                     <button
                       onClick={() => openEdit(c)}
