@@ -18,5 +18,9 @@ export function makeIdleTimeout(controller: AbortController, timeoutMs: number) 
     if (timer !== null) window.clearTimeout(timer);
     timer = null;
   };
-  return { arm, clear, isTimedOut: () => timedOut };
+  const reset = () => {
+    timedOut = false;
+    arm();
+  };
+  return { arm, clear, reset, isTimedOut: () => timedOut };
 }

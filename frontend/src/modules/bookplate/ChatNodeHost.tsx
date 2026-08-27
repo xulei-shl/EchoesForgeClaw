@@ -170,6 +170,9 @@ export function ChatNodeHost({
       },
     }),
     onData: (part) => {
+      // 空闲超时按「收到任意有效流事件」续期，而不是仅依赖首包计时。
+      // FastClaw 工具调用阶段可能长时间没有正文，但会持续发送 status/tool 事件。
+      idleRef.current?.idle.arm();
       const name = part.type.startsWith('data-') ? part.type.slice('data-'.length) : part.type;
       if (!name.startsWith('agent_')) return;
       if (name === 'agent_file') {
@@ -488,8 +491,11 @@ export function ChatNodeHost({
       idle.arm();
       idleRef.current = { idle, controller };
       controller.signal.addEventListener('abort', () => {
-        if (idle.isTimedOut()) forcedErrorRef.current = '对话超时，请重试';
-        void chatStop();
+        if (idle.isTimedOut()) {
+          forcedErrorRef.current = '对话超时，请重试';
+          void chatStop();
+        }
+        // 用户点击停止时，chatStop 由 stop() 主动调用；这里仅记录超时。
       });
       void sendMessage({ text }, { metadata: { bookplate: { images } } });
     },
