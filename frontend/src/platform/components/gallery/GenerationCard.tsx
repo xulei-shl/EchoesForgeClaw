@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { BookOpen, Bot, Globe, Heart, Trash2 } from 'lucide-react';
+import { BookOpen, Bot, Globe, Heart, Palette, Trash2 } from 'lucide-react';
 import type { Generation } from '../../types';
 import { generationMeta, generationNodeTypeLabel } from '../../utils/generation';
 import { formatDateTime } from '../../utils/format';
@@ -11,6 +11,7 @@ export interface GenerationCardProps {
   onOpen: () => void;
   onToggleFavorite?: (gen: Generation) => void;
   onTogglePublic?: (gen: Generation) => void;
+  onOpenInCanvas?: (gen: Generation) => void;
   onRemove?: (gen: Generation) => void;
   /** 删除按钮的 tooltip（收藏页为「取消收藏」） */
   removeTitle?: string;
@@ -22,6 +23,7 @@ export const GenerationCard: React.FC<GenerationCardProps> = ({
   onOpen,
   onToggleFavorite,
   onTogglePublic,
+  onOpenInCanvas,
   onRemove,
   removeTitle = '删除记录',
 }) => {
@@ -36,18 +38,18 @@ export const GenerationCard: React.FC<GenerationCardProps> = ({
 
   const ghostBtn =
     'inline-flex items-center gap-1 px-2.5 py-1 text-xs font-sans text-ink-light ' +
-    'hover:text-ink hover:bg-paper-grid/30 active:scale-[0.96] rounded transition-colors transition-transform ' +
+    'hover:text-ink hover:bg-paper-grid/30 active:scale-[0.96] rounded transition-transform transition-colors ' +
     'disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent';
 
   return (
     <div
       onClick={onOpen}
-      className={`flex items-center gap-4 px-4 py-4 border-b border-dashed border-paper-grid transition-colors cursor-pointer ${
-        active ? 'bg-accent-surface' : 'hover:bg-accent-surface/60'
+      className={`flex items-center gap-4 px-4 py-3.5 border-b border-paper-grid/50 transition-colors cursor-pointer ${
+        active ? 'bg-accent-surface' : 'hover:bg-accent-surface/50'
       }`}
     >
       {/* 缩略图 */}
-      <div className="w-20 h-20 shrink-0 rounded-sm overflow-hidden bg-paper flex items-center justify-center outline outline-1 outline-[oklch(0_0_0/0.1)] outline-offset-[-1px]">
+      <div className="w-16 h-16 sm:w-20 sm:h-20 shrink-0 rounded-md overflow-hidden bg-paper flex items-center justify-center border border-paper-grid/60 shadow-[0_1px_3px_rgba(43,41,38,0.05)]">
         {thumb && !thumbFailed ? (
           <img
             src={thumb}
@@ -57,7 +59,7 @@ export const GenerationCard: React.FC<GenerationCardProps> = ({
             onError={() => setThumbFailed(true)}
           />
         ) : (
-          <BookOpen size={22} strokeWidth={1.5} className="text-ink-faint" />
+          <BookOpen size={20} strokeWidth={1.5} className="text-ink-faint" />
         )}
       </div>
 
@@ -65,8 +67,8 @@ export const GenerationCard: React.FC<GenerationCardProps> = ({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 min-w-0">
           <h3 className="font-serif text-base font-semibold text-ink truncate">{title}</h3>
-          {/* 节点类型徽标：区分图片 / 音频等不同结果类型 */}
-          <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-sm border border-dashed border-paper-grid text-[10px] leading-none text-ink-faint font-sans">
+          {/* 节点类型徽标 */}
+          <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-sm bg-paper border border-paper-grid/60 text-[10px] leading-none text-ink-faint font-sans">
             {generationNodeTypeLabel(gen.node_type)}
           </span>
         </div>
@@ -75,7 +77,7 @@ export const GenerationCard: React.FC<GenerationCardProps> = ({
           {formatDateTime(gen.created_at)}
           {gen.username ? ` · ${gen.username}` : ''}
         </p>
-        {/* Agent 运行过程标记：该记录持久化了中间步骤 */}
+        {/* Agent 运行过程标记 */}
         {agentSteps.length > 0 && (
           <p className="mt-1 inline-flex items-center gap-1 text-[11px] font-sans text-accent">
             <Bot size={11} strokeWidth={1.5} />
@@ -86,8 +88,20 @@ export const GenerationCard: React.FC<GenerationCardProps> = ({
 
       {/* 操作按钮 */}
       <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+        {onOpenInCanvas && (
+          <button
+            type="button"
+            className={ghostBtn}
+            title="在画板中打开"
+            onClick={() => onOpenInCanvas(gen)}
+          >
+            <Palette size={14} strokeWidth={1.5} />
+            <span className="hidden sm:inline">画板</span>
+          </button>
+        )}
         {onToggleFavorite && (
           <button
+            type="button"
             className={ghostBtn}
             title={gen.is_favorited ? '取消收藏' : '收藏'}
             onClick={() => onToggleFavorite(gen)}
@@ -97,21 +111,23 @@ export const GenerationCard: React.FC<GenerationCardProps> = ({
               strokeWidth={1.5}
               className={gen.is_favorited ? 'fill-accent text-accent' : ''}
             />
-            收藏
+            <span className="hidden sm:inline">收藏</span>
           </button>
         )}
         {onTogglePublic && (
           <button
+            type="button"
             className={ghostBtn}
             title={gen.is_public ? '从画廊撤下' : '公开到画廊'}
             onClick={() => onTogglePublic(gen)}
           >
             <Globe size={14} strokeWidth={1.5} className={gen.is_public ? 'text-accent' : ''} />
-            公开
+            <span className="hidden sm:inline">公开</span>
           </button>
         )}
         {onRemove && (
           <button
+            type="button"
             className={`${ghostBtn} text-ink-faint hover:text-error`}
             title={removeTitle}
             onClick={() => onRemove(gen)}

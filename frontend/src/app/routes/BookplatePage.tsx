@@ -844,6 +844,120 @@ const BookplatePage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recordHistory, setNodes]);
 
+  // 检测外部页面（/history, /favorites, /gallery）请求导入的作品并注入画布
+  useEffect(() => {
+    const raw = sessionStorage.getItem('bf-canvas-import');
+    if (!raw) return;
+    sessionStorage.removeItem('bf-canvas-import');
+    try {
+      const gen = JSON.parse(raw);
+      if (!gen || !gen.stage_results) return;
+
+      const meta = gen.stage_results?.stage1?.metadata;
+      const prompt =
+        gen.stage_results?.stage2?.prompt || gen.stage_results?.stage3?.prompt || '';
+      const imageUrl = gen.result_url || gen.stage_results?.stage3?.image_url || '';
+      const agentSteps = [
+        ...(Array.isArray(gen.stage_results?.stage2?.agent_steps)
+          ? gen.stage_results.stage2.agent_steps
+          : []),
+        ...(Array.isArray(gen.stage_results?.stage3?.agent_steps)
+          ? gen.stage_results.stage3.agent_steps
+          : []),
+      ];
+
+      const currentNodes = nodesRef.current;
+      const maxX = currentNodes.reduce((m, n) => Math.max(m, n.x + 380), 80);
+      const startY = 120;
+
+      const newNodes: NodeData[] = [];
+      const newEdges: EdgeData[] = [];
+      let lastNodeId: string | null = null;
+
+      // 1. 如果有图书信息，生成 book_info 节点
+      if (meta && Object.keys(meta).length > 0) {
+        const bookId = `node-book-${Date.now()}`;
+        newNodes.push({
+          id: bookId,
+          type: 'book_info',
+          x: maxX,
+          y: startY,
+          data: {
+            ...meta,
+            isbn: meta.isbn || gen.stage_results?.stage1?.isbn || '',
+            isGenerating: false,
+          },
+        });
+        lastNodeId = bookId;
+      }
+
+      // 2. 如果有提示词，生成 text_generation 节点
+      if (prompt) {
+        const promptId = `node-prompt-${Date.now() + 1}`;
+        newNodes.push({
+          id: promptId,
+          type: 'text_generation',
+          x: maxX + (lastNodeId ? 380 : 0),
+          y: startY,
+          data: {
+            content: prompt,
+            isGenerating: false,
+          },
+        });
+        if (lastNodeId) {
+          newEdges.push({
+            id: `edge-${lastNodeId}-${promptId}`,
+            source: lastNodeId,
+            target: promptId,
+          });
+        }
+        lastNodeId = promptId;
+      }
+
+      // 3. 结果图像节点
+      const imageNodeId = `node-image-${Date.now() + 2}`;
+      const imageNodeType = (gen.node_type || 'image_generation') as NodeType;
+      newNodes.push({
+        id: imageNodeId,
+        type: imageNodeType,
+        x: maxX + (lastNodeId ? 380 : 0) + (newNodes.length > 1 ? 380 : 0),
+        y: startY,
+        data: {
+          imageUrl,
+          prompt,
+          agentSteps,
+          isGenerating: false,
+        },
+      });
+
+      if (lastNodeId) {
+        newEdges.push({
+          id: `edge-${lastNodeId}-${imageNodeId}`,
+          source: lastNodeId,
+          target: imageNodeId,
+        });
+      }
+
+      generationIds.current[imageNodeId] = gen.id;
+      setFavoritedState((prev) => ({ ...prev, [imageNodeId]: !!gen.is_favorited }));
+      setPublishedState((prev) => ({ ...prev, [imageNodeId]: !!gen.is_public }));
+
+      recordHistory();
+      nodesRef.current = [...nodesRef.current, ...newNodes];
+      edgesRef.current = [...edgesRef.current, ...newEdges];
+      setNodes((prev) => [...prev, ...newNodes]);
+      setEdges((prev) => [...prev, ...newEdges]);
+
+      const targetFocus = newNodes[newNodes.length - 1];
+      if (targetFocus) focusOnNode(targetFocus);
+
+      showToast('已载入作品到画板', { type: 'success' });
+    } catch (e) {
+      console.warn('载入画板失败:', e);
+    }
+  }, [recordHistory, setNodes, setEdges, setFavoritedState, setPublishedState, generationIds, focusOnNode, showToast]);
+
+
 
 
 
