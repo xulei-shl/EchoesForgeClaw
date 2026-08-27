@@ -1,38 +1,66 @@
 import type { BorrowerRecordItem } from './types';
 
-/** 经典中文读者/借阅人名单库（80% 权重） */
-const CHINESE_NAMES = [
-  '林徽因',
-  '徐志摩',
-  '金岳霖',
-  '钱钟书',
-  '杨绛',
-  '周树人',
-  '沈从文',
-  '朱自清',
-  '老舍',
-  '张爱玲',
-  '萧红',
-  '冰心',
-  '巴金',
-  '梁思成',
-  '汪曾祺',
-  '木心',
-  '三毛',
-  '戴望舒',
-  '郁达夫',
-  '卞之琳',
-  '丰子恺',
-  '胡适',
-  '闻一多',
-  '茅盾',
-  '顾城',
-  '海子',
-  '北岛',
-  '史铁生',
-  '王小波',
-  '李银河',
+/** 常见百家姓库（常见单姓与少量复姓） */
+const CHINESE_SURNAMES = [
+  '李', '王', '张', '刘', '陈', '杨', '赵', '黄', '周', '吴',
+  '徐', '孙', '胡', '朱', '高', '林', '何', '郭', '马', '罗',
+  '梁', '宋', '郑', '谢', '韩', '唐', '冯', '于', '董', '萧',
+  '程', '曹', '袁', '邓', '许', '傅', '沈', '曾', '彭', '吕',
+  '苏', '卢', '蒋', '蔡', '贾', '丁', '魏', '薛', '叶', '阎',
+  '余', '潘', '杜', '戴', '夏', '钟', '汪', '田', '任', '姜',
+  '范', '方', '石', '姚', '谭', '廖', '邹', '熊', '金', '陆',
+  '郝', '孔', '白', '崔', '康', '毛', '邱', '秦', '江', '史',
+  '顾', '侯', '邵', '孟', '龙', '万', '段', '雷', '钱', '汤',
+  '尹', '黎', '易', '常', '武', '乔', '贺', '赖', '龚', '文',
+  '欧阳', '诸葛', '司马',
 ];
+
+/** 文雅常见名字用字库（用于随机拼接姓名） */
+const CHINESE_GIVEN_NAME_CHARS = [
+  '远', '涵', '然', '思', '书', '言', '清', '哲', '舟', '安',
+  '南', '语', '乐', '阳', '若', '舒', '彦', '予', '桐', '锦',
+  '文', '博', '之', '维', '嘉', '宜', '润', '恒', '宇', '辰',
+  '泽', '轩', '浩', '宁', '琛', '逸', '晨', '枫', '临', '渊',
+  '初', '寻', '微', '影', '衡', '川', '淮', '越', '竹', '素',
+  '华', '峰', '云', '雪', '琳', '菲', '洁', '婷', '欣', '琪',
+  '羽', '铭', '凯', '航', '朗', '谦', '正', '景', '齐', '墨',
+];
+
+/**
+ * 随机生成脱敏借阅人中文姓名
+ * - 3 个字姓名（约 75%）：中间字替换为“某”（如“李某远”、“王某涵”）
+ * - 2 个字姓名（约 25%）：第二个字替换为“某”（如“张某”、“陈某”）
+ * - 4 个字复姓：倒数第二字替换为“某”（如“欧阳某远”）
+ */
+export function generateRandomMaskedChineseName(excludeNames?: Set<string>): string {
+  for (let attempt = 0; attempt < 80; attempt++) {
+    const surname = CHINESE_SURNAMES[Math.floor(Math.random() * CHINESE_SURNAMES.length)];
+    let name: string;
+
+    if (surname.length > 1) {
+      // 复姓（2字）+ 1字尾名 -> 欧阳某远
+      const lastChar = CHINESE_GIVEN_NAME_CHARS[Math.floor(Math.random() * CHINESE_GIVEN_NAME_CHARS.length)];
+      name = `${surname}某${lastChar}`;
+    } else {
+      // 单姓（1字）：25% 生成2字姓名，75% 生成3字姓名
+      const isTwoChar = Math.random() < 0.25;
+      if (isTwoChar) {
+        name = `${surname}某`;
+      } else {
+        const lastChar = CHINESE_GIVEN_NAME_CHARS[Math.floor(Math.random() * CHINESE_GIVEN_NAME_CHARS.length)];
+        name = `${surname}某${lastChar}`;
+      }
+    }
+
+    if (!excludeNames || !excludeNames.has(name)) {
+      return name;
+    }
+  }
+
+  // 极端碰撞兜底
+  const fallbackSurname = CHINESE_SURNAMES[Math.floor(Math.random() * CHINESE_SURNAMES.length)];
+  return `${fallbackSurname}某`;
+}
 
 /** 经典英文读者/借阅人名单库（20% 权重） */
 const ENGLISH_NAMES = [
@@ -165,9 +193,9 @@ export function generateRandomBorrowerRecords(
   }
   timestamps.sort((a, b) => a - b);
 
-  // 随机挑选不重复的姓名
-  const pickedChinese = [...CHINESE_NAMES].sort(() => 0.5 - Math.random());
+  // 随机挑选不重复的姓名（中文动态生成脱敏姓名，英文从名单抽取）
   const pickedEnglish = [...ENGLISH_NAMES].sort(() => 0.5 - Math.random());
+  const usedChineseNames = new Set<string>();
 
   // 提前生成各行互不重复的手写字体序列
   const fontSequence = generateDistinctFontClasses(count);
@@ -175,10 +203,14 @@ export function generateRandomBorrowerRecords(
   const records: BorrowerRecordItem[] = [];
 
   for (let i = 0; i < count; i++) {
-    const isCn = Math.random() < 0.8;
-    const name = isCn
-      ? pickedChinese.pop() || '某读者'
-      : pickedEnglish.pop() || 'Reader';
+    const isCn = Math.random() < 0.85;
+    let name: string;
+    if (isCn) {
+      name = generateRandomMaskedChineseName(usedChineseNames);
+      usedChineseNames.add(name);
+    } else {
+      name = pickedEnglish.pop() || 'Reader';
+    }
 
     const dateStr = formatDate(new Date(timestamps[i]));
     const rotation = ROTATION_CLASSES[randomInt(0, ROTATION_CLASSES.length - 1)];

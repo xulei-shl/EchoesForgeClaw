@@ -1,7 +1,12 @@
 import React, { useRef } from 'react';
 import { Plus, X, Upload, RefreshCw, Trash2, Dices } from 'lucide-react';
 import { getReceiptTheme } from '../../themes';
-import { generateRandomBorrowerRecords, isChineseName, CHINESE_BORROWER_FONTS } from '../../borrowerGenerator';
+import {
+  generateRandomBorrowerRecords,
+  isChineseName,
+  CHINESE_BORROWER_FONTS,
+  generateRandomMaskedChineseName,
+} from '../../borrowerGenerator';
 import type { BorrowerRecordItem, ReceiptState } from '../../types';
 import { stopEvent } from './common/stopEvent';
 
@@ -116,10 +121,13 @@ export const LibraryCardPaper = React.forwardRef<HTMLDivElement, LibraryCardPape
           ? available[Math.floor(Math.random() * available.length)].id
           : CHINESE_BORROWER_FONTS[Math.floor(Math.random() * CHINESE_BORROWER_FONTS.length)].id;
 
+      const usedNames = new Set(records.map((r) => r.name));
+      const newName = generateRandomMaskedChineseName(usedNames);
+
       const newRecord: BorrowerRecordItem = {
         id: `rec-${Date.now()}`,
         date: nowStr,
-        name: '某读者',
+        name: newName,
         rotation: 'rotate-1',
         fontClass,
       };
