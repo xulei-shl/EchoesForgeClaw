@@ -298,6 +298,12 @@ const BookplatePage: React.FC = () => {
     busyPub,
   });
 
+  // ---------- 分组（软分组） ----------
+  // groupsRef：历史快照读取当前分组；每次渲染同步最新值（与 nodeSizesRef 同模式）
+  // 注意：必须在 historyCtx 之前声明，否则 useMemo 回调访问到 TDZ 中的 groupsRef
+  const groupsRef = useRef<CanvasGroup[]>(groups);
+  groupsRef.current = groups;
+
   // ---------- 撤销 / 重做 ----------
   // ctx 经 useMemo 保持稳定（内部均为模块级 ref / React setter / 稳定回调），
   // 使 useCanvasHistory 内部的 recordHistory / undo / redo 不随渲染重建
@@ -327,11 +333,6 @@ const BookplatePage: React.FC = () => {
     ]
   );
   const { undo, redo, recordHistory, canUndo, canRedo } = useCanvasHistory(historyCtx);
-
-  // ---------- 分组（软分组） ----------
-  // groupsRef：历史快照读取当前分组；每次渲染同步最新值（与 nodeSizesRef 同模式）
-  const groupsRef = useRef<CanvasGroup[]>(groups);
-  groupsRef.current = groups;
 
   /** 节点所属分组（至多一个） */
   const groupOfNode = useCallback(
