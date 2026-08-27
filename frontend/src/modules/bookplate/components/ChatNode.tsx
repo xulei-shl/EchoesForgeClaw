@@ -901,7 +901,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                 <p className="text-xs text-ink-faint font-sans leading-relaxed">
                   输入消息（可附带图片）开始多轮对话
                   <br />
-                  支持绑定大模型、FastClaw Agent 或 Skill Agent（加载 skill 执行）
+                  支持绑定大模型、FastClaw Agent 或 Skill Agent（Pi Agent）
                 </p>
               </div>
             ) : (
@@ -1102,7 +1102,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                 />
                 <SettingsToggleRow
                   label="加载图书封面图片"
-                  description="独立于「继承图书元数据」，开启时注入封面图作为视觉上下文（无连线时默认关闭，需手动开启）"
+                  description="上游穿透的图书节点或兜底的图书节点的封面图"
                   checked={bookCoverEnabled}
                   onChange={(v) => onUpdateSettings?.(id, { ...settings, includeBookCover: v })}
                   disabled={messages.length > 0}
