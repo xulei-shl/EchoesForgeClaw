@@ -305,7 +305,12 @@ export function ChatNodeHost({
         !last.content &&
         !last.reasoning &&
         !(last.agentSteps && last.agentSteps.length) &&
-        !(last.files && last.files.length)
+        !(last.files && last.files.length) &&
+        // 本轮缓冲的产物文件尚未并入该消息：上方 pendingFiles 块的 setMessages 是异步的，
+        // 本次的 next 快照还不含 files，而 useChat 侧的 hasVisible 已能看到 files——
+        // 此时剥离会让 store 丢消息而 useChat 保留（store/useChat 分叉、文件卡片消失）。
+        // 等 files 并入 metadata 后的下一轮镜像再判断是否真的为空。
+        pendingFilesRef.current.size === 0
       ) {
         next = next.slice(0, -1);
         setMessages((prev) => {
@@ -513,23 +518,36 @@ export function ChatNodeHost({
   // 计算展示消息：流式中直接由 uiMessages 实时转换，并在最后一条 assistant 注入 streaming 标志与 agentSteps
   // 本轮缓冲的产物文件（尚未随流收尾并入 metadata）在流式分支实时并入最后一条 assistant 展示
   const bufFiles = pendingFilesRef.current.size ? [...pendingFilesRef.current.values()] : [];
-  let messages: ChatMessage[];
-  if (isStreaming) {
+  // useChat 实时消息 → 展示消息：最后一条 assistant 注入 nodeSteps / 缓冲文件（streaming 标志仅流式中注入）
+  const buildLiveMessages = (markStreaming: boolean): ChatMessage[] => {
     let next = uiToStore(uiMessages);
     if (next.length) {
       const lastIdx = next.length - 1;
       if (next[lastIdx].role === 'assistant') {
         next[lastIdx] = {
           ...next[lastIdx],
-          streaming: true,
+          ...(markStreaming ? { streaming: true } : {}),
           agentSteps: nodeSteps.length ? nodeSteps : next[lastIdx].agentSteps,
           ...(bufFiles.length ? { files: mergeAgentFiles(next[lastIdx].files, bufFiles) } : {}),
         };
       }
     }
-    messages = next;
+    return next;
+  };
+  let messages: ChatMessage[];
+  if (isStreaming) {
+    messages = buildLiveMessages(true);
   } else {
-    messages = Array.isArray(node.data?.messages) ? node.data.messages : [];
+    const stored = Array.isArray(node.data?.messages) ? node.data.messages : [];
+    // 镜像 flush 滞后一帧：流刚结束（status 已 ready）时，store 仍持有流中最后一次落盘的
+    // 空占位（streaming:true 的 assistant）——镜像 effect 要到本次渲染之后才把最终正文写入
+    // store。此时直接展示 store 会看到「正文先流出又消失一帧（变回思考中…占位）」的闪烁。
+    // 改为以 useChat 实时消息（已是最终正文）兜底渲染；镜像 flush 落盘后占位被替换，自然回到 store。
+    const lastStored = stored[stored.length - 1];
+    messages =
+      lastStored?.role === 'assistant' && lastStored.streaming === true
+        ? buildLiveMessages(false)
+        : stored;
   }
 
   // 计算上下文块：始终实时根据画布连线与配置动态重算，上级重新生成时折叠卡片同步更新。
