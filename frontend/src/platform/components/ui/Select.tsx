@@ -75,11 +75,15 @@ export const Select: React.FC<SelectProps> = ({
         <span className="truncate">{selectedOption ? selectedOption.label : placeholder}</span>
         <ChevronDown size={14} className="ml-2 text-ink-faint shrink-0" />
       </button>
+      {/* 菜单是 document.body 下的 portal，若不拦截，点击选项时 pointerdown 会冒泡到 document，
+          触发宿主弹层（如运行设置）的「点击外部关闭」，在 click 到达选项前就把弹层连同菜单卸载，
+          导致选项无法选中；此处 stopPropagation 使菜单内交互不再外泄。 */}
       {isOpen && menuPos && typeof document !== 'undefined' && createPortal(
         <div
           ref={menuRef}
           style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, width: menuPos.width }}
           className="bg-paper border border-dashed border-paper-grid rounded-md shadow-md z-[9999] overflow-hidden max-h-60 overflow-y-auto animate-in fade-in zoom-in-95 duration-100"
+          onPointerDown={(e) => e.stopPropagation()}
         >
           {options.length > 0 ? (
             options.map((opt) => {
