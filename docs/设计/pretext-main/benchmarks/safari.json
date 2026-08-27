@@ -1,0 +1,325 @@
+{
+  "status": "ready",
+  "results": [
+    {
+      "label": "Our library: prepare()",
+      "ms": 12,
+      "desc": "One cold 500-text measurement batch"
+    },
+    {
+      "label": "Our library: layout()",
+      "ms": 0.105,
+      "desc": "Normalized hot-path throughput per 500-text batch"
+    },
+    {
+      "label": "DOM batch",
+      "ms": 52,
+      "desc": "Single 400→300px batch resize: write all, then read all"
+    },
+    {
+      "label": "DOM interleaved",
+      "ms": 96.5,
+      "desc": "Single 400→300px batch resize: write + read per div"
+    }
+  ],
+  "richResults": [
+    {
+      "label": "Our library: measureLineStats()",
+      "ms": 0.025,
+      "desc": "60-text shared-corpus batch across widths 180/220/260px; stats only"
+    },
+    {
+      "label": "Our library: layoutWithLines()",
+      "ms": 0.025000000000005684,
+      "desc": "60-text shared-corpus batch across widths 180/220/260px; materializes text lines"
+    },
+    {
+      "label": "Our library: walkLineRanges()",
+      "ms": 0.025,
+      "desc": "60-text shared-corpus batch across widths 180/220/260px; line ranges only, no line text strings"
+    },
+    {
+      "label": "Our library: layoutNextLine()",
+      "ms": 0.025,
+      "desc": "60-text shared-corpus batch across widths 180/220/260px; streaming line-by-line layout"
+    }
+  ],
+  "richInlineResults": [
+    {
+      "label": "Our library: measureRichInlineStats()",
+      "ms": 0,
+      "desc": "36 rich-text inline flow shared-corpus texts across widths 180/220/260px; stats only"
+    },
+    {
+      "label": "Our library: walkRichInlineLineRanges()",
+      "ms": 0.025,
+      "desc": "36 rich-text inline flow shared-corpus texts across widths 180/220/260px; per-line ranges with fragment ownership, no text strings"
+    },
+    {
+      "label": "Our library: materializeRichInlineLineRange()",
+      "ms": 0.025,
+      "desc": "36 rich-text inline flow shared-corpus texts across widths 180/220/260px; range walker plus per-line materialization"
+    },
+    {
+      "label": "Our library: layoutNextRichInlineLineRange() + materializeRichInlineLineRange()",
+      "ms": 0.025,
+      "desc": "36 rich-text inline flow shared-corpus texts across widths 180/220/260px; streaming range walk plus per-line materialization"
+    }
+  ],
+  "richPreWrapResults": [
+    {
+      "label": "Our library: measureLineStats()",
+      "ms": 0.225,
+      "desc": "12 generated pre-wrap texts with 320 hard-break chunks across widths 220/260/320px; stats only"
+    },
+    {
+      "label": "Our library: layoutWithLines()",
+      "ms": 0.35,
+      "desc": "12 generated pre-wrap texts with 320 hard-break chunks across widths 220/260/320px; materializes text lines"
+    },
+    {
+      "label": "Our library: walkLineRanges()",
+      "ms": 0.25,
+      "desc": "12 generated pre-wrap texts with 320 hard-break chunks across widths 220/260/320px; line ranges only, no line text strings"
+    },
+    {
+      "label": "Our library: layoutNextLine()",
+      "ms": 0.5,
+      "desc": "12 generated pre-wrap texts with 320 hard-break chunks across widths 220/260/320px; streaming line-by-line layout"
+    }
+  ],
+  "richLongResults": [
+    {
+      "label": "Our library: measureLineStats()",
+      "ms": 0.8750000000000113,
+      "desc": "8 Arabic long-form texts across widths 240/300/360px; stats only"
+    },
+    {
+      "label": "Our library: layoutWithLines()",
+      "ms": 3.075,
+      "desc": "8 Arabic long-form texts across widths 240/300/360px; materializes text lines"
+    },
+    {
+      "label": "Our library: walkLineRanges()",
+      "ms": 1.75,
+      "desc": "8 Arabic long-form texts across widths 240/300/360px; line ranges only, no line text strings"
+    },
+    {
+      "label": "Our library: layoutNextLine()",
+      "ms": 2.2000000000000117,
+      "desc": "8 Arabic long-form texts across widths 240/300/360px; streaming line-by-line layout"
+    }
+  ],
+  "corpusResults": [
+    {
+      "id": "ja-kumo-no-ito",
+      "label": "Japanese prose (story 2)",
+      "font": "20px \"Hiragino Mincho ProN\", \"Yu Mincho\", \"Noto Serif CJK JP\", serif",
+      "chars": 2874,
+      "analysisSegments": 1776,
+      "segments": 2670,
+      "breakableSegments": 0,
+      "width": 300,
+      "lineCount": 193,
+      "analysisMs": 1,
+      "measureMs": 3,
+      "prepareMs": 4,
+      "layoutMs": 0.015
+    },
+    {
+      "id": "ja-rashomon",
+      "label": "Japanese prose",
+      "font": "20px \"Hiragino Mincho ProN\", \"Yu Mincho\", \"Noto Serif CJK JP\", serif",
+      "chars": 5702,
+      "analysisSegments": 3614,
+      "segments": 5052,
+      "breakableSegments": 1,
+      "width": 300,
+      "lineCount": 380,
+      "analysisMs": 3,
+      "measureMs": 4.999999999998181,
+      "prepareMs": 7,
+      "layoutMs": 0.029999999999995454
+    },
+    {
+      "id": "ko-unsu-joh-eun-nal",
+      "label": "Korean prose",
+      "font": "18px \"Apple SD Gothic Neo\", \"Malgun Gothic\", \"Noto Sans CJK KR\", sans-serif",
+      "chars": 10272,
+      "analysisSegments": 5312,
+      "segments": 9709,
+      "breakableSegments": 0,
+      "width": 300,
+      "lineCount": 428,
+      "analysisMs": 2,
+      "measureMs": 6,
+      "prepareMs": 7,
+      "layoutMs": 0.055
+    },
+    {
+      "id": "ko-sonagi",
+      "label": "Korean prose (story 2)",
+      "font": "18px \"Apple SD Gothic Neo\", \"Malgun Gothic\", \"Noto Sans CJK KR\", sans-serif",
+      "chars": 8021,
+      "analysisSegments": 3985,
+      "segments": 7430,
+      "breakableSegments": 2,
+      "width": 300,
+      "lineCount": 332,
+      "analysisMs": 1,
+      "measureMs": 4.999999999998181,
+      "prepareMs": 6,
+      "layoutMs": 0.04499999999999545
+    },
+    {
+      "id": "zh-zhufu",
+      "label": "Chinese prose",
+      "font": "20px \"Songti SC\", \"PingFang SC\", \"Noto Serif CJK SC\", serif",
+      "chars": 9428,
+      "analysisSegments": 5477,
+      "segments": 7993,
+      "breakableSegments": 2,
+      "width": 300,
+      "lineCount": 626,
+      "analysisMs": 4,
+      "measureMs": 7.999999999998181,
+      "prepareMs": 12,
+      "layoutMs": 0.045
+    },
+    {
+      "id": "zh-guxiang",
+      "label": "Chinese prose (story 2)",
+      "font": "20px \"Songti SC\", \"PingFang SC\", \"Noto Serif CJK SC\", serif",
+      "chars": 5717,
+      "analysisSegments": 3293,
+      "segments": 4764,
+      "breakableSegments": 14,
+      "width": 300,
+      "lineCount": 375,
+      "analysisMs": 2.0000000000009095,
+      "measureMs": 4.9999999999990905,
+      "prepareMs": 7,
+      "layoutMs": 0.025000000000004546
+    },
+    {
+      "id": "th-nithan-vetal-story-1",
+      "label": "Thai prose",
+      "font": "20px \"Thonburi\", \"Noto Sans Thai\", sans-serif",
+      "chars": 34033,
+      "analysisSegments": 10279,
+      "segments": 10279,
+      "breakableSegments": 8087,
+      "width": 300,
+      "lineCount": 1024,
+      "analysisMs": 5.0000000000009095,
+      "measureMs": 16,
+      "prepareMs": 21,
+      "layoutMs": 0.06
+    },
+    {
+      "id": "my-cunning-heron-teacher",
+      "label": "Myanmar prose",
+      "font": "20px \"Myanmar MN\", \"Myanmar Sangam MN\", \"Noto Sans Myanmar\", serif",
+      "chars": 2707,
+      "analysisSegments": 786,
+      "segments": 786,
+      "breakableSegments": 420,
+      "width": 300,
+      "lineCount": 81,
+      "analysisMs": 0,
+      "measureMs": 2.999999999998181,
+      "prepareMs": 3,
+      "layoutMs": 0.005
+    },
+    {
+      "id": "my-bad-deeds-return-to-you-teacher",
+      "label": "Myanmar prose (story 2)",
+      "font": "20px \"Myanmar MN\", \"Myanmar Sangam MN\", \"Noto Sans Myanmar\", serif",
+      "chars": 1666,
+      "analysisSegments": 491,
+      "segments": 491,
+      "breakableSegments": 271,
+      "width": 300,
+      "lineCount": 54,
+      "analysisMs": 0,
+      "measureMs": 2,
+      "prepareMs": 2,
+      "layoutMs": 0
+    },
+    {
+      "id": "ur-chughd",
+      "label": "Urdu prose",
+      "font": "20px \"Noto Nastaliq Urdu\", \"DecoType Nastaleeq Urdu UI\", \"Geeza Pro\", serif",
+      "chars": 13391,
+      "analysisSegments": 5841,
+      "segments": 5841,
+      "breakableSegments": 2916,
+      "width": 300,
+      "lineCount": 352,
+      "analysisMs": 2,
+      "measureMs": 29.00000000000182,
+      "prepareMs": 31.00000000000182,
+      "layoutMs": 0.035
+    },
+    {
+      "id": "km-prachum-reuang-preng-khmer-volume-7-stories-1-10",
+      "label": "Khmer prose",
+      "font": "20px \"Khmer Sangam MN\", \"Khmer MN\", \"Noto Sans Khmer\", serif",
+      "chars": 24240,
+      "analysisSegments": 11096,
+      "segments": 11096,
+      "breakableSegments": 3534,
+      "width": 300,
+      "lineCount": 591,
+      "analysisMs": 4,
+      "measureMs": 8.000000000003638,
+      "prepareMs": 12.000000000001819,
+      "layoutMs": 0.065
+    },
+    {
+      "id": "hi-eidgah",
+      "label": "Hindi prose",
+      "font": "20px \"Kohinoor Devanagari\", \"Noto Serif Devanagari\", serif",
+      "chars": 24077,
+      "analysisSegments": 9957,
+      "segments": 9957,
+      "breakableSegments": 4087,
+      "width": 300,
+      "lineCount": 653,
+      "analysisMs": 3,
+      "measureMs": 19,
+      "prepareMs": 22,
+      "layoutMs": 0.055
+    },
+    {
+      "id": "synthetic-long-breakable-runs",
+      "label": "Long breakable runs (synthetic)",
+      "font": "16px \"Helvetica Neue\", Helvetica, Arial, sans-serif",
+      "chars": 78679,
+      "analysisSegments": 2639,
+      "segments": 2639,
+      "breakableSegments": 1540,
+      "width": 300,
+      "lineCount": 2860,
+      "analysisMs": 4.000000000001819,
+      "measureMs": 68.00000000000182,
+      "prepareMs": 73,
+      "layoutMs": 0.35
+    },
+    {
+      "id": "ar-risalat-al-ghufran-part-1",
+      "label": "Arabic prose",
+      "font": "20px \"Geeza Pro\", \"Noto Naskh Arabic\", \"Arial\", serif",
+      "chars": 106857,
+      "analysisSegments": 37601,
+      "segments": 37601,
+      "breakableSegments": 18743,
+      "width": 300,
+      "lineCount": 2644,
+      "analysisMs": 10,
+      "measureMs": 112.99999999999636,
+      "prepareMs": 122.99999999999818,
+      "layoutMs": 0.21
+    }
+  ]
+}
