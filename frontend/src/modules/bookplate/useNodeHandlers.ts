@@ -289,11 +289,11 @@ export function useNodeHandlers({
   const handleUpdateChatSettingsFor = useCallback((id: string, settings: ChatNodeSettings) => {
     const node = nodesRef.current.find((n) => n.id === id);
     if (!node || node.type !== 'chat') return;
+    // 封面开关不写显式值：默认跟随 book_info 连通性（见 execution.ts isBookCoverEnabled）
     const old = node.data?.settings ?? {
       includeBook: false,
       includeUpstream: true,
       includeUpstreamImages: true,
-      includeBookCover: true,
     };
     if (JSON.stringify(old) === JSON.stringify(settings)) return;
     recordHistory();

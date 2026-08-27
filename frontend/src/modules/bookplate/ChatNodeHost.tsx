@@ -5,6 +5,7 @@ import { nodesRef, edgesRef } from '../../platform/stores/useCanvasState';
 import { ChatNode } from './components/ChatNode';
 import { getNodeTitle } from './nodeTypes';
 import { buildInjectedContextBlocks } from './contextBlocks';
+import { isBookCoverEnabled } from './execution';
 import { toWireChatMessages } from './graphTypes';
 import { handleAgentSseMessage } from './agentSteps';
 import { authHeaders, handleUnauthorized } from './authUtils';
@@ -80,7 +81,7 @@ export function ChatNodeHost({
             cur,
             {
               includeBook: chatSettings.includeBook,
-              includeBookCover: chatSettings.includeBookCover !== false,
+              includeBookCover: isBookCoverEnabled(cur, nodesRef.current, edgesRef.current),
               includeUpstreamText: chatSettings.includeUpstream !== false,
               includeUpstreamImages: chatSettings.includeUpstreamImages !== false,
               includeSkills: true,
@@ -538,7 +539,7 @@ export function ChatNodeHost({
     node,
     {
       includeBook: settings.includeBook,
-      includeBookCover: settings.includeBookCover !== false,
+      includeBookCover: isBookCoverEnabled(node, h.nodes, h.edges),
       includeUpstreamText: settings.includeUpstream !== false,
       includeUpstreamImages: settings.includeUpstreamImages !== false,
       includeSkills: true,
@@ -572,6 +573,7 @@ export function ChatNodeHost({
       isGenerating={!!node.data?.isGenerating}
       error={node.data?.error ?? null}
       settings={settings}
+      bookCoverEnabled={isBookCoverEnabled(node, h.nodes, h.edges)}
       onRemove={() => h.handleRemove(node.id)}
       onSend={(_id, text, images) => send(text, images)}
       onUpdateSettings={h.handleUpdateChatSettingsFor}

@@ -45,6 +45,8 @@ export interface NodeSettingsPopoverProps {
   showImageParams?: boolean;
   /** 是否展示「加载图书封面图片」开关：仅图像生成节点传入（chat 节点有独立设置弹层） */
   showBookCoverOption?: boolean;
+  /** 封面开关当前生效状态（显式设置或按 book_info 连通性的默认值；驱动开关展示） */
+  bookCoverEnabled?: boolean;
   /** 是否展示「模型」下拉（仅 LLM 模式；提示词生成 / 图像生成节点传入） */
   showModelOption?: boolean;
   /** 节点执行模式：仅 LLM 模式展示模型下拉（Agent 模式由 Agent 侧决定模型） */
@@ -62,6 +64,7 @@ const NodeSettingsPopoverInner: React.FC<NodeSettingsPopoverProps> = ({
   hasBookInfo = true,
   showImageParams = false,
   showBookCoverOption = false,
+  bookCoverEnabled = true,
   showModelOption = false,
   mode,
   configId,
@@ -150,7 +153,7 @@ const NodeSettingsPopoverInner: React.FC<NodeSettingsPopoverProps> = ({
                       </p>
                     </div>
                     <Toggle
-                      checked={settings.includeBookCover !== false}
+                      checked={bookCoverEnabled}
                       onChange={(v) => onChange({ ...settings, includeBookCover: v })}
                       label="加载图书封面图片"
                       disabled={disabled}

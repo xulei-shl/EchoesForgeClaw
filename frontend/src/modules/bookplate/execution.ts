@@ -47,7 +47,7 @@ function markdownSections(sections: { label: string; values: string[] }[]): stri
 export interface RunInputs {
   /** 直接上级节点列表 */
   parents: NodeData[];
-  /** 图书元数据节点（includeBook 与 includeBookCover 均关闭时为 undefined；开启时直接 book_info 优先，无则连线上游，再兜底画布根节点） */
+  /** 图书元数据节点（文本与封面均未启用时为 undefined：includeBook 关闭且封面开关未生效；启用时直接 book_info 优先，无则连线上游，再兜底画布根节点） */
   book?: NodeData;
   /** 图书元数据文本（仅 includeBook 开启时提取，过滤图片字段） */
   metadataText: string;
@@ -83,10 +83,12 @@ export function resolveNodeRunInputs(
   // 图书元数据：文本与封面两个开关独立控制——「包含图书元数据」只注入元数据文本，
   // 「加载图书封面图片」只注入封面；任一开启即解析图书（直接连线的 book_info 优先，
   // 未直接连线时沿连线向上追溯实际连通的 book_info，无连通者才回退画布根节点），
-  // 两者都关闭时为 undefined。注：历史记录（useGenerationHistory / useImageOutputHandlers）
-  // 无条件记录图书元数据，不受此开关影响。
+  // 两者都未启用时为 undefined。封面开关默认值跟随连通性（见 isBookCoverEnabled）：
+  // 未显式设置时，有实际连通的 book_info 默认开启，无连通（仅根节点兜底）默认关闭，
+  // 需用户手动开启「加载图书封面图片」才会经根节点兜底注入封面。
+  // 注：历史记录（useGenerationHistory / useImageOutputHandlers）无条件记录图书元数据，不受此开关影响。
   const book =
-    settings.includeBook || settings.includeBookCover !== false
+    settings.includeBook || isBookCoverEnabled(node, nodes, edges)
       ? parents.find((p) => p.type === 'book_info') ??
         findConnectedBookInfoUpstream(node.id, nodes, edges) ??
         findRootBookInfo(nodes, edges)
@@ -134,6 +136,29 @@ export function resolveNodeRunInputs(
     refImage,
     imagePrompt,
   };
+}
+
+/**
+ * 节点是否「实际连通」图书元数据节点：直连 book_info，或沿入边向上追溯连通 book_info。
+ * 不含画布根节点兜底——兜底不是用户显式连线，默认不自动注入（见 isBookCoverEnabled）。
+ */
+export function hasConnectedBookInfo(node: NodeData, nodes: NodeData[], edges: EdgeData[]): boolean {
+  const parents = resolveDirectParents(node.id, nodes, edges);
+  return Boolean(
+    parents.find((p) => p.type === 'book_info') ??
+      findConnectedBookInfoUpstream(node.id, nodes, edges)
+  );
+}
+
+/**
+ * 封面开关是否生效：显式设置优先；未显式设置时默认值跟随 book_info 连通性——
+ * 有实际连通的 book_info（直连或连线上游）默认开启，无连通（仅画布根节点兜底）默认关闭，
+ * 与「包含图书元数据」的默认语义对齐（无连线时默认都不注入，需手动开启）。
+ */
+export function isBookCoverEnabled(node: NodeData, nodes: NodeData[], edges: EdgeData[]): boolean {
+  const v = node.data?.settings?.includeBookCover;
+  if (v !== undefined) return v;
+  return hasConnectedBookInfo(node, nodes, edges);
 }
 
 /**

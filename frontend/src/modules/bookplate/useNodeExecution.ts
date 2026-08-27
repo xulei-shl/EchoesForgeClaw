@@ -8,6 +8,7 @@ import {
 import {
   DEFAULT_RUN_SETTINGS,
   collectMismatchParents,
+  isBookCoverEnabled,
   resolveNodeRunInputs,
   withMismatchHint,
   type PortTypesLookup,
@@ -387,10 +388,15 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
           ctx.portTypesRef.current
         );
         const { book, imageNodes, refImage, text: upstreamText } = inputs;
-        // 图书封面作为兑底分析图：与图像生成节点同口径，includeBookCover 开启时才注入
-        // （默认开启，旧节点 undefined 视为开启）。注意必须传豆瓣原始 URL（cover_image），
+        // 图书封面作为兑底分析图：与图像生成节点同口径，封面开关生效时才注入
+        // （isBookCoverEnabled：显式设置优先，未设置时按 book_info 连通性默认——
+        // 有连通开启，无连通默认关闭）。注意必须传豆瓣原始 URL（cover_image），
         // 而非本地代理 URL（cover_image_local）——后端仅接受 doubanio.com 域名做封面抓取/分析
-        const includeCover = node.data?.settings?.includeBookCover !== false;
+        const includeCover = isBookCoverEnabled(
+          node,
+          ctx.nodesRef.current,
+          ctx.edgesRef.current
+        );
         const coverUrl = includeCover
           ? book?.data?.cover_image || book?.data?.coverUrl || book?.data?.cover_image_local
           : '';
@@ -402,7 +408,7 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
         if (!image && !upstreamText.trim() && (imageNodes.length || !coverUrl)) {
           return pendingReason(
             node,
-            '缺少可分析的图片或文本（上传参考图，连线 图片/文本类节点，或开启「包含图书元数据」）'
+            '缺少可分析的图片或文本（上传参考图，连线 图片/文本类节点，或开启「包含图书元数据」/「加载图书封面图片」）'
           );
         }
         // 后端同样优先解析 image 字段，cover_url 仅作兜底；text 为上游文本上下文
@@ -454,10 +460,15 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
         if (inputs.imageNodes.length && !inputs.refImage) {
           return '图片类上级暂无可用图片（等待上传或生成完成）';
         }
-        // 图书封面图：与 AI 对话节点同口径（封面独立于「包含图书元数据」开关，由 includeBookCover
-        // 控制；book 由 includeBook / includeBookCover 任一开启解析，直连优先、无则连线上游/根节点兜底），
-        // includeBookCover 默认开启（旧节点 undefined 视为开启）
-        const includeCover = node.data?.settings?.includeBookCover !== false;
+        // 图书封面图：与 AI 对话节点同口径（封面独立于「包含图书元数据」开关，由封面开关控制；
+        // book 由 includeBook / 封面开关任一启用解析，直连优先、无则连线上游/根节点兜底）。
+        // 封面开关默认值跟随连通性（isBookCoverEnabled）：显式设置优先，未设置时无连通
+        // （仅根节点兜底）默认关闭，需手动开启封面开关才会注入封面
+        const includeCover = isBookCoverEnabled(
+          node,
+          ctx.nodesRef.current,
+          ctx.edgesRef.current
+        );
         const coverUrl =
           includeCover && inputs.book ? bookCoverImage(inputs.book.data) : '';
         runImageGeneration(node, inputs.imagePrompt, inputs.refImage, coverUrl);

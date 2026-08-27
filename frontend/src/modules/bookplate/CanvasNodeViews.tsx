@@ -46,6 +46,7 @@ import {
   collectNodeInputs,
   firstExtraJsonUpstreamText,
   firstUpstreamText,
+  isBookCoverEnabled,
   resolveReferenceImage,
   type PortTypesLookup,
 } from './execution';
@@ -318,12 +319,13 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       const config = h.configOf(node);
       // 上下文注入折叠块：与 图像生成 / AI 对话节点共用构建逻辑，展示本次运行并入
       // 分析请求的输入（文本类上级 / 图片类上级 / 图书元数据与封面）。封面注入与
-      // 图像生成节点同口径：includeBookCover 默认开启（旧节点 undefined 视为开启）
+      // 图像生成节点同口径：封面开关默认值跟随连通性（isBookCoverEnabled，未显式设置时
+      // 无连通仅根节点兜底则默认关闭）
       const contextBlocks = buildInjectedContextBlocks(
         node,
         {
           includeBook: settings.includeBook,
-          includeBookCover: settings.includeBookCover !== false,
+          includeBookCover: isBookCoverEnabled(node, h.nodes, h.edges),
           includeUpstreamText: true,
           includeUpstreamImages: true,
         },
@@ -348,6 +350,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           onUpdateSettings={h.handleUpdateRunSettingsFor}
           hasBookInfo={h.hasBookInfo}
           showBookCoverOption
+          bookCoverEnabled={isBookCoverEnabled(node, h.nodes, h.edges)}
           mode={config?.mode}
           configId={node.configId ?? null}
         />
@@ -413,11 +416,12 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       // 上下文注入折叠块：与 AI 对话节点共用构建逻辑，展示本次运行实际并入提示词的输入
       // （提示词节点 / 图片分析 / 文本类上级 / 图书元数据与封面 / 参考图）。与 chat 同口径
       // （所见即所得）：除图书元数据走 includeBook 穿透外，任何直连上级的文本/图片都并入。
+      // 封面开关默认值跟随连通性（isBookCoverEnabled，未显式设置时无连通仅根节点兜底则默认关闭）
       const contextBlocks = buildInjectedContextBlocks(
         node,
         {
           includeBook: settings.includeBook,
-          includeBookCover: settings.includeBookCover !== false,
+          includeBookCover: isBookCoverEnabled(node, h.nodes, h.edges),
           includeUpstreamText: true,
           includeUpstreamImages: true,
         },
@@ -456,6 +460,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           onUpdateSettings={h.handleUpdateRunSettingsFor}
           showImageParams
           showBookCoverOption
+          bookCoverEnabled={isBookCoverEnabled(node, h.nodes, h.edges)}
           hasBookInfo={h.hasBookInfo}
           mode={config?.mode}
           configId={node.configId ?? null}

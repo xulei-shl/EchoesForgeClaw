@@ -51,7 +51,8 @@ export function seedDataFor(type: NodeType, parent?: NodeData): any {
         isGenerating: false,
         error: null,
         agentSteps: [],
-        settings: { includeBook: !!parent, includeUpstream: true, includeUpstreamImages: true, includeBookCover: true },
+        // 封面开关不写显式值：默认跟随 book_info 连通性（无连线时默认关闭，见 execution.ts isBookCoverEnabled）
+        settings: { includeBook: !!parent, includeUpstream: true, includeUpstreamImages: true },
         epoch: 0,
       };
     case 'text_aggregate':

@@ -18,12 +18,15 @@ import type { PortTypesLookup } from './execution';
 /** AI 对话单轮携带的图片上限（附件 + 上下文图片合计）：防止超大 base64 请求体拖垮传输 */
 export const MAX_CHAT_IMAGES = 4;
 
-/** 运行设置兜底（旧节点持久化的 settings 缺少 includeUpstreamImages / includeBookCover，undefined 视为开启） */
+/**
+ * 运行设置兜底（旧节点持久化的 settings 缺少 includeUpstreamImages / includeBookCover：
+ * includeUpstreamImages undefined 视为开启；includeBookCover undefined 视为按 book_info
+ * 连通性默认——有连通开启、无连通（仅根节点兜底）关闭，见 execution.ts isBookCoverEnabled）
+ */
 export const DEFAULT_CHAT_SETTINGS: ChatNodeSettings = {
   includeBook: false,
   includeUpstream: true,
   includeUpstreamImages: true,
-  includeBookCover: true,
 };
 
 /** ChatHost 依赖（画布注入：state setter + 端口类型查找；nodesRef/edgesRef 为模块级单例） */

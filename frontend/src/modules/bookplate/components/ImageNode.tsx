@@ -70,6 +70,8 @@ export interface ImageNodeProps {
   showImageParams?: boolean;
   /** 运行设置中展示「加载图书封面图片」开关（图像生成节点开启） */
   showBookCoverOption?: boolean;
+  /** 封面开关当前生效状态（显式设置或按 book_info 连通性的默认值），驱动开关展示 */
+  bookCoverEnabled?: boolean;
   /** 画布是否已有图书元数据节点 */
   hasBookInfo?: boolean;
   /** 标题旁的类型不匹配提示 */
@@ -126,6 +128,7 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
   onUpdateSettings,
   showImageParams = false,
   showBookCoverOption = false,
+  bookCoverEnabled,
   hasBookInfo,
   mismatchBadge,
   mode,
@@ -221,6 +224,7 @@ const ImageNodeInner: React.FC<ImageNodeProps> = ({
               hasBookInfo={hasBookInfo}
               showImageParams={showImageParams}
               showBookCoverOption={showBookCoverOption}
+              bookCoverEnabled={bookCoverEnabled}
               showModelOption
               mode={mode}
               configId={configId}

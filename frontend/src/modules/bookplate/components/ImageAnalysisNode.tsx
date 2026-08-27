@@ -58,6 +58,8 @@ export interface ImageAnalysisNodeProps {
   hasBookInfo?: boolean;
   /** 是否展示「加载图书封面图片」开关（与图像生成节点同口径，默认不展示） */
   showBookCoverOption?: boolean;
+  /** 封面开关当前生效状态（显式设置或按 book_info 连通性的默认值），驱动开关展示 */
+  bookCoverEnabled?: boolean;
   /** 标题旁的类型不匹配提示 */
   mismatchBadge?: string | null;
   /** 节点执行模式：仅 LLM 模式展示「模型」下拉（Agent 模式由 Agent 侧决定模型） */
@@ -89,6 +91,7 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
   onUpdateSettings,
   hasBookInfo,
   showBookCoverOption,
+  bookCoverEnabled,
   mismatchBadge,
   mode,
   configId,
@@ -156,6 +159,7 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
             hasBookInfo={hasBookInfo}
             showModelOption
             showBookCoverOption={showBookCoverOption}
+            bookCoverEnabled={bookCoverEnabled}
             mode={mode}
             configId={configId}
           />

@@ -565,6 +565,8 @@ export interface ChatNodeProps {
   error?: string | null;
   /** 上下文加载设置 */
   settings: ChatNodeSettings;
+  /** 封面开关当前生效状态（显式设置或按 book_info 连通性的默认值），驱动设置弹层开关展示 */
+  bookCoverEnabled?: boolean;
   onRemove?: (id: string) => void;
   /** 发送一条用户消息（多轮对话），images 为本轮附带图片（data URL） */
   onSend?: (id: string, text: string, images?: string[]) => void;
@@ -614,6 +616,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
   isGenerating,
   error,
   settings,
+  bookCoverEnabled = true,
   onRemove,
   onSend,
   onStop,
@@ -1099,8 +1102,8 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                 />
                 <SettingsToggleRow
                   label="加载图书封面图片"
-                  description="独立于「继承图书元数据」，开启时注入封面图作为视觉上下文"
-                  checked={settings.includeBookCover !== false}
+                  description="独立于「继承图书元数据」，开启时注入封面图作为视觉上下文（无连线时默认关闭，需手动开启）"
+                  checked={bookCoverEnabled}
                   onChange={(v) => onUpdateSettings?.(id, { ...settings, includeBookCover: v })}
                   disabled={messages.length > 0}
                 />
