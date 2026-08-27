@@ -52,13 +52,15 @@ export function extractImageUrl(text: string): string | null {
 }
 
 export class FastClawAgentService {
-  /** 调用 agent 并产出归一化事件流（AsyncGenerator）。 */
+  /** 调用 agent 并产出归一化事件流（AsyncGenerator）。
+   *  @param signal 调用方中止信号（客户端断连/用户停止时终止底层 SSE 流）。 */
   async *runAgent(
     config: FastClawRuntimeConfig,
     message: string,
     sessionKey: string,
     images?: string[],
-    params?: Record<string, unknown>
+    params?: Record<string, unknown>,
+    signal?: AbortSignal
   ): AsyncGenerator<FastClawEvent, void, unknown> {
     if (!config.base_url || !config.api_key || !config.agent_id) {
       throw new FastClawAgentError('FastClaw Agent 配置不完整（base_url / api_key / agent_id）');
@@ -80,16 +82,26 @@ export class FastClawAgentService {
     };
     if (config.end_user) headers['X-Fastclaw-End-User'] = config.end_user;
 
+    // 连接阶段超时：手动管理，fetch 完成后立即清除，不影响后续流读取
+    const connectAbort = new AbortController();
+    const connectTimer = setTimeout(() => connectAbort.abort(), CONNECT_TIMEOUT_MS);
+    // 合并连接超时与调用方中止信号（客户端断连/用户停止）
+    const fetchSignal = signal
+      ? AbortSignal.any([connectAbort.signal, signal])
+      : connectAbort.signal;
+
     let resp: Response;
     try {
       resp = await fetch(url, {
         method: 'POST',
         headers,
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(CONNECT_TIMEOUT_MS),
+        signal: fetchSignal,
       });
     } catch (err) {
       throw new FastClawAgentError(`FastClaw Agent 调用失败: ${messageOf(err)}`, err);
+    } finally {
+      clearTimeout(connectTimer); // 连接完成（成功或失败），清除连接超时
     }
     if (!resp.ok) {
       let detail = '';
@@ -124,29 +136,35 @@ export class FastClawAgentService {
       return out;
     };
 
-    for (;;) {
-      let chunk: { done: boolean; value?: Uint8Array };
-      try {
-        chunk = await reader.read();
-      } catch (err) {
-        throw new FastClawAgentError(`FastClaw Agent 流读取失败: ${messageOf(err)}`, err);
-      }
-      if (chunk.done) break;
-      buffer += decoder.decode(chunk.value, { stream: true }).replace(/\r\n/g, '\n');
-      const blocks = buffer.split('\n\n');
-      buffer = blocks.pop() ?? '';
-      for (const block of blocks) {
-        const dataLines: string[] = [];
-        for (const line of block.split('\n')) {
-          if (line.startsWith('data:')) dataLines.push(line.slice(5).replace(/^ /, ''));
+    try {
+      for (;;) {
+        let chunk: { done: boolean; value?: Uint8Array };
+        try {
+          chunk = await reader.read();
+        } catch (err) {
+          // 调用方主动中止（客户端断连/用户停止）→ 静默结束，不报错
+          if (signal?.aborted) return;
+          throw new FastClawAgentError(`FastClaw Agent 流读取失败: ${messageOf(err)}`, err);
         }
-        if (dataLines.length === 0) continue;
-        const payload = dataLines.join('\n');
-        for (const evt of emit(payload)) {
-          sawEvent = true;
-          yield evt;
+        if (chunk.done) break;
+        buffer += decoder.decode(chunk.value, { stream: true }).replace(/\r\n/g, '\n');
+        const blocks = buffer.split('\n\n');
+        buffer = blocks.pop() ?? '';
+        for (const block of blocks) {
+          const dataLines: string[] = [];
+          for (const line of block.split('\n')) {
+            if (line.startsWith('data:')) dataLines.push(line.slice(5).replace(/^ /, ''));
+          }
+          if (dataLines.length === 0) continue;
+          const payload = dataLines.join('\n');
+          for (const evt of emit(payload)) {
+            sawEvent = true;
+            yield evt;
+          }
         }
       }
+    } finally {
+      reader.cancel().catch(() => {}); // 确保底层 TCP 连接释放
     }
     // 流自然结束（无 done 事件时补发，保证调用方收尾逻辑统一）
     if (!sawEvent) {

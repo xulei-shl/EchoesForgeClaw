@@ -145,7 +145,8 @@ export async function register(app: FastifyInstance): Promise<void> {
               payload.message ?? '',
               sessionKey,
               payload.images?.length ? payload.images : undefined,
-              { module: 'bookplate', node_type: NODE_TYPES.CHAT }
+              { module: 'bookplate', node_type: NODE_TYPES.CHAT },
+              requestAbortSignal(request)
             )) {
               if (evt.type === 'tool_result') turnTexts.push(evt.data.result);
               else if (evt.type === 'content_delta' || evt.type === 'content') finalText += evt.data.delta;
