@@ -32,7 +32,7 @@ export interface AncientBookmarkPaperProps {
  */
 export const AncientBookmarkPaper = React.forwardRef<HTMLDivElement, AncientBookmarkPaperProps>(
   ({ state, onChange, disabled = false }, ref) => {
-    const theme = getReceiptTheme(state.themeId || 'ancient');
+    const theme = getReceiptTheme(state.themeId || 'ancient', state.customThemeColor);
     const widthConfig = getAncientBookmarkWidthConfig(state.bookmarkWidth);
     const [hoveredSealId, setHoveredSealId] = useState<string | null>(null);
     const [isEditing, setIsEditing] = useState<boolean>(false);

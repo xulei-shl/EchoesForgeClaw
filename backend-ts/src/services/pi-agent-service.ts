@@ -163,6 +163,10 @@ export interface PiChatModelConfig {
   apiFormat?: string | null;
   /** OpenAI 兼容路径的思考 wire 格式（pi compat.thinkingFormat，空 = 默认 reasoning_effort）。 */
   thinkingFormat?: string | null;
+  /** 模型上下文窗口大小（token，默认 128000）。 */
+  contextWindow?: number | null;
+  /** 模型最大输出 token（默认 16384）。 */
+  maxTokens?: number | null;
 }
 
 /** 绘图模型运行时配置（llm_configs kind='image'）。 */
@@ -281,6 +285,8 @@ export function preparePiWorkspace(
     // 模型实际不支持时由 pi 按能力钳制/省略参数，走服务商默认。
     reasoning: true,
     input: opts.chatModel.multimodal ? ['text', 'image'] : ['text'],
+    contextWindow: opts.chatModel.contextWindow || 128000,
+    maxTokens: opts.chatModel.maxTokens || 16384,
   };
   // OpenAI 兼容路径：按模型声明思考 wire 格式（agnes → qwen-chat-template、deepseek → deepseek 等；
   // 空 = pi 默认 reasoning_effort）。Anthropic 路径由 pi 适配器原生映射，无需 compat。

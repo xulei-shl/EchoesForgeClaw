@@ -690,6 +690,7 @@ export function buildReceiptState(
     bottomCustomImage: isBottomCustom,
     templateId,
     themeId: (savedData.themeId || base.themeId || 'white') as ReceiptThemeId,
+    customThemeColor: savedData.customThemeColor || base.customThemeColor,
     ditherEnabled: savedData.ditherEnabled ?? base.ditherEnabled ?? false,
   } as ReceiptState;
 

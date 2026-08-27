@@ -27,7 +27,7 @@ export const BookRecommendPaper = React.forwardRef<HTMLDivElement, BookRecommend
     },
     ref
   ) => {
-    const theme = getReceiptTheme(state.themeId);
+    const theme = getReceiptTheme(state.themeId, state.customThemeColor);
 
     // 更新图书元数据字段
     const handleUpdateMetaField = (key: string, value: string) => {

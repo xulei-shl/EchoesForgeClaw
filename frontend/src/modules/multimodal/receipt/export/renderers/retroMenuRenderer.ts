@@ -12,7 +12,7 @@ export async function exportRetroMenuImage(
 ): Promise<string> {
   await ensureFontsReady();
 
-  const theme = getReceiptTheme(state.themeId);
+  const theme = getReceiptTheme(state.themeId, state.customThemeColor);
   const baseWidth = 480;
 
   // 1. 准备上下两张插图

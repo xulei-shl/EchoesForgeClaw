@@ -16,7 +16,7 @@ export interface RetroMenuPaperProps {
  */
 export const RetroMenuPaper = React.forwardRef<HTMLDivElement, RetroMenuPaperProps>(
   ({ state, onChange, upstreamImageUrl, disabled = false }, ref) => {
-    const theme = getReceiptTheme(state.themeId);
+    const theme = getReceiptTheme(state.themeId, state.customThemeColor);
 
     const updateItem = (id: string, updates: Partial<any>) => {
       if (disabled) return;

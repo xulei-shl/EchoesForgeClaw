@@ -102,6 +102,10 @@ export interface LLMConfig {
   api_format?: string | null;
   /** pi 集成 OpenAI 兼容路径的思考 wire 格式（deepseek/qwen-chat-template/...，空 = 默认 reasoning_effort） */
   thinking_format?: string | null;
+  /** 模型上下文窗口大小（token；空 = 默认 128000） */
+  context_window?: number | null;
+  /** 模型最大输出 token（空 = 默认 16384） */
+  max_tokens?: number | null;
   is_active: boolean;
   /** 是否已配置 api_key（api_key 本身永不回传） */
   has_api_key: boolean;
@@ -116,6 +120,8 @@ export interface LLMConfigPayload {
   model_name?: string;
   api_format?: string;
   thinking_format?: string;
+  context_window?: number | null;
+  max_tokens?: number | null;
   is_active?: boolean;
 }
 

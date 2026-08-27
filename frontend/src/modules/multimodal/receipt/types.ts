@@ -6,7 +6,7 @@
  */
 
 /** 预设主题标识（支持扩展自定义主题 key） */
-export type ReceiptThemeId = 'white' | 'cream' | 'pink' | 'mint' | 'sage' | 'ancient' | 'purple' | string;
+export type ReceiptThemeId = 'white' | 'cream' | 'pink' | 'mint' | 'sage' | 'ancient' | 'purple' | 'custom' | string;
 
 /** 预设模板标识（支持扩展自定义模板 key） */
 export type ReceiptTemplateId =
@@ -123,6 +123,8 @@ export interface ReceiptState {
   templateId: ReceiptTemplateId;
   /** 配色主题 ID */
   themeId: ReceiptThemeId;
+  /** 自定义纸色种子色 Hex（themeId 为 'custom' 时生效） */
+  customThemeColor?: string;
   /** 是否开启热敏黑白点阵（Dither）滤镜 */
   ditherEnabled: boolean;
   /** 顶部店名 / 馆名 / 标题 */

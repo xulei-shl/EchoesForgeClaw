@@ -61,6 +61,16 @@ export const adminService = {
       { timeout: 60000 }
     ),
 
+  /** Models.dev 模型参数查询（辅助自动填充 context_window / max_tokens，查不到不阻塞） */
+  lookupModel: (modelName: string): Promise<{
+    found: boolean;
+    context_window?: number;
+    max_tokens?: number;
+    reasoning?: boolean;
+    modalities?: { input: string[]; output: string[] };
+  }> =>
+    api.post('/admin/llm-configs/lookup-model', { model_name: modelName }),
+
   /* ---------------- FastClaw Agent 配置 ---------------- */
 
   listFastClawAgents: (): Promise<FastClawAgentConfig[]> =>

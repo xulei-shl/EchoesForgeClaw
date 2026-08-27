@@ -19,7 +19,7 @@ export async function exportStandardReceiptImage(
 ): Promise<string> {
   await ensureFontsReady();
 
-  const theme = getReceiptTheme(state.themeId);
+  const theme = getReceiptTheme(state.themeId, state.customThemeColor);
   const baseWidth = 540;
   let curY = 40;
 

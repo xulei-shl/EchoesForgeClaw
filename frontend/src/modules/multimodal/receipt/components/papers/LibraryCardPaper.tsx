@@ -112,7 +112,7 @@ export const LibraryCardPaper = React.forwardRef<HTMLDivElement, LibraryCardPape
       onChange({ borrowerRecords: newRecords });
     };
 
-    const theme = getReceiptTheme(state.themeId);
+    const theme = getReceiptTheme(state.themeId, state.customThemeColor);
 
     return (
       <div

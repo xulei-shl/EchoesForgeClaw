@@ -1,7 +1,9 @@
 import React from 'react';
-import { Layers } from 'lucide-react';
+import { Layers, Pipette } from 'lucide-react';
 import { Select } from '../../../../platform/components/ui/Select';
-import { getAllReceiptThemes } from '../themes';
+import { Tooltip } from '../../../../platform/components/ui/Tooltip';
+import { ColorPickerPopover } from '../../../../platform/components/ui/ColorPicker/ColorPickerPopover';
+import { getAllReceiptThemes, getReceiptTheme } from '../themes';
 import { getAllReceiptTemplates, buildReceiptState } from '../templates';
 import {
   ANCIENT_BOOKMARK_WIDTH_OPTIONS,
@@ -39,6 +41,10 @@ export const ReceiptToolbar: React.FC<ReceiptToolbarProps> = ({
     title: opt.description,
   }));
 
+  const isCustom = state.themeId === 'custom';
+  const customColor = state.customThemeColor || '#3B82F6';
+  const customTheme = isCustom ? getReceiptTheme('custom', customColor) : null;
+
   return (
     <div className={`flex flex-wrap items-center justify-between gap-2 p-2 bg-paper-grid/20 border border-paper-grid rounded-md text-xs font-sans ${disabled ? 'opacity-70' : ''}`}>
       <div className="flex flex-wrap items-center gap-3">
@@ -58,6 +64,7 @@ export const ReceiptToolbar: React.FC<ReceiptToolbarProps> = ({
                 upstreamBookData,
                 {
                   ditherEnabled: state.ditherEnabled,
+                  customThemeColor: state.customThemeColor,
                 },
                 {
                   overrideUserEdits: true,
@@ -112,6 +119,50 @@ export const ReceiptToolbar: React.FC<ReceiptToolbarProps> = ({
               />
             );
           })}
+
+          {/* 自定义颜色与吸管取色 */}
+          <ColorPickerPopover
+            value={customColor}
+            onChange={(hex) => {
+              onChange({ themeId: 'custom', customThemeColor: hex });
+            }}
+            disabled={disabled}
+            align="right"
+          >
+            <Tooltip
+              content={
+                isCustom
+                  ? `自定义纸色（基调: ${customColor.toUpperCase()}，智能派生高对比纸墨）`
+                  : '自定义颜色 / 吸管取色（从封面或调色盘吸取）'
+              }
+            >
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => {
+                  if (!isCustom) {
+                    onChange({ themeId: 'custom', customThemeColor: customColor });
+                  }
+                }}
+                className={`w-4 h-4 rounded-full border flex items-center justify-center transition-all ${
+                  isCustom
+                    ? 'ring-2 ring-accent ring-offset-1 scale-110 border-ink/40 shadow-2xs'
+                    : 'border-black/20 hover:scale-105 opacity-80 hover:opacity-100 bg-paper/80 text-ink-light hover:text-accent'
+                } disabled:cursor-not-allowed disabled:opacity-40 active:scale-[0.96]`}
+                style={{
+                  backgroundColor: isCustom && customTheme ? customTheme.bg : undefined,
+                }}
+                title={disabled ? '有下级节点，不可修改纸色' : undefined}
+                aria-label="自定义纸色 / 吸管取色"
+              >
+                <Pipette
+                  size={10}
+                  strokeWidth={2}
+                  style={{ color: isCustom && customTheme ? customTheme.text : undefined }}
+                />
+              </button>
+            </Tooltip>
+          </ColorPickerPopover>
         </div>
       </div>
     </div>

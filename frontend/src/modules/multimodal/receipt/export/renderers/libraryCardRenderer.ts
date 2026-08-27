@@ -13,7 +13,7 @@ export async function exportLibraryCardImage(
   // 1. 等待 Web 字体加载完成（确保 Zhi Mang Xing / Caveat / Special Elite 渲染正常）
   await ensureFontsReady();
 
-  const theme = getReceiptTheme(state.themeId);
+  const theme = getReceiptTheme(state.themeId, state.customThemeColor);
   const baseWidth = 540;
   const baseHeight = 780;
 

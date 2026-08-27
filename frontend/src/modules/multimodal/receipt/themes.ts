@@ -1,4 +1,5 @@
 import type { ReceiptTheme, ReceiptThemeId } from './types';
+import { deriveReceiptThemeFromSeed } from './oklch';
 
 /**
  * 预设热敏纸主题配色表
@@ -84,9 +85,16 @@ const themeRegistry = new Map<string, ReceiptTheme>(
 );
 
 /**
- * 获取指定 ID 的主题配色（带兜底）
+ * 获取指定 ID 的主题配色（带兜底与 OKLCH 动态派生）
+ *
+ * @param themeId 主题标识，支持 'custom'、预设 ID 或直接传入 16 进制颜色
+ * @param customColor 自定义种子色 Hex（如 '#3B82F6'）
  */
-export function getReceiptTheme(themeId?: ReceiptThemeId): ReceiptTheme {
+export function getReceiptTheme(themeId?: ReceiptThemeId, customColor?: string): ReceiptTheme {
+  if (themeId === 'custom' || (!themeRegistry.has(themeId || '') && themeId?.startsWith('#'))) {
+    const seed = customColor || (themeId?.startsWith('#') ? themeId : '#3B82F6');
+    return deriveReceiptThemeFromSeed(seed);
+  }
   if (themeId && themeRegistry.has(themeId)) {
     return themeRegistry.get(themeId)!;
   }

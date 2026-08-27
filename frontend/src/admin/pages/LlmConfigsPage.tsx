@@ -49,6 +49,8 @@ interface FormState {
   model_name: string;
   api_format: string;
   thinking_format: string;
+  context_window: string;
+  max_tokens: string;
   is_active: boolean;
 }
 
@@ -60,6 +62,8 @@ const EMPTY_FORM: FormState = {
   model_name: '',
   api_format: '',
   thinking_format: '',
+  context_window: '',
+  max_tokens: '',
   is_active: true,
 };
 
@@ -78,6 +82,7 @@ export const LlmConfigsPage: React.FC = () => {
   const [testResult, setTestResult] = useState('');
   const [testOk, setTestOk] = useState<boolean | null>(null);
   const [testingId, setTestingId] = useState<number | null>(null);
+  const [lookingUp, setLookingUp] = useState(false);
   const { dialog, showToast } = useFeedback();
 
   const load = useCallback(async () => {
@@ -92,6 +97,30 @@ export const LlmConfigsPage: React.FC = () => {
       setLoading(false);
     }
   }, []);
+
+  /** Models.dev 模型参数查询：自动填充 context_window / max_tokens */
+  const handleLookupModel = useCallback(async (silent = false) => {
+    const name = form.model_name.trim();
+    if (!name) return;
+    setLookingUp(true);
+    try {
+      const res = await adminService.lookupModel(name);
+      if (res.found) {
+        setForm(prev => ({
+          ...prev,
+          context_window: res.context_window != null ? String(res.context_window) : prev.context_window,
+          max_tokens: res.max_tokens != null ? String(res.max_tokens) : prev.max_tokens,
+        }));
+        if (!silent) showToast('已从 Models.dev 获取模型参数', 'success');
+      } else if (!silent) {
+        showToast('Models.dev 中未找到该模型，请手动填写', 'warning');
+      }
+    } catch {
+      if (!silent) showToast('Models.dev 查询失败', 'error');
+    } finally {
+      setLookingUp(false);
+    }
+  }, [form.model_name, showToast]);
 
   useEffect(() => {
     load();
@@ -122,6 +151,8 @@ export const LlmConfigsPage: React.FC = () => {
       model_name: c.model_name,
       api_format: c.api_format || '',
       thinking_format: c.thinking_format || '',
+      context_window: c.context_window != null ? String(c.context_window) : '',
+      max_tokens: c.max_tokens != null ? String(c.max_tokens) : '',
       is_active: c.is_active,
     });
     setFormError('');
@@ -192,6 +223,8 @@ export const LlmConfigsPage: React.FC = () => {
           model_name: string;
           api_format: string;
           thinking_format: string;
+          context_window: number | null;
+          max_tokens: number | null;
           is_active: boolean;
         }> = {
           name: form.name.trim(),
@@ -200,6 +233,8 @@ export const LlmConfigsPage: React.FC = () => {
           model_name: form.model_name.trim(),
           api_format: form.api_format,
           thinking_format: form.thinking_format,
+          context_window: form.context_window ? Number(form.context_window) : null,
+          max_tokens: form.max_tokens ? Number(form.max_tokens) : null,
           is_active: form.is_active,
         };
         if (form.api_key) payload.api_key = form.api_key.trim();
@@ -214,6 +249,8 @@ export const LlmConfigsPage: React.FC = () => {
           model_name: form.model_name.trim(),
           api_format: form.api_format,
           thinking_format: form.thinking_format,
+          context_window: form.context_window ? Number(form.context_window) : null,
+          max_tokens: form.max_tokens ? Number(form.max_tokens) : null,
           is_active: form.is_active,
         });
         showToast('模型配置已创建', { type: 'success' });
@@ -320,6 +357,7 @@ export const LlmConfigsPage: React.FC = () => {
               <Input
                 value={form.model_name}
                 onChange={(e) => setForm({ ...form, model_name: e.target.value })}
+                onBlur={() => { if (!form.context_window) handleLookupModel(true); }}
               />
             </div>
             <div className="space-y-1.5">
@@ -354,6 +392,39 @@ export const LlmConfigsPage: React.FC = () => {
               <p className="text-xs text-ink-faint font-sans leading-snug">
                 agnes 选 qwen-chat-template，deepseek 选 deepseek；Anthropic 格式下忽略
               </p>
+            </div>
+            {/* 上下文窗口 + 最大输出 Token */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">上下文窗口（token）</label>
+                <div className="flex gap-1.5">
+                  <Input
+                    type="number"
+                    placeholder="128000"
+                    value={form.context_window}
+                    onChange={e => setForm(f => ({ ...f, context_window: e.target.value }))}
+                    className="flex-1"
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleLookupModel()}
+                    disabled={lookingUp || !form.model_name.trim()}
+                    title="从 Models.dev 自动获取"
+                  >
+                    {lookingUp ? '…' : '🔍'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-1">最大输出 Token</label>
+                <Input
+                  type="number"
+                  placeholder="16384"
+                  value={form.max_tokens}
+                  onChange={e => setForm(f => ({ ...f, max_tokens: e.target.value }))}
+                />
+              </div>
             </div>
             <div className="space-y-1.5 sm:col-span-2">
               <FieldLabel>{editing?.has_api_key ? 'API Key（留空保持原 Key 不变）' : 'API Key'}</FieldLabel>

@@ -24,7 +24,7 @@ export interface BookExcerptPaperProps {
  */
 export const BookExcerptPaper = React.forwardRef<HTMLDivElement, BookExcerptPaperProps>(
   ({ state, onChange, disabled = false }, ref) => {
-    const theme = getReceiptTheme(state.themeId || 'sage');
+    const theme = getReceiptTheme(state.themeId || 'sage', state.customThemeColor);
 
     // 提取元数据字段（title, author, pub_info）
     const metaFields = state.metaFields || [];

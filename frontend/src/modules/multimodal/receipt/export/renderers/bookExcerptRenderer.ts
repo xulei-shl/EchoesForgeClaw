@@ -11,7 +11,7 @@ export async function exportBookExcerptImage(
 ): Promise<string> {
   await ensureFontsReady();
 
-  const theme = getReceiptTheme(state.themeId || 'sage');
+  const theme = getReceiptTheme(state.themeId || 'sage', state.customThemeColor);
   const baseWidth = 520;
   const baseHeight = 700;
 

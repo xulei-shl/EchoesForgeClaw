@@ -28,6 +28,8 @@ interface LLMConfigPayload {
   api_format?: string;
   /** pi 集成 OpenAI 兼容路径思考 wire 格式（deepseek/qwen-chat-template/...，空 = 默认 reasoning_effort） */
   thinking_format?: string;
+  context_window?: number | null;
+  max_tokens?: number | null;
   is_active?: boolean;
 }
 
@@ -39,6 +41,8 @@ interface LLMConfigOut {
   model_name: string;
   api_format: string | null;
   thinking_format: string | null;
+  context_window: number | null;
+  max_tokens: number | null;
   is_active: boolean;
   has_api_key: boolean;
   created_at: string | null;
@@ -54,6 +58,8 @@ function toOut(row: typeof llmConfigs.$inferSelect): LLMConfigOut {
     model_name: row.modelName,
     api_format: row.apiFormat ?? null,
     thinking_format: row.thinkingFormat ?? null,
+    context_window: row.contextWindow ?? null,
+    max_tokens: row.maxTokens ?? null,
     is_active: !!row.isActive,
     has_api_key: !!row.apiKey,
     created_at: toIso(row.createdAt),
@@ -91,6 +97,8 @@ export async function registerLLMConfigsAdminRouter(app: FastifyInstance): Promi
           modelName: p.model_name ?? '',
           apiFormat: p.api_format || null,
           thinkingFormat: p.thinking_format || null,
+          contextWindow: p.context_window ?? null,
+          maxTokens: p.max_tokens ?? null,
           isActive: p.is_active ?? true,
           createdAt: now(),
           updatedAt: now(),
@@ -117,6 +125,8 @@ export async function registerLLMConfigsAdminRouter(app: FastifyInstance): Promi
         modelName: cfg.modelName,
         apiFormat: cfg.apiFormat,
         thinkingFormat: cfg.thinkingFormat,
+        contextWindow: cfg.contextWindow,
+        maxTokens: cfg.maxTokens,
         isActive: cfg.isActive,
         createdAt: now(),
         updatedAt: now(),
@@ -144,6 +154,8 @@ export async function registerLLMConfigsAdminRouter(app: FastifyInstance): Promi
       if (p.model_name != null) set.modelName = p.model_name;
       if (p.api_format != null) set.apiFormat = p.api_format || null;
       if (p.thinking_format != null) set.thinkingFormat = p.thinking_format || null;
+      if (p.context_window !== undefined) set.contextWindow = p.context_window;
+      if (p.max_tokens !== undefined) set.maxTokens = p.max_tokens;
       if (p.is_active != null) set.isActive = p.is_active;
       set.updatedAt = now();
       db.update(llmConfigs).set(set).where(eq(llmConfigs.id, id)).run();
@@ -189,6 +201,38 @@ export async function registerLLMConfigsAdminRouter(app: FastifyInstance): Promi
         const msg = err instanceof Error ? err.message : String(err);
         request.log.warn({ id: p.id }, '模型配置连通性测试失败: %s', msg);
         return reply.code(502).send({ detail: msg });
+      }
+    }
+  );
+
+  // Models.dev 模型参数查询（辅助前端自动填充 context_window / max_tokens）
+  app.post(
+    '/api/admin/llm-configs/lookup-model',
+    admin,
+    async (request, reply) => {
+      const { model_name } = (request.body ?? {}) as { model_name?: string };
+      if (!model_name?.trim()) return reply.code(400).send({ detail: '模型名称不能为空' });
+      const name = model_name.trim();
+      try {
+        const catalog = await getModelsDevCatalog();
+        const entries = Object.entries(catalog);
+        // 优先：key 末段精确匹配（如 deepseek/deepseek-v4-pro → deepseek-v4-pro）
+        let match = entries.find(([k]) => k.endsWith('/' + name));
+        // 回退：key 全文匹配
+        if (!match) match = entries.find(([k]) => k === name);
+        if (!match) return { found: false };
+        const m = match[1] as Record<string, unknown>;
+        const limit = m.limit as Record<string, number> | undefined;
+        return {
+          found: true,
+          context_window: limit?.context ?? null,
+          max_tokens: limit?.output ?? null,
+          reasoning: m.reasoning ?? null,
+          modalities: m.modalities ?? null,
+        };
+      } catch (err) {
+        request.log.warn('Models.dev 查询失败: %s', err instanceof Error ? err.message : String(err));
+        return { found: false };
       }
     }
   );
@@ -280,4 +324,25 @@ async function runConnectivityTest(apiKey: string, baseUrl: string, modelName: s
   }
   // image / video / audio
   return probeModels(cleanBaseUrl, apiKey);
+}
+
+// ---------------------------------------------------------------------------
+// Models.dev 缓存（30 分钟 TTL，避免重复请求）
+// ---------------------------------------------------------------------------
+
+let _modelsDevCache: Record<string, unknown> | null = null;
+let _modelsDevCacheTs = 0;
+const MODELS_DEV_TTL_MS = 30 * 60 * 1000;
+
+async function getModelsDevCatalog(): Promise<Record<string, unknown>> {
+  if (_modelsDevCache && Date.now() - _modelsDevCacheTs < MODELS_DEV_TTL_MS) {
+    return _modelsDevCache;
+  }
+  const resp = await fetch('https://models.dev/models.json', {
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!resp.ok) throw new Error(`Models.dev HTTP ${resp.status}`);
+  _modelsDevCache = (await resp.json()) as Record<string, unknown>;
+  _modelsDevCacheTs = Date.now();
+  return _modelsDevCache;
 }

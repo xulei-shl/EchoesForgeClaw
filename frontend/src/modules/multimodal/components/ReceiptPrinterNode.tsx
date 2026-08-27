@@ -194,6 +194,7 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
         upstreamBookData,
         {
           themeId: localState.themeId,
+          customThemeColor: localState.customThemeColor,
           ditherEnabled: localState.ditherEnabled,
           seals: localState.seals,
         },
@@ -206,7 +207,7 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
       setLocalState(next);
       onUpdateState?.(id, next);
     }
-  }, [currentFingerprint, upstreamBookData, localState.templateId, localState.themeId, localState.ditherEnabled, localState.seals, effectiveUpstreamImageUrl, upstreamTextExtra, id, onUpdateState]);
+  }, [currentFingerprint, upstreamBookData, localState.templateId, localState.themeId, localState.customThemeColor, localState.ditherEnabled, localState.seals, effectiveUpstreamImageUrl, upstreamTextExtra, id, onUpdateState]);
 
   // 重置为默认：将小票所有字段完整重置到当前模板初始默认态（自动填充图书元数据与上游图片，保留选中的纸张颜色与点阵设置）
   const handleResetToDefault = useCallback(() => {
@@ -216,6 +217,7 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
       upstreamBookData,
       {
         themeId: localState.themeId,
+        customThemeColor: localState.customThemeColor,
         ditherEnabled: localState.ditherEnabled,
       },
       {
@@ -227,7 +229,7 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
     setLocalState(freshState);
     onUpdateState?.(id, freshState);
     showToast('小票已重置为默认', { type: 'success' });
-  }, [upstreamBookData, currentFingerprint, localState.templateId, localState.themeId, localState.ditherEnabled, effectiveUpstreamImageUrl, upstreamTextExtra, id, onUpdateState, showToast]);
+  }, [upstreamBookData, currentFingerprint, localState.templateId, localState.themeId, localState.customThemeColor, localState.ditherEnabled, effectiveUpstreamImageUrl, upstreamTextExtra, id, onUpdateState, showToast]);
 
   // 状态变更分发：本地即刻响应 + 异步写入画布持久化
   const handleChange = useCallback(

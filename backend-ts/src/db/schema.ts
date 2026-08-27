@@ -29,6 +29,10 @@ export const llmConfigs = sqliteTable("llm_configs", {
 	apiFormat: text("api_format"),
 	/** pi 集成 OpenAI 兼容路径的思考 wire 格式（deepseek / qwen-chat-template / zai / together / openrouter 等；空 = 默认 reasoning_effort）。 */
 	thinkingFormat: text("thinking_format"),
+	/** 模型上下文窗口大小（token；空 = 默认 128000）。 */
+	contextWindow: integer("context_window"),
+	/** 模型最大输出 token（空 = 默认 16384）。 */
+	maxTokens: integer("max_tokens"),
 	isActive: integer("is_active", { mode: "boolean" }),
 	createdAt: numeric("created_at"),
 	updatedAt: numeric("updated_at"),

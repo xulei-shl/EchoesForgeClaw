@@ -15,7 +15,7 @@ export async function exportAncientBookmarkImage(
 ): Promise<string> {
   await ensureFontsReady();
 
-  const theme = getReceiptTheme(state.themeId || 'ancient');
+  const theme = getReceiptTheme(state.themeId || 'ancient', state.customThemeColor);
   const widthConfig = getAncientBookmarkWidthConfig(state.bookmarkWidth);
   const baseWidth = widthConfig.canvasWidth;
   const baseHeight = 880;

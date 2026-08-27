@@ -25,7 +25,7 @@ export const ItemizedReceiptPaper = React.forwardRef<HTMLDivElement, ItemizedRec
     },
     ref
   ) => {
-    const theme = getReceiptTheme(state.themeId);
+    const theme = getReceiptTheme(state.themeId, state.customThemeColor);
 
     // 添加清单条目
     const handleAddItem = () => {

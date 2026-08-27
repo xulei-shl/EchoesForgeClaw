@@ -44,6 +44,8 @@ export function applyInitialSchema(db: DB): void {
   ensureColumn(sqlite, 'skill_agent_configs', 'image_llm_config_id', 'INTEGER');
   ensureColumn(sqlite, 'llm_configs', 'api_format', 'VARCHAR');
   ensureColumn(sqlite, 'llm_configs', 'thinking_format', 'VARCHAR');
+  ensureColumn(sqlite, 'llm_configs', 'context_window', 'INTEGER');
+  ensureColumn(sqlite, 'llm_configs', 'max_tokens', 'INTEGER');
 }
 
 /** 存量库补列：PRAGMA 检查缺失时 ALTER TABLE ADD COLUMN（SQLite 无 ADD COLUMN IF NOT EXISTS）。 */
@@ -105,6 +107,8 @@ const INITIAL_DDL: string[] = [
     model_name VARCHAR NOT NULL,
     api_format VARCHAR,
     thinking_format VARCHAR,
+    context_window INTEGER,
+    max_tokens INTEGER,
     is_active BOOLEAN,
     created_at DATETIME,
     updated_at DATETIME
