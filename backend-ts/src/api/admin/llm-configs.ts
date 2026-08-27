@@ -24,6 +24,10 @@ interface LLMConfigPayload {
   api_key?: string;
   base_url?: string;
   model_name?: string;
+  /** pi 集成 API 格式：'anthropic' | 'openai' | 空（默认 openai 兼容） */
+  api_format?: string;
+  /** pi 集成 OpenAI 兼容路径思考 wire 格式（deepseek/qwen-chat-template/...，空 = 默认 reasoning_effort） */
+  thinking_format?: string;
   is_active?: boolean;
 }
 
@@ -33,6 +37,8 @@ interface LLMConfigOut {
   kind: string;
   base_url: string;
   model_name: string;
+  api_format: string | null;
+  thinking_format: string | null;
   is_active: boolean;
   has_api_key: boolean;
   created_at: string | null;
@@ -46,6 +52,8 @@ function toOut(row: typeof llmConfigs.$inferSelect): LLMConfigOut {
     kind: row.kind,
     base_url: row.baseUrl,
     model_name: row.modelName,
+    api_format: row.apiFormat ?? null,
+    thinking_format: row.thinkingFormat ?? null,
     is_active: !!row.isActive,
     has_api_key: !!row.apiKey,
     created_at: toIso(row.createdAt),
@@ -81,6 +89,8 @@ export async function registerLLMConfigsAdminRouter(app: FastifyInstance): Promi
           apiKey: p.api_key ?? '',
           baseUrl: p.base_url ?? '',
           modelName: p.model_name ?? '',
+          apiFormat: p.api_format || null,
+          thinkingFormat: p.thinking_format || null,
           isActive: p.is_active ?? true,
           createdAt: now(),
           updatedAt: now(),
@@ -105,6 +115,8 @@ export async function registerLLMConfigsAdminRouter(app: FastifyInstance): Promi
         apiKey: cfg.apiKey,
         baseUrl: cfg.baseUrl,
         modelName: cfg.modelName,
+        apiFormat: cfg.apiFormat,
+        thinkingFormat: cfg.thinkingFormat,
         isActive: cfg.isActive,
         createdAt: now(),
         updatedAt: now(),
@@ -130,6 +142,8 @@ export async function registerLLMConfigsAdminRouter(app: FastifyInstance): Promi
       if (p.api_key != null && p.api_key !== '') set.apiKey = p.api_key; // 空字符串 = 保留原 key
       if (p.base_url != null) set.baseUrl = p.base_url;
       if (p.model_name != null) set.modelName = p.model_name;
+      if (p.api_format != null) set.apiFormat = p.api_format || null;
+      if (p.thinking_format != null) set.thinkingFormat = p.thinking_format || null;
       if (p.is_active != null) set.isActive = p.is_active;
       set.updatedAt = now();
       db.update(llmConfigs).set(set).where(eq(llmConfigs.id, id)).run();

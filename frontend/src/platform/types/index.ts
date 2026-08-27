@@ -98,6 +98,10 @@ export interface LLMConfig {
   kind: LLMKind;
   base_url: string;
   model_name: string;
+  /** pi 集成 API 格式：'anthropic' = Anthropic Messages，空/其它 = OpenAI 兼容（仅 Skill Agent 路径生效） */
+  api_format?: string | null;
+  /** pi 集成 OpenAI 兼容路径的思考 wire 格式（deepseek/qwen-chat-template/...，空 = 默认 reasoning_effort） */
+  thinking_format?: string | null;
   is_active: boolean;
   /** 是否已配置 api_key（api_key 本身永不回传） */
   has_api_key: boolean;
@@ -110,6 +114,8 @@ export interface LLMConfigPayload {
   api_key?: string;
   base_url?: string;
   model_name?: string;
+  api_format?: string;
+  thinking_format?: string;
   is_active?: boolean;
 }
 
@@ -329,8 +335,9 @@ export interface ChatNodeSettings {
    */
   agentOverride?: number;
   /**
-   * thinking level（off/minimal/low/medium/high/xhigh/max）；仅 Skill Agent 模式生效，
-   * 随请求透传为 pi --thinking 参数。undefined/空 = 跟随 pi 默认。
+   * 节点「思考」开关（'on'=启用思考、'off'=关闭）；仅 Skill Agent 模式生效，
+   * 随请求透传为 pi --thinking 参数。undefined/空 = 跟随模型默认。
+   * 兼容旧设置：历史档位字符串（minimal..max）仍由后端透传。
    */
   piThinking?: string;
 }

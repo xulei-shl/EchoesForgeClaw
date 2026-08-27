@@ -74,6 +74,25 @@ const DISABLED_TOOLS = (process.env.PI_DISABLED_TOOLS ?? '')
 export const PI_THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
 
 /**
+ * 节点「思考」开关 → pi CLI --thinking 参数：
+ * - 'on' → --thinking high（启用思考，取高推理档；pi 会按模型能力钳制）；
+ * - 'off' → --thinking off（关闭思考；pi 对多数格式省略 reasoning 参数，能否真正关闭取决于模型/服务商）；
+ * - 历史遗留档位字符串（minimal..max）原样透传，兼容旧节点已保存的设置；
+ * - 其余（空/非法）→ 不传，跟随 pi/模型默认。
+ */
+export function resolveThinkingArgs(thinkingLevel: string | null | undefined): string[] {
+  if (thinkingLevel === 'on') return ['--thinking', 'high'];
+  if (thinkingLevel === 'off') return ['--thinking', 'off'];
+  if (
+    typeof thinkingLevel === 'string' &&
+    (PI_THINKING_LEVELS as readonly string[]).includes(thinkingLevel)
+  ) {
+    return ['--thinking', thinkingLevel];
+  }
+  return [];
+}
+
+/**
  * pi 会话文件落点（相对工作区根）。必须放在 .pi-agent 根目录之下的子目录：
  * pi 每次启动都会把 {agentDir} 根下散落的 *.jsonl 迁移进 sessions/{cwd编码}/
  * （migrateSessionsFromAgentRoot），放根下会导致下一轮运行开始时历史被移走、
@@ -140,6 +159,10 @@ export interface PiChatModelConfig {
   modelName: string;
   /** 多模态模型声明 input:["text","image"]，pi 才会附加 @file 图片。 */
   multimodal: boolean;
+  /** pi provider api 格式：'anthropic' = anthropic-messages，空/其它 = openai-completions。 */
+  apiFormat?: string | null;
+  /** OpenAI 兼容路径的思考 wire 格式（pi compat.thinkingFormat，空 = 默认 reasoning_effort）。 */
+  thinkingFormat?: string | null;
 }
 
 /** 绘图模型运行时配置（llm_configs kind='image'）。 */
@@ -251,19 +274,26 @@ export function preparePiWorkspace(
   mkdirSync(agentDir, { recursive: true });
   mkdirSync(path.join(ws, 'inputs'), { recursive: true });
 
-  // 对话模型 → models.json（openai-completions 线格式，与后端 LLM 服务同协议）
+  // 对话模型 → models.json（api 按配置选 openai-completions / anthropic-messages；与后端 LLM 服务同协议）
+  const chatModelEntry: Record<string, unknown> = {
+    id: opts.chatModel.modelName,
+    // 兜底声明支持推理：让节点「启用思考」真正把档位传给 provider；
+    // 模型实际不支持时由 pi 按能力钳制/省略参数，走服务商默认。
+    reasoning: true,
+    input: opts.chatModel.multimodal ? ['text', 'image'] : ['text'],
+  };
+  // OpenAI 兼容路径：按模型声明思考 wire 格式（agnes → qwen-chat-template、deepseek → deepseek 等；
+  // 空 = pi 默认 reasoning_effort）。Anthropic 路径由 pi 适配器原生映射，无需 compat。
+  if (opts.chatModel.apiFormat !== 'anthropic' && opts.chatModel.thinkingFormat) {
+    chatModelEntry.compat = { thinkingFormat: opts.chatModel.thinkingFormat };
+  }
   const modelsJson = {
     providers: {
       bookforge: {
         baseUrl: opts.chatModel.baseUrl,
-        api: 'openai-completions',
+        api: opts.chatModel.apiFormat === 'anthropic' ? 'anthropic-messages' : 'openai-completions',
         apiKey: opts.chatModel.apiKey,
-        models: [
-          {
-            id: opts.chatModel.modelName,
-            input: opts.chatModel.multimodal ? ['text', 'image'] : ['text'],
-          },
-        ],
+        models: [chatModelEntry],
       },
     },
   };
@@ -573,7 +603,7 @@ export interface RunPiAgentOptions {
   imageGenEnabled: boolean;
   message: string;
   images?: string[];
-  /** thinking level（off..max，非法值忽略 = 跟随 pi 默认） */
+  /** thinking 开关（'on'='--thinking high'、'off'、遗留档位透传；空/非法 = 跟随 pi 默认） */
   thinkingLevel?: string | null;
   signal?: AbortSignal;
 }
@@ -713,15 +743,8 @@ export async function* runPiAgent(opts: RunPiAgentOptions): AsyncGenerator<ChatS
     const ext = resolveImageGenExtension();
     if (ext) args.push('-e', ext);
   }
-  // thinking level（节点设置覆盖；非法值静默忽略 = pi 默认）
-  const thinking =
-    typeof opts.thinkingLevel === 'string' &&
-    (PI_THINKING_LEVELS as readonly string[]).includes(opts.thinkingLevel)
-      ? opts.thinkingLevel
-      : null;
-  if (thinking && thinking !== 'off') {
-    args.push('--thinking', thinking);
-  }
+  // thinking（节点设置 on/off/遗留档位 → pi CLI；非法值静默忽略 = pi 默认）
+  args.push(...resolveThinkingArgs(opts.thinkingLevel));
   // 工具黑名单（多租户风险收敛；pi 子进程模式无审批门，仅 allowlist/denylist 可控）
   for (const tool of DISABLED_TOOLS) {
     args.push('--exclude-tools', tool);

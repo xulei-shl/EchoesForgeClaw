@@ -1157,30 +1157,28 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                     />
                   </div>
                 )}
-                {/* Thinking level：仅 Skill Agent 模式（pi --thinking 透传；对话开始后锁定） */}
+                {/* Thinking：仅 Skill Agent 模式（pi --thinking 透传；对话开始后锁定） */}
                 {mode === 'skill_agent' && (
                   <div className="space-y-1.5">
                     <div>
-                      <p className="text-xs font-sans text-ink">思考深度</p>
+                      <p className="text-xs font-sans text-ink">思考模式</p>
                       <p className="text-[10px] text-ink-faint font-sans mt-0.5 leading-snug">
-                        越高推理越强但更慢；留空 = 模型默认
+                        启用 = 高推理档；关闭 = 视模型/服务商是否支持；默认 = 跟随模型默认
                       </p>
                     </div>
                     <select
-                      value={settings.piThinking ?? ''}
+                      value={
+                        settings.piThinking === 'off' ? 'off' : settings.piThinking ? 'on' : ''
+                      }
                       onChange={(e) =>
                         onUpdateSettings?.(id, { ...settings, piThinking: e.target.value || undefined })
                       }
                       disabled={messages.length > 0}
                       className="w-full rounded-md border border-paper-grid bg-paper px-2 py-1.5 text-xs font-sans text-ink disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                     >
-                      <option value="">默认</option>
-                      <option value="minimal">minimal（最浅）</option>
-                      <option value="low">low</option>
-                      <option value="medium">medium</option>
-                      <option value="high">high</option>
-                      <option value="xhigh">xhigh</option>
-                      <option value="max">max（最深）</option>
+                      <option value="">默认（跟随模型）</option>
+                      <option value="on">启用思考</option>
+                      <option value="off">关闭思考</option>
                     </select>
                   </div>
                 )}

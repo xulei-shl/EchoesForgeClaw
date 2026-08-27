@@ -41,6 +41,10 @@ export interface LLMConfigRow {
   apiKey: string;
   baseUrl: string;
   modelName: string;
+  /** pi 集成 API 格式（'anthropic' | 'openai' | null）；仅 Skill Agent 路径生效。 */
+  apiFormat: string | null;
+  /** pi 集成 OpenAI 兼容路径思考 wire 格式；空 = 默认 reasoning_effort。 */
+  thinkingFormat: string | null;
   isActive: boolean | null;
 }
 

@@ -21,6 +21,7 @@ import {
   preparePiWorkspace,
   resolveImageGenExtension,
   resolvePiBin,
+  resolveThinkingArgs,
   saveInputImages,
 } from '../../src/services/pi-agent-service.js';
 
@@ -179,6 +180,7 @@ describe('preparePiWorkspace 装配', () => {
       expect(provider.apiKey).toBe(CHAT_MODEL.apiKey);
       expect(provider.api).toBe('openai-completions');
       expect(provider.models[0].id).toBe(CHAT_MODEL.modelName);
+      expect(provider.models[0].reasoning).toBe(true); // 兜底声明支持推理，让「启用思考」真正传给 provider
       expect(provider.models[0].input).toEqual(['text', 'image']);
 
       const settings = JSON.parse(
@@ -200,10 +202,78 @@ describe('preparePiWorkspace 装配', () => {
     });
     const models = JSON.parse(readFileSync(path.join(wsPath(), '.pi-agent', 'models.json'), 'utf-8'));
     expect(models.providers.bookforge.models[0].input).toEqual(['text']);
+    expect(models.providers.bookforge.models[0].reasoning).toBe(true);
     const settings = JSON.parse(
       readFileSync(path.join(wsPath(), '.pi-agent', 'settings.json'), 'utf-8')
     );
     expect(settings['pi-image-gen']).toBeUndefined();
+  });
+
+  it('api_format / thinking_format：OpenAI 兼容 + deepseek wire 格式 → api + compat.thinkingFormat', () => {
+    preparePiWorkspace(UID, WS_ID, {
+      agentId: 1,
+      chatModel: { ...CHAT_MODEL, apiFormat: 'openai', thinkingFormat: 'deepseek' },
+      imageModel: null,
+      skillNames: [],
+    });
+    const provider = JSON.parse(
+      readFileSync(path.join(wsPath(), '.pi-agent', 'models.json'), 'utf-8')
+    ).providers.bookforge;
+    expect(provider.api).toBe('openai-completions');
+    expect(provider.models[0].reasoning).toBe(true);
+    expect(provider.models[0].compat).toEqual({ thinkingFormat: 'deepseek' });
+  });
+
+  it('api_format=anthropic → api=anthropic-messages 且不注入 OpenAI 兼容 thinkingFormat', () => {
+    preparePiWorkspace(UID, WS_ID, {
+      agentId: 1,
+      chatModel: { ...CHAT_MODEL, apiFormat: 'anthropic', thinkingFormat: 'deepseek' },
+      imageModel: null,
+      skillNames: [],
+    });
+    const provider = JSON.parse(
+      readFileSync(path.join(wsPath(), '.pi-agent', 'models.json'), 'utf-8')
+    ).providers.bookforge;
+    expect(provider.api).toBe('anthropic-messages');
+    expect(provider.models[0].reasoning).toBe(true);
+    expect(provider.models[0].compat).toBeUndefined();
+  });
+
+  it('thinkingFormat 未配置：不注入 compat（pi 默认 reasoning_effort）', () => {
+    preparePiWorkspace(UID, WS_ID, {
+      agentId: 1,
+      chatModel: CHAT_MODEL,
+      imageModel: null,
+      skillNames: [],
+    });
+    const provider = JSON.parse(
+      readFileSync(path.join(wsPath(), '.pi-agent', 'models.json'), 'utf-8')
+    ).providers.bookforge;
+    expect(provider.api).toBe('openai-completions');
+    expect(provider.models[0].compat).toBeUndefined();
+  });
+});
+
+describe('resolveThinkingArgs（节点思考开关 → pi CLI 参数）', () => {
+  it("'on' → --thinking high（启用思考取高推理档）", () => {
+    expect(resolveThinkingArgs('on')).toEqual(['--thinking', 'high']);
+  });
+
+  it("'off' → --thinking off（显式关闭思考）", () => {
+    expect(resolveThinkingArgs('off')).toEqual(['--thinking', 'off']);
+  });
+
+  it('历史遗留档位原样透传（兼容旧节点已保存设置）', () => {
+    expect(resolveThinkingArgs('minimal')).toEqual(['--thinking', 'minimal']);
+    expect(resolveThinkingArgs('high')).toEqual(['--thinking', 'high']);
+    expect(resolveThinkingArgs('max')).toEqual(['--thinking', 'max']);
+  });
+
+  it('空/非法值不传参（跟随 pi 默认）', () => {
+    expect(resolveThinkingArgs(undefined)).toEqual([]);
+    expect(resolveThinkingArgs(null)).toEqual([]);
+    expect(resolveThinkingArgs('')).toEqual([]);
+    expect(resolveThinkingArgs('ultra')).toEqual([]);
   });
 });
 

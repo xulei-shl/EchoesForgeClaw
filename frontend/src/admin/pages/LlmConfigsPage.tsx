@@ -32,12 +32,23 @@ const KIND_LABEL: Record<string, string> = {
   audio: '音频模型',
 };
 
+const THINKING_FORMAT_OPTIONS = [
+  { label: '自动（reasoning_effort）', value: '' },
+  { label: 'deepseek（thinking.type + reasoning_effort）', value: 'deepseek' },
+  { label: 'qwen-chat-template（chat_template_kwargs.enable_thinking，agnes 类）', value: 'qwen-chat-template' },
+  { label: 'zai（thinking.type）', value: 'zai' },
+  { label: 'together（reasoning.enabled）', value: 'together' },
+  { label: 'openrouter（reasoning.effort）', value: 'openrouter' },
+];
+
 interface FormState {
   name: string;
   kind: LLMKind;
   api_key: string;
   base_url: string;
   model_name: string;
+  api_format: string;
+  thinking_format: string;
   is_active: boolean;
 }
 
@@ -47,6 +58,8 @@ const EMPTY_FORM: FormState = {
   api_key: '',
   base_url: '',
   model_name: '',
+  api_format: '',
+  thinking_format: '',
   is_active: true,
 };
 
@@ -106,6 +119,8 @@ export const LlmConfigsPage: React.FC = () => {
       api_key: '',
       base_url: c.base_url,
       model_name: c.model_name,
+      api_format: c.api_format || '',
+      thinking_format: c.thinking_format || '',
       is_active: c.is_active,
     });
     setFormError('');
@@ -170,12 +185,16 @@ export const LlmConfigsPage: React.FC = () => {
           api_key: string;
           base_url: string;
           model_name: string;
+          api_format: string;
+          thinking_format: string;
           is_active: boolean;
         }> = {
           name: form.name.trim(),
           kind: form.kind,
           base_url: form.base_url.trim(),
           model_name: form.model_name.trim(),
+          api_format: form.api_format,
+          thinking_format: form.thinking_format,
           is_active: form.is_active,
         };
         if (form.api_key) payload.api_key = form.api_key.trim();
@@ -188,6 +207,8 @@ export const LlmConfigsPage: React.FC = () => {
           api_key: form.api_key.trim(),
           base_url: form.base_url.trim(),
           model_name: form.model_name.trim(),
+          api_format: form.api_format,
+          thinking_format: form.thinking_format,
           is_active: form.is_active,
         });
         showToast('模型配置已创建', { type: 'success' });
@@ -304,6 +325,31 @@ export const LlmConfigsPage: React.FC = () => {
               />
             </div>
             <div className="space-y-1.5">
+              <FieldLabel>pi 集成 API 格式（仅 Skill Agent 节点生效）</FieldLabel>
+              <Select
+                value={form.api_format}
+                onChange={(val) => setForm({ ...form, api_format: val })}
+                options={[
+                  { label: 'OpenAI 兼容（默认）', value: '' },
+                  { label: 'Anthropic Messages', value: 'anthropic' },
+                ]}
+              />
+              <p className="text-xs text-ink-faint font-sans leading-snug">
+                Anthropic 格式下思考自动映射为 thinking.type=enabled/disabled + budget_tokens；普通 Chat 节点仍走 OpenAI 兼容调用
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <FieldLabel>思考参数格式（OpenAI 兼容路径）</FieldLabel>
+              <Select
+                value={form.thinking_format}
+                onChange={(val) => setForm({ ...form, thinking_format: val })}
+                options={THINKING_FORMAT_OPTIONS}
+              />
+              <p className="text-xs text-ink-faint font-sans leading-snug">
+                agnes 选 qwen-chat-template，deepseek 选 deepseek；Anthropic 格式下忽略
+              </p>
+            </div>
+            <div className="space-y-1.5">
               <FieldLabel>{editing?.has_api_key ? 'API Key（留空保持原 Key 不变）' : 'API Key'}</FieldLabel>
               <Input
                 type="password"
@@ -407,6 +453,8 @@ export const LlmConfigsPage: React.FC = () => {
                       <span className="max-w-[260px] truncate" title={c.base_url}>
                         base_url: {c.base_url || '默认'}
                       </span>
+                      <span>api: {c.api_format === 'anthropic' ? 'anthropic' : 'openai'}</span>
+                      {c.thinking_format && <span>thinking: {c.thinking_format}</span>}
                       <span className="flex items-center gap-1">
                         <KeyRound size={11} strokeWidth={1.5} />
                         {c.has_api_key ? '已配置 Key' : '未配置 Key'}

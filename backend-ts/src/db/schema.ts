@@ -25,6 +25,10 @@ export const llmConfigs = sqliteTable("llm_configs", {
 	apiKey: text("api_key").notNull(),
 	baseUrl: text("base_url").notNull(),
 	modelName: text("model_name").notNull(),
+	/** pi 集成 API 格式：'anthropic' = Anthropic Messages，空/其它 = OpenAI 兼容（仅 Skill Agent 路径生效）。 */
+	apiFormat: text("api_format"),
+	/** pi 集成 OpenAI 兼容路径的思考 wire 格式（deepseek / qwen-chat-template / zai / together / openrouter 等；空 = 默认 reasoning_effort）。 */
+	thinkingFormat: text("thinking_format"),
 	isActive: integer("is_active", { mode: "boolean" }),
 	createdAt: numeric("created_at"),
 	updatedAt: numeric("updated_at"),

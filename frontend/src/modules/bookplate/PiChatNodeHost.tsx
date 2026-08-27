@@ -320,7 +320,7 @@ export function PiChatNodeHost({
             workspace_id: ws || null,
             model_name: null,
             agent_config_id: null,
-            // thinking level（节点设置；off/空 = 跟随 pi 默认，后端校验白名单）
+            // thinking 开关（on/off/空 = 跟随模型默认；后端映射 --thinking high/off）
             thinking: nodeSettings.piThinking || null,
           },
           headers: authHeaders(),

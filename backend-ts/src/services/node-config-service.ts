@@ -123,7 +123,16 @@ export function agentConfigFromWithOverride(
 export interface SkillAgentRuntimeConfig {
   configId: number;
   /** 对话大模型（pi 的 bookforge provider；缺失视为配置无效）。 */
-  chat: { baseUrl: string; apiKey: string; modelName: string; kind: string } | null;
+  chat: {
+    baseUrl: string;
+    apiKey: string;
+    modelName: string;
+    kind: string;
+    /** pi provider api 格式：'anthropic' | 'openai' | null。 */
+    apiFormat: string | null;
+    /** OpenAI 兼容路径思考 wire 格式（空 = 默认 reasoning_effort）。 */
+    thinkingFormat: string | null;
+  } | null;
   /** 绘图模型（kind='image'）；未绑定且无全局启用项时为 null = 不加载绘图工具。 */
   image: { baseUrl: string; apiKey: string; modelName: string } | null;
 }
@@ -138,13 +147,22 @@ function skillAgentChatModel(db: ReturnType<typeof getDb>, cfg: typeof skillAgen
         apiKey: llm.apiKey,
         modelName: llm.modelName ?? '',
         kind: llm.kind ?? 'text',
+        apiFormat: llm.apiFormat ?? null,
+        thinkingFormat: llm.thinkingFormat ?? null,
       };
     }
     return null;
   }
   // 存量兼容：自身 baseUrl/apiKey/modelName 三件套
   if (cfg.apiKey && cfg.baseUrl && cfg.modelName) {
-    return { baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, modelName: cfg.modelName, kind: 'text' };
+    return {
+      baseUrl: cfg.baseUrl,
+      apiKey: cfg.apiKey,
+      modelName: cfg.modelName,
+      kind: 'text',
+      apiFormat: null,
+      thinkingFormat: null,
+    };
   }
   return null;
 }

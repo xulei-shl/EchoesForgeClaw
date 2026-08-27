@@ -217,24 +217,36 @@ describe('管理端：模型配置', () => {
       method: 'POST',
       url: '/api/admin/llm-configs',
       headers: { authorization: `Bearer ${adminToken}` },
-      payload: { name: 'DeepSeek', kind: 'text', api_key: 'sk-1', base_url: 'https://api.deepseek.com/v1', model_name: 'deepseek-chat' },
+      payload: {
+        name: 'DeepSeek',
+        kind: 'text',
+        api_key: 'sk-1',
+        base_url: 'https://api.deepseek.com/v1',
+        model_name: 'deepseek-chat',
+        api_format: 'openai',
+        thinking_format: 'deepseek',
+      },
     });
     expect(create.statusCode).toBe(200);
     const cfg = create.json();
     expect(cfg.has_api_key).toBe(true);
     expect(cfg.api_key).toBeUndefined();
+    expect(cfg.api_format).toBe('openai');
+    expect(cfg.thinking_format).toBe('deepseek');
     const id = cfg.id as number;
 
-    // 修改不传 api_key → 保留
+    // 修改不传 api_key → 保留；api_format/thinking_format 可清空（传空串 → null）
     const patch = await app.inject({
       method: 'PATCH',
       url: `/api/admin/llm-configs/${id}`,
       headers: { authorization: `Bearer ${adminToken}` },
-      payload: { name: 'DeepSeek 改', api_key: '' },
+      payload: { name: 'DeepSeek 改', api_key: '', api_format: 'anthropic', thinking_format: '' },
     });
     expect(patch.statusCode).toBe(200);
     expect(patch.json().name).toBe('DeepSeek 改');
     expect(patch.json().has_api_key).toBe(true);
+    expect(patch.json().api_format).toBe('anthropic');
+    expect(patch.json().thinking_format).toBeNull();
   });
 
   it('复制：带 (副本) 后缀，沿用 Base URL / API Key / 模型名称', async () => {

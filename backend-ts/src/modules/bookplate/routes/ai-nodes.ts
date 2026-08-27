@@ -80,6 +80,8 @@ export async function register(app: FastifyInstance): Promise<void> {
                 apiKey: saCfg.chat.apiKey,
                 modelName: saCfg.chat.modelName,
                 multimodal: saCfg.chat.kind === 'multimodal',
+                apiFormat: saCfg.chat.apiFormat,
+                thinkingFormat: saCfg.chat.thinkingFormat,
               },
               imageModel: saCfg.image,
               skillNames: payload.skills ?? [],
