@@ -291,14 +291,21 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
                 )}
               </div>
               <div className="min-w-0 flex-1 py-0.5">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <p className="text-sm font-medium text-ink truncate">{p.name}</p>
-                  {p.folder_name && (
-                    <span className="shrink-0 text-[10px] text-ink-faint border border-dashed border-paper-grid rounded-pill px-1.5 py-px font-mono">
-                      {p.folder_name}
-                    </span>
-                  )}
-                  <div onClick={(e) => e.stopPropagation()} className="ml-auto flex items-center gap-2">
+                <div className="flex items-center justify-between gap-2 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <p className="text-sm font-medium text-ink truncate" title={p.name}>
+                      {p.name}
+                    </p>
+                    {p.folder_name && (
+                      <span
+                        className="shrink-0 text-[10px] text-ink-faint border border-dashed border-paper-grid rounded-pill px-1.5 py-px font-mono max-w-[120px] truncate"
+                        title={p.folder_name}
+                      >
+                        {p.folder_name}
+                      </span>
+                    )}
+                  </div>
+                  <div onClick={(e) => e.stopPropagation()} className="shrink-0 flex items-center gap-2">
                     <RatingStars
                       value={p.user_rating || 0}
                       onChange={(r) => void handleUpdateRating(p, r)}
@@ -424,7 +431,7 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
 
             {/* 提示词名称与打标备注展示 */}
             <div className="flex items-center justify-between gap-2 px-1 pt-0.5">
-              <p className="text-xs font-semibold text-ink truncate font-serif" title={promptName}>
+              <p className="text-xs font-semibold text-ink truncate font-serif min-w-0 flex-1" title={promptName}>
                 {promptName}
               </p>
               {(userRating > 0 || userNote) && (
