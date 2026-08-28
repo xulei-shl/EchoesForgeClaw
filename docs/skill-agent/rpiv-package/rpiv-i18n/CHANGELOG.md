@@ -1,0 +1,190 @@
+# Changelog
+
+All notable changes to `@juicesharp/rpiv-i18n` are documented here.
+
+Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [2.7.1] - 2026-08-24
+
+## [2.7.0] - 2026-08-21
+
+## [2.6.4] - 2026-08-20
+
+## [2.6.3] - 2026-08-20
+
+## [2.6.2] - 2026-08-18
+
+## [2.6.1] - 2026-08-17
+
+### Added
+
+- Package card cover on pi.dev: `package.json` now declares `pi.image` pointing at the package's `docs/cover.png`.
+
+## [2.6.0] - 2026-08-15
+
+## [2.5.2] - 2026-08-14
+
+## [2.5.1] - 2026-08-14
+
+## [2.5.0] - 2026-08-13
+
+## [2.4.0] - 2026-08-03
+
+## [2.3.1] - 2026-07-31
+
+## [2.3.0] - 2026-07-31
+
+## [2.2.0] - 2026-07-29
+
+## [2.1.0] - 2026-07-23
+
+### Changed
+- README rewritten to follow the documentation standard shared across all packages.
+- npm tarball now includes the versioned `docs/` reference and no longer ships cover or screenshot art.
+
+## [2.0.0] - 2026-07-21
+
+### Added
+- Configuration is now read from the XDG config directory (`XDG_CONFIG_HOME`), falling back to the legacy location when the new path is absent.
+
+## [1.20.0] - 2026-06-15
+
+### Added
+- Chinese (`zh`, 中文) added to `SUPPORTED_LOCALES`, so the `/languages` picker now offers it (#68).
+
+## [1.19.1] - 2026-06-10
+
+## [1.19.0] - 2026-06-09
+
+## [1.18.2] - 2026-06-04
+
+## [1.18.1] - 2026-06-04
+
+## [1.18.0] - 2026-06-04
+
+## [1.17.1] - 2026-06-01
+
+## [1.17.0] - 2026-06-01
+
+## [1.16.1] - 2026-05-30
+
+## [1.16.0] - 2026-05-30
+
+## [1.15.0] - 2026-05-28
+
+## [1.14.7] - 2026-05-28
+
+## [1.14.6] - 2026-05-28
+
+## [1.14.5] - 2026-05-28
+
+## [1.14.4] - 2026-05-28
+
+## [1.14.3] - 2026-05-28
+
+## [1.14.2] - 2026-05-28
+
+## [1.14.1] - 2026-05-28
+
+## [1.14.0] - 2026-05-28
+
+## [1.13.0] - 2026-05-25
+
+## [1.12.0] - 2026-05-21
+
+## [1.11.0] - 2026-05-20
+
+### Changed
+- Relocate npm + MIT badges from the cover area to the License section in README.
+
+## [1.10.2] - 2026-05-20
+
+### Changed
+- Rebuild npm cover (`docs/cover.{svg,png}`) in the unified card layout used across the `@juicesharp/rpiv-*` family — locale chips (`✓ EN`, `DE`, `+ any other`) plus the three-line `registerStrings → scope → t(...)` API stack.
+
+## [1.10.1] - 2026-05-19
+
+## [1.10.0] - 2026-05-19
+
+## [1.9.2] - 2026-05-19
+
+### Added
+- `@juicesharp/rpiv-i18n/loader` subpath export with `registerLocalesFromDir(namespace, packageUrl, options?)` — one-call locale registration for sibling extensions, replacing the per-package locale-load boilerplate.
+
+## [1.9.1] - 2026-05-19
+
+## [1.9.0] - 2026-05-18
+
+## [1.8.3] - 2026-05-18
+
+## [1.8.2] - 2026-05-17
+
+## [1.8.1] - 2026-05-17
+
+### Changed
+- Config loading diagnostics now emit from `rpiv-config` instead of `rpiv-i18n` (log prefix changed).
+
+### Fixed
+- `/languages` now persists the locale to disk before applying it in memory, preventing silent reverts on write failure.
+
+## [1.8.0] - 2026-05-16
+
+## [1.7.0] - 2026-05-15
+
+## [1.6.1] - 2026-05-14
+
+## [1.6.0] - 2026-05-14
+
+## [1.5.2] - 2026-05-13
+
+## [1.5.1] - 2026-05-13
+
+## [1.5.0] - 2026-05-12
+
+## [1.4.2] - 2026-05-11
+
+## [1.4.1] - 2026-05-11
+
+## [1.4.0] - 2026-05-10
+
+## [1.3.1] - 2026-05-10
+
+## [1.3.0] - 2026-05-08
+
+## [1.2.1] - 2026-05-07
+
+## [1.2.0] - 2026-05-07
+
+## [1.1.5] - 2026-05-05
+
+## [1.1.4] - 2026-05-03
+
+### Changed
+- README integration guide now teaches the dynamic-import shim + `peerDependenciesMeta.optional: true` as the recommended posture for new integrators (steps 0/2/3). Replaces the prior static `import { scope }` example, which fails module load if a user installs the consumer extension standalone without rpiv-i18n. Adds a "why dynamic instead of static" explainer.
+- README integration guide lists `@juicesharp/rpiv-todo` alongside `@juicesharp/rpiv-ask-user-question` as a worked exemplar so prospective integrators have two reference implementations to study.
+
+## [1.1.3] - 2026-05-03
+
+### Changed
+- README integration guide expanded for third-party extension authors: peerDependencies snippet, file-tree layout, normalized `ExtensionAPI` typing, "Verify it works locally before publishing" section (npm pack → pi install → /languages smoke test), and rewritten `globalThis` escape-hatch example showing the per-call re-read pattern (snapshots are replaced, not mutated, on every locale change).
+
+## [1.1.2] - 2026-05-03
+
+## [1.1.1] - 2026-05-03
+
+## [1.1.0] - 2026-05-03
+
+### Added
+- i18n SDK for Pi extensions: `registerStrings(namespace, byLocale)`, `scope(namespace)`, `tr(namespace, key, fallback)`, `getActiveLocale()`, `applyLocale(code)`
+- `/languages` slash command for interactive locale selection (built-in picker chrome lists the locale's endonym)
+- `--locale` CLI flag (priority: flag → config → LANG/LC_ALL → English)
+- Locale detection from `~/.config/rpiv-i18n/locale.json`, `process.env.LANG`, `process.env.LC_ALL` (rejects `C` / `POSIX`)
+- Config persistence at `~/.config/rpiv-i18n/locale.json` (chmod 0o600); `saveLocaleConfig` returns `false` on disk failure so the `/languages` handler can notify the user instead of silently reverting on next restart
+- English fallback per missing key in non-English locales
+- `SUPPORTED_LOCALES` ships Deutsch / English / Español / Français / Português / Português (Brasil) / Русский / Українська out of the box (alphabetical by code); consumers register their own translation maps for each
+- Read-only globalThis snapshot at `Symbol.for("rpiv-i18n")` as `{ locale, namespaces }` for zero-import consumers
+- Runtime state anchored on `globalThis[Symbol.for("rpiv-i18n.runtime")]` so live `/languages` changes propagate across multiple module instances (Pi extension load + node_modules import resolve to different cache keys)
+- Sibling regex word-boundary anchored (`/rpiv-i18n(?![-\w])/i`) so future `rpiv-i18n-*` packages don't collide
