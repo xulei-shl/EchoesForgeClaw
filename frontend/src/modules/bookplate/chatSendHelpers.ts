@@ -100,3 +100,53 @@ export const capWireImages = (msgs: ChatMessage[]): ChatMessage[] =>
       ? { ...m, images: m.images.slice(0, MAX_CHAT_IMAGES) }
       : m
   );
+
+/**
+ * 剥离用户消息开头的注入上下文（形如 `【标题】\n正文\n\n...`），
+ * 使得聊天气泡内只展示用户输入的纯文本，避免与顶部的 ContextInjectionBlock 折叠卡片重复。
+ */
+export function stripInjectedContext(
+  text: string,
+  contextBlocks?: InjectedContextBlock[]
+): string {
+  if (!text) return '';
+
+  // 1. 若提供了 contextBlocks，优先尝试精确匹配 buildChatContext 生成的前缀
+  if (contextBlocks && contextBlocks.length > 0) {
+    const fullContext = buildChatContext(contextBlocks);
+    if (fullContext && text.startsWith(fullContext)) {
+      const rest = text.slice(fullContext.length);
+      return rest.startsWith('\n\n') ? rest.slice(2) : rest.trimStart();
+    }
+    // 逐个 block 尝试前缀剥离
+    let temp = text;
+    let stripped = false;
+    for (const b of contextBlocks) {
+      if (!b.text) continue;
+      const blockHeader = `【${b.title}】\n${b.text}`;
+      if (temp.startsWith(blockHeader)) {
+        temp = temp.slice(blockHeader.length);
+        if (temp.startsWith('\n\n')) temp = temp.slice(2);
+        else temp = temp.trimStart();
+        stripped = true;
+      }
+    }
+    if (stripped) return temp;
+  }
+
+  // 2. 通用结构化前缀剥离：识别以【...】开头的注入段落，提取尾部的用户输入文本
+  if (text.startsWith('【')) {
+    const lastDoubleNewline = text.lastIndexOf('\n\n');
+    if (lastDoubleNewline !== -1) {
+      const prefix = text.slice(0, lastDoubleNewline);
+      const userText = text.slice(lastDoubleNewline + 2).trim();
+      // 确认前缀以【开头且包含】
+      if (prefix.startsWith('【') && prefix.includes('】')) {
+        return userText;
+      }
+    }
+  }
+
+  return text;
+}
+

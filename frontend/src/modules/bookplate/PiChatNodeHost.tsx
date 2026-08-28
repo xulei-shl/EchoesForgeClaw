@@ -23,6 +23,7 @@ import {
   buildChatContext,
   buildChatImagesFromBlocks,
   collectSkillNames,
+  stripInjectedContext,
   type ChatHostDeps,
 } from './chatSendHelpers';
 import type {
@@ -386,6 +387,40 @@ export function PiChatNodeHost({
   statusRef.current = status;
 
   /**
+   * 水合消息清洗：剥离首条用户消息开头的注入上下文，只保留纯用户输入（上下文已在顶部折叠卡片展示）。
+   */
+  const sanitizeHydrated = useCallback(
+    (rawMsgs: ChatMessage[]): ChatMessage[] => {
+      const cur = nodesRef.current.find((n) => n.id === nodeId);
+      const curSettings: ChatNodeSettings = cur?.data?.settings ?? DEFAULT_CHAT_SETTINGS;
+      const blocks = cur
+        ? buildInjectedContextBlocks(
+            cur,
+            {
+              includeBook: curSettings.includeBook,
+              includeBookCover: isBookCoverEnabled(cur, nodesRef.current, edgesRef.current),
+              includeUpstreamText: curSettings.includeUpstream !== false,
+              includeUpstreamImages: curSettings.includeUpstreamImages !== false,
+              includeSkills: true,
+            },
+            nodesRef.current,
+            edgesRef.current,
+            portTypesRef.current
+          )
+        : [];
+      return rawMsgs.map((m, idx) => {
+        if (m.role !== 'user' || idx !== 0) return m;
+        let content = stripInjectedContext(m.content, blocks);
+        if (!content && firstUserTextRef.current) {
+          content = firstUserTextRef.current;
+        }
+        return { ...m, content };
+      });
+    },
+    [nodeId, portTypesRef]
+  );
+
+  /**
    * 流结束收尾：重新从服务端水合并原子交换（同批更新水合历史 + 清空 live 缓冲，
    * 消除「实时已清、持久未到」的闪烁空档；代际号防旧流覆盖新一轮）。
    * 经 ref 间接调用（声明于 useChat 之后）。
@@ -397,17 +432,9 @@ export function PiChatNodeHost({
     const ws = activeRequestWsRef.current ?? wsIdRef.current;
     if (!ws) return;
     void fetchPiSessionMessages(ws)
-      .then((msgs) => {
+      .then((rawMsgs) => {
         if (seq !== swapSeqRef.current) return;
-        // 还原首条 user 消息展示：剥离注入的上下文前缀，只在气泡中显示用户原始输入
-        // （上下文已由 contextBlocks 折叠卡独立渲染，不必重复展示在消息正文中）
-        const originalText = firstUserTextRef.current;
-        if (originalText && msgs.length > 0) {
-          const firstUser = msgs.find(m => m.role === 'user');
-          if (firstUser && firstUser.content !== originalText && firstUser.content.endsWith(originalText)) {
-            firstUser.content = originalText;
-          }
-        }
+        const msgs = sanitizeHydrated(rawMsgs);
         putSessionCache(ws, msgs);
         setSessionMsgs(msgs);
         setMessages([]);
@@ -424,7 +451,7 @@ export function PiChatNodeHost({
       .catch(() => {
         /* 水合失败：保留 live 展示（下次挂载/收尾再对齐服务端） */
       });
-  }, [loadPanel, setMessages]);
+  }, [loadPanel, setMessages, sanitizeHydrated]);
   finishRunRef.current = finishRun;
 
   // ---------- 水合：挂载 / workspaceId 变化（清空对话再生）时拉取服务端会话 ----------
@@ -443,8 +470,9 @@ export function PiChatNodeHost({
     const seq = ++loadSeqRef.current;
     setSessionMsgs(null); // loading 态
     void fetchPiSessionMessages(wsId)
-      .then((msgs) => {
+      .then((rawMsgs) => {
         if (seq !== loadSeqRef.current) return;
+        const msgs = sanitizeHydrated(rawMsgs);
         putSessionCache(wsId, msgs);
         setSessionMsgs(msgs);
         // 已有 user 消息说明上下文已发送过
@@ -453,7 +481,7 @@ export function PiChatNodeHost({
       .catch(() => {
         if (seq === loadSeqRef.current) setSessionMsgs([]);
       });
-  }, [wsId]);
+  }, [wsId, sanitizeHydrated]);
 
   // workspaceId 变化（含清空对话再生）：清掉旧 live 缓冲、面板缓存与错误态
   useEffect(() => {
@@ -480,38 +508,42 @@ export function PiChatNodeHost({
 
   // ---------- 显示消息合成：水合历史 + 当轮 live 段 ----------
   const isStreaming = status === 'submitted' || status === 'streaming';
-  // useChat 在 prepareSendMessagesRequest 执行期间可能尚未把首条 user 消息
-  // 放入 uiMessages；保留发送前的乐观消息，避免 pi 首轮等待服务端/上下文准备时气泡消失。
+  // 乐观用户消息：记录当轮用户输入纯文本与图片（不含注入的上下文），
+  // 在流式执行及水合完成前始终作为当轮用户消息稳定显示，确保思考期间气泡不消失。
   const optimisticUserRef = useRef<ChatMessage | null>(null);
   const nodeSteps: AgentStep[] = Array.isArray(node.data?.agentSteps) ? node.data.agentSteps : [];
   const bufFiles = pendingFilesRef.current.size ? [...pendingFilesRef.current.values()] : [];
 
-  const liveSegment = (() => {
+  const messages: ChatMessage[] = (() => {
+    const history = sessionMsgs ?? [];
     const live = uiToStore(uiMessages);
-    if (!live.length) return live;
     const cleaned = stripEmptyTail(live);
-    const lastIdx = cleaned.length - 1;
-    if (isStreaming && cleaned[lastIdx]?.role === 'assistant') {
-      cleaned[lastIdx] = {
-        ...cleaned[lastIdx],
-        streaming: true,
-        agentSteps: nodeSteps.length ? nodeSteps : cleaned[lastIdx].agentSteps,
-        ...(bufFiles.length
-          ? { files: mergeAgentFiles(cleaned[lastIdx].files, bufFiles) }
-          : {}),
-      };
+
+    // 提取当轮 live assistant 消息（思考过程、步骤、流式正文等）
+    const liveAssistants = cleaned.filter((m) => m.role === 'assistant');
+    const enrichedAssistants = liveAssistants.map((ast, idx) => {
+      const isLast = idx === liveAssistants.length - 1;
+      if (isStreaming && isLast) {
+        return {
+          ...ast,
+          streaming: true,
+          agentSteps: nodeSteps.length ? nodeSteps : ast.agentSteps,
+          ...(bufFiles.length
+            ? { files: mergeAgentFiles(ast.files, bufFiles) }
+            : {}),
+        };
+      }
+      return ast;
+    });
+
+    // 当轮用户消息：若存在乐观消息（流式中或收尾水合中），始终置于历史之后、当前回复之前
+    const currentTurnUser = optimisticUserRef.current;
+    if (currentTurnUser) {
+      return [...history, currentTurnUser, ...enrichedAssistants];
     }
-    return cleaned;
+
+    return [...history, ...enrichedAssistants];
   })();
-  const messages: ChatMessage[] = [
-    ...(sessionMsgs ?? []),
-    // optimisticUserRef 在水合完成前始终展示（不依赖 isStreaming），
-    // 避免流结束→水合完成之间的空白闪烁；水合成功后在 finishRun 中清除。
-    ...(!liveSegment.length && optimisticUserRef.current
-      ? [optimisticUserRef.current]
-      : []),
-    ...liveSegment,
-  ];
 
   // ---------- 单向镜像：显示消息 → 节点 store（下游 output 与画布持久化） ----------
   const lastMirroredRef = useRef<string>(

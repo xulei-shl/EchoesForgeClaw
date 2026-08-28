@@ -26,6 +26,7 @@ import {
   mergeAgentFiles,
   stripUnrenderableImages,
 } from '../workspaceFiles';
+import { stripInjectedContext } from '../chatSendHelpers';
 
 // 单轮最多附带的图片数（与后端透传上限保持一致）
 const MAX_ATTACHMENTS = 4;
@@ -356,6 +357,8 @@ interface ChatMessageItemProps {
   agentName?: string;
   /** 当前节点工作区 id（从正文提取工作区产物文件时用于换算接口 URL） */
   workspaceId?: string | null;
+  /** 上下文注入块（首条 user 消息渲染时用于精准剥离上下文前缀） */
+  contextBlocks?: InjectedContextBlock[];
   onCopy: (content: string, idx: number) => void;
   isCopied: boolean;
   onRetry?: () => void;
@@ -368,6 +371,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
   isLast,
   agentName,
   workspaceId,
+  contextBlocks,
   onCopy,
   isCopied,
   onRetry,
@@ -375,6 +379,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
   // 正文直接透传：SSE text-delta 增量到达即随消息内容增长，Streamdown 以 streaming 模式
   // （parseIncompleteMarkdown / block 级 memo / caret）负责流式渲染，无需再叠加打字机节流。
   if (msg.role === 'user') {
+    const userContent = idx === 0 ? stripInjectedContext(msg.content, contextBlocks) : msg.content;
     return (
       <div className="flex flex-col items-end gap-0.5 msg-enter-anim">
         {/* 本轮装配的 Skill chips（Skill Agent 模式发送时记录） */}
@@ -406,9 +411,9 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
             ))}
           </div>
         )}
-        {msg.content && (
+        {userContent && (
           <div className="max-w-[85%] px-3 py-2 rounded-2xl rounded-br-sm bg-accent text-white text-sm leading-relaxed whitespace-pre-wrap break-words font-sans shadow-sm select-text">
-            {msg.content}
+            {userContent}
           </div>
         )}
       </div>
@@ -938,6 +943,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                   isLast={idx === messages.length - 1}
                   agentName={agentName}
                   workspaceId={workspaceId}
+                  contextBlocks={contextBlocks}
                   onCopy={handleCopy}
                   isCopied={copiedId === idx}
                   onRetry={() => onRetry?.(id)}
