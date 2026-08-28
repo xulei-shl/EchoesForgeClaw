@@ -37,7 +37,7 @@ const FALLBACK_NAME = '未命名分组';
  * 画布分组框（软分组的视觉/操作载体）：
  * - 容器 pointer-events-auto，可直接按住背景或边框平移整组
  * - 背景高透明（8%）、边框中透明（68%），色值经 color-mix 混入，纸感低饱和
- * - zIndex=1：位于普通连线（zIndex 0）之上、节点（zIndex 10+）之下，不阻挡节点自身点击/拖拽
+ * - zIndex：未激活时为 1（位于普通连线之上、节点之下）；激活选中时提升至 120 置顶显示，覆盖未选中底层节点
  */
 export const CanvasGroupFrame: React.FC<CanvasGroupFrameProps> = ({
   id,
@@ -102,12 +102,12 @@ export const CanvasGroupFrame: React.FC<CanvasGroupFrameProps> = ({
         top: y,
         width,
         height,
-        zIndex: 1,
+        zIndex: active ? 120 : 1,
         borderRadius: 8,
         border: `1px solid color-mix(in srgb, ${color} ${active ? 85 : 68}%, transparent)`,
-        background: `color-mix(in srgb, ${color} 8%, transparent)`,
-        boxShadow: active ? `0 0 0 1px color-mix(in srgb, ${color} 30%, transparent)` : undefined,
-        transition: 'border-color 150ms ease, box-shadow 150ms ease',
+        background: `color-mix(in srgb, ${color} ${active ? 10 : 8}%, transparent)`,
+        boxShadow: active ? `0 4px 20px rgba(0,0,0,0.08), 0 0 0 1px color-mix(in srgb, ${color} 40%, transparent)` : undefined,
+        transition: 'border-color 150ms ease, box-shadow 150ms ease, z-index 0ms',
       }}
       onPointerDown={(e) => {
         // 仅主键（左键）拖拽；按住 Shift 留给画布框选
@@ -136,9 +136,10 @@ export const CanvasGroupFrame: React.FC<CanvasGroupFrameProps> = ({
       <div
         className="absolute -top-3 left-3 flex items-center gap-1 pointer-events-auto max-w-[calc(100%-48px)] h-7 px-1.5 rounded-md select-none cursor-grab active:cursor-grabbing"
         style={{
-          background: `color-mix(in srgb, ${color} 14%, var(--color-paper))`,
-          border: `1px solid color-mix(in srgb, ${color} 55%, transparent)`,
-          boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
+          background: `color-mix(in srgb, ${color} ${active ? 20 : 14}%, var(--color-paper))`,
+          border: `1px solid color-mix(in srgb, ${color} ${active ? 75 : 55}%, transparent)`,
+          boxShadow: active ? '0 2px 6px rgba(0,0,0,0.12)' : '0 1px 2px rgba(0,0,0,0.06)',
+          zIndex: 2,
         }}
         onPointerDown={(e) => {
           // 编辑态/色板/按钮不触发拖动；其余区域按下即开始整组拖动（页面协调器接管后续指针）
@@ -171,7 +172,7 @@ export const CanvasGroupFrame: React.FC<CanvasGroupFrameProps> = ({
           />
           {paletteOpen && (
             <div
-              className="absolute left-0 top-5 z-10 flex gap-1 p-1.5 rounded-lg bg-paper border border-paper-grid shadow-lg"
+              className="absolute left-0 top-5 z-50 flex gap-1 p-1.5 rounded-lg bg-paper border border-paper-grid shadow-lg"
               style={{ width: 'max-content' }}
               onPointerDown={(e) => e.stopPropagation()}
             >

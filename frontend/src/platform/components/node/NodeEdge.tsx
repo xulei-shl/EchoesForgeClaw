@@ -173,7 +173,7 @@ const NodeEdge = forwardRef<NodeEdgeHandle, NodeEdgeProps>(function NodeEdge(
     <svg
       ref={svgRef}
       className="absolute top-0 left-0 pointer-events-none group transition-opacity duration-200"
-      style={{ overflow: 'visible', opacity: dimmed ? 0.35 : 1, zIndex: highlighted ? 100 : 0 }}
+      style={{ overflow: 'visible', opacity: dimmed ? 0.35 : 1, zIndex: highlighted ? 150 : 0 }}
     >
       <defs>
         <linearGradient id={`grad-${id}`} x1="0%" y1="0%" x2="100%" y2="0%">

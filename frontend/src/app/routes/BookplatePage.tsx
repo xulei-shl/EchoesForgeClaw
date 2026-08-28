@@ -1299,9 +1299,9 @@ const BookplatePage: React.FC = () => {
     return covering.length === 1 ? covering[0] : undefined;
   }, [groups, selectedIds]);
 
-  /** 分组框渲染数据：成员实时包围盒（内边距已含） */
+  /** 分组框渲染数据：成员实时包围盒（内边距已含），激活分组置后以保证 DOM 与 z-index 双重置顶 */
   const groupFrames = useMemo(() => {
-    return groups.map((g) => ({
+    const frames = groups.map((g) => ({
       group: g,
       bounds: computeGroupBounds(
         g.memberIds.map((id) => nodes.find((n) => n.id === id)).filter((n): n is NodeData => Boolean(n)),
@@ -1309,6 +1309,7 @@ const BookplatePage: React.FC = () => {
       ),
       active: g.memberIds.some((id) => selectedIds.has(id)),
     }));
+    return frames.sort((a, b) => (a.active === b.active ? 0 : a.active ? 1 : -1));
   }, [groups, nodes, nodeSizes, selectedIds]);
 
   return (
@@ -1380,7 +1381,7 @@ const BookplatePage: React.FC = () => {
             );
           })}
 
-          {/* 分组框（软分组视觉层）：zIndex 1，普通连线上方、节点下方；标题 chip 与背景均可交互 */}
+          {/* 分组框（软分组视觉层）：未激活时 zIndex 1，激活时 zIndex 120 整体置顶；标题 chip 与背景均可交互 */}
           {groupFrames.map(({ group, bounds, active }) => (
             <CanvasGroupFrame
               key={group.id}
@@ -1397,7 +1398,10 @@ const BookplatePage: React.FC = () => {
               onColorChange={(color) => updateGroup(group.id, { color })}
               onDisband={() => disbandGroup(group.id)}
               onSelect={() => selectGroupMembers(group)}
-              onDragStart={(e) => beginGroupDrag(e, group.id, group.memberIds)}
+              onDragStart={(e) => {
+                selectGroupMembers(group);
+                beginGroupDrag(e, group.id, group.memberIds);
+              }}
             />
           ))}
 
