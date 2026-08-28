@@ -12,8 +12,8 @@ import { useEffect, useRef, useState } from 'react';
 export function useSmoothStream(target: string, active: boolean, enabled = true): string {
   const [shownLen, setShownLen] = useState<number>(() => {
     if (!enabled || !active) return target.length;
-    // 初始挂载时若已有大段文本（如重新切入页面），跳过开头慢打字，保留末尾 60 字平滑
-    return target.length > 200 ? target.length - 60 : 0;
+    // 初始挂载时仅当超大离线内容（> 2000 字符）才跳过开头，常规流式均从 0 开始平滑流出
+    return target.length > 2000 ? target.length - 60 : 0;
   });
   const shownLenRef = useRef(shownLen);
   const rafRef = useRef<number | null>(null);
@@ -37,15 +37,22 @@ export function useSmoothStream(target: string, active: boolean, enabled = true)
       if (cancelled) return;
       const remaining = target.length - shownLenRef.current;
       if (remaining <= 0) return; // 已追平，等待下次 target 变化重启 effect
-      // 突发大文本（如网络重连、工具调用返回大块内容）：直接快进至末尾 60 字符，避免长时间漫长打字
-      if (remaining > 500) {
-        shownLenRef.current = target.length - 60;
+
+      // 仅针对超大离线灌入内容（> 3000 字符）做保底快进，常规流式 chunk 绝不硬跳
+      if (remaining > 3000) {
+        shownLenRef.current = target.length - 120;
         setShownLen(shownLenRef.current);
         rafRef.current = requestAnimationFrame(tick);
         return;
       }
-      // 动态步进：剩余 1/6，下限 2 字符——长段积压加速排空，尾部细腻
-      const step = Math.max(2, Math.ceil(remaining / 6));
+
+      // 自适应平滑步进：
+      // 积压较多时（网络大 chunk 到达）动态加速追赶（约 8~10 帧排完，不堵塞不积压）
+      // 积压较少时按 1~3 字符细腻递增，呈现丝滑自然的打字机流式效果
+      const step = remaining > 150
+        ? Math.ceil(remaining / 10)
+        : Math.max(1, Math.ceil(remaining / 5));
+
       shownLenRef.current = Math.min(target.length, shownLenRef.current + step);
       setShownLen(shownLenRef.current);
       rafRef.current = requestAnimationFrame(tick);
@@ -57,5 +64,5 @@ export function useSmoothStream(target: string, active: boolean, enabled = true)
     };
   }, [target, active, enabled]);
 
-  return enabled ? target.slice(0, shownLen) : target;
+  return enabled && active ? target.slice(0, shownLen) : target;
 }

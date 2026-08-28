@@ -642,7 +642,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
   workspaceFiles,
   retryNotice,
   messageQueue,
-  smoothText = false,
+  smoothText = true,
 }) => {
   const [draft, setDraft] = useState('');
   // 本轮待发送的图片附件（data URL），随消息发送后在气泡内展示
