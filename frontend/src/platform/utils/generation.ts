@@ -80,6 +80,7 @@ export function generationNodeTypeLabel(nodeType?: string | null): string {
     text_image: '文本成图',
     oil_paint: '湿油彩效果',
     image_process: '图片处理',
+    emboss_foil: '微浮雕高光',
     
     zhihu_search: '知乎检索',
     wikipedia_search: 'Wikipedia 检索',

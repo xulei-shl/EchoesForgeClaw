@@ -235,6 +235,22 @@ export function seedDataFor(type: NodeType, parent?: NodeData): any {
         isSaved: false,
         error: null,
       };
+    case 'emboss_foil':
+      return {
+        presetId: 'topography',
+        reliefStyle: 'topography',
+        shimmerType: 'matte_silver',
+        depth: 65,
+        brightness: 70,
+        radius: 45,
+        lightAngle: 135,
+        withPerforation: true,
+        withMargin: true,
+        imageUrl: null,
+        uploadedImage: null,
+        isSaved: false,
+        error: null,
+      };
     case 'vufind_call_number':
       return {
         isbn: '',

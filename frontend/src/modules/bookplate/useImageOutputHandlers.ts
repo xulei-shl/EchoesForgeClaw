@@ -293,6 +293,7 @@ export interface ImageOutputHandlers {
   handleExportTextImageFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportOilPaintFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportImageProcessFor: (id: string, dataUrl: string, state: any) => Promise<void>;
+  handleExportEmbossFoilFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportMapPosterFor: (id: string, imageUrl: string) => Promise<void>;
   handleExportMapArtFor: (id: string, imageUrl: string) => Promise<void>;
 }
@@ -421,6 +422,18 @@ export function useImageOutputHandlers(ctx: ImageOutputCtx): ImageOutputHandlers
     historyWarn: '记录图片处理到历史数据库失败(不阻断导出):',
   });
 
+  // 微浮雕高光：与图片处理/邮票同流程——手动点击保存 → /save-image 落盘 → generations 记录
+  const handleExportEmbossFoilFor = useImageExportHandler(ctx, {
+    nodeType: 'emboss_foil',
+    historyNodeType: 'emboss_foil',
+    promptOf: () => '微浮雕高光',
+    okExtras: () => ({}),
+    onHistorySaved: () => {},
+    emptyError: '保存微浮雕高光图片失败',
+    errLabel: '微浮雕高光保存',
+    historyWarn: '记录微浮雕高光到历史数据库失败(不阻断导出):',
+  });
+
   const handleExportMapPosterFor = useSimpleImageExportHandler(ctx, 'map_poster');
   const handleExportMapArtFor = useSimpleImageExportHandler(ctx, 'map_art');
 
@@ -437,6 +450,7 @@ export function useImageOutputHandlers(ctx: ImageOutputCtx): ImageOutputHandlers
     handleExportTextImageFor,
     handleExportOilPaintFor,
     handleExportImageProcessFor,
+    handleExportEmbossFoilFor,
     handleExportMapPosterFor,
     handleExportMapArtFor,
   };

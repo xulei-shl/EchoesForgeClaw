@@ -36,6 +36,7 @@ export type NodeType =
   | 'color_search'
   | 'oil_paint'
   | 'image_process'
+  | 'emboss_foil'
   | 'vufind_call_number';
 
 /** 各节点模板类型的默认尺寸（必须与组件 defaultSize 一致） */
@@ -62,15 +63,16 @@ export const NODE_SIZES: Record<NodeType, { width: number; height: number }> = {
   web_search:       { width: 460, height: 560 },
   receipt_printer:  { width: 440, height: 640 },
   book_card:        { width: 440, height: 640 },
-stamp_cutter:       { width: 440, height: 560 },
-  sticker_maker:      { width: 440, height: 560 },
-  journal_maker:      { width: 500, height: 700 },
-  text_image:         { width: 440, height: 560 },
-  map_art:           { width: 460, height: 560 },
-  pattern_search:    { width: 440, height: 560 },
-  color_search:      { width: 480, height: 620 },
-  oil_paint:         { width: 440, height: 560 },
-  image_process:     { width: 440, height: 560 },
+  stamp_cutter:     { width: 440, height: 560 },
+  sticker_maker:    { width: 440, height: 560 },
+  journal_maker:    { width: 500, height: 700 },
+  text_image:       { width: 440, height: 560 },
+  map_art:          { width: 460, height: 560 },
+  pattern_search:   { width: 440, height: 560 },
+  color_search:     { width: 480, height: 620 },
+  oil_paint:        { width: 440, height: 560 },
+  image_process:    { width: 440, height: 560 },
+  emboss_foil:      { width: 440, height: 620 },
   vufind_call_number: { width: 480, height: 640 },
 };
 

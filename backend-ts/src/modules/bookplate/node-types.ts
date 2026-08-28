@@ -54,6 +54,8 @@ export const NODE_TYPES = {
   JOURNAL_MAKER: 'journal_maker',
   /** 文本成图（多模态工具）：输入文字并调整字体/字号/颜色/横竖排/描边与背景，浏览器端渲染为图片输出 */
   TEXT_IMAGE: 'text_image',
+  /** 微浮雕高光（多模态工具）：等高线/浮雕肌理与全息微光反光，支持邮票齿孔与纸边定制 */
+  EMBOSS_FOIL: 'emboss_foil',
   /** VuFind 馆藏（GLAM 工具）：根据 ISBN 获取索书号 */
   VUFIND_CALL_NUMBER: 'vufind_call_number',
 } as const;
@@ -351,6 +353,15 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     category: 'multimodal',
     configurable: false,
     output_type: 'image',
+  },
+  {
+    type: NODE_TYPES.EMBOSS_FOIL,
+    name: '微浮雕高光',
+    description: '为图片添加等高线/浮雕肌理与全息微光反光效果，支持邮票齿孔与纸边定制',
+    category: 'multimodal',
+    configurable: false,
+    output_type: 'image',
+    input_types: ['image', 'text'],
   },
   {
     type: NODE_TYPES.VUFIND_CALL_NUMBER,

@@ -258,6 +258,8 @@ export type CanvasNodeType =
   | 'oil_paint'
   /** 图片处理节点：噪点 / ASCII / 网点 / 抖动（多模态工具） */
   | 'image_process'
+  /** 微浮雕高光节点：等高线/纸质浮雕肌理与全息高光反光（多模态工具） */
+  | 'emboss_foil'
   /** VuFind 馆藏节点：根据 ISBN 获取索书号（GLAM 工具） */
   | 'vufind_call_number';
 

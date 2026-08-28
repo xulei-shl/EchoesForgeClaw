@@ -458,59 +458,70 @@ const OilPaintNodeInner: React.FC<OilPaintNodeProps> = ({
       <div className="h-full flex flex-col flex-1 min-h-0 gap-2">
         {/* 参数工具栏（编辑态展示核心参数滑杆与风格切换） */}
         {!hasGenerated && (
-          <div className="flex flex-col gap-1.5 px-1.5 py-1.5 rounded-md bg-paper-grid/20 border border-paper-grid/40 text-xs font-sans text-ink-light select-none">
-            <div className="flex items-center justify-between gap-2">
+          <div className="relative z-20 flex flex-col gap-1.5 p-2 rounded-xl bg-paper/95 border border-paper-grid/80 text-xs font-sans text-ink-light select-none shadow-2xs shrink-0">
+            {/* 2x2 对称等宽网格 */}
+            <div className="grid gap-x-4 gap-y-1.5 grid-cols-2">
               <SliderRow
-                label="笔触大小"
+                label="笔触"
                 value={strokeSize}
                 min={0.4}
                 max={2.5}
                 step={0.1}
                 display={`${strokeSize.toFixed(1)}x`}
+                labelWidth="w-6"
+                valueWidth="min-w-[26px]"
                 disabled={isGenerating}
                 onChange={(v) => patchParam({ strokeSize: v })}
               />
               <SliderRow
-                label="数量(千)"
+                label="数量"
                 value={strokeCountK}
                 min={6}
                 max={24}
                 step={1}
                 display={`${strokeCountK}k`}
+                labelWidth="w-6"
+                valueWidth="min-w-[26px]"
                 disabled={isGenerating}
                 onChange={(v) => patchParam({ strokeCountK: v })}
               />
-            </div>
-            <div className="flex items-center justify-between gap-2">
               <SliderRow
-                label="干燥度"
+                label="干燥"
                 value={dryness}
                 min={0}
                 max={1}
                 step={0.05}
                 display={`${Math.round(dryness * 100)}%`}
+                labelWidth="w-6"
+                valueWidth="min-w-[26px]"
                 disabled={isGenerating}
                 onChange={(v) => patchParam({ dryness: v })}
               />
-              <div className="flex items-center gap-1 shrink-0" role="radiogroup" aria-label="湿油彩风格">
-                <span className="text-ink-faint text-[11px] px-0.5">风格:</span>
-                {(['brush', 'blend'] as OilPaintStyle[]).map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    role="radio"
-                    aria-checked={style === s}
-                    onClick={() => patchParam({ style: s })}
-                    disabled={isGenerating}
-                    className={`px-2 py-0.5 rounded text-xs transition-colors duration-150 active:scale-[0.96] ${
-                      style === s
-                        ? 'bg-accent/15 text-accent font-medium'
-                        : 'hover:bg-paper-grid/40 text-ink-light'
-                    }`}
-                  >
-                    {s === 'brush' ? '纯笔触' : '融合'}
-                  </button>
-                ))}
+              {/* 风格分段选择器（与左侧滑杆 label/宽度严格对齐） */}
+              <div className="flex items-center gap-1.5 min-w-0" role="radiogroup" aria-label="湿油彩风格">
+                <span className="text-ink-faint text-[10px] shrink-0 w-6 text-left">风格</span>
+                <div className="flex-1 min-w-0 grid grid-cols-2 p-0.5 rounded-md bg-paper-grid/40 border border-paper-grid/60 gap-0.5 shadow-2xs">
+                  {(['brush', 'blend'] as OilPaintStyle[]).map((s) => {
+                    const isChecked = style === s;
+                    return (
+                      <button
+                        key={s}
+                        type="button"
+                        role="radio"
+                        aria-checked={isChecked}
+                        onClick={() => patchParam({ style: s })}
+                        disabled={isGenerating}
+                        className={`py-0.5 rounded text-[10px] font-medium leading-none text-center transition-[background-color,color,box-shadow,transform] duration-150 active:scale-[0.96] truncate ${
+                          isChecked
+                            ? 'bg-paper text-accent font-medium shadow-2xs border border-paper-grid/40'
+                            : 'text-ink-light hover:text-ink hover:bg-paper-grid/30'
+                        } disabled:cursor-not-allowed disabled:opacity-50`}
+                      >
+                        {s === 'brush' ? '纯笔触' : '融合'}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </div>

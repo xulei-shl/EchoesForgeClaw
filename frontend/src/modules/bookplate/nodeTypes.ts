@@ -33,6 +33,7 @@ export const NODE_COLORS: Record<CanvasNodeType, string> = {
   color_search: 'oklch(0.68 0.18 45)',
   oil_paint: 'oklch(0.66 0.16 60)',
   image_process: 'oklch(0.66 0.15 105)',
+  emboss_foil: 'oklch(0.68 0.16 160)',
   sticker_maker: 'oklch(0.72 0.15 340)',
   journal_maker: 'oklch(0.7 0.14 150)',
   text_image: 'oklch(0.68 0.15 195)',
@@ -303,6 +304,14 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     configurable: false,
     defaultSize: DEFAULT_SIZES.image_process,
   },
+  {
+    type: 'emboss_foil',
+    name: '微浮雕高光',
+    description: '等高线/浮雕肌理与全息微光反光，支持邮票齿孔与纸边定制',
+    category: 'multimodal',
+    configurable: false,
+    defaultSize: DEFAULT_SIZES.emboss_foil,
+  },
 ];
 
 export const NODE_TEMPLATE_MAP: Record<CanvasNodeType, NodeTemplateDef> = Object.fromEntries(
@@ -399,6 +408,8 @@ export const NODE_PORT_TYPES: Record<
   oil_paint: { output: 'image', inputs: ['image', 'text'] },
   // 图片处理：输出处理结果图片；可连线图片或图书元数据作为输入源（连线即输入）
   image_process: { output: 'image', inputs: ['image', 'text'] },
+  // 微浮雕高光：输出处理后的高光卡片图片；可连线图片或图书元数据作为输入源（连线即输入）
+  emboss_foil: { output: 'image', inputs: ['image', 'text'] },
   // VuFind 馆藏：输出获取的索书号文本；可连线图书元数据/文本节点自动读取 ISBN（连线即输入）
   vufind_call_number: { output: 'text', inputs: ['text'] },
 };

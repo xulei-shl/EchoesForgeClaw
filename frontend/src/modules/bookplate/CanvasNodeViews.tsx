@@ -28,6 +28,7 @@ import { JournalMakerNode } from '../../modules/multimodal/components/JournalMak
 import { TextImageNode } from '../../modules/multimodal/components/TextImageNode';
 import { OilPaintNode } from '../../modules/multimodal/components/OilPaintNode';
 import { ImageProcessNode } from '../../modules/multimodal/components/ImageProcessNode';
+import { EmbossFoilNode } from '../../modules/multimodal/components/EmbossFoilNode';
 import { MapArtNode } from '../../modules/multimodal/components/MapArtNode';
 import { PatternSearchNode, type PatternItem } from '../../modules/multimodal/components/PatternSearchNode';
 import { ColorSearchNode, type ColorItem } from '../../modules/multimodal/components/ColorSearchNode';
@@ -191,6 +192,10 @@ export interface NodeViewHelpers {
   handleExportImageProcessFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   /** 图片处理节点：状态更新写入 node.data（持久化） */
   handleUpdateImageProcessStateFor: (id: string, patch: Record<string, any>) => void;
+  /** 微浮雕高光节点：导出 PNG data URL 落盘（保存到后端 + 记录数据库历史 + 写回 node.data） */
+  handleExportEmbossFoilFor: (id: string, dataUrl: string, state: any) => Promise<void>;
+  /** 微浮雕高光节点：状态更新写入 node.data（持久化） */
+  handleUpdateEmbossFoilStateFor: (id: string, patch: Record<string, any>) => void;
   /** 文本聚合节点：保存占位符模板 */
   handleUpdateAggregateTemplateFor: (id: string, template: string) => void;
   /** 文本聚合节点：重命名某上级节点的占位符别名 */
@@ -979,6 +984,29 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           mismatchBadge={mismatchBadge}
           onUpdateState={h.handleUpdateImageProcessStateFor}
           onExport={h.handleExportImageProcessFor}
+        />
+      );
+    }
+
+    case 'emboss_foil': {
+      const d = node.data ?? {};
+      const { upstreamImageUrl } = resolveUpstreamImage(node, h);
+      return (
+        <EmbossFoilNode
+          key={node.id}
+          {...common}
+          data={d}
+          upstreamImageUrl={upstreamImageUrl}
+          isFavorited={!!h.favoritedState[node.id]}
+          isPublic={!!h.publishedState[node.id]}
+          isSelected={node.id === h.activeImage?.id}
+          recordDeleted={h.staleRecordIds.has(node.id)}
+          onSelect={h.handleSelectImage}
+          onToggleFavorite={h.handleToggleFavoriteFor}
+          onTogglePublic={h.handleTogglePublicFor}
+          mismatchBadge={mismatchBadge}
+          onUpdateState={h.handleUpdateEmbossFoilStateFor}
+          onExport={h.handleExportEmbossFoilFor}
         />
       );
     }
