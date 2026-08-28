@@ -10,6 +10,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
+import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ChatStreamEvent } from '../modules/bookplate/stream.js';
@@ -153,27 +154,48 @@ export function resolveImageGenExtension(): string | null {
 // ---------------------------------------------------------------------------
 
 /**
- * 扩展包白名单（逗号分隔的 npm 包名，如 "@juicesharp/rpiv-todo"）。
- * 扩展 = 服务端代码执行（多租户最高风险），只允许管理员批准的包被装配；
- * 用户技能（纯提示词/工具声明）继续走 skills 流程，二者互不混用。
- * 版本锁定：升级 = 在依赖树中固定包版本（npm 安装/升级） + 回归验证。
+ * pi 全局 agent 目录（同 pi-coding-agent 的 getAgentDir 口径）：
+ * PI_CODING_AGENT_DIR 显式指定时优先，否则 ~/.pi/agent。
+ * 注意：这是「后端发现管理员已装扩展」用的宿主目录，与 runPiAgent 给子进程
+ * 注入的 {ws}/.pi-agent（每工作区 agentDir）不同。
  */
-const EXTENSIONS_WHITELIST = (process.env.PI_EXTENSIONS ?? '')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
+function piAgentHomeDir(): string {
+  const envDir = process.env.PI_CODING_AGENT_DIR?.trim();
+  return envDir ? path.resolve(envDir) : path.join(homedir(), '.pi', 'agent');
+}
+
+/**
+ * `pi install npm:<pkg>` 的全局落点（同 pi-coding-agent package-manager 的
+ * resolveManagedPath 口径）：{agentDir}/npm/node_modules。作为白名单扩展的
+ * 候选解析位置之一，使「管理员用 pi install 装包 + PI_EXTENSIONS 白名单」
+ * 即可接入，无需再手动复制进 backend-ts 依赖树。
+ */
+function piNpmPackagesDir(): string {
+  return path.join(piAgentHomeDir(), 'npm', 'node_modules');
+}
 
 export interface PiExtensionSpec {
   /** 包名（如 "@juicesharp/rpiv-todo"）。 */
   name: string;
-  /** 已安装包目录（backend-ts/node_modules 或仓库根 node_modules）。 */
+  /** 已安装包目录（backend-ts/node_modules、仓库根 node_modules 或 pi 全局 npm 目录）。 */
   dir: string;
 }
 
-/** 解析白名单内已安装的扩展包（未安装的静默跳过；返回按白名单顺序）。 */
+/**
+ * 解析白名单内已安装的扩展包（未安装的静默跳过；返回按白名单顺序）。
+ * 白名单 = 管理员批准的服务端代码扩展（多租户最高风险），运行期从
+ * PI_EXTENSIONS 读取（逗号分隔的 npm 包名）；用户技能（纯提示词/工具声明）
+ * 继续走 skills 流程，二者互不混用。
+ * 版本锁定：升级 = 固定包版本（pi install / npm 安装锁定版本） + 回归验证。
+ * 解析顺序：backend-ts 依赖树 → 仓库根依赖树 → pi 全局 npm 目录（首个命中生效）。
+ */
 export function resolvePiExtensions(): PiExtensionSpec[] {
+  const whitelist = (process.env.PI_EXTENSIONS ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
   const specs: PiExtensionSpec[] = [];
-  for (const raw of EXTENSIONS_WHITELIST) {
+  for (const raw of whitelist) {
     const name = String(raw ?? '').trim();
     if (!name) continue;
     // 按 node_modules 布局展开 scoped 包名（@scope/pkg → @scope/pkg）
@@ -182,6 +204,7 @@ export function resolvePiExtensions(): PiExtensionSpec[] {
     const dir = firstExisting([
       path.join(BACKEND_ROOT, rel),
       path.join(REPO_ROOT, rel),
+      path.join(piNpmPackagesDir(), ...segs),
     ]);
     if (dir) specs.push({ name, dir });
   }
@@ -898,6 +921,7 @@ export async function* runPiAgent(opts: RunPiAgentOptions): AsyncGenerator<ChatS
   const queue: ChatStreamEvent[] = [];
   const mapperState: PiEventMapperState = { lastError: null };
   let emittedError = false;
+  let emittedAny = false;
   let stdoutEnded = false;
   let childClosed = false;
 
@@ -967,6 +991,7 @@ export async function* runPiAgent(opts: RunPiAgentOptions): AsyncGenerator<ChatS
     // 出队循环：队列空且（进程已退出且 stdout 已排空）时结束
     while (true) {
       if (queue.length) {
+        emittedAny = true;
         yield queue.shift()!;
         continue;
       }
@@ -1006,6 +1031,7 @@ export async function* runPiAgent(opts: RunPiAgentOptions): AsyncGenerator<ChatS
       const prev = before.get(rel);
       if (prev && prev.size === stamp.size && prev.mtimeMs === stamp.mtimeMs) continue;
       artifacts.push({ rel, mime: mimeOf(rel), size: stamp.size, mtimeMs: stamp.mtimeMs });
+      emittedAny = true;
       yield {
         type: 'agent_file',
         file: {
@@ -1018,6 +1044,19 @@ export async function* runPiAgent(opts: RunPiAgentOptions): AsyncGenerator<ChatS
       };
     }
     appendArtifactManifest(opts.ws, artifacts);
+
+    // 零输出兜底诊断：pi 以 0 退出、无错误事件，但全程未产出任何事件（连会话文件都没落盘）。
+    // 正常响应必有 message_update 等事件；零输出 = 静默失败（如扩展加载异常被 pi 吞掉、
+    // 进程启动即异常退出等），此前会被前端「完全无输出」吞掉，此处显式给出可排查信息。
+    if (!emittedError && !abortRequested && !emittedAny) {
+      const tail = stderrTailRef.value.trim();
+      yield {
+        type: 'error',
+        message: `pi agent 执行结束但未产生任何输出，请检查扩展装配与模型配置${
+          tail ? `\n${tail.split('\n').at(-1)}` : ''
+        }`,
+      };
+    }
   } finally {
     opts.signal?.removeEventListener('abort', onAbort);
     killTree(child);

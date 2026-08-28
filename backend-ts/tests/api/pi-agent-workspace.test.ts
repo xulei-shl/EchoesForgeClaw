@@ -2,11 +2,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   existsSync,
   mkdirSync,
+  mkdtempSync,
   lstatSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -21,6 +23,7 @@ import {
   preparePiWorkspace,
   resolveImageGenExtension,
   resolvePiBin,
+  resolvePiExtensions,
   resolveThinkingArgs,
   saveInputImages,
 } from '../../src/services/pi-agent-service.js';
@@ -251,6 +254,83 @@ describe('preparePiWorkspace 装配', () => {
     ).providers.bookforge;
     expect(provider.api).toBe('openai-completions');
     expect(provider.models[0].compat).toBeUndefined();
+  });
+});
+
+/** 临时设置 pi 扩展相关 env，运行后还原（防止污染其它用例）。 */
+function withPiExtensionsEnv(home: string, whitelist: string, fn: () => void): void {
+  const prevAgent = process.env.PI_CODING_AGENT_DIR;
+  const prevExt = process.env.PI_EXTENSIONS;
+  try {
+    process.env.PI_CODING_AGENT_DIR = home;
+    process.env.PI_EXTENSIONS = whitelist;
+    fn();
+  } finally {
+    if (prevAgent === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = prevAgent;
+    if (prevExt === undefined) delete process.env.PI_EXTENSIONS;
+    else process.env.PI_EXTENSIONS = prevExt;
+  }
+}
+
+/** 在临时 pi 全局 npm 目录造一个最小扩展包（scoped：@juicesharp/rpiv-todo）。 */
+function makePiNpmPkg(home: string, name: string, version = '1.0.0'): string {
+  const segs = name.split('/').filter(Boolean);
+  const dir = path.join(home, 'npm', 'node_modules', ...segs);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    path.join(dir, 'package.json'),
+    JSON.stringify({ name, version, pi: { extensions: ['./index.ts'] } }),
+    'utf-8'
+  );
+  writeFileSync(path.join(dir, 'index.ts'), 'export default function () {}', 'utf-8');
+  return dir;
+}
+
+describe('resolvePiExtensions（PI_EXTENSIONS 白名单 → pi install 全局 npm 目录发现）', () => {
+  it('pi install 装到 {agentDir}/npm/node_modules 的包可被发现（依赖树中缺失也不跳过）', () => {
+    const home = mkdtempSync(path.join(tmpdir(), 'pi-agent-'));
+    try {
+      const pkgDir = makePiNpmPkg(home, '@juicesharp/rpiv-todo', '2.7.1');
+      withPiExtensionsEnv(home, '@juicesharp/rpiv-todo', () => {
+        expect(resolvePiExtensions()).toEqual([{ name: '@juicesharp/rpiv-todo', dir: pkgDir }]);
+      });
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it('白名单内未安装的包与空白项静默跳过', () => {
+    const home = mkdtempSync(path.join(tmpdir(), 'pi-agent-'));
+    try {
+      withPiExtensionsEnv(home, '@juicesharp/rpiv-todo, ,not-installed', () => {
+        expect(resolvePiExtensions()).toEqual([]);
+      });
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it('preparePiWorkspace 把白名单扩展挂载到 {ws}/.pi-agent/extensions/{name} 并回报 mountedExtensions', () => {
+    const home = mkdtempSync(path.join(tmpdir(), 'pi-agent-'));
+    try {
+      const pkgDir = makePiNpmPkg(home, '@juicesharp/rpiv-todo');
+      withPiExtensionsEnv(home, '@juicesharp/rpiv-todo', () => {
+        const r = preparePiWorkspace(UID, WS_ID, {
+          agentId: 1,
+          chatModel: CHAT_MODEL,
+          imageModel: null,
+          skillNames: [],
+        });
+        const dest = path.join(wsPath(), '.pi-agent', 'extensions', 'rpiv-todo');
+        expect(r.mountedExtensions).toEqual([dest]);
+        expect(existsSync(path.join(dest, 'package.json'))).toBe(true);
+        expect(lstatSync(dest).isSymbolicLink() || existsSync(path.join(dest, 'index.ts'))).toBe(true);
+        expect(pkgDir).not.toBe(dest); // 工作区是独立挂载，不原地装配
+      });
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });
 

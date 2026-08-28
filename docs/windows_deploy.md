@@ -264,7 +264,64 @@ npm run start
 
 ---
 
-## 9. 一键快速清单（新机器复制粘贴）
+## 9. 热重载与服务重启
+
+开发过程中修改代码后，无需手动停止再启动服务，各服务均支持热重载：
+
+### 9.1 后端（backend-ts）
+
+```powershell
+cd backend-ts
+npm run dev
+```
+
+- 使用 `tsx watch` 模式，文件变更后**自动重启**，无需手动干预
+- 控制台输出 `Restarting due to changes...` 表示热重载已触发
+- `.env` 修改后需手动重启（watch 仅监听 `.ts` 文件变更）
+
+### 9.2 前端（frontend）
+
+```powershell
+cd frontend
+npm run dev -- --port 5173
+```
+
+- Vite 内置 HMR（Hot Module Replacement），修改 `.tsx` / `.css` 等文件后**浏览器自动刷新**，无需重启
+- 仅修改 `vite.config.ts` 或 `package.json` 时需手动重启 `npm run dev`
+
+### 9.3 地图海报 Python 服务（maptoposter）
+
+```powershell
+cd services/maptoposter
+uvicorn api:app --host 0.0.0.0 --port 8100 --reload
+```
+
+- 添加 `--reload` 参数后，uvicorn 会监听 `api.py` 及同目录下 `.py` 文件变更并自动重载
+- 后台常驻方式（PowerShell `Start-Process`）不支持热重载，需改用此命令前台运行
+
+### 9.4 中国传统纹样检索服务（chinese-traditional-patterns）
+
+```powershell
+cd services/chinese-traditional-patterns
+uvicorn api:app --host 0.0.0.0 --port 8102 --reload
+```
+
+- 同上，添加 `--reload` 即可支持热重载
+
+### 9.5 重启服务速查
+
+| 服务 | 热重载方式 | 是否需手动重启 |
+|------|-----------|---------------|
+| 后端 (backend-ts) | `npm run dev`（tsx watch） | .env 变更需手动 |
+| 前端 (frontend) | Vite HMR | config 变更需手动 |
+| 地图海报 (maptoposter) | uvicorn `--reload` | 依赖变更需手动 |
+| 纹样检索 (patterns) | uvicorn `--reload` | 依赖变更需手动 |
+
+> **提示**：开发时推荐始终使用 `npm run dev`（后端）和 `--reload`（Python 服务），避免频繁手动重启。
+
+---
+
+## 10. 一键快速清单（新机器复制粘贴）
 
 ```powershell
 # 后端
