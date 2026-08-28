@@ -9,7 +9,6 @@ import { NodeActionBar, copyTextToClipboard } from '../../../platform/components
 import { AgentActivity } from '../../../platform/components/agent/AgentActivity';
 import { Toggle } from '../../../platform/components/ui/Toggle';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
-import { useSmoothStream } from '../../../platform/hooks/useSmoothStream';
 import type { AgentFile, AgentStep, ChatMessage, ChatNodeSettings, InjectedContextBlock } from '../../../platform/types';
 import { ContextInjectionBlock } from './ContextInjectionBlock';
 import { AgentOverrideField } from './AgentOverrideField';
@@ -360,8 +359,6 @@ interface ChatMessageItemProps {
   onCopy: (content: string, idx: number) => void;
   isCopied: boolean;
   onRetry?: () => void;
-  /** 正文打字机平滑渲染（仅流式中的最后一条 assistant 开启） */
-  smooth?: boolean;
 }
 
 /** 单条对话消息气泡：memo 隔离，流式更新时非活动历史消息跳过 re-render */
@@ -374,12 +371,9 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
   onCopy,
   isCopied,
   onRetry,
-  smooth = false,
 }) => {
-  // Hook 顺序约束：useSmoothStream 必须在任何条件分支之前调用
-  // （用户消息 / 非流式消息 smoothActive=false，直接返回原文）
-  const smoothActive = Boolean(smooth && msg.role === 'assistant' && msg.streaming);
-  const smoothContent = useSmoothStream(msg.content, smoothActive, smooth);
+  // 正文直接透传：SSE text-delta 增量到达即随消息内容增长，Streamdown 以 streaming 模式
+  // （parseIncompleteMarkdown / block 级 memo / caret）负责流式渲染，无需再叠加打字机节流。
   if (msg.role === 'user') {
     return (
       <div className="flex flex-col items-end gap-0.5 msg-enter-anim">
@@ -478,8 +472,8 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
               caret="block"
               linkSafety={{ enabled: false }}
             >
-              {/* 平滑渲染：流式中按 rAF 节奏逐字展示（useSmoothStream），结束/历史直接全文 */}
-              {normalizeMarkdown(stripUnrenderableImages(smoothContent, workspaceId)) ||
+              {/* 流式渲染：正文随 text-delta 增量增长，Streamdown streaming 模式逐块渲染 */}
+              {normalizeMarkdown(stripUnrenderableImages(msg.content, workspaceId)) ||
                 (msg.interrupted ? '已中断' : '')}
             </Streamdown>
           )}
@@ -606,8 +600,6 @@ export interface ChatNodeProps {
   retryNotice?: ChatRetryNotice | null;
   /** 排队消息（skill_agent 模式；不传 = 不启用排队） */
   messageQueue?: ChatMessageQueue | null;
-  /** 正文打字机平滑渲染（仅流式中的最后一条 assistant 生效；默认关闭） */
-  smoothText?: boolean;
 }
 
 const ChatNodeInner: React.FC<ChatNodeProps> = ({
@@ -642,7 +634,6 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
   workspaceFiles,
   retryNotice,
   messageQueue,
-  smoothText = true,
 }) => {
   const [draft, setDraft] = useState('');
   // 本轮待发送的图片附件（data URL），随消息发送后在气泡内展示
@@ -950,7 +941,6 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                   onCopy={handleCopy}
                   isCopied={copiedId === idx}
                   onRetry={() => onRetry?.(id)}
-                  smooth={smoothText && idx === messages.length - 1}
                 />
               ))
             )}
