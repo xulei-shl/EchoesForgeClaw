@@ -81,8 +81,10 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
         text: opts.text ?? null,
         config_id: node.configId ?? null,
         node_id: node.id,
-        // 节点内手动选择的模型名（仅 LLM 模式生效；空 = 跟随节点配置的默认模型）
+        // 节点内手动选择的模型名 / Base URL / API Key（仅 LLM 模式生效；空 = 跟随节点配置）
         model_name: node.data?.settings?.modelOverride ?? null,
+        base_url: node.data?.settings?.baseUrlOverride ?? null,
+        api_key: node.data?.settings?.apiKeyOverride ?? null,
       },
       signal: controller.signal,
       onData: (event, data) => {
@@ -158,8 +160,10 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
         text: inputs.text ?? '',
         config_id: node.configId ?? null,
         node_id: node.id,
-        // 节点内手动选择的模型名（仅 LLM 模式生效；空 = 跟随节点配置的默认模型）
+        // 节点内手动选择的模型名 / Base URL / API Key（仅 LLM 模式生效；空 = 跟随节点配置）
         model_name: node.data?.settings?.modelOverride ?? null,
+        base_url: node.data?.settings?.baseUrlOverride ?? null,
+        api_key: node.data?.settings?.apiKeyOverride ?? null,
       },
       signal: controller.signal,
       onTextDelta: (delta) => {
@@ -333,8 +337,10 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
       // 运行设置里的尺寸/宽高比按次透传（后端覆盖配置默认值）
       if (runSettings?.imageSize) body.size = runSettings.imageSize;
       if (runSettings?.imageRatio) body.ratio = runSettings.imageRatio;
-      // 节点内手动选择的模型名（仅 LLM 模式生效；空 = 跟随节点配置的默认模型）
+      // 节点内手动选择的模型名 / Base URL / API Key（仅 LLM 模式生效；空 = 跟随节点配置）
       if (runSettings?.modelOverride) body.model_name = runSettings.modelOverride;
+      if (runSettings?.baseUrlOverride) body.base_url = runSettings.baseUrlOverride;
+      if (runSettings?.apiKeyOverride) body.api_key = runSettings.apiKeyOverride;
       const res: any = await api.post('/modules/bookplate/generate-image', body, {
         timeout: IMAGE_GENERATION_TIMEOUT_MS,
         signal: controller.signal,

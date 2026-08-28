@@ -101,8 +101,13 @@ export class LLMService {
           });
         },
       });
-      for await (const part of result.stream) {
-        if (part.type === 'text-delta') yield part.text;
+      for await (const part of result.fullStream) {
+        if (part.type === 'text-delta') {
+          const text = (part as { text?: string; textDelta?: string }).text ?? (part as { textDelta?: string }).textDelta ?? '';
+          if (text) yield text;
+        } else if (part.type === 'error') {
+          throw (part as { error: unknown }).error;
+        }
       }
     } catch (err) {
       throw new LLMGenerationError(`提示词生成失败: ${messageOf(err)}`, classifyAIError(err), err);

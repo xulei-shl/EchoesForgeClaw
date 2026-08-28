@@ -1,8 +1,9 @@
 import { generateImage } from 'ai';
 import type { ImageModelConfig } from '../types.js';
 import { IMAGE_REQUEST_TIMEOUT_MS } from '../types.js';
-import { createAIProvider, resolveBaseURL } from '../provider.js';
+import { createAIProvider, resolveBaseURL, resolveEnvProxy } from '../provider.js';
 import { ImageGenerationError, classifyAIError } from '../errors.js';
+import { fetchWithProxy } from '../../../services/http-proxy.js';
 
 /**
  * 图像生成（对应 Python `image_service.generate_image` 的底层 API 调用部分）。
@@ -153,15 +154,20 @@ async function generateImageEditBytes(
   if (config.size) body.size = config.size;
   if (config.ratio) body.ratio = config.ratio;
 
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${config.apiKey}`,
+  const proxy = resolveEnvProxy();
+  const resp = await fetchWithProxy(
+    url,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify(body),
+      signal,
     },
-    body: JSON.stringify(body),
-    signal,
-  });
+    proxy
+  );
 
   const text = (await resp.text()).trim();
   if (!resp.ok) {

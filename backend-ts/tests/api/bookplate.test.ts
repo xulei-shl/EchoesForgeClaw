@@ -397,6 +397,31 @@ describe('chat 端点', () => {
     expect(res.body).toContain('覆盖模型回答');
   });
 
+  it('LLM 模式：上游端点异常时流式返回错误信息', async () => {
+    const srv = await startMockOpenAIServer(() => ({
+      status: 500,
+      contentType: 'application/json',
+      raw: JSON.stringify({ error: { message: 'Upstream Model Error' } }),
+    }));
+    openServers.push(srv);
+    const configId = await seedNode({
+      nodeType: 'chat',
+      llmConfig: { baseUrl: srv.baseURL, modelName: 'mock-model' },
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/chat',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        messages: [{ role: 'user', content: '你好' }],
+        config_id: configId,
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain('"type":"error"');
+  });
+
   it('Agent 模式：mock FastClaw 流式（data-agent_* part）', async () => {
     const srv = await startMockOpenAIServer((req, send) => {
       expect(req.path).toBe('/api/chat/stream');
@@ -541,9 +566,10 @@ describe('llm-models 端点', () => {
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    expect(body.default_model).toBe('model-a');
-    expect(body.models[0]).toBe('model-a');
-    expect(body.models).toContain('model-b');
+    // 下拉框返回配置 name（而非 modelName），前端据此查找完整配置
+    expect(body.default_model).toBe('llm-chat');
+    expect(body.models[0]).toBe('llm-chat');
+    expect(body.models).toContain('llm-b');
   });
 
   it('text_generation 节点同样返回 admin 已配置模型列表', async () => {
@@ -570,8 +596,8 @@ describe('llm-models 端点', () => {
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    expect(body.default_model).toBe('m1');
-    expect(body.models).toContain('m2');
+    expect(body.default_model).toBe('llm-text_generation');
+    expect(body.models).toContain('llm-m2');
   });
 
   it('AI 文本生成节点也可选多模态类配置的模型（kind 过滤含 multimodal）', async () => {
@@ -598,8 +624,8 @@ describe('llm-models 端点', () => {
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    expect(body.default_model).toBe('pt-default');
-    expect(body.models).toContain('multi-model');
+    expect(body.default_model).toBe('llm-text_generation');
+    expect(body.models).toContain('llm-multi');
   });
 
   it('节点未绑定模型配置（Agent 模式）返回 400', async () => {
@@ -653,9 +679,9 @@ describe('llm-models 端点', () => {
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    expect(body.default_model).toBe('img-default');
-    expect(body.models).toContain('img-extra');
-    expect(body.models).not.toContain('txt-not-for-image');
+    expect(body.default_model).toBe('llm-image_generation');
+    expect(body.models).toContain('llm-img');
+    expect(body.models).not.toContain('llm-txt');
   });
 
   it('未启用配置的模型不进入候选列表', async () => {
@@ -682,8 +708,8 @@ describe('llm-models 端点', () => {
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    expect(body.default_model).toBe('active-model');
-    expect(body.models).not.toContain('ghost-model');
+    expect(body.default_model).toBe('llm-chat');
+    expect(body.models).not.toContain('llm-off');
   });
 });
 

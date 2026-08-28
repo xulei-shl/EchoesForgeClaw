@@ -22,6 +22,10 @@ export interface ChatRequest {
   workspace_id?: string | null;
   /** 节点内手动覆盖的模型名（仅 LLM 模式生效；空/缺省 = 跟随节点配置的默认模型） */
   model_name?: string | null;
+  /** 节点内手动覆盖的 Base URL（仅 LLM 模式生效；空/缺省 = 跟随节点配置的默认 Base URL） */
+  base_url?: string | null;
+  /** 节点内手动覆盖的 API Key（仅 LLM 模式生效；空/缺省 = 跟随节点配置的默认 API Key） */
+  api_key?: string | null;
   /** 节点内手动选择的 FastClaw Agent 配置 id（仅 Agent 模式生效；空/缺省 = 跟随节点配置） */
   agent_config_id?: number | null;
   /**
@@ -40,6 +44,10 @@ export interface AnalyzeImageRequest {
   node_id?: string | null;
   /** 节点内手动覆盖的模型名（仅 LLM 模式生效；空/缺省 = 跟随节点配置的默认模型） */
   model_name?: string | null;
+  /** 节点内手动覆盖的 Base URL（仅 LLM 模式生效；空/缺省 = 跟随节点配置的默认 Base URL） */
+  base_url?: string | null;
+  /** 节点内手动覆盖的 API Key（仅 LLM 模式生效；空/缺省 = 跟随节点配置的默认 API Key） */
+  api_key?: string | null;
 }
 
 export interface PromptRequest {
@@ -50,6 +58,10 @@ export interface PromptRequest {
   node_id?: string | null;
   /** 节点内手动覆盖的模型名（仅 LLM 模式生效；空/缺省 = 跟随节点配置的默认模型） */
   model_name?: string | null;
+  /** 节点内手动覆盖的 Base URL（仅 LLM 模式生效；空/缺省 = 跟随节点配置的默认 Base URL） */
+  base_url?: string | null;
+  /** 节点内手动覆盖的 API Key（仅 LLM 模式生效；空/缺省 = 跟随节点配置的默认 API Key） */
+  api_key?: string | null;
 }
 
 export interface ImageGenRequest {
@@ -61,6 +73,10 @@ export interface ImageGenRequest {
   node_id?: string | null;
   /** 节点内手动覆盖的模型名（仅 LLM 模式生效；空/缺省 = 跟随节点配置的默认模型） */
   model_name?: string | null;
+  /** 节点内手动覆盖的 Base URL（仅 LLM 模式生效；空/缺省 = 跟随节点配置的默认 Base URL） */
+  base_url?: string | null;
+  /** 节点内手动覆盖的 API Key（仅 LLM 模式生效；空/缺省 = 跟随节点配置的默认 API Key） */
+  api_key?: string | null;
 }
 
 // ---------------------------------------------------------------------------

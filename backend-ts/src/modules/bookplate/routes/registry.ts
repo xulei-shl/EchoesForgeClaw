@@ -8,6 +8,7 @@ import {
   findFastClawAgentConfigById,
   listActiveFastClawAgents,
   listActiveLLMConfigModelNames,
+  listActiveLLMConfigOptions,
   listActiveNodeConfigs,
 } from '../../../repositories/index.js';
 import { llmKindsForNodeType } from '../helpers.js';
@@ -62,13 +63,15 @@ export async function register(app: FastifyInstance): Promise<void> {
         return reply.code(400).send({ detail: '模型配置不可用（未启用或缺少 API Key）' });
       }
 
-      // 候选列表 = admin 启用配置中、与节点类型匹配 kind 的模型名（去重，默认模型恒在首位）；
-      // 覆盖仅改 model_name，保留节点自身配置的 apiKey / base_url，故不跨服务商拉全量模型
-      const defaultModel = llm.modelName || '';
-      const models = [
-        ...new Set([defaultModel, ...listActiveLLMConfigModelNames(db, llmKindsForNodeType(nc.nodeType))]),
-      ].filter(Boolean);
-      return { default_model: defaultModel, models };
+      // 候选列表 = admin 启用配置中、与节点类型匹配 kind 的配置名（去重，默认配置恒在首位）；
+      // 前端发送配置 name → 后端自动关联完整 model_name / base_url / apiKey
+      const defaultName = llm.name || '';
+      const options = listActiveLLMConfigOptions(db, llmKindsForNodeType(nc.nodeType));
+      const configs = [
+        { name: defaultName, model_name: llm.modelName || defaultName },
+        ...options.filter((o) => o.name !== defaultName).map((o) => ({ name: o.name, model_name: o.modelName })),
+      ];
+      return { default_model: defaultName, models: configs.map((c) => c.name) };
     }
   );
 

@@ -70,6 +70,22 @@ export function listActiveLLMConfigModelNames(db: DB, kinds?: string[]): string[
     .filter((n): n is string => typeof n === 'string' && n.trim() !== '');
 }
 
+/** 全部启用的 LLM 配置候选项（前端「模型」下拉列表数据源，含 name + modelName）。 */
+export function listActiveLLMConfigOptions(
+  db: DB,
+  kinds?: string[]
+): { name: string; modelName: string }[] {
+  const rows = db
+    .select({ name: llmConfigs.name, modelName: llmConfigs.modelName, kind: llmConfigs.kind })
+    .from(llmConfigs)
+    .where(eq(llmConfigs.isActive, true))
+    .all();
+  return rows
+    .filter((r) => !kinds?.length || (r.kind != null && kinds.includes(r.kind)))
+    .map((r) => ({ name: r.name, modelName: r.modelName ?? r.name }))
+    .filter((r) => r.name.trim() !== '');
+}
+
 /** PromptTemplate 行。 */
 export interface PromptTemplateRow {
   id: number;

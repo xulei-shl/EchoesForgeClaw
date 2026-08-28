@@ -5,8 +5,9 @@ import { APICallError } from '@ai-sdk/provider';
 import { getDb, type DB } from '../../config/database.js';
 import { llmConfigs, nodeConfigs, skillAgentConfigs } from '../../db/schema.js';
 import { now, toIso } from '../../shared/datetime.js';
-import { createAIProvider } from '../../infrastructure/ai/provider.js';
+import { createAIProvider, resolveEnvProxy } from '../../infrastructure/ai/provider.js';
 import { classifyAIError } from '../../infrastructure/ai/errors.js';
+import { fetchWithProxy } from '../../services/http-proxy.js';
 
 /**
  * 大模型配置管理（对应 Python `app/api/admin/llm_configs.py`）：
@@ -296,10 +297,15 @@ async function probeModels(baseUrl: string, apiKey: string): Promise<string> {
   const url = baseUrl ? `${baseUrl.replace(/\/+$/, '')}/models` : 'https://api.openai.com/v1/models';
   let resp: Response;
   try {
-    resp = await fetch(url, {
-      headers: { Authorization: `Bearer ${apiKey}` },
-      signal: AbortSignal.timeout(TEST_TIMEOUT_MS),
-    });
+    const proxy = resolveEnvProxy();
+    resp = await fetchWithProxy(
+      url,
+      {
+        headers: { Authorization: `Bearer ${apiKey}` },
+        signal: AbortSignal.timeout(TEST_TIMEOUT_MS),
+      },
+      proxy
+    );
   } catch (err) {
     throw new Error(`无法连接：网络不通或 Base URL 有误（${err instanceof Error ? err.name : '网络错误'}）`);
   }

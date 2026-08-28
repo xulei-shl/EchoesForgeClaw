@@ -75,10 +75,15 @@ export function classifyAIError(err: unknown): AICapabilityError['category'] {
     if (err.statusCode === 429) return 'rate_limit';
     if (err.statusCode === 400) return 'argument';
     if (err.statusCode === 404) return 'model';
+    // AI SDK 将 fetch 网络错误（ECONNRESET/ECONNREFUSED/超时等）包装为 APICallError（无 statusCode），
+    // 需先检测消息中的网络错误关键词，再回退到 'provider'
+    if (/ECONNRESET|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|other side closed|connect.*fail|fetch.*fail/i.test(err.message)) {
+      return 'network';
+    }
     return 'provider';
   }
   if (err instanceof RetryError) return 'network';
-  if (name === 'TypeError' && err instanceof Error && /fetch|network|connect/i.test(err.message)) {
+  if (err instanceof Error && /fetch|network|connect|ECONNRESET|ECONNREFUSED|ENOTFOUND|EAI_AGAIN/i.test(err.message)) {
     return 'network';
   }
   if (err instanceof Error && /invalid.*message|message.*invalid|role/i.test(err.message)) {
@@ -100,7 +105,7 @@ export function aiErrorMessage(err: unknown, fallback: string): string {
     case 'timeout':
       return `${fallback}: 请求超时`;
     case 'network':
-      return `${fallback}: 网络错误，请检查模型地址`;
+      return `${fallback}: 网络连接失败或被重置，请检查模型地址与网络代理（${raw}）`;
     case 'argument':
       return `${fallback}: 请求参数错误（${raw}）`;
     case 'model':

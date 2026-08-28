@@ -3,7 +3,7 @@ import type { TextModelConfig } from '../types.js';
 import { LLM_REQUEST_TIMEOUT_MS } from '../types.js';
 import { createAIProvider } from '../provider.js';
 import { toAIMessages } from '../messages.js';
-import { LLMGenerationError, classifyAIError } from '../errors.js';
+import { LLMGenerationError, aiErrorMessage, classifyAIError } from '../errors.js';
 import { logUsage, normalizeUsage } from '../usage.js';
 
 /**
@@ -69,23 +69,24 @@ export async function* chatStream(
       },
     });
 
-    for await (const part of result.stream) {
+    for await (const part of result.fullStream) {
       if (part.type === 'text-delta') {
-        yield { type: 'content', delta: part.text };
+        const text = (part as { text?: string; textDelta?: string }).text ?? (part as { textDelta?: string }).textDelta ?? '';
+        if (text) yield { type: 'content', delta: text };
       } else if (part.type === 'reasoning-delta') {
-        yield { type: 'reasoning', delta: part.text };
+        const text = (part as { text?: string; textDelta?: string }).text ?? (part as { textDelta?: string }).textDelta ?? '';
+        if (text) yield { type: 'reasoning', delta: text };
+      } else if (part.type === 'error') {
+        throw (part as { error: unknown }).error;
       }
       // 其余 part（finish / tool 等）本轮不使用：LLM 模式无工具
     }
   } catch (err) {
-    // AI SDK 错误 → 项目错误体系（LLMGenerationError），不泄漏 SDK 类型
+    // AI SDK 错误 → 项目错误体系（LLMGenerationError），不泄漏 SDK 类型；
+    // 消息经 aiErrorMessage 翻译（ECONNRESET/ECONNREFUSED 等网络错误给中文诊断）
     const category = classifyAIError(err);
-    throw new LLMGenerationError(`AI 对话失败: ${messageOf(err)}`, category, err);
+    throw new LLMGenerationError(aiErrorMessage(err, 'AI 对话失败'), category, err);
   }
-}
-
-function messageOf(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }
 
 /** 无 API Key 时的 Mock 流式回复（与 Python chat_stream Mock 分支逐字一致）。 */

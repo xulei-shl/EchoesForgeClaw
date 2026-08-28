@@ -338,6 +338,16 @@ export interface ChatNodeSettings {
    */
   modelOverride?: string;
   /**
+   * 节点内手动覆盖的 Base URL（LLM 模式生效；undefined = 跟随节点配置的 Base URL）。
+   * 用于运行时切换不同 LLM 服务端点。
+   */
+  baseUrlOverride?: string;
+  /**
+   * 节点内手动覆盖的 API Key（LLM 模式生效；undefined = 跟随节点配置的 API Key）。
+   * 用于运行时切换不同 LLM 服务的认证凭据。
+   */
+  apiKeyOverride?: string;
+  /**
    * 节点内手动选择的 FastClaw Agent 配置 id（全部启用 agent 列表，默认 = 节点配置绑定的 Agent）；
    * 仅 Agent 模式生效。undefined = 跟随节点配置。
    */
@@ -370,6 +380,16 @@ export interface NodeRunSettings {
    * 仅 LLM 模式生效。undefined = 跟随节点配置。
    */
   modelOverride?: string;
+  /**
+   * 节点内手动覆盖的 Base URL（LLM 模式生效；undefined = 跟随节点配置的 Base URL）。
+   * 用于运行时切换不同 LLM 服务端点。
+   */
+  baseUrlOverride?: string;
+  /**
+   * 节点内手动覆盖的 API Key（LLM 模式生效；undefined = 跟随节点配置的 API Key）。
+   * 用于运行时切换不同 LLM 服务的认证凭据。
+   */
+  apiKeyOverride?: string;
 }
 
 /** 节点模板（后端 node_types.py 定义，经 node-registry 下发） */

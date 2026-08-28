@@ -161,6 +161,12 @@ export function ChatNodeHost({
             // 节点内手动选择的模型名（仅 LLM 模式生效；空 = 跟随节点配置的默认模型）
             model_name:
               (cur?.data?.settings as ChatNodeSettings | undefined)?.modelOverride ?? null,
+            // 节点内手动覆盖的 Base URL（仅 LLM 模式生效；空 = 跟随节点配置的默认 Base URL）
+            base_url:
+              (cur?.data?.settings as ChatNodeSettings | undefined)?.baseUrlOverride ?? null,
+            // 节点内手动覆盖的 API Key（仅 LLM 模式生效；空 = 跟随节点配置的默认 API Key）
+            api_key:
+              (cur?.data?.settings as ChatNodeSettings | undefined)?.apiKeyOverride ?? null,
             // 节点内手动选择的 FastClaw Agent（仅 Agent 模式生效；空 = 跟随节点绑定的 Agent）
             agent_config_id:
               (cur?.data?.settings as ChatNodeSettings | undefined)?.agentOverride ?? null,
@@ -456,7 +462,8 @@ export function ChatNodeHost({
     mirroredWsRef.current = wsNow;
     lastMirroredRef.current = json;
     setMessages(storeToUI(storeMsgs));
-    if (status === 'error') clearError();
+    // 仅在主动清空会话（历史变空）时清理错误态，避免在失败轮次误清空错误横幅
+    if (!storeMsgs.length && status === 'error') clearError();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [node.data?.messages, node.data?.workspaceId, status, nodeId, setMessages, setNodes]);
 
@@ -476,6 +483,7 @@ export function ChatNodeHost({
       if (statusRef.current === 'submitted' || statusRef.current === 'streaming') return;
       const nodeNow = nodesRef.current.find((n) => n.id === nodeId);
       if (!nodeNow || nodeNow.type !== 'chat') return;
+      if (statusRef.current === 'error') clearError();
       // 重置本轮状态（agent 步骤 / 产物文件缓冲 / 错误横幅），标记 isGenerating: true
       pendingFilesRef.current.clear();
       setNodes((prev) =>

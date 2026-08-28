@@ -28,6 +28,29 @@ function resolveNodeConfig(configId: number | null, nodeType: string) {
   return nc;
 }
 
+/**
+ * 根据配置名查找匹配的 LLM 配置（前端「运行设置」切换模型时，
+ * 只传配置 name（如 "agnes-2.5-flash"），后端自动关联对应的 base_url / apiKey / model_name）。
+ * 优先精确匹配 name 字段，若无则按 modelName 字段精确匹配。
+ */
+export function lookupLLMConfigByName(nameOrModel: string): LLMConfigRow | undefined {
+  const db = getDb();
+  // 1. 精确匹配 name 字段（前端下拉框显示的是配置名）
+  const byName = db
+    .select()
+    .from(llmConfigs)
+    .where(and(eq(llmConfigs.isActive, true), eq(llmConfigs.name, nameOrModel)))
+    .get();
+  if (byName) return byName;
+  // 2. 精确匹配 modelName 字段（兼容旧前端直接传模型名的情况）
+  const byModel = db
+    .select()
+    .from(llmConfigs)
+    .where(and(eq(llmConfigs.isActive, true), eq(llmConfigs.modelName, nameOrModel)))
+    .get();
+  return byModel;
+}
+
 /** 从节点配置解析文本模型运行时配置（未绑定则 null，调用方回退环境变量）。 */
 export function textConfigFrom(configId: number | null, nodeType: string): TextModelConfig | null {
   const nc = resolveNodeConfig(configId, nodeType);

@@ -1,4 +1,5 @@
 import { createOpenAICompatible, type OpenAICompatibleProvider } from '@ai-sdk/openai-compatible';
+import { proxyDispatcher } from '../../services/http-proxy.js';
 
 /**
  * Provider 工厂（AI SDK 边界内，对应 Python 每次调用 `AsyncOpenAI(...)` 的构造）。
@@ -23,20 +24,41 @@ export function resolveBaseURL(base_url: string): string {
   return base_url.trim().replace(/\/+$/, '') || 'https://api.openai.com/v1';
 }
 
-/** 进程内 provider 实例缓存（key = baseURL + apiKey；baseURL 为空时不缓存）。 */
+/** 获取环境变量中的代理地址（大小写兼顾，空值表示直连）。 */
+export function resolveEnvProxy(): string {
+  return (
+    process.env.HTTPS_PROXY ||
+    process.env.HTTP_PROXY ||
+    process.env.ALL_PROXY ||
+    process.env.https_proxy ||
+    process.env.http_proxy ||
+    process.env.all_proxy ||
+    ''
+  ).trim();
+}
+
+/** 进程内 provider 实例缓存（key = baseURL + apiKey + proxy；baseURL 为空时不缓存）。 */
 const providerCache = new Map<string, OpenAICompatibleProvider>();
 
 /** 按配置创建（或复用）openai-compatible provider 实例。 */
 export function createAIProvider(cfg: ProviderConfig): OpenAICompatibleProvider {
   const baseURL = resolveBaseURL(cfg.base_url);
-  const cacheKey = `${baseURL}\u0000${cfg.apiKey}`;
+  const proxy = resolveEnvProxy();
+  const cacheKey = `${baseURL}\u0000${cfg.apiKey}\u0000${proxy}`;
   let provider = providerCache.get(cacheKey);
   if (!provider) {
+    const dispatcher = proxyDispatcher(proxy);
+    const customFetch = dispatcher
+      ? (url: string | URL | Request, init?: RequestInit) =>
+          fetch(url, { ...(init ?? {}), dispatcher } as RequestInit & { dispatcher?: unknown })
+      : undefined;
+
     provider = createOpenAICompatible({
       name: 'bookforge',
       apiKey: cfg.apiKey,
       baseURL,
       includeUsage: true,
+      ...(customFetch ? { fetch: customFetch } : {}),
     });
     providerCache.set(cacheKey, provider);
   }

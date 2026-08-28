@@ -16,6 +16,7 @@ import {
   agentConfigFrom,
   agentConfigFromWithOverride,
   skillAgentConfigFrom,
+  lookupLLMConfigByName,
 } from '../../../services/node-config-service.js';
 import {
   appendArtifactManifest,
@@ -48,6 +49,47 @@ import {
   type PromptRequest,
   type ImageGenRequest,
 } from '../helpers.js';
+
+/**
+ * 应用「运行设置」的模型覆盖逻辑：
+ * - 用户在前端切换模型时只发配置 name（如 "agnes-2.5-flash"）
+ * - 后端根据 name 查找匹配的 llm_config，自动补全 base_url / apiKey / model_name
+ * - 显式传入的 base_url / api_key 优先级最高（用户手动填写）
+ * - 三者皆空则原样返回 textConfig
+ */
+function applyModelOverride(
+  textConfig: { apiKey: string; base_url: string; model_name: string } | null,
+  payload: { model_name?: string | null; base_url?: string | null; api_key?: string | null }
+): typeof textConfig {
+  if (!textConfig && !payload.model_name && !payload.base_url && !payload.api_key) return null;
+  // 用户显式传了 base_url 或 api_key → 直接合并（最高优先级）
+  if (payload.base_url || payload.api_key) {
+    return {
+      ...(textConfig ?? { apiKey: '', base_url: '', model_name: '' }),
+      ...(payload.model_name ? { model_name: payload.model_name } : {}),
+      ...(payload.base_url ? { base_url: payload.base_url } : {}),
+      ...(payload.api_key ? { apiKey: payload.api_key } : {}),
+    };
+  }
+  // 仅传了 model_name（实际是配置 name）→ 查找匹配的 llm_config，用它的完整配置
+  if (payload.model_name) {
+    const matched = lookupLLMConfigByName(payload.model_name);
+    if (matched && matched.apiKey) {
+      return {
+        ...(textConfig ?? { apiKey: '', base_url: '', model_name: '' }),
+        model_name: matched.modelName || payload.model_name,
+        base_url: matched.baseUrl ?? textConfig?.base_url ?? '',
+        apiKey: matched.apiKey ?? textConfig?.apiKey ?? '',
+      };
+    }
+    // 未找到匹配配置 → 只覆盖模型名
+    return {
+      ...(textConfig ?? { apiKey: '', base_url: '', model_name: '' }),
+      model_name: payload.model_name,
+    };
+  }
+  return textConfig;
+}
 
 export async function register(app: FastifyInstance): Promise<void> {
   // ---- AI 对话节点：多轮对话流式 ----
@@ -202,11 +244,8 @@ export async function register(app: FastifyInstance): Promise<void> {
       // LLM 模式：AI SDK streamText → 归一化事件 → UI Message Stream
       async function* llmEvents(): AsyncGenerator<ChatStreamEvent, void, unknown> {
         try {
-          // 节点内手动选择的模型名覆盖默认模型（保留配置的 apiKey / base_url / 系统提示词）
-          const config =
-            payload.model_name && textConfig
-              ? { ...textConfig, model_name: payload.model_name }
-              : textConfig;
+          // 节点内手动选择的模型名 / Base URL / API Key 覆盖默认配置
+          const config = applyModelOverride(textConfig, payload);
           for await (const chunk of llmService.chatStream(
             payload.messages ?? [],
             config,
@@ -217,6 +256,10 @@ export async function register(app: FastifyInstance): Promise<void> {
               : { type: 'content_delta', delta: chunk.delta };
           }
         } catch (err) {
+          request.log.error(
+            { err, model: payload.model_name ?? textConfig?.model_name, nodeId: payload.node_id },
+            'LLM 对话流式执行失败'
+          );
           yield { type: 'error', message: err instanceof Error ? err.message : String(err) };
         }
       }
@@ -344,11 +387,8 @@ export async function register(app: FastifyInstance): Promise<void> {
       // LLM 模式：generateText 单结果 → 以单个 text 增量输出
       async function* llmEvents(): AsyncGenerator<ChatStreamEvent, void, unknown> {
         try {
-          // 节点内手动选择的模型名覆盖默认模型（保留配置的 apiKey / base_url / 系统提示词）
-          const config =
-            payload.model_name && visionConfig
-              ? { ...visionConfig, model_name: payload.model_name }
-              : visionConfig;
+          // 节点内手动选择的模型名 / Base URL / API Key 覆盖默认配置
+          const config = applyModelOverride(visionConfig, payload);
           const analysis = await llmService.analyzeCover(imageBytes, config, text);
           if (analysis) yield { type: 'content_delta', delta: analysis };
         } catch (err) {
@@ -396,11 +436,8 @@ export async function register(app: FastifyInstance): Promise<void> {
 
       async function* llmEvents(): AsyncGenerator<ChatStreamEvent, void, unknown> {
         try {
-          // 节点内手动选择的模型名覆盖默认模型（保留配置的 apiKey / base_url / 系统提示词）
-          const config =
-            payload.model_name && textConfig
-              ? { ...textConfig, model_name: payload.model_name }
-              : textConfig;
+          // 节点内手动选择的模型名 / Base URL / API Key 覆盖默认配置
+          const config = applyModelOverride(textConfig, payload);
           for await (const delta of llmService.generateTextStream(
             metadata,
             config,
@@ -488,8 +525,24 @@ export async function register(app: FastifyInstance): Promise<void> {
       imageConfig.size = payload.size || imageConfig.size;
       imageConfig.ratio = payload.ratio || imageConfig.ratio;
       imageConfig.image = payload.image?.length ? payload.image : imageConfig.image;
-      // 节点内手动选择的模型名覆盖默认模型（保留配置的 apiKey / base_url）
-      if (payload.model_name) imageConfig.model_name = payload.model_name;
+      // 节点内手动选择的模型名 / Base URL / API Key 覆盖默认配置
+      if (payload.model_name) {
+        // 仅传了 model_name（配置 name）时，自动查找匹配的 llm_config 补全完整配置
+        if (!payload.base_url && !payload.api_key) {
+          const matched = lookupLLMConfigByName(payload.model_name);
+          if (matched && matched.apiKey) {
+            imageConfig.model_name = matched.modelName || payload.model_name;
+            imageConfig.base_url = matched.baseUrl ?? imageConfig.base_url;
+            imageConfig.apiKey = matched.apiKey;
+          } else {
+            imageConfig.model_name = payload.model_name;
+          }
+        } else {
+          imageConfig.model_name = payload.model_name;
+        }
+      }
+      if (payload.base_url) imageConfig.base_url = payload.base_url;
+      if (payload.api_key) imageConfig.apiKey = payload.api_key;
       try {
         const result = await imageService.generateImage(prompt, imageConfig, request.authUser!.id);
         return result;
