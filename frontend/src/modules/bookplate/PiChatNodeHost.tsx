@@ -1,6 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useChat } from '@ai-sdk/react';
-import { DefaultChatTransport } from 'ai';
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { nodesRef, edgesRef } from '../../platform/stores/useCanvasState';
 import { ChatNode } from './components/ChatNode';
 import { getNodeTitle } from './nodeTypes';
@@ -10,13 +8,13 @@ import { handleAgentSseMessage } from './agentSteps';
 import { authHeaders, handleUnauthorized } from './authUtils';
 import { makeIdleTimeout } from './idleTimeout';
 import { PROMPT_SSE_IDLE_TIMEOUT_MS } from '../../platform/utils/timeouts';
-import {
-  attachContextToFirstUser,
-  attachSkillsToLastUser,
-  uiToStore,
-} from './chatMessages';
 import { mismatchBadgeOf, type NodeViewHelpers } from './CanvasNodeViews';
 import { mergeAgentFiles } from './workspaceFiles';
+import {
+  piStreamReducer,
+  INITIAL_PI_STREAM,
+  parseSseStream,
+} from './piStream';
 import {
   MAX_CHAT_IMAGES,
   DEFAULT_CHAT_SETTINGS,
@@ -38,10 +36,14 @@ import type { NodeData } from './graphTypes';
 /**
  * Skill Agent（pi）专用节点宿主：服务端会话为唯一真相源。
  *
- * 与 ChatNodeHost（LLM/FastClaw 共用）的本质差异：
+ * 与 ChatNodeHost（LLM/FastClaw 共用，走 AI SDK useChat）的本质差异：
  * - pi 会话持久化在服务端 `.pi-agent/run/chat.jsonl`，后端完全忽略前端回传历史；
  *   因此本宿主不做 useChat ↔ store 双向镜像，而是「挂载/收尾时从服务端水合」
- *   （GET /chat/session），useChat 仅作当轮一次性 live 缓冲，流结束后原子交换。
+ *   （GET /chat/session）。
+ * - 流式输出改为「原始 SSE + 纯 reducer」（piStream）：后端以 `data: ChatStreamEvent`
+ *   推流（stream.ts chatStreamToSseResponse），前端逐条归约出当轮 assistant 消息，
+ *   流结束后原子交换为服务端水合历史——借鉴 pi-web 的 streamReducer 设计，取代
+ *   此前 useChat 作一次性 live 缓冲 + 收尾重建实例的做法。
  * - 历史工具调用卡片 / 推理文本 / 内联图片由水合端点反向构建（含鉴权图片卡），
  *   刷新、重挂载后不再依赖 sessionStorage 快照——会话连续性问题的根治方案。
  * - 装配逻辑（AGENTS.md 软链 / skills 软链 / models.json / 会话路径）保持不变，
@@ -139,22 +141,6 @@ async function fetchWorkspaceFiles(ws: string): Promise<AgentFile[]> {
   return (data.files ?? []).filter((f) => f.exists !== false);
 }
 
-/** 剥离 live 段末尾的空气泡占位（零输出失败轮，服务端水合后自然消失，此处仅防闪烁）。 */
-function stripEmptyTail(msgs: ChatMessage[]): ChatMessage[] {
-  if (!msgs.length) return msgs;
-  const last = msgs[msgs.length - 1];
-  if (
-    last.role === 'assistant' &&
-    !last.content &&
-    !last.reasoning &&
-    !(last.agentSteps && last.agentSteps.length) &&
-    !(last.files && last.files.length)
-  ) {
-    return msgs.slice(0, -1);
-  }
-  return msgs;
-}
-
 // ---------------------------------------------------------------------------
 
 /**
@@ -181,6 +167,8 @@ export function PiChatNodeHost({
   const loadSeqRef = useRef(0);
   /** 收尾交换代际号（竞态保护：仅最后一轮流的水合结果允许落地） */
   const swapSeqRef = useRef(0);
+  /** 当轮运行代际号（竞态保护：新一轮 send / 工作区切换 / 卸载后，陈旧 SSE 事件与水合结果一律丢弃） */
+  const runSeqRef = useRef(0);
   /** 用户主动停止标记（停止后的收尾不自动续发排队消息） */
   const interruptedByUserRef = useRef(false);
   /** 当轮以错误收尾标记（错误后的收尾不自动续发排队消息） */
@@ -242,149 +230,11 @@ export function PiChatNodeHost({
     if (panelOpen) void loadPanel();
   }, [panelOpen, panelVersion, loadPanel]);
 
-  // ---------- useChat：仅作当轮 live 缓冲（不与 store 双向镜像） ----------
-  // runSeq 变化重建实例：收尾清空缓冲后，旧 id 的残留状态不会复活
-  const [runSeq, setRunSeq] = useState(0);
-  const chat = useChat({
-    id: `pi:${nodeId}:${runSeq}`,
-    transport: new DefaultChatTransport({
-      api: '/api/modules/bookplate/chat',
-      prepareSendMessagesRequest: async ({ messages, requestMetadata }) => {
-        const cur = nodesRef.current.find((n) => n.id === nodeId) ?? null;
-        const nodeSettings: ChatNodeSettings = cur?.data?.settings ?? DEFAULT_CHAT_SETTINGS;
-        const msgs = uiToStore(messages);
-        const lastUser = [...msgs].reverse().find((m) => m.role === 'user');
-        let text = lastUser?.content ?? '';
-
-        // 本轮装配的 Skill 名：随请求下发 + 挂到乐观 user 消息 metadata（气泡下方 chips）
-        const skillNames = cur ? collectSkillNames(cur) : [];
-        if (skillNames.length) {
-          setMessages((prev) => attachSkillsToLastUser(prev, skillNames));
-        }
-
-        // 首轮上下文注入：仅当本节点尚未发送过上下文时执行一次
-        // （contextSentRef 主动标记，避免水合失败后误判 freshSession 导致重复注入）
-        let contextImages: string[] = [];
-        let contextBlocksForMeta: InjectedContextBlock[] = [];
-        if (!contextSentRef.current && cur) {
-          contextBlocksForMeta = buildInjectedContextBlocks(
-            cur,
-          {
-            includeBook: nodeSettings.includeBook,
-            includeBookCover: isBookCoverEnabled(cur, nodesRef.current, edgesRef.current),
-            includeUpstreamText: nodeSettings.includeUpstream !== false,
-            includeUpstreamImages: nodeSettings.includeUpstreamImages !== false,
-            includeSkills: true,
-          },
-          nodesRef.current,
-          edgesRef.current,
-          portTypesRef.current
-        );
-          const context = buildChatContext(contextBlocksForMeta);
-          contextImages = await buildChatImagesFromBlocks(contextBlocksForMeta);
-          if (context) text = `${context}\n\n${text}`;
-          if (context || contextImages.length || contextBlocksForMeta.length) {
-            // 展示用：上下文块挂到乐观 user 消息 metadata（live 气泡下方折叠卡）
-            setMessages((prev) =>
-              attachContextToFirstUser(prev, '', contextImages, contextBlocksForMeta)
-            );
-          }
-          contextSentRef.current = true;
-        }
-
-        const turnImages = (
-          (requestMetadata as { bookplate?: { images?: string[] } } | undefined)?.bookplate
-            ?.images ?? []
-        ) as string[];
-        const agentImages = [...turnImages, ...contextImages].slice(0, MAX_CHAT_IMAGES);
-
-        // 节点工作区标识：首轮生成并持久化（Skill Agent 产物/文件跨轮保留）
-        let ws = typeof cur?.data?.workspaceId === 'string' ? cur.data.workspaceId : '';
-        if (!ws) {
-          ws = `${nodeId}_${Date.now()}`;
-        }
-        // 先写 ref，再异步持久化到节点 store；本轮收尾必须使用同一个工作区。
-        activeRequestWsRef.current = ws;
-        if (cur && cur.data?.workspaceId !== ws) {
-          setNodes((prev) =>
-            prev.map((n) =>
-              n.id === nodeId ? { ...n, data: { ...n.data, workspaceId: ws } } : n
-            )
-          );
-        }
-
-        return {
-          body: {
-            // pi 后端忽略前端历史；messages 留空以明确语义
-            messages: [],
-            message: text,
-            images: agentImages,
-            config_id: cur?.configId ?? null,
-            node_id: nodeId,
-            epoch: cur?.data?.epoch ?? 0,
-            skills: skillNames,
-            workspace_id: ws || null,
-            model_name: null,
-            agent_config_id: null,
-            // thinking 开关（on/off/空 = 跟随模型默认；后端映射 --thinking high/off）
-            thinking: nodeSettings.piThinking || null,
-          },
-          headers: authHeaders(),
-        };
-      },
-    }),
-    onData: (part) => {
-      const name = part.type.startsWith('data-') ? part.type.slice('data-'.length) : part.type;
-      if (!name.startsWith('agent_')) return;
-      // 收到任何 agent 事件即证明连接活跃，重置空闲计时（避免重试期间被误杀）
-      idleRef.current?.idle.reset();
-      if (name === 'agent_file') {
-        const file = (part.data ?? {}) as AgentFile;
-        if (file && typeof file.url === 'string' && file.url) {
-          pendingFilesRef.current.set(file.url, file);
-        }
-        return;
-      }
-      if (name === 'agent_retry') {
-        // 结构化自动重试：驱动倒计时横幅（成功恢复的 status 会随后覆盖步骤日志）
-        const d = (part.data ?? {}) as Partial<RetryNoticeState>;
-        if (typeof d.attempt === 'number' && typeof d.delaySec === 'number') {
-          setRetryNotice({
-            attempt: d.attempt,
-            maxAttempts: typeof d.maxAttempts === 'number' ? d.maxAttempts : 0,
-            delaySec: d.delaySec,
-            reason: typeof d.reason === 'string' ? d.reason : '上游请求失败',
-          });
-        }
-        return;
-      }
-      if (name === 'agent_status') {
-        // 自动重试成功恢复：立即撤下倒计时横幅（步骤日志仍保留该状态）
-        const msgText = (part.data as { message?: string } | null)?.message ?? '';
-        if (msgText.includes('已自动恢复')) setRetryNotice(null);
-      }
-      handleAgentSseMessage(setNodes, nodeId, name, JSON.stringify(part.data));
-    },
-    onFinish: () => {
-      idleRef.current?.idle.clear();
-      idleRef.current = null;
-      runErroredRef.current = false;
-      finishRunRef.current();
-    },
-    onError: (err) => {
-      const msg = err?.message ?? '';
-      if (msg.includes('401') || msg.includes('Unauthorized') || msg.includes('token')) {
-        handleUnauthorized();
-      }
-      idleRef.current?.idle.clear();
-      idleRef.current = null;
-      runErroredRef.current = true;
-      finishRunRef.current();
-    },
-  });
-  const { status, messages: uiMessages, error: chatError, setMessages } = chat;
-  const { sendMessage, stop: chatStop, clearError } = chat;
-  statusRef.current = status;
+  // ---------- 流式状态：原始 SSE + 纯 reducer（替代 useChat 一次性 live 缓冲） ----------
+  // streamState.content/reasoning 在流结束后仍保留至水合提交（dispatch end），
+  // 避免「实时已清、持久未到」的闪烁空档；isStreaming 驱动打字光标与 isGenerating。
+  const [streamState, dispatchStream] = useReducer(piStreamReducer, INITIAL_PI_STREAM);
+  const [settledSeq, setSettledSeq] = useState(0);
 
   /**
    * 水合消息清洗：剥离首条用户消息开头的注入上下文，只保留纯用户输入（上下文已在顶部折叠卡片展示）。
@@ -421,27 +271,28 @@ export function PiChatNodeHost({
   );
 
   /**
-   * 流结束收尾：重新从服务端水合并原子交换（同批更新水合历史 + 清空 live 缓冲，
+   * 流结束收尾：重新从服务端水合并原子交换（同批更新水合历史 + 复位 live 状态，
    * 消除「实时已清、持久未到」的闪烁空档；代际号防旧流覆盖新一轮）。
-   * 经 ref 间接调用（声明于 useChat 之后）。
+   * 经 ref 间接调用（供 SSE 消费循环的 finally 使用）。
    */
   const finishRunRef = useRef<() => void>(() => {});
   const finishRun = useCallback(() => {
     setRetryNotice(null);
     const seq = ++swapSeqRef.current;
+    const run = runSeqRef.current;
     const ws = activeRequestWsRef.current ?? wsIdRef.current;
     if (!ws) return;
     void fetchPiSessionMessages(ws)
       .then((rawMsgs) => {
-        if (seq !== swapSeqRef.current) return;
+        if (seq !== swapSeqRef.current || run !== runSeqRef.current) return;
         const msgs = sanitizeHydrated(rawMsgs);
         putSessionCache(ws, msgs);
         setSessionMsgs(msgs);
-        setMessages([]);
+        dispatchStream({ type: 'end' });
         pendingFilesRef.current.clear();
         optimisticUserRef.current = null;
         activeRequestWsRef.current = ws;
-        setRunSeq((v) => v + 1); // 丢弃旧 live 实例
+        setSettledSeq((v) => v + 1);
         setPanelVersion((v) => v + 1);
         if (panelOpenRef.current) void loadPanel();
         // 自然收尾（非用户停止/出错中断）才自动续发排队消息
@@ -451,7 +302,7 @@ export function PiChatNodeHost({
       .catch(() => {
         /* 水合失败：保留 live 展示（下次挂载/收尾再对齐服务端） */
       });
-  }, [loadPanel, setMessages, sanitizeHydrated]);
+  }, [loadPanel, sanitizeHydrated]);
   finishRunRef.current = finishRun;
 
   // ---------- 水合：挂载 / workspaceId 变化（清空对话再生）时拉取服务端会话 ----------
@@ -483,67 +334,60 @@ export function PiChatNodeHost({
       });
   }, [wsId, sanitizeHydrated]);
 
-  // workspaceId 变化（含清空对话再生）：清掉旧 live 缓冲、面板缓存与错误态
+  // workspaceId 变化（含清空对话再生）：作废旧轮（SSE/水合）、复位 live 状态与缓存
   useEffect(() => {
-    try {
-      setMessages([]);
-    } catch {
-      /* 实例已重建 */
-    }
+    runSeqRef.current += 1;
+    idleRef.current?.controller.abort();
+    dispatchStream({ type: 'end' });
     setPanelFiles(null);
     forcedErrorRef.current = null;
     pendingFilesRef.current.clear();
     activeRequestWsRef.current = wsId;
     contextSentRef.current = false;
     firstUserTextRef.current = null;
-  }, [wsId, setMessages]);
+    statusRef.current = 'ready';
+  }, [wsId]);
 
-  // 卸载清理：空闲计时器
+  // 卸载清理：作废在途请求（中止 SSE 读取与水合），清理空闲计时
   useEffect(
     () => () => {
+      runSeqRef.current += 1;
+      idleRef.current?.controller.abort();
       idleRef.current?.idle.clear();
     },
     []
   );
 
-  // ---------- 显示消息合成：水合历史 + 当轮 live 段 ----------
-  const isStreaming = status === 'submitted' || status === 'streaming';
+  // ---------- 显示消息合成：水合历史 + 当轮乐观用户消息 + 当轮 live assistant ----------
   // 乐观用户消息：记录当轮用户输入纯文本与图片（不含注入的上下文），
   // 在流式执行及水合完成前始终作为当轮用户消息稳定显示，确保思考期间气泡不消失。
   const optimisticUserRef = useRef<ChatMessage | null>(null);
   const nodeSteps: AgentStep[] = Array.isArray(node.data?.agentSteps) ? node.data.agentSteps : [];
   const bufFiles = pendingFilesRef.current.size ? [...pendingFilesRef.current.values()] : [];
 
-  const messages: ChatMessage[] = (() => {
-    const history = sessionMsgs ?? [];
-    const live = uiToStore(uiMessages);
-    const cleaned = stripEmptyTail(live);
-
-    // 提取当轮 live assistant 消息（思考过程、步骤、流式正文等）
-    const liveAssistants = cleaned.filter((m) => m.role === 'assistant');
-    const enrichedAssistants = liveAssistants.map((ast, idx) => {
-      const isLast = idx === liveAssistants.length - 1;
-      if (isStreaming && isLast) {
-        return {
-          ...ast,
-          streaming: true,
-          agentSteps: nodeSteps.length ? nodeSteps : ast.agentSteps,
-          ...(bufFiles.length
-            ? { files: mergeAgentFiles(ast.files, bufFiles) }
-            : {}),
-        };
-      }
-      return ast;
-    });
-
-    // 当轮用户消息：若存在乐观消息（流式中或收尾水合中），始终置于历史之后、当前回复之前
-    const currentTurnUser = optimisticUserRef.current;
-    if (currentTurnUser) {
-      return [...history, currentTurnUser, ...enrichedAssistants];
-    }
-
-    return [...history, ...enrichedAssistants];
+  // 当轮 live assistant：仅在「有当轮进行中（乐观用户存在或正在流式）且产生了输出」时展示，
+  // 流结束后 content/reasoning 保留至水合提交（消除收尾闪烁），水合完成即让位给历史。
+  const liveAssistant = (() => {
+    const inFlight = optimisticUserRef.current !== null || streamState.isStreaming;
+    if (!inFlight) return null;
+    const hasOutput =
+      streamState.content || streamState.reasoning || nodeSteps.length || bufFiles.length;
+    if (!hasOutput) return null;
+    return {
+      role: 'assistant' as const,
+      content: streamState.content,
+      ...(streamState.reasoning ? { reasoning: streamState.reasoning } : {}),
+      streaming: streamState.isStreaming,
+      ...(nodeSteps.length ? { agentSteps: nodeSteps } : {}),
+      ...(bufFiles.length ? { files: mergeAgentFiles(undefined, bufFiles) } : {}),
+    };
   })();
+
+  const messages: ChatMessage[] = [
+    ...(sessionMsgs ?? []),
+    ...(optimisticUserRef.current ? [optimisticUserRef.current] : []),
+    ...(liveAssistant ? [liveAssistant] : []),
+  ];
 
   // ---------- 单向镜像：显示消息 → 节点 store（下游 output 与画布持久化） ----------
   const lastMirroredRef = useRef<string>(
@@ -556,18 +400,17 @@ export function PiChatNodeHost({
     const json = JSON.stringify(messages);
     const nodeNow = nodesRef.current.find((n) => n.id === nodeId);
     const forced = forcedErrorRef.current;
-    const errMsg =
-      forced ?? (status === 'error' ? (chatError?.message ?? '对话失败，请重试') : null);
+    const errMsg = forced ?? streamState.error ?? null;
     const stateChanged =
       json !== lastMirroredRef.current ||
-      isStreaming !== !!nodeNow?.data?.isGenerating ||
+      streamState.isStreaming !== !!nodeNow?.data?.isGenerating ||
       errMsg !== (nodeNow?.data?.error ?? null);
     if (!stateChanged) return;
     lastMirroredRef.current = json;
     const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant');
     // 输出 = 最后一条有正文的助手回复（错误/中断/流式中不覆盖既有输出）
     const output =
-      isStreaming || errMsg || lastAssistant?.interrupted || !lastAssistant?.content
+      streamState.isStreaming || errMsg || lastAssistant?.interrupted || !lastAssistant?.content
         ? undefined
         : lastAssistant.content;
     setNodes((prev) =>
@@ -578,7 +421,7 @@ export function PiChatNodeHost({
               data: {
                 ...n.data,
                 messages,
-                isGenerating: isStreaming,
+                isGenerating: streamState.isStreaming,
                 error: errMsg,
                 ...(output !== undefined ? { output } : {}),
               },
@@ -586,9 +429,9 @@ export function PiChatNodeHost({
           : n
       )
     );
-    if (forced && !isStreaming) forcedErrorRef.current = null;
+    if (forced && !streamState.isStreaming) forcedErrorRef.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages, isStreaming, status]);
+  }, [messages, streamState.isStreaming, streamState.error]);
 
   // ---------- 对外操作 ----------
   const send = useCallback(
@@ -608,16 +451,19 @@ export function PiChatNodeHost({
       interruptedByUserRef.current = false;
       runErroredRef.current = false;
       pendingFilesRef.current.clear();
+      const run = ++runSeqRef.current;
+      statusRef.current = 'submitted';
       // 首轮：记录用户原始输入以便水合后还原展示（剥离注入的上下文前缀）
       if (!contextSentRef.current) {
         firstUserTextRef.current = text;
       }
-      // 立即记录用户消息；不等待 pi 的 prepare 请求、上下文构建或首个 SSE 事件。
+      // 立即记录用户消息；不等待上下文构建或首个 SSE 事件（确保思考期间气泡不消失）。
       optimisticUserRef.current = {
         role: 'user',
         content: text,
         ...(images?.length ? { images } : {}),
       };
+      dispatchStream({ type: 'start' });
       setNodes((prev) =>
         prev.map((n) =>
           n.id === nodeId
@@ -625,24 +471,213 @@ export function PiChatNodeHost({
             : n
         )
       );
-      const controller = new AbortController();
-      const idle = makeIdleTimeout(controller, PROMPT_SSE_IDLE_TIMEOUT_MS);
-      idle.arm();
-      idleRef.current = { idle, controller };
-      controller.signal.addEventListener('abort', () => {
-        if (idle.isTimedOut()) forcedErrorRef.current = '对话超时，请重试';
-        void chatStop();
-      });
-      void sendMessage({ text }, { metadata: { bookplate: { images } } });
+
+      void (async () => {
+        const cur = nodesRef.current.find((n) => n.id === nodeId) ?? null;
+        const nodeSettings: ChatNodeSettings = cur?.data?.settings ?? DEFAULT_CHAT_SETTINGS;
+        const skillNames = cur ? collectSkillNames(cur) : [];
+        // 本轮装配的 Skill 名挂到乐观 user 消息（气泡下方 chips）
+        if (skillNames.length && optimisticUserRef.current) {
+          optimisticUserRef.current = { ...optimisticUserRef.current, skills: skillNames };
+        }
+
+        // 首轮上下文注入：仅当本节点尚未发送过上下文时执行一次
+        // （contextSentRef 主动标记，避免水合失败后误判 freshSession 导致重复注入）
+        const contextBlocksForMeta: InjectedContextBlock[] = [];
+        let contextImages: string[] = [];
+        let wireText = text;
+        if (!contextSentRef.current && cur) {
+          contextBlocksForMeta.push(
+            ...buildInjectedContextBlocks(
+              cur,
+              {
+                includeBook: nodeSettings.includeBook,
+                includeBookCover: isBookCoverEnabled(cur, nodesRef.current, edgesRef.current),
+                includeUpstreamText: nodeSettings.includeUpstream !== false,
+                includeUpstreamImages: nodeSettings.includeUpstreamImages !== false,
+                includeSkills: true,
+              },
+              nodesRef.current,
+              edgesRef.current,
+              portTypesRef.current
+            )
+          );
+          const context = buildChatContext(contextBlocksForMeta);
+          contextImages = await buildChatImagesFromBlocks(contextBlocksForMeta);
+          if (context) wireText = `${context}\n\n${text}`;
+          if (contextBlocksForMeta.length && optimisticUserRef.current) {
+            optimisticUserRef.current = {
+              ...optimisticUserRef.current,
+              contextBlocks: contextBlocksForMeta,
+            };
+          }
+          contextSentRef.current = true;
+        }
+
+        const turnImages = [...(images ?? []), ...contextImages].slice(0, MAX_CHAT_IMAGES);
+
+        // 节点工作区标识：首轮生成并持久化（Skill Agent 产物/文件跨轮保留）
+        let ws = typeof cur?.data?.workspaceId === 'string' ? cur.data.workspaceId : '';
+        if (!ws) {
+          ws = `${nodeId}_${Date.now()}`;
+        }
+        // 先写 ref，再异步持久化到节点 store；本轮收尾必须使用同一个工作区。
+        activeRequestWsRef.current = ws;
+        if (cur && cur.data?.workspaceId !== ws) {
+          setNodes((prev) =>
+            prev.map((n) =>
+              n.id === nodeId ? { ...n, data: { ...n.data, workspaceId: ws } } : n
+            )
+          );
+        }
+
+        const controller = new AbortController();
+        const idle = makeIdleTimeout(controller, PROMPT_SSE_IDLE_TIMEOUT_MS);
+        idle.arm();
+        idleRef.current = { idle, controller };
+        controller.signal.addEventListener('abort', () => {
+          if (idle.isTimedOut() && run === runSeqRef.current) {
+            forcedErrorRef.current = '对话超时，请重试';
+          }
+        });
+
+        try {
+          const resp = await fetch('/api/modules/bookplate/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...authHeaders() },
+            signal: controller.signal,
+            body: JSON.stringify({
+              // pi 后端忽略前端历史；messages 留空以明确语义
+              messages: [],
+              message: wireText,
+              images: turnImages,
+              config_id: cur?.configId ?? null,
+              node_id: nodeId,
+              epoch: cur?.data?.epoch ?? 0,
+              skills: skillNames,
+              workspace_id: ws || null,
+              model_name: null,
+              agent_config_id: null,
+              // thinking 开关（on/off/空 = 跟随模型默认；后端映射 --thinking high/off）
+              thinking: nodeSettings.piThinking || null,
+            }),
+          });
+          if (run !== runSeqRef.current) return;
+          if (resp.status === 401) {
+            handleUnauthorized();
+            throw new Error('401');
+          }
+          if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`);
+          if (statusRef.current === 'submitted') statusRef.current = 'streaming';
+
+          for await (const evt of parseSseStream(resp.body)) {
+            if (run !== runSeqRef.current) return;
+            // 收到任何事件即证明连接活跃，重置空闲计时（避免重试期间被误杀）
+            idleRef.current?.idle.reset();
+            switch (evt.type) {
+              case 'content_delta':
+                if (evt.delta) dispatchStream({ type: 'content', delta: evt.delta });
+                break;
+              case 'reasoning_delta':
+                if (evt.delta) dispatchStream({ type: 'reasoning', delta: evt.delta });
+                break;
+              case 'agent_file': {
+                const f = evt.file;
+                if (f && typeof f.url === 'string' && f.url) {
+                  pendingFilesRef.current.set(f.url, f);
+                }
+                break;
+              }
+              case 'agent_retry':
+                // 结构化自动重试：驱动倒计时横幅（成功恢复的 status 会随后覆盖步骤日志）
+                if (typeof evt.attempt === 'number' && typeof evt.delaySec === 'number') {
+                  setRetryNotice({
+                    attempt: evt.attempt,
+                    maxAttempts: evt.maxAttempts ?? 0,
+                    delaySec: evt.delaySec,
+                    reason: evt.reason || '上游请求失败',
+                  });
+                }
+                break;
+              case 'status':
+                // 自动重试成功恢复：立即撤下倒计时横幅（步骤日志仍保留该状态）
+                if (evt.message.includes('已自动恢复')) setRetryNotice(null);
+                handleAgentSseMessage(
+                  setNodes,
+                  nodeId,
+                  'agent_status',
+                  JSON.stringify({ message: evt.message })
+                );
+                break;
+              case 'tool_call':
+                handleAgentSseMessage(
+                  setNodes,
+                  nodeId,
+                  'agent_tool_call',
+                  JSON.stringify({ id: evt.id, name: evt.name, arguments: evt.arguments })
+                );
+                break;
+              case 'tool_result':
+                handleAgentSseMessage(
+                  setNodes,
+                  nodeId,
+                  'agent_tool_result',
+                  JSON.stringify({ id: evt.id, name: evt.name, result: evt.result })
+                );
+                break;
+              case 'error':
+                statusRef.current = 'error';
+                runErroredRef.current = true;
+                dispatchStream({ type: 'error', message: evt.message || '对话失败，请重试' });
+                break;
+            }
+          }
+          // 正常结束（含用户停止：后端 abort 后收尾返回）：停流式标记，content/reasoning 保留至水合提交
+          if (statusRef.current !== 'error') {
+            statusRef.current = 'ready';
+            dispatchStream({ type: 'settle' });
+          }
+        } catch (err) {
+          if (run !== runSeqRef.current) return;
+          if (idle.isTimedOut()) {
+            // 空闲超时：forcedErrorRef 已在 abort 监听里置位
+            const timeoutMsg = forcedErrorRef.current || '对话超时，请重试';
+            if (!forcedErrorRef.current) forcedErrorRef.current = timeoutMsg;
+            runErroredRef.current = true;
+            statusRef.current = 'error';
+            dispatchStream({ type: 'error', message: timeoutMsg });
+          } else if (interruptedByUserRef.current) {
+            // 用户主动停止：不视为错误（后端已杀进程，水合展示 interrupted 消息）
+            statusRef.current = 'ready';
+            dispatchStream({ type: 'settle' });
+          } else {
+            const msg = err instanceof Error ? err.message : '对话失败，请重试';
+            if (msg.includes('401') || msg.includes('Unauthorized') || msg.includes('token')) {
+              handleUnauthorized();
+            }
+            runErroredRef.current = true;
+            statusRef.current = 'error';
+            dispatchStream({ type: 'error', message: msg });
+          }
+        } finally {
+          if (run === runSeqRef.current) {
+            idle.clear();
+            idleRef.current = null;
+            if (statusRef.current === 'submitted' || statusRef.current === 'streaming') {
+              statusRef.current = 'ready';
+            }
+            finishRunRef.current();
+          }
+        }
+      })();
     },
-    [nodeId, setNodes, chatStop, sendMessage]
+    [nodeId, setNodes, portTypesRef]
   );
   sendRef.current = send;
 
-  // 自动续发：上一轮自然收尾且队列非空时出队首条发送（effect 中调用最新 send 闭包）
+  // 自动续发：上一轮自然收尾（水合落地）且队列非空时出队首条发送（effect 中调用最新 send 闭包）
   useEffect(() => {
-    const streaming = status === 'submitted' || status === 'streaming';
-    if (streaming || !autoNextArmedRef.current) return;
+    if (streamState.isStreaming || !autoNextArmedRef.current) return;
     autoNextArmedRef.current = false;
     if (interruptedByUserRef.current || runErroredRef.current) return;
     const q = msgQueueRef.current;
@@ -650,14 +685,14 @@ export function PiChatNodeHost({
     const first = q[0]!;
     setMsgQueue((prev) => prev.filter((m) => m.id !== first.id));
     sendRef.current(first.text, first.images);
-  }, [status, msgQueue]);
+  }, [streamState.isStreaming, settledSeq, msgQueue]);
 
   const stop = useCallback(() => {
     if (statusRef.current !== 'submitted' && statusRef.current !== 'streaming') return;
     interruptedByUserRef.current = true;
     autoNextArmedRef.current = false;
-    void chatStop();
-  }, [chatStop]);
+    idleRef.current?.controller.abort();
+  }, []);
 
   /** 撤回排队消息 */
   const recallQueued = useCallback((qid: number) => {
@@ -679,7 +714,7 @@ export function PiChatNodeHost({
   /**
    * 重试：重发最后一条用户消息。首条消息的上下文已由 pi 后端持久化，
    * 重试它会发送无上下文的纯文本（contextSentRef 已置位），不符合预期——
-   * 该场景直接退出（横幅随 clearError 消失；用户可清空对话重新发送）。
+   * 该场景直接退出（错误态随 reset 消失；用户可清空对话重新发送）。
    * （messages 经 ref 读取：数组每次渲染重建，不进依赖数组）
    */
   const messagesRef = useRef(messages);
@@ -690,10 +725,14 @@ export function PiChatNodeHost({
     if (!lastUser) return;
     const firstHydrated = (sessionMsgsRef.current ?? []).find((m) => m.role === 'user');
     if (firstHydrated && lastUser.content === firstHydrated.content) {
-      clearError();
+      dispatchStream({ type: 'end' });
+      statusRef.current = 'ready';
       return;
     }
-    if (statusRef.current === 'error') clearError();
+    if (statusRef.current === 'error') {
+      dispatchStream({ type: 'end' });
+      statusRef.current = 'ready';
+    }
     setNodes((prev) =>
       prev.map((n) =>
         n.id === nodeId
@@ -701,8 +740,8 @@ export function PiChatNodeHost({
           : n
       )
     );
-    void sendMessage({ text: lastUser.content });
-  }, [nodeId, setNodes, sendMessage, clearError]);
+    sendRef.current(lastUser.content);
+  }, [nodeId, setNodes]);
 
   // ---------- 渲染 ----------
   const config = h.configOf(node);

@@ -139,6 +139,47 @@ export function chatStreamToResponse(
   return createUIMessageStreamResponse({ stream });
 }
 
+/**
+ * 把归一化事件流映射为原始 SSE（`data: <ChatStreamEvent JSON>\n\n`）。
+ *
+ * 仅 Skill Agent（pi）模式专用：前端以纯 reducer（piStream）消费，直接拿到
+ * content_delta / reasoning_delta / tool_call / agent_file 等细粒度事件，
+ * 不再经 AI SDK UI Message Stream 中转。LLM / FastClaw Agent 模式保持
+ * `chatStreamToResponse`（AI SDK UI Message Stream，useChat 原生消费）不变。
+ *
+ * 事件流内出现 error 事件即终止（与 chatStreamToResponse 的 error 语义一致，
+ * 后续产物差分事件不再投递）；生成器抛错时兜底发一条 error 事件后收尾。
+ */
+export function chatStreamToSseResponse(events: AsyncIterable<ChatStreamEvent>): Response {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        for await (const evt of events) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(evt)}\n\n`));
+          if (evt.type === 'error') break;
+        }
+      } catch (err) {
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({ type: 'error', message: aiErrorMessage(err, 'AI 对话失败') })}\n\n`
+          )
+        );
+      } finally {
+        controller.close();
+      }
+    },
+  });
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    },
+  });
+}
+
 /** 单轮回复消息 id（createUIMessageStream 会在 start chunk 注入其生成的 messageId）。 */
 const MESSAGE_ID = 'assistant';
 

@@ -3,46 +3,9 @@ import { createServer, type Server } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { rmSync } from 'node:fs';
-import { createUIMessageStream } from 'ai';
 
 import { preparePiWorkspace, runPiAgent } from '../../src/services/pi-agent-service.js';
-
-/** 与 stream.ts chatStreamToResponse 相同的映射（内联复制以隔离验证线协议）。 */
-function mapToUIStream(events: AsyncIterable<any>) {
-  let textStarted = false;
-  let reasoningStarted = false;
-  const MESSAGE_ID = 'assistant';
-  return createUIMessageStream({
-    execute: async ({ writer }) => {
-      for await (const evt of events) {
-        switch (evt.type) {
-          case 'content_delta':
-            if (evt.delta === '') break;
-            if (!textStarted) { writer.write({ type: 'text-start', id: MESSAGE_ID }); textStarted = true; }
-            writer.write({ type: 'text-delta', id: MESSAGE_ID, delta: evt.delta });
-            break;
-          case 'reasoning_delta':
-            if (evt.delta === '') break;
-            if (!reasoningStarted) { writer.write({ type: 'reasoning-start', id: MESSAGE_ID }); reasoningStarted = true; }
-            writer.write({ type: 'reasoning-delta', id: MESSAGE_ID, delta: evt.delta });
-            break;
-          case 'tool_call':
-            writer.write({ type: 'data-agent_tool_call', data: { id: evt.id, name: evt.name, arguments: evt.arguments }, transient: true });
-            break;
-          case 'tool_result':
-            writer.write({ type: 'data-agent_tool_result', data: { id: evt.id, name: evt.name, result: evt.result }, transient: true });
-            break;
-          case 'agent_file':
-            writer.write({ type: 'data-agent_file', data: evt.file, transient: true });
-            break;
-        }
-      }
-      if (textStarted) writer.write({ type: 'text-end', id: MESSAGE_ID });
-      if (reasoningStarted) writer.write({ type: 'reasoning-end', id: MESSAGE_ID });
-      writer.write({ type: 'finish', finishReason: 'stop' });
-    },
-  });
-}
+import { chatStreamToSseResponse, type ChatStreamEvent } from '../../src/modules/bookplate/stream.js';
 
 const PNG_B64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
@@ -109,7 +72,24 @@ const RUNTIME_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 
 const UID = 990004;
 const WS_ID = `pi-sse_${Date.now()}`;
 
-describe('runPiAgent → UI Message Stream 线协议（工具日志到达前端）', () => {
+/** 解析 chatStreamToSseResponse 产出的 `data: <JSON>` 行序列。 */
+function parseSse(body: string): ChatStreamEvent[] {
+  const events: ChatStreamEvent[] = [];
+  for (const line of body.split('\n')) {
+    const t = line.trim();
+    if (!t.startsWith('data:')) continue;
+    const payload = t.slice('data:'.length).trim();
+    if (!payload) continue;
+    try {
+      events.push(JSON.parse(payload) as ChatStreamEvent);
+    } catch {
+      /* 跨块截断行忽略（本测试关注类型序列） */
+    }
+  }
+  return events;
+}
+
+describe('runPiAgent → 原始 SSE 线协议（工具日志/产物事件到达前端）', () => {
   let mock: { server: Server; port: number };
 
   beforeEach(async () => {
@@ -123,7 +103,7 @@ describe('runPiAgent → UI Message Stream 线协议（工具日志到达前端�
   });
 
   it(
-    '绘图轮：SSE 线上出现 data-agent_tool_call / data-agent_tool_result / data-agent_file',
+    '绘图轮：SSE 线上出现 tool_call / tool_result / agent_file 事件',
     async () => {
       const prepared = preparePiWorkspace(UID, WS_ID, {
         agentId: 1,
@@ -132,7 +112,7 @@ describe('runPiAgent → UI Message Stream 线协议（工具日志到达前端�
         skillNames: [],
       });
 
-      async function* events() {
+      async function* events(): AsyncGenerator<ChatStreamEvent, void, unknown> {
         for await (const evt of runPiAgent({
           userId: UID,
           workspaceId: WS_ID,
@@ -146,31 +126,14 @@ describe('runPiAgent → UI Message Stream 线协议（工具日志到达前端�
         }
       }
 
-      const types: string[] = [];
-      const details: string[] = [];
-      for await (const raw of mapToUIStream(events()) as unknown as AsyncIterable<unknown>) {
-        // createUIMessageStream 产出 chunk 对象；SSE 序列化由 JsonToSseTransformStream 完成，这里等价复现
-        const text = `data: ${JSON.stringify(raw)}\n\n`;
-        for (const line of text.split('\n')) {
-          const t = line.trim();
-          if (!t.startsWith('data:')) continue;
-          const payload = t.slice(5).trim();
-          if (!payload || payload === '[DONE]') continue;
-          try {
-            const obj = JSON.parse(payload);
-            types.push(obj.type);
-            if (obj.type.startsWith('data-')) details.push(`${obj.type} transient=${!!obj.transient}`);
-          } catch {
-            /* 跨块截断行忽略（本测试关注类型序列） */
-          }
-        }
-      }
+      const resp = chatStreamToSseResponse(events());
+      const body = await resp.text();
+      const parsed = parseSse(body);
 
-      console.log('线上 chunk 序列:', types.join(' → '));
-      console.log('data parts:', details.join(' | '));
-      expect(types).toContain('data-agent_tool_call');
-      expect(types).toContain('data-agent_tool_result');
-      expect(types).toContain('data-agent_file');
+      console.log('线上事件序列:', parsed.map((e) => e.type).join(' → '));
+      expect(parsed.some((e) => e.type === 'tool_call')).toBe(true);
+      expect(parsed.some((e) => e.type === 'tool_result')).toBe(true);
+      expect(parsed.some((e) => e.type === 'agent_file')).toBe(true);
     },
     120_000
   );

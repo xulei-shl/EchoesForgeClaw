@@ -30,7 +30,7 @@ import {
 import { hydratePiSession, readSessionImageBlock } from '../../../services/pi-session-hydrate.js';
 import { nodeWorkspace, sanitizeWorkspaceId } from '../../../services/skill-agent-service.js';
 import { fastclawDataRoot, harvestFastclawArtifacts } from '../../../services/fastclaw-artifacts.js';
-import { chatStreamToResponse, type ChatStreamEvent } from '../stream.js';
+import { chatStreamToResponse, chatStreamToSseResponse, type ChatStreamEvent } from '../stream.js';
 import { NODE_TYPES } from '../node-types.js';
 import { ImageGenerationError } from '../../../infrastructure/ai/errors.js';
 import type { ImageModelConfig } from '../../../infrastructure/ai/types.js';
@@ -162,7 +162,8 @@ export async function register(app: FastifyInstance): Promise<void> {
             yield { type: 'error', message: err instanceof Error ? err.message : String(err) };
           }
         }
-        return reply.send(chatStreamToResponse(skillAgentEvents()));
+        // Skill Agent（pi）专用：原始 SSE（data: ChatStreamEvent JSON），前端 piStream reducer 消费
+        return reply.send(chatStreamToSseResponse(skillAgentEvents()));
       }
 
       const agentConfig: FastClawRuntimeConfig | null = agentConfigFromWithOverride(
