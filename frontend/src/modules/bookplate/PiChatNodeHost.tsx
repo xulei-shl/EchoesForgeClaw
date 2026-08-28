@@ -188,6 +188,10 @@ export function PiChatNodeHost({
   const autoNextArmedRef = useRef(false);
   /** send 的最新闭包（自动续发 effect 经 ref 调用，避免陈旧闭包） */
   const sendRef = useRef<(text: string, images?: string[]) => void>(() => {});
+  /** 首轮上下文已发送标记（首轮注入后置位；清空对话/workspaceId 变化时复位） */
+  const contextSentRef = useRef(false);
+  /** 首轮用户原始输入（不含注入上下文），水合后用于还原首条 user 消息展示 */
+  const firstUserTextRef = useRef<string | null>(null);
 
   // ---------- 服务端会话状态 ----------
   const wsId =
@@ -257,12 +261,11 @@ export function PiChatNodeHost({
           setMessages((prev) => attachSkillsToLastUser(prev, skillNames));
         }
 
-        // 首轮上下文注入：仅当服务端会话尚无任何用户消息时执行一次
-        // （水合后的首条 user 消息天然携带上下文全文，无需 hasContextInStore 判定）
-        const freshSession = !(sessionMsgsRef.current ?? []).some((m) => m.role === 'user');
+        // 首轮上下文注入：仅当本节点尚未发送过上下文时执行一次
+        // （contextSentRef 主动标记，避免水合失败后误判 freshSession 导致重复注入）
         let contextImages: string[] = [];
         let contextBlocksForMeta: InjectedContextBlock[] = [];
-        if (freshSession && cur) {
+        if (!contextSentRef.current && cur) {
           contextBlocksForMeta = buildInjectedContextBlocks(
             cur,
           {
@@ -285,6 +288,7 @@ export function PiChatNodeHost({
               attachContextToFirstUser(prev, '', contextImages, contextBlocksForMeta)
             );
           }
+          contextSentRef.current = true;
         }
 
         const turnImages = (
@@ -331,6 +335,8 @@ export function PiChatNodeHost({
     onData: (part) => {
       const name = part.type.startsWith('data-') ? part.type.slice('data-'.length) : part.type;
       if (!name.startsWith('agent_')) return;
+      // 收到任何 agent 事件即证明连接活跃，重置空闲计时（避免重试期间被误杀）
+      idleRef.current?.idle.reset();
       if (name === 'agent_file') {
         const file = (part.data ?? {}) as AgentFile;
         if (file && typeof file.url === 'string' && file.url) {
@@ -393,6 +399,15 @@ export function PiChatNodeHost({
     void fetchPiSessionMessages(ws)
       .then((msgs) => {
         if (seq !== swapSeqRef.current) return;
+        // 还原首条 user 消息展示：剥离注入的上下文前缀，只在气泡中显示用户原始输入
+        // （上下文已由 contextBlocks 折叠卡独立渲染，不必重复展示在消息正文中）
+        const originalText = firstUserTextRef.current;
+        if (originalText && msgs.length > 0) {
+          const firstUser = msgs.find(m => m.role === 'user');
+          if (firstUser && firstUser.content !== originalText && firstUser.content.endsWith(originalText)) {
+            firstUser.content = originalText;
+          }
+        }
         putSessionCache(ws, msgs);
         setSessionMsgs(msgs);
         setMessages([]);
@@ -421,6 +436,8 @@ export function PiChatNodeHost({
     const cached = cachedSessionOf(wsId);
     if (cached) {
       setSessionMsgs(cached);
+      // 已有 user 消息说明上下文已发送过
+      if (cached.some(m => m.role === 'user')) contextSentRef.current = true;
       return;
     }
     const seq = ++loadSeqRef.current;
@@ -430,6 +447,8 @@ export function PiChatNodeHost({
         if (seq !== loadSeqRef.current) return;
         putSessionCache(wsId, msgs);
         setSessionMsgs(msgs);
+        // 已有 user 消息说明上下文已发送过
+        if (msgs.some(m => m.role === 'user')) contextSentRef.current = true;
       })
       .catch(() => {
         if (seq === loadSeqRef.current) setSessionMsgs([]);
@@ -447,6 +466,8 @@ export function PiChatNodeHost({
     forcedErrorRef.current = null;
     pendingFilesRef.current.clear();
     activeRequestWsRef.current = wsId;
+    contextSentRef.current = false;
+    firstUserTextRef.current = null;
   }, [wsId, setMessages]);
 
   // 卸载清理：空闲计时器
@@ -484,7 +505,9 @@ export function PiChatNodeHost({
   })();
   const messages: ChatMessage[] = [
     ...(sessionMsgs ?? []),
-    ...(!liveSegment.length && optimisticUserRef.current && isStreaming
+    // optimisticUserRef 在水合完成前始终展示（不依赖 isStreaming），
+    // 避免流结束→水合完成之间的空白闪烁；水合成功后在 finishRun 中清除。
+    ...(!liveSegment.length && optimisticUserRef.current
       ? [optimisticUserRef.current]
       : []),
     ...liveSegment,
@@ -553,6 +576,10 @@ export function PiChatNodeHost({
       interruptedByUserRef.current = false;
       runErroredRef.current = false;
       pendingFilesRef.current.clear();
+      // 首轮：记录用户原始输入以便水合后还原展示（剥离注入的上下文前缀）
+      if (!contextSentRef.current) {
+        firstUserTextRef.current = text;
+      }
       // 立即记录用户消息；不等待 pi 的 prepare 请求、上下文构建或首个 SSE 事件。
       optimisticUserRef.current = {
         role: 'user',
@@ -618,8 +645,9 @@ export function PiChatNodeHost({
   );
 
   /**
-   * 重试：重发最后一条用户消息。首条会话消息内联了注入上下文（服务端真相），
-   * 原样重发会向 pi 会话重复注入大块上下文——该场景直接退出（横幅随 clearError 消失）。
+   * 重试：重发最后一条用户消息。首条消息的上下文已由 pi 后端持久化，
+   * 重试它会发送无上下文的纯文本（contextSentRef 已置位），不符合预期——
+   * 该场景直接退出（横幅随 clearError 消失；用户可清空对话重新发送）。
    * （messages 经 ref 读取：数组每次渲染重建，不进依赖数组）
    */
   const messagesRef = useRef(messages);
