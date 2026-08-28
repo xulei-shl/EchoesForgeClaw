@@ -27,6 +27,7 @@ import {
   mimeOf,
   skillFileDownloadUrl,
 } from '../../../services/pi-agent-service.js';
+import { withWidgetBridge, createWidgetStore } from '../../../services/pi-widgets.js';
 import { hydratePiSession, readSessionImageBlock } from '../../../services/pi-session-hydrate.js';
 import { nodeWorkspace, sanitizeWorkspaceId } from '../../../services/skill-agent-service.js';
 import { fastclawDataRoot, harvestFastclawArtifacts } from '../../../services/fastclaw-artifacts.js';
@@ -144,18 +145,24 @@ export async function register(app: FastifyInstance): Promise<void> {
             };
           }
           try {
-            for await (const evt of runPiAgent({
-              userId: request.authUser!.id,
-              workspaceId,
-              ws: prepared.ws,
-              hasPrompt: prepared.hasPrompt,
-              chatModelName: saCfg.chat.modelName,
-              imageGenEnabled: !!saCfg.image,
-              message: payload.message ?? '',
-              images: payload.images?.length ? payload.images : undefined,
-              thinkingLevel: payload.thinking ?? null,
-              signal: requestAbortSignal(request),
-            })) {
+            // 包装事件流：tool_call/tool_result → 扩展 widget 事件（单一接缝，不改 runPiAgent / mapPiJsonEvent）
+            const widgetified = withWidgetBridge(
+              runPiAgent({
+                userId: request.authUser!.id,
+                workspaceId,
+                ws: prepared.ws,
+                hasPrompt: prepared.hasPrompt,
+                chatModelName: saCfg.chat.modelName,
+                imageGenEnabled: !!saCfg.image,
+                extensions: prepared.mountedExtensions,
+                message: payload.message ?? '',
+                images: payload.images?.length ? payload.images : undefined,
+                thinkingLevel: payload.thinking ?? null,
+                signal: requestAbortSignal(request),
+              }),
+              { ws: prepared.ws, store: createWidgetStore(prepared.ws) }
+            );
+            for await (const evt of widgetified) {
               yield evt;
             }
           } catch (err) {
@@ -289,8 +296,11 @@ export async function register(app: FastifyInstance): Promise<void> {
     { preHandler: app.authenticate },
     async (request) => {
       const q = (request.query ?? {}) as { workspace_id?: string };
-      const ws = nodeWorkspace(request.authUser!.id, sanitizeWorkspaceId(q.workspace_id ?? ''));
-      return hydratePiSession(ws, sanitizeWorkspaceId(q.workspace_id ?? ''));
+      const workspaceId = sanitizeWorkspaceId(q.workspace_id ?? '');
+      const ws = nodeWorkspace(request.authUser!.id, workspaceId);
+      // 扩展 widget 快照（per-workspace 真相源）随会话一并下发，前端 widget_set_all 对齐
+      const hydrated = hydratePiSession(ws, workspaceId);
+      return { ...hydrated, widgets: createWidgetStore(ws).snapshot() };
     }
   );
 

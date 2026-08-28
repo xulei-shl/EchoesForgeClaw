@@ -52,6 +52,15 @@ export type ChatStreamEvent =
     }
   | { type: 'agent_file'; file: AgentFilePayload }
   | { type: 'agent_image'; url: string }
+  /** 扩展 widget 更新（Skill Agent 模式；由 pi-widgets.ts 工具事件桥产出） */
+  | {
+      type: 'extension_widget';
+      key: string;
+      lines: string[];
+      placement?: 'aboveEditor' | 'belowEditor';
+    }
+  /** 扩展 widget 清空（空状态 / 清空聊天） */
+  | { type: 'extension_widget_clear'; key: string }
   | { type: 'error'; message: string };
 
 /** 把归一化事件流映射为 AI SDK UI Message Stream 的 Response。 */

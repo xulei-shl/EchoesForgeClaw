@@ -26,7 +26,22 @@ export type PiStreamEvent =
     }
   | { type: 'agent_file'; file: AgentFile }
   | { type: 'agent_image'; url: string }
+  | {
+      type: 'extension_widget';
+      key: string;
+      lines: string[];
+      placement?: 'aboveEditor' | 'belowEditor';
+    }
+  | { type: 'extension_widget_clear'; key: string }
   | { type: 'error'; message: string };
+
+/** 扩展 widget 展示项（服务端快照 / SSE 事件归约后的纯展示形态）。 */
+export interface ExtensionWidgetItem {
+  key: string;
+  lines: string[];
+  placement: 'aboveEditor' | 'belowEditor';
+  data?: Record<string, unknown>;
+}
 
 export interface PiStreamState {
   /** 当前是否有正在进行的运行（send 后置位；流结束/错误后清除） */
@@ -37,6 +52,8 @@ export interface PiStreamState {
   reasoning: string;
   /** 当轮错误信息（error 事件；展示后由水合提交 / 下一轮发送清除） */
   error: string | null;
+  /** 扩展 widget（服务端为真相源；跨轮保留，随水合 widget_set_all 对齐） */
+  widgets: ExtensionWidgetItem[];
 }
 
 export const INITIAL_PI_STREAM: PiStreamState = {
@@ -44,6 +61,7 @@ export const INITIAL_PI_STREAM: PiStreamState = {
   content: '',
   reasoning: '',
   error: null,
+  widgets: [],
 };
 
 export type PiStreamAction =
@@ -54,12 +72,24 @@ export type PiStreamAction =
   /** 流自然结束：保持 content/reasoning 供水合窗口内继续展示，仅停流式标记 */
   | { type: 'settle' }
   /** 水合提交 / 新轮开始 / 工作区切换：整体复位（含 error） */
-  | { type: 'end' };
+  | { type: 'end' }
+  /** 扩展 widget 更新 / 覆盖（同 key 幂等） */
+  | {
+      type: 'widget_update';
+      key: string;
+      lines: string[];
+      placement?: 'aboveEditor' | 'belowEditor';
+    }
+  /** 扩展 widget 清空 */
+  | { type: 'widget_clear'; key: string }
+  /** 水合快照对齐（服务端 per-workspace 快照全量覆盖） */
+  | { type: 'widget_set_all'; widgets: ExtensionWidgetItem[] };
 
 export function piStreamReducer(state: PiStreamState, action: PiStreamAction): PiStreamState {
   switch (action.type) {
     case 'start':
-      return { isStreaming: true, content: '', reasoning: '', error: null };
+      // 保留 widgets：跨轮/widget 来自服务端快照，新轮开始不清（服务端会在水合时对齐）
+      return { ...state, isStreaming: true, content: '', reasoning: '', error: null };
     case 'content':
       return { ...state, content: state.content + action.delta };
     case 'reasoning':
@@ -69,7 +99,34 @@ export function piStreamReducer(state: PiStreamState, action: PiStreamAction): P
     case 'settle':
       return { ...state, isStreaming: false };
     case 'end':
-      return INITIAL_PI_STREAM;
+      // ★不清空 widgets：content/reasoning 复位，widgets 交给服务端快照维护
+      return { ...INITIAL_PI_STREAM, widgets: state.widgets };
+    case 'widget_update': {
+      const idx = state.widgets.findIndex((w) => w.key === action.key);
+      const next: ExtensionWidgetItem = {
+        key: action.key,
+        lines: action.lines,
+        placement: action.placement ?? 'aboveEditor',
+      };
+      if (idx >= 0) {
+        const arr = [...state.widgets];
+        arr[idx] = next;
+        return { ...state, widgets: arr };
+      }
+      return { ...state, widgets: [...state.widgets, next] };
+    }
+    case 'widget_clear':
+      return { ...state, widgets: state.widgets.filter((w) => w.key !== action.key) };
+    case 'widget_set_all': {
+      const incoming = action.widgets.map((w) => ({
+        ...w,
+        placement: w.placement ?? 'aboveEditor' as const,
+      }));
+      const same =
+        incoming.length === state.widgets.length &&
+        incoming.every((w, i) => JSON.stringify(w) === JSON.stringify(state.widgets[i]));
+      return same ? state : { ...state, widgets: incoming };
+    }
     default:
       return state;
   }

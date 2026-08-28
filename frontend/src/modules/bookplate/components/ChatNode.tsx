@@ -13,6 +13,8 @@ import type { AgentFile, AgentStep, ChatMessage, ChatNodeSettings, InjectedConte
 import { ContextInjectionBlock } from './ContextInjectionBlock';
 import { AgentOverrideField } from './AgentOverrideField';
 import { ModelOverrideField } from './ModelOverrideField';
+import { ExtensionWidgets } from './ExtensionWidgets';
+import type { ExtensionWidgetItem } from '../piStream';
 import { NODE_COLORS } from '../nodeTypes';
 import { authHeaders } from '../authUtils';
 import {
@@ -605,6 +607,8 @@ export interface ChatNodeProps {
   retryNotice?: ChatRetryNotice | null;
   /** 排队消息（skill_agent 模式；不传 = 不启用排队） */
   messageQueue?: ChatMessageQueue | null;
+  /** 扩展 widget（skill_agent 模式；服务端快照 + SSE 归约，跨轮保留） */
+  widgets?: ExtensionWidgetItem[];
 }
 
 const ChatNodeInner: React.FC<ChatNodeProps> = ({
@@ -639,6 +643,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
   workspaceFiles,
   retryNotice,
   messageQueue,
+  widgets = [],
 }) => {
   const [draft, setDraft] = useState('');
   // 本轮待发送的图片附件（data URL），随消息发送后在气泡内展示
@@ -1044,6 +1049,13 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                 onSendNow={messageQueue.onSendNow}
               />
             ))}
+          </div>
+        )}
+
+        {/* 扩展 widget（单实例渲染，组件内部按 placement 分组；输入框上方展示） */}
+        {widgets.length > 0 && (
+          <div className="shrink-0 my-2 max-h-[40%] overflow-y-auto pr-0.5 custom-scrollbar">
+            <ExtensionWidgets widgets={widgets} />
           </div>
         )}
 

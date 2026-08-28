@@ -14,6 +14,7 @@ import {
   piStreamReducer,
   INITIAL_PI_STREAM,
   parseSseStream,
+  type ExtensionWidgetItem,
 } from './piStream';
 import {
   MAX_CHAT_IMAGES,
@@ -65,6 +66,12 @@ interface HydratedMessageDto {
   interrupted?: boolean;
 }
 
+/** GET /chat/session 返回体（消息 DTO + 扩展 widget 快照）。 */
+interface HydratedSessionDto {
+  messages?: HydratedMessageDto[];
+  widgets?: ExtensionWidgetItem[];
+}
+
 /** 排队消息（流式中发送不中断当前轮；当前轮结束后自动依次发出，借鉴 Proma followUp 队列） */
 interface QueuedMessage {
   id: number;
@@ -83,10 +90,10 @@ interface RetryNoticeState {
 const MAX_QUEUE = 10;
 
 const SESSION_CACHE_MAX = 8;
-/** 模块级 LRU：key = workspaceId（含节点创建时间戳，跨账号碰撞概率可忽略） */
-const sessionCache = new Map<string, ChatMessage[]>();
+/** 模块级 LRU：key = workspaceId（含节点创建时间戳，跨账号碰撞概率可忽略）；缓存消息 + widget 快照。 */
+const sessionCache = new Map<string, { messages: ChatMessage[]; widgets: ExtensionWidgetItem[] }>();
 
-function cachedSessionOf(ws: string): ChatMessage[] | null {
+function cachedSessionOf(ws: string): { messages: ChatMessage[]; widgets: ExtensionWidgetItem[] } | null {
   const hit = sessionCache.get(ws);
   if (hit) {
     sessionCache.delete(ws);
@@ -95,9 +102,12 @@ function cachedSessionOf(ws: string): ChatMessage[] | null {
   return hit ?? null;
 }
 
-function putSessionCache(ws: string, msgs: ChatMessage[]): void {
+function putSessionCache(
+  ws: string,
+  data: { messages: ChatMessage[]; widgets: ExtensionWidgetItem[] }
+): void {
   sessionCache.delete(ws);
-  sessionCache.set(ws, msgs);
+  sessionCache.set(ws, data);
   while (sessionCache.size > SESSION_CACHE_MAX) {
     const oldest = sessionCache.keys().next().value;
     if (oldest === undefined) break;
@@ -116,7 +126,7 @@ function dtoToChatMessage(m: HydratedMessageDto): ChatMessage {
   };
 }
 
-async function fetchPiSessionMessages(ws: string): Promise<ChatMessage[]> {
+async function fetchPiSession(ws: string): Promise<{ messages: ChatMessage[]; widgets: ExtensionWidgetItem[] }> {
   const resp = await fetch(
     `/api/modules/bookplate/chat/session?workspace_id=${encodeURIComponent(ws)}`,
     { headers: authHeaders() }
@@ -126,8 +136,17 @@ async function fetchPiSessionMessages(ws: string): Promise<ChatMessage[]> {
     throw new Error('401');
   }
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  const data = (await resp.json()) as { messages?: HydratedMessageDto[] };
-  return (data.messages ?? []).map(dtoToChatMessage);
+  const data = (await resp.json()) as HydratedSessionDto;
+  return {
+    messages: (data.messages ?? []).map(dtoToChatMessage),
+    // 只取前端需要的展示字段（剥离 updatedAt/toolCallId 等服务端溯源元数据）
+    widgets: (data.widgets ?? []).map((w) => ({
+      key: w.key,
+      lines: w.lines,
+      placement: w.placement ?? 'aboveEditor',
+      ...(w.data !== undefined ? { data: w.data } : {}),
+    })),
+  };
 }
 
 async function fetchWorkspaceFiles(ws: string): Promise<AgentFile[]> {
@@ -188,7 +207,7 @@ export function PiChatNodeHost({
       ? node.data.workspaceId
       : null;
   const [sessionMsgs, setSessionMsgs] = useState<ChatMessage[] | null>(() =>
-    wsId ? cachedSessionOf(wsId) : []
+    wsId ? (cachedSessionOf(wsId)?.messages ?? null) : []
   );
   const sessionMsgsRef = useRef(sessionMsgs);
   sessionMsgsRef.current = sessionMsgs;
@@ -282,13 +301,14 @@ export function PiChatNodeHost({
     const run = runSeqRef.current;
     const ws = activeRequestWsRef.current ?? wsIdRef.current;
     if (!ws) return;
-    void fetchPiSessionMessages(ws)
-      .then((rawMsgs) => {
+    void fetchPiSession(ws)
+      .then(({ messages: rawMsgs, widgets }) => {
         if (seq !== swapSeqRef.current || run !== runSeqRef.current) return;
         const msgs = sanitizeHydrated(rawMsgs);
-        putSessionCache(ws, msgs);
+        putSessionCache(ws, { messages: msgs, widgets });
         setSessionMsgs(msgs);
         dispatchStream({ type: 'end' });
+        dispatchStream({ type: 'widget_set_all', widgets });
         pendingFilesRef.current.clear();
         optimisticUserRef.current = null;
         activeRequestWsRef.current = ws;
@@ -305,40 +325,13 @@ export function PiChatNodeHost({
   }, [loadPanel, sanitizeHydrated]);
   finishRunRef.current = finishRun;
 
-  // ---------- 水合：挂载 / workspaceId 变化（清空对话再生）时拉取服务端会话 ----------
-  useEffect(() => {
-    if (!wsId) {
-      setSessionMsgs([]);
-      return;
-    }
-    const cached = cachedSessionOf(wsId);
-    if (cached) {
-      setSessionMsgs(cached);
-      // 已有 user 消息说明上下文已发送过
-      if (cached.some(m => m.role === 'user')) contextSentRef.current = true;
-      return;
-    }
-    const seq = ++loadSeqRef.current;
-    setSessionMsgs(null); // loading 态
-    void fetchPiSessionMessages(wsId)
-      .then((rawMsgs) => {
-        if (seq !== loadSeqRef.current) return;
-        const msgs = sanitizeHydrated(rawMsgs);
-        putSessionCache(wsId, msgs);
-        setSessionMsgs(msgs);
-        // 已有 user 消息说明上下文已发送过
-        if (msgs.some(m => m.role === 'user')) contextSentRef.current = true;
-      })
-      .catch(() => {
-        if (seq === loadSeqRef.current) setSessionMsgs([]);
-      });
-  }, [wsId, sanitizeHydrated]);
-
-  // workspaceId 变化（含清空对话再生）：作废旧轮（SSE/水合）、复位 live 状态与缓存
+  // workspaceId 变化（含清空对话再生）：作废旧轮（SSE/水合）、复位 live 状态与缓存。
+  // 必须在「水合拉取」effect 之前执行：先清空旧工作区的 widget/会话态，再装载新工作区数据。
   useEffect(() => {
     runSeqRef.current += 1;
     idleRef.current?.controller.abort();
     dispatchStream({ type: 'end' });
+    dispatchStream({ type: 'widget_set_all', widgets: [] });
     setPanelFiles(null);
     forcedErrorRef.current = null;
     pendingFilesRef.current.clear();
@@ -347,6 +340,37 @@ export function PiChatNodeHost({
     firstUserTextRef.current = null;
     statusRef.current = 'ready';
   }, [wsId]);
+
+  // ---------- 水合：挂载 / workspaceId 变化（清空对话再生）时拉取服务端会话 ----------
+  useEffect(() => {
+    if (!wsId) {
+      setSessionMsgs([]);
+      return;
+    }
+    const cached = cachedSessionOf(wsId);
+    if (cached) {
+      setSessionMsgs(cached.messages);
+      dispatchStream({ type: 'widget_set_all', widgets: cached.widgets });
+      // 已有 user 消息说明上下文已发送过
+      if (cached.messages.some(m => m.role === 'user')) contextSentRef.current = true;
+      return;
+    }
+    const seq = ++loadSeqRef.current;
+    setSessionMsgs(null); // loading 态
+    void fetchPiSession(wsId)
+      .then(({ messages: rawMsgs, widgets }) => {
+        if (seq !== loadSeqRef.current) return;
+        const msgs = sanitizeHydrated(rawMsgs);
+        putSessionCache(wsId, { messages: msgs, widgets });
+        setSessionMsgs(msgs);
+        dispatchStream({ type: 'widget_set_all', widgets });
+        // 已有 user 消息说明上下文已发送过
+        if (msgs.some(m => m.role === 'user')) contextSentRef.current = true;
+      })
+      .catch(() => {
+        if (seq === loadSeqRef.current) setSessionMsgs([]);
+      });
+  }, [wsId, sanitizeHydrated]);
 
   // 卸载清理：作废在途请求（中止 SSE 读取与水合），清理空闲计时
   useEffect(
@@ -625,6 +649,18 @@ export function PiChatNodeHost({
                   JSON.stringify({ id: evt.id, name: evt.name, result: evt.result })
                 );
                 break;
+              case 'extension_widget':
+                // 扩展 widget 更新（服务端快照的流式镜像；同 key 幂等覆盖）
+                dispatchStream({
+                  type: 'widget_update',
+                  key: evt.key,
+                  lines: evt.lines,
+                  placement: evt.placement,
+                });
+                break;
+              case 'extension_widget_clear':
+                dispatchStream({ type: 'widget_clear', key: evt.key });
+                break;
               case 'error':
                 statusRef.current = 'error';
                 runErroredRef.current = true;
@@ -806,6 +842,7 @@ export function PiChatNodeHost({
         onRecall: recallQueued,
         onSendNow: sendQueuedNow,
       }}
+      widgets={streamState.widgets}
     />
   );
 }

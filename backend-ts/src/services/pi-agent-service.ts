@@ -149,6 +149,58 @@ export function resolveImageGenExtension(): string | null {
 }
 
 // ---------------------------------------------------------------------------
+// 扩展包白名单装配（§4.3：管理员白名单 + 版本锁定 + 显式 -e 加载）
+// ---------------------------------------------------------------------------
+
+/**
+ * 扩展包白名单（逗号分隔的 npm 包名，如 "@juicesharp/rpiv-todo"）。
+ * 扩展 = 服务端代码执行（多租户最高风险），只允许管理员批准的包被装配；
+ * 用户技能（纯提示词/工具声明）继续走 skills 流程，二者互不混用。
+ * 版本锁定：升级 = 在依赖树中固定包版本（npm 安装/升级） + 回归验证。
+ */
+const EXTENSIONS_WHITELIST = (process.env.PI_EXTENSIONS ?? '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+export interface PiExtensionSpec {
+  /** 包名（如 "@juicesharp/rpiv-todo"）。 */
+  name: string;
+  /** 已安装包目录（backend-ts/node_modules 或仓库根 node_modules）。 */
+  dir: string;
+}
+
+/** 解析白名单内已安装的扩展包（未安装的静默跳过；返回按白名单顺序）。 */
+export function resolvePiExtensions(): PiExtensionSpec[] {
+  const specs: PiExtensionSpec[] = [];
+  for (const raw of EXTENSIONS_WHITELIST) {
+    const name = String(raw ?? '').trim();
+    if (!name) continue;
+    // 按 node_modules 布局展开 scoped 包名（@scope/pkg → @scope/pkg）
+    const segs = name.split('/').filter(Boolean);
+    const rel = path.join('node_modules', ...segs);
+    const dir = firstExisting([
+      path.join(BACKEND_ROOT, rel),
+      path.join(REPO_ROOT, rel),
+    ]);
+    if (dir) specs.push({ name, dir });
+  }
+  return specs;
+}
+
+/**
+ * 扩展在工作区 .pi-agent/extensions/ 下的扁平目录名：
+ * scoped 包展平为包名（@juicesharp/rpiv-todo → rpiv-todo），
+ * 避免嵌套目录（pi 自动发现仅一层，且显式 -e 解析 package.json 入口不依赖目录层级）。
+ */
+function extensionDirName(pkgName: string): string {
+  return pkgName
+    .replace(/^@[^/]+\//, '')
+    .replace(/[/\\]/g, '_')
+    .slice(0, 100);
+}
+
+// ---------------------------------------------------------------------------
 // 工作区装配
 // ---------------------------------------------------------------------------
 
@@ -190,6 +242,8 @@ export interface PreparedWorkspaceInfo {
   hasPrompt: boolean;
   mountedSkills: string[];
   skippedSkills: string[];
+  /** 白名单内已装配到 {ws}/.pi-agent/extensions/ 的扩展目录（runPiAgent 据此追加 -e）。 */
+  mountedExtensions: string[];
 }
 
 /** skill 名合法性（与 skill-agent-service 校验口径一致）：拒绝路径分隔符/相对跳转/控制字符。 */
@@ -278,6 +332,28 @@ export function preparePiWorkspace(
   mkdirSync(agentDir, { recursive: true });
   mkdirSync(path.join(ws, 'inputs'), { recursive: true });
 
+  // 3.5) 扩展包装配（白名单 + 显式 -e 加载；仅管理员批准的包）
+  const mountedExtensions: string[] = [];
+  const extRoot = path.join(agentDir, 'extensions');
+  rmSync(extRoot, { recursive: true, force: true });
+  const extSpecs = resolvePiExtensions();
+  if (extSpecs.length) {
+    mkdirSync(extRoot, { recursive: true });
+    for (const spec of extSpecs) {
+      const dest = path.join(extRoot, extensionDirName(spec.name));
+      try {
+        if (!statSync(spec.dir).isDirectory() || !existsSync(path.join(spec.dir, 'package.json'))) {
+          continue;
+        }
+      } catch {
+        continue;
+      }
+      // 复用 symlinkOrCopy（Bifrost 共享包 → 软链共享区；Windows 无权限时退化为复制）
+      symlinkOrCopy(spec.dir, dest);
+      mountedExtensions.push(dest);
+    }
+  }
+
   // 对话模型 → models.json（api 按配置选 openai-completions / anthropic-messages；与后端 LLM 服务同协议）
   const chatModelEntry: Record<string, unknown> = {
     id: opts.chatModel.modelName,
@@ -361,7 +437,7 @@ export function preparePiWorkspace(
   };
   writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
 
-  return { ws, hasPrompt: existsSync(realAgentsMd), mountedSkills, skippedSkills };
+  return { ws, hasPrompt: existsSync(realAgentsMd), mountedSkills, skippedSkills, mountedExtensions };
 }
 
 /**
@@ -384,6 +460,12 @@ export function clearPiSession(userId: number, workspaceId: string): boolean {
   const legacyRootSession = path.join(agentDir, 'chat.jsonl');
   if (existsSync(legacyRootSession)) {
     removePathSafe(legacyRootSession);
+    cleared = true;
+  }
+  // 扩展 widget 快照随会话一并清除（跨轮真相源，清空对话即清空）
+  const widgetsFile = path.join(agentDir, 'widgets.json');
+  if (existsSync(widgetsFile)) {
+    removePathSafe(widgetsFile);
     cleared = true;
   }
   return cleared;
@@ -620,6 +702,8 @@ export interface RunPiAgentOptions {
   imageGenEnabled: boolean;
   message: string;
   images?: string[];
+  /** 白名单扩展已装配目录（preparePiWorkspace.mountedExtensions；逐个追加 -e） */
+  extensions?: string[];
   /** thinking 开关（'on'='--thinking high'、'off'、遗留档位透传；空/非法 = 跟随 pi 默认） */
   thinkingLevel?: string | null;
   signal?: AbortSignal;
@@ -759,6 +843,10 @@ export async function* runPiAgent(opts: RunPiAgentOptions): AsyncGenerator<ChatS
   if (opts.imageGenEnabled) {
     const ext = resolveImageGenExtension();
     if (ext) args.push('-e', ext);
+  }
+  // 白名单扩展（显式 -e，与 pi-image-gen 并列；-e 可重复）
+  for (const extDir of opts.extensions ?? []) {
+    args.push('-e', extDir);
   }
   // thinking（节点设置 on/off/遗留档位 → pi CLI；非法值静默忽略 = pi 默认）
   args.push(...resolveThinkingArgs(opts.thinkingLevel));
