@@ -15,6 +15,8 @@ import {
   ChevronUp,
   SlidersHorizontal,
   Stamp,
+  Crosshair,
+  RotateCcw,
 } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
@@ -120,7 +122,9 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
   const depth = data.depth !== undefined ? data.depth : 68;
   const brightness = data.brightness !== undefined ? data.brightness : 72;
   const radius = data.radius !== undefined ? data.radius : 46;
-  const lightAngle = data.lightAngle !== undefined ? data.lightAngle : 135;
+  const lightAngle = data.lightAngle !== undefined ? data.lightAngle : 225;
+  const lightX = data.lightX ?? null;
+  const lightY = data.lightY ?? null;
   const withPerforation = data.withPerforation !== undefined ? data.withPerforation : true;
   const withMargin = data.withMargin !== undefined ? data.withMargin : true;
 
@@ -128,6 +132,18 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
   const [isExporting, setIsExporting] = useState(false);
   const [isEditing, setIsEditing] = useState<boolean>(!data?.imageUrl);
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
+
+  // 计算默认自然光照中心（依据 lightAngle 三角换算，225° 默认偏左上）
+  const defaultLightPos = useMemo(() => {
+    const rad = (lightAngle * Math.PI) / 180;
+    return {
+      x: Math.round(50 + Math.cos(rad) * 28),
+      y: Math.round(50 + Math.sin(rad) * 28),
+    };
+  }, [lightAngle]);
+
+  const activeLightX = lightX != null ? lightX : defaultLightPos.x;
+  const activeLightY = lightY != null ? lightY : defaultLightPos.y;
 
   // 3D 鼠标互动卡片 ref
   const cardContainerRef = useRef<HTMLDivElement>(null);
@@ -146,7 +162,7 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
     [id, onUpdateState]
   );
 
-  // 切换预设
+  // 切换预设（重置自定义定光，采用预设默认自然光）
   const handlePresetChange = useCallback(
     (nextPresetId: string) => {
       const preset = getEmbossFoilPreset(nextPresetId);
@@ -157,7 +173,9 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
         depth: preset.params.depth ?? 65,
         brightness: preset.params.brightness ?? 70,
         radius: preset.params.radius ?? 45,
-        lightAngle: preset.params.lightAngle ?? 135,
+        lightAngle: preset.params.lightAngle ?? 225,
+        lightX: null,
+        lightY: null,
         withPerforation: preset.params.withPerforation ?? true,
         withMargin: preset.params.withMargin ?? true,
       });
@@ -192,12 +210,37 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
   const handleCardMouseLeave = useCallback(() => {
     const el = cardElementRef.current;
     if (!el) return;
-    el.style.setProperty('--pointer-x', '50%');
-    el.style.setProperty('--pointer-y', '50%');
+    el.style.setProperty('--pointer-x', `${activeLightX}%`);
+    el.style.setProperty('--pointer-y', `${activeLightY}%`);
     el.style.setProperty('--rotate-x', '0deg');
     el.style.setProperty('--rotate-y', '0deg');
     el.style.setProperty('--shine-opacity', '0.75');
-  }, []);
+  }, [activeLightX, activeLightY]);
+
+  // 点击卡片直接锁定高光中心坐标（即点即落，所见即所得）
+  const handleCardClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const el = cardElementRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      const px = Math.round(Math.max(0, Math.min(100, (x / rect.width) * 100)));
+      const py = Math.round(Math.max(0, Math.min(100, (y / rect.height) * 100)));
+
+      patchState({ lightX: px, lightY: py });
+    },
+    [patchState]
+  );
+
+  // 清除自定义高光锁定，恢复自然光位
+  const handleResetLightPos = useCallback(() => {
+    patchState({ lightX: null, lightY: null });
+    showToast('已恢复默认自然光位', { type: 'success' });
+  }, [patchState, showToast]);
 
   // 执行 Canvas 高保真渲染烘焙
   const handleGenerate = useCallback(async () => {
@@ -214,6 +257,8 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
           brightness,
           radius,
           lightAngle,
+          lightX: lightX != null ? lightX : undefined,
+          lightY: lightY != null ? lightY : undefined,
           withPerforation,
           withMargin,
         },
@@ -228,6 +273,8 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
         brightness,
         radius,
         lightAngle,
+        lightX: lightX != null ? lightX : null,
+        lightY: lightY != null ? lightY : null,
         withPerforation,
         withMargin,
         imageUrl: dataUrl,
@@ -250,6 +297,8 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
     brightness,
     radius,
     lightAngle,
+    lightX,
+    lightY,
     withPerforation,
     withMargin,
     presetId,
@@ -271,6 +320,8 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
         brightness,
         radius,
         lightAngle,
+        lightX: lightX != null ? lightX : null,
+        lightY: lightY != null ? lightY : null,
         withPerforation,
         withMargin,
         uploadedImage: data.uploadedImage ?? null,
@@ -299,6 +350,8 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
     brightness,
     radius,
     lightAngle,
+    lightX,
+    lightY,
     withPerforation,
     withMargin,
     patchState,
@@ -375,17 +428,19 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
   // CSS 动态高光渐变规则（用于实时 3D 预览）
   const shimmerGradientCss = useMemo(() => {
     const alpha = (brightness / 100) * 0.9;
+    const posX = `var(--pointer-x, ${activeLightX}%)`;
+    const posY = `var(--pointer-y, ${activeLightY}%)`;
     switch (shimmerType) {
       case 'matte_silver':
-        return `radial-gradient(circle at var(--pointer-x, 50%) var(--pointer-y, 50%), rgba(255, 255, 255, ${alpha}) 0%, rgba(240, 245, 255, ${alpha * 0.7}) 20%, rgba(215, 225, 240, ${alpha * 0.3}) 45%, transparent 70%)`;
+        return `radial-gradient(circle at ${posX} ${posY}, rgba(255, 255, 255, ${alpha}) 0%, rgba(240, 245, 255, ${alpha * 0.7}) 20%, rgba(215, 225, 240, ${alpha * 0.3}) 45%, transparent 70%)`;
       case 'rainbow_foil':
-        return `radial-gradient(circle at var(--pointer-x, 50%) var(--pointer-y, 50%), rgba(255, 255, 255, ${alpha}) 0%, rgba(255, 220, 100, ${alpha * 0.85}) 18%, rgba(255, 120, 180, ${alpha * 0.75}) 35%, rgba(160, 100, 255, ${alpha * 0.65}) 52%, rgba(80, 220, 255, ${alpha * 0.45}) 70%, transparent 85%)`;
+        return `radial-gradient(circle at ${posX} ${posY}, rgba(255, 255, 255, ${alpha}) 0%, rgba(255, 220, 100, ${alpha * 0.85}) 18%, rgba(255, 120, 180, ${alpha * 0.75}) 35%, rgba(160, 100, 255, ${alpha * 0.65}) 52%, rgba(80, 220, 255, ${alpha * 0.45}) 70%, transparent 85%)`;
       case 'warm_gold':
-        return `radial-gradient(circle at var(--pointer-x, 50%) var(--pointer-y, 50%), rgba(255, 255, 235, ${alpha}) 0%, rgba(255, 220, 130, ${alpha * 0.85}) 22%, rgba(230, 175, 60, ${alpha * 0.45}) 50%, rgba(180, 120, 30, ${alpha * 0.12}) 75%, transparent 90%)`;
+        return `radial-gradient(circle at ${posX} ${posY}, rgba(255, 255, 235, ${alpha}) 0%, rgba(255, 220, 130, ${alpha * 0.85}) 22%, rgba(230, 175, 60, ${alpha * 0.45}) 50%, rgba(180, 120, 30, ${alpha * 0.12}) 75%, transparent 90%)`;
       case 'aurora_cyan':
-        return `radial-gradient(circle at var(--pointer-x, 50%) var(--pointer-y, 50%), rgba(240, 255, 255, ${alpha}) 0%, rgba(64, 224, 208, ${alpha * 0.8}) 25%, rgba(138, 43, 226, ${alpha * 0.45}) 55%, transparent 80%)`;
+        return `radial-gradient(circle at ${posX} ${posY}, rgba(240, 255, 255, ${alpha}) 0%, rgba(64, 224, 208, ${alpha * 0.8}) 25%, rgba(138, 43, 226, ${alpha * 0.45}) 55%, transparent 80%)`;
     }
-  }, [shimmerType, brightness]);
+  }, [shimmerType, brightness, activeLightX, activeLightY]);
 
   return (
     <CanvasNode
@@ -541,7 +596,7 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
         {!hasGenerated && (
           <div className="relative z-20 flex flex-col gap-1.5 p-2 rounded-xl bg-paper/95 border border-paper-grid/80 text-xs font-sans text-ink-light select-none shadow-2xs shrink-0">
             {/* 顶部预设切换行 + 打孔/留白快捷开关 + 折叠按钮 */}
-            <div className="flex items-center justify-between gap-1.5 pb-1 border-b border-paper-grid/40">
+            <div className="flex items-center justify-between gap-2 pb-1 border-b border-paper-grid/40">
               <div className="flex items-center gap-1.5 min-w-0 flex-1">
                 <Layers size={13} className="text-accent shrink-0" />
                 <span className="text-ink-faint text-[10px] shrink-0 font-medium">预设</span>
@@ -551,17 +606,17 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
                   disabled={isGenerating}
                   onChange={handlePresetChange}
                   options={presetOptions}
-                  className="w-36 shrink-0 text-xs"
+                  className="w-full min-w-[100px] max-w-[150px] text-xs"
                 />
               </div>
 
-              <div className="flex items-center gap-1 shrink-0">
+              <div className="flex items-center gap-1.5 shrink-0">
                 <button
                   type="button"
                   onClick={() => patchState({ withPerforation: !withPerforation })}
                   disabled={isGenerating}
                   title={withPerforation ? '已开启邮票齿孔' : '已关闭邮票齿孔'}
-                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition duration-150 ${
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition duration-150 ${
                     withPerforation
                       ? 'bg-accent/15 border-accent/40 text-accent font-medium'
                       : 'bg-paper-grid/20 border-paper-grid/50 text-ink-faint hover:bg-paper-grid/40'
@@ -576,7 +631,7 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
                   onClick={() => patchState({ withMargin: !withMargin })}
                   disabled={isGenerating}
                   title={withMargin ? '已开启纸面留白' : '已关闭纸面留白'}
-                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border transition duration-150 ${
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition duration-150 ${
                     withMargin
                       ? 'bg-accent/15 border-accent/40 text-accent font-medium'
                       : 'bg-paper-grid/20 border-paper-grid/50 text-ink-faint hover:bg-paper-grid/40'
@@ -718,6 +773,33 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
           ref={cardContainerRef}
           className="relative flex-1 min-h-0 w-full overflow-hidden rounded-xl bg-paper-grid/15 border border-paper-grid/50 flex items-center justify-center select-none"
         >
+          {/* 画布层悬浮定光状态微 HUD */}
+          {!hasGenerated && activeImageSrc && (
+            <div className="absolute top-2 left-2 z-20 pointer-events-auto">
+              {lightX != null && lightY != null ? (
+                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-paper/90 backdrop-blur-md border border-accent/40 text-[10px] text-accent font-medium shadow-xs">
+                  <Crosshair size={11} className="text-accent animate-pulse" />
+                  <span>光位: {lightX}%, {lightY}%</span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleResetLightPos();
+                    }}
+                    title="恢复默认自然光位"
+                    className="p-0.5 rounded-full hover:bg-accent/15 text-ink-faint hover:text-accent transition duration-150"
+                  >
+                    <RotateCcw size={10} />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-paper/70 backdrop-blur-xs border border-paper-grid/60 text-[10px] text-ink-faint pointer-events-none shadow-2xs">
+                  <Crosshair size={10} className="text-ink-faint/70" />
+                  <span>点击卡片锁定光位</span>
+                </div>
+              )}
+            </div>
+          )}
           <AnimatePresence mode="wait" initial={false}>
             {!hasGenerated ? (
               <motion.div
@@ -731,6 +813,7 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
                 {activeImageSrc ? (
                   <div
                     ref={cardElementRef}
+                    onClick={handleCardClick}
                     onMouseMove={handleCardMouseMove}
                     onMouseLeave={handleCardMouseLeave}
                     style={{
@@ -738,9 +821,10 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
                       transformStyle: 'preserve-3d',
                       transition: 'transform 0.08s ease-out',
                     }}
-                    className={`relative max-w-full max-h-full flex items-center justify-center rounded cursor-pointer group shadow-lg ${
+                    className={`relative max-w-full max-h-full flex items-center justify-center rounded cursor-crosshair group shadow-lg ${
                       withMargin ? 'p-3 bg-white' : 'bg-transparent'
                     }`}
+                    title="点击画面任意位置可直接锁定高光落点（所见即所得）"
                   >
                     {/* 1. 底层图片 */}
                     <img
@@ -778,6 +862,19 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
                     {/* 4. 邮票打孔锯齿边框视觉修饰 */}
                     {withPerforation && (
                       <div className="absolute inset-0 border-2 border-dashed border-black/25 pointer-events-none rounded-[2px]" />
+                    )}
+
+                    {/* 5. 自定义高光焦点指示器（点击定光后的微光瞄准圈） */}
+                    {lightX != null && lightY != null && (
+                      <div
+                        className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-none z-20 transition-all duration-150"
+                        style={{ left: `${lightX}%`, top: `${lightY}%` }}
+                      >
+                        <div className="relative flex items-center justify-center w-6 h-6">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent/40 opacity-75" />
+                          <span className="relative inline-flex rounded-full h-2 w-2 border-2 border-white bg-accent shadow-xs" />
+                        </div>
+                      </div>
                     )}
 
                     {/* 悬浮快捷生成按钮 */}

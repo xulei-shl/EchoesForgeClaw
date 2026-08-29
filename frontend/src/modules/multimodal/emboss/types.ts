@@ -64,6 +64,10 @@ export interface EmbossFoilState {
   radius: number;
   /** 光源角度 (0 ~ 360) */
   lightAngle: number;
+  /** 光斑中心归一化 X 坐标 (0 ~ 100)，为空时依据 lightAngle 自动计算 */
+  lightX?: number | null;
+  /** 光斑中心归一化 Y 坐标 (0 ~ 100)，为空时依据 lightAngle 自动计算 */
+  lightY?: number | null;
   /** 是否带齿孔 */
   withPerforation: boolean;
   /** 是否带白边 */

@@ -156,7 +156,7 @@ function drawFoilShimmerLayer(
   radiusPercent: number,
   lightXPercent?: number,
   lightYPercent?: number,
-  lightAngleDeg = 135
+  lightAngleDeg = 225
 ) {
   // 计算光斑中心物理坐标
   let cx = (width * (lightXPercent !== undefined ? lightXPercent : 50)) / 100;
