@@ -42,7 +42,7 @@ export function ExtensionDialog({ request, onAnswer }: ExtensionDialogProps): Re
               <div className="flex items-center gap-1.5 min-w-0">
                 <Sparkles size={13} className="shrink-0 text-accent" />
                 <span className="text-xs font-semibold font-sans text-accent truncate">
-                  {request.title || '模型提问'}
+                  {(request.title || '模型提问').split('\n')[0]}
                 </span>
               </div>
               <span className="shrink-0 px-2 py-0.5 rounded-full text-[10px] font-sans font-medium bg-accent/10 text-accent border border-accent/20">
@@ -213,6 +213,43 @@ function SelectBody({
   );
 }
 
+/** 解析 input 模式下可能由多选题降级带来的多行选项编号与提示 */
+function parseInputPrompt(rawTitle?: string, rawMessage?: string) {
+  const combined = [rawTitle, rawMessage].filter(Boolean).join('\n');
+  const lines = combined
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  if (lines.length <= 1) {
+    return {
+      questionText: rawMessage || rawTitle || '',
+      options: [] as { index: string; label: string }[],
+      instruction: '',
+    };
+  }
+
+  const questionText = lines[0] || '';
+  const options: { index: string; label: string }[] = [];
+  const instructions: string[] = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i]!;
+    const match = line.match(/^(\d+)[\.、\s]+(.+)$/);
+    if (match) {
+      options.push({ index: match[1]!, label: match[2]! });
+    } else {
+      instructions.push(line);
+    }
+  }
+
+  return {
+    questionText: options.length > 0 ? questionText : (rawMessage || rawTitle || ''),
+    options,
+    instruction: instructions.join(' '),
+  };
+}
+
 function InputBody({
   request,
   onAnswer,
@@ -222,6 +259,7 @@ function InputBody({
 }) {
   const [value, setValue] = useState(request.prefill ?? '');
   const inputRef = useRef<HTMLInputElement>(null);
+  const parsed = parseInputPrompt(request.title, request.message);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -232,13 +270,69 @@ function InputBody({
     if (v) onAnswer(request.id, { value: v });
   };
 
+  // 提取已选中的编号列表（支持逗号或空格分隔）
+  const selectedIndices = value
+    .split(/[,\s]+/)
+    .map((t) => t.replace(/[^\d]/g, '').trim())
+    .filter(Boolean);
+
+  const toggleOption = (index: string) => {
+    let next: string[];
+    if (selectedIndices.includes(index)) {
+      next = selectedIndices.filter((i) => i !== index);
+    } else {
+      next = [...selectedIndices, index].sort((a, b) => Number(a) - Number(b));
+    }
+    setValue(next.join(', '));
+  };
+
   return (
     <div className="space-y-2.5">
-      {request.message && (
+      {parsed.questionText && (
         <p className="text-xs font-sans text-ink leading-relaxed select-text">
-          {request.message}
+          {parsed.questionText}
         </p>
       )}
+
+      {/* 如果检测到多选题的选项列表，渲染可视化的可点选卡片 */}
+      {parsed.options.length > 0 && (
+        <div className="space-y-1.5 pt-0.5">
+          <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+            {parsed.options.map((opt) => {
+              const isSelected = selectedIndices.includes(opt.index);
+              return (
+                <button
+                  key={opt.index}
+                  type="button"
+                  onClick={() => toggleOption(opt.index)}
+                  className={`group flex items-start gap-2 rounded-lg border px-2.5 py-1.5 text-left text-xs font-sans transition-transform active:scale-[0.98] cursor-pointer ${
+                    isSelected
+                      ? 'border-accent bg-accent/10 text-accent font-medium shadow-2xs'
+                      : 'border-paper-grid bg-paper text-ink hover:border-accent/40 hover:bg-accent/5'
+                  }`}
+                >
+                  <span
+                    className={`inline-flex items-center justify-center w-4 h-4 rounded text-[10px] font-mono shrink-0 ${
+                      isSelected
+                        ? 'bg-accent text-white'
+                        : 'bg-paper-grid/40 text-ink-faint group-hover:text-accent'
+                    }`}
+                  >
+                    {isSelected ? '✓' : opt.index}
+                  </span>
+                  <span className="leading-snug break-words flex-1">{opt.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          {parsed.instruction && (
+            <p className="text-[11px] font-sans text-ink-faint leading-normal">
+              {parsed.instruction}
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="flex items-center gap-1.5">
         <input
           ref={inputRef}
@@ -253,7 +347,11 @@ function InputBody({
               onAnswer(request.id, { cancelled: true });
             }
           }}
-          placeholder={request.placeholder ?? '输入回答…'}
+          placeholder={
+            parsed.options.length > 0
+              ? '可直接点击上方选项，或输入编号如 "1, 2" / 自定义文本…'
+              : (request.placeholder ?? '输入回答…')
+          }
           className="flex-1 min-w-0 rounded-lg border border-paper-grid bg-paper px-2.5 py-1.5 text-xs font-sans text-ink placeholder:text-ink-faint focus:outline-hidden focus:border-accent focus:ring-2 focus:ring-accent/20 transition-all shadow-2xs"
         />
         <button
