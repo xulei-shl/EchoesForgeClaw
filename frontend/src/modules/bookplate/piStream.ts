@@ -34,6 +34,18 @@ export type PiStreamEvent =
       placement?: 'aboveEditor' | 'belowEditor';
     }
   | { type: 'extension_widget_clear'; key: string }
+  /** 扩展交互请求（后端 RPC 桥透传；作答经 POST /chat/ui-response 写回） */
+  | {
+      type: 'extension_ui_request';
+      id: string;
+      method: 'select' | 'confirm' | 'input' | 'editor';
+      title: string;
+      options?: string[];
+      message?: string;
+      placeholder?: string;
+      prefill?: string;
+      timeout?: number;
+    }
   | { type: 'error'; message: string };
 
 /** 扩展 widget 展示项（服务端快照 / SSE 事件归约后的纯展示形态）。 */
@@ -43,6 +55,18 @@ export interface ExtensionWidgetItem {
   lines: string[];
   placement: 'aboveEditor' | 'belowEditor';
   data?: Record<string, unknown>;
+}
+
+/** 待作答的扩展交互请求（前端唯一活跃弹层数据；RPC 逐题阻塞，同轮最多一个）。 */
+export interface PendingUiRequest {
+  id: string;
+  method: 'select' | 'confirm' | 'input' | 'editor';
+  title: string;
+  options?: string[];
+  message?: string;
+  placeholder?: string;
+  prefill?: string;
+  timeout?: number;
 }
 
 export interface PiStreamState {
@@ -56,6 +80,8 @@ export interface PiStreamState {
   error: string | null;
   /** 扩展 widget（服务端为真相源；跨轮保留，随水合 widget_set_all 对齐） */
   widgets: ExtensionWidgetItem[];
+  /** 待作答扩展交互（null = 无；SSE 断线/新轮 start 时清除） */
+  pendingUi: PendingUiRequest | null;
 }
 
 export const INITIAL_PI_STREAM: PiStreamState = {
@@ -64,6 +90,7 @@ export const INITIAL_PI_STREAM: PiStreamState = {
   reasoning: '',
   error: null,
   widgets: [],
+  pendingUi: null,
 };
 
 export type PiStreamAction =
@@ -86,13 +113,20 @@ export type PiStreamAction =
   /** 扩展 widget 清空 */
   | { type: 'widget_clear'; key: string }
   /** 水合快照对齐（服务端 per-workspace 快照全量覆盖） */
-  | { type: 'widget_set_all'; widgets: ExtensionWidgetItem[] };
+  | { type: 'widget_set_all'; widgets: ExtensionWidgetItem[] }
+  /** 扩展交互请求到达（SSE extension_ui_request → 弹层） */
+  | { type: 'ui_request'; request: PendingUiRequest }
+  /** 作答已回写（POST 成功）→ 关闭弹层 */
+  | { type: 'ui_response'; id: string }
+  /** 本地取消（SSE 断线/新轮/取消回写失败）→ 关闭弹层 */
+  | { type: 'ui_cancel' };
 
 export function piStreamReducer(state: PiStreamState, action: PiStreamAction): PiStreamState {
   switch (action.type) {
     case 'start':
       // 保留 widgets：跨轮/widget 来自服务端快照，新轮开始不清（服务端会在水合时对齐）
-      return { ...state, isStreaming: true, content: '', reasoning: '', error: null };
+      // 新轮 = 旧交互作废（RPC 子进程本轮独占；pendingUi 随 start 清除）
+      return { ...state, isStreaming: true, content: '', reasoning: '', error: null, pendingUi: null };
     case 'content':
       return { ...state, content: state.content + action.delta };
     case 'reasoning':
@@ -131,6 +165,13 @@ export function piStreamReducer(state: PiStreamState, action: PiStreamAction): P
         incoming.every((w, i) => JSON.stringify(w) === JSON.stringify(state.widgets[i]));
       return same ? state : { ...state, widgets: incoming };
     }
+    case 'ui_request':
+      // 同轮多请求（RPC 理论逐题阻塞；万一并发）：只保留最新，避免弹层重叠
+      return { ...state, pendingUi: action.request };
+    case 'ui_response':
+      return state.pendingUi?.id === action.id ? { ...state, pendingUi: null } : state;
+    case 'ui_cancel':
+      return state.pendingUi ? { ...state, pendingUi: null } : state;
     default:
       return state;
   }

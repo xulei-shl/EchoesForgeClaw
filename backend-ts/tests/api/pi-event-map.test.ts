@@ -69,4 +69,48 @@ describe('mapPiJsonEvent（pi json 事件 → ChatStreamEvent）', () => {
     );
     expect(tools[0]).toMatchObject({ type: 'tool_call', id: 'c1', name: 'read' });
   });
+
+  it('extension_ui_request：四类 dialog 透传白名单字段；非 dialog 方法静默', () => {
+    const state: PiEventMapperState = { lastError: null };
+    expect(
+      collect(
+        {
+          type: 'extension_ui_request',
+          id: 'u1',
+          method: 'select',
+          title: '选择方案',
+          options: ['A', 'B'],
+          timeout: 10000,
+          extraneous: 1,
+        },
+        state
+      )
+    ).toEqual([
+      { type: 'extension_ui_request', id: 'u1', method: 'select', title: '选择方案', options: ['A', 'B'], timeout: 10000 },
+    ]);
+    expect(
+      collect({ type: 'extension_ui_request', id: 'u2', method: 'input', title: '输入', placeholder: 'hint' }, state)
+    ).toEqual([
+      { type: 'extension_ui_request', id: 'u2', method: 'input', title: '输入', placeholder: 'hint' },
+    ]);
+    expect(
+      collect({ type: 'extension_ui_request', id: 'u3', method: 'confirm', title: '确认', message: 'ok?' }, state)
+    ).toEqual([
+      { type: 'extension_ui_request', id: 'u3', method: 'confirm', title: '确认', message: 'ok?' },
+    ]);
+    expect(
+      collect({ type: 'extension_ui_request', id: 'u4', method: 'editor', title: '编辑', prefill: 'text' }, state)
+    ).toEqual([
+      { type: 'extension_ui_request', id: 'u4', method: 'editor', title: '编辑', prefill: 'text' },
+    ]);
+    // 非 dialog 方法 / 缺 id / 非法 options 元素：静默或过滤
+    expect(collect({ type: 'extension_ui_request', id: 'u5', method: 'setWidget', widgetKey: 'k' }, state)).toEqual([]);
+    expect(collect({ type: 'extension_ui_request', method: 'select', title: 'x' }, state)).toEqual([]);
+    expect(
+      collect(
+        { type: 'extension_ui_request', id: 'u6', method: 'select', title: 't', options: ['a', 42, null, 'b'] },
+        state
+      )
+    ).toEqual([{ type: 'extension_ui_request', id: 'u6', method: 'select', title: 't', options: ['a', 'b'] }]);
+  });
 });

@@ -15,6 +15,7 @@ import {
   INITIAL_PI_STREAM,
   parseSseStream,
   type ExtensionWidgetItem,
+  type PendingUiRequest,
 } from './piStream';
 import {
   MAX_CHAT_IMAGES,
@@ -159,6 +160,28 @@ async function fetchWorkspaceFiles(ws: string): Promise<AgentFile[]> {
   const data = (await resp.json()) as { files?: AgentFile[] };
   // 已删除的历史产物不进面板（manifest 可追溯语义由服务端保留）
   return (data.files ?? []).filter((f) => f.exists !== false);
+}
+
+/** 扩展交互作答 → POST /chat/ui-response 写回 RPC 子进程。404（会话已结束）静默。 */
+async function postUiResponse(
+  ws: string,
+  id: string,
+  response: { value?: string; confirmed?: boolean; cancelled?: boolean }
+): Promise<boolean> {
+  try {
+    const resp = await fetch('/api/modules/bookplate/chat/ui-response', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ workspace_id: ws, id, ...response }),
+    });
+    if (resp.status === 401) {
+      handleUnauthorized();
+      return false;
+    }
+    return resp.ok;
+  } catch {
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -663,9 +686,25 @@ export function PiChatNodeHost({
               case 'extension_widget_clear':
                 dispatchStream({ type: 'widget_clear', key: evt.key });
                 break;
+              case 'extension_ui_request': {
+                const request: PendingUiRequest = {
+                  id: evt.id,
+                  method: evt.method,
+                  title: evt.title ?? '',
+                  ...(evt.options ? { options: evt.options } : {}),
+                  ...(evt.message ? { message: evt.message } : {}),
+                  ...(evt.placeholder ? { placeholder: evt.placeholder } : {}),
+                  ...(evt.prefill ? { prefill: evt.prefill } : {}),
+                  ...(evt.timeout !== undefined ? { timeout: evt.timeout } : {}),
+                };
+                dispatchStream({ type: 'ui_request', request });
+                break;
+              }
               case 'error':
                 statusRef.current = 'error';
                 runErroredRef.current = true;
+                // 错误即本轮终止：关闭残存的交互弹层（RPC 子进程已由后端收尾）
+                dispatchStream({ type: 'ui_cancel' });
                 dispatchStream({ type: 'error', message: evt.message || '对话失败，请重试' });
                 break;
             }
@@ -730,6 +769,8 @@ export function PiChatNodeHost({
     interruptedByUserRef.current = true;
     autoNextArmedRef.current = false;
     idleRef.current?.controller.abort();
+    // 停止 = 作废当前交互：关闭待答弹层（RPC 子进程由后端 abort 终止）
+    dispatchStream({ type: 'ui_cancel' });
   }, []);
 
   /** 撤回排队消息 */
@@ -780,6 +821,29 @@ export function PiChatNodeHost({
     );
     sendRef.current(lastUser.content);
   }, [nodeId, setNodes]);
+
+  /**
+   * 扩展交互作答：POST 写回 → 成功关闭弹层；失败（进程已结束）静默取消弹层。
+   * （RPC 协议要求 cancelled 也必须回写，否则 pi 工具挂起到超时。）
+   */
+  const answerUi = useCallback(
+    (id: string, response: { value?: string; confirmed?: boolean; cancelled?: boolean }) => {
+      const ws = activeRequestWsRef.current;
+      const call = async () => {
+        if (ws) {
+          const ok = await postUiResponse(ws, id, response);
+          if (ok) {
+            dispatchStream({ type: 'ui_response', id });
+            return;
+          }
+        }
+        // 回写失败（离线 / 会话已结束）：关闭弹层
+        dispatchStream({ type: 'ui_cancel' });
+      };
+      void call();
+    },
+    []
+  );
 
   // ---------- 渲染 ----------
   const config = h.configOf(node);
@@ -845,6 +909,10 @@ export function PiChatNodeHost({
         onSendNow: sendQueuedNow,
       }}
       widgets={streamState.widgets}
+      extensionDialog={{
+        request: streamState.pendingUi,
+        onAnswer: answerUi,
+      }}
     />
   );
 }

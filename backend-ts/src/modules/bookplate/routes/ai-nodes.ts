@@ -24,6 +24,7 @@ import {
   listWorkspaceArtifacts,
   preparePiWorkspace,
   runPiAgent,
+  sendExtensionUiResponse,
   mimeOf,
   skillFileDownloadUrl,
 } from '../../../services/pi-agent-service.js';
@@ -286,6 +287,36 @@ export async function register(app: FastifyInstance): Promise<void> {
         return reply.code(400).send({ detail: 'workspace_id 不能为空' });
       }
       return { cleared: clearPiSession(request.authUser!.id, workspaceId) };
+    }
+  );
+
+  // ---- Skill Agent 扩展交互应答：前端作答 → 写回活跃 RPC 子进程 stdin ----
+  // uid 取自鉴权态（非查询参数）；注册表 key 为 `${userId}:${workspaceId}` 复合（多租户并发隔离）
+  app.post(
+    '/api/modules/bookplate/chat/ui-response',
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const payload = (request.body ?? {}) as {
+        workspace_id?: string;
+        id?: string;
+        value?: string;
+        confirmed?: boolean;
+        cancelled?: boolean;
+      };
+      const workspaceId = sanitizeWorkspaceId(payload.workspace_id ?? '');
+      const id = String(payload.id ?? '').trim();
+      const hasAnswer = payload.value !== undefined || payload.confirmed !== undefined || payload.cancelled !== undefined;
+      if (!workspaceId || !id || !hasAnswer) {
+        return reply.code(400).send({ detail: 'workspace_id、id 与作答字段（value/confirmed/cancelled）不能为空' });
+      }
+      const ok = sendExtensionUiResponse(request.authUser!.id, workspaceId, {
+        id,
+        ...(payload.value !== undefined ? { value: payload.value } : {}),
+        ...(payload.confirmed !== undefined ? { confirmed: payload.confirmed } : {}),
+        ...(payload.cancelled !== undefined ? { cancelled: !!payload.cancelled } : {}),
+      });
+      if (!ok) return reply.code(404).send({ detail: '会话已结束或不在运行中' });
+      return { ok: true };
     }
   );
 

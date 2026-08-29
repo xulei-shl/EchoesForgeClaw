@@ -62,6 +62,22 @@ export type ChatStreamEvent =
     }
   /** 扩展 widget 清空（空状态 / 清空聊天） */
   | { type: 'extension_widget_clear'; key: string }
+  /** 扩展交互请求（Skill Agent RPC 模式；select/confirm/input/editor dialog）
+   *
+   * 服务端只透传白名单字段（契约见 pi-agent-service.ts mapPiJsonEvent 的
+   * extension_ui_request case）；前端作答后经 POST /chat/ui-response 写回子进程。
+   */
+  | {
+      type: 'extension_ui_request';
+      id: string;
+      method: 'select' | 'confirm' | 'input' | 'editor';
+      title: string;
+      options?: string[];
+      message?: string;
+      placeholder?: string;
+      prefill?: string;
+      timeout?: number;
+    }
   | { type: 'error'; message: string };
 
 /** 把归一化事件流映射为 AI SDK UI Message Stream 的 Response。 */

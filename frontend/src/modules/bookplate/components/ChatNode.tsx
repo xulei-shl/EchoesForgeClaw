@@ -14,7 +14,8 @@ import { ContextInjectionBlock } from './ContextInjectionBlock';
 import { AgentOverrideField } from './AgentOverrideField';
 import { ModelOverrideField } from './ModelOverrideField';
 import { ExtensionWidgets } from './ExtensionWidgets';
-import type { ExtensionWidgetItem } from '../piStream';
+import { ExtensionDialog } from './ExtensionDialog';
+import type { ExtensionWidgetItem, PendingUiRequest } from '../piStream';
 import { NODE_COLORS } from '../nodeTypes';
 import { authHeaders } from '../authUtils';
 import {
@@ -609,6 +610,14 @@ export interface ChatNodeProps {
   messageQueue?: ChatMessageQueue | null;
   /** 扩展 widget（skill_agent 模式；服务端快照 + SSE 归约，跨轮保留） */
   widgets?: ExtensionWidgetItem[];
+  /** 扩展交互弹层（skill_agent 模式；模型提问 select/input/confirm，作答回写服务端） */
+  extensionDialog?: {
+    request: PendingUiRequest | null;
+    onAnswer: (
+      id: string,
+      response: { value?: string; confirmed?: boolean; cancelled?: boolean }
+    ) => void;
+  } | null;
 }
 
 const ChatNodeInner: React.FC<ChatNodeProps> = ({
@@ -644,6 +653,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
   retryNotice,
   messageQueue,
   widgets = [],
+  extensionDialog = null,
 }) => {
   const [draft, setDraft] = useState('');
   // 本轮待发送的图片附件（data URL），随消息发送后在气泡内展示
@@ -1058,6 +1068,9 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
             <ExtensionWidgets widgets={widgets} />
           </div>
         )}
+
+        {/* 扩展交互弹层（模型提问；作答/取消均回写服务端 RPC 子进程） */}
+        <ExtensionDialog request={extensionDialog?.request ?? null} onAnswer={extensionDialog?.onAnswer ?? (() => {})} />
 
         {/* 输入区：文本 + 图片附件 */}
         <div className="shrink-0 mt-2 pt-2 border-t border-solid border-black/5 dark:border-white/5">

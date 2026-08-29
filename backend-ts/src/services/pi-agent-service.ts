@@ -71,6 +71,9 @@ const DISABLED_TOOLS = (process.env.PI_DISABLED_TOOLS ?? '')
   .map((t) => t.trim())
   .filter(Boolean);
 
+/** RPC 模式对话总超时（毫秒，默认 10 分钟）：agent_settled 始终未达时的防死等兜底。 */
+const RPC_AGENT_TIMEOUT_MS = envInt('PI_RPC_TIMEOUT_MS', 10 * 60 * 1000);
+
 /** 合法 thinking level（与 pi CLI --thinking 取值一致）。 */
 export const PI_THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
 
@@ -473,6 +476,8 @@ export function clearPiSession(userId: number, workspaceId: string): boolean {
   const ws = nodeWorkspace(userId, workspaceId);
   const agentDir = path.join(ws, '.pi-agent');
   let cleared = false;
+  // 清空对话 = 作废本轮交互：先终止活跃 RPC 子进程（问卷等待中 / 流式中）
+  if (killPiProcess(userId, workspaceId)) cleared = true;
   const targets = [path.join(agentDir, 'run'), path.join(agentDir, 'sessions')];
   for (const dir of targets) {
     if (existsSync(dir)) {
@@ -716,6 +721,11 @@ function killTree(child: ChildProcess): void {
 // 运行器
 // ---------------------------------------------------------------------------
 
+/**
+ * 运行器：v2 起 pi 以 `--mode rpc` 常驻子进程运行（交互扩展通道所需）；
+ * json 一次性模式已废弃（RPC 事件面是 json 事件面的超集，兼容由 git 历史兜底）。
+ */
+
 export interface RunPiAgentOptions {
   userId: number;
   workspaceId: string;
@@ -747,6 +757,9 @@ const COMPACTION_REASON_TEXT: Record<string, string> = {
   threshold: '达到上下文阈值',
   overflow: '上下文溢出',
 };
+
+/** RPC dialog 方法白名单（extension_ui_request 只桥这些；setWidget/notify/setStatus 等不桥）。 */
+const DIALOG_METHODS: ReadonlySet<string> = new Set(['select', 'confirm', 'input', 'editor']);
 
 /**
  * pi json 事件 → ChatStreamEvent 归一化映射（纯函数，可单测）。
@@ -803,6 +816,31 @@ export function* mapPiJsonEvent(
       yield { type: 'status', message: '上下文压缩完成，更早对话已摘要归档' };
       break;
     }
+    case 'extension_ui_request': {
+      // RPC 交互 dialog（select/confirm/input/editor）：只透传白名单字段，
+      // 未知方法（setWidget/notify/setStatus/setTitle/set_editor_text/custom）静默忽略。
+      const method = String(evt.method ?? '');
+      if (!DIALOG_METHODS.has(method)) break;
+      const id = String(evt.id ?? '');
+      if (!id) break;
+      const title = String(evt.title ?? '');
+      if (!title && method !== 'confirm') break;
+      const out: Record<string, unknown> = {
+        type: 'extension_ui_request',
+        id,
+        method,
+        title,
+      };
+      if (Array.isArray(evt.options)) {
+        out['options'] = evt.options.filter((o) => typeof o === 'string');
+      }
+      if (typeof evt.message === 'string') out['message'] = evt.message;
+      if (typeof evt.placeholder === 'string') out['placeholder'] = evt.placeholder;
+      if (typeof evt.prefill === 'string') out['prefill'] = evt.prefill;
+      if (typeof evt.timeout === 'number' && Number.isFinite(evt.timeout)) out['timeout'] = evt.timeout;
+      yield out as ChatStreamEvent & { type: 'extension_ui_request' };
+      break;
+    }
     case 'message_end': {
       const msg = evt.message as { role?: string; errorMessage?: string } | undefined;
       if (msg?.role !== 'assistant') break;
@@ -852,13 +890,78 @@ function formatPiFailure(lastError: string): string {
   return `${friendlyProviderError(lastError)}：${lastError}`;
 }
 
+/**
+ * pi RPC 子进程注册表（worker 进程内单态）。
+ * 多租户并发核心：key = `${userId}:${workspaceId}`，与 nodeWorkspace(userId, workspaceId)
+ * 同一口径，杜绝跨账号同名 workspace 串扰（pi-web 是各用户本地进程，无此问题）。
+ */
+interface PiProcessEntry {
+  stdin: import('node:stream').Writable;
+  /** 置位后视为已结束（API 404）；保证对已死进程不写 stdin（D5 竞态） */
+  ended: boolean;
+  procId: number;
+  /** 终止回调（killTree；供 clearPiSession / abort 等外部语境使用） */
+  kill: () => void;
+}
+
+const piProcessRegistry = new Map<string, PiProcessEntry>();
+
+function piProcessKey(userId: number, workspaceId: string): string {
+  return `${userId}:${workspaceId}`;
+}
+
+/** 注册活跃 RPC 子进程（runPiAgent spawn 后调用）；返回注销函数（移除并置 ended）。 */
+export function registerPiProcess(userId: number, workspaceId: string, stdin: PiProcessEntry['stdin'], procId: number, kill: () => void): () => void {
+  const key = piProcessKey(userId, workspaceId);
+  piProcessRegistry.set(key, { stdin, ended: false, procId, kill });
+  return () => {
+    const entry = piProcessRegistry.get(key);
+    if (entry) {
+      entry.ended = true;
+      piProcessRegistry.delete(key);
+    }
+  };
+}
+
+/** 终止并注销某工作区的活跃 RPC 子进程（清空对话 / 主动释放语义）。 */
+export function killPiProcess(userId: number, workspaceId: string): boolean {
+  const entry = piProcessRegistry.get(piProcessKey(userId, workspaceId));
+  if (!entry || entry.ended) return false;
+  entry.ended = true;
+  piProcessRegistry.delete(piProcessKey(userId, workspaceId));
+  try {
+    entry.kill();
+  } catch {
+    /* kill 失败忽略（进程可能已亡） */
+  }
+  return true;
+}
+
+/** 前端作答 → 写回活跃 RPC 子进程 stdin。返回 false = 进程不存在/已结束（404 语义）。 */
+export function sendExtensionUiResponse(
+  userId: number,
+  workspaceId: string,
+  body: { id: string; value?: string; confirmed?: boolean; cancelled?: boolean }
+): boolean {
+  const entry = piProcessRegistry.get(piProcessKey(userId, workspaceId));
+  if (!entry || entry.ended) return false;
+  const payload: Record<string, unknown> = { type: 'extension_ui_response', id: body.id };
+  if (body.value !== undefined) payload['value'] = body.value;
+  if (body.confirmed !== undefined) payload['confirmed'] = body.confirmed;
+  if (body.cancelled !== undefined) payload['cancelled'] = body.cancelled;
+  entry.stdin.write(JSON.stringify(payload) + '\n');
+  return true;
+}
+
 /** pi json 事件流 → ChatStreamEvent 异步生成器；结束后差分产物推 agent_file。 */
 export async function* runPiAgent(opts: RunPiAgentOptions): AsyncGenerator<ChatStreamEvent> {
   const { cmd, args: binArgs } = resolvePiBin();
 
-  const imageRels = opts.images?.length ? saveInputImages(opts.ws, opts.images) : [];
+  // RPC 模式图片经 prompt 命令 images 字段直传（data URL → {type:"image",data,mimeType}），
+  // 不落盘 inputs/（RPC 禁 @file argv；saveInputImages 留给 json 兼容路径不复用）。
+  const images = opts.images?.length ? opts.images.slice(0, 4) : [];
 
-  const args = [...binArgs, '--mode', 'json', '--no-context-files'];
+  const args = [...binArgs, '--mode', 'rpc', '--no-context-files'];
   const agentsMd = path.join(opts.ws, 'AGENTS.md');
   if (opts.hasPrompt && existsSync(agentsMd)) {
     args.push('--append-system-prompt', agentsMd);
@@ -879,21 +982,12 @@ export async function* runPiAgent(opts: RunPiAgentOptions): AsyncGenerator<ChatS
   }
   const sessionFile = path.join(opts.ws, PI_SESSION_REL);
   mkdirSync(path.dirname(sessionFile), { recursive: true });
-  args.push(
-    '--session',
-    sessionFile,
-    '--provider',
-    'bookforge',
-    '--model',
-    `bookforge/${opts.chatModelName}`,
-    ...imageRels.map((rel) => `@${rel}`),
-    opts.message
-  );
+  args.push('--session', sessionFile, '--provider', 'bookforge', '--model', `bookforge/${opts.chatModelName}`);
 
   const agentDirEnv = path.join(opts.ws, '.pi-agent');
   const child = spawn(cmd, args, {
     cwd: opts.ws,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['pipe', 'pipe', 'pipe'],
     env: {
       ...process.env,
       PI_CODING_AGENT_DIR: agentDirEnv,
@@ -901,10 +995,23 @@ export async function* runPiAgent(opts: RunPiAgentOptions): AsyncGenerator<ChatS
       PI_TELEMETRY: '0',
     },
   });
+  const childStdin = child.stdin;
+  const unregister = registerPiProcess(
+    opts.userId,
+    opts.workspaceId,
+    childStdin,
+    child.pid ?? 0,
+    () => killTree(child)
+  );
 
   let abortRequested = false;
   const onAbort = () => {
     abortRequested = true;
+    try {
+      childStdin.write(JSON.stringify({ type: 'abort', id: 'abort-current' }) + '\n');
+    } catch {
+      /* stdin 已关：直接杀树 */
+    }
     killTree(child);
   };
   opts.signal?.addEventListener('abort', onAbort, { once: true });
@@ -924,8 +1031,17 @@ export async function* runPiAgent(opts: RunPiAgentOptions): AsyncGenerator<ChatS
   let emittedAny = false;
   let stdoutEnded = false;
   let childClosed = false;
-
-  // 事件唤醒：入队 / stdout 结束 / 进程退出时唤醒等待中的生成器（单线程语义下无竞态）
+  /** prompt 已受理（response 命令 prompt success:true） */
+  let promptAccepted = false;
+  /** agent_settled（本轮完全落定；RPC 进程常驻，靠它驱动收尾） */
+  let settledReceived = false;
+  /** 本轮是否曾收到任何事件（零输出诊断） */
+  let sawAnyEvent = false;
+  /** 本轮超时强制收尾（RPC 进程常驻防死等；abort 后由 killTree 兜底） */
+  let runTimedOut = false;
+  /** 总超时定时器（try 内臂装；finally 清理）。 */
+  let runTimeout: ReturnType<typeof setTimeout> | undefined;
+  let rpcExitCode: number | null = null;
   let notify: (() => void) | null = null;
   const wake = (): void => {
     const n = notify;
@@ -947,10 +1063,33 @@ export async function* runPiAgent(opts: RunPiAgentOptions): AsyncGenerator<ChatS
     } catch {
       return;
     }
+    if (evt.type === 'response') {
+      // RPC 命令响应：只认 prompt 受理状态；其余事件面与本模式无关
+      if (evt.command === 'prompt') {
+        if (evt.success === true) promptAccepted = true;
+        else {
+          emittedError = true;
+          pushEvent({
+            type: 'error',
+            message: `pi agent 已拒绝本轮消息${evt.error ? `：${String(evt.error)}` : ''}`,
+          });
+        }
+      }
+      wake();
+      return;
+    }
+    if (evt.type === 'agent_settled') {
+      settledReceived = true;
+      sawAnyEvent = true;
+      wake();
+      return;
+    }
     for (const e of mapPiJsonEvent(evt, mapperState)) {
+      sawAnyEvent = true;
       if (e.type === 'error') emittedError = true;
       pushEvent(e);
     }
+    wake();
   };
 
   stdout?.on('data', (c: Buffer) => {
@@ -988,12 +1127,45 @@ export async function* runPiAgent(opts: RunPiAgentOptions): AsyncGenerator<ChatS
   });
 
   try {
-    // 出队循环：队列空且（进程已退出且 stdout 已排空）时结束
+    // 1) 发送 prompt 命令（图片走 images 字段；RPC 禁止 @file）
+    const promptCmd: Record<string, unknown> = { type: 'prompt', id: 'prompt-1', message: opts.message };
+    const imageContents: Array<{ type: string; data: string; mimeType: string }> = [];
+    for (const img of images) {
+      const idx = typeof img === 'string' ? img.indexOf(',') : -1;
+      if (idx < 0 || !img.startsWith('data:image/')) continue;
+      const meta = img.slice(0, idx);
+      const mime = /^data:image\/([a-z0-9.+-]+)/i.exec(meta)?.[1] ?? 'image/png';
+      imageContents.push({ type: 'image', data: img.slice(idx + 1), mimeType: mime.replace('jpeg', 'jpg') });
+    }
+    if (imageContents.length) promptCmd['images'] = imageContents;
+    childStdin.write(JSON.stringify(promptCmd) + '\n');
+
+    // 总超时兜底（RPC 进程常驻防死等）：RPC_AGENT_TIMEOUT_MS，默认 10 分钟
+    runTimeout = setTimeout(() => {
+      runTimedOut = true;
+      wake();
+    }, RPC_AGENT_TIMEOUT_MS);
+    runTimeout.unref?.();
+
+    // 2) 出队循环：队列空且（agent_settled 已到 或 子进程已退出）时结束
+    //    RPC 进程常驻——等待 agent_settled 信号后收尾。
+    //    注意：不用 stdin.end() 让 pi 优雅退出——Windows 下 pi 的 shutdown 与
+    //    扩展（pi-image-gen 等）的 async handle 存在 libuv 竞态（0xC0000409
+    //    async.c Assertion），直接 killTree 更稳；agent_settled 即会话文件已
+    //    落盘的权威信号（消息/工具结果/usage 均在起前写完）。
+    let finalized = false;
     while (true) {
       if (queue.length) {
         emittedAny = true;
         yield queue.shift()!;
         continue;
+      }
+      if (childClosed && stdoutEnded) break;
+      if ((settledReceived || runTimedOut) && !finalized) {
+        finalized = true;
+        // 直接用 killTree：绕开 pi 的 shutdown/exit 路径（Windows libuv async 竞态崩点）；
+        // agent_settled 已给出会话落盘完成语义，kill 不丢数据。
+        killTree(child);
       }
       if (childClosed && stdoutEnded) break;
       await new Promise<void>((resolve) => {
@@ -1004,21 +1176,34 @@ export async function* runPiAgent(opts: RunPiAgentOptions): AsyncGenerator<ChatS
     if (!emittedError) {
       if (abortRequested) {
         yield { type: 'status', message: '已中断' };
+      } else if (runTimedOut) {
+        emittedError = true;
+        yield { type: 'error', message: 'pi agent 对话超时已强制结束，请重试' };
       } else {
-        const code = await exitCode;
+        rpcExitCode = await exitCode;
         const lastError = mapperState.lastError;
-        if (code !== 0 || lastError) {
+        // settled 已收到（会话落盘完成）后，无论 pi 退出码如何都视为正常；
+        // Windows 下强制 kill 会留非 0 退出码/断言崩溃码，不应误报。
+        if ((!settledReceived && (rpcExitCode !== 0 || lastError))) {
           emittedError = true;
           if (lastError) {
             yield { type: 'error', message: formatPiFailure(lastError) };
           } else {
-            // 无模型错误（进程崩溃 / CLI 缺失等）：附 stderr 末行辅助定位
             const tail = stderrTailRef.value.trim();
             yield {
               type: 'error',
-              message: `pi agent 执行失败（退出码 ${code}）${tail ? `\n${tail.split('\n').at(-1)}` : ''}`,
+              message: `pi agent 执行失败（退出码 ${rpcExitCode}）${tail ? `\n${tail.split('\n').at(-1)}` : ''}`,
             };
           }
+        } else if (!promptAccepted && !sawAnyEvent) {
+          // 进程正常退出但 prompt 未被受理且无任何事件：多半是扩展加载异常 / 参数错
+          const tail = stderrTailRef.value.trim();
+          yield {
+            type: 'error',
+            message: `pi agent 未受理本轮消息（可能扩展装配异常）${
+              tail ? `\n${tail.split('\n').at(-1)}` : ''
+            }`,
+          };
         }
       }
     }
@@ -1046,8 +1231,6 @@ export async function* runPiAgent(opts: RunPiAgentOptions): AsyncGenerator<ChatS
     appendArtifactManifest(opts.ws, artifacts);
 
     // 零输出兜底诊断：pi 以 0 退出、无错误事件，但全程未产出任何事件（连会话文件都没落盘）。
-    // 正常响应必有 message_update 等事件；零输出 = 静默失败（如扩展加载异常被 pi 吞掉、
-    // 进程启动即异常退出等），此前会被前端「完全无输出」吞掉，此处显式给出可排查信息。
     if (!emittedError && !abortRequested && !emittedAny) {
       const tail = stderrTailRef.value.trim();
       yield {
@@ -1058,7 +1241,14 @@ export async function* runPiAgent(opts: RunPiAgentOptions): AsyncGenerator<ChatS
       };
     }
   } finally {
+    clearTimeout(runTimeout);
+    unregister();
     opts.signal?.removeEventListener('abort', onAbort);
+    try {
+      childStdin.end();
+    } catch {
+      /* stdin 已关：忽略 */
+    }
     killTree(child);
   }
 }
