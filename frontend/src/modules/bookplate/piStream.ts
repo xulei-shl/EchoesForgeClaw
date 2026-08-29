@@ -29,6 +29,7 @@ export type PiStreamEvent =
   | {
       type: 'extension_widget';
       key: string;
+      label?: string;
       lines: string[];
       placement?: 'aboveEditor' | 'belowEditor';
     }
@@ -38,6 +39,7 @@ export type PiStreamEvent =
 /** 扩展 widget 展示项（服务端快照 / SSE 事件归约后的纯展示形态）。 */
 export interface ExtensionWidgetItem {
   key: string;
+  label?: string;
   lines: string[];
   placement: 'aboveEditor' | 'belowEditor';
   data?: Record<string, unknown>;
@@ -77,6 +79,7 @@ export type PiStreamAction =
   | {
       type: 'widget_update';
       key: string;
+      label?: string;
       lines: string[];
       placement?: 'aboveEditor' | 'belowEditor';
     }
@@ -105,6 +108,7 @@ export function piStreamReducer(state: PiStreamState, action: PiStreamAction): P
       const idx = state.widgets.findIndex((w) => w.key === action.key);
       const next: ExtensionWidgetItem = {
         key: action.key,
+        ...(action.label !== undefined ? { label: action.label } : {}),
         lines: action.lines,
         placement: action.placement ?? 'aboveEditor',
       };

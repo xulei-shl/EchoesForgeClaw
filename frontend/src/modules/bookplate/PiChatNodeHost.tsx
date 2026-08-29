@@ -142,6 +142,7 @@ async function fetchPiSession(ws: string): Promise<{ messages: ChatMessage[]; wi
     // 只取前端需要的展示字段（剥离 updatedAt/toolCallId 等服务端溯源元数据）
     widgets: (data.widgets ?? []).map((w) => ({
       key: w.key,
+      ...(w.label ? { label: w.label } : {}),
       lines: w.lines,
       placement: w.placement ?? 'aboveEditor',
       ...(w.data !== undefined ? { data: w.data } : {}),
@@ -654,6 +655,7 @@ export function PiChatNodeHost({
                 dispatchStream({
                   type: 'widget_update',
                   key: evt.key,
+                  label: evt.label,
                   lines: evt.lines,
                   placement: evt.placement,
                 });

@@ -107,15 +107,18 @@ describe('withWidgetBridge（工具事件桥）', () => {
     );
     const widget = first.find((e) => e.type === 'extension_widget');
     expect(widget).toBeDefined();
-    const w = widget as { key: string; lines: string[]; placement?: string };
+    const w = widget as { key: string; label?: string; lines: string[]; placement?: string };
     expect(w.key).toBe('rpiv-todos');
+    expect(w.label).toBe('任务列表');
     expect(w.lines[0]).toBe('Todos (1/3)'); // deleted 不计入
     expect(w.lines.join('\n')).toContain('✓ 完成的任务');
     expect(w.lines.join('\n')).toContain('◐ 进行中任务2');
     expect(w.lines.join('\n')).toContain('○ 完成任务1');
     expect(w.lines.join('\n')).not.toContain('已删除');
     // 收尾快照落库
-    expect(store.snapshots.some((s) => s.key === 'rpiv-todos')).toBe(true);
+    const snap = store.snapshots.find((s) => s.key === 'rpiv-todos');
+    expect(snap).toBeDefined();
+    expect(snap?.label).toBe('任务列表');
 
     // 空列表（clear 后）→ extension_widget_clear
     const second = await runBridge(callResult('todo', 'c2', todoResult([])), { ws: 'ws-test', store });

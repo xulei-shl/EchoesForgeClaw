@@ -42,6 +42,8 @@ export type WidgetPlacement = 'aboveEditor' | 'belowEditor';
 export interface WidgetDraft {
   /** widget 唯一标识（如 "rpiv-todos"）。 */
   key: string;
+  /** 显示标签（如 "任务列表"，缺省时由前端兜底回退为 key）。 */
+  label?: string;
   /** 纯文本行（非 ANSI；服务端无渲染器）。 */
   lines: string[];
   /** 布局提示（默认 aboveEditor）。 */
@@ -53,6 +55,7 @@ export interface WidgetDraft {
 /** 服务端持久化的每 key 快照（真相源；随水合下发）。 */
 export interface WidgetSnapshot {
   key: string;
+  label?: string;
   lines: string[];
   placement: WidgetPlacement;
   data?: Record<string, unknown>;
@@ -154,6 +157,7 @@ function todoWidgetProducer(call: ToolCallInfo, result?: ToolResultInfo): Widget
   ];
   return {
     key: 'rpiv-todos',
+    label: '任务列表',
     lines,
     placement: 'aboveEditor',
     data: {
@@ -285,6 +289,7 @@ export async function* withWidgetBridge(
     live.set(s.key, {
       draft: {
         key: s.key,
+        ...(s.label ? { label: s.label } : {}),
         lines: s.lines,
         placement: s.placement,
         ...(s.data !== undefined ? { data: s.data } : {}),
@@ -321,6 +326,7 @@ export async function* withWidgetBridge(
       for (const [key, lw] of live) {
         snapshots.set(key, {
           key,
+          ...(lw.draft.label ? { label: lw.draft.label } : {}),
           lines: lw.draft.lines,
           placement: lw.draft.placement ?? 'aboveEditor',
           ...(lw.draft.data !== undefined ? { data: lw.draft.data } : {}),
@@ -377,6 +383,7 @@ function* maybeEmitWidget(
     yield {
       type: 'extension_widget',
       key: draft.key,
+      ...(draft.label ? { label: draft.label } : {}),
       lines: draft.lines,
       placement: draft.placement,
     };

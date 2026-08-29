@@ -68,27 +68,30 @@ const WidgetTrigger: React.FC<{
   updating: boolean;
   onClick: () => void;
   idPrefix: string;
-}> = ({ widget, expanded, updating, onClick, idPrefix }) => (
-  <button
-    id={`${idPrefix}-${widget.key}`}
-    onClick={onClick}
-    title={expanded ? `收起 ${widget.key}` : `展开 ${widget.key}`}
-    className="flex items-center gap-1.5 rounded-full border border-paper-grid bg-paper-grid/20 px-2.5 py-1 text-[11px] font-sans text-ink-light hover:border-accent/40 hover:text-accent hover:bg-accent/5 active:scale-[0.97] transition-colors"
-  >
-    <span className="extension-widget-pulse" data-updating={updating} />
-    <span className="truncate max-w-[140px]" title={widget.key}>
-      {widget.key}
-    </span>
-    {widget.lines.length > 0 && (
-      <span className="shrink-0 text-[9.5px] text-ink-faint">{widget.lines.length} 行</span>
-    )}
-    {expanded ? (
-      <ChevronUp size={11} strokeWidth={2} className="shrink-0" />
-    ) : (
-      <ChevronDown size={11} strokeWidth={2} className="shrink-0" />
-    )}
-  </button>
-);
+}> = ({ widget, expanded, updating, onClick, idPrefix }) => {
+  const displayLabel = widget.label || widget.key;
+  return (
+    <button
+      id={`${idPrefix}-${widget.key}`}
+      onClick={onClick}
+      title={expanded ? `收起 ${displayLabel}` : `展开 ${displayLabel}`}
+      className="flex items-center gap-1.5 rounded-full border border-paper-grid bg-paper-grid/20 px-2.5 py-1 text-[11px] font-sans text-ink-light hover:border-accent/40 hover:text-accent hover:bg-accent/5 active:scale-[0.97] transition-colors"
+    >
+      <span className="extension-widget-pulse" data-updating={updating} />
+      <span className="truncate max-w-[140px]" title={displayLabel}>
+        {displayLabel}
+      </span>
+      {widget.lines.length > 0 && (
+        <span className="shrink-0 text-[9.5px] text-ink-faint">{widget.lines.length} 行</span>
+      )}
+      {expanded ? (
+        <ChevronUp size={11} strokeWidth={2} className="shrink-0" />
+      ) : (
+        <ChevronDown size={11} strokeWidth={2} className="shrink-0" />
+      )}
+    </button>
+  );
+};
 
 export function ExtensionWidgets({ widgets }: { widgets: ExtensionWidgetItem[] }) {
   const idPrefix = useId();
@@ -152,16 +155,17 @@ export function ExtensionWidgets({ widgets }: { widgets: ExtensionWidgetItem[] }
 
   const renderGroup = (group: ExtensionWidgetItem[]) => {
     const expanded = group.find((w) => w.key === expandedKey && w.lines.length > 0);
+    const expandedLabel = expanded ? (expanded.label || expanded.key) : '';
     return (
       <div className="space-y-1">
         {expanded && (
           <section
             className="rounded-lg border border-paper-grid bg-paper-grid/20 overflow-hidden"
-            aria-label={expanded.key}
+            aria-label={expandedLabel}
           >
             <div className="flex items-center gap-1.5 px-2.5 py-1 border-b border-dashed border-paper-grid/60">
               <span className="text-[10px] font-sans font-medium text-ink-light truncate">
-                {expanded.key}
+                {expandedLabel}
               </span>
               <span className="ml-auto shrink-0 text-[9px] text-ink-faint">
                 {expanded.lines.length} 行

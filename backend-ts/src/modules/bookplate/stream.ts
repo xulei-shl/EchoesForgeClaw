@@ -56,6 +56,7 @@ export type ChatStreamEvent =
   | {
       type: 'extension_widget';
       key: string;
+      label?: string;
       lines: string[];
       placement?: 'aboveEditor' | 'belowEditor';
     }
