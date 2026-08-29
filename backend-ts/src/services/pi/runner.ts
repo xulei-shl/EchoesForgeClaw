@@ -419,6 +419,14 @@ async function* streamRound(
 export async function* runPiAgent(opts: RunPiAgentOptions): AsyncGenerator<ChatStreamEvent> {
   const generation = opts.generation ?? null;
   let entry = getPiProcess(opts.userId, opts.workspaceId);
+  // 复用进程必须空闲（无活跃轮）。中断/abort 的 kill 是异步的：上一轮 streamRound 尚未
+  // 收尾时 entry.round 仍活跃，直接把新 prompt 写到忙进程会被 pi 以
+  // 「Agent is already processing. Specify streamingBehavior...」拒绝。忙则杀旧重拉，
+  // 保证新轮独占空闲进程（会话文件仍延续，历史上下文不丢）。
+  if (entry && entry.round) {
+    await killPiProcess(opts.userId, opts.workspaceId);
+    entry = null;
+  }
   if (!entry || entry.generation !== generation) {
     // 无存活进程或配置代数变化：杀旧进程重拉（顶替语义防双写会话文件）
     if (entry) await killPiProcess(opts.userId, opts.workspaceId);

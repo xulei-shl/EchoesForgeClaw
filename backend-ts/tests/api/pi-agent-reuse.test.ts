@@ -3,6 +3,8 @@ import { createServer, type Server } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { rmSync } from 'node:fs';
+import { EventEmitter } from 'node:events';
+import { Writable } from 'node:stream';
 
 import {
   computeWorkspaceGeneration,
@@ -16,7 +18,7 @@ import {
   evictLeastRecentlyUsedPiProcess,
   type PiProcessEntry,
 } from '../../src/services/pi-agent-service.js';
-import { Writable } from 'node:stream';
+import { createPiRoundState } from '../../src/services/pi/registry.js';
 
 const RUNTIME_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../runtime');
 const UID = 990005;
@@ -207,6 +209,62 @@ describe('runPiAgent 进程复用（配置代数 + 常驻 RPC）', () => {
       // 代数不同 → 必须重拉，进程 pid 变化
       expect(t2.procId).not.toBe(t1.procId);
       // 重拉后新进程从会话文件恢复历史：第 2 轮仍只含 2 条 user（历史延续不重复、不丢失）
+      expect(mock.userCounts).toEqual([1, 2]);
+    },
+    120_000
+  );
+
+  it(
+    '复用进程仍忙（entry.round 活跃，中断 kill 尚未收尾）→ 不复用，杀旧重拉，新轮不被 pi 拒绝',
+    async () => {
+      const generation = computeWorkspaceGeneration({
+        userId: UID,
+        agentId: 1,
+        skillNames: [],
+        chatModel: chatModel(mock.port),
+        imageModel: null,
+        extensionNames: [],
+      });
+      // 先跑一轮得到真实存活进程
+      const t1 = await runTurn({ port: mock.port, generation, message: '第一问' });
+      expect(t1.procId).toBeTruthy();
+      expect(mock.userCounts).toEqual([1]);
+
+      // 模拟中断竞态：上一轮 streamRound 尚未收尾（kill 异步），注册表里仍是活进程且 round 活跃。
+      // 若此刻复用该进程发新 prompt，pi 会以「Agent is already processing」拒绝。
+      let killed = 0;
+      const busyChild = new EventEmitter() as unknown as PiProcessEntry['child'];
+      const busyEntry: PiProcessEntry = {
+        stdin: new Writable({ write(_c, _e, cb) { cb(); } }),
+        procId: t1.procId!,
+        ended: false,
+        kill: () => {
+          killed += 1;
+          // 模拟 taskkill 后子进程 close（waitForPiExit 得以尽快返回，测试不空等 2s 兜底）
+          (busyChild as unknown as EventEmitter).emit('close');
+        },
+        child: busyChild,
+        alive: true,
+        generation,
+        lastUsed: Date.now(),
+        round: createPiRoundState(),
+        mapper: { lastError: null },
+        lineBuf: '',
+        stderrTail: '',
+        stdoutEnded: false,
+        closed: false,
+        exitCode: null,
+      };
+      registerPiProcess(UID, WS_ID, busyEntry);
+
+      const t2 = await runTurn({ port: mock.port, generation, message: '继续' });
+      // 忙进程被杀掉重拉：不复用，且新轮成功产出（不再被「Agent is already processing」拒绝）
+      expect(killed).toBe(1);
+      expect(t2.procId).toBeTruthy();
+      expect(t2.procId).not.toBe(t1.procId);
+      expect(t2.events.some((e) => e.type === 'content_delta')).toBe(true);
+      expect(t2.events.some((e) => e.type === 'error')).toBe(false);
+      // 会话历史仍延续：第 2 轮模型收到 2 条 user（首轮 + 继续）
       expect(mock.userCounts).toEqual([1, 2]);
     },
     120_000
