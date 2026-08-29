@@ -55,11 +55,40 @@ function updatedKeys(
   }).filter((k): k is string => k !== null);
 }
 
+/** 判断 widget 是否已全部完成（如任务全部完成 Todos (N/N)） */
+function isWidgetCompleted(widget: ExtensionWidgetItem): boolean {
+  if (widget.lines.length === 0) return false;
+  if (widget.key === 'rpiv-todos' && widget.lines[0]) {
+    const match = widget.lines[0].match(/\((\d+)\/(\d+)\)/);
+    if (match) {
+      const done = parseInt(match[1]!, 10);
+      const total = parseInt(match[2]!, 10);
+      return total > 0 && done >= total;
+    }
+  }
+  return false;
+}
+
 function defaultExpanded(widgets: ExtensionWidgetItem[]): string | null {
+  // 默认仅展开未全部完成且行数适中的 widget
   const w = widgets.find(
-    (x) => x.lines.length > 1 && x.lines.length <= DEFAULT_EXPANDED_WIDGET_LINES
+    (x) =>
+      x.lines.length > 1 &&
+      x.lines.length <= DEFAULT_EXPANDED_WIDGET_LINES &&
+      !isWidgetCompleted(x)
   );
   return w?.key ?? null;
+}
+
+/** 获取 widget 右上角/胶囊按钮显示的概览徽标（如任务进度 "0/1" 或 "2 行"） */
+function getWidgetBadge(widget: ExtensionWidgetItem): string | null {
+  if (widget.lines.length === 0) return null;
+  // 针对 rpiv-todos 或带进度统计的组件，优先提取动态进度 (0/1)
+  if (widget.key === 'rpiv-todos' && widget.lines[0]) {
+    const match = widget.lines[0].match(/\((\d+\/\d+)\)/);
+    if (match) return match[1];
+  }
+  return `${widget.lines.length} 行`;
 }
 
 const WidgetTrigger: React.FC<{
@@ -70,6 +99,7 @@ const WidgetTrigger: React.FC<{
   idPrefix: string;
 }> = ({ widget, expanded, updating, onClick, idPrefix }) => {
   const displayLabel = widget.label || widget.key;
+  const badge = getWidgetBadge(widget);
   return (
     <button
       id={`${idPrefix}-${widget.key}`}
@@ -81,8 +111,8 @@ const WidgetTrigger: React.FC<{
       <span className="truncate max-w-[140px]" title={displayLabel}>
         {displayLabel}
       </span>
-      {widget.lines.length > 0 && (
-        <span className="shrink-0 text-[9.5px] text-ink-faint">{widget.lines.length} 行</span>
+      {badge && (
+        <span className="shrink-0 text-[9.5px] text-ink-faint">{badge}</span>
       )}
       {expanded ? (
         <ChevronUp size={11} strokeWidth={2} className="shrink-0" />
@@ -97,6 +127,7 @@ export function ExtensionWidgets({ widgets }: { widgets: ExtensionWidgetItem[] }
   const idPrefix = useId();
   const prev = useRef<Map<string, string[]> | null>(null);
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const collapseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const userChoseRef = useRef(false);
   const [expandedKey, setExpandedKey] = useState<string | null>(() => defaultExpanded(widgets));
   const [updating, setUpdating] = useState<ReadonlySet<string>>(() => new Set());
@@ -139,12 +170,24 @@ export function ExtensionWidgets({ widgets }: { widgets: ExtensionWidgetItem[] }
         }, WIDGET_UPDATE_IDLE_MS)
       );
     }
-  }, [widgets]);
+
+    // 监听当前展开的 widget：若随着本次更新变成了「全部完成」，延迟 800ms 自动收起
+    if (expandedKey) {
+      const active = widgets.find((w) => w.key === expandedKey);
+      if (active && isWidgetCompleted(active) && changed.includes(expandedKey)) {
+        if (collapseTimerRef.current) clearTimeout(collapseTimerRef.current);
+        collapseTimerRef.current = setTimeout(() => {
+          setExpandedKey((cur) => (cur === expandedKey ? null : cur));
+        }, 800);
+      }
+    }
+  }, [widgets, expandedKey]);
 
   useEffect(
     () => () => {
       for (const t of timers.current.values()) clearTimeout(t);
       timers.current.clear();
+      if (collapseTimerRef.current) clearTimeout(collapseTimerRef.current);
     },
     []
   );
@@ -167,9 +210,11 @@ export function ExtensionWidgets({ widgets }: { widgets: ExtensionWidgetItem[] }
               <span className="text-[10px] font-sans font-medium text-ink-light truncate">
                 {expandedLabel}
               </span>
-              <span className="ml-auto shrink-0 text-[9px] text-ink-faint">
-                {expanded.lines.length} 行
-              </span>
+              {getWidgetBadge(expanded) && (
+                <span className="ml-auto shrink-0 text-[9px] text-ink-faint">
+                  {getWidgetBadge(expanded)}
+                </span>
+              )}
             </div>
             <pre className="text-[11px] font-sans text-ink-light whitespace-pre-wrap break-words leading-relaxed px-2.5 py-2 max-h-40 overflow-y-auto custom-scrollbar select-text">
               {expanded.lines.slice(0, MAX_WIDGET_LINES).join('\n')}
@@ -185,6 +230,10 @@ export function ExtensionWidgets({ widgets }: { widgets: ExtensionWidgetItem[] }
               updating={updating.has(w.key)}
               onClick={() => {
                 userChoseRef.current = true;
+                if (collapseTimerRef.current) {
+                  clearTimeout(collapseTimerRef.current);
+                  collapseTimerRef.current = null;
+                }
                 setExpandedKey((c) => (c === w.key ? null : w.key));
               }}
               idPrefix={idPrefix}
