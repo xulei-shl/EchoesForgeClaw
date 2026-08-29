@@ -1,6 +1,6 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, Eraser, ImagePlus, MessageSquare, Send, Copy, Check, Loader2, Square, RefreshCw, ChevronUp, ChevronDown, Lock, X, FileText, Download, Brain, FolderOpen, Clock } from 'lucide-react';
+import { AlertTriangle, Eraser, ImagePlus, MessageSquare, Send, Copy, Check, Loader2, Square, RefreshCw, ChevronUp, ChevronDown, Lock, X, FileText, Download, Brain, FolderOpen, Clock, Sparkles } from 'lucide-react';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
 import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
@@ -467,7 +467,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
           {isWaitingResponse ? (
             <div className="flex items-center gap-2 py-0.5 text-ink-light select-none">
               <div className="flex items-center gap-1.5 text-accent">
-                <Brain size={13} strokeWidth={2} className="animate-thinking-glow shrink-0" />
+                <Sparkles size={13} strokeWidth={2} className="animate-thinking-glow shrink-0" />
                 <span className="text-[12px] font-sans font-medium text-ink-light">思考中…</span>
               </div>
               <div className="flex items-center gap-1 h-3 pl-0.5">

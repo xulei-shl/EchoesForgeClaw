@@ -330,15 +330,15 @@ const SingleQuestionnaireCard: React.FC<{
         <div className="shrink-0 flex items-center gap-1.5">
           {cancelled ? (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-error/10 text-error border border-error/20">
-              <X size={10} strokeWidth={2.5} /> 已取消作答
+              <X size={10} strokeWidth={2.5} /> 已取消
             </span>
           ) : isDone ? (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-accent/15 text-accent border border-accent/30">
-              <Check size={10} strokeWidth={2.5} /> 已完成全部选择
+              <Check size={10} strokeWidth={2.5} /> 已完成
             </span>
           ) : isSubmitting ? (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-accent/20 text-accent animate-pulse">
-              <Loader2 size={11} className="animate-spin" /> 正在提交回答…
+              <Loader2 size={11} className="animate-spin" /> 正在提交…
             </span>
           ) : !isDone ? (
             <div className="flex items-center gap-2">
