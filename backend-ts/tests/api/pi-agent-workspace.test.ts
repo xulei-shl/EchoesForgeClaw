@@ -212,6 +212,43 @@ describe('preparePiWorkspace 装配', () => {
     expect(settings['pi-image-gen']).toBeUndefined();
   });
 
+  it('绘图模型 API Key 与模型名相同（退化配置）：不写 pi-image-gen 段并用警告说明', () => {
+    const r = preparePiWorkspace(UID, WS_ID, {
+      agentId: 1,
+      chatModel: CHAT_MODEL,
+      imageModel: { baseUrl: 'http://127.0.0.1:9/v1', apiKey: 'agnes-image-2.1-flash', modelName: 'agnes-image-2.1-flash' },
+      skillNames: [],
+    });
+    expect(r.warnings.length).toBeGreaterThan(0);
+    expect(r.warnings[0]).toMatch(/模型名/);
+    const settings = JSON.parse(
+      readFileSync(path.join(wsPath(), '.pi-agent', 'settings.json'), 'utf-8')
+    );
+    expect(settings['pi-image-gen']).toBeUndefined();
+    // 正常 Key 不受影响（已有核心装配用例覆盖 pi-image-gen 段写入）
+  });
+
+  it('绘图模型缺 API Key / 缺模型名：同样拒绝装配并给出可操作警告', () => {
+    const missingKey = preparePiWorkspace(UID, WS_ID, {
+      agentId: 1,
+      chatModel: CHAT_MODEL,
+      imageModel: { baseUrl: 'http://127.0.0.1:9/v1', apiKey: '', modelName: 'img-model' },
+      skillNames: [],
+    });
+    expect(missingKey.warnings[0]).toMatch(/API Key/);
+    const missingName = preparePiWorkspace(UID, WS_ID, {
+      agentId: 1,
+      chatModel: CHAT_MODEL,
+      imageModel: { baseUrl: 'http://127.0.0.1:9/v1', apiKey: 'img-key', modelName: '  ' },
+      skillNames: [],
+    });
+    expect(missingName.warnings[0]).toMatch(/模型名称/);
+    const settings = JSON.parse(
+      readFileSync(path.join(wsPath(), '.pi-agent', 'settings.json'), 'utf-8')
+    );
+    expect(settings['pi-image-gen']).toBeUndefined();
+  });
+
   it('api_format / thinking_format：OpenAI 兼容 + deepseek wire 格式 → api + compat.thinkingFormat', () => {
     preparePiWorkspace(UID, WS_ID, {
       agentId: 1,

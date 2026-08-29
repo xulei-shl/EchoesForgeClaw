@@ -268,6 +268,8 @@ export interface PreparedWorkspaceInfo {
   hasPrompt: boolean;
   mountedSkills: string[];
   skippedSkills: string[];
+  /** 装配期可诊断问题（如绘图模型 API Key 缺失/退化），调用方应以 status 事件透传给用户。 */
+  warnings: string[];
   /** 白名单内已装配到 {ws}/.pi-agent/extensions/ 的扩展目录（runPiAgent 据此追加 -e）。 */
   mountedExtensions: string[];
 }
@@ -283,6 +285,27 @@ function isValidSkillName(name: string): boolean {
     name !== '..' &&
     ![...name].some((ch) => ch.charCodeAt(0) < 32)
   );
+}
+
+/**
+ * 绘图模型配置的可诊断性检查：返回「配置有问题、不应装配 pi-image-gen 段」的原因文案，
+ * 无问题时返回 null。退化配置（缺模型名 / 缺 Key / Key 是模型名本身）写入 settings 只会
+ * 让每次生成都 401「API key 问题」——这里在装配期就拦截并给出可操作提示。
+ */
+function imageModelConfigProblem(image: PiImageModelConfig | null): string | null {
+  if (!image) return null;
+  const model = (image.modelName ?? '').trim();
+  const key = (image.apiKey ?? '').trim();
+  if (!model) {
+    return '绘图模型未配置模型名称（model_name），已跳过绘图工具加载，请到「模型配置」编辑对应的图像模型填写模型名。';
+  }
+  if (!key) {
+    return `绘图模型 ${model} 未配置 API Key，已跳过绘图工具加载，请到「模型配置」编辑该图像模型填写 API Key。`;
+  }
+  if (key.toLowerCase() === model.toLowerCase()) {
+    return `绘图模型 ${model} 的 API Key 与模型名相同——疑似把模型名填进了 API Key 字段，已跳过绘图工具加载；请到「模型配置」编辑该图像模型，填入真实 API Key，否则每次生成都会因鉴权失败（HTTP 401）。`;
+  }
+  return null;
 }
 
 /**
@@ -312,6 +335,7 @@ export function preparePiWorkspace(
   // 2) skills 条件装配（仅显式选中项；目录口径见 preparePiWorkspace 注释——必须 .pi-agent/skills）
   const mountedSkills: string[] = [];
   const skippedSkills: string[] = [];
+  const warnings: string[] = [];
   const skillsDir = path.join(ws, '.pi-agent', 'skills');
   rmSync(skillsDir, { recursive: true, force: true });
   if (opts.skillNames.length) {
@@ -416,7 +440,14 @@ export function preparePiWorkspace(
   } catch {
     /* 无文件或非法 JSON：重建 */
   }
-  if (opts.imageModel) {
+  // 绘图模型装配前做可诊断性守卫：退化配置（缺模型名 / 缺 Key / Key 是模型名的复制品）
+  // 写入 pi-image-gen 段只会让模型每次调用都 401「API key 问题」，这里直接拒绝装配该段，
+  // 并把可操作的原因交给调用方以 status 事件透传，避免把运行时谜题丢给用户。
+  const imageProblem = imageModelConfigProblem(opts.imageModel);
+  if (imageProblem) {
+    delete settings[IMAGE_GEN_SETTINGS_KEY];
+    warnings.push(imageProblem);
+  } else if (opts.imageModel) {
     settings[IMAGE_GEN_SETTINGS_KEY] = {
       defaultModel: opts.imageModel.modelName,
       outputDir: IMAGE_OUTPUT_DIR,
@@ -463,7 +494,14 @@ export function preparePiWorkspace(
   };
   writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
 
-  return { ws, hasPrompt: existsSync(realAgentsMd), mountedSkills, skippedSkills, mountedExtensions };
+  return {
+    ws,
+    hasPrompt: existsSync(realAgentsMd),
+    mountedSkills,
+    skippedSkills,
+    warnings,
+    mountedExtensions,
+  };
 }
 
 /**

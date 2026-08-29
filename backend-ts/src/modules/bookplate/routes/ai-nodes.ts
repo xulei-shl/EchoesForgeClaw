@@ -145,6 +145,10 @@ export async function register(app: FastifyInstance): Promise<void> {
               message: `以下技能未安装，已跳过：${prepared.skippedSkills.join('、')}`,
             };
           }
+          // 装配期诊断（如绘图模型 API Key 退化）：以 status 事件透传，避免运行时模糊报错
+          for (const warning of prepared.warnings) {
+            yield { type: 'status', message: warning };
+          }
           try {
             // 包装事件流：tool_call/tool_result → 扩展 widget 事件（单一接缝，不改 runPiAgent / mapPiJsonEvent）
             const widgetified = withWidgetBridge(
