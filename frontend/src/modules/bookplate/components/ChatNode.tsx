@@ -1256,7 +1256,11 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                 ) : workspaceFiles.files.length === 0 ? (
                   <p className="text-[10px] font-sans text-ink-faint py-1">暂无产物文件</p>
                 ) : (
-                  workspaceFiles.files.map((f) => <SkillFileCard key={f.url || f.path} file={f} />)
+                  <PhotoProvider maskOpacity={0.8} bannerVisible={false}>
+                    {workspaceFiles.files.map((f) => (
+                      <SkillFileCard key={f.url || f.path} file={f} />
+                    ))}
+                  </PhotoProvider>
                 )}
               </div>
             )}
