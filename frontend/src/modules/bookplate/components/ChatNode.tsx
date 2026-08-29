@@ -1,6 +1,6 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, Eraser, ImagePlus, MessageSquare, Send, Copy, Check, Loader2, Square, RefreshCw, ChevronUp, ChevronDown, Lock, X, FileText, Download, Brain, FolderOpen, Clock, Sparkles } from 'lucide-react';
+import { AlertTriangle, Eraser, ImagePlus, MessageSquare, Send, Copy, Check, Loader2, Square, RefreshCw, ChevronUp, ChevronDown, Lock, X, FileText, Download, Brain, FolderOpen, Clock, Sparkles, Bot, Wrench, TerminalSquare } from 'lucide-react';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
 import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
@@ -51,105 +51,159 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** Skill Agent 执行产生的文件卡片：图片内联缩略预览（鉴权 fetch → blob → objectURL），其他类型展示下载按钮。 */
-const SkillFileCard: React.FC<{ file: AgentFile }> = memo(({ file }) => {
+/** 单个工作区产物文件卡片（图片缩略预览 / 文档下载）。 */
+const SkillFileCard = memo(({ file }: { file: AgentFile }) => {
   const { showToast } = useFeedback();
-  const isImage = file.mime?.startsWith('image/') ?? false;
-  const [objectUrl, setObjectUrl] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const isImage = /\.(png|jpe?g|gif|webp|svg)$/i.test(file.name);
 
-  // 图片：加载为 blob → objectURL 后展示缩略图（组件卸载时释放）
   useEffect(() => {
     if (!isImage) return;
-    let url: string | null = null;
-    let cancelled = false;
+    let active = true;
+    let createdUrl: string | null = null;
     fetchSkillFile(file)
       .then((blob) => {
-        if (cancelled) return;
-        url = URL.createObjectURL(blob);
-        setObjectUrl(url);
+        if (!active) return;
+        createdUrl = URL.createObjectURL(blob);
+        setBlobUrl(createdUrl);
       })
-      .catch(() => {
-        if (!cancelled) setFailed(true);
-      });
+      .catch(() => {});
     return () => {
-      cancelled = true;
-      if (url) URL.revokeObjectURL(url);
+      active = false;
+      if (createdUrl) URL.revokeObjectURL(createdUrl);
     };
-  }, [file, isImage]);
+  }, [file.url, isImage]);
 
   const handleDownload = async () => {
+    if (downloading) return;
+    setDownloading(true);
     try {
       const blob = await fetchSkillFile(file);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = file.name;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch {
       showToast('文件下载失败，请重试', { type: 'error' });
+    } finally {
+      setDownloading(false);
     }
   };
 
   if (isImage) {
-    const thumb = (
-      <div className="relative group w-20 h-20 rounded-lg overflow-hidden border border-paper-grid bg-paper cursor-zoom-in shrink-0">
-        {objectUrl ? (
-          <img src={objectUrl} alt={file.name} className="w-full h-full object-cover" loading="lazy" />
+    return (
+      <div className="group/file relative inline-block rounded-lg overflow-hidden border border-paper-grid shadow-sm bg-paper-grid/20">
+        {blobUrl ? (
+          <PhotoView src={blobUrl}>
+            <img
+              src={blobUrl}
+              alt={file.name}
+              className="max-h-36 max-w-[240px] object-cover cursor-zoom-in hover:opacity-90 transition"
+              loading="lazy"
+            />
+          </PhotoView>
         ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            {failed ? (
-              <span className="text-[10px] text-ink-faint font-sans">加载失败</span>
-            ) : (
-              <Loader2 size={14} className="animate-spin text-ink-faint" />
-            )}
+          <div className="w-24 h-24 flex items-center justify-center text-ink-faint">
+            <Loader2 size={16} className="animate-spin" />
           </div>
         )}
         <button
-          onClick={(e) => {
-            e.stopPropagation();
-            void handleDownload();
-          }}
-          title="下载文件"
-          className="absolute bottom-1 right-1 flex items-center justify-center w-6 h-6 rounded-md bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-black/70 transition"
+          onClick={handleDownload}
+          title={`下载 ${file.name}`}
+          className="absolute right-1 bottom-1 p-1 rounded-md bg-paper/90 text-ink-light hover:text-accent opacity-0 group-hover/file:opacity-100 transition shadow-sm"
         >
-          <Download size={12} strokeWidth={2} />
+          {downloading ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
         </button>
       </div>
     );
-    // 图片加载完成（objectURL 可用）后才挂 PhotoView，避免 src 为空时点击出错。
-    // 自带 PhotoProvider：SkillFileCard 也会渲染在工作区产物面板（消息列表 Provider 之外），
-    // 不自带的话 PhotoView 在 Provider 外取不到 context，会抛 nextId undefined 崩溃。
-    return objectUrl ? (
-      <PhotoProvider maskOpacity={0.8} bannerVisible={false}>
-        <PhotoView src={objectUrl}>{thumb}</PhotoView>
-      </PhotoProvider>
-    ) : thumb;
   }
 
   return (
-    <div className="flex items-center gap-2 max-w-full rounded-lg border border-paper-grid bg-paper-grid/20 px-2.5 py-1.5 hover:bg-paper-grid/40 transition-colors msg-enter-anim">
-      <FileText size={15} strokeWidth={1.75} className="text-ink-faint shrink-0" />
+    <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-paper-grid bg-paper-grid/20 text-xs font-sans max-w-[260px]">
+      <FileText size={14} className="shrink-0 text-accent" />
       <div className="min-w-0 flex-1">
-        <p className="text-[11px] font-sans text-ink truncate" title={file.name}>
+        <p className="truncate text-ink font-medium leading-tight" title={file.name}>
           {file.name}
         </p>
-        {typeof file.size === 'number' && file.size > 0 && (
-          <p className="text-[10px] text-ink-faint font-sans">{formatFileSize(file.size)}</p>
-        )}
+        <p className="text-[10px] text-ink-faint mt-0.5">{formatFileSize(file.size)}</p>
       </div>
       <button
-        onClick={() => void handleDownload()}
-        title="下载文件"
-        className="shrink-0 flex items-center justify-center w-7 h-7 rounded-md text-ink-faint hover:text-accent hover:bg-accent/10 active:scale-95 transition"
+        onClick={handleDownload}
+        title={`下载 ${file.name}`}
+        className="p-1 rounded text-ink-faint hover:text-accent transition"
       >
-        <Download size={13} strokeWidth={2} />
+        {downloading ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
       </button>
     </div>
   );
 });
 SkillFileCard.displayName = 'SkillFileCard';
+
+/** 工作区文件列表侧滑抽屉面板（skill_agent 模式下展示所有服务端生成的文件）。 */
+const WorkspaceFilesDrawer: React.FC<{
+  open: boolean;
+  onClose: () => void;
+  files: AgentFile[] | null;
+  loading: boolean;
+  onRefresh: () => void;
+}> = memo(({ open, onClose, files, loading, onRefresh }) => {
+  if (!open) return null;
+  return (
+    <div className="absolute inset-0 z-30 bg-paper/95 backdrop-blur-sm flex flex-col rounded-xl overflow-hidden animate-in fade-in-0 duration-150">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-paper-grid bg-paper-grid/20 shrink-0">
+        <div className="flex items-center gap-1.5 text-xs font-serif text-ink">
+          <FolderOpen size={13} className="text-accent" />
+          <span>工作区产物文件</span>
+          {files && <span className="text-[10px] text-ink-faint font-sans">({files.length})</span>}
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={onRefresh}
+            title="刷新文件列表"
+            className="p-1 rounded text-ink-faint hover:text-ink hover:bg-paper-grid/40 transition"
+          >
+            <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
+          </button>
+          <button
+            onClick={onClose}
+            title="关闭面板"
+            className="p-1 rounded text-ink-faint hover:text-ink hover:bg-paper-grid/40 transition"
+          >
+            <X size={12} />
+          </button>
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto p-3 custom-scrollbar">
+        {loading && !files ? (
+          <div className="h-full flex items-center justify-center text-ink-faint gap-1.5 text-xs">
+            <Loader2 size={14} className="animate-spin" />
+            <span>加载文件中…</span>
+          </div>
+        ) : !files || files.length === 0 ? (
+          <div className="h-full flex flex-col items-center justify-center text-ink-faint gap-1 text-xs py-8">
+            <FolderOpen size={20} strokeWidth={1.25} />
+            <p>暂无工作区产物</p>
+            <p className="text-[10px] text-ink-faint/70">Skill Agent 执行产生的文件将显示在此处</p>
+          </div>
+        ) : (
+          <PhotoProvider maskOpacity={0.85} bannerVisible={false}>
+            <div className="flex flex-col gap-2">
+              {files.map((file) => (
+                <SkillFileCard key={file.url} file={file} />
+              ))}
+            </div>
+          </PhotoProvider>
+        )}
+      </div>
+    </div>
+  );
+});
+WorkspaceFilesDrawer.displayName = 'WorkspaceFilesDrawer';
 
 /** 自动重试横幅：倒计时自走（delaySec 递减），可展开查看原因；借鉴 Proma RetryingNotice。 */
 const RetryNoticeBanner: React.FC<{ notice: ChatRetryNotice }> = ({ notice }) => {
@@ -158,7 +212,7 @@ const RetryNoticeBanner: React.FC<{ notice: ChatRetryNotice }> = ({ notice }) =>
   useEffect(() => {
     setRemaining(notice.delaySec);
     const timer = setInterval(() => {
-      setRemaining((v) => (v > 0 ? v - 1 : 0));
+      setRemaining((v: number) => (v > 0 ? v - 1 : 0));
     }, 1000);
     return () => clearInterval(timer);
   }, [notice.attempt, notice.delaySec]);
@@ -219,50 +273,127 @@ const QueuedMessageRow: React.FC<{
   </div>
 );
 
-/** 模型思考过程（reasoning）折叠块：弱化样式、默认收起，点击展开。
- *
- * 交互时序：
- * - 思考阶段（仅 reasoning、尚无正文）自动展开，实时可见思考过程；
- * - 正文开始输出（hasContent 由 false -> true）时自动平滑收起——思考已完成，
- *   让注意力回到回答上；此自动收起只触发一次，之后用户的手动展开/收起不受影响。
- * - 挂载时已有正文（非流式历史消息）默认收起。
+const TRUNCATE_STEP_TEXT = 300;
+const truncateStepText = (s: string) => (s.length > TRUNCATE_STEP_TEXT ? s.slice(0, TRUNCATE_STEP_TEXT) + '…' : s);
+
+/**
+ * 助手消息一体化步骤卡片（思考过程 + 工具执行步骤）：
+ * - 将同一步骤内的思考过程与 Agent 工具执行日志深度融合成单个步骤折叠卡片；
+ * - 顶部显示清晰的步骤序号（如「步骤 1 · Agent 思考与执行」）与工具步数；
+ * - 思考阶段实时展开，正文出现或执行完毕后平滑收起；
+ * - 支持点击一键展开/收起，内部清晰分栏展示思考推理与工具明细。
  */
-const ReasoningBlock: React.FC<{
-  text: string;
-  streaming: boolean;
-  hasContent: boolean;
-}> = memo(({ text, streaming, hasContent }) => {
-  const [open, setOpen] = useState(false);
-  // 记录是否已见过正文：正文首次出现时自动收起（仅一次）
+const StepActivityCard: React.FC<{
+  stepNumber?: number;
+  reasoning?: string;
+  agentSteps?: AgentStep[];
+  agentName?: string;
+  streaming?: boolean;
+  hasContent?: boolean;
+}> = memo(({ stepNumber, reasoning, agentSteps = [], agentName, streaming = false, hasContent = false }) => {
+  const hasReasoning = Boolean(reasoning && reasoning.trim().length > 0);
+  const hasSteps = agentSteps.length > 0;
+
+  if (!hasReasoning && !hasSteps && !streaming) return null;
+
+  // 展开状态逻辑：若用户手动开合则尊重用户选择；若未手动操作，流式且无正文时自动展开，有正文后自动收起
+  const [userToggledOpen, setUserToggledOpen] = useState<boolean | null>(null);
   const sawContentRef = useRef(hasContent);
+
+  // 正文首次出现时自动平滑收起（仅一次）
   useEffect(() => {
     if (hasContent && !sawContentRef.current) {
       sawContentRef.current = true;
-      setOpen(false);
+      setUserToggledOpen(false);
     }
   }, [hasContent]);
 
-  const tailText = text.slice(-40).replace(/\n/g, ' ');
+  const open = userToggledOpen ?? (streaming && !hasContent);
+
+  const toggleOpen = () => setUserToggledOpen((v) => (v === null ? !open : !v));
+
+  // 摘要预览文本
+  const tailReasoning = hasReasoning ? reasoning!.slice(-40).replace(/\n/g, ' ') : '';
+  const lastStepName = hasSteps ? agentSteps[agentSteps.length - 1]?.name : '';
+  const previewText = tailReasoning || (lastStepName ? `调用工具 ${lastStepName}` : '');
+
+  // 步骤标题生成
+  const stepPrefix = stepNumber ? `步骤 ${stepNumber}` : 'Agent 思考与执行';
+  const mainTitle = agentName
+    ? `${stepPrefix} · ${agentName}`
+    : `${stepPrefix} · ${hasReasoning && hasSteps ? '思考与执行' : hasReasoning ? '思考过程' : '运行过程'}`;
+
+  const renderAgentStep = (step: AgentStep, idx: number) => {
+    switch (step.type) {
+      case 'agent_tool_call':
+        return (
+          <div key={idx} className="px-2.5 py-1.5 border-b border-dashed border-paper-grid/40 last:border-0">
+            <p className="flex items-center gap-1.5 text-[10.5px] font-mono text-accent">
+              <Wrench size={10.5} strokeWidth={1.75} className="shrink-0" />
+              <span>调用工具</span>
+              <span className="font-semibold text-ink-light bg-accent/10 px-1 py-0.5 rounded text-[10px]">
+                {step.name || '未知工具'}
+              </span>
+            </p>
+            {step.arguments ? (
+              <pre className="mt-1 text-[9.5px] leading-snug text-ink-light font-mono whitespace-pre-wrap break-words max-h-24 overflow-y-auto custom-scrollbar bg-paper-grid/20 p-1.5 rounded select-text">
+                {truncateStepText(step.arguments)}
+              </pre>
+            ) : null}
+          </div>
+        );
+      case 'agent_tool_result':
+        return (
+          <div key={idx} className="px-2.5 py-1.5 border-b border-dashed border-paper-grid/40 last:border-0">
+            <p className="flex items-center gap-1.5 text-[10.5px] font-mono text-ink-light">
+              <TerminalSquare size={10.5} strokeWidth={1.75} className="shrink-0 text-ink-faint" />
+              <span>{step.name || '工具'} 返回结果</span>
+            </p>
+            {step.result ? (
+              <pre className="mt-1 text-[9.5px] leading-snug text-ink-faint font-mono whitespace-pre-wrap break-words max-h-24 overflow-y-auto custom-scrollbar bg-paper-grid/20 p-1.5 rounded select-text">
+                {truncateStepText(step.result)}
+              </pre>
+            ) : null}
+          </div>
+        );
+      case 'agent_status':
+      default:
+        return (
+          <div key={idx} className="px-2.5 py-1.5 border-b border-dashed border-paper-grid/40 last:border-0">
+            <p className="text-[10px] leading-snug text-ink-light font-sans select-text">
+              {step.message || '状态更新'}
+            </p>
+          </div>
+        );
+    }
+  };
 
   return (
-    <div className="w-full mb-1 rounded-lg border border-dashed border-paper-grid/80 bg-paper-grid/15 overflow-hidden">
+    <div className="w-full mb-1 rounded-lg border border-dashed border-paper-grid/80 bg-paper-grid/15 overflow-hidden transition-all duration-200">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-1.5 px-2 py-1 text-[10px] text-ink-faint hover:text-ink-light font-sans transition-colors overflow-hidden active:scale-[0.99]"
-        title={open ? '收起思考过程' : '展开思考过程'}
+        onClick={toggleOpen}
+        className="w-full flex items-center gap-1.5 px-2 py-1 text-left text-[10px] text-ink-faint hover:text-ink-light font-sans transition-colors overflow-hidden select-none active:scale-[0.99]"
+        title={open ? '收起步骤详情' : '展开步骤详情'}
       >
-        <Brain size={11} strokeWidth={1.75} className={open ? 'text-accent shrink-0' : 'shrink-0'} />
-        <span className={open ? 'text-ink-light shrink-0' : 'shrink-0'}>思考过程</span>
-        
-        {!open && tailText && (
+        <Bot size={11} strokeWidth={1.75} className={open ? 'text-accent shrink-0' : 'shrink-0'} />
+        <span className={`shrink-0 ${open ? 'text-ink-light font-medium' : ''}`}>
+          {mainTitle}
+        </span>
+
+        {!open && previewText && (
           <span className="flex-1 min-w-0 mx-1 overflow-hidden whitespace-nowrap text-right text-ink-faint/70 select-none truncate text-[9.5px]">
-            {tailText}
+            {previewText}
           </span>
         )}
 
-        <span className={`flex items-center gap-1 shrink-0 ${open || !tailText ? 'ml-auto' : ''}`}>
-          {streaming && <Loader2 size={10} className="animate-spin text-ink-faint" />}
+        <span className={`flex items-center gap-1 shrink-0 ${open || !previewText ? 'ml-auto' : ''}`}>
+          {streaming && <Loader2 size={10} className="animate-spin text-accent shrink-0" />}
+          {hasSteps && (
+            <span className="text-[9.5px] font-mono tabular-nums text-ink-faint bg-paper-grid/30 px-1 py-0.2 rounded">
+              {agentSteps.length} 步
+            </span>
+          )}
           {open ? (
             <ChevronUp size={11} strokeWidth={2} />
           ) : (
@@ -270,22 +401,62 @@ const ReasoningBlock: React.FC<{
           )}
         </span>
       </button>
-      {/* grid-rows 0fr/1fr 过渡：折叠/展开平滑动画（无需固定高度） */}
+
+      {/* grid-rows 0fr/1fr 过渡：折叠/展开平滑动画 */}
       <div
         className={`grid transition-[grid-template-rows] duration-200 ease-out ${
           open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
         }`}
       >
         <div className="overflow-hidden">
-          <pre className="text-[11px] text-ink-light font-sans whitespace-pre-wrap leading-relaxed px-2.5 pb-2 max-h-44 overflow-y-auto custom-scrollbar border-t border-dashed border-paper-grid/50 select-text">
-            {text}
-          </pre>
+          <div className="border-t border-dashed border-paper-grid/50">
+            {/* 思考推理板块 */}
+            {hasReasoning && (
+              <div className="px-2.5 pt-2 pb-1.5">
+                <div className="flex items-center gap-1.5 text-[10px] font-sans font-medium text-ink-faint mb-1">
+                  <Brain size={10.5} strokeWidth={1.75} className="text-accent shrink-0" />
+                  <span>思考推理</span>
+                  {streaming && !hasContent && (
+                    <span className="text-[9px] text-accent/80 font-normal animate-pulse">（正在思考…）</span>
+                  )}
+                </div>
+                <pre className="text-[10.5px] text-ink-light font-sans whitespace-pre-wrap leading-relaxed max-h-44 overflow-y-auto custom-scrollbar select-text bg-paper-grid/10 p-2 rounded border border-paper-grid/30">
+                  {reasoning}
+                </pre>
+              </div>
+            )}
+
+            {/* 分隔线 */}
+            {hasReasoning && hasSteps && (
+              <div className="border-t border-dashed border-paper-grid/30 mx-2.5 my-1" />
+            )}
+
+            {/* 工具执行步骤板块 */}
+            {hasSteps && (
+              <div className="px-2.5 pt-1.5 pb-2">
+                <div className="flex items-center gap-1.5 text-[10px] font-sans font-medium text-ink-faint mb-1">
+                  <Wrench size={10.5} strokeWidth={1.75} className="text-accent shrink-0" />
+                  <span>工具执行明细</span>
+                  <span className="text-[9.5px] font-mono tabular-nums text-ink-faint">({agentSteps.length} 步)</span>
+                </div>
+                <div className="max-h-48 overflow-y-auto custom-scrollbar rounded border border-paper-grid/30 bg-paper-grid/10">
+                  {agentSteps.map(renderAgentStep)}
+                  {streaming && (
+                    <div className="px-2.5 py-1.5 flex items-center gap-1.5 text-[10px] text-accent bg-accent/5 font-sans">
+                      <Loader2 size={10} strokeWidth={2} className="animate-spin shrink-0" />
+                      <span>Agent 执行中…</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
   );
 });
-ReasoningBlock.displayName = 'ReasoningBlock';
+StepActivityCard.displayName = 'StepActivityCard';
 
 const SettingsToggleRow = memo(({ label, description, checked, onChange, disabled }: {
   label: string; description: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean;
@@ -298,6 +469,7 @@ const SettingsToggleRow = memo(({ label, description, checked, onChange, disable
     <Toggle checked={checked} onChange={onChange} label={label} disabled={disabled} />
   </div>
 ));
+SettingsToggleRow.displayName = 'SettingsToggleRow';
 
 const ScrollButton = memo(({ direction, onClick, title }: {
   direction: 'up' | 'down'; onClick: () => void; title: string;
@@ -310,6 +482,7 @@ const ScrollButton = memo(({ direction, onClick, title }: {
     {direction === 'up' ? <ChevronUp size={16} strokeWidth={2} /> : <ChevronDown size={16} strokeWidth={2} />}
   </button>
 ));
+ScrollButton.displayName = 'ScrollButton';
 
 const STYLE_INJECTIONS = `
 @keyframes msg-enter {
@@ -357,6 +530,7 @@ const STYLE_INJECTIONS = `
 interface ChatMessageItemProps {
   msg: ChatMessage;
   idx: number;
+  stepNumber?: number;
   isLast: boolean;
   agentName?: string;
   /** 当前节点工作区 id（从正文提取工作区产物文件时用于换算接口 URL） */
@@ -380,6 +554,7 @@ interface ChatMessageItemProps {
 const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
   msg,
   idx,
+  stepNumber,
   isLast,
   agentName,
   workspaceId,
@@ -418,10 +593,17 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
     );
   }
 
-  // 判定正文是否有内容
+  // 判定正文是否有实际内容
   const hasContent = Boolean(msg.content && msg.content.trim().length > 0);
-  // 正在等待 AI 返回正文（处于流式生成中但正文尚未开始输出，涵盖首字等待与思考过程输出阶段）
-  const isWaitingResponse = Boolean(msg.streaming && !hasContent);
+  // 是否处于初次等待首字阶段（处于流式生成中，尚无正文，且尚无思考推理和工具步骤）
+  const isWaitingInitialToken = Boolean(
+    msg.streaming &&
+      !hasContent &&
+      !msg.reasoning &&
+      (!msg.agentSteps || msg.agentSteps.length === 0)
+  );
+  // 是否应该渲染正文气泡：有正文、处于初次等待首字阶段、或已被用户中断
+  const shouldRenderBubble = hasContent || isWaitingInitialToken || Boolean(msg.interrupted);
   // 正文引用的工作区产物（渲染时提取，与事件上报的 msg.files 合并去重）→ 文件卡片
   const cardFiles = mergeAgentFiles(
     Array.isArray(msg.files) ? msg.files : [],
@@ -442,65 +624,57 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
 
   return (
     <div className={`flex flex-col items-start gap-1 relative group ${!msg.streaming ? 'msg-enter-anim' : ''}`}>
-      {/* 1. Agent 运行日志（工具调用过程） */}
-      {msg.agentSteps && msg.agentSteps.length > 0 && (
-        <div className="w-full mb-1">
-          <AgentActivity
-            steps={msg.agentSteps}
-            agentName={agentName}
-            running={!!msg.streaming}
-            defaultOpen={false}
-          />
-        </div>
-      )}
-      {/* 2. 模型思考过程（reasoning）：与回答正文分离的折叠块；正文开始输出后自动收起 */}
-      {msg.reasoning && (
-        <ReasoningBlock
-          text={msg.reasoning}
-          streaming={!!msg.streaming}
-          hasContent={!!msg.content}
-        />
-      )}
-      {/* 3. AI 回答正文气泡 */}
-      <div className="flex items-end w-full min-w-0">
-        <div className={`max-w-[92%] px-3 py-2 rounded-2xl rounded-bl-sm bg-paper-grid/25 border border-paper-grid/60 text-sm leading-relaxed font-sans min-w-0 select-text ${isWaitingResponse ? 'flex items-center text-ink-light' : ''}`}>
-          {isWaitingResponse ? (
-            <div className="flex items-center gap-2 py-0.5 text-ink-light select-none">
-              <div className="flex items-center gap-1.5 text-accent">
-                <Sparkles size={13} strokeWidth={2} className="animate-thinking-glow shrink-0" />
-                <span className="text-[12px] font-sans font-medium text-ink-light">思考中…</span>
+      {/* 1. 一体化步骤卡片（思考推理 + 工具执行） */}
+      <StepActivityCard
+        stepNumber={stepNumber}
+        reasoning={msg.reasoning}
+        agentSteps={msg.agentSteps}
+        agentName={agentName}
+        streaming={!!msg.streaming}
+        hasContent={hasContent}
+      />
+      {/* 2. AI 回答正文气泡（仅在有正文、初次等待或被中断时渲染，彻底杜绝中间步骤出现空白矩形气泡） */}
+      {shouldRenderBubble && (
+        <div className="flex items-end w-full min-w-0">
+          <div className={`max-w-[92%] px-3 py-2 rounded-2xl rounded-bl-sm bg-paper-grid/25 border border-paper-grid/60 text-sm leading-relaxed font-sans min-w-0 select-text ${isWaitingInitialToken ? 'flex items-center text-ink-light' : ''}`}>
+            {isWaitingInitialToken ? (
+              <div className="flex items-center gap-2 py-0.5 text-ink-light select-none">
+                <div className="flex items-center gap-1.5 text-accent">
+                  <Sparkles size={13} strokeWidth={2} className="animate-thinking-glow shrink-0" />
+                  <span className="text-[12px] font-sans font-medium text-ink-light">思考中…</span>
+                </div>
+                <div className="flex items-center gap-1 h-3 pl-0.5">
+                  <div className="w-1.5 h-1.5 rounded-full bg-accent/70 animate-thinking-wave" style={{ animationDelay: '0ms' }} />
+                  <div className="w-1.5 h-1.5 rounded-full bg-accent/70 animate-thinking-wave" style={{ animationDelay: '160ms' }} />
+                  <div className="w-1.5 h-1.5 rounded-full bg-accent/70 animate-thinking-wave" style={{ animationDelay: '320ms' }} />
+                </div>
               </div>
-              <div className="flex items-center gap-1 h-3 pl-0.5">
-                <div className="w-1.5 h-1.5 rounded-full bg-accent/70 animate-thinking-wave" style={{ animationDelay: '0ms' }} />
-                <div className="w-1.5 h-1.5 rounded-full bg-accent/70 animate-thinking-wave" style={{ animationDelay: '160ms' }} />
-                <div className="w-1.5 h-1.5 rounded-full bg-accent/70 animate-thinking-wave" style={{ animationDelay: '320ms' }} />
-              </div>
+            ) : (
+              <Streamdown
+                plugins={streamPlugins}
+                isAnimating={!!msg.streaming}
+                caret="block"
+                linkSafety={{ enabled: false }}
+              >
+                {/* 流式渲染：正文随 text-delta 增量增长，Streamdown streaming 模式逐块渲染 */}
+                {normalizeMarkdown(stripUnrenderableImages(msg.content, workspaceId)) ||
+                  (msg.interrupted ? '已中断' : '')}
+              </Streamdown>
+            )}
+          </div>
+          {!msg.streaming && hasContent && (
+            <div className="ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+              <button
+                onClick={() => onCopy(msg.content, idx)}
+                className="p-1.5 text-ink-faint hover:text-ink hover:bg-paper-grid/40 rounded-md transition-colors active:scale-[0.96]"
+                title="复制回复"
+              >
+                {isCopied ? <Check size={14} /> : <Copy size={14} />}
+              </button>
             </div>
-          ) : (
-            <Streamdown
-              plugins={streamPlugins}
-              isAnimating={!!msg.streaming}
-              caret="block"
-              linkSafety={{ enabled: false }}
-            >
-              {/* 流式渲染：正文随 text-delta 增量增长，Streamdown streaming 模式逐块渲染 */}
-              {normalizeMarkdown(stripUnrenderableImages(msg.content, workspaceId)) ||
-                (msg.interrupted ? '已中断' : '')}
-            </Streamdown>
           )}
         </div>
-        {!msg.streaming && hasContent && (
-          <div className="ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-            <button
-              onClick={() => onCopy(msg.content, idx)}
-              className="p-1.5 text-ink-faint hover:text-ink hover:bg-paper-grid/40 rounded-md transition-colors active:scale-[0.96]"
-              title="复制回复"
-            >
-              {isCopied ? <Check size={14} /> : <Copy size={14} />}
-            </button>
-          </div>
-        )}
-      </div>
+      )}
       {/* 4. 交互型扩展问答（ask_user_question / dialog）：紧随 AI 引导语下方展开，最符合自然心理阅读与交互动线 */}
       {(questionnaireInteractions.length > 0 || (isLast && extensionDialog?.request)) && (
         <div className="w-full mt-1.5">
@@ -963,21 +1137,37 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                 </p>
               </div>
             ) : (
-              messages.map((msg, idx) => (
-                <ChatMessageItem
-                  key={`${msg.role}-${idx}`}
-                  msg={msg}
-                  idx={idx}
-                  isLast={idx === messages.length - 1}
-                  agentName={agentName}
-                  workspaceId={workspaceId}
-                  contextBlocks={contextBlocks}
-                  onCopy={handleCopy}
-                  isCopied={copiedId === idx}
-                  onRetry={() => onRetry?.(id)}
-                  extensionDialog={extensionDialog}
-                />
-              ))
+              messages.map((msg, idx) => {
+                // 计算当前 assistant 消息在其所属交互轮次中的步骤序号（以 user 消息为轮次分界）
+                let stepNumber: number | undefined = undefined;
+                if (msg.role === 'assistant') {
+                  let count = 0;
+                  for (let i = 0; i <= idx; i++) {
+                    if (messages[i].role === 'user') {
+                      count = 0;
+                    } else if (messages[i].role === 'assistant') {
+                      count++;
+                    }
+                  }
+                  stepNumber = count;
+                }
+                return (
+                  <ChatMessageItem
+                    key={`${msg.role}-${idx}`}
+                    msg={msg}
+                    idx={idx}
+                    stepNumber={stepNumber}
+                    isLast={idx === messages.length - 1}
+                    agentName={agentName}
+                    workspaceId={workspaceId}
+                    contextBlocks={contextBlocks}
+                    onCopy={handleCopy}
+                    isCopied={copiedId === idx}
+                    onRetry={() => onRetry?.(id)}
+                    extensionDialog={extensionDialog}
+                  />
+                );
+              })
             )}
             {/* 工具执行阶段（正文尚未开始流式）的实时 Agent 日志与问答卡片：步骤先落在节点级 agentSteps，
                 正文开始后由镜像挂到最后一条 assistant 消息，此块随即让位给消息级展示，避免重复 */}
