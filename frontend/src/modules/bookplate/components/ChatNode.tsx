@@ -15,6 +15,8 @@ import { AgentOverrideField } from './AgentOverrideField';
 import { ModelOverrideField } from './ModelOverrideField';
 import { ExtensionWidgets } from './ExtensionWidgets';
 import { ExtensionDialog } from './ExtensionDialog';
+import { QuestionAnswerBlock } from './QuestionAnswerBlock';
+import { parseQuestionnaireInteractions } from '../utils/piQuestionnaireParser';
 import type { ExtensionWidgetItem, PendingUiRequest } from '../piStream';
 import { NODE_COLORS } from '../nodeTypes';
 import { authHeaders } from '../authUtils';
@@ -424,8 +426,18 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
     [msg.streaming]
   );
 
+  // 提取 ask_user_question 问答交互卡片数据（提问与用户选择）
+  const questionnaireInteractions = useMemo(
+    () => parseQuestionnaireInteractions(msg.agentSteps),
+    [msg.agentSteps]
+  );
+
   return (
     <div className={`flex flex-col items-start gap-1 relative group ${!msg.streaming ? 'msg-enter-anim' : ''}`}>
+      {/* 交互型扩展问答（ask_user_question）：在思考/正文之前优雅渲染用户的选择与提问 */}
+      {questionnaireInteractions.length > 0 && (
+        <QuestionAnswerBlock interactions={questionnaireInteractions} />
+      )}
       {msg.agentSteps && msg.agentSteps.length > 0 && (
         <div className="w-full mb-1">
           <AgentActivity
@@ -950,12 +962,15 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                 />
               ))
             )}
-            {/* 工具执行阶段（正文尚未开始流式）的实时 Agent 日志：步骤先落在节点级 agentSteps，
+            {/* 工具执行阶段（正文尚未开始流式）的实时 Agent 日志与问答卡片：步骤先落在节点级 agentSteps，
                 正文开始后由镜像挂到最后一条 assistant 消息，此块随即让位给消息级展示，避免重复 */}
             {isGenerating &&
               agentSteps.length > 0 &&
               !messages[messages.length - 1]?.agentSteps?.length && (
-                <div className="w-full">
+                <div className="w-full space-y-1">
+                  <QuestionAnswerBlock
+                    interactions={parseQuestionnaireInteractions(agentSteps)}
+                  />
                   <AgentActivity
                     steps={agentSteps}
                     agentName={agentName}
