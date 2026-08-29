@@ -442,14 +442,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
 
   return (
     <div className={`flex flex-col items-start gap-1 relative group ${!msg.streaming ? 'msg-enter-anim' : ''}`}>
-      {/* 交互型扩展问答（ask_user_question / dialog）：在思考/正文之前优雅就地渲染可交互表单与问答记录 */}
-      {(questionnaireInteractions.length > 0 || (isLast && extensionDialog?.request)) && (
-        <QuestionAnswerBlock
-          interactions={questionnaireInteractions}
-          pendingUi={isLast ? extensionDialog?.request : null}
-          onAnswer={extensionDialog?.onAnswer}
-        />
-      )}
+      {/* 1. Agent 运行日志（工具调用过程） */}
       {msg.agentSteps && msg.agentSteps.length > 0 && (
         <div className="w-full mb-1">
           <AgentActivity
@@ -460,7 +453,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
           />
         </div>
       )}
-      {/* 模型思考过程（reasoning）：与回答正文分离的折叠块；正文开始输出后自动收起 */}
+      {/* 2. 模型思考过程（reasoning）：与回答正文分离的折叠块；正文开始输出后自动收起 */}
       {msg.reasoning && (
         <ReasoningBlock
           text={msg.reasoning}
@@ -468,6 +461,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
           hasContent={!!msg.content}
         />
       )}
+      {/* 3. AI 回答正文气泡 */}
       <div className="flex items-end w-full min-w-0">
         <div className={`max-w-[92%] px-3 py-2 rounded-2xl rounded-bl-sm bg-paper-grid/25 border border-paper-grid/60 text-sm leading-relaxed font-sans min-w-0 select-text ${isWaitingResponse ? 'flex items-center text-ink-light' : ''}`}>
           {isWaitingResponse ? (
@@ -507,7 +501,17 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
           </div>
         )}
       </div>
-      {/* Skill Agent 执行产生的文件：图片缩略预览 + 下载卡片（事件上报 + 正文提取合并） */}
+      {/* 4. 交互型扩展问答（ask_user_question / dialog）：紧随 AI 引导语下方展开，最符合自然心理阅读与交互动线 */}
+      {(questionnaireInteractions.length > 0 || (isLast && extensionDialog?.request)) && (
+        <div className="w-full mt-1.5">
+          <QuestionAnswerBlock
+            interactions={questionnaireInteractions}
+            pendingUi={isLast ? extensionDialog?.request : null}
+            onAnswer={extensionDialog?.onAnswer}
+          />
+        </div>
+      )}
+      {/* 5. Skill Agent 执行产生的文件：图片缩略预览 + 下载卡片（事件上报 + 正文提取合并） */}
       {cardFiles.length > 0 && (
         <div className="flex flex-wrap gap-2 mt-1 w-full pl-0.5">
           {cardFiles.map((f) => (
@@ -981,16 +985,16 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
               agentSteps.length > 0 &&
               !messages[messages.length - 1]?.agentSteps?.length && (
                 <div className="w-full space-y-1">
-                  <QuestionAnswerBlock
-                    interactions={parseQuestionnaireInteractions(agentSteps)}
-                    pendingUi={extensionDialog?.request}
-                    onAnswer={extensionDialog?.onAnswer}
-                  />
                   <AgentActivity
                     steps={agentSteps}
                     agentName={agentName}
                     running
                     defaultOpen={false}
+                  />
+                  <QuestionAnswerBlock
+                    interactions={parseQuestionnaireInteractions(agentSteps)}
+                    pendingUi={extensionDialog?.request}
+                    onAnswer={extensionDialog?.onAnswer}
                   />
                 </div>
               )}

@@ -840,7 +840,7 @@ export function PiChatNodeHost({
    */
   const answerUi = useCallback(
     (id: string, response: { value?: string; confirmed?: boolean; cancelled?: boolean }) => {
-      const ws = activeRequestWsRef.current;
+      const ws = activeRequestWsRef.current ?? wsIdRef.current ?? wsId;
       const call = async () => {
         if (ws) {
           const ok = await postUiResponse(ws, id, response);
@@ -854,7 +854,7 @@ export function PiChatNodeHost({
       };
       void call();
     },
-    []
+    [wsId]
   );
 
   // ---------- 渲染 ----------
