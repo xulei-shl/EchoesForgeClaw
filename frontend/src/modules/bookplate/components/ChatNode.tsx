@@ -14,7 +14,6 @@ import { ContextInjectionBlock } from './ContextInjectionBlock';
 import { AgentOverrideField } from './AgentOverrideField';
 import { ModelOverrideField } from './ModelOverrideField';
 import { ExtensionWidgets } from './ExtensionWidgets';
-import { ExtensionDialog } from './ExtensionDialog';
 import { QuestionAnswerBlock } from './QuestionAnswerBlock';
 import { parseQuestionnaireInteractions } from '../utils/piQuestionnaireParser';
 import type { ExtensionWidgetItem, PendingUiRequest } from '../piStream';
@@ -367,6 +366,14 @@ interface ChatMessageItemProps {
   onCopy: (content: string, idx: number) => void;
   isCopied: boolean;
   onRetry?: () => void;
+  /** 扩展交互提问（仅最后一条活动消息消费） */
+  extensionDialog?: {
+    request: PendingUiRequest | null;
+    onAnswer: (
+      id: string,
+      response: { value?: string; confirmed?: boolean; cancelled?: boolean }
+    ) => void;
+  } | null;
 }
 
 /** 单条对话消息气泡：memo 隔离，流式更新时非活动历史消息跳过 re-render */
@@ -380,6 +387,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
   onCopy,
   isCopied,
   onRetry,
+  extensionDialog,
 }) => {
   // 正文直接透传：SSE text-delta 增量到达即随消息内容增长，Streamdown 以 streaming 模式
   // （parseIncompleteMarkdown / block 级 memo / caret）负责流式渲染，无需再叠加打字机节流。
@@ -434,9 +442,13 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
 
   return (
     <div className={`flex flex-col items-start gap-1 relative group ${!msg.streaming ? 'msg-enter-anim' : ''}`}>
-      {/* 交互型扩展问答（ask_user_question）：在思考/正文之前优雅渲染用户的选择与提问 */}
-      {questionnaireInteractions.length > 0 && (
-        <QuestionAnswerBlock interactions={questionnaireInteractions} />
+      {/* 交互型扩展问答（ask_user_question / dialog）：在思考/正文之前优雅就地渲染可交互表单与问答记录 */}
+      {(questionnaireInteractions.length > 0 || (isLast && extensionDialog?.request)) && (
+        <QuestionAnswerBlock
+          interactions={questionnaireInteractions}
+          pendingUi={isLast ? extensionDialog?.request : null}
+          onAnswer={extensionDialog?.onAnswer}
+        />
       )}
       {msg.agentSteps && msg.agentSteps.length > 0 && (
         <div className="w-full mb-1">
@@ -959,6 +971,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                   onCopy={handleCopy}
                   isCopied={copiedId === idx}
                   onRetry={() => onRetry?.(id)}
+                  extensionDialog={extensionDialog}
                 />
               ))
             )}
@@ -970,6 +983,8 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                 <div className="w-full space-y-1">
                   <QuestionAnswerBlock
                     interactions={parseQuestionnaireInteractions(agentSteps)}
+                    pendingUi={extensionDialog?.request}
+                    onAnswer={extensionDialog?.onAnswer}
                   />
                   <AgentActivity
                     steps={agentSteps}
@@ -978,6 +993,15 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                     defaultOpen={false}
                   />
                 </div>
+              )}
+            {/* 独立交互提问（无助手消息步骤时自适应在消息区渲染） */}
+            {extensionDialog?.request &&
+              !messages.some((m) => m.role === 'assistant') &&
+              agentSteps.length === 0 && (
+                <QuestionAnswerBlock
+                  pendingUi={extensionDialog.request}
+                  onAnswer={extensionDialog.onAnswer}
+                />
               )}
           </div>
         </PhotoProvider>
@@ -1068,9 +1092,6 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
             <ExtensionWidgets widgets={widgets} />
           </div>
         )}
-
-        {/* 扩展交互弹层（模型提问；作答/取消均回写服务端 RPC 子进程） */}
-        <ExtensionDialog request={extensionDialog?.request ?? null} onAnswer={extensionDialog?.onAnswer ?? (() => {})} />
 
         {/* 输入区：文本 + 图片附件 */}
         <div className="shrink-0 mt-2 pt-2 border-t border-solid border-black/5 dark:border-white/5">
