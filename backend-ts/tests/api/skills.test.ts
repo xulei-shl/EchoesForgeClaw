@@ -212,6 +212,27 @@ describe('skills Bifrost 安装 / 检索', () => {
     expect(skills[0]?.name).toBe('deepseek-harness');
   });
 
+  it('bifrost-search：Bifrost 未配置/离线时，降级展示本地共享区缓存 skill', async () => {
+    // 先把 bifrost base_url 指向一个无法连接的地址（模拟离线）
+    await app.inject({
+      method: 'PUT',
+      url: '/api/admin/settings/bifrost.base_url',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { value: 'http://127.0.0.1:59999' },
+    });
+
+    // 检索（之前安装的 bifrost-skill 会在共享区），应返回 200 且包含本地缓存项
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/modules/bookplate/skills/bifrost-search',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { skills: { name: string; cached?: boolean }[]; remote_available?: boolean };
+    expect(body.remote_available).toBe(false);
+    expect(Array.isArray(body.skills)).toBe(true);
+  });
+
   it('install：从 Bifrost 下载 zip → 共享区安装 + 软链登记', async () => {
     const zipBytes = makeSkillZip('bifrost-skill');
     const srv = await startMockOpenAIServer((req) => {

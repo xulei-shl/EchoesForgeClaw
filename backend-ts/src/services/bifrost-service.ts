@@ -4,7 +4,11 @@ import { fileURLToPath } from 'node:url';
 import type { DB } from '../config/database.js';
 import { appSettings, promptMetadata } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
-import { RUNTIME_ROOT } from './skill-agent-service.js';
+import { RUNTIME_ROOT, listSharedBifrostSkills } from './skill-agent-service.js';
+import {
+  RESOURCE_TYPE_BIFROST_SKILL,
+  getUserAnnotationMap,
+} from './annotation-service.js';
 
 /**
  * Bifrost Prompt Repository 代理服务（对应 Python `app/services/bifrost_service.py`）。
@@ -424,3 +428,109 @@ export async function downloadBifrostSkillZip(db: DB, skillName: string): Promis
   }
   return new Uint8Array(await resp.arrayBuffer());
 }
+
+export interface MergedBifrostSkillOptions {
+  db: DB;
+  userId?: number;
+  q?: string;
+  limit?: number;
+  force?: boolean;
+}
+
+export interface MergedBifrostSkillsResult {
+  skills: Record<string, any>[];
+  remote_available: boolean;
+}
+
+/**
+ * 混合检索 Bifrost Skills（共享区本地缓存优先 + 远端合并浏览 + 离线优雅降级）。
+ * 供 Admin 管理端（/api/admin/bifrost-skills）与画布节点检索（/api/modules/bookplate/skills/bifrost-search）公用。
+ */
+export async function getMergedBifrostSkills(
+  options: MergedBifrostSkillOptions
+): Promise<MergedBifrostSkillsResult> {
+  const { db, userId, q = '', limit = 50, force = false } = options;
+  const keyword = q.trim().toLowerCase();
+
+  // 1. 本地共享区缓存
+  const localSkills = listSharedBifrostSkills();
+  const localNames = new Set<string>();
+  for (const s of localSkills) {
+    if (s?.name) localNames.add(String(s.name));
+  }
+
+  // 2. 尝试向远端发起检索（带 force / limit）
+  let remoteAvailable = false;
+  let remote: Record<string, any>[] = [];
+  try {
+    remote = await searchBifrostSkills(db, q, limit, force);
+    remoteAvailable = true;
+  } catch {
+    /* Bifrost 不可达 / 未配置：静默降级为仅本地缓存 */
+  }
+
+  const remoteMap = new Map<string, Record<string, any>>();
+  for (const r of remote) {
+    if (r?.name) remoteMap.set(String(r.name), r);
+  }
+
+  const merged: Record<string, any>[] = [];
+
+  // 3. 组装本地技能（若有搜索词，本地进行名称/描述/正文匹配）
+  for (const s of localSkills) {
+    const name = String(s.name ?? '');
+    const desc = String(s.description ?? '');
+    const body = String(s.body ?? '');
+    if (keyword) {
+      const match =
+        name.toLowerCase().includes(keyword) ||
+        desc.toLowerCase().includes(keyword) ||
+        body.toLowerCase().includes(keyword);
+      if (!match) continue;
+    }
+
+    const r = remoteMap.get(name);
+    if (r) {
+      s.latest_version = r.latest_version ?? '';
+      s.license = r.license ?? '';
+      s.compatibility = r.compatibility ?? '';
+      s.file_count = r.file_count ?? 0;
+      s.remote_updated_at = r.updated_at ?? null;
+    }
+    s.cached = true;
+    merged.push(s);
+  }
+
+  // 4. 追加远端有、本地未缓存的技能
+  for (const r of remote) {
+    const name = String(r.name ?? '');
+    if (!name || localNames.has(name)) continue;
+    merged.push({
+      cached: false,
+      name,
+      description: r.description ?? '',
+      body: r.skill_md_body ?? '',
+      files: [],
+      latest_version: r.latest_version ?? '',
+      license: r.license ?? '',
+      compatibility: r.compatibility ?? '',
+      file_count: r.file_count ?? 0,
+      remote_updated_at: r.updated_at ?? null,
+    });
+  }
+
+  // 5. 富化当前用户的打标与私有备注
+  if (userId && merged.length) {
+    const skillNames = merged.map((s) => String(s.name ?? '')).filter(Boolean);
+    const annotations = getUserAnnotationMap(db, userId, RESOURCE_TYPE_BIFROST_SKILL, skillNames);
+    for (const s of merged) {
+      const ann = annotations.get(String(s.name ?? ''));
+      s.user_rating = ann?.rating ?? 0;
+      s.user_note = ann?.note ?? '';
+      s.note = ann?.note ?? '';
+    }
+  }
+
+  return { skills: merged, remote_available: remoteAvailable };
+}
+

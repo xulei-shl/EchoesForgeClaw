@@ -5,14 +5,13 @@ import path from 'node:path';
 import {
   RESOURCE_TYPE_BIFROST_SKILL,
   getUserAnnotation,
-  getUserAnnotationMap,
 } from '../../../services/annotation-service.js';
 import {
   BifrostError,
   BifrostNotConfiguredError,
   BifrostNotFoundError,
   downloadBifrostSkillZip,
-  searchBifrostSkills,
+  getMergedBifrostSkills,
 } from '../../../services/bifrost-service.js';
 import {
   SkillNotFoundError,
@@ -39,33 +38,19 @@ export async function register(app: FastifyInstance): Promise<void> {
     }
   );
 
-  // 检索 Bifrost Skills 仓库（普通用户可用，供 Skill 检索节点 / Skill Agent 管理弹层）
+  // 检索 Bifrost Skills 仓库（共享区本地缓存优先 + 远端合并浏览，普通用户可用）
   app.get(
     '/api/modules/bookplate/skills/bifrost-search',
     { preHandler: app.authenticate },
-    async (request, reply) => {
+    async (request) => {
       const q = (request.query ?? {}) as { q?: string; limit?: string };
       const limit = Number(q.limit ?? 50) || 50;
-      try {
-        const skills = await searchBifrostSkills(getDb(), q.q ?? '', limit);
-        const userId = request.authUser!.id;
-        const skillNames = skills.map((s) => String(s.name ?? '')).filter(Boolean);
-        const annotations = getUserAnnotationMap(getDb(), userId, RESOURCE_TYPE_BIFROST_SKILL, skillNames);
-        const withAnnotations = skills.map((s) => {
-          const ann = annotations.get(String(s.name ?? ''));
-          return {
-            ...s,
-            user_rating: ann?.rating ?? 0,
-            user_note: ann?.note ?? '',
-            note: ann?.note ?? '',
-          };
-        });
-        return { skills: withAnnotations };
-      } catch (err) {
-        if (err instanceof BifrostNotConfiguredError) return reply.code(503).send({ detail: err.message });
-        if (err instanceof BifrostError) return reply.code(502).send({ detail: err.message });
-        return reply.code(502).send({ detail: err instanceof Error ? err.message : String(err) });
-      }
+      return getMergedBifrostSkills({
+        db: getDb(),
+        userId: request.authUser!.id,
+        q: q.q,
+        limit,
+      });
     }
   );
 

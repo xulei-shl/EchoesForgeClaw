@@ -5,16 +5,14 @@ import {
   BifrostNotConfiguredError,
   BifrostNotFoundError,
   downloadBifrostSkillZip,
-  searchBifrostSkills,
+  getMergedBifrostSkills,
 } from '../../services/bifrost-service.js';
 import {
   RESOURCE_TYPE_BIFROST_SKILL,
-  getUserAnnotationMap,
   setUserAnnotation,
 } from '../../services/annotation-service.js';
 import {
   SkillValidationError,
-  listSharedBifrostSkills,
   removeSharedBifrostSkill,
   updateSharedBifrostSkill,
 } from '../../services/skill-agent-service.js';
@@ -56,64 +54,13 @@ export async function registerBifrostSkillsAdminRouter(app: FastifyInstance): Pr
     const q = (request.query ?? {}) as { q?: string; force?: string; limit?: string };
     const force = q.force === '1' || q.force === 'true';
     const limit = Number(q.limit ?? 100) || 100;
-    const skills = listSharedBifrostSkills();
-    const localNames = new Set<string>();
-    for (const s of skills) localNames.add(String(s.name ?? ''));
-    let remoteAvailable = false;
-    let remote: Record<string, any>[] = [];
-    try {
-      remote = await searchBifrostSkills(getDb(), q.q ?? '', limit, force);
-      remoteAvailable = true;
-    } catch {
-      /* Bifrost 不可达：仅返回本地信息，不影响页面使用 */
-    }
-    const remoteMap = new Map<string, Record<string, any>>();
-    for (const r of remote) {
-      if (r?.name) remoteMap.set(String(r.name), r);
-    }
-    const merged: Record<string, unknown>[] = [];
-    for (const s of skills) {
-      const r = remoteMap.get(String(s.name ?? ''));
-      if (r) {
-        s.latest_version = r.latest_version ?? '';
-        s.license = r.license ?? '';
-        s.compatibility = r.compatibility ?? '';
-        s.file_count = r.file_count ?? 0;
-        s.remote_updated_at = r.updated_at ?? null;
-      }
-      s.cached = true;
-      merged.push(s);
-    }
-    // 追加远端有、本地未缓存的 skill（页面点「同步最新」即可一键下载并缓存）
-    for (const r of remote) {
-      const name = String(r.name ?? '');
-      if (!name || localNames.has(name)) continue;
-      merged.push({
-        cached: false,
-        name,
-        description: r.description ?? '',
-        body: r.skill_md_body ?? '',
-        files: [],
-        latest_version: r.latest_version ?? '',
-        license: r.license ?? '',
-        compatibility: r.compatibility ?? '',
-        file_count: r.file_count ?? 0,
-        remote_updated_at: r.updated_at ?? null,
-      });
-    }
-    // 合并当前用户的打标与私有备注（按用户完全隔离）
-    const userId = request.authUser?.id;
-    if (userId && merged.length) {
-      const skillNames = merged.map((s) => String(s.name ?? '')).filter(Boolean);
-      const annotations = getUserAnnotationMap(getDb(), userId, RESOURCE_TYPE_BIFROST_SKILL, skillNames);
-      for (const s of merged) {
-        const ann = annotations.get(String(s.name ?? ''));
-        s.user_rating = ann?.rating ?? 0;
-        s.user_note = ann?.note ?? '';
-        s.note = ann?.note ?? '';
-      }
-    }
-    return { skills: merged, remote_available: remoteAvailable };
+    return getMergedBifrostSkills({
+      db: getDb(),
+      userId: request.authUser?.id,
+      q: q.q,
+      limit,
+      force,
+    });
   });
 
   // 强制从 Bifrost 拉取最新 zip 覆盖共享区（不触碰用户登记）
