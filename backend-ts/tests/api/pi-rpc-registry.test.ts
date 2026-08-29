@@ -89,13 +89,28 @@ describe('piProcessRegistry（RPC 子进程注册表）', () => {
   it('同一 key 重新注册后覆盖旧进程（新一轮 spawn 顶替）', () => {
     const old = makeFakeStdin();
     const fresh = makeFakeStdin();
-    unregs.push(registerPiProcess(5, 'ws-cycle', old.stdin, 501, noopKill));
+    let oldKilled = 0;
+    unregs.push(registerPiProcess(5, 'ws-cycle', old.stdin, 501, () => { oldKilled += 1; }));
     const unregFresh = registerPiProcess(5, 'ws-cycle', fresh.stdin, 502, noopKill);
     unregs.push(unregFresh);
+    // 顶替即终止仍存活的旧进程：防两进程共写同一会话文件
+    expect(oldKilled).toBe(1);
     // 旧条目已被顶替：写回落在新 stdin
     expect(sendExtensionUiResponse(5, 'ws-cycle', { id: 'u1', value: 'new' })).toBe(true);
     expect(old.lines.length).toBe(0);
     expect(JSON.parse(fresh.lines[0]!)['value']).toBe('new');
+  });
+
+  it('过期轮的注销不误删新进程的注册项（identity 校验）', () => {
+    const stale = makeFakeStdin();
+    const fresh = makeFakeStdin();
+    const unregStale = registerPiProcess(8, 'ws-ident', stale.stdin, 801, noopKill);
+    const unregFresh = registerPiProcess(8, 'ws-ident', fresh.stdin, 802, noopKill);
+    // 旧轮（如错误路径延迟清理）此刻才执行 finally 注销 → 不得删除新条目
+    unregStale();
+    expect(sendExtensionUiResponse(8, 'ws-ident', { id: 'u1', value: 'alive' })).toBe(true);
+    expect(JSON.parse(fresh.lines[0]!)['value']).toBe('alive');
+    unregFresh();
   });
 
   it('killPiProcess 终止并注销：写回随即 404，kill 回调被调用', () => {

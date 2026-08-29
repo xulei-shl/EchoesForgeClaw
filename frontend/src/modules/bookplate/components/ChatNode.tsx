@@ -1,6 +1,6 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, Eraser, ImagePlus, MessageSquare, Send, Copy, Check, Loader2, Square, RefreshCw, ChevronUp, ChevronDown, Lock, X, FileText, Download, Brain, FolderOpen, Clock, Zap } from 'lucide-react';
+import { AlertTriangle, Eraser, ImagePlus, MessageSquare, Send, Copy, Check, Loader2, Square, RefreshCw, ChevronUp, ChevronDown, Lock, X, FileText, Download, Brain, FolderOpen, Clock } from 'lucide-react';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
 import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
@@ -385,21 +385,6 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
     const userContent = idx === 0 ? stripInjectedContext(msg.content, contextBlocks) : msg.content;
     return (
       <div className="flex flex-col items-end gap-0.5 msg-enter-anim">
-        {/* 本轮装配的 Skill chips（Skill Agent 模式发送时记录） */}
-        {!!msg.skills?.length && (
-          <div className="flex flex-wrap justify-end gap-1 max-w-[85%]">
-            {msg.skills.map((s) => (
-              <span
-                key={s}
-                className="inline-flex items-center gap-0.5 rounded-full bg-accent/10 border border-accent/20 px-1.5 py-0.5 text-[9px] font-sans text-accent"
-                title={`本轮装配技能：${s}`}
-              >
-                <Zap size={8} strokeWidth={2} />
-                {s}
-              </span>
-            ))}
-          </div>
-        )}
         {msg.images && msg.images.length > 0 && (
           <div className="flex flex-wrap justify-end gap-1.5 max-w-[85%]">
             {msg.images.map((img, i) => (

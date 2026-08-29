@@ -910,13 +910,27 @@ function piProcessKey(userId: number, workspaceId: string): string {
   return `${userId}:${workspaceId}`;
 }
 
-/** 注册活跃 RPC 子进程（runPiAgent spawn 后调用）；返回注销函数（移除并置 ended）。 */
+/**
+ * 注册活跃 RPC 子进程（runPiAgent spawn 后调用）；返回注销函数（仅当仍是本次条目时移除）。
+ * 顶替语义：同 key 旧进程若仍存活（错误路径下旧轮清理被跳过/延迟），立即终止老进程，
+ * 防止两个 pi 进程共写同一会话文件导致上下文损坏；注销做 identity 校验，过期轮的
+ * finally 清理不得误删新进程的注册项（否则 ui-response 会对新轮 404）。
+ */
 export function registerPiProcess(userId: number, workspaceId: string, stdin: PiProcessEntry['stdin'], procId: number, kill: () => void): () => void {
   const key = piProcessKey(userId, workspaceId);
-  piProcessRegistry.set(key, { stdin, ended: false, procId, kill });
+  const entry: PiProcessEntry = { stdin, ended: false, procId, kill };
+  const prev = piProcessRegistry.get(key);
+  if (prev && !prev.ended) {
+    prev.ended = true;
+    try {
+      prev.kill();
+    } catch {
+      /* 进程可能已亡 */
+    }
+  }
+  piProcessRegistry.set(key, entry);
   return () => {
-    const entry = piProcessRegistry.get(key);
-    if (entry) {
+    if (piProcessRegistry.get(key) === entry) {
       entry.ended = true;
       piProcessRegistry.delete(key);
     }
@@ -949,7 +963,14 @@ export function sendExtensionUiResponse(
   if (body.value !== undefined) payload['value'] = body.value;
   if (body.confirmed !== undefined) payload['confirmed'] = body.confirmed;
   if (body.cancelled !== undefined) payload['cancelled'] = body.cancelled;
-  entry.stdin.write(JSON.stringify(payload) + '\n');
+  try {
+    entry.stdin.write(JSON.stringify(payload) + '\n');
+  } catch {
+    // 管道已断（进程刚死、清理未及）：与「会话已结束」等效，置 ended 防后续重复写
+    entry.ended = true;
+    piProcessRegistry.delete(piProcessKey(userId, workspaceId));
+    return false;
+  }
   return true;
 }
 
@@ -996,6 +1017,11 @@ export async function* runPiAgent(opts: RunPiAgentOptions): AsyncGenerator<ChatS
     },
   });
   const childStdin = child.stdin;
+  // 子进程 stdio 管道在进程崩溃/提前退出时会被异步销毁并 emit 'error'。stdout 已有
+  // markStdoutEnd('error') 兜底，但 stdin/stderr 若无监听，Node 会把该 error 升级为未捕获
+  // 异常——直接带崩整个后端 worker（多租户共享进程，影响面是全服）。补空监听防崩；
+  // 真实诊断信息仍从 stderrTail（尾部捕获）与退出码给出。
+  childStdin?.on('error', () => {});
   const unregister = registerPiProcess(
     opts.userId,
     opts.workspaceId,
@@ -1023,6 +1049,8 @@ export async function* runPiAgent(opts: RunPiAgentOptions): AsyncGenerator<ChatS
   stderr?.on('data', (c: Buffer) => {
     stderrTailRef.value = (stderrTailRef.value + c.toString('utf-8')).slice(-2000);
   });
+  // 防崩：stderr 管道断裂时若无监听会升级为未捕获异常（见 childStdin 注释）
+  stderr?.on('error', () => {});
 
   // 事件队列：stdout 行解析线程安全地入队，生成器按序出队
   const queue: ChatStreamEvent[] = [];
@@ -1138,7 +1166,14 @@ export async function* runPiAgent(opts: RunPiAgentOptions): AsyncGenerator<ChatS
       imageContents.push({ type: 'image', data: img.slice(idx + 1), mimeType: mime.replace('jpeg', 'jpg') });
     }
     if (imageContents.length) promptCmd['images'] = imageContents;
-    childStdin.write(JSON.stringify(promptCmd) + '\n');
+    try {
+      childStdin.write(JSON.stringify(promptCmd) + '\n');
+    } catch {
+      // 子进程已退出/管道已断（如扩展装配失败启动即崩）：写回失败即本轮无法进行，
+      // 记 emitError 走终局收尾，后续 by 出队循环的 error 终局条件立即 cleanup。
+      emittedError = true;
+      pushEvent({ type: 'error', message: 'pi agent 子进程已退出，无法受理本轮消息' });
+    }
 
     // 总超时兜底（RPC 进程常驻防死等）：RPC_AGENT_TIMEOUT_MS，默认 10 分钟
     runTimeout = setTimeout(() => {
@@ -1154,14 +1189,18 @@ export async function* runPiAgent(opts: RunPiAgentOptions): AsyncGenerator<ChatS
     //    async.c Assertion），直接 killTree 更稳；agent_settled 即会话文件已
     //    落盘的权威信号（消息/工具结果/usage 均在起前写完）。
     let finalized = false;
+    // 触发 kill 收尾的信号：agent_settled（本轮完全落定）｜超时｜已产出 error（prompt 被拒 /
+    // 重试耗尽——继续等无意义）。RPC 进程常驻，靠这些信号主动收尾；abort 由 onAbort 的
+    // killTree 兜底。收尾后等子进程真正退出（child close + stdout end）再 break：Windows 下
+    // taskkill /F 后文件句柄释放有时延，过早返回会撞上删除/差分对工作区的并发访问。
+    const isFinal = (): boolean => settledReceived || runTimedOut || emittedError;
     while (true) {
       if (queue.length) {
         emittedAny = true;
         yield queue.shift()!;
         continue;
       }
-      if (childClosed && stdoutEnded) break;
-      if ((settledReceived || runTimedOut) && !finalized) {
+      if (isFinal() && !finalized) {
         finalized = true;
         // 直接用 killTree：绕开 pi 的 shutdown/exit 路径（Windows libuv async 竞态崩点）；
         // agent_settled 已给出会话落盘完成语义，kill 不丢数据。

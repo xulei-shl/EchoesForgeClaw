@@ -352,17 +352,27 @@ export function PiChatNodeHost({
   // workspaceId 变化（含清空对话再生）：作废旧轮（SSE/水合）、复位 live 状态与缓存。
   // 必须在「水合拉取」effect 之前执行：先清空旧工作区的 widget/会话态，再装载新工作区数据。
   useEffect(() => {
-    runSeqRef.current += 1;
-    idleRef.current?.controller.abort();
-    dispatchStream({ type: 'end' });
-    dispatchStream({ type: 'widget_set_all', widgets: [] });
-    setPanelFiles(null);
-    forcedErrorRef.current = null;
-    pendingFilesRef.current.clear();
+    // 首轮发送会自行生成并持久化 workspaceId（null → `${nodeId}_${ts}`）。若该转换
+    // 是当前在途 run 自己产生的（activeRequestWsRef 已指向新 ws 且 run 未结束），在此
+    // 作废旧轮会把首条消息整个丢弃：前端拦截器 run !== runSeqRef 判定通过、SSE 被
+    // idle abort 中断 → 界面「无输出」；同时 contextSentRef 被复位 → 后续补发不再注入
+    // 上级上下文。仅对「非在途 self 工作区赋值」（清空对话再生、外部写入）作废旧轮。
+    const selfAssigned =
+      activeRequestWsRef.current === wsId &&
+      (statusRef.current === 'submitted' || statusRef.current === 'streaming');
+    if (!selfAssigned) {
+      runSeqRef.current += 1;
+      idleRef.current?.controller.abort();
+      dispatchStream({ type: 'end' });
+      dispatchStream({ type: 'widget_set_all', widgets: [] });
+      setPanelFiles(null);
+      forcedErrorRef.current = null;
+      pendingFilesRef.current.clear();
+      contextSentRef.current = false;
+      firstUserTextRef.current = null;
+      statusRef.current = 'ready';
+    }
     activeRequestWsRef.current = wsId;
-    contextSentRef.current = false;
-    firstUserTextRef.current = null;
-    statusRef.current = 'ready';
   }, [wsId]);
 
   // ---------- 水合：挂载 / workspaceId 变化（清空对话再生）时拉取服务端会话 ----------
@@ -375,8 +385,9 @@ export function PiChatNodeHost({
     if (cached) {
       setSessionMsgs(cached.messages);
       dispatchStream({ type: 'widget_set_all', widgets: cached.widgets });
-      // 已有 user 消息说明上下文已发送过
-      if (cached.messages.some(m => m.role === 'user')) contextSentRef.current = true;
+      // 会话产生过完整助手回复才视为「上下文已注入」：仅剩孤立 user 消息（首轮被
+      // 中断/未落完整）时保持未发送态，下次发送仍会重新注入上级上下文。
+      if (cached.messages.some((m) => m.role === 'assistant')) contextSentRef.current = true;
       return;
     }
     const seq = ++loadSeqRef.current;
@@ -388,8 +399,9 @@ export function PiChatNodeHost({
         putSessionCache(wsId, { messages: msgs, widgets });
         setSessionMsgs(msgs);
         dispatchStream({ type: 'widget_set_all', widgets });
-        // 已有 user 消息说明上下文已发送过
-        if (msgs.some(m => m.role === 'user')) contextSentRef.current = true;
+        // 会话产生过完整助手回复才视为「上下文已注入」：仅剩孤立 user 消息（首轮被
+        // 中断/未落完整）时保持未发送态，下次发送仍会重新注入上级上下文。
+        if (msgs.some((m) => m.role === 'assistant')) contextSentRef.current = true;
       })
       .catch(() => {
         if (seq === loadSeqRef.current) setSessionMsgs([]);
