@@ -13,7 +13,7 @@
 
 import { copyFileSync, mkdirSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { mimeOf } from './pi-agent-service.js';
+import { mimeOf } from './file-utils.js';
 
 /** FastClaw 数据根目录：env 可覆盖，默认官方安装布局（gateway cwd）。 */
 const FASTCLAW_DATA_ROOT_ENV = 'FASTCLAW_DATA_ROOT';
