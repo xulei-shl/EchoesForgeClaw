@@ -37,7 +37,7 @@ const FALLBACK_NAME = '未命名分组';
  * 画布分组框（软分组的视觉/操作载体）：
  * - 容器 pointer-events-auto，可直接按住背景或边框平移整组
  * - 背景高透明（8%）、边框中透明（68%），色值经 color-mix 混入，纸感低饱和
- * - zIndex：未激活时为 1（位于普通连线之上、节点之下）；激活选中时提升至 120 置顶显示，覆盖未选中底层节点
+ * - zIndex：未激活时为 1（位于普通连线之上、节点之下）；激活选中时提升至 120；色板打开时提升至 300 置顶，避免被底层/相邻节点遮挡
  */
 export const CanvasGroupFrame: React.FC<CanvasGroupFrameProps> = ({
   id,
@@ -102,7 +102,7 @@ export const CanvasGroupFrame: React.FC<CanvasGroupFrameProps> = ({
         top: y,
         width,
         height,
-        zIndex: active ? 120 : 1,
+        zIndex: paletteOpen ? 300 : active ? 120 : 1,
         borderRadius: 8,
         border: `1px solid color-mix(in srgb, ${color} ${active ? 85 : 68}%, transparent)`,
         background: `color-mix(in srgb, ${color} ${active ? 10 : 8}%, transparent)`,
@@ -163,16 +163,19 @@ export const CanvasGroupFrame: React.FC<CanvasGroupFrameProps> = ({
         <div ref={paletteRef} className="relative shrink-0">
           <button
             title="分组背景色"
-            className="w-3.5 h-3.5 rounded-full border border-black/10 transition-transform duration-150 hover:scale-110"
+            aria-label="选择分组颜色"
+            aria-expanded={paletteOpen}
+            className="w-3.5 h-3.5 rounded-full border border-black/10 transition-transform duration-150 hover:scale-110 active:scale-95"
             style={{ backgroundColor: color }}
             onClick={(e) => {
               e.stopPropagation();
+              onSelect();
               setPaletteOpen((v) => !v);
             }}
           />
           {paletteOpen && (
             <div
-              className="absolute left-0 top-5 z-50 flex gap-1 p-1.5 rounded-lg bg-paper border border-paper-grid shadow-lg"
+              className="absolute left-0 bottom-full mb-1.5 z-50 flex gap-1.5 p-1.5 rounded-lg bg-paper border border-paper-grid shadow-xl animate-in fade-in-0 zoom-in-95 duration-150"
               style={{ width: 'max-content' }}
               onPointerDown={(e) => e.stopPropagation()}
             >
@@ -180,7 +183,8 @@ export const CanvasGroupFrame: React.FC<CanvasGroupFrameProps> = ({
                 <button
                   key={c.value}
                   title={c.name}
-                  className="w-4 h-4 rounded-full border transition-transform duration-150 hover:scale-110"
+                  aria-label={`设置为${c.name}`}
+                  className="w-4 h-4 rounded-full border transition-all duration-150 hover:scale-110 active:scale-95"
                   style={{
                     backgroundColor: c.value,
                     borderColor: c.value === color ? 'var(--color-ink)' : 'rgba(0,0,0,0.1)',
