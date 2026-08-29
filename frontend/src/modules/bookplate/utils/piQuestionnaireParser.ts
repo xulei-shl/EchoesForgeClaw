@@ -1,4 +1,4 @@
-import type { AgentStep } from '../../../platform/types';
+import type { AgentStep } from '../../../platform/types/index.js';
 
 /**
  * 单个问答条目结构化数据。

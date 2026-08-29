@@ -38,6 +38,11 @@ export const DISABLED_TOOLS = (process.env.PI_DISABLED_TOOLS ?? '')
 /** RPC 模式对话总超时（毫秒，默认 10 分钟）：agent_settled 始终未达时的防死等兜底。 */
 export const RPC_AGENT_TIMEOUT_MS = envInt('PI_RPC_TIMEOUT_MS', 10 * 60 * 1000);
 
+/** RPC 进程空闲回收阈值（毫秒，默认 5 分钟）：距上次完成一轮后无新输入即被杀进程释放内存。 */
+export const PI_PROCESS_IDLE_MS = envInt('PI_PROCESS_IDLE_MS', 5 * 60 * 1000);
+/** 全局同时存活的 pi RPC 进程上限：多租户内存兜底，超限按 LRU（最近未用）驱逐。 */
+export const PI_MAX_PROCESSES = envInt('PI_MAX_PROCESSES', 20);
+
 // ---------------------------------------------------------------------------
 // thinking 档位映射
 // ---------------------------------------------------------------------------

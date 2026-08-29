@@ -42,9 +42,18 @@ export {
   mapPiJsonEvent,
 } from './pi/events.js';
 export {
+  type WorkspaceGenerationInput,
+  computeWorkspaceGeneration,
+} from './pi/generation.js';
+export {
   registerPiProcess,
+  getPiProcess,
   killPiProcess,
+  countActivePiProcesses,
+  reapIdlePiProcesses,
+  evictLeastRecentlyUsedPiProcess,
   sendExtensionUiResponse,
+  type PiProcessEntry,
 } from './pi/registry.js';
 export { runPiAgent, type RunPiAgentOptions } from './pi/runner.js';
 export { mimeOf, skillFileDownloadUrl, saveInputImages } from './file-utils.js';

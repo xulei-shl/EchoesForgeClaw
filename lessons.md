@@ -48,3 +48,11 @@ const newY = sourceNode.y + (sourceHeight - targetHeight) / 2;
 - **数据层**：初始坐标和最终落点存在 React State 中。
 - **视图层**：拖拽过程中的实时坐标通过 `requestAnimationFrame` + `el.style.transform = translate3d(...)` 直接更新 DOM，绕过 React 的 render 周期。
 - **连线层**：使用 `useImperativeHandle` 暴露命令式 `setPositions` 给父级，父级在捕获拖拽事件时直接更新 SVG Path，确保高帧率下节点与连线严丝合缝地对齐。
+
+## 5. pi 子进程常驻复用（backend-ts）
+
+**陷阱 1：Windows 下 `taskkill /T /F` 是异步的**。`killPiProcess` 返回后进程可能还没真正退出，紧接着对工作区目录做 `rmSync`（如清空对话 / 测试清理）会撞文件锁（`EPERM: Permission denied`）。**做法**：kill 必须等待子进程 `close` 事件（带短超时兜底）再删除目录；`killPiProcess`/`clearPiSession` 因此改为 async。
+
+**陷阱 2：Node 子进程的 `stdout` 流只能消费一次**。跨轮复用 pi RPC 进程时，不能在每轮单独 `spawn`+监听 stdout——第二轮无法再读同一进程的输出。**做法**：把「spawn + stdout 行解析 + 事件队列」提升为进程级常驻状态机（本轮状态放 `entry.round`），每轮只往 stdin 发新 prompt 并从队列消费；进程间唯一真相源是会话文件 `chat.jsonl`，多轮上下文才不会重复注入。
+
+**设计判据**：是否复用/重拉由「配置代数」（提示词/skill/模型/扩展哈希）决定，与对话内容无关；代数相同复用热进程，变化即杀旧重拉。

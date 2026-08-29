@@ -317,12 +317,13 @@ export function preparePiWorkspace(
  * 覆盖三处：当前会话（.pi-agent/run/）、历史版本落在 agentDir 根的 chat.jsonl、
  * pi 自管/启动迁移产生的 .pi-agent/sessions/。幂等；无任何会话残留时返回 false。
  */
-export function clearPiSession(userId: number, workspaceId: string): boolean {
+export async function clearPiSession(userId: number, workspaceId: string): Promise<boolean> {
   const ws = nodeWorkspace(userId, workspaceId);
   const agentDir = path.join(ws, '.pi-agent');
   let cleared = false;
-  // 清空对话 = 作废本轮交互：先终止活跃 RPC 子进程（问卷等待中 / 流式中）
-  if (killPiProcess(userId, workspaceId)) cleared = true;
+  // 清空对话 = 作废本轮交互：先终止活跃 RPC 子进程（问卷等待中 / 流式中），
+  // 并等其真正退出（Windows taskkill 异步），避免后续删除会话目录撞文件锁
+  if (await killPiProcess(userId, workspaceId)) cleared = true;
   const targets = [path.join(agentDir, 'run'), path.join(agentDir, 'sessions')];
   for (const dir of targets) {
     if (existsSync(dir)) {

@@ -395,7 +395,7 @@ describe('resolveThinkingArgs（节点思考开关 → pi CLI 参数）', () => 
 });
 
 describe('clearPiSession（清空对话语义）', () => {
-  it('清除 run/、根级残留 chat.jsonl 与 sessions/，保留装配物与产物；幂等', () => {
+  it('清除 run/、根级残留 chat.jsonl 与 sessions/，保留装配物与产物；幂等', async () => {
     preparePiWorkspace(UID, WS_ID, {
       agentId: 1,
       chatModel: CHAT_MODEL,
@@ -413,7 +413,7 @@ describe('clearPiSession（清空对话语义）', () => {
     mkdirSync(path.join(wsPath(), 'outputs'), { recursive: true });
     writeFileSync(path.join(wsPath(), 'outputs', 'art.txt'), 'x');
 
-    expect(clearPiSession(UID, WS_ID)).toBe(true);
+    expect(await clearPiSession(UID, WS_ID)).toBe(true);
     expect(existsSync(path.join(agentDir, 'run'))).toBe(false);
     expect(existsSync(path.join(agentDir, 'chat.jsonl'))).toBe(false);
     expect(existsSync(path.join(agentDir, 'sessions'))).toBe(false);
@@ -421,7 +421,7 @@ describe('clearPiSession（清空对话语义）', () => {
     expect(existsSync(path.join(wsPath(), 'outputs', 'art.txt'))).toBe(true);
 
     // 幂等：无残留时返回 false
-    expect(clearPiSession(UID, WS_ID)).toBe(false);
+    expect(await clearPiSession(UID, WS_ID)).toBe(false);
   });
 });
 

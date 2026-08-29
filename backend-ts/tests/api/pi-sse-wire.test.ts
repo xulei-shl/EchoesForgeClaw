@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { rmSync } from 'node:fs';
 
-import { preparePiWorkspace, runPiAgent } from '../../src/services/pi-agent-service.js';
+import { killPiProcess, preparePiWorkspace, runPiAgent } from '../../src/services/pi-agent-service.js';
 import { chatStreamToSseResponse, type ChatStreamEvent } from '../../src/modules/bookplate/stream.js';
 
 const PNG_B64 =
@@ -93,11 +93,13 @@ describe('runPiAgent → 原始 SSE 线协议（工具日志/产物事件到达�
   let mock: { server: Server; port: number };
 
   beforeEach(async () => {
+    await killPiProcess(UID, WS_ID);
     rmSync(path.join(RUNTIME_ROOT, String(UID), 'workspace', WS_ID), { recursive: true, force: true });
     mock = await startMock();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await killPiProcess(UID, WS_ID);
     mock.server.close();
     rmSync(path.join(RUNTIME_ROOT, String(UID), 'workspace', WS_ID), { recursive: true, force: true });
   });

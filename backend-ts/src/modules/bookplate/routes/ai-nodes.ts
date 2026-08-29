@@ -21,9 +21,11 @@ import {
 import {
   appendArtifactManifest,
   clearPiSession,
+  computeWorkspaceGeneration,
   listWorkspaceArtifacts,
   preparePiWorkspace,
   runPiAgent,
+  resolvePiExtensions,
   sendExtensionUiResponse,
 } from '../../../services/pi-agent-service.js';
 import { mimeOf, skillFileDownloadUrl } from '../../../services/file-utils.js';
@@ -114,20 +116,33 @@ export async function register(app: FastifyInstance): Promise<void> {
           }
           const workspaceId =
             payload.workspace_id ?? `${payload.node_id ?? 'node'}_${Date.now()}`;
+          // 对话模型运行时配置（preparePiWorkspace 装配 + runPiAgent 传代数的共用输入）
+          const chatModel = {
+            baseUrl: saCfg.chat.baseUrl,
+            apiKey: saCfg.chat.apiKey,
+            modelName: saCfg.chat.modelName,
+            multimodal: saCfg.chat.kind === 'multimodal',
+            apiFormat: saCfg.chat.apiFormat,
+            thinkingFormat: saCfg.chat.thinkingFormat,
+            contextWindow: saCfg.chat.contextWindow,
+            maxTokens: saCfg.chat.maxTokens,
+          };
+          // 进程复用判据：提示词/skill/模型/扩展的装配物哈希。
+          // 每轮仍全量重装配（幂等、毫秒级），复用/重拉完全交给 runPiAgent 按代数判定——
+          // 避免「跳过重装后又重拉」产生缺提示词/扩展的进程（竞态）。
+          const generation = computeWorkspaceGeneration({
+            userId: request.authUser!.id,
+            agentId: saCfg.configId,
+            skillNames: payload.skills ?? [],
+            chatModel,
+            imageModel: saCfg.image,
+            extensionNames: resolvePiExtensions().map((s) => s.name),
+          });
           let prepared;
           try {
             prepared = preparePiWorkspace(request.authUser!.id, workspaceId, {
               agentId: saCfg.configId,
-              chatModel: {
-                baseUrl: saCfg.chat.baseUrl,
-                apiKey: saCfg.chat.apiKey,
-                modelName: saCfg.chat.modelName,
-                multimodal: saCfg.chat.kind === 'multimodal',
-                apiFormat: saCfg.chat.apiFormat,
-                thinkingFormat: saCfg.chat.thinkingFormat,
-                contextWindow: saCfg.chat.contextWindow,
-                maxTokens: saCfg.chat.maxTokens,
-              },
+              chatModel,
               imageModel: saCfg.image,
               skillNames: payload.skills ?? [],
             });
@@ -163,6 +178,7 @@ export async function register(app: FastifyInstance): Promise<void> {
                 images: payload.images?.length ? payload.images : undefined,
                 thinkingLevel: payload.thinking ?? null,
                 signal: requestAbortSignal(request),
+                generation,
               }),
               { ws: prepared.ws, store: createWidgetStore(prepared.ws) }
             );
@@ -289,7 +305,7 @@ export async function register(app: FastifyInstance): Promise<void> {
       if (!workspaceId) {
         return reply.code(400).send({ detail: 'workspace_id 不能为空' });
       }
-      return { cleared: clearPiSession(request.authUser!.id, workspaceId) };
+      return { cleared: await clearPiSession(request.authUser!.id, workspaceId) };
     }
   );
 

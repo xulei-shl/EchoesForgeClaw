@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { existsSync, rmSync, writeFileSync } from 'node:fs';
 
 import {
+  killPiProcess,
   preparePiWorkspace,
   runPiAgent,
 } from '../../src/services/pi-agent-service.js';
@@ -93,6 +94,8 @@ describe('runPiAgent（pi CLI 子进程端到端）', () => {
   let mock: { server: Server; port: number };
 
   beforeEach(async () => {
+    // 常驻进程会在正常轮次后保留：先杀掉，避免与旧测试轮/文件锁冲突
+    await killPiProcess(UID, WS_ID);
     rmSync(path.join(RUNTIME_ROOT, String(UID), 'workspace', WS_ID), {
       recursive: true,
       force: true,
@@ -100,7 +103,10 @@ describe('runPiAgent（pi CLI 子进程端到端）', () => {
     mock = await startMock();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    // runPiAgent 正常收尾不再 kill 子进程（复用语义）——测试必须显式释放，否则
+    // 目录删除撞文件锁、vitest 退出挂起
+    await killPiProcess(UID, WS_ID);
     mock.server.close();
     rmSync(path.join(RUNTIME_ROOT, String(UID), 'workspace', WS_ID), {
       recursive: true,
