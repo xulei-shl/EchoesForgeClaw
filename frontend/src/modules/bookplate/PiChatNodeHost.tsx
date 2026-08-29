@@ -4,7 +4,6 @@ import { ChatNode } from './components/ChatNode';
 import { getNodeTitle } from './nodeTypes';
 import { buildInjectedContextBlocks } from './contextBlocks';
 import { isBookCoverEnabled } from './execution';
-import { handleAgentSseMessage } from './agentSteps';
 import { authHeaders, handleUnauthorized } from './authUtils';
 import { makeIdleTimeout } from './idleTimeout';
 import { PROMPT_SSE_IDLE_TIMEOUT_MS } from '../../platform/utils/timeouts';
@@ -274,7 +273,8 @@ export function PiChatNodeHost({
   }, [panelOpen, panelVersion, loadPanel]);
 
   // ---------- 流式状态：原始 SSE + 纯 reducer（替代 useChat 一次性 live 缓冲） ----------
-  // streamState.content/reasoning 在流结束后仍保留至水合提交（dispatch end），
+  // streamState.steps 按「每条助手消息」拆分（思考 + 正文 + 工具步骤，见 piStream），
+  // 流式期逐条独立气泡展示；流结束后保留至水合提交（dispatch end），
   // 避免「实时已清、持久未到」的闪烁空档；isStreaming 驱动打字光标与 isGenerating。
   const [streamState, dispatchStream] = useReducer(piStreamReducer, INITIAL_PI_STREAM);
   const [settledSeq, setSettledSeq] = useState(0);
@@ -425,28 +425,39 @@ export function PiChatNodeHost({
   const nodeSteps: AgentStep[] = Array.isArray(node.data?.agentSteps) ? node.data.agentSteps : [];
   const bufFiles = pendingFilesRef.current.size ? [...pendingFilesRef.current.values()] : [];
 
-  // 当轮 live assistant：仅在「有当轮进行中（乐观用户存在或正在流式）且产生了输出」时展示，
-  // 流结束后 content/reasoning 保留至水合提交（消除收尾闪烁），水合完成即让位给历史。
-  const liveAssistant = (() => {
+  // 当轮 live assistant 消息列表：按 streamState.steps 逐条助手消息拆分成独立气泡
+  // （每步 = 思考 + 正文 + 工具步骤 + 问答卡片），与水合后的分消息形态对齐。
+  // 仅最后一条（在跑步骤）打 streaming 标记；已完结步骤以静态消息展示。
+  // 流结束后 steps 保留至水合提交（消除收尾闪烁），水合完成即让位给历史。
+  const liveMessages: ChatMessage[] = (() => {
     const inFlight = optimisticUserRef.current !== null || streamState.isStreaming;
-    if (!inFlight) return null;
-    const hasOutput =
-      streamState.content || streamState.reasoning || nodeSteps.length || bufFiles.length;
-    if (!hasOutput) return null;
-    return {
-      role: 'assistant' as const,
-      content: streamState.content,
-      ...(streamState.reasoning ? { reasoning: streamState.reasoning } : {}),
-      streaming: streamState.isStreaming,
-      ...(nodeSteps.length ? { agentSteps: nodeSteps } : {}),
-      ...(bufFiles.length ? { files: mergeAgentFiles(undefined, bufFiles) } : {}),
-    };
+    if (!inFlight) return [];
+    const steps = streamState.steps;
+    if (!steps.some((s) => s.content || s.reasoning || s.agentSteps.length) && !bufFiles.length) {
+      return [];
+    }
+    const lastIdx = steps.length - 1;
+    const out: ChatMessage[] = [];
+    steps.forEach((s, i) => {
+      const isActive = i === lastIdx;
+      const files = isActive && bufFiles.length ? mergeAgentFiles(undefined, bufFiles) : null;
+      if (!s.content && !s.reasoning && !s.agentSteps.length && !files?.length) return;
+      out.push({
+        role: 'assistant',
+        content: s.content,
+        ...(s.reasoning ? { reasoning: s.reasoning } : {}),
+        ...(s.agentSteps.length ? { agentSteps: s.agentSteps } : {}),
+        streaming: streamState.isStreaming && isActive,
+        ...(files?.length ? { files } : {}),
+      });
+    });
+    return out;
   })();
 
   const messages: ChatMessage[] = [
     ...(sessionMsgs ?? []),
     ...(optimisticUserRef.current ? [optimisticUserRef.current] : []),
-    ...(liveAssistant ? [liveAssistant] : []),
+    ...liveMessages,
   ];
 
   // ---------- 单向镜像：显示消息 → 节点 store（下游 output 与画布持久化） ----------
@@ -662,28 +673,23 @@ export function PiChatNodeHost({
               case 'status':
                 // 自动重试成功恢复：立即撤下倒计时横幅（步骤日志仍保留该状态）
                 if (evt.message.includes('已自动恢复')) setRetryNotice(null);
-                handleAgentSseMessage(
-                  setNodes,
-                  nodeId,
-                  'agent_status',
-                  JSON.stringify({ message: evt.message })
-                );
+                dispatchStream({ type: 'status', message: evt.message });
                 break;
               case 'tool_call':
-                handleAgentSseMessage(
-                  setNodes,
-                  nodeId,
-                  'agent_tool_call',
-                  JSON.stringify({ id: evt.id, name: evt.name, arguments: evt.arguments })
-                );
+                dispatchStream({
+                  type: 'tool_call',
+                  id: evt.id,
+                  name: evt.name,
+                  arguments: evt.arguments,
+                });
                 break;
               case 'tool_result':
-                handleAgentSseMessage(
-                  setNodes,
-                  nodeId,
-                  'agent_tool_result',
-                  JSON.stringify({ id: evt.id, name: evt.name, result: evt.result })
-                );
+                dispatchStream({
+                  type: 'tool_result',
+                  id: evt.id,
+                  name: evt.name,
+                  result: evt.result,
+                });
                 break;
               case 'extension_widget':
                 // 扩展 widget 更新（服务端快照的流式镜像；同 key 幂等覆盖）
