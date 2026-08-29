@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { getDb, type DB } from '../../config/database.js';
 import { llmConfigs, nodeConfigs, promptTemplates, skillAgentConfigs } from '../../db/schema.js';
 import { now, toIso } from '../../shared/datetime.js';
-import { writeAgentMd } from '../../services/skill-agent-files.js';
+import { ensureAgentMd, writeAgentMd } from '../../services/skill-agent-files.js';
 
 /**
  * Skill Agent 配置管理（对应 Python `app/api/admin/skill_agent_configs.py`）：
@@ -68,18 +68,9 @@ function toOut(db: DB, cfg: SkillAgentRow): SkillAgentOut {
   };
 }
 
-/** 最终生效的提示词内容：引用模板优先（且启用），回退旧字段（与 router._skill_agent_config_from 口径一致）。 */
-function effectivePromptContent(db: DB, cfg: SkillAgentRow): string {
-  if (cfg.promptId != null) {
-    const prompt = db.select().from(promptTemplates).where(eq(promptTemplates.id, cfg.promptId)).get();
-    if (prompt?.isActive) return prompt.content ?? '';
-  }
-  return cfg.systemPrompt ?? '';
-}
-
 /** 按最终生效提示词物化 / 删除 AGENTS.md。 */
 function syncAgentMd(db: DB, cfg: SkillAgentRow): void {
-  writeAgentMd(cfg.id, effectivePromptContent(db, cfg));
+  ensureAgentMd(db, cfg);
 }
 
 /** 校验引用的模型配置存在且启用（Skill Agent 的 url/key/model 全部来自它）。 */

@@ -212,15 +212,28 @@ describe('parseQuestionnaireInteractions（问答交互数据解析）', () => {
         id: 'call-live',
         name: 'ask_user_question',
         arguments: JSON.stringify({
-          questions: [{ question: '等待作答的问题', options: [{ label: 'A' }, { label: 'B' }] }],
+          questions: [
+            {
+              question: '你的学科背景是什么？',
+              header: '学科背景',
+              options: [{ label: '计算机科学' }, { label: '人文社科' }],
+            },
+            {
+              question: '你读这本书的主要目的是什么？',
+              header: '阅读目的',
+              options: [{ label: '学术研究' }, { label: '兴趣爱好' }],
+            },
+          ],
         }),
       },
     ];
 
     const results = parseQuestionnaireInteractions(steps);
     expect(results.length).toBe(1);
-    expect(results[0]!.hasResult).toBe(false);
-    expect(results[0]!.cancelled).toBe(false);
+    expect(results[0]!.items.length).toBe(2);
+    expect(results[0]!.items[0]!.options?.map((o) => o.label)).toEqual(['计算机科学', '人文社科']);
+    expect(results[0]!.items[1]!.options?.map((o) => o.label)).toEqual(['学术研究', '兴趣爱好']);
     expect(results[0]!.items[0]!.answered).toBe(false);
+    expect(results[0]!.items[1]!.answered).toBe(false);
   });
 });

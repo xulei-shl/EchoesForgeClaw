@@ -8,6 +8,7 @@ import {
   type LLMConfigRow,
 } from '../repositories/index.js';
 import { llmConfigs, skillAgentConfigs } from '../db/schema.js';
+import { ensureAgentMd } from './skill-agent-files.js';
 import type { TextModelConfig, VisionModelConfig, ImageModelConfig } from '../infrastructure/ai/types.js';
 import type { FastClawRuntimeConfig } from './fastclaw-service.js';
 
@@ -230,6 +231,9 @@ export function skillAgentConfigFrom(configId: number | null): SkillAgentRuntime
   const db = getDb();
   const cfg = db.select().from(skillAgentConfigs).where(eq(skillAgentConfigs.id, nc.skillAgentConfigId)).get();
   if (!cfg || !cfg.isActive) return null;
+  // 装配前置物化：存量配置可能从未走过 admin 保存接口，AGENTS.md 缺失会静默丢提示词。
+  // 这里按 DB 最新值增量同步（内容一致时跳过写盘），保证 preparePiWorkspace 的 hasPrompt 判定可靠。
+  ensureAgentMd(db, cfg);
   const chat = skillAgentChatModel(db, cfg);
   if (!chat) return null;
   return {
