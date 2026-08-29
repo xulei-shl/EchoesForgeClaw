@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { mimeOf, skillFileDownloadUrl } from './pi-agent-service.js';
+import { mimeOf, skillFileDownloadUrl } from './file-utils.js';
 
 /**
  * pi 会话水合（服务端为真相源）：

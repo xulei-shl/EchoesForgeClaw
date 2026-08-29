@@ -25,9 +25,8 @@ import {
   preparePiWorkspace,
   runPiAgent,
   sendExtensionUiResponse,
-  mimeOf,
-  skillFileDownloadUrl,
 } from '../../../services/pi-agent-service.js';
+import { mimeOf, skillFileDownloadUrl } from '../../../services/file-utils.js';
 import { withWidgetBridge, createWidgetStore } from '../../../services/pi-widgets.js';
 import { hydratePiSession, readSessionImageBlock } from '../../../services/pi-session-hydrate.js';
 import { nodeWorkspace, sanitizeWorkspaceId } from '../../../services/skill-agent-service.js';

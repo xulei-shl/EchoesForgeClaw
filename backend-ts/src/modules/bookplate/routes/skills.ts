@@ -24,7 +24,7 @@ import {
   removeSkill,
   resolveSkillAbs,
 } from '../../../services/skill-agent-service.js';
-import { mimeOf } from '../../../services/pi-agent-service.js';
+import { mimeOf } from '../../../services/file-utils.js';
 
 export async function register(app: FastifyInstance): Promise<void> {
   // ---- Skill 工作区（Skill Agent 的 skill 来源） ----
