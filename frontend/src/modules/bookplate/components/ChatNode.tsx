@@ -942,7 +942,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
             onWheel={handleWheel}
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
-            className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden space-y-2.5 pr-0.5 chat-scroll-container"
+            className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden space-y-2.5 pr-0.5 pb-8 chat-scroll-container"
           >
             {/* 顶部展示各个上级节点的上下文注入折叠块 */}
             {contextBlocks.length > 0 && (

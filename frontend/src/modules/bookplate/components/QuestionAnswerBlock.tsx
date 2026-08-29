@@ -540,15 +540,15 @@ const SingleQuestionnaireCard: React.FC<{
 
       {/* 底部统一提交操作栏（仅在编辑未提交态展示） */}
       {!isDone && (
-        <div className="px-3.5 py-2.5 bg-accent/5 border-t border-accent/15 flex items-center justify-between gap-2">
-          <span className="text-[10.5px] text-ink-faint">
+        <div className="px-3.5 py-2.5 bg-accent/5 border-t border-accent/15 flex items-center justify-between gap-3">
+          <span className="text-[10.5px] text-ink-faint leading-snug flex-1 min-w-0">
             支持自由修改，确认无误后点击右侧按钮提交
           </span>
           <button
             type="button"
             disabled={isSubmitting}
             onClick={handleSubmitAll}
-            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-accent px-4 py-1.5 text-xs font-medium font-sans text-white hover:bg-accent/90 active:scale-[0.96] transition disabled:opacity-50 disabled:pointer-events-none cursor-pointer shadow-xs"
+            className="shrink-0 whitespace-nowrap inline-flex items-center justify-center gap-1.5 rounded-lg bg-accent px-3.5 py-1.5 text-xs font-medium font-sans text-white hover:bg-accent/90 active:scale-[0.96] transition disabled:opacity-70 disabled:pointer-events-none cursor-pointer shadow-xs min-w-[72px]"
           >
             {isSubmitting ? (
               <>
