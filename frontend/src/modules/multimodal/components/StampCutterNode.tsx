@@ -18,6 +18,7 @@ import { NODE_COLORS } from '../../bookplate/nodeTypes';
 import {
   type StampAspectRatio,
   type StampCropBox,
+  type StampGrid,
   type StampCutterState,
   renderStampFromImage,
   loadImage,
@@ -103,6 +104,9 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
   const [aspectRatio, setAspectRatio] = useState<StampAspectRatio>(
     data.aspectRatio || '3:4'
   );
+  const [grid, setGrid] = useState<StampGrid>(
+    data.grid || { rows: 1, cols: 1 }
+  );
   const [cropBox, setCropBox] = useState<StampCropBox>(
     data.cropBox || DEFAULT_CROP_BOX
   );
@@ -128,13 +132,16 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
     }
   }, [data?.imageUrl]);
 
-  // 根据选定比例调整选框高度/宽度
+  // 根据选定单张比例与多联版式调整选框高度/宽度
   const applyAspectRatio = useCallback(
-    (ratio: StampAspectRatio, currentBox: StampCropBox) => {
+    (ratio: StampAspectRatio, currentBox: StampCropBox, currentGrid: StampGrid = grid) => {
       if (ratio === 'free') return currentBox;
-      let targetRatio = 3 / 4;
-      if (ratio === '4:3') targetRatio = 4 / 3;
-      if (ratio === '1:1') targetRatio = 1;
+      let singleRatio = 3 / 4;
+      if (ratio === '4:3') singleRatio = 4 / 3;
+      if (ratio === '1:1') singleRatio = 1;
+
+      // 考虑多联网格版式计算整组裁剪目标长宽比
+      const targetRatio = (singleRatio * currentGrid.cols) / currentGrid.rows;
 
       // 获取当前图片实际物理比例以做精准换算
       const img = imgRef.current;
@@ -164,15 +171,23 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
         height: Math.min(1, newH),
       };
     },
-    []
+    [grid]
   );
 
   // 切换长宽比
   const handleRatioChange = (ratio: StampAspectRatio) => {
     setAspectRatio(ratio);
-    const adjusted = applyAspectRatio(ratio, cropBox);
+    const adjusted = applyAspectRatio(ratio, cropBox, grid);
     setCropBox(adjusted);
-    onUpdateState?.(id, { aspectRatio: ratio, cropBox: adjusted });
+    onUpdateState?.(id, { aspectRatio: ratio, cropBox: adjusted, grid });
+  };
+
+  // 切换多联版式
+  const handleGridChange = (newGrid: StampGrid) => {
+    setGrid(newGrid);
+    const adjusted = applyAspectRatio(aspectRatio, cropBox, newGrid);
+    setCropBox(adjusted);
+    onUpdateState?.(id, { grid: newGrid, cropBox: adjusted });
   };
 
   // 切换白边开关
@@ -229,9 +244,10 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
       if (aspectRatio !== 'free') {
         const img = imgRef.current;
         const imgRatio = img && img.naturalHeight ? img.naturalWidth / img.naturalHeight : 1;
-        let targetRatio = 3 / 4;
-        if (aspectRatio === '4:3') targetRatio = 4 / 3;
-        if (aspectRatio === '1:1') targetRatio = 1;
+        let singleRatio = 3 / 4;
+        if (aspectRatio === '4:3') singleRatio = 4 / 3;
+        if (aspectRatio === '1:1') singleRatio = 1;
+        const targetRatio = (singleRatio * grid.cols) / grid.rows;
         const normRatio = targetRatio / imgRatio;
 
         nextH = nextW / normRatio;
@@ -276,9 +292,10 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
       if (aspectRatio !== 'free') {
         const img = imgRef.current;
         const imgRatio = img && img.naturalHeight ? img.naturalWidth / img.naturalHeight : 1;
-        let targetRatio = 3 / 4;
-        if (aspectRatio === '4:3') targetRatio = 4 / 3;
-        if (aspectRatio === '1:1') targetRatio = 1;
+        let singleRatio = 3 / 4;
+        if (aspectRatio === '4:3') singleRatio = 4 / 3;
+        if (aspectRatio === '1:1') singleRatio = 1;
+        const targetRatio = (singleRatio * grid.cols) / grid.rows;
         const normRatio = targetRatio / imgRatio;
         newH = newW / normRatio;
       }
@@ -293,7 +310,9 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
 
   // 重置选框到居中初始状态（若在成品展示态，则清空生成图片回退到选框模式）
   const handleResetCrop = useCallback(() => {
-    const initial = applyAspectRatio('3:4', DEFAULT_CROP_BOX);
+    const defaultGrid = { rows: 1, cols: 1 };
+    setGrid(defaultGrid);
+    const initial = applyAspectRatio('3:4', DEFAULT_CROP_BOX, defaultGrid);
     setCropBox(initial);
     setAspectRatio('3:4');
     setWithMargin(true);
@@ -304,10 +323,16 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
         cropBox: initial,
         aspectRatio: '3:4',
         withMargin: true,
+        grid: defaultGrid,
       });
       showToast('已重置并返回选框模式', { type: 'success' });
     } else {
-      onUpdateState?.(id, { cropBox: initial, aspectRatio: '3:4', withMargin: true });
+      onUpdateState?.(id, {
+        cropBox: initial,
+        aspectRatio: '3:4',
+        withMargin: true,
+        grid: defaultGrid,
+      });
       showToast('选框已重置为居中', { type: 'success' });
     }
   }, [applyAspectRatio, data?.imageUrl, isEditing, id, onUpdateState, showToast]);
@@ -352,6 +377,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
       // 2. 离线 Canvas 高保真渲染
       const resultDataUrl = await renderStampFromImage(img, cropBox, {
         withMargin,
+        grid,
       });
 
       // 3. 优雅过渡延迟让动画自然展现
@@ -363,6 +389,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
         isSaved: false,
         withMargin,
         aspectRatio,
+        grid,
         cropBox,
         uploadedImage: data.uploadedImage || null,
       });
@@ -375,7 +402,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
     } finally {
       setIsAnimatingCrop(false);
     }
-  }, [activeImageSrc, isExporting, cropBox, withMargin, id, aspectRatio, data.uploadedImage, onUpdateState, showToast]);
+  }, [activeImageSrc, isExporting, cropBox, withMargin, grid, id, aspectRatio, data.uploadedImage, onUpdateState, showToast]);
 
   // 独立保存到数据库
   const handleSaveToDatabase = useCallback(async () => {
@@ -387,6 +414,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
       await onExport(id, imgUrl, {
         withMargin,
         aspectRatio,
+        grid,
         cropBox,
         uploadedImage: data.uploadedImage || null,
         isSaved: true,
@@ -582,41 +610,79 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
       />
 
       <div className="h-full flex flex-col flex-1 min-h-0 gap-2">
-        {/* 顶部工具栏（仅在选框模式下展示核心比例与纸边选项） */}
+        {/* 顶部工具栏（仅在选框模式下展示核心版式、比例与纸边选项） */}
         {isEditing && (
-          <div className="flex items-center justify-between gap-1 px-1.5 py-1 rounded bg-paper-grid/20 border border-paper-grid/40 text-xs font-sans text-ink-light select-none">
+          <div className="flex flex-wrap items-center justify-between gap-1.5 px-2 py-1 rounded bg-paper-grid/20 border border-paper-grid/40 text-xs font-sans text-ink-light select-none">
+            {/* 多联版式选择 */}
             <div className="flex items-center gap-1">
-              <span className="text-ink-faint text-[11px] px-0.5">比例:</span>
-              {(['3:4', '4:3', '1:1', 'free'] as StampAspectRatio[]).map((r) => (
+              <span className="text-ink-faint text-[11px] px-0.5">版式:</span>
+              <select
+                value={`${grid.rows}x${grid.cols}`}
+                onChange={(e) => {
+                  const [r, c] = e.target.value.split('x').map(Number);
+                  if (r && c) {
+                    handleGridChange({ rows: r, cols: c });
+                  }
+                }}
+                className="bg-paper/90 border border-paper-grid/60 text-ink rounded px-1.5 py-0.5 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-accent cursor-pointer"
+              >
+                <optgroup label="基础">
+                  <option value="1x1">1×1 单张</option>
+                </optgroup>
+                <optgroup label="竖版多联">
+                  <option value="2x1">1×2 竖双联</option>
+                  <option value="3x1">1×3 竖三联</option>
+                  <option value="4x1">1×4 竖四联</option>
+                </optgroup>
+                <optgroup label="横版多联">
+                  <option value="1x2">2×1 横双联</option>
+                  <option value="1x3">3×1 横三联</option>
+                  <option value="1x4">4×1 横四联</option>
+                </optgroup>
+                <optgroup label="方形/网格多联">
+                  <option value="2x2">2×2 四方联</option>
+                  <option value="2x3">3×2 六联</option>
+                  <option value="3x2">2×3 六联</option>
+                  <option value="3x3">3×3 九联</option>
+                </optgroup>
+              </select>
+            </div>
+
+            {/* 比例与纸边 */}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
+                <span className="text-ink-faint text-[11px] px-0.5">单张比例:</span>
+                {(['3:4', '4:3', '1:1', 'free'] as StampAspectRatio[]).map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => handleRatioChange(r)}
+                    className={`px-1.5 py-0.5 rounded transition ${
+                      aspectRatio === r
+                        ? 'bg-accent/15 text-accent font-medium'
+                        : 'hover:bg-paper-grid/40 text-ink-light'
+                    }`}
+                  >
+                    {r === 'free' ? '自由' : r}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-1">
                 <button
-                  key={r}
                   type="button"
-                  onClick={() => handleRatioChange(r)}
-                  className={`px-1.5 py-0.5 rounded transition ${
-                    aspectRatio === r
+                  onClick={handleToggleMargin}
+                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition ${
+                    withMargin
                       ? 'bg-accent/15 text-accent font-medium'
                       : 'hover:bg-paper-grid/40 text-ink-light'
                   }`}
+                  title={withMargin ? '开启白边' : '关闭白边'}
                 >
-                  {r === 'free' ? '自由' : r}
+                  <Sparkles size={12} />
+                  <span>纸边</span>
                 </button>
-              ))}
-            </div>
-
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={handleToggleMargin}
-                className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition ${
-                  withMargin
-                    ? 'bg-accent/15 text-accent font-medium'
-                    : 'hover:bg-paper-grid/40 text-ink-light'
-                }`}
-                title={withMargin ? '开启白边' : '关闭白边'}
-              >
-                <Sparkles size={12} />
-                <span>纸边</span>
-              </button>
+              </div>
             </div>
           </div>
         )}
@@ -702,8 +768,37 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
                         <div className="absolute inset-0 border-[6px] border-white/95 pointer-events-none shadow-sm" />
                       )}
 
-                      {/* 锯齿打孔描边装饰 */}
+                      {/* 外部锯齿打孔描边装饰 */}
                       <div className="absolute inset-0 border-2 border-dashed border-white/80 pointer-events-none" />
+
+                      {/* 内部多联打孔分割线（横向与纵向） */}
+                      {grid.rows > 1 &&
+                        Array.from({ length: grid.rows - 1 }).map((_, idx) => {
+                          const topPercent = ((idx + 1) / grid.rows) * 100;
+                          return (
+                            <div
+                              key={`row-guide-${idx}`}
+                              className="absolute left-0 right-0 pointer-events-none flex items-center justify-center z-10"
+                              style={{ top: `${topPercent}%`, transform: 'translateY(-50%)' }}
+                            >
+                              <div className="w-full h-0 border-t-2 border-dotted border-white/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]" />
+                            </div>
+                          );
+                        })}
+
+                      {grid.cols > 1 &&
+                        Array.from({ length: grid.cols - 1 }).map((_, idx) => {
+                          const leftPercent = ((idx + 1) / grid.cols) * 100;
+                          return (
+                            <div
+                              key={`col-guide-${idx}`}
+                              className="absolute top-0 bottom-0 pointer-events-none flex items-center justify-center z-10"
+                              style={{ left: `${leftPercent}%`, transform: 'translateX(-50%)' }}
+                            >
+                              <div className="h-full w-0 border-l-2 border-dotted border-white/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]" />
+                            </div>
+                          );
+                        })}
 
                       {/* 中央截取快捷悬浮按钮 */}
                       <button

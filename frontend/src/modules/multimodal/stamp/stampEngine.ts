@@ -89,20 +89,23 @@ export async function renderStampFromImage(
     sHeight
   );
 
-  // 3.3 进行四周半圆孔洞打孔（剔除 alpha）
+  // 3.3 进行半圆/圆孔齿孔打孔（剔除 alpha）
   stampCtx.globalCompositeOperation = 'destination-out';
   stampCtx.fillStyle = '#000000';
+
+  const rows = Math.max(1, Math.min(10, options.grid?.rows || 1));
+  const cols = Math.max(1, Math.min(10, options.grid?.cols || 1));
 
   // 水平打孔（顶部 y=0 与 底部 y=sh）
   const numH = Math.max(1, Math.round((sw - pitch) / pitch));
   const startH = (sw - numH * pitch) / 2 + pitch / 2;
   for (let i = 0; i <= numH; i++) {
     const cx = startH + i * pitch - pitch / 2;
-    // 顶部半圆
+    // 顶部外齿半圆
     stampCtx.beginPath();
     stampCtx.arc(cx, 0, holeRadius, 0, Math.PI * 2);
     stampCtx.fill();
-    // 底部半圆
+    // 底部外齿半圆
     stampCtx.beginPath();
     stampCtx.arc(cx, sh, holeRadius, 0, Math.PI * 2);
     stampCtx.fill();
@@ -113,14 +116,40 @@ export async function renderStampFromImage(
   const startV = (sh - numV * pitch) / 2 + pitch / 2;
   for (let i = 0; i <= numV; i++) {
     const cy = startV + i * pitch - pitch / 2;
-    // 左侧半圆
+    // 左侧外齿半圆
     stampCtx.beginPath();
     stampCtx.arc(0, cy, holeRadius, 0, Math.PI * 2);
     stampCtx.fill();
-    // 右侧半圆
+    // 右侧外齿半圆
     stampCtx.beginPath();
     stampCtx.arc(sw, cy, holeRadius, 0, Math.PI * 2);
     stampCtx.fill();
+  }
+
+  // 多联票内部横向分割打孔线 (rows > 1)
+  if (rows > 1) {
+    for (let r = 1; r < rows; r++) {
+      const cy = margin + (r / rows) * sHeight;
+      for (let i = 0; i <= numH; i++) {
+        const cx = startH + i * pitch - pitch / 2;
+        stampCtx.beginPath();
+        stampCtx.arc(cx, cy, holeRadius, 0, Math.PI * 2);
+        stampCtx.fill();
+      }
+    }
+  }
+
+  // 多联票内部纵向分割打孔线 (cols > 1)
+  if (cols > 1) {
+    for (let c = 1; c < cols; c++) {
+      const cx = margin + (c / cols) * sWidth;
+      for (let i = 0; i <= numV; i++) {
+        const cy = startV + i * pitch - pitch / 2;
+        stampCtx.beginPath();
+        stampCtx.arc(cx, cy, holeRadius, 0, Math.PI * 2);
+        stampCtx.fill();
+      }
+    }
   }
 
   // 4. 创建最终画布（合成四周柔和立体投影 + 贴上邮票本体）
