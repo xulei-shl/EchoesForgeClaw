@@ -13,9 +13,11 @@ import { HALFTONE_FX_EFFECT } from './halftone';
 import { DITHER_FX_EFFECT } from './dither';
 import { ASCII_FX_EFFECT } from './ascii';
 import { TEXTURE_FX_EFFECT } from './texture';
+import { CRT_FX_EFFECT } from './crt';
 
 /** 效果注册表 */
 const imageFxRegistry = new Map<string, ImageFxEffectDef>([
+  [CRT_FX_EFFECT.id, CRT_FX_EFFECT],
   [TEXTURE_FX_EFFECT.id, TEXTURE_FX_EFFECT],
   [GRAIN_FX_EFFECT.id, GRAIN_FX_EFFECT],
   [HALFTONE_FX_EFFECT.id, HALFTONE_FX_EFFECT],

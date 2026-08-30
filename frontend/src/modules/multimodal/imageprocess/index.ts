@@ -13,6 +13,7 @@ export * from './effects/halftone';
 export * from './effects/dither';
 export * from './effects/ascii';
 export * from './effects/texture';
+export * from './effects/crt';
 export * from './state';
 
 import { getImageFxEffect } from './effects/registry';

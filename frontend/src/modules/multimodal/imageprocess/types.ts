@@ -8,7 +8,7 @@
  */
 
 /** 效果注册表 id */
-export type ImageFxId = 'grain' | 'halftone' | 'dither' | 'ascii' | 'texture';
+export type ImageFxId = 'crt' | 'texture' | 'grain' | 'halftone' | 'dither' | 'ascii';
 
 /** 数值滑杆参数声明（节点 UI 按声明自动渲染滑杆行） */
 export interface ImageFxSliderParamDef {
@@ -172,6 +172,29 @@ export interface TextureFxParams {
   intensity: number;
   /** 对比度 0-100（控制明暗张力与 S 曲线斜率） */
   contrast: number;
+}
+
+/** CRT 荧光色调预设 ID */
+export type CrtProfileId =
+  | 'neon-red'
+  | 'matrix-green'
+  | 'amber'
+  | 'cyber-cyan'
+  | 'monochrome'
+  | 'original';
+
+/** CRT 扫描线与荧光发光参数 */
+export interface CrtFxParams {
+  /** 荧光色调预设 */
+  profile: CrtProfileId;
+  /** 扫描线距（px，自动根据分辨率缩放） */
+  lineSpacing: number;
+  /** 荧光发光强度（0-100%） */
+  glow: number;
+  /** 扫描线深度（0-100%） */
+  scanlineDepth: number;
+  /** 荧光粉色散（0-100%） */
+  chromatic: number;
 }
 
 /** 图片处理节点持久化状态（写入 node.data） */
