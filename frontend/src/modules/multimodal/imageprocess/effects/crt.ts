@@ -342,8 +342,8 @@ async function renderCrt(
 /** CRT 荧光扫描线效果定义 */
 export const CRT_FX_EFFECT: ImageFxEffectDef = {
   id: 'crt',
-  name: '荧光扫描 (CRT)',
-  description: 'CRT 显像管扫描线与多层荧光发光（含横向扫射拖尾、RGB 色散与 6 款经典调色板）',
+  name: '荧光扫描',
+  description: 'CRT 显像管扫描线与多层荧光发光',
   params: [
     {
       kind: 'select',
