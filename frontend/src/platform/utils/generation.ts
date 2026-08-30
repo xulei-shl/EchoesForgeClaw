@@ -81,6 +81,7 @@ export function generationNodeTypeLabel(nodeType?: string | null): string {
     oil_paint: '湿油彩效果',
     image_process: '图片处理',
     emboss_foil: '微浮雕高光',
+    glass_refract: '玻璃折射',
     
     zhihu_search: '知乎检索',
     wikipedia_search: 'Wikipedia 检索',

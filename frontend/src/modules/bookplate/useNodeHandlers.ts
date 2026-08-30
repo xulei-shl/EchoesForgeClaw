@@ -450,6 +450,7 @@ export function useNodeHandlers({
   const handleUpdateOilPaintStateFor = useEditorPatchHandler(['oil_paint'], editorPatchFns);
   const handleUpdateImageProcessStateFor = useEditorPatchHandler(['image_process'], editorPatchFns);
   const handleUpdateEmbossFoilStateFor = useEditorPatchHandler(['emboss_foil'], editorPatchFns);
+  const handleUpdateGlassRefractStateFor = useEditorPatchHandler(['glass_refract'], editorPatchFns);
 
   /** 「内容 = 已保存记录」型图片节点（小票 / 图书卡片等）共用：
    *  内容变更后，当前预览不再对应「生成保存到数据库」的结果：若该节点已有保存记录，
@@ -550,6 +551,7 @@ export function useNodeHandlers({
     handleExportOilPaintFor,
     handleExportImageProcessFor,
     handleExportEmbossFoilFor,
+    handleExportGlassRefractFor,
     handleExportMapPosterFor,
     handleExportMapArtFor,
   } = useImageOutputHandlers(imageOutputCtx);
@@ -670,6 +672,8 @@ export function useNodeHandlers({
     handleUpdateImageProcessStateFor,
     handleExportEmbossFoilFor,
     handleUpdateEmbossFoilStateFor,
+    handleExportGlassRefractFor,
+    handleUpdateGlassRefractStateFor,
     handleSelectSearchImageFor,
     handleUpdateImageSearchEditorFor,
     handleSelectGlamImageFor,

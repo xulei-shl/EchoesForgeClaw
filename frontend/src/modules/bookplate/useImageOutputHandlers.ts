@@ -294,6 +294,7 @@ export interface ImageOutputHandlers {
   handleExportOilPaintFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportImageProcessFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportEmbossFoilFor: (id: string, dataUrl: string, state: any) => Promise<void>;
+  handleExportGlassRefractFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportMapPosterFor: (id: string, imageUrl: string) => Promise<void>;
   handleExportMapArtFor: (id: string, imageUrl: string) => Promise<void>;
 }
@@ -434,6 +435,18 @@ export function useImageOutputHandlers(ctx: ImageOutputCtx): ImageOutputHandlers
     historyWarn: '记录微浮雕高光到历史数据库失败(不阻断导出):',
   });
 
+  // 玻璃折射：与微浮雕/邮票同流程——手动点击保存 → /save-image 落盘 → generations 记录
+  const handleExportGlassRefractFor = useImageExportHandler(ctx, {
+    nodeType: 'glass_refract',
+    historyNodeType: 'glass_refract',
+    promptOf: (state) => `玻璃折射 · ${state?.pattern || '十字格'}`,
+    okExtras: () => ({}),
+    onHistorySaved: () => {},
+    emptyError: '保存玻璃折射图片失败',
+    errLabel: '玻璃折射保存',
+    historyWarn: '记录玻璃折射到历史数据库失败(不阻断导出):',
+  });
+
   const handleExportMapPosterFor = useSimpleImageExportHandler(ctx, 'map_poster');
   const handleExportMapArtFor = useSimpleImageExportHandler(ctx, 'map_art');
 
@@ -451,6 +464,7 @@ export function useImageOutputHandlers(ctx: ImageOutputCtx): ImageOutputHandlers
     handleExportOilPaintFor,
     handleExportImageProcessFor,
     handleExportEmbossFoilFor,
+    handleExportGlassRefractFor,
     handleExportMapPosterFor,
     handleExportMapArtFor,
   };

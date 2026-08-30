@@ -29,6 +29,7 @@ import { TextImageNode } from '../../modules/multimodal/components/TextImageNode
 import { OilPaintNode } from '../../modules/multimodal/components/OilPaintNode';
 import { ImageProcessNode } from '../../modules/multimodal/components/ImageProcessNode';
 import { EmbossFoilNode } from '../../modules/multimodal/components/EmbossFoilNode';
+import { GlassRefractNode } from '../../modules/multimodal/components/GlassRefractNode';
 import { MapArtNode } from '../../modules/multimodal/components/MapArtNode';
 import { PatternSearchNode, type PatternItem } from '../../modules/multimodal/components/PatternSearchNode';
 import { ColorSearchNode, type ColorItem } from '../../modules/multimodal/components/ColorSearchNode';
@@ -196,6 +197,10 @@ export interface NodeViewHelpers {
   handleExportEmbossFoilFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   /** 微浮雕高光节点：状态更新写入 node.data（持久化） */
   handleUpdateEmbossFoilStateFor: (id: string, patch: Record<string, any>) => void;
+  /** 玻璃折射节点：导出 PNG data URL 落盘（保存到后端 + 记录数据库历史 + 写回 node.data） */
+  handleExportGlassRefractFor: (id: string, dataUrl: string, state: any) => Promise<void>;
+  /** 玻璃折射节点：状态更新写入 node.data（持久化） */
+  handleUpdateGlassRefractStateFor: (id: string, patch: Record<string, any>) => void;
   /** 文本聚合节点：保存占位符模板 */
   handleUpdateAggregateTemplateFor: (id: string, template: string) => void;
   /** 文本聚合节点：重命名某上级节点的占位符别名 */
@@ -1007,6 +1012,29 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           mismatchBadge={mismatchBadge}
           onUpdateState={h.handleUpdateEmbossFoilStateFor}
           onExport={h.handleExportEmbossFoilFor}
+        />
+      );
+    }
+
+    case 'glass_refract': {
+      const d = node.data ?? {};
+      const { upstreamImageUrl } = resolveUpstreamImage(node, h);
+      return (
+        <GlassRefractNode
+          key={node.id}
+          {...common}
+          data={d}
+          upstreamImageUrl={upstreamImageUrl}
+          isFavorited={!!h.favoritedState[node.id]}
+          isPublic={!!h.publishedState[node.id]}
+          isSelected={node.id === h.activeImage?.id}
+          recordDeleted={h.staleRecordIds.has(node.id)}
+          onSelect={h.handleSelectImage}
+          onToggleFavorite={h.handleToggleFavoriteFor}
+          onTogglePublic={h.handleTogglePublicFor}
+          mismatchBadge={mismatchBadge}
+          onUpdateState={h.handleUpdateGlassRefractStateFor}
+          onExport={h.handleExportGlassRefractFor}
         />
       );
     }

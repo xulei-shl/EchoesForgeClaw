@@ -56,6 +56,8 @@ export const NODE_TYPES = {
   TEXT_IMAGE: 'text_image',
   /** 微浮雕高光（多模态工具）：等高线/浮雕肌理与全息微光反光，支持邮票齿孔与纸边定制 */
   EMBOSS_FOIL: 'emboss_foil',
+  /** 玻璃折射（多模态工具）：长虹/十字格/玻璃砖/雨滴/水波/波浪/锤纹/流动/磨砂等 9 种物理玻璃折射与色散高光效果 */
+  GLASS_REFRACT: 'glass_refract',
   /** VuFind 馆藏（GLAM 工具）：根据 ISBN 获取索书号 */
   VUFIND_CALL_NUMBER: 'vufind_call_number',
 } as const;
@@ -358,6 +360,15 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     type: NODE_TYPES.EMBOSS_FOIL,
     name: '微浮雕高光',
     description: '为图片添加等高线/浮雕肌理与全息微光反光效果，支持邮票齿孔与纸边定制',
+    category: 'multimodal',
+    configurable: false,
+    output_type: 'image',
+    input_types: ['image', 'text'],
+  },
+  {
+    type: NODE_TYPES.GLASS_REFRACT,
+    name: '玻璃折射',
+    description: '长虹/十字格/玻璃砖/雨滴/水波/波浪/锤纹/流动/磨砂等 9 种物理玻璃折射与色散高光效果',
     category: 'multimodal',
     configurable: false,
     output_type: 'image',

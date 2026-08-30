@@ -251,6 +251,23 @@ export function seedDataFor(type: NodeType, parent?: NodeData): any {
         isSaved: false,
         error: null,
       };
+    case 'glass_refract':
+      return {
+        presetId: 'vintage_cross',
+        pattern: 'cross',
+        scale: 26,
+        relief: 1.07,
+        thickness: 91,
+        angle: 0,
+        dispersion: 0.01,
+        specular: 0.32,
+        gap: 0.06,
+        seed: 7,
+        imageUrl: null,
+        uploadedImage: null,
+        isSaved: false,
+        error: null,
+      };
     case 'vufind_call_number':
       return {
         isbn: '',

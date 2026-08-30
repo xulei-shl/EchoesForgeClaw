@@ -260,6 +260,8 @@ export type CanvasNodeType =
   | 'image_process'
   /** 微浮雕高光节点：等高线/纸质浮雕肌理与全息高光反光（多模态工具） */
   | 'emboss_foil'
+  /** 玻璃折射节点：长虹/十字格/玻璃砖/雨滴/水波/波浪/锤纹/流动/磨砂等 9 种物理玻璃折射与色散高光（多模态工具） */
+  | 'glass_refract'
   /** VuFind 馆藏节点：根据 ISBN 获取索书号（GLAM 工具） */
   | 'vufind_call_number';
 
