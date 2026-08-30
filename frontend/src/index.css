@@ -578,6 +578,35 @@ body.is-connecting [data-node-id]:hover {
   color: var(--color-ink-light) !important;
 }
 
+/* ========== Streamdown 流式光标动效（抹茶呼吸微光圆点 Matcha Breathing Orb） ========== */
+@keyframes streamdown-caret-breathe {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 6px var(--color-accent);
+  }
+  50% {
+    opacity: 0.3;
+    transform: scale(0.72);
+    box-shadow: 0 0 1px var(--color-accent);
+  }
+}
+
+/* 覆盖原生 Unicode 黑色字符方块，替换为温润灵动的主题色呼吸微光圆点 */
+[style*="--streamdown-caret"] > *:last-child::after {
+  content: "" !important;
+  display: inline-block !important;
+  width: 0.45rem !important; /* 7.2px */
+  height: 0.45rem !important;
+  margin-left: 0.28rem !important;
+  margin-right: 0.1rem !important;
+  vertical-align: 0.08em !important;
+  border-radius: var(--radius-pill, 9999px) !important;
+  background-color: var(--color-accent) !important;
+  box-shadow: 0 0 6px var(--color-accent) !important;
+  animation: streamdown-caret-breathe 1.2s ease-in-out infinite !important;
+}
+
 /* ========== 借书卡专用复古与手写字体（与 借书卡.html 完全一致） ========== */
 .font-shangtu {
   font-family: '上图东观体', 'Noto Serif SC', 'LXGW WenKai', serif;

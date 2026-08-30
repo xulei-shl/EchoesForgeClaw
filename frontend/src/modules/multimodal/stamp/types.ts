@@ -17,8 +17,31 @@ export interface StampCropBox {
   height: number;
 }
 
+/** 邮票网格/多联版式配置（行数与列数） */
+export interface StampGrid {
+  /** 行数（竖向分割，默认 1） */
+  rows: number;
+  /** 列数（横向分割，默认 1） */
+  cols: number;
+}
+
+/** 邮票常用多联预设 */
+export type StampLayoutPreset =
+  | '1x1' // 单张
+  | '1x2' // 竖双联
+  | '1x3' // 竖三联
+  | '1x4' // 竖四联
+  | '2x1' // 横双联
+  | '3x1' // 横三联
+  | '4x1' // 横四联
+  | '2x2' // 四方联
+  | '3x3' // 九联
+  | 'custom'; // 自定义行列
+
 /** 邮票齿孔打孔与柔和投影渲染参数 */
 export interface StampEffectOptions {
+  /** 多联网格版式（默认 { rows: 1, cols: 1 } 单张） */
+  grid?: StampGrid;
   /** 是否包含白色纸边（默认 true，内容四周留白） */
   withMargin?: boolean;
   /** 内容到锯齿边的白边宽度 (px)，默认 46 */
@@ -37,6 +60,8 @@ export interface StampEffectOptions {
 
 /** 邮票截图框节点内部持久化状态 */
 export interface StampCutterState {
+  /** 多联网格版式（行与列） */
+  grid?: StampGrid;
   /** 是否带白边 */
   withMargin: boolean;
   /** 长宽比设置 */
