@@ -30,6 +30,7 @@ import { OilPaintNode } from '../../modules/multimodal/components/OilPaintNode';
 import { ImageProcessNode } from '../../modules/multimodal/components/ImageProcessNode';
 import { EmbossFoilNode } from '../../modules/multimodal/components/EmbossFoilNode';
 import { GlassRefractNode } from '../../modules/multimodal/components/GlassRefractNode';
+import { EditorialLayoutNode } from '../../modules/multimodal/components/EditorialLayoutNode';
 import { MapArtNode } from '../../modules/multimodal/components/MapArtNode';
 import { PatternSearchNode, type PatternItem } from '../../modules/multimodal/components/PatternSearchNode';
 import { ColorSearchNode, type ColorItem } from '../../modules/multimodal/components/ColorSearchNode';
@@ -201,6 +202,14 @@ export interface NodeViewHelpers {
   handleExportGlassRefractFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   /** 玻璃折射节点：状态更新写入 node.data（持久化） */
   handleUpdateGlassRefractStateFor: (id: string, patch: Record<string, any>) => void;
+  /** 杂志排版节点：导出 PNG data URL 落盘（保存到后端 + 记录数据库历史 + 写回 node.data） */
+  handleExportEditorialFor: (id: string, dataUrl: string, state: any) => Promise<void>;
+  /** 杂志排版节点：状态更新写入 node.data（用户排版动作带 undoable 记撤销历史） */
+  handleUpdateEditorialStateFor: (
+    id: string,
+    patch: Record<string, any>,
+    undoable?: boolean
+  ) => void;
   /** 文本聚合节点：保存占位符模板 */
   handleUpdateAggregateTemplateFor: (id: string, template: string) => void;
   /** 文本聚合节点：重命名某上级节点的占位符别名 */
@@ -1035,6 +1044,31 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           mismatchBadge={mismatchBadge}
           onUpdateState={h.handleUpdateGlassRefractStateFor}
           onExport={h.handleExportGlassRefractFor}
+        />
+      );
+    }
+
+    case 'editorial_layout': {
+      const d = node.data ?? {};
+      const upstreamImages = resolveUpstreamImages(node, h);
+      const upstreamText = firstUpstreamText(node, h.nodes, h.edges, h.portTypesOf);
+      return (
+        <EditorialLayoutNode
+          key={node.id}
+          {...common}
+          data={d}
+          upstreamImages={upstreamImages}
+          upstreamText={upstreamText}
+          isFavorited={!!h.favoritedState[node.id]}
+          isPublic={!!h.publishedState[node.id]}
+          isSelected={node.id === h.activeImage?.id}
+          recordDeleted={h.staleRecordIds.has(node.id)}
+          onSelect={h.handleSelectImage}
+          onToggleFavorite={h.handleToggleFavoriteFor}
+          onTogglePublic={h.handleTogglePublicFor}
+          mismatchBadge={mismatchBadge}
+          onUpdateState={h.handleUpdateEditorialStateFor}
+          onExport={h.handleExportEditorialFor}
         />
       );
     }

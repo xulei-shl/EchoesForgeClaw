@@ -82,6 +82,7 @@ export function generationNodeTypeLabel(nodeType?: string | null): string {
     image_process: '图片处理',
     emboss_foil: '微浮雕高光',
     glass_refract: '玻璃折射',
+    editorial_layout: '杂志排版',
     
     zhihu_search: '知乎检索',
     wikipedia_search: 'Wikipedia 检索',

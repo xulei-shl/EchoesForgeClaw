@@ -58,6 +58,8 @@ export const NODE_TYPES = {
   EMBOSS_FOIL: 'emboss_foil',
   /** 玻璃折射（多模态工具）：长虹/十字格/玻璃砖/雨滴/水波/波浪/锤纹/流动/磨砂等 9 种物理玻璃折射与色散高光效果 */
   GLASS_REFRACT: 'glass_refract',
+  /** 杂志排版（多模态工具）：Pretext 动态无 DOM 避让图文混排，输出高保真杂志风格图片 */
+  EDITORIAL_LAYOUT: 'editorial_layout',
   /** VuFind 馆藏（GLAM 工具）：根据 ISBN 获取索书号 */
   VUFIND_CALL_NUMBER: 'vufind_call_number',
 } as const;
@@ -369,6 +371,15 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     type: NODE_TYPES.GLASS_REFRACT,
     name: '玻璃折射',
     description: '长虹/十字格/玻璃砖/雨滴/水波/波浪/锤纹/流动/磨砂等 9 种物理玻璃折射与色散高光效果',
+    category: 'multimodal',
+    configurable: false,
+    output_type: 'image',
+    input_types: ['image', 'text'],
+  },
+  {
+    type: NODE_TYPES.EDITORIAL_LAYOUT,
+    name: '杂志排版',
+    description: 'Pretext 动态无 DOM 避让图文混排，输出高保真杂志风格图片',
     category: 'multimodal',
     configurable: false,
     output_type: 'image',

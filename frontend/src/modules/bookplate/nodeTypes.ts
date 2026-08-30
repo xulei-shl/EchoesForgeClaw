@@ -38,6 +38,7 @@ export const NODE_COLORS: Record<CanvasNodeType, string> = {
   sticker_maker: 'oklch(0.72 0.15 340)',
   journal_maker: 'oklch(0.7 0.14 150)',
   text_image: 'oklch(0.68 0.15 195)',
+  editorial_layout: 'oklch(0.68 0.15 285)',
   vufind_call_number: 'oklch(0.62 0.18 280)',
 };
 
@@ -321,6 +322,14 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     configurable: false,
     defaultSize: DEFAULT_SIZES.glass_refract,
   },
+  {
+    type: 'editorial_layout',
+    name: '杂志排版',
+    description: 'Pretext 动态无 DOM 避让图文混排，输出高保真杂志风格图片',
+    category: 'multimodal',
+    configurable: false,
+    defaultSize: DEFAULT_SIZES.editorial_layout,
+  },
 ];
 
 export const NODE_TEMPLATE_MAP: Record<CanvasNodeType, NodeTemplateDef> = Object.fromEntries(
@@ -421,6 +430,8 @@ export const NODE_PORT_TYPES: Record<
   emboss_foil: { output: 'image', inputs: ['image', 'text'] },
   // 玻璃折射：输出折射处理后的图片；可连线图片或图书元数据作为输入源（连线即输入）
   glass_refract: { output: 'image', inputs: ['image', 'text'] },
+  // 杂志排版：输出合成的高保真杂志图片；可连线文本与多张图片/图书元数据（连线即输入）
+  editorial_layout: { output: 'image', inputs: ['text', 'image'] },
   // VuFind 馆藏：输出获取的索书号文本；可连线图书元数据/文本节点自动读取 ISBN（连线即输入）
   vufind_call_number: { output: 'text', inputs: ['text'] },
 };

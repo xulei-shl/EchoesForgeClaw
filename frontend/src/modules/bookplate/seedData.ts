@@ -268,6 +268,39 @@ export function seedDataFor(type: NodeType, parent?: NodeData): any {
         isSaved: false,
         error: null,
       };
+    case 'editorial_layout':
+      return {
+        presetId: 'cover_ribbon',
+        pageSize: '3:4',
+        article: {
+          masthead: 'ECHOES FORGE CLAW · ISSUE 08',
+          headline: 'MAGAZINE',
+          deck: 'PROFESSIONAL MAGAZINE EDITORIAL SYSTEM FOR CREATIVE DESIGNS',
+          author: 'ECHOES FORGE STUDIO',
+          body: '现代排版设计的本质是构建清晰的视觉秩序与呼吸感。通过精确的网格系统、张弛有度的字符间距以及图文穿插的动态绕排，版面不再是静态的图文堆砌，而是一个充满节奏与韵律的视觉有机体。每一次文本的流动与避让，都在向读者传递着深邃而优雅的美学力量。',
+          folio: 'VOL. 08 · NO. 2026',
+          issueDate: '01 - 07 - 2026',
+        },
+        images: [],
+        typography: {
+          headlineFont: 'MiSans, "Helvetica Neue", sans-serif',
+          bodyFont: 'MiSans, "Helvetica Neue", sans-serif',
+          textColor: '#1a1a1a',
+          accentColor: '#000000',
+          bodyFontSize: 20,
+          bodyLineHeight: 32,
+          dropCap: true,
+          dropCapLines: 3,
+          colGap: 40,
+        },
+        background: {
+          type: 'color',
+          color: '#f8f8f6',
+        },
+        dismissedSources: [],
+        imageUrl: null,
+        error: null,
+      };
     case 'vufind_call_number':
       return {
         isbn: '',

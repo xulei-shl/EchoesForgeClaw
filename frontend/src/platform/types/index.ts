@@ -262,6 +262,8 @@ export type CanvasNodeType =
   | 'emboss_foil'
   /** 玻璃折射节点：长虹/十字格/玻璃砖/雨滴/水波/波浪/锤纹/流动/磨砂等 9 种物理玻璃折射与色散高光（多模态工具） */
   | 'glass_refract'
+  /** 杂志排版节点：Pretext 动态无 DOM 避让图文混排，输出高保真杂志风格图片（多模态工具） */
+  | 'editorial_layout'
   /** VuFind 馆藏节点：根据 ISBN 获取索书号（GLAM 工具） */
   | 'vufind_call_number';
 

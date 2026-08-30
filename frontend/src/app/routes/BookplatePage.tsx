@@ -220,9 +220,9 @@ const BookplatePage: React.FC = () => {
   // 节点右键菜单状态（视口坐标 + 目标节点）
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
 
-  // 操作栏作用目标：优先选中且已有图片的 ImageNode / ReceiptNode / StampCutterNode / StickerMakerNode / OilPaintNode / ImageProcessNode / EmbossFoilNode / GlassRefractNode，否则回退到最近生成的图片节点
+  // 操作栏作用目标：优先选中且已有图片的 ImageNode / ReceiptNode / StampCutterNode / StickerMakerNode / OilPaintNode / ImageProcessNode / EmbossFoilNode / GlassRefractNode / EditorialLayoutNode，否则回退到最近生成的图片节点
   const isImageResultNode = (n: any) =>
-    (n.type === 'image_generation' || n.type === 'receipt_printer' || n.type === 'stamp_cutter' || n.type === 'sticker_maker' || n.type === 'journal_maker' || n.type === 'text_image' || n.type === 'oil_paint' || n.type === 'image_process' || n.type === 'emboss_foil' || n.type === 'glass_refract') && Boolean(n.data?.imageUrl);
+    (n.type === 'image_generation' || n.type === 'receipt_printer' || n.type === 'stamp_cutter' || n.type === 'sticker_maker' || n.type === 'journal_maker' || n.type === 'text_image' || n.type === 'oil_paint' || n.type === 'image_process' || n.type === 'emboss_foil' || n.type === 'glass_refract' || n.type === 'editorial_layout') && Boolean(n.data?.imageUrl);
 
   const selectedImageNode =
     selectedImageId &&
@@ -1020,6 +1020,8 @@ const BookplatePage: React.FC = () => {
     handleUpdateEmbossFoilStateFor,
     handleExportGlassRefractFor,
     handleUpdateGlassRefractStateFor,
+    handleExportEditorialFor,
+    handleUpdateEditorialStateFor,
     handleSaveImageFor,
     handleSelectSearchImageFor,
     handleUpdateImageSearchEditorFor,
@@ -1258,6 +1260,8 @@ const BookplatePage: React.FC = () => {
     handleUpdateEmbossFoilStateFor,
     handleExportGlassRefractFor,
     handleUpdateGlassRefractStateFor,
+    handleExportEditorialFor,
+    handleUpdateEditorialStateFor,
     handleSelectSearchImageFor,
     handleUpdateImageSearchEditorFor,
     handleSelectGlamImageFor,

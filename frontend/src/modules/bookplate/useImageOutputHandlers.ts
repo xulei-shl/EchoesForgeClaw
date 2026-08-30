@@ -295,6 +295,7 @@ export interface ImageOutputHandlers {
   handleExportImageProcessFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportEmbossFoilFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportGlassRefractFor: (id: string, dataUrl: string, state: any) => Promise<void>;
+  handleExportEditorialFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportMapPosterFor: (id: string, imageUrl: string) => Promise<void>;
   handleExportMapArtFor: (id: string, imageUrl: string) => Promise<void>;
 }
@@ -447,6 +448,18 @@ export function useImageOutputHandlers(ctx: ImageOutputCtx): ImageOutputHandlers
     historyWarn: '记录玻璃折射到历史数据库失败(不阻断导出):',
   });
 
+  // 杂志排版：Pretext 极速图文混排 → /save-image 落盘 → generations 记录
+  const handleExportEditorialFor = useImageExportHandler(ctx, {
+    nodeType: 'editorial_layout',
+    historyNodeType: 'editorial_layout',
+    promptOf: (state) => state?.article?.headline || '杂志排版',
+    okExtras: () => ({}),
+    onHistorySaved: () => {},
+    emptyError: '保存杂志排版图片失败',
+    errLabel: '杂志排版保存',
+    historyWarn: '记录杂志排版到历史数据库失败(不阻断导出):',
+  });
+
   const handleExportMapPosterFor = useSimpleImageExportHandler(ctx, 'map_poster');
   const handleExportMapArtFor = useSimpleImageExportHandler(ctx, 'map_art');
 
@@ -465,6 +478,7 @@ export function useImageOutputHandlers(ctx: ImageOutputCtx): ImageOutputHandlers
     handleExportImageProcessFor,
     handleExportEmbossFoilFor,
     handleExportGlassRefractFor,
+    handleExportEditorialFor,
     handleExportMapPosterFor,
     handleExportMapArtFor,
   };
