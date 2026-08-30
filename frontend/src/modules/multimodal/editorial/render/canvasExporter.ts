@@ -1,11 +1,12 @@
 /**
  * 杂志排版离屏 Canvas 高保真渲染与导出器 (canvasExporter)
- * 复用 Pretext 计算出的精确几何坐标，所见即所得输出 300DPI 印刷级 PNG
+ * 采用策略模式，支持 7 款标志性独立模板的 1:1 所见即所得 300DPI 导出
  */
 
 import type { EditorialPreset, EditorialState, PageRatioPreset } from '../types';
 import { computeEditorialLayout } from '../engine/layoutEngine';
 import { loadFontFamily } from '../../journal/text/fontRegistry';
+import { getEditorialTemplate } from '../templates';
 
 /**
  * 异步加载图像
@@ -21,7 +22,7 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 }
 
 /**
- * 绘制极简现代条形码装饰
+ * 绘制矢量现代条形码装饰
  */
 function drawBarcode(
   ctx: CanvasRenderingContext2D,
@@ -56,12 +57,15 @@ export async function exportEditorialToPng(
   preset: EditorialPreset
 ): Promise<string> {
   const typography = state.typography || preset.defaultTypography;
+  const template = getEditorialTemplate(preset.id || state.presetId);
+  const layoutType = preset.features?.layoutType || 'newspaper';
 
   // 1. 确保字体已加载
   try {
     await Promise.all([
       loadFontFamily(typography.headlineFont),
       loadFontFamily(typography.bodyFont),
+      typography.accentFont ? loadFontFamily(typography.accentFont) : Promise.resolve(),
     ]);
     if (document.fonts) {
       await document.fonts.ready;
@@ -101,49 +105,68 @@ export async function exportEditorialToPng(
   ctx.fillStyle = bg.color || '#ffffff';
   ctx.fillRect(0, 0, W, H);
 
-  const article = state.article || preset.defaultArticle;
-  const textColor = typography.textColor || '#1a1a1a';
-  const accentColor = typography.accentColor || '#000000';
-
-  // 6. 绘制侧边黑色 Ribbon 标签（若预设开启）
-  if (preset.features.hasRibbonTag) {
-    const ribbonW = Math.round(W * 0.08);
-    const ribbonH = Math.round(H * 0.16);
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(Math.round(W * 0.06), 0, ribbonW, ribbonH);
-
+  // 5.1 新闻纸微噪点纹理
+  if (bg.hasPaperNoise || layoutType === 'newspaper') {
     ctx.save();
-    ctx.translate(Math.round(W * 0.06) + ribbonW / 2, ribbonH / 2);
-    ctx.rotate(-Math.PI / 2);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = `bold ${Math.round(W * 0.022)}px ${typography.headlineFont}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(article.issueDate ? `ISSUE ${article.issueDate}` : 'ISSUE 08', 0, 0);
+    ctx.fillStyle = 'rgba(31, 28, 23, 0.04)';
+    const step = 16;
+    for (let x = 0; x < W; x += step) {
+      for (let y = 0; y < H; y += step) {
+        ctx.fillRect(x + (y % 2 ? 4 : 0), y, 1.5, 1.5);
+      }
+    }
     ctx.restore();
   }
 
-  // 7. 绘制刊头 (Masthead) 与分割线
-  if (article.masthead) {
-    const mastheadY = Math.round(H * 0.05);
-    ctx.save();
-    ctx.fillStyle = accentColor;
-    ctx.font = `bold ${Math.round(W * 0.014)}px ${typography.headlineFont}`;
-    ctx.letterSpacing = '1px';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(article.masthead.toUpperCase(), Math.round(W * 0.065), mastheadY);
+  const article = state.article || preset.defaultArticle;
+  const textColor = typography.textColor || '#1a1a1a';
+  const accentColor = typography.accentColor || '#000000';
+  const secondaryColor = typography.secondaryColor || 'rgba(0,0,0,0.5)';
 
-    // 细分割线
-    ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+  // 6. 委托独立模板绘制专属装饰层 (Strategy Pattern)
+  template.drawDecorations?.(ctx, {
+    state,
+    article,
+    typography,
+    pageRatio,
+    layoutProjection: layout,
+    W,
+    H,
+    textColor,
+    accentColor,
+    secondaryColor,
+  });
+
+  // 7. 通用刊头与分割线（当非特定模板时降级渲染）
+  if (article.masthead && !preset.features.hasDatelineRule && layoutType !== 'inverted') {
+    const mastheadY = Math.round(H * 0.045);
+    const mX = Math.round(W * 0.065);
+    ctx.save();
+    ctx.fillStyle = layoutType === 'minimal' ? secondaryColor : accentColor;
+    ctx.font = `bold ${Math.round(W * 0.013)}px ${typography.headlineFont}`;
+    ctx.textBaseline = 'middle';
+
+    if (layoutType === 'minimal') {
+      ctx.textAlign = 'center';
+      ctx.fillText(article.masthead.toUpperCase(), W / 2, mastheadY);
+    } else {
+      ctx.fillText(article.masthead.toUpperCase(), mX, mastheadY);
+      if (article.issueDate) {
+        ctx.textAlign = 'right';
+        ctx.fillText(article.issueDate, W - mX, mastheadY);
+      }
+    }
+
+    ctx.strokeStyle = 'rgba(0,0,0,0.1)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(Math.round(W * 0.065), mastheadY + Math.round(H * 0.012));
-    ctx.lineTo(W - Math.round(W * 0.065), mastheadY + Math.round(H * 0.012));
+    ctx.moveTo(mX, mastheadY + Math.round(H * 0.012));
+    ctx.lineTo(W - mX, mastheadY + Math.round(H * 0.012));
     ctx.stroke();
     ctx.restore();
   }
 
-  // 8. 绘制图片素材
+  // 8. 绘制图片素材（支持画框与立体阴影）
   for (let i = 0; i < state.images.length; i++) {
     const item = state.images[i]!;
     const imgEl = imageElements.get(item.id);
@@ -167,61 +190,130 @@ export async function exportEditorialToPng(
       ctx.rotate((item.rotation * Math.PI) / 180);
     }
 
-    // 图片阴影
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.08)';
-    ctx.shadowBlur = 24;
-    ctx.shadowOffsetY = 8;
+    // 双图画廊装裱内衬画框
+    if (preset.features.hasFrameBorder) {
+      const pad = 14;
+      ctx.fillStyle = '#ffffff';
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.12)';
+      ctx.shadowBlur = 32;
+      ctx.shadowOffsetY = 12;
+      ctx.fillRect(-imgW / 2 - pad, -imgH / 2 - pad, imgW + pad * 2, imgH + pad * 2);
 
-    // 绘制图片
+      ctx.shadowColor = 'transparent';
+      ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(-imgW / 2 - pad, -imgH / 2 - pad, imgW + pad * 2, imgH + pad * 2);
+    } else {
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.08)';
+      ctx.shadowBlur = 24;
+      ctx.shadowOffsetY = 8;
+    }
+
     ctx.drawImage(imgEl, -imgW / 2, -imgH / 2, imgW, imgH);
     ctx.restore();
 
     // 绘制图注 (Caption)
     if (item.caption) {
       ctx.save();
-      ctx.fillStyle = 'rgba(0,0,0,0.55)';
-      ctx.font = `${Math.round(typography.bodyFontSize * 0.7)}px ${typography.bodyFont}`;
-      ctx.fillText(item.caption, imgX, imgY + imgH + Math.round(typography.bodyFontSize * 0.9));
+      ctx.fillStyle = secondaryColor;
+      ctx.font = `500 ${Math.round(typography.bodyFontSize * 0.72)}px ${typography.accentFont || typography.bodyFont}`;
+      ctx.fillText(item.caption, imgX, imgY + imgH + Math.round(typography.bodyFontSize * 1.0));
       ctx.restore();
     }
   }
 
   // 9. 绘制大标题 (Headline)
   ctx.save();
-  ctx.fillStyle = textColor;
+  ctx.fillStyle = layoutType === 'inverted' ? '#ffffff' : textColor;
   ctx.font = layout.headlineFont;
   ctx.textBaseline = 'top';
 
-  for (let i = 0; i < layout.headlineLines.length; i++) {
-    const line = layout.headlineLines[i]!;
-    ctx.fillText(line.text, line.x, line.y);
+  if (layoutType === 'bold_poster') {
+    ctx.translate(layout.headlineRegion.x, layout.headlineRegion.y);
+    ctx.rotate((-4 * Math.PI) / 180);
+    for (let i = 0; i < layout.headlineLines.length; i++) {
+      const line = layout.headlineLines[i]!;
+      ctx.fillText(line.text, line.x - layout.headlineRegion.x, line.y - layout.headlineRegion.y);
+    }
+  } else if (layoutType === 'minimal') {
+    ctx.textAlign = 'center';
+    for (let i = 0; i < layout.headlineLines.length; i++) {
+      const line = layout.headlineLines[i]!;
+      ctx.fillText(line.text, W / 2, line.y);
+    }
+  } else {
+    for (let i = 0; i < layout.headlineLines.length; i++) {
+      const line = layout.headlineLines[i]!;
+      ctx.fillText(line.text, line.x, line.y);
+    }
   }
   ctx.restore();
 
   // 10. 绘制导语 (Deck)
   if (layout.deckLines.length > 0) {
     ctx.save();
-    ctx.fillStyle = 'rgba(0,0,0,0.75)';
-    ctx.font = `500 ${Math.round(typography.bodyFontSize * 1.25)}px ${typography.headlineFont}`;
+    ctx.fillStyle = layoutType === 'inverted' ? '#333333' : 'rgba(0,0,0,0.78)';
+    ctx.font = `italic 500 ${Math.round(typography.bodyFontSize * 1.2)}px ${typography.headlineFont}`;
     ctx.textBaseline = 'top';
     for (let i = 0; i < layout.deckLines.length; i++) {
       const line = layout.deckLines[i]!;
       ctx.fillText(line.text, line.x, line.y);
     }
+
+    if (preset.features.hasAccentRule && layout.deckRegion) {
+      const lastDeckLine = layout.deckLines[layout.deckLines.length - 1];
+      const barY = (lastDeckLine ? lastDeckLine.y : layout.deckRegion.y) + Math.round(typography.bodyFontSize * 1.8);
+      ctx.fillStyle = accentColor;
+      ctx.fillRect(layout.deckRegion.x, barY, Math.round(W * 0.06), 3.5);
+    }
     ctx.restore();
   }
 
-  // 11. 绘制首字下沉 (Drop Cap)
+  // 11. 绘制金句引语卡片 (Pullquote Card)
+  if (layout.pullquote && layout.pullquoteCardRect && layoutType !== 'quote') {
+    const pqRect = layout.pullquoteCardRect;
+    ctx.save();
+    ctx.fillStyle = 'rgba(184, 90, 58, 0.08)';
+    ctx.fillRect(pqRect.x, pqRect.y, pqRect.width, pqRect.height);
+
+    ctx.fillStyle = accentColor;
+    ctx.fillRect(pqRect.x, pqRect.y, 4, pqRect.height);
+
+    ctx.fillStyle = textColor;
+    ctx.font = layout.pullquote.font;
+    ctx.textBaseline = 'top';
+
+    for (let i = 0; i < layout.pullquote.lines.length; i++) {
+      const line = layout.pullquote.lines[i]!;
+      ctx.fillText(line.text, line.x, line.y);
+    }
+    ctx.restore();
+  }
+
+  // 12. 绘制首字下沉 (Drop Cap)
   if (layout.dropCap) {
     ctx.save();
     ctx.fillStyle = accentColor;
     ctx.font = layout.dropCap.font;
     ctx.textBaseline = 'top';
+
+    if (layoutType === 'minimal') {
+      const boxPad = 4;
+      ctx.strokeStyle = 'rgba(139, 94, 60, 0.3)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(
+        layout.dropCap.x - boxPad,
+        layout.dropCap.y - boxPad,
+        layout.dropCap.width + boxPad,
+        layout.dropCap.height + boxPad * 2
+      );
+    }
+
     ctx.fillText(layout.dropCap.text, layout.dropCap.x, layout.dropCap.y);
     ctx.restore();
   }
 
-  // 12. 绘制正文行 (Body Lines)
+  // 13. 绘制正文行 (Body Lines)
   ctx.save();
   ctx.fillStyle = textColor;
   ctx.font = `${typography.bodyFontSize}px ${typography.bodyFont}`;
@@ -233,40 +325,31 @@ export async function exportEditorialToPng(
   }
   ctx.restore();
 
-  // 13. 绘制引语卡片 (Pull Quote)
-  if (article.pullquote && article.pullquote.trim()) {
-    const pqFont = `italic bold ${Math.round(typography.bodyFontSize * 1.2)}px ${typography.headlineFont}`;
-    ctx.save();
-    ctx.fillStyle = accentColor;
-    ctx.font = pqFont;
-    // 可以在特定位置或预设指示区绘制
-    ctx.restore();
-  }
-
   // 14. 绘制底部版记与条形码 (Folio & Barcode)
-  const footerY = H - Math.round(H * 0.045);
+  const footerY = H - Math.round(H * 0.038);
+  const mX = Math.round(W * 0.065);
   ctx.save();
-  ctx.fillStyle = 'rgba(0,0,0,0.45)';
-  ctx.font = `600 ${Math.round(W * 0.012)}px ${typography.headlineFont}`;
+  ctx.fillStyle = secondaryColor;
+  ctx.font = `600 ${Math.round(W * 0.0115)}px ${typography.accentFont || typography.headlineFont}`;
   ctx.textBaseline = 'middle';
 
   if (article.folio) {
-    ctx.fillText(article.folio.toUpperCase(), Math.round(W * 0.065), footerY);
+    ctx.fillText(article.folio.toUpperCase(), mX, footerY);
   }
 
-  if (article.issueDate) {
+  if (article.issueDate && layoutType !== 'newspaper') {
     ctx.textAlign = 'right';
-    ctx.fillText(article.issueDate, W - Math.round(W * 0.065), footerY);
+    ctx.fillText(article.issueDate, W - mX, footerY);
   }
 
   if (preset.features.hasBarcode) {
     drawBarcode(
       ctx,
-      Math.round(W * 0.065),
+      mX,
       footerY - Math.round(H * 0.028),
-      Math.round(W * 0.14),
-      Math.round(H * 0.02),
-      '#000000'
+      Math.round(W * 0.13),
+      Math.round(H * 0.018),
+      textColor
     );
   }
   ctx.restore();
