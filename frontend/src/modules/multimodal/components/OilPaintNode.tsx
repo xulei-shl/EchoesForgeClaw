@@ -10,6 +10,8 @@ import {
   Pencil,
   Check,
 } from 'lucide-react';
+import { PhotoProvider, PhotoView } from 'react-photo-view';
+import 'react-photo-view/dist/react-photo-view.css';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { SliderRow } from '../../../platform/components/ui/Slider';
@@ -584,15 +586,19 @@ const OilPaintNodeInner: React.FC<OilPaintNodeProps> = ({
               >
                 {data.imageUrl ? (
                   <div className="relative group max-w-full max-h-full flex items-center justify-center">
-                    <img
-                      src={data.imageUrl}
-                      alt="湿油彩效果预览"
-                      className="max-w-full max-h-[440px] object-contain drop-shadow-md select-none pointer-events-none rounded"
-                    />
+                    <PhotoProvider maskOpacity={0.85} bannerVisible={false}>
+                      <PhotoView src={data.imageUrl}>
+                        <img
+                          src={data.imageUrl}
+                          alt="湿油彩效果预览"
+                          className="max-w-full max-h-[440px] object-contain drop-shadow-md select-none rounded cursor-zoom-in hover:opacity-95 transition-opacity"
+                        />
+                      </PhotoView>
+                    </PhotoProvider>
                     <button
                       type="button"
                       onClick={() => setIsEditing(true)}
-                      className="absolute bottom-3 right-3 px-2.5 py-1.5 rounded-full bg-paper/90 backdrop-blur text-ink text-xs shadow-md border border-paper-grid/40 hover:bg-white hover:text-accent active:scale-[0.96] transition-[opacity,transform,background-color,color] flex items-center gap-1.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent duration-150"
+                      className="absolute bottom-3 right-3 px-2.5 py-1.5 rounded-full bg-paper/90 backdrop-blur text-ink text-xs shadow-md border border-paper-grid/40 hover:bg-white hover:text-accent active:scale-[0.96] transition-[opacity,transform,background-color,color] flex items-center gap-1.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent duration-150 z-10"
                     >
                       <Pencil size={12} strokeWidth={1.5} />
                       <span>调整参数</span>

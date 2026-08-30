@@ -60,6 +60,8 @@ export const NODE_TYPES = {
   GLASS_REFRACT: 'glass_refract',
   /** 杂志排版（多模态工具）：Pretext 动态无 DOM 避让图文混排，输出高保真杂志风格图片 */
   EDITORIAL_LAYOUT: 'editorial_layout',
+  /** 物理水彩手绘（多模态工具）：基于 p5.brush 的物理水彩晕染、排线与流场生成艺术 */
+  WATERCOLOR_BRUSH: 'watercolor_brush',
   /** VuFind 馆藏（GLAM 工具）：根据 ISBN 获取索书号 */
   VUFIND_CALL_NUMBER: 'vufind_call_number',
 } as const;
@@ -380,6 +382,15 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     type: NODE_TYPES.EDITORIAL_LAYOUT,
     name: '杂志排版',
     description: 'Pretext 动态无 DOM 避让图文混排，输出高保真杂志风格图片',
+    category: 'multimodal',
+    configurable: false,
+    output_type: 'image',
+    input_types: ['image', 'text'],
+  },
+  {
+    type: NODE_TYPES.WATERCOLOR_BRUSH,
+    name: '物理水彩手绘',
+    description: '基于 p5.brush 的物理水彩晕染、排线与流场手绘生成，支持 5 大构图与图生艺术',
     category: 'multimodal',
     configurable: false,
     output_type: 'image',

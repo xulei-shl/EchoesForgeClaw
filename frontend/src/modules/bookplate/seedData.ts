@@ -301,6 +301,25 @@ export function seedDataFor(type: NodeType, parent?: NodeData): any {
         imageUrl: null,
         error: null,
       };
+    case 'watercolor_brush':
+      return {
+        mode: 'wave_strips',
+        paletteId: 'traditional_oriental',
+        customColors: [],
+        brushType: 'watercolor',
+        wiggle: 1.2,
+        bleedStrength: 0.35,
+        textureStrength: 0.6,
+        borderStrength: 0.5,
+        hatchDist: 8,
+        fieldMode: 'hand',
+        grain: 0.7,
+        seed: 42,
+        imageUrl: null,
+        uploadedImage: null,
+        isSaved: false,
+        error: null,
+      };
     case 'vufind_call_number':
       return {
         isbn: '',

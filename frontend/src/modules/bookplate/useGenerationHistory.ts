@@ -73,9 +73,11 @@ export function useGenerationHistory(ctx: GenerationHistoryContext): GenerationH
                             ? `玻璃折射 · ${imageNode.data?.pattern || '十字格'}`
                             : imageNode.type === 'editorial_layout'
                               ? `杂志排版 · ${imageNode.data?.article?.headline || '杂志排版'}`
-                              : typeof imageNode.data?.prompt === 'string'
-                                ? imageNode.data.prompt
-                                : '';
+                              : imageNode.type === 'watercolor_brush'
+                                ? `物理水彩 · ${imageNode.data?.mode || '水彩手绘'}`
+                                : typeof imageNode.data?.prompt === 'string'
+                                  ? imageNode.data.prompt
+                                  : '';
 
       return {
         stage1: bookNode
@@ -97,7 +99,7 @@ export function useGenerationHistory(ctx: GenerationHistoryContext): GenerationH
                   : undefined,
               agent_steps: promptSteps.length > 0 ? promptSteps : undefined,
             }
-          : (imageNode.type === 'receipt_printer' || imageNode.type === 'book_card' || imageNode.type === 'stamp_cutter' || imageNode.type === 'sticker_maker' || imageNode.type === 'journal_maker' || imageNode.type === 'text_image' || imageNode.type === 'oil_paint' || imageNode.type === 'image_process' || imageNode.type === 'emboss_foil' || imageNode.type === 'glass_refract' || imageNode.type === 'editorial_layout')
+          : (imageNode.type === 'receipt_printer' || imageNode.type === 'book_card' || imageNode.type === 'stamp_cutter' || imageNode.type === 'sticker_maker' || imageNode.type === 'journal_maker' || imageNode.type === 'text_image' || imageNode.type === 'oil_paint' || imageNode.type === 'image_process' || imageNode.type === 'emboss_foil' || imageNode.type === 'glass_refract' || imageNode.type === 'editorial_layout' || imageNode.type === 'watercolor_brush')
             ? { prompt: promptText }
             : undefined,
         stage3: {

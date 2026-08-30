@@ -1,4 +1,4 @@
-import type { EditorialTemplate, CanvasRenderContext, TemplateRenderProps } from '../types';
+import type { EditorialTemplate, CanvasRenderContext } from '../types';
 
 /**
  * 分割印章文本为多行，确保圆形内完美居中
@@ -22,69 +22,74 @@ function parseBadgeLines(text?: string): string[] {
 
 /**
  * ⚡ 封面先锋模板 (Avant-Garde Cover)
- * 特征：贯穿纯黑 Ribbon 挂签、独立错开刊头、100% 所见即所得居中贴纸印章、底部条形码
+ * 特征：贯穿纯黑 Ribbon 挂签（+90° 顺时针自上而下顺读）、独立刊头右移规线、100% 所见即所得居中贴纸印章、底部条形码
  */
 const drawCoverRibbonDecorations = (
   ctx: CanvasRenderingContext2D,
   { article, typography, W, H, accentColor, secondaryColor }: CanvasRenderContext
 ) => {
-  // 1. 侧边黑色 Ribbon 标签
-  const ribbonX = Math.round(W * 0.06);
-  const ribbonW = Math.round(W * 0.075);
-  const ribbonH = Math.round(H * 0.16);
+  const ribbonX = Math.round(W * 0.055);
+  const ribbonW = Math.round(W * 0.065);
+  const ribbonH = Math.round(H * 0.17);
+  const ribbonText = article.issueDate ? `ISSUE · ${article.issueDate}` : 'ISSUE · VOL 08';
+  const ribbonFontSize = Math.round(W * 0.0115);
+
+  // 1. 绘制左上角纯黑 Ribbon 挂签
   ctx.save();
   ctx.fillStyle = '#0a0a0a';
   ctx.fillRect(ribbonX, 0, ribbonW, ribbonH);
 
+  // 顺时针旋转 90°（与 DOM transform: rotate(90deg) 100% 对齐，自上向下顺读）
   ctx.save();
   ctx.translate(ribbonX + ribbonW / 2, ribbonH / 2);
-  ctx.rotate(-Math.PI / 2);
+  ctx.rotate(Math.PI / 2);
   ctx.fillStyle = '#ffffff';
-  ctx.font = `bold ${Math.round(W * 0.018)}px ${typography.headlineFont}`;
+  ctx.font = `bold ${ribbonFontSize}px ${typography.accentFont || 'monospace'}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(article.issueDate ? `ISSUE ${article.issueDate}` : 'ISSUE 08', 0, 0);
+  ctx.fillText(ribbonText.toUpperCase(), 0, 0);
   ctx.restore();
   ctx.restore();
 
-  // 2. 刊头与日期（位于挂签右侧，形成清晰纵横秩序，杜绝重叠）
+  // 2. 刊头与日期（位于挂签右侧，形成清晰纵横秩序，彻底杜绝重叠）
+  const mastheadX = ribbonX + ribbonW + Math.round(W * 0.035);
+  const mastheadY = Math.round(H * 0.042);
+  const rightMargin = Math.round(W * 0.065);
+
   if (article.masthead) {
-    const mX = Math.round(W * 0.16);
-    const topY = Math.round(H * 0.045);
-    const rightMargin = Math.round(W * 0.065);
-
     ctx.save();
     ctx.fillStyle = accentColor || '#e53e3e';
-    ctx.font = `bold ${Math.round(W * 0.0125)}px ${typography.accentFont || typography.headlineFont}`;
-    ctx.textBaseline = 'middle';
+    ctx.font = `bold ${Math.round(W * 0.012)}px ${typography.accentFont || typography.headlineFont}`;
+    ctx.textBaseline = 'top';
     ctx.textAlign = 'left';
-    ctx.fillText(article.masthead.toUpperCase(), mX, topY);
+    ctx.fillText(article.masthead.toUpperCase(), mastheadX, mastheadY);
 
     if (article.issueDate) {
       ctx.textAlign = 'right';
       ctx.fillStyle = secondaryColor || '#718096';
-      ctx.font = `500 ${Math.round(W * 0.011)}px ${typography.accentFont || 'monospace'}`;
-      ctx.fillText(article.issueDate, W - rightMargin, topY);
+      ctx.font = `500 ${Math.round(W * 0.0105)}px ${typography.accentFont || 'monospace'}`;
+      ctx.fillText(article.issueDate, W - rightMargin, mastheadY);
     }
 
-    ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+    const lineY = mastheadY + Math.round(W * 0.012) + Math.round(H * 0.01);
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.12)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(mX, topY + Math.round(H * 0.012));
-    ctx.lineTo(W - rightMargin, topY + Math.round(H * 0.012));
+    ctx.moveTo(mastheadX, lineY);
+    ctx.lineTo(W - rightMargin, lineY);
     ctx.stroke();
     ctx.restore();
   }
 
   // 3. 贴纸印章 (多行折行与中心坐标计算，严格与 DOM 1:1 对齐)
   if (article.badgeText) {
-    const badgeSize = Math.round(W * 0.15);
+    const badgeSize = Math.round(W * 0.14);
     const radius = badgeSize / 2;
-    const rightMargin = Math.round(W * 0.08);
-    const topMargin = Math.round(H * 0.11);
+    const badgeRightMargin = Math.round(W * 0.075);
+    const badgeTopMargin = Math.round(H * 0.10);
 
-    const cx = W - rightMargin - radius;
-    const cy = topMargin + radius;
+    const cx = W - badgeRightMargin - radius;
+    const cy = badgeTopMargin + radius;
 
     ctx.save();
     ctx.translate(cx, cy);
@@ -108,7 +113,7 @@ const drawCoverRibbonDecorations = (
     // 内部多行文字居中排版
     const lines = parseBadgeLines(article.badgeText);
     const fontSize = Math.round(radius * 0.25);
-    const lineHeight = Math.round(fontSize * 1.35);
+    const lineHeight = fontSize + 4;
     ctx.fillStyle = accentColor || '#e53e3e';
     ctx.font = `bold ${fontSize}px sans-serif`;
     ctx.textAlign = 'center';
@@ -123,94 +128,6 @@ const drawCoverRibbonDecorations = (
 
     ctx.restore();
   }
-};
-
-const CoverRibbonDecorations = ({ article, typography, ratioPreset }: TemplateRenderProps) => {
-  const badgeLines = parseBadgeLines(article.badgeText);
-  const badgeSize = Math.round(ratioPreset.width * 0.15);
-
-  return (
-    <>
-      {/* 1. 侧边 Ribbon 挂签 */}
-      <div
-        className="absolute top-0 bg-[#0a0a0a] text-white flex items-center justify-center font-bold tracking-widest pointer-events-none"
-        style={{
-          left: `${Math.round(ratioPreset.width * 0.06)}px`,
-          width: `${Math.round(ratioPreset.width * 0.075)}px`,
-          height: `${Math.round(ratioPreset.height * 0.16)}px`,
-          fontSize: `${Math.round(ratioPreset.width * 0.018)}px`,
-          writingMode: 'vertical-rl',
-          fontFamily: typography.headlineFont,
-        }}
-      >
-        {article.issueDate ? `ISSUE ${article.issueDate}` : 'ISSUE 08'}
-      </div>
-
-      {/* 2. 刊头与日期（位于挂签右侧，干净排布） */}
-      {article.masthead && (
-        <div
-          className="absolute flex items-center justify-between font-bold pointer-events-none"
-          style={{
-            top: `${Math.round(ratioPreset.height * 0.045)}px`,
-            left: `${Math.round(ratioPreset.width * 0.16)}px`,
-            right: `${Math.round(ratioPreset.width * 0.065)}px`,
-            fontSize: `${Math.round(ratioPreset.width * 0.0125)}px`,
-            color: typography.accentColor || '#e53e3e',
-            fontFamily: typography.accentFont || typography.headlineFont,
-            borderBottom: '1px solid rgba(0,0,0,0.1)',
-            paddingBottom: `${Math.round(ratioPreset.height * 0.008)}px`,
-          }}
-        >
-          <span>{article.masthead.toUpperCase()}</span>
-          {article.issueDate && (
-            <span
-              className="font-normal opacity-70"
-              style={{
-                fontSize: `${Math.round(ratioPreset.width * 0.011)}px`,
-                color: typography.secondaryColor || '#718096',
-                fontFamily: 'monospace',
-              }}
-            >
-              {article.issueDate}
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* 3. 贴纸印章 (Sticker Stamp Badge) */}
-      {badgeLines.length > 0 && (
-        <div
-          className="absolute flex flex-col items-center justify-center rounded-full pointer-events-none font-sans font-bold text-center select-none"
-          style={{
-            right: `${Math.round(ratioPreset.width * 0.08)}px`,
-            top: `${Math.round(ratioPreset.height * 0.11)}px`,
-            width: `${badgeSize}px`,
-            height: `${badgeSize}px`,
-            border: `2px solid ${typography.accentColor || '#e53e3e'}`,
-            color: typography.accentColor || '#e53e3e',
-            transform: 'rotate(-8deg)',
-            fontSize: `${Math.round(badgeSize * 0.125)}px`,
-            lineHeight: 1.35,
-          }}
-        >
-          <div
-            className="absolute rounded-full border border-dashed"
-            style={{
-              inset: '5px',
-              borderColor: typography.accentColor || '#e53e3e',
-            }}
-          />
-          <div className="z-10 px-1 flex flex-col items-center justify-center">
-            {badgeLines.map((line, idx) => (
-              <div key={idx} className="tracking-wide uppercase whitespace-nowrap">
-                {line}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </>
-  );
 };
 
 export const coverRibbonTemplate: EditorialTemplate = {
@@ -256,6 +173,123 @@ export const coverRibbonTemplate: EditorialTemplate = {
     type: 'color',
     color: '#fcfcfc',
   },
-  renderDecorations: CoverRibbonDecorations,
+  renderDecorations: ({ article, typography, ratioPreset }) => {
+    const W = ratioPreset.width;
+    const H = ratioPreset.height;
+    const ribbonX = Math.round(W * 0.055);
+    const ribbonW = Math.round(W * 0.065);
+    const ribbonH = Math.round(H * 0.17);
+    const ribbonText = article.issueDate ? `ISSUE · ${article.issueDate}` : 'ISSUE · VOL 08';
+    const ribbonFontSize = Math.round(W * 0.0115);
+
+    const mastheadX = ribbonX + ribbonW + Math.round(W * 0.035);
+    const mastheadY = Math.round(H * 0.042);
+    const rightMargin = Math.round(W * 0.065);
+
+    const badgeLines = parseBadgeLines(article.badgeText);
+    const badgeSize = Math.round(W * 0.14);
+    const radius = badgeSize / 2;
+    const badgeRightMargin = Math.round(W * 0.075);
+    const badgeTopMargin = Math.round(H * 0.10);
+    const badgeCx = W - badgeRightMargin - radius;
+    const badgeCy = badgeTopMargin + radius;
+
+    return (
+      <>
+        {/* 1. 侧边纯黑 Ribbon 挂签 */}
+        <div
+          className="absolute top-0 bg-[#0a0a0a] text-white flex items-center justify-center pointer-events-none overflow-hidden"
+          style={{
+            left: `${ribbonX}px`,
+            width: `${ribbonW}px`,
+            height: `${ribbonH}px`,
+          }}
+        >
+          <div
+            className="font-bold tracking-wider uppercase whitespace-nowrap select-none"
+            style={{
+              transform: 'rotate(90deg)',
+              transformOrigin: 'center center',
+              fontSize: `${ribbonFontSize}px`,
+              fontFamily: typography.accentFont || 'monospace',
+              color: '#ffffff',
+            }}
+          >
+            {ribbonText}
+          </div>
+        </div>
+
+        {/* 2. 刊头与日期（位于挂签右侧，干净排布） */}
+        {article.masthead && (
+          <div
+            className="absolute flex items-center justify-between font-bold pointer-events-none"
+            style={{
+              top: `${mastheadY}px`,
+              left: `${mastheadX}px`,
+              right: `${rightMargin}px`,
+              fontSize: `${Math.round(W * 0.012)}px`,
+              color: typography.accentColor || '#e53e3e',
+              fontFamily: typography.accentFont || typography.headlineFont,
+              borderBottom: '1px solid rgba(0, 0, 0, 0.12)',
+              paddingBottom: `${Math.round(H * 0.008)}px`,
+            }}
+          >
+            <span>{article.masthead.toUpperCase()}</span>
+            {article.issueDate && (
+              <span
+                className="font-normal opacity-70"
+                style={{
+                  fontSize: `${Math.round(W * 0.0105)}px`,
+                  color: typography.secondaryColor || '#718096',
+                  fontFamily: 'monospace',
+                }}
+              >
+                {article.issueDate}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* 3. 贴纸印章 (Sticker Stamp Badge) */}
+        {badgeLines.length > 0 && (
+          <div
+            className="absolute flex flex-col items-center justify-center rounded-full pointer-events-none font-sans font-bold text-center select-none"
+            style={{
+              left: `${badgeCx - radius}px`,
+              top: `${badgeCy - radius}px`,
+              width: `${badgeSize}px`,
+              height: `${badgeSize}px`,
+              border: `2px solid ${typography.accentColor || '#e53e3e'}`,
+              color: typography.accentColor || '#e53e3e',
+              transform: 'rotate(-8deg)',
+              transformOrigin: 'center center',
+            }}
+          >
+            <div
+              className="absolute rounded-full border border-dashed pointer-events-none"
+              style={{
+                inset: '6px',
+                borderColor: typography.accentColor || '#e53e3e',
+                borderWidth: '1.2px',
+              }}
+            />
+            <div
+              className="z-10 px-2 flex flex-col items-center justify-center leading-tight"
+              style={{
+                fontSize: `${Math.round(radius * 0.25)}px`,
+                gap: '2px',
+              }}
+            >
+              {badgeLines.map((line, idx) => (
+                <div key={idx} className="tracking-wider uppercase whitespace-nowrap font-bold">
+                  {line}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </>
+    );
+  },
   drawDecorations: drawCoverRibbonDecorations,
 };

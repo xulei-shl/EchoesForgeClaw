@@ -943,7 +943,7 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
                   )}
 
                   {/* 2. 通用刊头与分割线（当非特定模板时降级渲染） */}
-                  {article.masthead && !activeTemplate.features.hasDatelineRule && layoutType !== 'inverted' && (
+                  {article.masthead && !activeTemplate.features.hasDatelineRule && layoutType !== 'inverted' && layoutType !== 'cover' && (
                     <div
                       className={`absolute font-bold flex ${
                         layoutType === 'minimal' ? 'justify-center text-center' : 'justify-between'

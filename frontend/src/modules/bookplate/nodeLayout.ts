@@ -39,6 +39,7 @@ export type NodeType =
   | 'emboss_foil'
   | 'glass_refract'
   | 'editorial_layout'
+  | 'watercolor_brush'
   | 'vufind_call_number';
 
 /** 各节点模板类型的默认尺寸（必须与组件 defaultSize 一致） */
@@ -77,6 +78,7 @@ export const NODE_SIZES: Record<NodeType, { width: number; height: number }> = {
   emboss_foil:      { width: 440, height: 620 },
   glass_refract:    { width: 440, height: 620 },
   editorial_layout: { width: 540, height: 720 },
+  watercolor_brush: { width: 440, height: 580 },
   vufind_call_number: { width: 480, height: 640 },
 };
 

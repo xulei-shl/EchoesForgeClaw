@@ -39,6 +39,7 @@ export const NODE_COLORS: Record<CanvasNodeType, string> = {
   journal_maker: 'oklch(0.7 0.14 150)',
   text_image: 'oklch(0.68 0.15 195)',
   editorial_layout: 'oklch(0.68 0.15 285)',
+  watercolor_brush: 'oklch(0.68 0.18 190)',
   vufind_call_number: 'oklch(0.62 0.18 280)',
 };
 
@@ -330,6 +331,14 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     configurable: false,
     defaultSize: DEFAULT_SIZES.editorial_layout,
   },
+  {
+    type: 'watercolor_brush',
+    name: '物理水彩手绘',
+    description: '基于 p5.brush 的物理水彩晕染、排线与流场手绘生成，支持 5 大经典纯生成式算法构图',
+    category: 'multimodal',
+    configurable: false,
+    defaultSize: DEFAULT_SIZES.watercolor_brush,
+  },
 ];
 
 export const NODE_TEMPLATE_MAP: Record<CanvasNodeType, NodeTemplateDef> = Object.fromEntries(
@@ -432,6 +441,8 @@ export const NODE_PORT_TYPES: Record<
   glass_refract: { output: 'image', inputs: ['image', 'text'] },
   // 杂志排版：输出合成的高保真杂志图片；可连线文本与多张图片/图书元数据（连线即输入）
   editorial_layout: { output: 'image', inputs: ['text', 'image'] },
+  // 物理水彩手绘：输出生成的水彩画作图片；可连线文本/中国传统配色节点（注入配色与主题）
+  watercolor_brush: { output: 'image', inputs: ['text'] },
   // VuFind 馆藏：输出获取的索书号文本；可连线图书元数据/文本节点自动读取 ISBN（连线即输入）
   vufind_call_number: { output: 'text', inputs: ['text'] },
 };

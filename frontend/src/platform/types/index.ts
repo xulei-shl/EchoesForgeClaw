@@ -264,6 +264,8 @@ export type CanvasNodeType =
   | 'glass_refract'
   /** 杂志排版节点：Pretext 动态无 DOM 避让图文混排，输出高保真杂志风格图片（多模态工具） */
   | 'editorial_layout'
+  /** 物理水彩手绘节点：基于 p5.brush 的物理水彩晕染、排线与流场生成艺术（多模态工具） */
+  | 'watercolor_brush'
   /** VuFind 馆藏节点：根据 ISBN 获取索书号（GLAM 工具） */
   | 'vufind_call_number';
 

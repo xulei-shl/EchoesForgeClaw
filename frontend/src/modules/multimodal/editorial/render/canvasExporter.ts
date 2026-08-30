@@ -138,7 +138,7 @@ export async function exportEditorialToPng(
   });
 
   // 7. 通用刊头与分割线（当非特定模板时降级渲染）
-  if (article.masthead && !preset.features.hasDatelineRule && layoutType !== 'inverted') {
+  if (article.masthead && !preset.features.hasDatelineRule && layoutType !== 'inverted' && layoutType !== 'cover') {
     const mastheadY = Math.round(H * 0.045);
     const mX = Math.round(W * 0.065);
     ctx.save();

@@ -296,6 +296,7 @@ export interface ImageOutputHandlers {
   handleExportEmbossFoilFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportGlassRefractFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportEditorialFor: (id: string, dataUrl: string, state: any) => Promise<void>;
+  handleExportWatercolorBrushFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportMapPosterFor: (id: string, imageUrl: string) => Promise<void>;
   handleExportMapArtFor: (id: string, imageUrl: string) => Promise<void>;
 }
@@ -460,6 +461,18 @@ export function useImageOutputHandlers(ctx: ImageOutputCtx): ImageOutputHandlers
     historyWarn: '记录杂志排版到历史数据库失败(不阻断导出):',
   });
 
+  // 物理水彩手绘：p5.brush 物理水彩与排线渲染 → /save-image 落盘 → generations 记录
+  const handleExportWatercolorBrushFor = useImageExportHandler(ctx, {
+    nodeType: 'watercolor_brush',
+    historyNodeType: 'watercolor_brush',
+    promptOf: (state) => `物理水彩 · ${state?.mode || '手绘'}`,
+    okExtras: () => ({}),
+    onHistorySaved: () => {},
+    emptyError: '保存水彩画作失败',
+    errLabel: '物理水彩保存',
+    historyWarn: '记录物理水彩到历史数据库失败(不阻断导出):',
+  });
+
   const handleExportMapPosterFor = useSimpleImageExportHandler(ctx, 'map_poster');
   const handleExportMapArtFor = useSimpleImageExportHandler(ctx, 'map_art');
 
@@ -479,6 +492,7 @@ export function useImageOutputHandlers(ctx: ImageOutputCtx): ImageOutputHandlers
     handleExportEmbossFoilFor,
     handleExportGlassRefractFor,
     handleExportEditorialFor,
+    handleExportWatercolorBrushFor,
     handleExportMapPosterFor,
     handleExportMapArtFor,
   };

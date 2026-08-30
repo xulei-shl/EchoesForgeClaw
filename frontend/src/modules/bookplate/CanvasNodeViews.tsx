@@ -31,6 +31,7 @@ import { ImageProcessNode } from '../../modules/multimodal/components/ImageProce
 import { EmbossFoilNode } from '../../modules/multimodal/components/EmbossFoilNode';
 import { GlassRefractNode } from '../../modules/multimodal/components/GlassRefractNode';
 import { EditorialLayoutNode } from '../../modules/multimodal/components/EditorialLayoutNode';
+import { WatercolorBrushNode } from '../../modules/multimodal/components/WatercolorBrushNode';
 import { MapArtNode } from '../../modules/multimodal/components/MapArtNode';
 import { PatternSearchNode, type PatternItem } from '../../modules/multimodal/components/PatternSearchNode';
 import { ColorSearchNode, type ColorItem } from '../../modules/multimodal/components/ColorSearchNode';
@@ -210,6 +211,10 @@ export interface NodeViewHelpers {
     patch: Record<string, any>,
     undoable?: boolean
   ) => void;
+  /** 物理水彩手绘节点：导出 PNG data URL 落盘（保存到后端 + 记录数据库历史 + 写回 node.data） */
+  handleExportWatercolorBrushFor: (id: string, dataUrl: string, state: any) => Promise<void>;
+  /** 物理水彩手绘节点：状态更新写入 node.data（持久化） */
+  handleUpdateWatercolorBrushStateFor: (id: string, patch: Record<string, any>) => void;
   /** 文本聚合节点：保存占位符模板 */
   handleUpdateAggregateTemplateFor: (id: string, template: string) => void;
   /** 文本聚合节点：重命名某上级节点的占位符别名 */
@@ -1069,6 +1074,40 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           mismatchBadge={mismatchBadge}
           onUpdateState={h.handleUpdateEditorialStateFor}
           onExport={h.handleExportEditorialFor}
+        />
+      );
+    }
+
+    case 'watercolor_brush': {
+      const d = node.data ?? {};
+      const upstreamText = firstUpstreamText(node, h.nodes, h.edges, h.portTypesOf);
+      let upstreamColors: string[] | null = null;
+      if (upstreamText) {
+        try {
+          const parsed = JSON.parse(upstreamText);
+          if (Array.isArray(parsed?.colors)) upstreamColors = parsed.colors;
+          else if (Array.isArray(parsed?.palette)) upstreamColors = parsed.palette.map((c: any) => c?.hex || c);
+        } catch {
+          // 非 JSON 则忽略
+        }
+      }
+
+      return (
+        <WatercolorBrushNode
+          key={node.id}
+          {...common}
+          data={d}
+          upstreamColors={upstreamColors}
+          isFavorited={!!h.favoritedState[node.id]}
+          isPublic={!!h.publishedState[node.id]}
+          isSelected={node.id === h.activeImage?.id}
+          recordDeleted={h.staleRecordIds.has(node.id)}
+          onSelect={h.handleSelectImage}
+          onToggleFavorite={h.handleToggleFavoriteFor}
+          onTogglePublic={h.handleTogglePublicFor}
+          mismatchBadge={mismatchBadge}
+          onUpdateState={h.handleUpdateWatercolorBrushStateFor}
+          onExport={h.handleExportWatercolorBrushFor}
         />
       );
     }
