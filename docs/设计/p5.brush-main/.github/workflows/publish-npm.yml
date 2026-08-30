@@ -1,0 +1,49 @@
+name: Publish to npm
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write  # required for OIDC trusted publisher authentication
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm-publish  # must match the environment name set in npmjs.com trusted publishers
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Ensure tag matches package version
+        run: |
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          TAG_VERSION=${GITHUB_REF_NAME#v}
+          if [ "$PACKAGE_VERSION" != "$TAG_VERSION" ]; then
+            echo "Tag version ($TAG_VERSION) does not match package.json version ($PACKAGE_VERSION)"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Test
+        run: npm test
+
+      - name: Build library
+        run: npx rollup --config
+
+      - name: Browser smoke test
+        run: npm run test:smoke
+
+      - name: Publish package
+        run: npm publish --provenance --access public
+        # No NODE_AUTH_TOKEN needed — npm authenticates via OIDC trusted publisher
