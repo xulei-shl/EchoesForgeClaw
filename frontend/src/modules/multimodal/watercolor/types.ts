@@ -65,6 +65,15 @@ export const WATERCOLOR_PRESET_PALETTES: WatercolorPalette[] = [
   },
 ];
 
+export type WatercolorAspectRatio =
+  | '1:1'
+  | '3:4'
+  | '4:3'
+  | '9:16'
+  | '16:9';
+
+export type WatercolorResolution = 1024 | 2048;
+
 export interface WatercolorBrushState {
   mode: WatercolorCompositionMode;
   paletteId: string;
@@ -78,6 +87,9 @@ export interface WatercolorBrushState {
   fieldMode: WatercolorFieldMode;
   grain: number;            // 碳粉颗粒感 (0.1 ~ 1.0)
   seed: number;             // 随机数种子
+  transparentBackground?: boolean; // 是否使用透明背景 (默认 false 为象牙白纸面)
+  aspectRatio?: WatercolorAspectRatio; // 画幅比例 (默认 1:1)
+  resolution?: WatercolorResolution;   // 导出分辨率基准 (默认 1024px)
   imageUrl: string | null;
   isSaved?: boolean;
   error?: string | null;
@@ -96,6 +108,9 @@ export const WATERCOLOR_DEFAULT_PARAMS: WatercolorBrushState = {
   fieldMode: 'hand',
   grain: 0.7,
   seed: 42,
+  transparentBackground: false,
+  aspectRatio: '1:1',
+  resolution: 1024,
   imageUrl: null,
   isSaved: false,
   error: null,

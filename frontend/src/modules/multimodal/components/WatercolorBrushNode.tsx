@@ -1,4 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Palette,
   Heart,
@@ -7,11 +8,18 @@ import {
   Pencil,
   Check,
   Dices,
+  ChevronUp,
+  SlidersHorizontal,
+  Waves,
+  Cloud,
+  Grid,
+  Disc,
 } from 'lucide-react';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
+import { Tooltip } from '../../../platform/components/ui/Tooltip';
 import { SliderRow } from '../../../platform/components/ui/Slider';
 import { Select, type SelectOption } from '../../../platform/components/ui/Select';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
@@ -19,6 +27,8 @@ import { NODE_COLORS } from '../../bookplate/nodeTypes';
 import {
   type WatercolorBrushState,
   type WatercolorCompositionMode,
+  type WatercolorAspectRatio,
+  type WatercolorResolution,
   WATERCOLOR_PRESET_PALETTES,
   WATERCOLOR_DEFAULT_PARAMS,
 } from '../watercolor/types';
@@ -53,18 +63,41 @@ export interface WatercolorBrushNodeProps {
   onExport?: (id: string, dataUrl: string, state: WatercolorBrushState) => Promise<void>;
 }
 
-const MODE_OPTIONS: SelectOption[] = [
-  { value: 'wave_strips', label: '〰️ 流动色带' },
-  { value: 'watercolor_clouds', label: '💧 云阶水彩' },
-  { value: 'grid_hatch', label: '▦ 格律排线' },
-  { value: 'vector_vortex', label: '🌀 流场涡旋' },
-  { value: 'abstract_sketch', label: '✏️ 表现手绘' },
+const MODE_OPTIONS: {
+  label: string;
+  value: WatercolorCompositionMode;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  desc: string;
+}[] = [
+  { label: '流动色带', value: 'wave_strips', icon: Waves, desc: '波浪起伏交错排线' },
+  { label: '云阶水彩', value: 'watercolor_clouds', icon: Cloud, desc: '分形多层水彩晕染' },
+  { label: '格律排线', value: 'grid_hatch', icon: Grid, desc: '网格几何扫描排线' },
+  { label: '流场涡旋', value: 'vector_vortex', icon: Disc, desc: '同心涡旋密织流线' },
+  { label: '表现手绘', value: 'abstract_sketch', icon: Pencil, desc: '多笔尖表现主义手绘' },
 ];
 
 const PALETTE_OPTIONS: SelectOption[] = WATERCOLOR_PRESET_PALETTES.map((p) => ({
   value: p.id,
   label: p.name,
 }));
+
+const ASPECT_RATIO_OPTIONS: SelectOption[] = [
+  { value: '1:1', label: '1:1 方形' },
+  { value: '3:4', label: '3:4 竖版' },
+  { value: '4:3', label: '4:3 横版' },
+  { value: '9:16', label: '9:16 手机' },
+  { value: '16:9', label: '16:9 宽屏' },
+];
+
+const RESOLUTION_OPTIONS: SelectOption[] = [
+  { value: '1024', label: '1K (1024px)' },
+  { value: '2048', label: '2K (2048px)' },
+];
+
+const BACKGROUND_OPTIONS: SelectOption[] = [
+  { value: 'paper', label: '象牙白纸' },
+  { value: 'transparent', label: '透明底' },
+];
 
 const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
   id,
@@ -114,11 +147,15 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
   const grain = data.grain ?? WATERCOLOR_DEFAULT_PARAMS.grain;
   const brushType = data.brushType ?? WATERCOLOR_DEFAULT_PARAMS.brushType;
   const seed = data.seed ?? WATERCOLOR_DEFAULT_PARAMS.seed;
+  const transparentBackground = data.transparentBackground ?? WATERCOLOR_DEFAULT_PARAMS.transparentBackground ?? false;
+  const aspectRatio: WatercolorAspectRatio = data.aspectRatio ?? WATERCOLOR_DEFAULT_PARAMS.aspectRatio ?? '1:1';
+  const resolution: WatercolorResolution = data.resolution ?? WATERCOLOR_DEFAULT_PARAMS.resolution ?? 1024;
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [sessionStatus, setSessionStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [isEditing, setIsEditing] = useState<boolean>(!data?.imageUrl);
+  const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
 
   const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null);
   const sessionRef = useRef<WatercolorSession | null>(null);
@@ -143,6 +180,9 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
       fieldMode,
       grain,
       seed,
+      transparentBackground,
+      aspectRatio,
+      resolution,
       imageUrl: data.imageUrl || null,
       isSaved: data.isSaved,
       error: null,
@@ -160,6 +200,9 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
       fieldMode,
       grain,
       seed,
+      transparentBackground,
+      aspectRatio,
+      resolution,
       data.imageUrl,
       data.isSaved,
     ]
@@ -187,12 +230,13 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
 
     (async () => {
       try {
-        const { WatercolorSession } = await import('../watercolor');
+        const { WatercolorSession, getWatercolorDimensions } = await import('../watercolor');
         if (cancelled) return;
+        const dims = getWatercolorDimensions(aspectRatio, 512);
         const session = await WatercolorSession.create({
           params: currentState,
-          width: 512,
-          height: 512,
+          width: dims.width,
+          height: dims.height,
         });
         if (cancelled) {
           session.dispose();
@@ -213,7 +257,7 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
       sessionRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEditing, mode]);
+  }, [isEditing, mode, aspectRatio]);
 
   // 参数更新实时响应（防抖 200ms）
   useEffect(() => {
@@ -253,20 +297,14 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
     showToast('已重新播种随机形态', { type: 'success' });
   }, [patchParam, showToast]);
 
-  // 生成：会话就绪时直接导出当前画布；未就绪时回退一次性高清渲染
+  // 生成：执行高清物理水彩渲染导出
   const handleGenerate = useCallback(async () => {
     if (isGenerating) return;
     setIsGenerating(true);
     try {
-      let dataUrl: string;
-      const session = sessionRef.current;
-      if (session && sessionStatus === 'ready') {
-        dataUrl = session.toDataUrl();
-      } else {
-        const { renderWatercolorArt } = await import('../watercolor');
-        const result = await renderWatercolorArt(currentState, 1080, 1080);
-        dataUrl = result.dataUrl;
-      }
+      const { renderWatercolorArt } = await import('../watercolor');
+      const result = await renderWatercolorArt(currentState);
+      const dataUrl = result.dataUrl;
 
       // 立即显式退出编辑态，切入结果展示态，避免时序中间态导致的布局错位
       setIsEditing(false);
@@ -276,14 +314,17 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
         imageUrl: dataUrl,
         isSaved: false,
       });
-      showToast('水彩手绘生成完成（可点击保存按钮写入数据库）', { type: 'success' });
+      showToast(
+        `水彩手绘生成完成 (${result.width}×${result.height}${currentState.transparentBackground ? '·透明底' : ''})`,
+        { type: 'success' }
+      );
     } catch (err: any) {
       console.error('生成水彩画作失败:', err);
       showToast(err?.message || '生成失败，请重试', { type: 'error' });
     } finally {
       setIsGenerating(false);
     }
-  }, [isGenerating, sessionStatus, currentState, id, onUpdateState, showToast]);
+  }, [isGenerating, currentState, id, onUpdateState, showToast]);
 
   // 独立保存到数据库
   const handleSaveToDatabase = useCallback(async () => {
@@ -335,6 +376,22 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
   const hasGenerated = Boolean(data?.imageUrl && !isEditing);
   const isSaved = Boolean(data?.isSaved);
 
+  const checkerboardStyle: React.CSSProperties = transparentBackground
+    ? {
+        backgroundImage: `
+          linear-gradient(45deg, rgba(0, 0, 0, 0.06) 25%, transparent 25%),
+          linear-gradient(-45deg, rgba(0, 0, 0, 0.06) 25%, transparent 25%),
+          linear-gradient(45deg, transparent 75%, rgba(0, 0, 0, 0.06) 75%),
+          linear-gradient(-45deg, transparent 75%, rgba(0, 0, 0, 0.06) 75%)
+        `,
+        backgroundSize: '16px 16px',
+        backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0px',
+        backgroundColor: '#f8f8fa',
+      }
+    : {
+        backgroundColor: '#FCFAF2',
+      };
+
   return (
     <CanvasNode
       id={id}
@@ -348,7 +405,7 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
       onDrag={onDrag}
       onContextMenu={onContextMenu}
       resizable
-      defaultSize={{ width: 440, height: 580 }}
+      defaultSize={{ width: 440, height: 620 }}
       className={`transition-[opacity,transform,box-shadow,border-color] duration-150 ease-out ${
         isSelected ? 'ring-2 ring-accent/70 shadow-md' : ''
       }`}
@@ -462,88 +519,168 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
         {/* 参数工具栏 */}
         {!hasGenerated && (
           <div className="relative z-20 flex flex-col gap-2 p-2 rounded-xl bg-paper/95 border border-paper-grid/80 text-xs font-sans text-ink-light select-none shadow-2xs shrink-0">
-            {/* 构图模式与调色板选择 */}
-            <div className="grid grid-cols-2 gap-2">
-              <div className="flex flex-col gap-1 min-w-0">
-                <span className="text-[10px] text-ink-faint">构图范式</span>
-                <Select
-                  value={mode}
-                  onChange={(val) => patchParam({ mode: val as WatercolorCompositionMode })}
-                  options={MODE_OPTIONS}
-                  disabled={isGenerating}
-                  size="sm"
-                  className="w-full"
-                />
+            {/* 5 种水彩构图范式 Segmented 选择栏 + 右侧折叠按钮 */}
+            <div className="flex items-center gap-1.5 min-w-0">
+              <div className="grid grid-cols-5 flex-1 p-0.5 rounded-lg bg-paper-grid/40 border border-paper-grid/60 gap-0.5 shadow-2xs">
+                {MODE_OPTIONS.map((opt) => {
+                  const isChecked = mode === opt.value;
+                  const IconComponent = opt.icon;
+                  return (
+                    <Tooltip key={opt.value} content={`${opt.label} (${opt.desc})`}>
+                      <button
+                        type="button"
+                        onClick={() => patchParam({ mode: opt.value })}
+                        disabled={isGenerating}
+                        className={`flex flex-col items-center justify-center py-1 px-1 rounded text-[10px] font-medium leading-tight transition duration-150 active:scale-[0.94] ${
+                          isChecked
+                            ? 'bg-paper text-accent font-semibold shadow-2xs border border-paper-grid/40'
+                            : 'text-ink-light hover:text-ink hover:bg-paper-grid/30'
+                        } disabled:cursor-not-allowed disabled:opacity-50`}
+                      >
+                        <IconComponent size={13} className="shrink-0 mb-0.5" />
+                        <span className="truncate scale-90">{opt.label}</span>
+                      </button>
+                    </Tooltip>
+                  );
+                })}
               </div>
-              <div className="flex flex-col gap-1 min-w-0">
-                <span className="text-[10px] text-ink-faint">配色方案</span>
-                <Select
-                  value={paletteId}
-                  onChange={(val) => patchParam({ paletteId: val })}
-                  options={PALETTE_OPTIONS}
-                  disabled={isGenerating || !!upstreamColors}
-                  size="sm"
-                  className="w-full"
-                />
-              </div>
+
+              <Tooltip content={isPanelCollapsed ? '展开详细参数配置' : '收起详细参数，最大化预览水彩'}>
+                <button
+                  type="button"
+                  onClick={() => setIsPanelCollapsed(!isPanelCollapsed)}
+                  className="p-1.5 rounded-lg border border-paper-grid/70 text-ink-faint hover:text-accent hover:border-accent/60 bg-paper/60 transition-[color,border-color,transform] active:scale-[0.94] shrink-0"
+                  aria-label={isPanelCollapsed ? '展开详细参数' : '收起详细参数'}
+                >
+                  {isPanelCollapsed ? <SlidersHorizontal size={13} /> : <ChevronUp size={13} />}
+                </button>
+              </Tooltip>
             </div>
 
-            {/* 核心滑杆参数 2x2 等宽网格 */}
-            <div className="grid gap-x-4 gap-y-1.5 grid-cols-2 pt-1 border-t border-paper-grid/40">
-              <SliderRow
-                label="手颤"
-                value={wiggle}
-                min={0.2}
-                max={2.5}
-                step={0.1}
-                display={`${wiggle.toFixed(1)}x`}
-                labelWidth="w-6"
-                valueWidth="min-w-[26px]"
-                disabled={isGenerating}
-                onChange={(v) => patchParam({ wiggle: v })}
-              />
-              <SliderRow
-                label="出血"
-                value={bleedStrength}
-                min={0.0}
-                max={0.8}
-                step={0.05}
-                display={`${Math.round(bleedStrength * 100)}%`}
-                labelWidth="w-6"
-                valueWidth="min-w-[26px]"
-                disabled={isGenerating}
-                onChange={(v) => patchParam({ bleedStrength: v })}
-              />
-              <SliderRow
-                label="纸纹"
-                value={textureStrength}
-                min={0.0}
-                max={1.0}
-                step={0.05}
-                display={`${Math.round(textureStrength * 100)}%`}
-                labelWidth="w-6"
-                valueWidth="min-w-[26px]"
-                disabled={isGenerating}
-                onChange={(v) => patchParam({ textureStrength: v })}
-              />
-              <SliderRow
-                label="排线"
-                value={hatchDist}
-                min={4}
-                max={20}
-                step={1}
-                display={`${hatchDist}px`}
-                labelWidth="w-6"
-                valueWidth="min-w-[26px]"
-                disabled={isGenerating}
-                onChange={(v) => patchParam({ hatchDist: v })}
-              />
-            </div>
+            {/* 可平滑收起的详细参数区（配色方案、画底质感、画幅比例、导出分辨率与4个核心滑杆） */}
+            <AnimatePresence initial={false}>
+              {!isPanelCollapsed && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                  className="overflow-hidden flex flex-col gap-2 pt-0.5"
+                >
+                  {/* 配色方案与画底质感 */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="flex flex-col gap-1 min-w-0">
+                      <span className="text-[10px] text-ink-faint">配色方案</span>
+                      <Select
+                        value={paletteId}
+                        onChange={(val) => patchParam({ paletteId: val })}
+                        options={PALETTE_OPTIONS}
+                        disabled={isGenerating || !!upstreamColors}
+                        size="sm"
+                        className="w-full"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1 min-w-0">
+                      <span className="text-[10px] text-ink-faint">画底质感</span>
+                      <Select
+                        value={transparentBackground ? 'transparent' : 'paper'}
+                        onChange={(val) => patchParam({ transparentBackground: val === 'transparent' })}
+                        options={BACKGROUND_OPTIONS}
+                        disabled={isGenerating}
+                        size="sm"
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+
+                  {/* 画幅比例与导出分辨率 */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="flex flex-col gap-1 min-w-0">
+                      <span className="text-[10px] text-ink-faint">画幅比例</span>
+                      <Select
+                        value={aspectRatio}
+                        onChange={(val) => patchParam({ aspectRatio: val as WatercolorAspectRatio })}
+                        options={ASPECT_RATIO_OPTIONS}
+                        disabled={isGenerating}
+                        size="sm"
+                        className="w-full"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1 min-w-0">
+                      <span className="text-[10px] text-ink-faint">导出画质</span>
+                      <Select
+                        value={String(resolution)}
+                        onChange={(val) => patchParam({ resolution: Number(val) as WatercolorResolution })}
+                        options={RESOLUTION_OPTIONS}
+                        disabled={isGenerating}
+                        size="sm"
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+
+                  {/* 核心滑杆参数 2x2 等宽网格 */}
+                  <div className="grid gap-x-4 gap-y-1.5 grid-cols-2 pt-1 border-t border-paper-grid/40">
+                    <SliderRow
+                      label="手颤"
+                      value={wiggle}
+                      min={0.2}
+                      max={2.5}
+                      step={0.1}
+                      display={`${wiggle.toFixed(1)}x`}
+                      labelWidth="w-6"
+                      valueWidth="min-w-[26px]"
+                      disabled={isGenerating}
+                      onChange={(v) => patchParam({ wiggle: v })}
+                    />
+                    <SliderRow
+                      label="出血"
+                      value={bleedStrength}
+                      min={0.0}
+                      max={0.8}
+                      step={0.05}
+                      display={`${Math.round(bleedStrength * 100)}%`}
+                      labelWidth="w-6"
+                      valueWidth="min-w-[26px]"
+                      disabled={isGenerating}
+                      onChange={(v) => patchParam({ bleedStrength: v })}
+                    />
+                    <SliderRow
+                      label="纸纹"
+                      value={textureStrength}
+                      min={0.0}
+                      max={1.0}
+                      step={0.05}
+                      display={`${Math.round(textureStrength * 100)}%`}
+                      labelWidth="w-6"
+                      valueWidth="min-w-[26px]"
+                      disabled={isGenerating}
+                      onChange={(v) => patchParam({ textureStrength: v })}
+                    />
+                    <SliderRow
+                      label="排线"
+                      value={hatchDist}
+                      min={4}
+                      max={20}
+                      step={1}
+                      display={`${hatchDist}px`}
+                      labelWidth="w-6"
+                      valueWidth="min-w-[26px]"
+                      disabled={isGenerating}
+                      onChange={(v) => patchParam({ hatchDist: v })}
+                    />
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         )}
 
         {/* 预览视口 */}
-        <div className="relative flex-1 min-h-0 w-full overflow-hidden rounded bg-[#FCFAF2] border border-paper-grid/40 flex flex-col items-center justify-center select-none shadow-inner p-2">
+        <div
+          className="relative flex-1 min-h-0 w-full overflow-hidden rounded border border-paper-grid/40 flex flex-col items-center justify-center select-none shadow-inner p-2"
+          style={checkerboardStyle}
+        >
           {!hasGenerated ? (
             <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
               {/* Canvas 挂载容器 */}
@@ -551,7 +688,7 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
 
               {/* 加载动效遮罩：严格居中覆盖整个视口 */}
               {sessionStatus === 'loading' && (
-                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2.5 bg-[#FCFAF2]/80 backdrop-blur-[2px] text-ink-light pointer-events-none">
+                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2.5 bg-paper/80 backdrop-blur-[2px] text-ink-light pointer-events-none">
                   <Loader2 size={26} className="animate-spin text-accent" />
                   <span className="text-xs font-sans text-ink-light font-medium">正在渲染物理水彩…</span>
                 </div>
@@ -559,7 +696,7 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
 
               {/* 错误提示遮罩 */}
               {sessionStatus === 'error' && (
-                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-[#FCFAF2]/90 backdrop-blur-sm text-ink-faint p-4 text-center">
+                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-paper/90 backdrop-blur-sm text-ink-faint p-4 text-center">
                   <span className="text-xs">无法建立 WebGL 渲染会话</span>
                   <button
                     type="button"
@@ -583,7 +720,7 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
                       <img
                         src={data.imageUrl}
                         alt="水彩手绘预览"
-                        className="max-w-full max-h-[440px] object-contain drop-shadow-md select-none rounded cursor-zoom-in hover:opacity-95 transition-opacity"
+                        className="max-w-full max-h-[460px] object-contain drop-shadow-md select-none rounded cursor-zoom-in hover:opacity-95 transition-opacity"
                       />
                     </PhotoView>
                     <button

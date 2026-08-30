@@ -3,7 +3,7 @@
  */
 
 import * as brush from './lib/brush.esm.js';
-import type { WatercolorBrushState } from './types';
+import type { WatercolorAspectRatio, WatercolorBrushState } from './types';
 import { executeWatercolorGeneration } from './generators';
 
 export interface WatercolorSessionOptions {
@@ -16,6 +16,28 @@ export interface WatercolorRenderResult {
   dataUrl: string;
   width: number;
   height: number;
+}
+
+/**
+ * 根据画幅比例和基准边长计算实际像素宽高
+ */
+export function getWatercolorDimensions(
+  aspectRatio: WatercolorAspectRatio = '1:1',
+  baseSize = 512
+): { width: number; height: number } {
+  switch (aspectRatio) {
+    case '3:4':
+      return { width: Math.round(baseSize * 0.75), height: baseSize };
+    case '4:3':
+      return { width: baseSize, height: Math.round(baseSize * 0.75) };
+    case '9:16':
+      return { width: Math.round(baseSize * 0.5625), height: baseSize };
+    case '16:9':
+      return { width: baseSize, height: Math.round(baseSize * 0.5625) };
+    case '1:1':
+    default:
+      return { width: baseSize, height: baseSize };
+  }
 }
 
 /**
@@ -34,8 +56,9 @@ export class WatercolorSession {
   }
 
   public static async create(options: WatercolorSessionOptions): Promise<WatercolorSession> {
-    const w = options.width || 512;
-    const h = options.height || 512;
+    const defaultDims = getWatercolorDimensions(options.params.aspectRatio, 512);
+    const w = options.width || defaultDims.width;
+    const h = options.height || defaultDims.height;
 
     const canvas = document.createElement('canvas');
     canvas.width = w;
@@ -74,19 +97,24 @@ export class WatercolorSession {
 }
 
 /**
- * 一次性高保真渲染管线（用于点击「生成」时导出 1080p~2048p 高清图）
+ * 一次性高保真渲染管线（用于点击「生成」时导出 1024p~2048p 高清图）
  */
 export async function renderWatercolorArt(
   params: WatercolorBrushState,
-  exportWidth = 1080,
-  exportHeight = 1080
+  exportWidth?: number,
+  exportHeight?: number
 ): Promise<WatercolorRenderResult> {
+  const baseSize = params.resolution || 1024;
+  const dims = getWatercolorDimensions(params.aspectRatio || '1:1', baseSize);
+  const w = exportWidth || dims.width;
+  const h = exportHeight || dims.height;
+
   const canvas = document.createElement('canvas');
-  canvas.width = exportWidth;
-  canvas.height = exportHeight;
+  canvas.width = w;
+  canvas.height = h;
 
   brush.load(canvas);
-  executeWatercolorGeneration(exportWidth, exportHeight, params);
+  executeWatercolorGeneration(w, h, params);
 
   const dataUrl = canvas.toDataURL('image/png');
 
@@ -99,7 +127,7 @@ export async function renderWatercolorArt(
 
   return {
     dataUrl,
-    width: exportWidth,
-    height: exportHeight,
+    width: w,
+    height: h,
   };
 }

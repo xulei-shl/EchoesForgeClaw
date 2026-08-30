@@ -175,8 +175,8 @@ export function generateWaveStrips(
 }
 
 /**
- * 3. 💧 云阶水彩晕染（截图3）
- * 多层分形水彩云团多边形生长叠加，留白擦除与 GPU 水渍边缘暗化，辅以局部几何排线
+ * 3. 💧 云阶水彩晕染
+ * 多层分形水彩云团多边形生长叠加，留白擦除与 GPU 水渍边缘暗化
  */
 export function generateWatercolorClouds(
   width: number,
@@ -184,23 +184,23 @@ export function generateWatercolorClouds(
   params: WatercolorBrushState,
   palette: string[]
 ) {
-  const blobCount = 18;
+  const blobCount = 24;
   brush.field('curved');
   brush.wiggle(params.wiggle * 0.9);
 
-  // 1. 水彩云团群
+  // 多层柔和分形水彩云团群（大中小层级交织，营造层次深邃的自然云阶水彩晕染）
   for (let i = 0; i < blobCount; i++) {
-    const cx = randRange(width * 0.12, width * 0.88);
-    const cy = randRange(height * 0.12, height * 0.88);
-    const rad = randRange(width * 0.08, width * 0.22);
+    const cx = randRange(width * 0.1, width * 0.9);
+    const cy = randRange(height * 0.1, height * 0.9);
+    const rad = randRange(width * 0.08, width * 0.26);
     const col = randChoice(palette);
 
     // 构建不规则圆多边形
-    const numPts = 10;
+    const numPts = 12;
     const verts: [number, number][] = [];
     for (let p = 0; p < numPts; p++) {
       const ang = (p / numPts) * Math.PI * 2;
-      const r = rad * randRange(0.75, 1.35);
+      const r = rad * randRange(0.7, 1.4);
       verts.push([cx + Math.cos(ang) * r, cy + Math.sin(ang) * r]);
     }
 
@@ -208,36 +208,9 @@ export function generateWatercolorClouds(
     brush.noStroke();
     brush.fillBleed(params.bleedStrength);
     brush.fillTexture(params.textureStrength, params.borderStrength);
-    brush.fill(col, randRange(70, 130));
+    brush.fill(col, randRange(65, 140));
     brush.polygon(verts);
     brush.noFill();
-    brush.pop();
-  }
-
-  // 2. 局部几何排线色块（如截图3中的斜向条纹长方形）
-  const patchCount = 5;
-  for (let j = 0; j < patchCount; j++) {
-    const px = randRange(width * 0.15, width * 0.75);
-    const py = randRange(height * 0.15, height * 0.75);
-    const pw = randRange(width * 0.1, width * 0.22);
-    const ph = randRange(height * 0.08, height * 0.18);
-    const rot = randChoice([30, -35, 45, -50]);
-    const col = randChoice(palette);
-
-    brush.push();
-    brush.translate(px, py);
-    brush.rotate(rot);
-    brush.hatch(params.hatchDist * randRange(0.8, 1.2), 45, {
-      continuous: true,
-      rand: 0.1,
-    });
-    brush.set(randChoice(['2B', 'pen', 'marker']), col, randRange(0.7, 1.2));
-    brush.rect(0, 0, pw, ph, 'center');
-    brush.noHatch();
-
-    // 细线边框
-    brush.set('rotring', col, 0.4);
-    brush.rect(0, 0, pw, ph, 'center');
     brush.pop();
   }
 }
@@ -343,8 +316,12 @@ export function executeWatercolorGeneration(
 
   // 1. 设置角度模式为角度制 (DEGREES)，便于 0~360 角度计算
   brush.angleMode(brush.DEGREES);
-  // 2. 初始化画纸底色（象牙白纸面）
-  brush.clear(252, 250, 242, 255);
+  // 2. 初始化画纸底色：透明模式清空为透明通道，常规模式填充象牙白纸面底色
+  if (params.transparentBackground) {
+    brush.clear();
+  } else {
+    brush.clear(252, 250, 242, 255);
+  }
   brush.seed(params.seed || 42);
 
   // 3. WebGL 原点在画布中心 (0, 0)，平移到左上角进行标准的 (0, 0) -> (width, height) 全幅绘制
