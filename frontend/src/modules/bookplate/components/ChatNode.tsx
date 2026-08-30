@@ -1,6 +1,6 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, Eraser, ImagePlus, MessageSquare, Send, Copy, Check, Loader2, Square, RefreshCw, ChevronUp, ChevronDown, Lock, X, FileText, Download, Brain, FolderOpen, Clock, Sparkles, Bot, Wrench, TerminalSquare } from 'lucide-react';
+import { AlertTriangle, Eraser, ImagePlus, MessageSquare, Send, Copy, Check, Loader2, Square, RefreshCw, ChevronUp, ChevronDown, Lock, X, FileText, Download, Brain, FolderOpen, Clock, Bot, Wrench, TerminalSquare } from 'lucide-react';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
 import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
@@ -16,6 +16,7 @@ import { ModelOverrideField } from './ModelOverrideField';
 import { ExtensionWidgets } from './ExtensionWidgets';
 import { QuestionAnswerBlock } from './QuestionAnswerBlock';
 import { parseQuestionnaireInteractions } from '../utils/piQuestionnaireParser';
+import { getRandomKaomoji } from '../utils/kaomoji';
 import type { ExtensionWidgetItem, PendingUiRequest } from '../piStream';
 import { NODE_COLORS } from '../nodeTypes';
 import { authHeaders } from '../authUtils';
@@ -290,7 +291,8 @@ const StepActivityCard: React.FC<{
   agentName?: string;
   streaming?: boolean;
   hasContent?: boolean;
-}> = memo(({ stepNumber, reasoning, agentSteps = [], agentName, streaming = false, hasContent = false }) => {
+  kaomoji?: string;
+}> = memo(({ stepNumber, reasoning, agentSteps = [], agentName, streaming = false, hasContent = false, kaomoji }) => {
   const hasReasoning = Boolean(reasoning && reasoning.trim().length > 0);
   const hasSteps = agentSteps.length > 0;
 
@@ -416,8 +418,10 @@ const StepActivityCard: React.FC<{
                 <div className="flex items-center gap-1.5 text-[10px] font-sans font-medium text-ink-faint mb-1">
                   <Brain size={10.5} strokeWidth={1.75} className="text-accent shrink-0" />
                   <span>思考推理</span>
-                  {streaming && !hasContent && (
-                    <span className="text-[9px] text-accent/80 font-normal animate-pulse">（正在思考…）</span>
+                  {streaming && !hasContent && kaomoji && (
+                    <span className="px-1.5 py-0.5 rounded-full bg-accent/15 border border-accent/25 text-[8.5px] leading-tight text-accent animate-pulse shadow-[0_0_6px_rgba(var(--color-accent),0.25)]">
+                      {kaomoji}
+                    </span>
                   )}
                 </div>
                 <pre className="text-[10.5px] text-ink-light font-sans whitespace-pre-wrap leading-relaxed max-h-44 overflow-y-auto custom-scrollbar select-text bg-paper-grid/10 p-2 rounded border border-paper-grid/30">
@@ -444,6 +448,11 @@ const StepActivityCard: React.FC<{
                   {streaming && (
                     <div className="px-2.5 py-1.5 flex items-center gap-1.5 text-[10px] text-accent bg-accent/5 font-sans">
                       <Loader2 size={10} strokeWidth={2} className="animate-spin shrink-0" />
+                      {kaomoji && (
+                        <span className="px-1 py-0.2 rounded-full bg-accent/15 border border-accent/25 text-[8.5px] leading-tight">
+                          {kaomoji}
+                        </span>
+                      )}
                       <span>Agent 执行中…</span>
                     </div>
                   )}
@@ -564,6 +573,9 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
   onRetry,
   extensionDialog,
 }) => {
+  // 单条消息生成时随机确定一个专属俏皮颜文字，在当前消息流式生命周期内保持稳定
+  const [kaomoji] = useState(() => getRandomKaomoji());
+
   // 正文直接透传：SSE text-delta 增量到达即随消息内容增长，Streamdown 以 streaming 模式
   // （parseIncompleteMarkdown / block 级 memo / caret）负责流式渲染，无需再叠加打字机节流。
   if (msg.role === 'user') {
@@ -632,17 +644,20 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
         agentName={agentName}
         streaming={!!msg.streaming}
         hasContent={hasContent}
+        kaomoji={kaomoji}
       />
       {/* 2. AI 回答正文气泡（仅在有正文、初次等待或被中断时渲染，彻底杜绝中间步骤出现空白矩形气泡） */}
       {shouldRenderBubble && (
         <div className="flex items-end w-full min-w-0">
-          <div className={`max-w-[92%] px-3 py-2 rounded-2xl rounded-bl-sm bg-paper-grid/25 border border-paper-grid/60 text-sm leading-relaxed font-sans min-w-0 select-text ${isWaitingInitialToken ? 'flex items-center text-ink-light' : ''}`}>
+          <div
+            className={`max-w-[92%] px-3 py-2 rounded-2xl rounded-bl-sm bg-paper-grid/25 border border-paper-grid/60 text-sm leading-relaxed font-sans min-w-0 select-text ${isWaitingInitialToken ? 'flex items-center text-ink-light' : ''}`}
+            style={{ '--kaomoji-caret': `"${kaomoji}"` } as React.CSSProperties}
+          >
             {isWaitingInitialToken ? (
-              <div className="flex items-center gap-2 py-0.5 text-ink-light select-none">
-                <div className="flex items-center gap-1.5 text-accent">
-                  <Sparkles size={13} strokeWidth={2} className="animate-thinking-glow shrink-0" />
-                  <span className="text-[12px] font-sans font-medium text-ink-light">思考中…</span>
-                </div>
+              <div className="flex items-center gap-2 py-0.5 select-none">
+                <span className="text-[11px] font-sans font-medium text-accent inline-flex items-center px-1.5 py-0.5 rounded-full bg-accent/15 border border-accent/25 shadow-[0_0_8px_rgba(var(--color-accent),0.3)] animate-pulse">
+                  {kaomoji}
+                </span>
                 <div className="flex items-center gap-1 h-3 pl-0.5">
                   <div className="w-1.5 h-1.5 rounded-full bg-accent/70 animate-thinking-wave" style={{ animationDelay: '0ms' }} />
                   <div className="w-1.5 h-1.5 rounded-full bg-accent/70 animate-thinking-wave" style={{ animationDelay: '160ms' }} />
