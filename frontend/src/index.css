@@ -578,33 +578,45 @@ body.is-connecting [data-node-id]:hover {
   color: var(--color-ink-light) !important;
 }
 
-/* ========== Streamdown 流式光标动效（抹茶呼吸微光圆点 Matcha Breathing Orb） ========== */
-@keyframes streamdown-caret-breathe {
+/* ========== Streamdown 流式光标动效：俏皮颜文字 + 呼吸微光胶囊徽章 ========== */
+@keyframes streamdown-kaomoji-breathe {
   0%, 100% {
     opacity: 1;
     transform: scale(1);
-    box-shadow: 0 0 6px var(--color-accent);
+    box-shadow: 0 0 10px color-mix(in srgb, var(--color-accent) 45%, transparent),
+                0 0 3px color-mix(in srgb, var(--color-accent) 30%, transparent);
+    background-color: color-mix(in srgb, var(--color-accent) 14%, transparent);
+    border-color: color-mix(in srgb, var(--color-accent) 32%, transparent);
   }
   50% {
-    opacity: 0.3;
-    transform: scale(0.72);
-    box-shadow: 0 0 1px var(--color-accent);
+    opacity: 0.65;
+    transform: scale(0.96);
+    box-shadow: 0 0 4px color-mix(in srgb, var(--color-accent) 20%, transparent);
+    background-color: color-mix(in srgb, var(--color-accent) 7%, transparent);
+    border-color: color-mix(in srgb, var(--color-accent) 18%, transparent);
   }
 }
 
-/* 覆盖原生 Unicode 黑色字符方块，替换为温润灵动的主题色呼吸微光圆点 */
+/* 覆盖原生黑色字符方块，渲染为带外围呼吸光晕与微光胶囊背景的俏皮颜文字 */
 [style*="--streamdown-caret"] > *:last-child::after {
-  content: "" !important;
+  content: var(--kaomoji-caret, "(｡•ㅅ•｡)") !important;
   display: inline-block !important;
-  width: 0.45rem !important; /* 7.2px */
-  height: 0.45rem !important;
-  margin-left: 0.28rem !important;
-  margin-right: 0.1rem !important;
-  vertical-align: 0.08em !important;
+  font-family: var(--font-sans), system-ui, sans-serif !important;
+  font-size: 0.78em !important;
+  font-weight: 500 !important;
+  line-height: 1 !important;
+  color: var(--color-accent) !important;
+  background-color: color-mix(in srgb, var(--color-accent) 14%, transparent) !important;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent) !important;
   border-radius: var(--radius-pill, 9999px) !important;
-  background-color: var(--color-accent) !important;
-  box-shadow: 0 0 6px var(--color-accent) !important;
-  animation: streamdown-caret-breathe 1.2s ease-in-out infinite !important;
+  padding: 0.12rem 0.38rem !important;
+  margin-left: 0.35rem !important;
+  margin-right: 0.1rem !important;
+  vertical-align: 0.12em !important;
+  white-space: nowrap !important;
+  user-select: none !important;
+  pointer-events: none !important;
+  animation: streamdown-kaomoji-breathe 1.4s ease-in-out infinite !important;
 }
 
 /* ========== 借书卡专用复古与手写字体（与 借书卡.html 完全一致） ========== */

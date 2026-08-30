@@ -1,5 +1,7 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { PhotoProvider, PhotoView } from 'react-photo-view';
+import 'react-photo-view/dist/react-photo-view.css';
 import {
   Upload,
   Trash2,
@@ -112,9 +114,9 @@ function probeImageAspectRatio(src: string): Promise<number> {
   });
 }
 
-/** 预设选择下拉选项 */
+/** 预设选择下拉选项（仅显示中文名称） */
 const PRESET_OPTIONS: SelectOption[] = EDITORIAL_PRESETS.map((p) => ({
-  label: `${p.name} (${p.englishName})`,
+  label: p.name,
   value: p.id,
 }));
 
@@ -214,6 +216,50 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
   const stageWrapperRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const gestureRef = useRef<GestureState | null>(null);
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const toolbarTabsRef = useRef<HTMLDivElement>(null);
+
+  // 点击抽屉外部区域或按 ESC 键时自动关闭文章/排版抽屉
+  useEffect(() => {
+    if (activeTab === 'preview') return;
+
+    const handlePointerDown = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+
+      // 抽屉内部或顶部切换按钮触发区不关闭
+      if (drawerRef.current?.contains(target) || toolbarTabsRef.current?.contains(target)) {
+        return;
+      }
+
+      // Portal 浮层（如字体选择 Select、颜色选择器 Popover）不关闭
+      if (
+        target.closest?.('.z-\\[9999\\]') ||
+        target.closest?.('[role="dialog"]') ||
+        target.closest?.('[role="listbox"]')
+      ) {
+        return;
+      }
+
+      setActiveTab('preview');
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setActiveTab('preview');
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [activeTab]);
 
   // 测量舞台容器的真实物理尺寸，用于计算精准的 CSS Transform Scale
   const [stageSize, setStageSize] = useState<{ width: number; height: number }>({
@@ -779,11 +825,15 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
                 width: 'auto',
               }}
             >
-              <img
-                src={data.imageUrl}
-                alt="Generated Editorial"
-                className="w-full h-full object-contain rounded-lg shadow-2xs transition-transform duration-200 group-hover/preview:scale-[1.01]"
-              />
+              <PhotoProvider maskOpacity={0.8} bannerVisible={false}>
+                <PhotoView src={data.imageUrl}>
+                  <img
+                    src={data.imageUrl}
+                    alt="Generated Editorial"
+                    className="w-full h-full object-contain rounded-lg shadow-2xs select-none cursor-zoom-in hover:opacity-90 transition-opacity drop-shadow-sm"
+                  />
+                </PhotoView>
+              </PhotoProvider>
             </div>
             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1 bg-paper/95 backdrop-blur-md rounded-full text-[11px] text-ink shadow-md border border-paper-grid/50 opacity-0 group-hover/preview:opacity-100 transition-opacity pointer-events-none">
               双击或点击操作栏返回编辑排版
@@ -800,7 +850,7 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
                   value={presetId}
                   onChange={(val) => handleSelectPreset(val)}
                   options={PRESET_OPTIONS}
-                  className="w-[180px] shrink-0"
+                  className="w-[105px] shrink-0"
                 />
 
                 <Select
@@ -812,11 +862,11 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
                     onUpdateState?.(id, { pageSize: r }, true);
                   }}
                   options={RATIO_OPTIONS}
-                  className="w-[120px] shrink-0"
+                  className="w-[142px] shrink-0"
                 />
               </div>
 
-              <div className="flex items-center gap-1 shrink-0">
+              <div ref={toolbarTabsRef} className="flex items-center gap-1 shrink-0">
                 <Tooltip content="编辑文章结构（大标题、导语、正文等）">
                   <button
                     type="button"
@@ -1188,6 +1238,7 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
               <AnimatePresence>
                 {activeTab === 'article' && (
                   <motion.div
+                    ref={drawerRef}
                     initial={{ opacity: 0, x: 16 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: 16 }}
@@ -1294,6 +1345,7 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
                 {/* 抽屉浮层：字体与排版样式 */}
                 {activeTab === 'style' && (
                   <motion.div
+                    ref={drawerRef}
                     initial={{ opacity: 0, x: 16 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: 16 }}
