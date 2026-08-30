@@ -17,6 +17,10 @@ import {
 } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
+import { Select, type SelectOption } from '../../../platform/components/ui/Select';
+import { SliderRow } from '../../../platform/components/ui/Slider';
+import { Toggle } from '../../../platform/components/ui/Toggle';
+import { Tooltip } from '../../../platform/components/ui/Tooltip';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
 import { NODE_COLORS } from '../../bookplate/nodeTypes';
 import {
@@ -31,8 +35,8 @@ import { EDITORIAL_PRESETS, getEditorialPreset } from '../editorial/presets';
 import { computeEditorialLayout } from '../editorial/engine/layoutEngine';
 import { exportEditorialToPng } from '../editorial/render/canvasExporter';
 import {
-  JOURNAL_FONTS,
-  JOURNAL_TEXT_COLORS,
+  FontFamilySelect,
+  TextColorPalette,
   snapRotateCw,
   snapRotateCcw,
   usePreloadJournalFonts,
@@ -107,6 +111,18 @@ function probeImageAspectRatio(src: string): Promise<number> {
     img.src = src;
   });
 }
+
+/** 预设选择下拉选项 */
+const PRESET_OPTIONS: SelectOption[] = EDITORIAL_PRESETS.map((p) => ({
+  label: `${p.name} (${p.englishName})`,
+  value: p.id,
+}));
+
+/** 比例选择下拉选项 */
+const RATIO_OPTIONS: SelectOption[] = EDITORIAL_PAGE_RATIOS.map((r) => ({
+  label: r.name,
+  value: r.id,
+}));
 
 /** 矢量条形码组件（与 Canvas Exporter 完全一致） */
 const BarcodeSvg: React.FC<{ width: number; height: number; color?: string }> = ({
@@ -619,11 +635,11 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
       initialX={initialX}
       initialY={initialY}
       title={title || '杂志排版'}
-      dotColor={NODE_COLORS.editorial_layout}
+      dotColor={NODE_COLORS.editorial_layout || 'oklch(0.68 0.15 285)'}
       resizable
       defaultSize={{ width: 540, height: 720 }}
       className={`transition-[opacity,transform,box-shadow,border-color] duration-150 ease-out ${
-        isSelected ? 'ring-2 ring-purple-500 shadow-md' : ''
+        isSelected ? 'ring-2 ring-accent/70 shadow-md' : ''
       }`}
       showLeftAnchor={true}
       showRightAnchor={true}
@@ -707,7 +723,7 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
               <NodeActionBar.Custom
                 icon={
                   isGenerating ? (
-                    <Loader2 size={16} className="animate-spin text-purple-400" />
+                    <Loader2 size={16} className="animate-spin text-accent" />
                   ) : (
                     <Wand2 size={16} strokeWidth={1.5} />
                   )
@@ -735,112 +751,110 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
         </NodeActionBar>
       }
     >
-      <div className="flex flex-col h-full bg-[#18181b] text-neutral-200 select-none overflow-hidden text-xs">
-        {/* 隐藏的本地文件上传 input */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          accept="image/*"
-          className="hidden"
-          onChange={handleUploadImages}
-        />
+      {/* 隐藏的本地文件上传 input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept="image/*"
+        className="hidden"
+        onChange={handleUploadImages}
+      />
 
+      <div className="h-full flex flex-col flex-1 min-h-0 gap-2">
         {/* 已生成且非编辑模式：展示高保真大图预览 */}
         {hasGenerated && data.imageUrl ? (
           <div
-            className="flex-1 relative overflow-hidden bg-neutral-950/80 flex items-center justify-center p-3 group/preview cursor-pointer"
+            className="relative flex-1 min-h-0 w-full overflow-hidden rounded bg-paper-grid/10 border border-paper-grid/40 flex items-center justify-center p-2 sm:p-3 group/preview cursor-pointer select-none"
             onDoubleClick={() => setIsEditing(true)}
             title="双击重新进入编辑排版"
           >
+            {/* Card Shell */}
             <div
-              className="relative shadow-2xl overflow-hidden select-none flex items-center justify-center"
+              className="relative p-2 rounded-2xl bg-white shadow-[0_0_0_0.5px_rgba(0,0,0,0.08),0_16px_48px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03),0_2px_4px_rgba(0,0,0,0.02)] flex items-center justify-center"
               style={{
                 aspectRatio: `${ratioPreset.aspectRatio}`,
                 height: '100%',
                 maxHeight: '100%',
+                width: 'auto',
               }}
             >
               <img
                 src={data.imageUrl}
                 alt="Generated Editorial"
-                className="w-full h-full object-contain rounded-sm shadow-2xl transition-transform duration-200 group-hover/preview:scale-[1.01]"
+                className="w-full h-full object-contain rounded-lg shadow-2xs transition-transform duration-200 group-hover/preview:scale-[1.01]"
               />
             </div>
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1 bg-black/70 backdrop-blur-md rounded-full text-[11px] text-white/90 opacity-0 group-hover/preview:opacity-100 transition-opacity pointer-events-none shadow-lg">
-              双击或点击右下角按钮返回编辑排版
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1 bg-paper/95 backdrop-blur-md rounded-full text-[11px] text-ink shadow-md border border-paper-grid/50 opacity-0 group-hover/preview:opacity-100 transition-opacity pointer-events-none">
+              双击或点击操作栏返回编辑排版
             </div>
           </div>
         ) : (
           /* 编辑排版模式：100% 绝对所见即所得基准容器 */
           <>
-            {/* 顶部工具栏 */}
-            <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 bg-neutral-900/80 gap-2 shrink-0">
-              <div className="flex items-center gap-1.5">
-                <select
+            {/* 顶部工具栏：版式预设下拉 + 比例选择下拉 + 文章/排版抽屉切换 */}
+            <div className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg bg-paper-grid/20 border border-paper-grid/40 text-xs font-sans text-ink-light select-none">
+              <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                <Select
+                  size="sm"
                   value={presetId}
-                  onChange={(e) => handleSelectPreset(e.target.value)}
-                  className="bg-neutral-800 text-neutral-200 text-xs px-2 py-1 rounded border border-white/10 outline-none hover:border-purple-500/50 cursor-pointer"
-                >
-                  {EDITORIAL_PRESETS.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({p.englishName})
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => handleSelectPreset(val)}
+                  options={PRESET_OPTIONS}
+                  className="w-[180px] shrink-0"
+                />
 
-                <select
+                <Select
+                  size="sm"
                   value={pageSize}
-                  onChange={(e) => {
-                    const r = e.target.value as EditorialPageRatio;
+                  onChange={(val) => {
+                    const r = val as EditorialPageRatio;
                     setPageSize(r);
                     onUpdateState?.(id, { pageSize: r }, true);
                   }}
-                  className="bg-neutral-800 text-neutral-300 text-xs px-1.5 py-1 rounded border border-white/10 outline-none cursor-pointer"
-                >
-                  {EDITORIAL_PAGE_RATIOS.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.name}
-                    </option>
-                  ))}
-                </select>
+                  options={RATIO_OPTIONS}
+                  className="w-[120px] shrink-0"
+                />
               </div>
 
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => setActiveTab(activeTab === 'article' ? 'preview' : 'article')}
-                  className={`flex items-center gap-1 px-2.5 py-1 rounded transition text-xs ${
-                    activeTab === 'article'
-                      ? 'bg-purple-600 text-white'
-                      : 'text-neutral-400 hover:bg-white/10 hover:text-white'
-                  }`}
-                  title="编辑文章内容"
-                >
-                  <FileText className="w-3.5 h-3.5" />
-                  <span>文章</span>
-                </button>
+              <div className="flex items-center gap-1 shrink-0">
+                <Tooltip content="编辑文章结构（大标题、导语、正文等）">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab(activeTab === 'article' ? 'preview' : 'article')}
+                    className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.96] ${
+                      activeTab === 'article'
+                        ? 'bg-accent/15 text-accent font-medium'
+                        : 'text-ink-light hover:text-accent hover:bg-paper-grid/40'
+                    }`}
+                  >
+                    <FileText size={13} strokeWidth={1.8} />
+                    <span>文章</span>
+                  </button>
+                </Tooltip>
 
-                <button
-                  onClick={() => setActiveTab(activeTab === 'style' ? 'preview' : 'style')}
-                  className={`flex items-center gap-1 px-2.5 py-1 rounded transition text-xs ${
-                    activeTab === 'style'
-                      ? 'bg-purple-600 text-white'
-                      : 'text-neutral-400 hover:bg-white/10 hover:text-white'
-                  }`}
-                  title="排版与字体"
-                >
-                  <Sliders className="w-3.5 h-3.5" />
-                  <span>排版</span>
-                </button>
+                <Tooltip content="字体与排版参数配置">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab(activeTab === 'style' ? 'preview' : 'style')}
+                    className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.96] ${
+                      activeTab === 'style'
+                        ? 'bg-accent/15 text-accent font-medium'
+                        : 'text-ink-light hover:text-accent hover:bg-paper-grid/40'
+                    }`}
+                  >
+                    <Sliders size={13} strokeWidth={1.8} />
+                    <span>排版</span>
+                  </button>
+                </Tooltip>
               </div>
             </div>
 
             {/* 主排版舞台区域：所见即所得 Scale 容器 */}
-            <div className="flex-1 relative overflow-hidden bg-neutral-950/70 flex items-center justify-center p-3">
-              {/* 真实物理包裹层，动态监听宽高 */}
+            <div className="relative flex-1 min-h-0 w-full overflow-hidden rounded bg-paper-grid/10 border border-paper-grid/40 flex items-center justify-center select-none p-2 sm:p-3">
+              {/* 真实物理包裹层（Card Shell），动态监听宽高并保持比例 */}
               <div
                 ref={stageWrapperRef}
-                className="relative shadow-2xl overflow-hidden select-none transition-all duration-150"
+                className="relative rounded-2xl bg-white shadow-[0_0_0_0.5px_rgba(0,0,0,0.08),0_16px_48px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03),0_2px_4px_rgba(0,0,0,0.02)] overflow-hidden select-none transition-all duration-150"
                 style={{
                   aspectRatio: `${ratioPreset.aspectRatio}`,
                   height: '100%',
@@ -852,7 +866,7 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
               >
                 {/* 100% 绝对基准高清容器（应用精准 CSS Scale 缩放，与 Canvas Exporter 完全 1:1 对齐） */}
                 <div
-                  className="absolute top-0 left-0 origin-top-left pointer-events-auto"
+                  className="absolute top-0 left-0 origin-top-left pointer-events-auto select-none"
                   style={{
                     width: `${ratioPreset.width}px`,
                     height: `${ratioPreset.height}px`,
@@ -860,311 +874,339 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
                     backgroundColor: background.color || '#ffffff',
                   }}
                 >
-                  {/* 1. 侧边 Ribbon 标签 */}
-                  {activePreset.features.hasRibbonTag && (
-                    <div
-                      className="absolute top-0 bg-black text-white flex items-center justify-center font-bold tracking-widest pointer-events-none"
-                      style={{
-                        left: `${Math.round(ratioPreset.width * 0.06)}px`,
-                        width: `${Math.round(ratioPreset.width * 0.08)}px`,
-                        height: `${Math.round(ratioPreset.height * 0.16)}px`,
-                        fontSize: `${Math.round(ratioPreset.width * 0.022)}px`,
-                        writingMode: 'vertical-rl',
-                        fontFamily: typography.headlineFont,
-                      }}
-                    >
-                      {article.issueDate ? `ISSUE ${article.issueDate}` : 'ISSUE 08'}
-                    </div>
-                  )}
-
-                  {/* 2. 刊头 Masthead 与细分割线 */}
-                  {article.masthead && (
-                    <div
-                      className="absolute font-bold flex justify-between items-center pointer-events-none"
-                      style={{
-                        top: `${Math.round(ratioPreset.height * 0.045)}px`,
-                        left: `${Math.round(ratioPreset.width * 0.065)}px`,
-                        right: `${Math.round(ratioPreset.width * 0.065)}px`,
-                        fontSize: `${Math.round(ratioPreset.width * 0.014)}px`,
-                        color: typography.accentColor || '#000000',
-                        fontFamily: typography.headlineFont,
-                        letterSpacing: '1px',
-                        borderBottom: '1px solid rgba(0,0,0,0.12)',
-                        paddingBottom: `${Math.round(ratioPreset.height * 0.008)}px`,
-                      }}
-                    >
-                      <span>{article.masthead.toUpperCase()}</span>
-                      {article.issueDate && <span className="opacity-60">{article.issueDate}</span>}
-                    </div>
-                  )}
-
-                  {/* 3. 图片素材层（严格按自然比例渲染，与 Canvas 和 Pretext 障碍物 100% 吻合） */}
-                  {items.map((item) => {
-                    const isSelectedItem = selectedItemId === item.id;
-                    const imgPxX = (item.x / 100) * ratioPreset.width;
-                    const imgPxY = (item.y / 100) * ratioPreset.height;
-                    const imgPxW = (item.width / 100) * ratioPreset.width;
-                    const naturalRatio = item.aspectRatio || 1;
-                    const imgPxH = imgPxW / naturalRatio;
-
-                    return (
+                    {/* 1. 侧边 Ribbon 标签 */}
+                    {activePreset.features.hasRibbonTag && (
                       <div
-                        key={item.id}
-                        className={`absolute touch-none transition-shadow ${
-                          isSelectedItem ? 'ring-4 ring-purple-500 ring-offset-2 z-30 shadow-2xl' : 'z-10'
-                        }`}
+                        className="absolute top-0 bg-black text-white flex items-center justify-center font-bold tracking-widest pointer-events-none"
                         style={{
-                          left: `${imgPxX}px`,
-                          top: `${imgPxY}px`,
-                          width: `${imgPxW}px`,
-                          height: `${imgPxH}px`,
-                          transform: `rotate(${item.rotation || 0}deg)`,
-                          transformOrigin: 'center center',
-                        }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedItemId(item.id);
+                          left: `${Math.round(ratioPreset.width * 0.06)}px`,
+                          width: `${Math.round(ratioPreset.width * 0.08)}px`,
+                          height: `${Math.round(ratioPreset.height * 0.16)}px`,
+                          fontSize: `${Math.round(ratioPreset.width * 0.022)}px`,
+                          writingMode: 'vertical-rl',
+                          fontFamily: typography.headlineFont,
                         }}
                       >
-                        <img
-                          src={item.src}
-                          alt=""
-                          draggable={false}
-                          onPointerDown={(e) => beginGesture(e, item, 'move')}
-                          onPointerMove={moveGesture}
-                          onPointerUp={endGesture}
-                          onPointerCancel={endGesture}
-                          className="w-full h-full object-cover rounded-sm shadow-md cursor-move block"
-                        />
+                        {article.issueDate ? `ISSUE ${article.issueDate}` : 'ISSUE 08'}
+                      </div>
+                    )}
 
-                        {/* 常驻悬浮微操作栏 */}
-                        {isSelectedItem && (
-                          <div
-                            onPointerDown={(e) => e.stopPropagation()}
-                            onClick={(e) => e.stopPropagation()}
-                            className={`absolute left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1.5 rounded-full bg-neutral-900/95 backdrop-blur-md shadow-2xl border border-white/20 z-50 pointer-events-auto ${
-                              item.y < 16 ? '-bottom-14' : '-top-14'
-                            }`}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => rotateStepItem(item.id, 'ccw')}
-                              className="p-1 rounded text-neutral-300 hover:text-white hover:bg-white/10"
-                              title="逆时针旋转 90° (摆正)"
-                            >
-                              <RotateCcw className="w-5 h-5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => rotateStepItem(item.id, 'cw')}
-                              className="p-1 rounded text-neutral-300 hover:text-white hover:bg-white/10"
-                              title="顺时针旋转 90° (摆正)"
-                            >
-                              <RotateCw className="w-5 h-5" />
-                            </button>
-                            <div className="w-px h-5 bg-white/20 my-auto" />
-                            <button
-                              type="button"
-                              onClick={() => bumpLayer(item.id, 'top')}
-                              className="p-1 rounded text-neutral-300 hover:text-white hover:bg-white/10"
-                              title="置顶图层"
-                            >
-                              <ChevronsUp className="w-5 h-5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => bumpLayer(item.id, 'bottom')}
-                              className="p-1 rounded text-neutral-300 hover:text-white hover:bg-white/10"
-                              title="置底图层"
-                            >
-                              <ChevronsDown className="w-5 h-5" />
-                            </button>
-                            <div className="w-px h-5 bg-white/20 my-auto" />
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteItem(item.id)}
-                              className="p-1 rounded text-red-400 hover:text-red-300 hover:bg-red-500/20"
-                              title="移除图片"
-                            >
-                              <Trash2 className="w-5 h-5" />
-                            </button>
-                          </div>
-                        )}
+                    {/* 2. 刊头 Masthead 与细分割线 */}
+                    {article.masthead && (
+                      <div
+                        className="absolute font-bold flex justify-between items-center pointer-events-none"
+                        style={{
+                          top: `${Math.round(ratioPreset.height * 0.045)}px`,
+                          left: `${Math.round(ratioPreset.width * 0.065)}px`,
+                          right: `${Math.round(ratioPreset.width * 0.065)}px`,
+                          fontSize: `${Math.round(ratioPreset.width * 0.014)}px`,
+                          color: typography.accentColor || '#000000',
+                          fontFamily: typography.headlineFont,
+                          letterSpacing: '1px',
+                          borderBottom: '1px solid rgba(0,0,0,0.12)',
+                          paddingBottom: `${Math.round(ratioPreset.height * 0.008)}px`,
+                        }}
+                      >
+                        <span>{article.masthead.toUpperCase()}</span>
+                        {article.issueDate && <span className="opacity-60">{article.issueDate}</span>}
+                      </div>
+                    )}
 
-                        {/* 选中时的缩放手柄与旋转手柄 */}
-                        {isSelectedItem && (
-                          <>
-                            {/* 右下角缩放手柄 */}
+                    {/* 3. 图片素材层（严格按自然比例渲染，与 Canvas 和 Pretext 障碍物 100% 吻合） */}
+                    {items.map((item) => {
+                      const isSelectedItem = selectedItemId === item.id;
+                      const imgPxX = (item.x / 100) * ratioPreset.width;
+                      const imgPxY = (item.y / 100) * ratioPreset.height;
+                      const imgPxW = (item.width / 100) * ratioPreset.width;
+                      const naturalRatio = item.aspectRatio || 1;
+                      const imgPxH = imgPxW / naturalRatio;
+
+                      return (
+                        <div
+                          key={item.id}
+                          className={`absolute touch-none transition-shadow ${
+                            isSelectedItem
+                              ? 'ring-2 ring-accent ring-offset-2 ring-offset-white z-30 shadow-lg'
+                              : 'z-10'
+                          }`}
+                          style={{
+                            left: `${imgPxX}px`,
+                            top: `${imgPxY}px`,
+                            width: `${imgPxW}px`,
+                            height: `${imgPxH}px`,
+                            transform: `rotate(${item.rotation || 0}deg)`,
+                            transformOrigin: 'center center',
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedItemId(item.id);
+                          }}
+                        >
+                          <img
+                            src={item.src}
+                            alt=""
+                            draggable={false}
+                            onPointerDown={(e) => beginGesture(e, item, 'move')}
+                            onPointerMove={moveGesture}
+                            onPointerUp={endGesture}
+                            onPointerCancel={endGesture}
+                            className="w-full h-full object-cover rounded-sm shadow-md cursor-move block"
+                          />
+
+                          {/* 常驻悬浮微操作栏（与手账制作节点间距完全一致，间距 10px） */}
+                          {isSelectedItem && (
                             <div
-                              onPointerDown={(e) => beginGesture(e, item, 'resize')}
-                              onPointerMove={moveGesture}
-                              onPointerUp={endGesture}
-                              onPointerCancel={endGesture}
-                              title="拖拽放大缩小"
-                              className="absolute -right-4 -bottom-4 w-9 h-9 rounded-full bg-purple-600 border-4 border-white shadow-2xl cursor-nwse-resize hover:scale-115 active:scale-95 transition-transform flex items-center justify-center z-40"
+                              style={{
+                                left: '50%',
+                                top: item.y < 12 ? `calc(100% + ${(10 / (scale || 0.3)).toFixed(1)}px)` : undefined,
+                                bottom: item.y >= 12 ? `calc(100% + ${(10 / (scale || 0.3)).toFixed(1)}px)` : undefined,
+                                transform: `translateX(-50%) scale(${1 / (scale || 0.3)})`,
+                                transformOrigin: item.y < 12 ? 'center top' : 'center bottom',
+                              }}
+                              onPointerDown={(e) => e.stopPropagation()}
+                              onClick={(e) => e.stopPropagation()}
+                              className="absolute flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-paper/95 backdrop-blur-md shadow-md border border-paper-grid/50 transition-[opacity,transform] duration-150 ease-out z-50 pointer-events-auto select-none"
                             >
-                              <div className="w-3 h-3 rounded-full bg-white" />
+                              <Tooltip content="逆时针旋转 90° (摆正)">
+                                <button
+                                  type="button"
+                                  onClick={() => rotateStepItem(item.id, 'ccw')}
+                                  className="p-1 rounded text-ink-light hover:text-accent hover:bg-paper-grid/40 active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out"
+                                >
+                                  <RotateCcw size={12} strokeWidth={1.8} />
+                                </button>
+                              </Tooltip>
+                              <Tooltip content="顺时针旋转 90° (摆正)">
+                                <button
+                                  type="button"
+                                  onClick={() => rotateStepItem(item.id, 'cw')}
+                                  className="p-1 rounded text-ink-light hover:text-accent hover:bg-paper-grid/40 active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out"
+                                >
+                                  <RotateCw size={12} strokeWidth={1.8} />
+                                </button>
+                              </Tooltip>
+                              <div className="w-px h-3 bg-paper-grid/50 my-auto mx-0.5" />
+                              <Tooltip content="置顶图层">
+                                <button
+                                  type="button"
+                                  onClick={() => bumpLayer(item.id, 'top')}
+                                  className="p-1 rounded text-ink-light hover:text-accent hover:bg-paper-grid/40 active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out"
+                                >
+                                  <ChevronsUp size={12} strokeWidth={1.8} />
+                                </button>
+                              </Tooltip>
+                              <Tooltip content="置底图层">
+                                <button
+                                  type="button"
+                                  onClick={() => bumpLayer(item.id, 'bottom')}
+                                  className="p-1 rounded text-ink-light hover:text-accent hover:bg-paper-grid/40 active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out"
+                                >
+                                  <ChevronsDown size={12} strokeWidth={1.8} />
+                                </button>
+                              </Tooltip>
+                              <div className="w-px h-3 bg-paper-grid/50 my-auto mx-0.5" />
+                              <Tooltip content="移除图片素材">
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteItem(item.id)}
+                                  className="p-1 rounded text-ink-light hover:text-error hover:bg-error/10 active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out"
+                                >
+                                  <Trash2 size={12} strokeWidth={1.8} />
+                                </button>
+                              </Tooltip>
                             </div>
+                          )}
 
-                            {/* 底部引线旋转手柄 */}
-                            <div className="absolute left-1/2 -bottom-12 -translate-x-1/2 flex flex-col items-center pointer-events-none z-40">
-                              <div className="w-1 h-5 bg-purple-500" />
+                          {/* 选中时的缩放手柄与旋转手柄 */}
+                          {isSelectedItem && (
+                            <>
+                              {/* 右下角缩放手柄 */}
                               <div
-                                onPointerDown={(e) => beginGesture(e, item, 'rotate')}
+                                style={{
+                                  left: '100%',
+                                  top: '100%',
+                                  transform: `translate(-50%, -50%) scale(${1 / (scale || 0.3)})`,
+                                  transformOrigin: 'center center',
+                                }}
+                                onPointerDown={(e) => beginGesture(e, item, 'resize')}
                                 onPointerMove={moveGesture}
                                 onPointerUp={endGesture}
                                 onPointerCancel={endGesture}
-                                title="按住自由旋转"
-                                className="w-9 h-9 rounded-full bg-purple-600 border-4 border-white shadow-2xl cursor-grab active:cursor-grabbing hover:scale-115 transition-transform pointer-events-auto flex items-center justify-center text-white text-xs"
+                                title="拖拽调整大小"
+                                className="absolute w-4 h-4 rounded-full bg-accent border-2 border-white shadow-md cursor-nwse-resize hover:scale-110 active:scale-[0.96] transition-transform duration-150 ease-out flex items-center justify-center z-40"
                               >
-                                <RotateCw className="w-4 h-4" />
+                                <span className="w-1.5 h-1.5 rounded-full bg-white/80" />
                               </div>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    );
-                  })}
 
-                  {/* 4. 大标题 Headline（与 Canvas Exporter 完全 1:1） */}
-                  <div
-                    className="absolute font-bold leading-tight pointer-events-none"
-                    style={{
-                      left: `${layoutProjection.headlineRegion.x}px`,
-                      top: `${layoutProjection.headlineRegion.y}px`,
-                      width: `${layoutProjection.headlineRegion.width}px`,
-                      font: layoutProjection.headlineFont,
-                      color: typography.textColor,
-                    }}
-                  >
-                    {layoutProjection.headlineLines.map((line, idx) => (
-                      <div
-                        key={idx}
-                        style={{
-                          lineHeight: `${layoutProjection.headlineLineHeight}px`,
-                        }}
-                      >
-                        {line.text}
-                      </div>
-                    ))}
-                  </div>
+                              {/* 底部引线旋转手柄 */}
+                              <div
+                                style={{
+                                  left: '50%',
+                                  top: '100%',
+                                  transform: `translateX(-50%) scale(${1 / (scale || 0.3)})`,
+                                  transformOrigin: 'center top',
+                                }}
+                                className="absolute flex flex-col items-center pointer-events-none z-40"
+                              >
+                                <div className="w-px h-2 bg-accent/70" />
+                                <div
+                                  onPointerDown={(e) => beginGesture(e, item, 'rotate')}
+                                  onPointerMove={moveGesture}
+                                  onPointerUp={endGesture}
+                                  onPointerCancel={endGesture}
+                                  title="拖拽旋转"
+                                  className="w-4 h-4 rounded-full bg-accent border-2 border-white shadow-md cursor-grab active:cursor-grabbing hover:scale-110 active:scale-[0.96] transition-transform duration-150 ease-out pointer-events-auto flex items-center justify-center"
+                                >
+                                  <div className="w-1 h-1 rounded-full bg-white/90" />
+                                </div>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
 
-                  {/* 5. 导语 Deck */}
-                  {layoutProjection.deckLines.length > 0 && layoutProjection.deckRegion && (
+                    {/* 4. 大标题 Headline（与 Canvas Exporter 完全 1:1） */}
                     <div
-                      className="absolute font-medium opacity-80 pointer-events-none"
+                      className="absolute font-bold leading-tight pointer-events-none"
                       style={{
-                        left: `${layoutProjection.deckRegion.x}px`,
-                        top: `${layoutProjection.deckRegion.y}px`,
-                        width: `${layoutProjection.deckRegion.width}px`,
-                        fontFamily: typography.headlineFont,
+                        left: `${layoutProjection.headlineRegion.x}px`,
+                        top: `${layoutProjection.headlineRegion.y}px`,
+                        width: `${layoutProjection.headlineRegion.width}px`,
+                        font: layoutProjection.headlineFont,
                         color: typography.textColor,
                       }}
                     >
-                      {layoutProjection.deckLines.map((line, idx) => (
+                      {layoutProjection.headlineLines.map((line, idx) => (
                         <div
                           key={idx}
                           style={{
-                            fontSize: `${Math.round(typography.bodyFontSize * 1.25)}px`,
-                            lineHeight: `${Math.round(typography.bodyFontSize * 1.6)}px`,
+                            lineHeight: `${layoutProjection.headlineLineHeight}px`,
                           }}
                         >
                           {line.text}
                         </div>
                       ))}
                     </div>
-                  )}
 
-                  {/* 6. 首字下沉 Drop Cap */}
-                  {layoutProjection.dropCap && (
+                    {/* 5. 导语 Deck */}
+                    {layoutProjection.deckLines.length > 0 && layoutProjection.deckRegion && (
+                      <div
+                        className="absolute font-medium opacity-80 pointer-events-none"
+                        style={{
+                          left: `${layoutProjection.deckRegion.x}px`,
+                          top: `${layoutProjection.deckRegion.y}px`,
+                          width: `${layoutProjection.deckRegion.width}px`,
+                          fontFamily: typography.headlineFont,
+                          color: typography.textColor,
+                        }}
+                      >
+                        {layoutProjection.deckLines.map((line, idx) => (
+                          <div
+                            key={idx}
+                            style={{
+                              fontSize: `${Math.round(typography.bodyFontSize * 1.25)}px`,
+                              lineHeight: `${Math.round(typography.bodyFontSize * 1.6)}px`,
+                            }}
+                          >
+                            {line.text}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* 6. 首字下沉 Drop Cap */}
+                    {layoutProjection.dropCap && (
+                      <div
+                        className="absolute font-bold leading-none pointer-events-none"
+                        style={{
+                          left: `${layoutProjection.dropCap.x}px`,
+                          top: `${layoutProjection.dropCap.y}px`,
+                          fontSize: `${layoutProjection.dropCap.height}px`,
+                          color: typography.accentColor || '#000000',
+                          fontFamily: typography.headlineFont,
+                        }}
+                      >
+                        {layoutProjection.dropCap.text}
+                      </div>
+                    )}
+
+                    {/* 7. 正文流各行（Pretext 0.05ms 计算出的精准槽位） */}
+                    {layoutProjection.bodyLines.map((line, idx) => (
+                      <div
+                        key={idx}
+                        className="absolute whitespace-nowrap overflow-visible pointer-events-none"
+                        style={{
+                          left: `${line.x}px`,
+                          top: `${line.y}px`,
+                          fontSize: `${typography.bodyFontSize}px`,
+                          fontFamily: typography.bodyFont,
+                          color: typography.textColor,
+                          lineHeight: `${typography.bodyLineHeight}px`,
+                        }}
+                      >
+                        {line.text}
+                      </div>
+                    ))}
+
+                    {/* 8. 页脚版记与期号 */}
                     <div
-                      className="absolute font-bold leading-none pointer-events-none"
+                      className="absolute flex items-center justify-between font-semibold opacity-50 pointer-events-none"
                       style={{
-                        left: `${layoutProjection.dropCap.x}px`,
-                        top: `${layoutProjection.dropCap.y}px`,
-                        fontSize: `${layoutProjection.dropCap.height}px`,
-                        color: typography.accentColor || '#000000',
+                        bottom: `${Math.round(ratioPreset.height * 0.035)}px`,
+                        left: `${Math.round(ratioPreset.width * 0.065)}px`,
+                        right: `${Math.round(ratioPreset.width * 0.065)}px`,
+                        fontSize: `${Math.round(ratioPreset.width * 0.012)}px`,
+                        color: typography.textColor,
                         fontFamily: typography.headlineFont,
                       }}
                     >
-                      {layoutProjection.dropCap.text}
+                      <span>{article.folio || 'ECHOES FORGE EDITORIAL'}</span>
+                      <span>{article.issueDate}</span>
                     </div>
-                  )}
 
-                  {/* 7. 正文流各行（Pretext 0.05ms 计算出的精准槽位） */}
-                  {layoutProjection.bodyLines.map((line, idx) => (
-                    <div
-                      key={idx}
-                      className="absolute whitespace-nowrap overflow-visible pointer-events-none"
-                      style={{
-                        left: `${line.x}px`,
-                        top: `${line.y}px`,
-                        fontSize: `${typography.bodyFontSize}px`,
-                        fontFamily: typography.bodyFont,
-                        color: typography.textColor,
-                        lineHeight: `${typography.bodyLineHeight}px`,
-                      }}
-                    >
-                      {line.text}
-                    </div>
-                  ))}
-
-                  {/* 8. 页脚版记与期号 */}
-                  <div
-                    className="absolute flex items-center justify-between font-semibold opacity-50 pointer-events-none"
-                    style={{
-                      bottom: `${Math.round(ratioPreset.height * 0.035)}px`,
-                      left: `${Math.round(ratioPreset.width * 0.065)}px`,
-                      right: `${Math.round(ratioPreset.width * 0.065)}px`,
-                      fontSize: `${Math.round(ratioPreset.width * 0.012)}px`,
-                      color: typography.textColor,
-                      fontFamily: typography.headlineFont,
-                    }}
-                  >
-                    <span>{article.folio || 'ECHOES FORGE EDITORIAL'}</span>
-                    <span>{article.issueDate}</span>
+                    {/* 9. 底部条形码装饰（按预设开关，与 Canvas Exporter 完全对齐） */}
+                    {activePreset.features.hasBarcode && (
+                      <div
+                        className="absolute pointer-events-none"
+                        style={{
+                          bottom: `${Math.round(ratioPreset.height * 0.06)}px`,
+                          left: `${Math.round(ratioPreset.width * 0.065)}px`,
+                        }}
+                      >
+                        <BarcodeSvg
+                          width={Math.round(ratioPreset.width * 0.14)}
+                          height={Math.round(ratioPreset.height * 0.02)}
+                          color="#000000"
+                        />
+                      </div>
+                    )}
                   </div>
-
-                  {/* 9. 底部条形码装饰（按预设开关，与 Canvas Exporter 完全对齐） */}
-                  {activePreset.features.hasBarcode && (
-                    <div
-                      className="absolute pointer-events-none"
-                      style={{
-                        bottom: `${Math.round(ratioPreset.height * 0.06)}px`,
-                        left: `${Math.round(ratioPreset.width * 0.065)}px`,
-                      }}
-                    >
-                      <BarcodeSvg
-                        width={Math.round(ratioPreset.width * 0.14)}
-                        height={Math.round(ratioPreset.height * 0.02)}
-                        color="#000000"
-                      />
-                    </div>
-                  )}
                 </div>
-              </div>
 
               {/* 抽屉浮层：文章内容编辑 */}
               <AnimatePresence>
                 {activeTab === 'article' && (
                   <motion.div
-                    initial={{ opacity: 0, x: 20 }}
+                    initial={{ opacity: 0, x: 16 }}
                     animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 20 }}
-                    className="absolute inset-y-2 right-2 w-72 bg-neutral-900/95 backdrop-blur-md border border-white/10 rounded-lg p-3 shadow-2xl z-40 flex flex-col gap-2.5 overflow-y-auto text-xs"
+                    exit={{ opacity: 0, x: 16 }}
+                    transition={{ duration: 0.15, ease: 'easeOut' }}
+                    className="absolute inset-y-2 right-2 w-72 bg-paper/95 backdrop-blur-md border border-paper-grid/60 rounded-xl p-3 shadow-xl z-40 flex flex-col gap-2.5 overflow-y-auto text-xs text-ink select-text"
                   >
-                    <div className="flex items-center justify-between font-medium text-neutral-200 pb-1 border-b border-white/10">
+                    <div className="flex items-center justify-between font-medium text-ink pb-1 border-b border-paper-grid/40 select-none">
                       <span>文章结构编辑</span>
                       <button
+                        type="button"
                         onClick={() => setActiveTab('preview')}
-                        className="text-neutral-400 hover:text-white"
+                        className="p-1 rounded-md text-ink-light hover:text-ink hover:bg-paper-grid/40 transition-colors"
                       >
                         ✕
                       </button>
                     </div>
 
                     <div>
-                      <label className="block text-[10px] text-neutral-400 mb-1">刊头 / 眉标 (Masthead)</label>
+                      <label className="block text-[11px] font-sans text-ink-faint mb-1 select-none">刊头 / 眉标 (Masthead)</label>
                       <input
                         type="text"
                         value={article.masthead || ''}
@@ -1173,12 +1215,12 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
                           setArticle((prev) => ({ ...prev, masthead }));
                           onUpdateState?.(id, { article: { ...article, masthead } });
                         }}
-                        className="w-full bg-neutral-800 border border-white/10 rounded px-2 py-1 text-neutral-200 outline-none focus:border-purple-500"
+                        className="w-full bg-paper/80 border border-dashed border-paper-grid rounded-md px-2.5 py-1 text-ink text-xs placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-[10px] text-neutral-400 mb-1">大标题 (Headline)</label>
+                      <label className="block text-[11px] font-sans text-ink-faint mb-1 select-none">大标题 (Headline)</label>
                       <input
                         type="text"
                         value={article.headline || ''}
@@ -1187,12 +1229,12 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
                           setArticle((prev) => ({ ...prev, headline }));
                           onUpdateState?.(id, { article: { ...article, headline } });
                         }}
-                        className="w-full bg-neutral-800 border border-white/10 rounded px-2 py-1 text-neutral-200 font-bold outline-none focus:border-purple-500"
+                        className="w-full bg-paper/80 border border-dashed border-paper-grid rounded-md px-2.5 py-1 text-ink text-xs font-bold placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-[10px] text-neutral-400 mb-1">导语 / 副标题 (Deck)</label>
+                      <label className="block text-[11px] font-sans text-ink-faint mb-1 select-none">导语 / 副标题 (Deck)</label>
                       <textarea
                         rows={2}
                         value={article.deck || ''}
@@ -1201,12 +1243,12 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
                           setArticle((prev) => ({ ...prev, deck }));
                           onUpdateState?.(id, { article: { ...article, deck } });
                         }}
-                        className="w-full bg-neutral-800 border border-white/10 rounded px-2 py-1 text-neutral-200 outline-none focus:border-purple-500 resize-none"
+                        className="w-full bg-paper/80 border border-dashed border-paper-grid rounded-md px-2.5 py-1 text-ink text-xs placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent resize-none transition-colors"
                       />
                     </div>
 
-                    <div className="flex-1 flex flex-col">
-                      <label className="block text-[10px] text-neutral-400 mb-1">正文全文 (Body)</label>
+                    <div className="flex-1 flex flex-col min-h-[100px]">
+                      <label className="block text-[11px] font-sans text-ink-faint mb-1 select-none">正文全文 (Body)</label>
                       <textarea
                         rows={6}
                         value={article.body || ''}
@@ -1215,12 +1257,12 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
                           setArticle((prev) => ({ ...prev, body }));
                           onUpdateState?.(id, { article: { ...article, body } });
                         }}
-                        className="w-full flex-1 bg-neutral-800 border border-white/10 rounded px-2 py-1 text-neutral-200 outline-none focus:border-purple-500 resize-none leading-relaxed"
+                        className="w-full flex-1 bg-paper/80 border border-dashed border-paper-grid rounded-md px-2.5 py-1.5 text-ink text-xs placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent resize-none leading-relaxed transition-colors"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-[10px] text-neutral-400 mb-1">页脚版记 / 期号</label>
+                      <label className="block text-[11px] font-sans text-ink-faint mb-1 select-none">页脚版记 / 期号</label>
                       <div className="flex gap-1.5">
                         <input
                           type="text"
@@ -1231,7 +1273,7 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
                             setArticle((prev) => ({ ...prev, folio }));
                             onUpdateState?.(id, { article: { ...article, folio } });
                           }}
-                          className="flex-1 bg-neutral-800 border border-white/10 rounded px-2 py-1 text-neutral-200 outline-none"
+                          className="flex-1 bg-paper/80 border border-dashed border-paper-grid rounded-md px-2 py-1 text-ink text-xs focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
                         />
                         <input
                           type="text"
@@ -1242,7 +1284,7 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
                             setArticle((prev) => ({ ...prev, issueDate }));
                             onUpdateState?.(id, { article: { ...article, issueDate } });
                           }}
-                          className="w-24 bg-neutral-800 border border-white/10 rounded px-2 py-1 text-neutral-200 outline-none"
+                          className="w-24 bg-paper/80 border border-dashed border-paper-grid rounded-md px-2 py-1 text-ink text-xs focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
                         />
                       </div>
                     </div>
@@ -1252,112 +1294,83 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
                 {/* 抽屉浮层：字体与排版样式 */}
                 {activeTab === 'style' && (
                   <motion.div
-                    initial={{ opacity: 0, x: 20 }}
+                    initial={{ opacity: 0, x: 16 }}
                     animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 20 }}
-                    className="absolute inset-y-2 right-2 w-64 bg-neutral-900/95 backdrop-blur-md border border-white/10 rounded-lg p-3 shadow-2xl z-40 flex flex-col gap-3 overflow-y-auto text-xs"
+                    exit={{ opacity: 0, x: 16 }}
+                    transition={{ duration: 0.15, ease: 'easeOut' }}
+                    className="absolute inset-y-2 right-2 w-64 bg-paper/95 backdrop-blur-md border border-paper-grid/60 rounded-xl p-3 shadow-xl z-40 flex flex-col gap-3 overflow-y-auto text-xs text-ink select-none"
                   >
-                    <div className="flex items-center justify-between font-medium text-neutral-200 pb-1 border-b border-white/10">
+                    <div className="flex items-center justify-between font-medium text-ink pb-1 border-b border-paper-grid/40">
                       <span>字体与排版</span>
                       <button
+                        type="button"
                         onClick={() => setActiveTab('preview')}
-                        className="text-neutral-400 hover:text-white"
+                        className="p-1 rounded-md text-ink-light hover:text-ink hover:bg-paper-grid/40 transition-colors"
                       >
                         ✕
                       </button>
                     </div>
 
                     <div>
-                      <label className="block text-[10px] text-neutral-400 mb-1">标题字体</label>
-                      <select
+                      <label className="block text-[11px] font-sans text-ink-faint mb-1">标题字体</label>
+                      <FontFamilySelect
                         value={typography.headlineFont}
-                        onChange={(e) => {
-                          const f = e.target.value;
+                        onChange={(f) => {
                           setTypography((prev) => ({ ...prev, headlineFont: f }));
                           onUpdateState?.(id, { typography: { ...typography, headlineFont: f } });
                         }}
-                        className="w-full bg-neutral-800 text-neutral-200 text-xs px-2 py-1.5 rounded border border-white/10 outline-none"
-                      >
-                        {JOURNAL_FONTS.map((font) => (
-                          <option key={font.id} value={font.family}>
-                            {font.name}
-                          </option>
-                        ))}
-                      </select>
+                      />
                     </div>
 
                     <div>
-                      <label className="block text-[10px] text-neutral-400 mb-1">正文字体</label>
-                      <select
+                      <label className="block text-[11px] font-sans text-ink-faint mb-1">正文字体</label>
+                      <FontFamilySelect
                         value={typography.bodyFont}
-                        onChange={(e) => {
-                          const f = e.target.value;
+                        onChange={(f) => {
                           setTypography((prev) => ({ ...prev, bodyFont: f }));
                           onUpdateState?.(id, { typography: { ...typography, bodyFont: f } });
                         }}
-                        className="w-full bg-neutral-800 text-neutral-200 text-xs px-2 py-1.5 rounded border border-white/10 outline-none"
-                      >
-                        {JOURNAL_FONTS.map((font) => (
-                          <option key={font.id} value={font.family}>
-                            {font.name}
-                          </option>
-                        ))}
-                      </select>
+                      />
                     </div>
 
-                    <div>
-                      <div className="flex justify-between text-[10px] text-neutral-400 mb-1">
-                        <span>正文字号</span>
-                        <span>{typography.bodyFontSize}px</span>
-                      </div>
-                      <input
-                        type="range"
+                    <div className="flex flex-col gap-1">
+                      <SliderRow
+                        label="正文字号"
+                        value={typography.bodyFontSize}
                         min={14}
                         max={28}
                         step={1}
-                        value={typography.bodyFontSize}
-                        onChange={(e) => {
-                          const s = Number(e.target.value);
+                        unit="px"
+                        labelWidth="w-14"
+                        onChange={(s) => {
                           const lh = Math.round(s * 1.6);
                           setTypography((prev) => ({ ...prev, bodyFontSize: s, bodyLineHeight: lh }));
                           onUpdateState?.(id, { typography: { ...typography, bodyFontSize: s, bodyLineHeight: lh } });
                         }}
-                        className="w-full accent-purple-500 cursor-pointer"
                       />
                     </div>
 
-                    <div className="flex items-center justify-between pt-1">
-                      <span className="text-[11px] text-neutral-300">首字下沉 (Drop Cap)</span>
-                      <input
-                        type="checkbox"
+                    <div className="flex items-center justify-between pt-1 border-t border-paper-grid/40">
+                      <span className="text-[11px] font-sans text-ink-light">首字下沉 (Drop Cap)</span>
+                      <Toggle
                         checked={typography.dropCap}
-                        onChange={(e) => {
-                          const dc = e.target.checked;
+                        onChange={(dc) => {
                           setTypography((prev) => ({ ...prev, dropCap: dc }));
                           onUpdateState?.(id, { typography: { ...typography, dropCap: dc } });
                         }}
-                        className="accent-purple-500 w-4 h-4 cursor-pointer"
                       />
                     </div>
 
-                    <div className="pt-1 border-t border-white/10">
-                      <label className="block text-[10px] text-neutral-400 mb-1.5">文字颜色预设</label>
-                      <div className="flex flex-wrap gap-1.5">
-                        {JOURNAL_TEXT_COLORS.map((col) => (
-                          <button
-                            key={col.name}
-                            onClick={() => {
-                              setTypography((prev) => ({ ...prev, textColor: col.color }));
-                              onUpdateState?.(id, { typography: { ...typography, textColor: col.color } });
-                            }}
-                            className={`w-5 h-5 rounded-full border ${
-                              typography.textColor === col.color ? 'border-purple-500 scale-110' : 'border-white/20'
-                            } transition`}
-                            style={{ backgroundColor: col.color }}
-                            title={col.name}
-                          />
-                        ))}
-                      </div>
+                    <div className="pt-1 border-t border-paper-grid/40">
+                      <label className="block text-[11px] font-sans text-ink-faint mb-1.5">文字颜色</label>
+                      <TextColorPalette
+                        value={typography.textColor || '#000000'}
+                        onChange={(color) => {
+                          setTypography((prev) => ({ ...prev, textColor: color }));
+                          onUpdateState?.(id, { typography: { ...typography, textColor: color } });
+                        }}
+                        size="normal"
+                      />
                     </div>
                   </motion.div>
                 )}
