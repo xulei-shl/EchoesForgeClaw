@@ -2,6 +2,8 @@ import { mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { ChatStreamEvent } from '../modules/bookplate/stream.js';
+import { SUBAGENT_FLEET_WIDGET_KEY, subagentFleetDraft } from './pi/subagents/fleet.js';
+import { subagentWidgetProducer } from './pi/subagents/result.js';
 
 /**
  * 工具事件桥 → 扩展 widget（ExtensionWidgets 通用机制的服务端实现）。
@@ -171,6 +173,7 @@ function todoWidgetProducer(call: ToolCallInfo, result?: ToolResultInfo): Widget
 }
 
 registerToolWidgetProducer('todo', todoWidgetProducer);
+registerToolWidgetProducer('subagent', subagentWidgetProducer);
 
 // ---------------------------------------------------------------------------
 // 尺寸上限（§6.2：applyCap 截断 + 剥除控制字符/ANSI）
@@ -313,6 +316,37 @@ export async function* withWidgetBridge(
         if (call && call.name === evt.name) {
           yield* maybeEmitWidget(call, evt, live, lastEmitAt, producedKey);
           pending.delete(evt.id);
+        }
+        yield evt;
+        continue;
+      }
+      if (evt.type === 'subagent_fleet') {
+        // pi-subagents 后台运行快照 → fleet 面板（固定单 key，last-value-wins）
+        const draft = subagentFleetDraft(evt.runs);
+        const now = Date.now();
+        if (!draft) {
+          const prev = live.get(SUBAGENT_FLEET_WIDGET_KEY);
+          if (prev) {
+            live.delete(SUBAGENT_FLEET_WIDGET_KEY);
+            lastEmitAt.delete(SUBAGENT_FLEET_WIDGET_KEY);
+            yield { type: 'extension_widget_clear', key: SUBAGENT_FLEET_WIDGET_KEY };
+          }
+          yield evt;
+          continue;
+        }
+        applyWidgetCap(draft);
+        const prev = live.get(SUBAGENT_FLEET_WIDGET_KEY);
+        live.set(SUBAGENT_FLEET_WIDGET_KEY, { draft, updatedAt: now, toolName: 'subagent' });
+        const last = lastEmitAt.get(SUBAGENT_FLEET_WIDGET_KEY) ?? 0;
+        if (!prev || now - last >= WIDGET_THROTTLE_MS) {
+          lastEmitAt.set(SUBAGENT_FLEET_WIDGET_KEY, now);
+          yield {
+            type: 'extension_widget',
+            key: draft.key,
+            ...(draft.label ? { label: draft.label } : {}),
+            lines: draft.lines,
+            placement: draft.placement,
+          };
         }
         yield evt;
         continue;

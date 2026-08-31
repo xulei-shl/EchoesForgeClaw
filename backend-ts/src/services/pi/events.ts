@@ -1,4 +1,5 @@
 import type { ChatStreamEvent } from '../../modules/bookplate/stream.js';
+import { subagentFleetRunsFromUiRequest } from './subagents/snapshot.js';
 
 /**
  * pi json 事件 → ChatStreamEvent 归一化映射（纯函数，可单测）。
@@ -82,9 +83,17 @@ export function* mapPiJsonEvent(
     }
     case 'extension_ui_request': {
       // RPC 交互 dialog（select/confirm/input/editor）：只透传白名单字段，
-      // 未知方法（setWidget/notify/setStatus/setTitle/set_editor_text/custom）静默忽略。
+      // 未知方法（setWidget/notify/setStatus/setTitle/set_editor_text/custom）静默忽略；
+      // 例外：pi-subagents 的 setWidget 窄缝——RPC 模式下扩展把后台运行快照编码为
+      // PI_SUBAGENT_ASYNC_JSON 行，本项目只认这一个 key+前缀，解析成 subagent_fleet。
       const method = String(evt.method ?? '');
-      if (!DIALOG_METHODS.has(method)) break;
+      if (!DIALOG_METHODS.has(method)) {
+        if (method === 'setWidget') {
+          const runs = subagentFleetRunsFromUiRequest(evt);
+          if (runs.length > 0) yield { type: 'subagent_fleet', runs };
+        }
+        break;
+      }
       const id = String(evt.id ?? '');
       if (!id) break;
       const title = String(evt.title ?? '');

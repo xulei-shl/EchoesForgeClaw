@@ -28,6 +28,7 @@ import {
   type ArtifactRecord,
 } from './snapshot.js';
 import { formatPiFailure, mapPiJsonEvent, type PiJsonEvent } from './events.js';
+import { resolveSubagentsTempRoot } from './subagents/cleanup.js';
 import { mimeOf, skillFileDownloadUrl } from '../file-utils.js';
 
 /**
@@ -153,6 +154,11 @@ function spawnPiProcess(opts: RunPiAgentOptions): PiProcessEntry {
       PI_CODING_AGENT_DIR: agentDirEnv,
       PI_AGENT_HOME: agentDirEnv,
       PI_TELEMETRY: '0',
+      // pi-subagents 后台运行 temp 根按用户/工作区收敛：可枚举、可清理、多租户隔离
+      // （扩展源码读 PI_SUBAGENTS_TEMP_ROOT 派生 async 运行目录）
+      PI_SUBAGENTS_TEMP_ROOT: resolveSubagentsTempRoot(opts.userId, opts.workspaceId),
+      // v1 关闭 wait 工具（其轮询/订阅增加后台驻留面；subagent_wait 不作为默认能力）
+      PI_SUBAGENT_WAIT_TOOL_ENABLED: 'false',
     },
   });
   const childStdin = child.stdin;

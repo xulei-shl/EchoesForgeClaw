@@ -113,4 +113,76 @@ describe('mapPiJsonEvent（pi json 事件 → ChatStreamEvent）', () => {
       )
     ).toEqual([{ type: 'extension_ui_request', id: 'u6', method: 'select', title: 't', options: ['a', 'b'] }]);
   });
+
+  it('extension_ui_request setWidget 窄缝：仅 subagent-async 快照产出 subagent_fleet，其余静默', () => {
+    const state: PiEventMapperState = { lastError: null };
+    const snapshotLine = `PI_SUBAGENT_ASYNC_JSON:${JSON.stringify({
+      kind: 'pi-subagents.async-status-snapshot',
+      version: 1,
+      generatedAt: 1,
+      caps: {},
+      omitted: {},
+      runs: [
+        {
+          id: 'r1',
+          kind: 'subagent',
+          label: 'reviewer',
+          state: 'running',
+          activity: { currentTool: 'read' },
+          children: [{ id: 'r1-1', kind: 'step', label: 'worker', state: 'complete' }],
+        },
+      ],
+    })}`;
+    expect(
+      collect(
+        {
+          type: 'extension_ui_request',
+          id: 'u1',
+          method: 'setWidget',
+          widgetKey: 'subagent-async',
+          widgetLines: [snapshotLine],
+        },
+        state
+      )
+    ).toEqual([
+      {
+        type: 'subagent_fleet',
+        runs: [
+          {
+            id: 'r1',
+            kind: 'subagent',
+            label: 'reviewer',
+            state: 'running',
+            activity: { currentTool: 'read' },
+            children: [{ id: 'r1-1', kind: 'step', label: 'worker', state: 'complete' }],
+          },
+        ],
+      },
+    ]);
+    // 非 subagent-async key / 坏 JSON / 空行 / 非快照行 → 静默忽略
+    expect(
+      collect(
+        { type: 'extension_ui_request', id: 'u2', method: 'setWidget', widgetKey: 'other', widgetLines: [snapshotLine] },
+        state
+      )
+    ).toEqual([]);
+    expect(
+      collect(
+        { type: 'extension_ui_request', id: 'u3', method: 'setWidget', widgetKey: 'subagent-async', widgetLines: ['PI_SUBAGENT_ASYNC_JSON:{bad'] },
+        state
+      )
+    ).toEqual([]);
+    expect(
+      collect(
+        { type: 'extension_ui_request', id: 'u4', method: 'setWidget', widgetKey: 'subagent-async', widgetLines: [] },
+        state
+      )
+    ).toEqual([]);
+    expect(
+      collect(
+        { type: 'extension_ui_request', id: 'u5', method: 'setWidget', widgetKey: 'subagent-async', widgetLines: ['plain line'] },
+        state
+      )
+    ).toEqual([]);
+  });
 });

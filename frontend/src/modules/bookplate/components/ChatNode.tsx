@@ -15,7 +15,9 @@ import { AgentOverrideField } from './AgentOverrideField';
 import { ModelOverrideField } from './ModelOverrideField';
 import { ExtensionWidgets } from './ExtensionWidgets';
 import { QuestionAnswerBlock } from './QuestionAnswerBlock';
+import { SubagentRunBlock } from './SubagentRunBlock';
 import { parseQuestionnaireInteractions } from '../utils/piQuestionnaireParser';
+import { parseSubagentRuns } from '../utils/subagentParser';
 import { getRandomKaomoji } from '../utils/kaomoji';
 import type { ExtensionWidgetItem, PendingUiRequest } from '../piStream';
 import { NODE_COLORS } from '../nodeTypes';
@@ -633,6 +635,8 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
     () => parseQuestionnaireInteractions(msg.agentSteps),
     [msg.agentSteps]
   );
+  // 提取 subagent 运行卡片数据（对话流内独立折叠组件）
+  const subagentRuns = useMemo(() => parseSubagentRuns(msg.agentSteps), [msg.agentSteps]);
 
   return (
     <div className={`flex flex-col items-start gap-1 relative group ${!msg.streaming ? 'msg-enter-anim' : ''}`}>
@@ -688,6 +692,18 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
               </button>
             </div>
           )}
+        </div>
+      )}
+      {/* 3.5 子代理运行卡片（subagent）：按对话顺序独立折叠展示；多条同现时仅最后一条默认展开 */}
+      {subagentRuns.length > 0 && (
+        <div className="w-full mt-1.5 space-y-1.5">
+          {subagentRuns.map((run, idx) => (
+            <SubagentRunBlock
+              key={run.toolCallId}
+              run={run}
+              defaultExpanded={idx === subagentRuns.length - 1}
+            />
+          ))}
         </div>
       )}
       {/* 4. 交互型扩展问答（ask_user_question / dialog）：紧随 AI 引导语下方展开，最符合自然心理阅读与交互动线 */}

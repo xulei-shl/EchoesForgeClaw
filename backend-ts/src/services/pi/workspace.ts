@@ -24,6 +24,7 @@ import {
 } from './config.js';
 import { resolvePiExtensions, extensionDirName } from './resolve.js';
 import { killPiProcess } from './registry.js';
+import { cleanupSubagentAsyncRuns } from './subagents/cleanup.js';
 import { removePathSafe } from '../file-utils.js';
 
 /**
@@ -341,6 +342,13 @@ export async function clearPiSession(userId: number, workspaceId: string): Promi
   if (existsSync(widgetsFile)) {
     removePathSafe(widgetsFile);
     cleared = true;
+  }
+  // pi-subagents 后台（分离）子代理残留：父 RPC 进程已杀，这里按 temp 根终止残留 runner
+  // 并删除该工作区专属产物（归属按 userId:workspaceId 收敛，见 subagents/cleanup.ts）
+  try {
+    cleanupSubagentAsyncRuns(userId, workspaceId);
+  } catch {
+    /* 清理失败不阻塞清会话主流程 */
   }
   return cleared;
 }

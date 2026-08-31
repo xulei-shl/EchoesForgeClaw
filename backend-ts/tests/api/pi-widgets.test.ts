@@ -185,6 +185,102 @@ describe('withWidgetBridge（工具事件桥）', () => {
   });
 });
 
+describe('subagent 扩展（工具结果生产者 + fleet 快照）', () => {
+  /** subagent 工具结果信封（content + details.results）。 */
+  function subagentResult(results: unknown[], extra: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      content: [{ type: 'text', text: 'ok' }],
+      details: { mode: 'parallel', results, ...extra },
+    };
+  }
+
+  it('subagent 工具结果：前台 results 逐行；管理动作无结果不产卡', async () => {
+    const store = new FakeStore();
+    const evts = await runBridge(
+      callResult('subagent', 'c1', subagentResult([
+        { agent: 'reviewer', exitCode: 0, status: 'complete', usage: { total: 1200 } },
+        { agent: 'scout', exitCode: 1, status: 'failed' },
+      ])),
+      { ws: 'ws-test', store }
+    );
+    const widget = evts.find((e) => e.type === 'extension_widget') as
+      | { key: string; label?: string; lines: string[]; placement?: string }
+      | undefined;
+    expect(widget).toBeDefined();
+    expect(widget?.key).toBe('subagent-result');
+    expect(widget?.label).toBe('子代理运行');
+    expect(widget?.placement).toBe('aboveEditor');
+    expect(widget?.lines.join('\n')).toContain('✓ reviewer');
+    expect(widget?.lines.join('\n')).toContain('1.2k tokens');
+    expect(widget?.lines.join('\n')).toContain('✗ scout');
+    // 收尾快照落库
+    expect(store.snapshots.some((s) => s.key === 'subagent-result')).toBe(true);
+
+    // 纯管理动作（mode=management 且无 results）→ 不产 widget
+    const mgmt = await runBridge(callResult('subagent', 'c2', subagentResult([], { mode: 'management' })));
+    expect(mgmt.some((e) => e.type === 'extension_widget')).toBe(false);
+  });
+
+  it('subagent 后台启动（background 且无 results）：单行提示', async () => {
+    const store = new FakeStore();
+    const evts = await runBridge(
+      callResult('subagent', 'c3', subagentResult([], { mode: 'single', background: true, asyncId: 'run-9' })),
+      { ws: 'ws-test', store }
+    );
+    const widget = evts.find((e) => e.type === 'extension_widget') as { lines: string[] } | undefined;
+    expect(widget).toBeDefined();
+    expect(widget?.lines.join('\n')).toContain('后台运行已启动');
+    expect(widget?.lines.join('\n')).toContain('run-9');
+  });
+
+  it('subagent 后台启动（仅 asyncId 标识，无 background 字段——扩展实测契约）：单行提示', async () => {
+    const store = new FakeStore();
+    // 冒烟实测：扩展 async 启动结果 details 无 background 字段，仅 asyncId/asyncDir
+    const evts = await runBridge(
+      callResult('subagent', 'c4', subagentResult([], { mode: 'single', runId: 'run-10', asyncId: 'run-10', asyncDir: 'x' })),
+      { ws: 'ws-test', store }
+    );
+    const widget = evts.find((e) => e.type === 'extension_widget') as { lines: string[] } | undefined;
+    expect(widget).toBeDefined();
+    expect(widget?.lines.join('\n')).toContain('后台运行已启动');
+    expect(widget?.lines.join('\n')).toContain('run-10');
+  });
+
+  it('subagent_fleet 事件 → extension_widget(subagent-fleet)；空 runs 发 clear', async () => {
+    const store = new FakeStore();
+    const runs = [
+      {
+        id: 'r1',
+        kind: 'subagent',
+        label: 'reviewer',
+        state: 'running',
+        activity: { currentTool: 'read' },
+        children: [{ id: 'r1-1', kind: 'step', label: 'worker', state: 'complete' }],
+      },
+    ];
+    const evts = await runBridge([{ type: 'subagent_fleet', runs }], { ws: 'ws-test', store });
+    const widget = evts.find((e) => e.type === 'extension_widget') as
+      | { key: string; label?: string; lines: string[]; placement?: string }
+      | undefined;
+    expect(widget).toBeDefined();
+    expect(widget?.key).toBe('subagent-fleet');
+    expect(widget?.label).toBe('子代理队列');
+    expect(widget?.placement).toBe('belowEditor');
+    expect(widget?.lines[0]).toContain('◐ reviewer');
+    expect(widget?.lines[0]).toContain('read');
+    expect(widget?.lines.join('\n')).toContain('✓ worker');
+    // 快照落库（data.runs 保留，供水合重建）
+    const snap = store.snapshots.find((s) => s.key === 'subagent-fleet');
+    expect(snap).toBeDefined();
+    expect((snap?.data as { runs?: unknown[] } | undefined)?.runs?.length).toBe(1);
+
+    // 空 runs → clear 面板
+    const second = await runBridge([{ type: 'subagent_fleet', runs: [] }], { ws: 'ws-test', store });
+    expect(second.some((e) => e.type === 'extension_widget_clear' && e.key === 'subagent-fleet')).toBe(true);
+    expect(store.snapshots.some((s) => s.key === 'subagent-fleet')).toBe(false);
+  });
+});
+
 describe('createWidgetStore（per-workspace 快照）', () => {
   const tmp = mkdtempSync(path.join(tmpdir(), 'pi-widgets-'));
   afterAll(() => rmSync(tmp, { recursive: true, force: true }));

@@ -35,6 +35,21 @@ export interface AgentFilePayload {
   path: string;
 }
 
+/**
+ * pi-subagents 后台运行快照的安全投影节点（Skill Agent RPC 模式）。
+ * 只含展示字段（id/kind/label/state/activity/startedAt/children），
+ * 不暴露 run/async/tool 等内部 id 与原始载荷（契约见 services/pi/subagents/snapshot.ts）。
+ */
+export interface SubagentFleetRun {
+  id: string;
+  kind: string;
+  label: string;
+  state: string;
+  activity?: { state?: string; currentTool?: string };
+  startedAt?: number;
+  children?: SubagentFleetRun[];
+}
+
 /** 归一化的 AI 对话流式事件（所有执行模式的统一内部表达）。 */
 export type ChatStreamEvent =
   | { type: 'content_delta'; delta: string }
@@ -78,6 +93,8 @@ export type ChatStreamEvent =
       prefill?: string;
       timeout?: number;
     }
+  /** pi-subagents 后台运行快照（Skill Agent RPC 模式；由 pi/events.ts setWidget 窄缝产出） */
+  | { type: 'subagent_fleet'; runs: SubagentFleetRun[] }
   | { type: 'error'; message: string };
 
 /** 把归一化事件流映射为 AI SDK UI Message Stream 的 Response。 */
