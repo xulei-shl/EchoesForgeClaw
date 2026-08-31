@@ -17,7 +17,8 @@ export type FoilShimmerType =
   | 'rose_champagne'   // 玫瑰香槟（Rose Champagne & Peach - 奢雅玫瑰粉金）
   | 'nebula_violet'    // 星云幽紫（Cosmic Nebula Violet & Blue - 深邃幻夜星河）
   | 'warm_gold'        // 奢雅暖金（Warm Gold Shimmer - 经典香槟暖金）
-  | 'pearl_platinum';  // 珠光铂金（Pearl Platinum - 纯净冷冽微蓝冷光）
+  | 'pearl_platinum'   // 珠光铂金（Pearl Platinum - 纯净冷冽微蓝冷光）
+  | 'obsidian_gold';   // 黑曜暗金（Obsidian Gold - 黑金重金属暗光）
 
 /** 自定义高光落点坐标 (归一化百分比 0 ~ 100) */
 export interface LightPoint {

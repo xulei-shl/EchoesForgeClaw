@@ -251,6 +251,15 @@ function drawFoilShimmerLayer(
         grad.addColorStop(0.76, `rgba(190, 205, 230, ${alpha * 0.16})`);
         grad.addColorStop(1, 'transparent');
         break;
+
+      case 'obsidian_gold':
+        // 黑曜暗金：柔金浅白核心 + 琥珀暗金流光 + 烟熏黑钛冷灰漫反射
+        grad.addColorStop(0, `rgba(255, 250, 235, ${alpha})`);
+        grad.addColorStop(0.18, `rgba(235, 195, 110, ${alpha * 0.9})`);
+        grad.addColorStop(0.44, `rgba(160, 115, 45, ${alpha * 0.65})`);
+        grad.addColorStop(0.72, `rgba(35, 38, 48, ${alpha * 0.35})`);
+        grad.addColorStop(1, 'transparent');
+        break;
     }
 
     ctx.fillStyle = grad;

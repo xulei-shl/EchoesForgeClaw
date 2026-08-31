@@ -110,6 +110,21 @@ export const EMBOSS_FOIL_PRESETS: EmbossFoilPreset[] = [
       withMargin: false,
     },
   },
+  {
+    id: 'obsidian_metal',
+    name: '黑曜黑金卡',
+    description: '几何等高网格 + 黑曜暗金与黑钛重金属高光 + 满版卡牌',
+    params: {
+      reliefStyle: 'contour_mesh',
+      shimmerType: 'obsidian_gold',
+      depth: 75,
+      brightness: 80,
+      radius: 44,
+      lightAngle: 215,
+      withPerforation: false,
+      withMargin: true,
+    },
+  },
 ];
 
 export const DEFAULT_PRESET_ID = 'topography_opal';

@@ -67,8 +67,9 @@ export class WatercolorSession {
     canvas.style.height = '100%';
     canvas.style.objectFit = 'contain';
 
-    // 初始化 brush 离屏目标
+    // 初始化 brush 渲染目标
     brush.load(canvas);
+    brush.scaleBrushes(2.5);
 
     const session = new WatercolorSession(canvas, w, h);
     session.update(options.params);
@@ -87,12 +88,9 @@ export class WatercolorSession {
 
   public dispose(): void {
     this.isDisposed = true;
-    // 释放 WebGL 资源
-    const gl = this.canvas.getContext('webgl2');
-    if (gl) {
-      const ext = gl.getExtension('WEBGL_lose_context');
-      if (ext) ext.loseContext();
-    }
+    // 解除 DOM 引用，由垃圾回收器统一管理，避免强制 loseContext 导致 p5.brush 着色器单例损坏
+    this.canvas.width = 1;
+    this.canvas.height = 1;
   }
 }
 
@@ -114,16 +112,14 @@ export async function renderWatercolorArt(
   canvas.height = h;
 
   brush.load(canvas);
+  brush.scaleBrushes(3.5);
   executeWatercolorGeneration(w, h, params);
 
   const dataUrl = canvas.toDataURL('image/png');
 
-  // 释放临时 WebGL context
-  const gl = canvas.getContext('webgl2');
-  if (gl) {
-    const ext = gl.getExtension('WEBGL_lose_context');
-    if (ext) ext.loseContext();
-  }
+  // 缩小释放画布缓存
+  canvas.width = 1;
+  canvas.height = 1;
 
   return {
     dataUrl,

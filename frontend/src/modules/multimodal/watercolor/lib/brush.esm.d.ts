@@ -39,9 +39,11 @@ export function noWash(): void;
 
 export function hatch(dist?: number, angle?: number, options?: any): void;
 export function hatchStyle(brush: string, color?: any, weight?: number): void;
+export function hatchArray(polygons: any[]): void;
 export function noHatch(): void;
 
 export function mass(brush: string, color: any, options?: any): void;
+export function massArray(polygons: any[]): void;
 export function noMass(): void;
 
 export function line(x1: number, y1: number, x2: number, y2: number): void;

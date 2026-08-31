@@ -86,6 +86,7 @@ const SHIMMER_TYPE_OPTIONS: { label: string; value: FoilShimmerType }[] = [
   { label: '星云幽紫', value: 'nebula_violet' },
   { label: '奢雅暖金', value: 'warm_gold' },
   { label: '珠光铂金', value: 'pearl_platinum' },
+  { label: '黑曜暗金', value: 'obsidian_gold' },
 ];
 
 const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
@@ -462,6 +463,8 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
           return `radial-gradient(circle at ${xStr} ${yStr}, rgba(255, 255, 235, ${alpha}) 0%, rgba(255, 220, 130, ${alpha * 0.85}) 22%, rgba(230, 175, 60, ${alpha * 0.45}) 50%, rgba(180, 120, 30, ${alpha * 0.12}) 75%, transparent 90%)`;
         case 'pearl_platinum':
           return `radial-gradient(circle at ${xStr} ${yStr}, rgba(255, 255, 255, ${alpha}) 0%, rgba(225, 240, 255, ${alpha * 0.82}) 20%, rgba(235, 220, 250, ${alpha * 0.48}) 48%, rgba(190, 205, 230, ${alpha * 0.16}) 76%, transparent 88%)`;
+        case 'obsidian_gold':
+          return `radial-gradient(circle at ${xStr} ${yStr}, rgba(255, 250, 235, ${alpha}) 0%, rgba(235, 195, 110, ${alpha * 0.9}) 18%, rgba(160, 115, 45, ${alpha * 0.65}) 44%, rgba(35, 38, 48, ${alpha * 0.35}) 72%, transparent 88%)`;
       }
     };
 
