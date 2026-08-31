@@ -65,7 +65,8 @@ export interface EditorialLayoutNodeProps {
     isSaved?: boolean;
   };
   upstreamImages?: string[];
-  upstreamText?: string;
+  /** 其他文本节点输入（不含图书元数据）：默认追加到正文文本底部 */
+  upstreamTexts?: string[];
   /** 上游图书元数据（book_info 节点，兼容豆瓣 API 结构）——参照图书小票节点 */
   upstreamBookData?: import('../receipt/types').BookMetadataInput | null;
   isFavorited?: boolean;
@@ -174,7 +175,7 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
   title,
   data = {},
   upstreamImages,
-  upstreamText,
+  upstreamTexts,
   upstreamBookData,
   isFavorited = false,
   isPublic = false,
@@ -303,33 +304,33 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
   const isSaved = Boolean(data?.isSaved);
   const hasGenerated = Boolean(data?.imageUrl) && !isEditing;
 
-  // 1. 同步上游文本
-  useEffect(() => {
-    if (upstreamText && upstreamText.trim() && !data.article?.body) {
-      setArticle((prev) => ({
-        ...prev,
-        body: upstreamText.trim(),
-        pullquote: '', // 上游文本导入时清空模板预设引文，按需填写
-      }));
-    }
-  }, [upstreamText, data.article?.body]);
-
-  // 1.1 同步上游图书元数据（参照图书小票节点：仅当上游书变更时按映射只填空/默认字段，
-  //      用户手改过的内容永不覆盖）
+  // 1. 同步上游输入（参考图书小票节点：仅当输入变更时处理，用户手改过的内容永不覆盖）
+  //     - 图书元数据 → 映射到文章各字段（headline/deck/author/body/pullquote/issueDate…），只填空/占位字段；
+  //     - 其他文本节点输入 → 默认追加到正文底部（追加在图书元数据继承的正文之后；无图书时覆盖占位正文）。
   const bookFingerprint = useMemo(() => bookMetadataFingerprint(upstreamBookData), [upstreamBookData]);
+  const defaultArticle = activeTemplate.defaultArticle;
+  const appendedTexts = useMemo(
+    () => (upstreamTexts || []).map((t) => (t || '').trim()).filter(Boolean),
+    [upstreamTexts]
+  );
+  const appendedSignature = useMemo(() => appendedTexts.join('\u0000'), [appendedTexts]);
   // 置空初值：挂载时若已带图书（如画布根图书节点兜底）也能在首次渲染即触发填充，
   // 与图书小票的 buildReceiptState 挂载填充同口径；只填空/默认字段所以安全。
   const lastBookFingerprintRef = useRef<string>('');
-  const defaultArticle = activeTemplate.defaultArticle;
+  const lastAppendedRef = useRef<string>('');
   useEffect(() => {
-    // 仅当图书从无到有 / 切换书籍（指纹变化）时触发填充；只填空/默认字段，故已存量的
-    // 真实用户编辑内容不会被覆盖
-    if (!bookFingerprint || bookFingerprint === lastBookFingerprintRef.current) return;
-    lastBookFingerprintRef.current = bookFingerprint;
-    const patch = mapBookToEditorialArticle(upstreamBookData || null);
-    if (Object.keys(patch).length === 0) return;
+    const bookChanged = Boolean(bookFingerprint) && bookFingerprint !== lastBookFingerprintRef.current;
+    const textsChanged = appendedSignature !== lastAppendedRef.current;
+    if (!bookChanged && !textsChanged) return;
+    if (bookChanged) lastBookFingerprintRef.current = bookFingerprint;
+    if (textsChanged) lastAppendedRef.current = appendedSignature;
+
+    const patch = bookChanged && upstreamBookData ? mapBookToEditorialArticle(upstreamBookData) : {};
+
     setArticle((prev) => {
       const merged = { ...prev };
+
+      // 1) 图书元数据 → 各字段（只填空/默认字段，故已存量的真实用户编辑内容不会被覆盖）
       for (const [key, value] of Object.entries(patch)) {
         const k = key as keyof EditorialArticleData;
         const cur = String(prev[k] ?? '');
@@ -338,10 +339,34 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
           merged[k] = value as string;
         }
       }
+
+      // 2) 其他文本 → 追加到正文（追加在图书元数据继承的正文之后）
+      if (appendedTexts.length > 0) {
+        const bookBody = String(patch.body ?? '').trim();
+        const curBody = String(merged.body ?? '').trim();
+        let baseBody = '';
+        if (bookBody) {
+          // 图书元数据提供的正文作为基底，其他文本接在其后
+          baseBody = bookBody;
+        } else if (!isEditorialFieldFillable(curBody, String(defaultArticle.body ?? ''))) {
+          // 无图书但正文已被用户手改过：保留用户正文作为基底，在其后追加
+          baseBody = curBody;
+        }
+        merged.body = [baseBody, ...appendedTexts].filter(Boolean).join('\n\n');
+      }
+
       onUpdateState?.(id, { article: merged });
       return merged;
     });
-  }, [bookFingerprint, upstreamBookData, defaultArticle, id, onUpdateState]);
+  }, [
+    bookFingerprint,
+    appendedSignature,
+    appendedTexts,
+    upstreamBookData,
+    defaultArticle,
+    id,
+    onUpdateState,
+  ]);
 
   // 2. 多图并集装载并探测真实自然宽高比
   const dismissedSourcesRef = useRef<Set<string>>(new Set(data.dismissedSources || []));

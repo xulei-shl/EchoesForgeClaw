@@ -47,6 +47,7 @@ import {
 } from './nodeTypes';
 import {
   DEFAULT_RUN_SETTINGS,
+  allUpstreamTexts,
   collectNodeInputs,
   firstExtraJsonUpstreamText,
   firstUpstreamText,
@@ -1056,7 +1057,8 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
     case 'editorial_layout': {
       const d = node.data ?? {};
       const upstreamImages = resolveUpstreamImages(node, h);
-      const upstreamText = firstUpstreamText(node, h.nodes, h.edges, h.portTypesOf);
+      // 其他文本节点（不含图书元数据）：默认全部追加到正文底部（追加在图书元数据继承的正文之后）
+      const upstreamTexts = allUpstreamTexts(node, h.nodes, h.edges, h.portTypesOf);
       // 上游图书元数据（直连 book_info 优先，无则连通上游，再兜底画布根节点）——与图书小票同口径
       const { upstreamBookData } = resolveUpstreamImage(node, h);
       return (
@@ -1065,7 +1067,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           {...common}
           data={d}
           upstreamImages={upstreamImages}
-          upstreamText={upstreamText}
+          upstreamTexts={upstreamTexts}
           upstreamBookData={upstreamBookData}
           isFavorited={!!h.favoritedState[node.id]}
           isPublic={!!h.publishedState[node.id]}

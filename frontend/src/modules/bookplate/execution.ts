@@ -245,6 +245,22 @@ export function firstUpstreamText(
 }
 
 /**
+ * 取「全部线上级文本输出」（不含图书元数据 = book_info，其经 upstreamBookData 单独映射），
+ * 供杂志排版等节点把其他文本节点输入默认追加到正文文本底部（追加在图书元数据继承的正文之后）。
+ */
+export function allUpstreamTexts(
+  node: NodeData,
+  nodes: NodeData[],
+  edges: EdgeData[],
+  portTypesOf: PortTypesLookup
+): string[] {
+  return collectNodeInputs(node, nodes, edges, portTypesOf)
+    .text.filter((p) => p.type !== 'book_info')
+    .map((p) => nodeOutputText(p))
+    .filter((t) => t && t.trim());
+}
+
+/**
  * 取「能解析为 JSON 补充字段」的线上级文本（命中即用，多上级逐个尝试）。
  * 用于图书卡片 / 图书小票等消费「字段 JSON」的节点：若同一节点还连线了图书元数据
  * （其文本输出是整段 key: value 元数据而非 JSON），需优先取 VuFind 馆藏等
