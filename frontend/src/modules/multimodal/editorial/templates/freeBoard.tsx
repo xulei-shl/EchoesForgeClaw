@@ -2,6 +2,8 @@ import type {
   EditorialArticleData,
   EditorialFreeTextItem,
   EditorialTemplate,
+  EditorialTextAlign,
+  EditorialTextStyle,
   EditorialTypographySettings,
 } from '../types';
 
@@ -10,116 +12,222 @@ import type {
  * 特征：不再由引擎自动排文——每块文本（标题/导语/作者/正文/金句…）都作为独立图层，
  * 可自由拖动、缩放、旋转，并单独设置字体/字号/颜色/对齐/横竖排。
  * 所有块默认「绑定」文章字段（bind），因此图书元数据与上级节点继承的文本会自动流入对应块。
+ *
+ * 提供多种「初始骨架」布局（FREE_LAYOUT_SKELETONS）：仅改变块的几何与样式，
+ * 由于内容来自绑定的文章字段，切换骨架不会丢失任何继承/编辑过的文本。
  */
 
-/** 默认自由排版文本块工厂：依据文章内容 + 排版设置生成一套合理的初始布局 */
-export function seedFreeTextsFromArticle(
-  article: EditorialArticleData,
-  typography: EditorialTypographySettings
-): EditorialFreeTextItem[] {
-  const blocks: EditorialFreeTextItem[] = [];
-  const push = (
+/* ==================== 骨架构建器 ==================== */
+
+interface FreeBlockPalette {
+  textColor: string;
+  accentColor: string;
+  secondaryColor: string;
+  headlineFont: string;
+  bodyFont: string;
+  monoFont: string;
+}
+
+interface FreeBlockSpec {
+  fontFamily?: string;
+  color?: string;
+  fontStyle?: EditorialTextStyle;
+  textAlign?: EditorialTextAlign;
+  writingMode?: 'horizontal' | 'vertical';
+}
+
+function makeBlockBuilder(typography: EditorialTypographySettings) {
+  const palette: FreeBlockPalette = {
+    textColor: typography.textColor || '#1a1a1a',
+    accentColor: typography.accentColor || '#b85a3a',
+    secondaryColor: typography.secondaryColor || '#777777',
+    headlineFont: typography.headlineFont || 'sans-serif',
+    bodyFont: typography.bodyFont || 'serif',
+    monoFont: typography.accentFont || typography.headlineFont || 'monospace',
+  };
+  let n = 0;
+  const block = (
     bind: keyof EditorialArticleData | undefined,
     text: string,
     x: number,
     y: number,
     width: number,
     fontSize: number,
-    fontFamily: string,
-    color: string,
-    fontStyle: EditorialFreeTextItem['fontStyle'] = 'normal',
-    textAlign: EditorialFreeTextItem['textAlign'] = 'left'
-  ) => {
-    blocks.push({
-      id: `ft_${bind || 'custom'}_${blocks.length + 1}`,
+    spec: FreeBlockSpec = {}
+  ): EditorialFreeTextItem => {
+    n += 1;
+    return {
+      id: `ft_${bind || 'custom'}_${n}`,
       bind,
       text,
       x,
       y,
       width,
       fontSize,
-      fontFamily,
-      color,
-      textAlign,
-      fontStyle,
+      fontFamily: spec.fontFamily || palette.headlineFont,
+      color: spec.color || palette.textColor,
+      textAlign: spec.textAlign || 'left',
+      fontStyle: spec.fontStyle || 'normal',
       rotation: 0,
-      zIndex: blocks.length + 1,
-      writingMode: 'horizontal',
-    });
+      zIndex: n,
+      writingMode: spec.writingMode || 'horizontal',
+    };
   };
-
-  const textColor = typography.textColor || '#1a1a1a';
-  const accentColor = typography.accentColor || '#b85a3a';
-  const secondaryColor = typography.secondaryColor || '#777777';
-
-  // 大标题（居中顶部大字号）—— fontSize 基于标准画布（如 1200×1600）
-  push(
-    'headline',
-    article.headline || '自由排版标题',
-    (100 - 88) / 2,
-    8,
-    88,
-    64,
-    typography.headlineFont || 'sans-serif',
-    textColor,
-    'bold',
-    'center'
-  );
-  // 导语 / 副标题
-  push(
-    'deck',
-    article.deck || '',
-    12,
-    22,
-    76,
-    21,
-    typography.headlineFont || 'sans-serif',
-    secondaryColor,
-    'italic',
-    'center'
-  );
-  // 作者 / 出处
-  push(
-    'author',
-    article.author || '',
-    12,
-    34,
-    40,
-    15,
-    typography.accentFont || typography.headlineFont || 'monospace',
-    textColor,
-    'normal',
-    'left'
-  );
-  // 正文段落
-  push(
-    'body',
-    article.body || '',
-    12,
-    46,
-    54,
-    typography.bodyFontSize || 19,
-    typography.bodyFont || 'serif',
-    textColor,
-    'normal',
-    'left'
-  );
-  // 精彩金句（靠右，强调色斜体）
-  push(
-    'pullquote',
-    article.pullquote || '',
-    66,
-    30,
-    32,
-    26,
-    typography.headlineFont || 'sans-serif',
-    accentColor,
-    'italic',
-    'left'
-  );
-
-  return blocks;
+  return { block, palette };
 }
+
+/** 单个初始骨架 */
+export interface FreeLayoutSkeleton {
+  id: string;
+  name: string;
+  description?: string;
+  build: (
+    article: EditorialArticleData,
+    typography: EditorialTypographySettings
+  ) => EditorialFreeTextItem[];
+}
+
+/* ==================== 各骨架定义 ==================== */
+
+// 经典期刊：顶部居中大标题 + 导语 + 作者，正文居左，金句靠右
+const classicSkeleton: FreeLayoutSkeleton = {
+  id: 'classic',
+  name: '经典期刊',
+  description: '顶部居中大标题，正文居左、金句靠右的经典杂志排布',
+  build: (article, typography) => {
+    const { block, palette } = makeBlockBuilder(typography);
+    return [
+      block('headline', article.headline || '自由排版标题', 6, 8, 88, 64, {
+        textAlign: 'center',
+        fontStyle: 'bold',
+      }),
+      block('deck', article.deck || '', 12, 22, 76, 21, {
+        color: palette.secondaryColor,
+        fontStyle: 'italic',
+        textAlign: 'center',
+      }),
+      block('author', article.author || '', 12, 34, 40, 15, {
+        fontFamily: palette.monoFont,
+      }),
+      block('body', article.body || '', 12, 46, 54, typography.bodyFontSize || 19, {
+        fontFamily: palette.bodyFont,
+      }),
+      block('pullquote', article.pullquote || '', 66, 32, 32, 26, {
+        color: palette.accentColor,
+        fontStyle: 'italic',
+      }),
+    ];
+  },
+};
+
+// 居中海报：超大居中标题 + 居中正文与金句，适合封面感
+const posterSkeleton: FreeLayoutSkeleton = {
+  id: 'poster',
+  name: '居中海报',
+  description: '超大居中大标题，正文/金句/作者全部居中，封面海报氛围',
+  build: (article, typography) => {
+    const { block, palette } = makeBlockBuilder(typography);
+    return [
+      block('headline', article.headline || '自由排版标题', 12, 16, 76, 76, {
+        textAlign: 'center',
+        fontStyle: 'bold',
+      }),
+      block('deck', article.deck || '', 20, 38, 60, 20, {
+        color: palette.secondaryColor,
+        fontStyle: 'italic',
+        textAlign: 'center',
+      }),
+      block('body', article.body || '', 24, 56, 52, typography.bodyFontSize || 19, {
+        fontFamily: palette.bodyFont,
+        textAlign: 'center',
+      }),
+      block('pullquote', article.pullquote || '', 26, 74, 48, 24, {
+        color: palette.accentColor,
+        fontStyle: 'italic',
+        textAlign: 'center',
+      }),
+      block('author', article.author || '', 32, 86, 36, 14, {
+        fontFamily: palette.monoFont,
+        textAlign: 'center',
+      }),
+    ];
+  },
+};
+
+// 左文右栏：标题/导语/作者靠左，正文右侧竖栏，金句左下
+const leftcolSkeleton: FreeLayoutSkeleton = {
+  id: 'leftcol',
+  name: '左右分栏',
+  description: '标题与作者靠左，正文右栏，金句左下，双栏结构感',
+  build: (article, typography) => {
+    const { block, palette } = makeBlockBuilder(typography);
+    return [
+      block('headline', article.headline || '自由排版标题', 8, 10, 44, 50, {
+        fontStyle: 'bold',
+      }),
+      block('deck', article.deck || '', 8, 26, 44, 16, {
+        color: palette.secondaryColor,
+        fontStyle: 'italic',
+      }),
+      block('author', article.author || '', 8, 38, 32, 14, {
+        fontFamily: palette.monoFont,
+      }),
+      block('body', article.body || '', 56, 16, 38, typography.bodyFontSize || 19, {
+        fontFamily: palette.bodyFont,
+      }),
+      block('pullquote', article.pullquote || '', 8, 56, 42, 22, {
+        color: palette.accentColor,
+        fontStyle: 'italic',
+      }),
+    ];
+  },
+};
+
+// 大字压叠：超大标题铺满上部，正文底部横条，金句右上角
+const oversizeSkeleton: FreeLayoutSkeleton = {
+  id: 'oversize',
+  name: '大字压叠',
+  description: '超大标题铺满上部，正文横置底部，金句置于右上角，冲击力强',
+  build: (article, typography) => {
+    const { block, palette } = makeBlockBuilder(typography);
+    return [
+      block('headline', article.headline || '自由排版标题', 4, 8, 92, 96, {
+        fontStyle: 'bold',
+      }),
+      block('pullquote', article.pullquote || '', 66, 10, 30, 26, {
+        color: palette.accentColor,
+        fontStyle: 'italic',
+      }),
+      block('body', article.body || '', 8, 72, 74, typography.bodyFontSize || 19, {
+        fontFamily: palette.bodyFont,
+      }),
+      block('author', article.author || '', 8, 90, 34, 14, {
+        fontFamily: palette.monoFont,
+      }),
+    ];
+  },
+};
+
+// 兼容旧导出名：默认（经典期刊）骨架
+export function seedFreeTextsFromArticle(
+  article: EditorialArticleData,
+  typography: EditorialTypographySettings
+): EditorialFreeTextItem[] {
+  return classicSkeleton.build(article, typography);
+}
+
+export const FREE_LAYOUT_SKELETONS: FreeLayoutSkeleton[] = [
+  classicSkeleton,
+  posterSkeleton,
+  leftcolSkeleton,
+  oversizeSkeleton,
+];
+
+export function getFreeLayoutSkeleton(id: string): FreeLayoutSkeleton {
+  return FREE_LAYOUT_SKELETONS.find((s) => s.id === id) || classicSkeleton;
+}
+
+export const DEFAULT_FREE_LAYOUT_SKELETON = 'classic';
 
 export const freeBoardTemplate: EditorialTemplate = {
   id: 'free_board',

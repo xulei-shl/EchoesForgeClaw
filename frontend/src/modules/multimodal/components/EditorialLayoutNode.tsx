@@ -42,7 +42,9 @@ import {
   EDITORIAL_TEMPLATES,
   getEditorialTemplate,
   DEFAULT_EDITORIAL_TEMPLATE,
-  seedFreeTextsFromArticle,
+  FREE_LAYOUT_SKELETONS,
+  getFreeLayoutSkeleton,
+  DEFAULT_FREE_LAYOUT_SKELETON,
 } from '../editorial/templates';
 import { computeEditorialLayout } from '../editorial/engine/layoutEngine';
 import { exportEditorialToPng } from '../editorial/render/canvasExporter';
@@ -178,6 +180,12 @@ const RATIO_OPTIONS: SelectOption[] = EDITORIAL_PAGE_RATIOS.map((r) => ({
   value: r.id,
 }));
 
+/** 自由排版初始骨架下拉选项 */
+const SKELETON_OPTIONS: SelectOption[] = FREE_LAYOUT_SKELETONS.map((s) => ({
+  label: s.name,
+  value: s.id,
+}));
+
 /** 矢量条形码组件 */
 const BarcodeSvg: React.FC<{ width: number; height: number; color?: string }> = ({
   width,
@@ -261,6 +269,9 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
 
   const [items, setItems] = useState<EditorialImageItem[]>(data.images || []);
   const [freeTexts, setFreeTexts] = useState<EditorialFreeTextItem[]>(data.freeTexts || []);
+  const [freeSkeletonId, setFreeSkeletonId] = useState<string>(
+    data.freeSkeleton || DEFAULT_FREE_LAYOUT_SKELETON
+  );
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
@@ -490,13 +501,25 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
       article,
       images: items,
       freeTexts,
+      freeSkeleton: freeSkeletonId,
       typography,
       background,
       dismissedSources: Array.from(dismissedSourcesRef.current),
       imageUrl: data.imageUrl,
       isSaved: data.isSaved,
     }),
-    [presetId, pageSize, article, items, freeTexts, typography, background, data.imageUrl, data.isSaved]
+    [
+      presetId,
+      pageSize,
+      article,
+      items,
+      freeTexts,
+      freeSkeletonId,
+      typography,
+      background,
+      data.imageUrl,
+      data.isSaved,
+    ]
   );
 
   const layoutProjection = useMemo(() => {
@@ -847,18 +870,43 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
   /* ==================== 自由排版文本块专用逻辑 ==================== */
   const seededFreeTextForRef = useRef<string | null>(null);
 
-  // 进入自由排版模板且无文本块时，按文章字段播种一组绑定的默认文本块
+  // 进入自由排版模板且无文本块时，按当前骨架播种一组绑定的默认文本块
   useEffect(() => {
     if (!isFreeLayout) return;
     if (freeTexts.length > 0) {
       seededFreeTextForRef.current = presetId;
       return;
     }
-    const blocks = seedFreeTextsFromArticle(article, typography);
+    const skeletonId = freeSkeletonId || DEFAULT_FREE_LAYOUT_SKELETON;
+    const blocks = getFreeLayoutSkeleton(skeletonId).build(article, typography);
     seededFreeTextForRef.current = presetId;
     setFreeTexts(blocks);
-    onUpdateState?.(id, { freeTexts: blocks });
-  }, [isFreeLayout, presetId, freeTexts, article, typography, id, onUpdateState]);
+    onUpdateState?.(id, {
+      freeTexts: blocks,
+      freeSkeleton: skeletonId,
+    });
+  }, [
+    isFreeLayout,
+    presetId,
+    freeTexts,
+    freeSkeletonId,
+    article,
+    typography,
+    id,
+    onUpdateState,
+  ]);
+
+  // 应用某个初始骨架：整体替换文本块，内容（绑定字段）不受影响
+  const applyFreeSkeleton = (skeletonId: string) => {
+    const blocks = getFreeLayoutSkeleton(skeletonId).build(article, typography);
+    setFreeSkeletonId(skeletonId);
+    setFreeTexts(blocks);
+    setSelectedTextId(null);
+    setEditingTextId(null);
+    onUpdateState?.(id, { freeTexts: blocks, freeSkeleton: skeletonId }, true);
+    const skeleton = getFreeLayoutSkeleton(skeletonId);
+    showToast(`已应用初始骨架：${skeleton.name}，可继续自由微调`, { type: 'success' });
+  };
 
   // 绑定字段文本：展示内容跟随 article[bind]（可被图书元数据 / 上级节点继承填充）
   const freeTextContent = (ft: EditorialFreeTextItem): string =>
@@ -1154,6 +1202,16 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
                   options={RATIO_OPTIONS}
                   className="w-[142px] shrink-0"
                 />
+
+                {isFreeLayout && (
+                  <Select
+                    size="sm"
+                    value={freeSkeletonId}
+                    onChange={(val) => applyFreeSkeleton(String(val))}
+                    options={SKELETON_OPTIONS}
+                    className="w-[128px] shrink-0"
+                  />
+                )}
               </div>
 
               <div ref={toolbarTabsRef} className="flex items-center gap-1 shrink-0">

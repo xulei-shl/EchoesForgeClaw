@@ -178,6 +178,8 @@ export interface EditorialState {
   images: EditorialImageItem[];
   /** 自由排版文本块（自由画布模板专用） */
   freeTexts?: EditorialFreeTextItem[];
+  /** 当前自由排版初始骨架（FREE_LAYOUT_SKELETONS 的 id） */
+  freeSkeleton?: string;
   typography: EditorialTypographySettings;
   background: EditorialBackground;
   /** 记录被用户手动删除的上游图片 ID/URL，防重复装载 */
