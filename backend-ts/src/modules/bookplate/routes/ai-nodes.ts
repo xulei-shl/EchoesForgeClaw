@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import path from 'node:path';
+import { Readable } from 'node:stream';
 import { statSync } from 'node:fs';
 import { llmService } from '../../../services/llm-service.js';
 import { imageService } from '../../../services/image-service.js';
@@ -385,6 +386,105 @@ export async function register(app: FastifyInstance): Promise<void> {
       const workspaceId = sanitizeWorkspaceId(q.workspace_id ?? '');
       const ws = nodeWorkspace(request.authUser!.id, workspaceId);
       return { files: listWorkspaceArtifacts(ws, workspaceId) };
+    }
+  );
+
+  // ---- FastClaw 工作区文件（当前会话）：列表 ----
+  // 走 FastClaw 自家的文件 API（GET /api/agents/{id}/files?sessionId=），不依赖同机磁盘布局；
+  // 会话 key 由鉴权 userId + node_id + epoch 复算，FastClaw 端 + 本端双重 scoping。
+  app.get(
+    '/api/modules/bookplate/chat/fastclaw-files',
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const q = (request.query ?? {}) as {
+        node_id?: string;
+        epoch?: string;
+        config_id?: string;
+        agent_config_id?: string;
+      };
+      const config = agentConfigFromWithOverride(
+        q.config_id ? Number(q.config_id) : null,
+        q.agent_config_id ? Number(q.agent_config_id) : null,
+        NODE_TYPES.CHAT,
+        request.authUser!.id
+      );
+      if (!config) return { files: [] };
+      const sessionId = agentSessionKey(
+        request.authUser!.id,
+        q.node_id ?? null,
+        Number(q.epoch) || 0
+      );
+      let list;
+      try {
+        list = await fastclawAgentService.listSessionFiles(config, sessionId);
+      } catch (err) {
+        return reply.code(502).send({
+          detail: err instanceof FastClawAgentError ? err.message : String(err),
+        });
+      }
+      const files = list.map((f) => {
+        const name = f.path.slice(f.path.lastIndexOf('/') + 1);
+        return {
+          url: `/api/modules/bookplate/chat/fastclaw-files/download?config_id=${encodeURIComponent(q.config_id ?? '')}&agent_config_id=${encodeURIComponent(q.agent_config_id ?? '')}&node_id=${encodeURIComponent(q.node_id ?? '')}&epoch=${Number(q.epoch) || 0}&path=${encodeURIComponent(f.path)}`,
+          name,
+          mime: mimeOf(name),
+          size: f.size,
+          path: f.path,
+        };
+      });
+      return { files };
+    }
+  );
+
+  // ---- FastClaw 工作区文件（当前会话）：下载代理 ----
+  // 前端 SkillFileCard 走 fetch→blob（鉴权头），不能直连 FastClaw，由本端流式代理字节。
+  app.get(
+    '/api/modules/bookplate/chat/fastclaw-files/download',
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const q = (request.query ?? {}) as {
+        node_id?: string;
+        epoch?: string;
+        config_id?: string;
+        agent_config_id?: string;
+        path?: string;
+      };
+      const filePath = String(q.path ?? '');
+      if (!filePath) return reply.code(404).send({ detail: '文件不存在' });
+      const config = agentConfigFromWithOverride(
+        q.config_id ? Number(q.config_id) : null,
+        q.agent_config_id ? Number(q.agent_config_id) : null,
+        NODE_TYPES.CHAT,
+        request.authUser!.id
+      );
+      if (!config) return reply.code(404).send({ detail: '文件不存在' });
+      const sessionId = agentSessionKey(
+        request.authUser!.id,
+        q.node_id ?? null,
+        Number(q.epoch) || 0
+      );
+      let upstream: Response | null;
+      try {
+        upstream = await fastclawAgentService.fetchSessionFile(config, sessionId, filePath);
+      } catch (err) {
+        return reply.code(502).send({
+          detail: err instanceof FastClawAgentError ? err.message : String(err),
+        });
+      }
+      if (!upstream) return reply.code(404).send({ detail: '文件不存在' });
+      const fileName = filePath.slice(filePath.lastIndexOf('/') + 1);
+      reply.type(mimeOf(fileName));
+      // RFC 6266/5987：非 ASCII 文件名（如中文产物）用 filename* 携带，ASCII 兜底防旧客户端乱码
+      const asciiFallback = fileName.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
+      reply.header(
+        'Content-Disposition',
+        `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(fileName)}`
+      );
+      const upstreamLen = upstream.headers.get('content-length');
+      if (upstreamLen) reply.header('Content-Length', upstreamLen);
+      if (!upstream.body) return reply.code(502).send({ detail: 'FastClaw 未返回文件内容' });
+      // 流式转发上游字节，避免大文件整读进内存
+      return reply.send(Readable.fromWeb(upstream.body as import('node:stream/web').ReadableStream));
     }
   );
 

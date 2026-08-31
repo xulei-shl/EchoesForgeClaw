@@ -26,6 +26,13 @@ export interface FastClawRuntimeConfig {
   end_user: string;
 }
 
+/** FastClaw 工作区文件（FastClaw agent 相对路径，如 sessions/<chatId>/foo.png）。 */
+export interface FastClawWorkspaceFile {
+  path: string;
+  size: number;
+  mtimeMs?: number;
+}
+
 export class FastClawAgentError extends Error {
   constructor(message: string, cause?: unknown) {
     super(message, { cause });
@@ -235,6 +242,93 @@ export class FastClawAgentService {
       expiresAt: now + (name ? AGENT_NAME_CACHE_TTL_MS : AGENT_NAME_FAIL_TTL_MS),
     });
     return name;
+  }
+
+  /**
+   * 列出当前会话工作区文件（GET /api/agents/{id}/files?sessionId=）。
+   * FastClaw 已在服务端按会话/归属做 scoping，这里再做一层「仅当前会话子前缀」过滤兜底，
+   * 避免上游布局变更或多余会话混入时把别的会话/agent 根文件透给前端。
+   */
+  async listSessionFiles(
+    config: FastClawRuntimeConfig,
+    sessionId: string
+  ): Promise<FastClawWorkspaceFile[]> {
+    if (!config.base_url || !config.api_key || !config.agent_id || !sessionId) return [];
+    const base = config.base_url.replace(/\/+$/, '');
+    const url = `${base}/api/agents/${encodeURIComponent(config.agent_id)}/files?sessionId=${encodeURIComponent(sessionId)}`;
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${config.api_key}`,
+      Accept: 'application/json',
+    };
+    if (config.end_user) headers['X-Fastclaw-End-User'] = config.end_user;
+    let resp: Response;
+    try {
+      resp = await fetch(url, { headers, signal: AbortSignal.timeout(CONNECT_TIMEOUT_MS) });
+    } catch (err) {
+      throw new FastClawAgentError(`FastClaw 工作区文件列表失败: ${messageOf(err)}`, err);
+    }
+    if (!resp.ok) throw new FastClawAgentError(`FastClaw 工作区文件列表返回 HTTP ${resp.status}`);
+    let data: { files?: Array<{ path?: unknown; size?: unknown; modTime?: unknown }> };
+    try {
+      data = (await resp.json()) as typeof data;
+    } catch {
+      return [];
+    }
+    const prefix = `sessions/${sessionId}/`;
+    const out: FastClawWorkspaceFile[] = [];
+    for (const f of Array.isArray(data.files) ? data.files : []) {
+      const p = typeof f?.path === 'string' ? f.path : '';
+      if (!p.startsWith(prefix)) continue; // 仅当前会话
+      const size = typeof f.size === 'number' && Number.isFinite(f.size) ? f.size : 0;
+      out.push({
+        path: p,
+        size,
+        mtimeMs: typeof f.modTime === 'number' && Number.isFinite(f.modTime) ? f.modTime * 1000 : undefined,
+      });
+    }
+    return out;
+  }
+
+  /**
+   * 校验一个 FastClaw 工作区文件路径属于当前会话（防跨会话/目录穿越）。
+   * 返回规范化后的路径，非法返回 null。
+   */
+  static sessionFilePath(sessionId: string, filePath: string): string | null {
+    const p = String(filePath ?? '').trim();
+    const prefix = `sessions/${sessionId}/`;
+    if (!p.startsWith(prefix) || p.includes('..')) return null;
+    return p;
+  }
+
+  /**
+   * 拉取 FastClaw 工作区文件字节（GET /api/agents/{id}/files/{path...}）。
+   * 由调用方把 resp.body 流式转发给浏览器。路径须先经 sessionFilePath 校验，
+   * 否则返回 null（404）。
+   */
+  async fetchSessionFile(
+    config: FastClawRuntimeConfig,
+    sessionId: string,
+    filePath: string
+  ): Promise<Response | null> {
+    const p = FastClawAgentService.sessionFilePath(sessionId, filePath);
+    if (!p || !config.base_url || !config.api_key || !config.agent_id || !sessionId) return null;
+    const base = config.base_url.replace(/\/+$/, '');
+    // 逐段编码：路径含空格/中文时仍被 FastClaw {path...} 路由正确解析，且保持层级 '/'。
+    const encPath = p.split('/').map((seg) => encodeURIComponent(seg)).join('/');
+    const url = `${base}/api/agents/${encodeURIComponent(config.agent_id)}/files/${encPath}`;
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${config.api_key}`,
+      Accept: '*/*',
+    };
+    if (config.end_user) headers['X-Fastclaw-End-User'] = config.end_user;
+    let resp: Response;
+    try {
+      resp = await fetch(url, { headers, signal: AbortSignal.timeout(CONNECT_TIMEOUT_MS) });
+    } catch (err) {
+      throw new FastClawAgentError(`FastClaw 工作区文件下载失败: ${messageOf(err)}`, err);
+    }
+    if (!resp.ok) return null;
+    return resp;
   }
 }
 

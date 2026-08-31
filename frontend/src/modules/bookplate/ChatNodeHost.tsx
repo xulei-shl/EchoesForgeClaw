@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import { nodesRef, edgesRef } from '../../platform/stores/useCanvasState';
@@ -35,6 +35,33 @@ import type { NodeData } from './graphTypes';
 export type { ChatHostDeps } from './chatSendHelpers';
 
 /**
+ * 拉取 FastClaw（Agent 模式）当前会话工作区文件列表。
+ * 节点内手动覆盖的 Agent（agentOverride）优先，空 = 跟随节点绑定 Agent。
+ *
+ * FastClaw 工作区 = 服务端会话目录，文件随 agent 工具调用产生，跨轮保留；
+ * 与 Skill Agent 的「本节点工作区」面板语义对齐。
+ */
+async function fetchFastClawWorkspaceFiles(params: {
+  nodeId: string;
+  epoch: number;
+  configId: number | null;
+  agentConfigId: number | null;
+}): Promise<AgentFile[]> {
+  const qs = new URLSearchParams({
+    node_id: params.nodeId,
+    epoch: String(params.epoch),
+    config_id: params.configId != null ? String(params.configId) : '',
+    agent_config_id: params.agentConfigId != null ? String(params.agentConfigId) : '',
+  });
+  const resp = await fetch(`/api/modules/bookplate/chat/fastclaw-files?${qs.toString()}`, {
+    headers: authHeaders(),
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const data = (await resp.json()) as { files?: AgentFile[] };
+  return data.files ?? [];
+}
+
+/**
  * AI 对话节点宿主（useChat 迁移核心）：
  *
  * - 每个 chat 节点一个 ChatNodeHost 实例，持有一个 `useChat`（AI SDK v7 UI Message Stream 原生消费）；
@@ -61,6 +88,39 @@ export function ChatNodeHost({
   // 本轮 skill 产物文件缓冲：流中只入队（流中写状态会与事件处理竞态丢失），
   // 流结束后一次性并入最后一条 assistant 消息（metadata + store 镜像）
   const pendingFilesRef = useRef<Map<string, AgentFile>>(new Map());
+
+  // ---------- FastClaw（Agent 模式）工作区文件面板 ----------
+  // 数据源是 FastClaw 服务端当前会话目录（跨轮保留），与 Skill Agent 的本节点工作区面板对齐
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [panelFiles, setPanelFiles] = useState<AgentFile[]>([]);
+  const [panelLoading, setPanelLoading] = useState(false);
+  /** 生成收尾时递增，驱动展开状态下的面板刷新 */
+  const [panelVersion, setPanelVersion] = useState(0);
+
+  const loadFastClawWorkspaceFiles = useCallback(async () => {
+    const cur = nodesRef.current.find((n) => n.id === nodeId) ?? null;
+    if (!cur || cur.type !== 'chat') return;
+    const settings: ChatNodeSettings = cur.data?.settings ?? DEFAULT_CHAT_SETTINGS;
+    setPanelLoading(true);
+    try {
+      const files = await fetchFastClawWorkspaceFiles({
+        nodeId,
+        epoch: cur.data?.epoch ?? 0,
+        configId: cur.configId ?? null,
+        agentConfigId: settings.agentOverride ?? null,
+      });
+      setPanelFiles(files);
+    } catch {
+      setPanelFiles([]);
+    } finally {
+      setPanelLoading(false);
+    }
+  }, [nodeId]);
+
+  // 面板展开时加载开启；生成收尾（status → ready）在展开状态下自动刷新（见下方 status effect）
+  useEffect(() => {
+    if (panelOpen) void loadFastClawWorkspaceFiles();
+  }, [panelOpen, panelVersion, loadFastClawWorkspaceFiles]);
 
   const chat = useChat({
     id: nodeId,
@@ -206,6 +266,12 @@ export function ChatNodeHost({
   const { status, messages: uiMessages, error: chatError, setMessages } = chat;
   const { sendMessage, regenerate, clearError, stop: chatStop } = chat;
   statusRef.current = status;
+  // FastClaw 工作区文件面板：该轮生成结束（status → ready）且面板展开时自动刷新，
+  // 使新产生的会话文件（图片/报告等）及时出现在面板里
+  const panelStatusReady = status === 'ready';
+  useEffect(() => {
+    if (panelStatusReady && panelOpen) setPanelVersion((v) => v + 1);
+  }, [panelStatusReady, panelOpen]);
   // 外部变更检测 effect 经此读取最新 useChat 消息（不进依赖数组，避免流式高频重跑）
   const uiMessagesRef = useRef(uiMessages);
   uiMessagesRef.current = uiMessages;
@@ -530,6 +596,8 @@ export function ChatNodeHost({
 
   // ---------- 渲染 ----------
   const config = h.configOf(node);
+  // FastClaw Agent 模式：接上与服务端会话目录同构的「工作区文件」面板
+  const isFastClawAgent = config?.mode === 'agent';
   const settings: ChatNodeSettings =
     node.data?.settings ?? DEFAULT_CHAT_SETTINGS;
   const isStreaming = status === 'submitted' || status === 'streaming';
@@ -623,6 +691,17 @@ export function ChatNodeHost({
       onDrag={h.handleNodeDrag}
       footer={h.renderFooter(node)}
       onContextMenu={(e) => h.handleNodeContextMenu(e, node.id)}
+      workspaceFiles={
+        isFastClawAgent
+          ? {
+              open: panelOpen,
+              loading: panelLoading,
+              files: panelFiles,
+              onToggle: () => setPanelOpen((v) => !v),
+              onRefresh: () => void loadFastClawWorkspaceFiles(),
+            }
+          : undefined
+      }
     />
   );
 }
