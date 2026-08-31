@@ -1050,7 +1050,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
               </div>
             </div>
 
-            {/* 右组：纸边开关与添加文字操作 */}
+            {/* 右组：纸边开关 */}
             <div className="flex items-center gap-1.5 shrink-0">
               <button
                 type="button"
@@ -1064,16 +1064,6 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
               >
                 <Sparkles size={12} />
                 <span>纸边</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleAddText()}
-                className="flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-accent/15 hover:bg-accent/25 text-accent active:scale-95 transition duration-150 font-medium text-xs shadow-2xs"
-                title="在邮票上添加文字素材（面值/地名/志号）"
-              >
-                <Type size={12} />
-                <span>+ 文字</span>
               </button>
             </div>
           </div>
