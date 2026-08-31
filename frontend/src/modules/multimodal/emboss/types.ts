@@ -11,10 +11,20 @@ export type EmbossReliefStyle =
 
 /** 光泽高光类型 */
 export type FoilShimmerType =
-  | 'matte_silver'  // 磨砂银白（Soft Matte Silver - 柔和自然漫反射，对齐参考图）
-  | 'rainbow_foil'  // 彩虹镭射（Rainbow Holographic Spectrum - 全息彩虹光泽）
-  | 'warm_gold'     // 暖金微光（Warm Gold Shimmer - 奢雅香槟暖金）
-  | 'aurora_cyan';  // 极光幻彩（Aurora Cyan & Violet - 青紫幻彩极光）
+  | 'prismatic_opal'   // 欧泊幻彩（Prismatic Opal & Emerald - 翡翠天青宝石色散）
+  | 'rainbow_foil'     // 彩虹镭射（Rainbow Holographic Spectrum - 全息彩虹光泽）
+  | 'neon_cyber'       // 赛博霓虹（Neon Cyber Magenta & Cyan - 电光冷暖激光）
+  | 'rose_champagne'   // 玫瑰香槟（Rose Champagne & Peach - 奢雅玫瑰粉金）
+  | 'nebula_violet'    // 星云幽紫（Cosmic Nebula Violet & Blue - 深邃幻夜星河）
+  | 'warm_gold'        // 奢雅暖金（Warm Gold Shimmer - 经典香槟暖金）
+  | 'pearl_platinum';  // 珠光铂金（Pearl Platinum - 纯净冷冽微蓝冷光）
+
+/** 自定义高光落点坐标 (归一化百分比 0 ~ 100) */
+export interface LightPoint {
+  id: string;
+  x: number;
+  y: number;
+}
 
 /** 微浮雕高光渲染参数 */
 export interface EmbossFoilParams {
@@ -30,10 +40,8 @@ export interface EmbossFoilParams {
   radius: number;
   /** 默认静态光源入射角度 (0 ~ 360 度)，默认 135 */
   lightAngle: number;
-  /** 光斑中心归一化 X 坐标 (0 ~ 100)，未指定时由 lightAngle 决定 */
-  lightX?: number;
-  /** 光斑中心归一化 Y 坐标 (0 ~ 100)，未指定时由 lightAngle 决定 */
-  lightY?: number;
+  /** 自定义高光落点列表，为空时由 lightAngle 决定单个默认光源 */
+  lightPoints?: LightPoint[];
   /** 是否开启邮票齿孔打孔边缘 */
   withPerforation: boolean;
   /** 是否包含白色纸边（内容四周留白） */
@@ -64,10 +72,8 @@ export interface EmbossFoilState {
   radius: number;
   /** 光源角度 (0 ~ 360) */
   lightAngle: number;
-  /** 光斑中心归一化 X 坐标 (0 ~ 100)，为空时依据 lightAngle 自动计算 */
-  lightX?: number | null;
-  /** 光斑中心归一化 Y 坐标 (0 ~ 100)，为空时依据 lightAngle 自动计算 */
-  lightY?: number | null;
+  /** 自定义高光落点列表，为空时依据 lightAngle 自动计算 */
+  lightPoints?: LightPoint[] | null;
   /** 是否带齿孔 */
   withPerforation: boolean;
   /** 是否带白边 */

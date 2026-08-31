@@ -10,6 +10,7 @@ import {
   Loader2,
   Pencil,
   Check,
+  Type,
 } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
@@ -19,11 +20,18 @@ import {
   type StampAspectRatio,
   type StampCropBox,
   type StampGrid,
+  type StampTextItem,
   type StampCutterState,
+  type StampGestureMode,
+  StampTextItemView,
+  StampTextToolbar,
+  STAMP_TEXT_PRESETS,
   renderStampFromImage,
   loadImage,
   downloadStampImage,
 } from '../stamp';
+
+import { usePreloadJournalFonts } from '../journal/text/FontControls';
 
 export interface StampCutterNodeProps {
   id: string;
@@ -93,6 +101,9 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
 }) => {
   const { showToast } = useFeedback();
 
+  // 预加载全部手账与邮票共用字体
+  usePreloadJournalFonts();
+
   // 1. 输入图片四级优先级：本地上传 > 直连图片/穿透封面/根节点封面兜底
   const activeImageSrc = useMemo(() => {
     return data?.uploadedImage || upstreamImageUrl || null;
@@ -110,18 +121,48 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
   const [cropBox, setCropBox] = useState<StampCropBox>(
     data.cropBox || DEFAULT_CROP_BOX
   );
+  const [textItems, setTextItems] = useState<StampTextItem[]>(
+    data.textItems || []
+  );
+
+  const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
+  const [editingTextId, setEditingTextId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState<string>('');
+  const [activeGestureId, setActiveGestureId] = useState<string | null>(null);
+
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [isAnimatingCrop, setIsAnimatingCrop] = useState<boolean>(false);
   const [isEditing, setIsEditing] = useState<boolean>(!data?.imageUrl);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const cropBoxRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 拖拽与缩放状态
+  // 选框实际像素宽度（供文字缩放计算字号）
+  const [cropBoxWidthPx, setCropBoxWidthPx] = useState<number>(300);
+
+  // 选框拖拽与缩放状态
   const [isDraggingBox, setIsDraggingBox] = useState(false);
   const [isResizingBox, setIsResizingBox] = useState(false);
   const dragStartRef = useRef<{ mouseX: number; mouseY: number; box: StampCropBox } | null>(null);
+
+  // 文字手势引用
+  const textGestureRef = useRef<{
+    mode: StampGestureMode;
+    itemId: string;
+    startPx: number;
+    startPy: number;
+    startX: number;
+    startY: number;
+    startW: number;
+    startAngle: number;
+    startPointerAngle: number;
+    centerPx: number;
+    centerPy: number;
+    boxW: number;
+    boxH: number;
+  } | null>(null);
 
   // 当外部 data.imageUrl 变更时同步编辑态
   useEffect(() => {
@@ -131,6 +172,20 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
       setIsEditing(true);
     }
   }, [data?.imageUrl]);
+
+  // 当外部 data.textItems 变更时同步文字项
+  useEffect(() => {
+    if (data?.textItems !== undefined) {
+      setTextItems(data.textItems);
+    }
+  }, [data?.textItems]);
+
+  // 监听选框尺寸变化
+  useEffect(() => {
+    if (cropBoxRef.current) {
+      setCropBoxWidthPx(cropBoxRef.current.offsetWidth || 300);
+    }
+  }, [cropBox, aspectRatio, isEditing]);
 
   // 根据选定单张比例与多联版式调整选框高度/宽度
   const applyAspectRatio = useCallback(
@@ -179,7 +234,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
     setAspectRatio(ratio);
     const adjusted = applyAspectRatio(ratio, cropBox, grid);
     setCropBox(adjusted);
-    onUpdateState?.(id, { aspectRatio: ratio, cropBox: adjusted, grid });
+    onUpdateState?.(id, { aspectRatio: ratio, cropBox: adjusted, grid, textItems });
   };
 
   // 切换多联版式
@@ -187,19 +242,218 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
     setGrid(newGrid);
     const adjusted = applyAspectRatio(aspectRatio, cropBox, newGrid);
     setCropBox(adjusted);
-    onUpdateState?.(id, { grid: newGrid, cropBox: adjusted });
+    onUpdateState?.(id, { grid: newGrid, cropBox: adjusted, textItems });
   };
 
   // 切换白边开关
   const handleToggleMargin = () => {
     const next = !withMargin;
     setWithMargin(next);
-    onUpdateState?.(id, { withMargin: next });
+    onUpdateState?.(id, { withMargin: next, textItems });
   };
 
-  // 鼠标在选框内按下开始拖拽移动
+  // 添加文字素材（智能分配默认位置与样式）
+  const handleAddText = useCallback(
+    (preset?: { text: string; writingMode?: 'horizontal' | 'vertical'; w?: number }) => {
+      const count = textItems.length;
+      const maxZ = textItems.reduce((m, it) => Math.max(m, it.z), 0);
+
+      let defaultX = 50;
+      let defaultY = 50;
+      let defaultW = 7;
+      let defaultText = '¥6.00';
+      let defaultWritingMode: 'horizontal' | 'vertical' = 'horizontal';
+      let defaultColor = '#8b5e3c';
+
+      if (count === 0) {
+        // 第 1 个：经典左上面值
+        defaultX = 20;
+        defaultY = 16;
+        defaultW = 9;
+        defaultText = '¥6.00';
+        defaultColor = '#8b5e3c';
+      } else if (count === 1) {
+        // 第 2 个：右上竖排地名与主题
+        defaultX = 84;
+        defaultY = 26;
+        defaultW = 7;
+        defaultText = '北京\nBEIJING';
+        defaultWritingMode = 'vertical';
+        defaultColor = '#2d2a24';
+      } else if (count === 2) {
+        // 第 3 个：左下角志号/年份
+        defaultX = 18;
+        defaultY = 92;
+        defaultW = 4.5;
+        defaultText = '2024-1';
+        defaultColor = '#2d2a24';
+      } else {
+        // 第 4 个及以上：中国邮政铭记等
+        defaultX = 50;
+        defaultY = 92;
+        defaultW = 5;
+        defaultText = '中国邮政 CHINA';
+        defaultColor = '#2d2a24';
+      }
+
+      const newItem: StampTextItem = {
+
+        id: `st-text-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        text: preset?.text || defaultText,
+        fontFamily: '思源宋体',
+        color: defaultColor,
+        writingMode: preset?.writingMode || defaultWritingMode,
+        x: defaultX,
+        y: defaultY,
+        w: preset?.w || defaultW,
+        angle: 0,
+        z: maxZ + 1,
+      };
+
+      const next = [...textItems, newItem];
+      setTextItems(next);
+      setSelectedTextId(newItem.id);
+      onUpdateState?.(id, { textItems: next });
+      showToast('已添加文字素材', { type: 'success' });
+    },
+    [textItems, id, onUpdateState, showToast]
+  );
+
+  // 更新文字素材属性
+  const handleUpdateTextItem = useCallback(
+    (itemId: string, patch: Partial<StampTextItem>) => {
+      setTextItems((prev) => {
+        const next = prev.map((it) => (it.id === itemId ? { ...it, ...patch } : it));
+        onUpdateState?.(id, { textItems: next });
+        return next;
+      });
+    },
+    [id, onUpdateState]
+  );
+
+  // 删除文字素材
+  const handleDeleteTextItem = useCallback(
+    (itemId: string) => {
+      setTextItems((prev) => {
+        const next = prev.filter((it) => it.id !== itemId);
+        onUpdateState?.(id, { textItems: next });
+        return next;
+      });
+      setSelectedTextId(null);
+      showToast('已删除文字', { type: 'success' });
+    },
+    [id, onUpdateState, showToast]
+  );
+
+  // 文字图层层级移动
+  const handleBumpTextLayer = useCallback(
+    (itemId: string, mode: 'up' | 'down' | 'top' | 'bottom') => {
+      const sorted = [...textItems].sort((a, b) => a.z - b.z);
+      const idx = sorted.findIndex((it) => it.id === itemId);
+      if (idx < 0) return;
+      let target = idx;
+      if (mode === 'up') target = Math.min(sorted.length - 1, idx + 1);
+      else if (mode === 'down') target = Math.max(0, idx - 1);
+      else if (mode === 'top') target = sorted.length - 1;
+      else target = 0;
+      if (target === idx) return;
+      const [picked] = sorted.splice(idx, 1);
+      sorted.splice(target, 0, picked);
+      const next = sorted.map((it, i) => ({ ...it, z: i }));
+      setTextItems(next);
+      onUpdateState?.(id, { textItems: next });
+    },
+    [textItems, id, onUpdateState]
+  );
+
+  // 步进旋转 90 度
+  const handleRotateStepText = useCallback(
+    (itemId: string, direction: 'cw' | 'ccw') => {
+      setTextItems((prev) => {
+        const next = prev.map((it) => {
+          if (it.id !== itemId) return it;
+          const step = direction === 'cw' ? 90 : -90;
+          const raw = (it.angle || 0) + step;
+          const snapped = Math.round(raw / 90) * 90;
+          const normalized = ((snapped % 360) + 360) % 360;
+          return { ...it, angle: normalized > 180 ? normalized - 360 : normalized };
+        });
+        onUpdateState?.(id, { textItems: next });
+        return next;
+      });
+    },
+    [id, onUpdateState]
+  );
+
+  // 确认修改文字内容
+  const confirmTextEdit = useCallback(() => {
+    if (!editingTextId) return;
+    setTextItems((prev) => {
+      const next = prev.map((it) =>
+        it.id === editingTextId ? { ...it, text: editingText.trim() || '文字' } : it
+      );
+      onUpdateState?.(id, { textItems: next });
+      return next;
+    });
+    setEditingTextId(null);
+    setEditingText('');
+  }, [editingTextId, editingText, id, onUpdateState]);
+
+  // 文字手势操作：拖动、缩放、旋转
+  const handleTextGestureStart = (
+    e: React.PointerEvent<HTMLElement>,
+    item: StampTextItem,
+    mode: StampGestureMode
+  ) => {
+
+    if (e.button !== 0 || !isEditing || isExporting || isAnimatingCrop) return;
+    e.stopPropagation();
+    e.preventDefault();
+    onSelect?.(id);
+
+    const boxEl = cropBoxRef.current;
+    if (!boxEl) return;
+    const boxRect = boxEl.getBoundingClientRect();
+
+    let centerPx = boxRect.left + (item.x / 100) * boxRect.width;
+    let centerPy = boxRect.top + (item.y / 100) * boxRect.height;
+    let startPointerAngle = 0;
+
+    if (mode === 'rotate') {
+      startPointerAngle =
+        (Math.atan2(e.clientY - centerPy, e.clientX - centerPx) * 180) / Math.PI;
+    }
+
+    textGestureRef.current = {
+      mode,
+      itemId: item.id,
+      startPx: e.clientX,
+      startPy: e.clientY,
+      startX: item.x,
+      startY: item.y,
+      startW: item.w,
+      startAngle: item.angle || 0,
+      startPointerAngle,
+      centerPx,
+      centerPy,
+      boxW: boxRect.width,
+      boxH: boxRect.height,
+    };
+
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    } catch {
+      // 忽略可能未 capture 的异常
+    }
+    setSelectedTextId(item.id);
+    setActiveGestureId(item.id);
+  };
+
+  // 鼠标在选框内按下开始拖拽移动选框
   const handleBoxPointerDown = (e: React.PointerEvent) => {
     if (!isEditing || isExporting || isAnimatingCrop) return;
+    // 点击空白处取消文字选中态
+    setSelectedTextId(null);
     e.stopPropagation();
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     setIsDraggingBox(true);
@@ -213,6 +467,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
   // 选框右下角手柄缩放
   const handleResizePointerDown = (e: React.PointerEvent) => {
     if (!isEditing || isExporting || isAnimatingCrop) return;
+    setSelectedTextId(null);
     e.stopPropagation();
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     setIsResizingBox(true);
@@ -225,6 +480,46 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
 
   // 拖拽与缩放移动事件
   const handlePointerMove = (e: React.PointerEvent) => {
+    // 优先响应文字手势
+    if (textGestureRef.current) {
+      const g = textGestureRef.current;
+      if (g.boxW <= 0 || g.boxH <= 0) return;
+      e.stopPropagation();
+
+      setTextItems((prev) =>
+        prev.map((it) => {
+          if (it.id !== g.itemId) return it;
+          if (g.mode === 'move') {
+            const dx = ((e.clientX - g.startPx) / g.boxW) * 100;
+            const dy = ((e.clientY - g.startPy) / g.boxH) * 100;
+            return {
+              ...it,
+              x: Math.max(0, Math.min(100, g.startX + dx)),
+              y: Math.max(0, Math.min(100, g.startY + dy)),
+            };
+          }
+          if (g.mode === 'resize') {
+            const dw = ((e.clientX - g.startPx) / g.boxW) * 100;
+            return {
+              ...it,
+              w: Math.max(2, Math.min(30, g.startW + dw)),
+            };
+          }
+          if (g.mode === 'rotate') {
+            const curAngle =
+              (Math.atan2(e.clientY - g.centerPy, e.clientX - g.centerPx) * 180) / Math.PI;
+            const delta = curAngle - g.startPointerAngle;
+            return {
+              ...it,
+              angle: Math.round((g.startAngle + delta) * 10) / 10,
+            };
+          }
+          return it;
+        })
+      );
+      return;
+    }
+
     if (!dragStartRef.current || !imgRef.current) return;
     const imgRect = imgRef.current.getBoundingClientRect();
     if (imgRect.width <= 0 || imgRect.height <= 0) return;
@@ -267,6 +562,18 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
 
   // 松开鼠标，保存状态
   const handlePointerUp = (e: React.PointerEvent) => {
+    if (textGestureRef.current) {
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+      } catch {
+        // ignore
+      }
+      textGestureRef.current = null;
+      setActiveGestureId(null);
+      onUpdateState?.(id, { textItems });
+      return;
+    }
+
     if (isDraggingBox || isResizingBox) {
       setIsDraggingBox(false);
       setIsResizingBox(false);
@@ -276,7 +583,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
       } catch {
         // 忽略可能未 capture 的异常
       }
-      onUpdateState?.(id, { cropBox });
+      onUpdateState?.(id, { cropBox, textItems });
     }
   };
 
@@ -303,7 +610,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
       const newX = Math.max(0, Math.min(1 - newW, prev.x + (prev.width - newW) / 2));
       const newY = Math.max(0, Math.min(1 - newH, prev.y + (prev.height - newH) / 2));
       const next = { x: newX, y: newY, width: newW, height: newH };
-      onUpdateState?.(id, { cropBox: next });
+      onUpdateState?.(id, { cropBox: next, textItems });
       return next;
     });
   };
@@ -316,6 +623,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
     setCropBox(initial);
     setAspectRatio('3:4');
     setWithMargin(true);
+    setSelectedTextId(null);
     if (data?.imageUrl && !isEditing) {
       setIsEditing(true);
       onUpdateState?.(id, {
@@ -324,6 +632,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
         aspectRatio: '3:4',
         withMargin: true,
         grid: defaultGrid,
+        textItems,
       });
       showToast('已重置并返回选框模式', { type: 'success' });
     } else {
@@ -332,10 +641,11 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
         aspectRatio: '3:4',
         withMargin: true,
         grid: defaultGrid,
+        textItems,
       });
       showToast('选框已重置为居中', { type: 'success' });
     }
-  }, [applyAspectRatio, data?.imageUrl, isEditing, id, onUpdateState, showToast]);
+  }, [applyAspectRatio, data?.imageUrl, isEditing, id, textItems, onUpdateState, showToast]);
 
   // 本地上传图片
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -349,7 +659,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
     reader.onload = (evt) => {
       const result = evt.target?.result as string;
       if (result) {
-        onUpdateState?.(id, { uploadedImage: result, imageUrl: null });
+        onUpdateState?.(id, { uploadedImage: result, imageUrl: null, textItems });
         setIsEditing(true);
         showToast('已加载本地图片', { type: 'success' });
       }
@@ -360,12 +670,12 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
 
   // 清空本地上传图片，恢复上游继承
   const handleClearUpload = () => {
-    onUpdateState?.(id, { uploadedImage: null, imageUrl: null });
+    onUpdateState?.(id, { uploadedImage: null, imageUrl: null, textItems });
     setIsEditing(true);
     showToast('已恢复上级输入图片', { type: 'success' });
   };
 
-  // 执行纯前端离线截取（不写数据库，毫秒级所见即所得）
+  // 执行纯前端离线截取与文字合成（不写数据库，毫秒级所见即所得）
   const handleExecuteCrop = useCallback(async () => {
     if (!activeImageSrc || isExporting) return;
     setIsAnimatingCrop(true);
@@ -374,10 +684,11 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
       // 1. 加载源图
       const img = await loadImage(activeImageSrc);
 
-      // 2. 离线 Canvas 高保真渲染
+      // 2. 离线 Canvas 高保真渲染（含裁剪、打孔、文字排版与立体阴影）
       const resultDataUrl = await renderStampFromImage(img, cropBox, {
         withMargin,
         grid,
+        textItems,
       });
 
       // 3. 优雅过渡延迟让动画自然展现
@@ -391,18 +702,31 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
         aspectRatio,
         grid,
         cropBox,
+        textItems,
         uploadedImage: data.uploadedImage || null,
       });
 
       setIsEditing(false);
-      showToast('邮票截取完成（可点击保存按钮写入数据库）', { type: 'success' });
+      showToast('邮票制作完成（可点击保存按钮写入数据库）', { type: 'success' });
     } catch (err: any) {
       console.error('截取邮票失败:', err);
       showToast(err?.message || '生成邮票失败，请重试', { type: 'error' });
     } finally {
       setIsAnimatingCrop(false);
     }
-  }, [activeImageSrc, isExporting, cropBox, withMargin, grid, id, aspectRatio, data.uploadedImage, onUpdateState, showToast]);
+  }, [
+    activeImageSrc,
+    isExporting,
+    cropBox,
+    withMargin,
+    grid,
+    textItems,
+    id,
+    aspectRatio,
+    data.uploadedImage,
+    onUpdateState,
+    showToast,
+  ]);
 
   // 独立保存到数据库
   const handleSaveToDatabase = useCallback(async () => {
@@ -416,6 +740,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
         aspectRatio,
         grid,
         cropBox,
+        textItems,
         uploadedImage: data.uploadedImage || null,
         isSaved: true,
       });
@@ -428,7 +753,21 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
     } finally {
       setIsExporting(false);
     }
-  }, [data?.imageUrl, isExporting, onExport, id, withMargin, aspectRatio, cropBox, data?.uploadedImage, onUpdateState, onSelect, showToast]);
+  }, [
+    data?.imageUrl,
+    isExporting,
+    onExport,
+    id,
+    withMargin,
+    aspectRatio,
+    grid,
+    cropBox,
+    textItems,
+    data?.uploadedImage,
+    onUpdateState,
+    onSelect,
+    showToast,
+  ]);
 
   // 本地直接下载 PNG（随时可用，不影响下载）
   const handleDownload = useCallback(() => {
@@ -454,6 +793,10 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
 
   const hasGenerated = Boolean(data?.imageUrl && !isEditing);
   const isSaved = Boolean(data?.isSaved);
+  const selectedTextItem = useMemo(
+    () => textItems.find((it) => it.id === selectedTextId),
+    [textItems, selectedTextId]
+  );
 
   return (
     <CanvasNode
@@ -484,7 +827,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
               <NodeActionBar.Retry
                 onClick={() => setIsEditing(true)}
                 disabled={isExporting}
-                tooltip="重新调整选框"
+                tooltip="重新调整选框与排版"
               />
               <NodeActionBar.Custom
                 icon={<Upload size={16} strokeWidth={1.5} />}
@@ -577,6 +920,12 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
                 disabled={!activeImageSrc || isExporting || isAnimatingCrop}
               />
               <NodeActionBar.Custom
+                icon={<Type size={16} strokeWidth={1.5} />}
+                tooltip="添加文字素材 (面值/地名/志号)"
+                onClick={() => handleAddText()}
+                disabled={!activeImageSrc || isExporting || isAnimatingCrop}
+              />
+              <NodeActionBar.Custom
                 icon={<Upload size={16} strokeWidth={1.5} />}
                 tooltip="上传/替换本地图片"
                 onClick={() => fileInputRef.current?.click()}
@@ -612,77 +961,88 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
       <div className="h-full flex flex-col flex-1 min-h-0 gap-2">
         {/* 顶部工具栏（仅在选框模式下展示核心版式、比例与纸边选项） */}
         {isEditing && (
-          <div className="flex flex-wrap items-center justify-between gap-1.5 px-2 py-1 rounded bg-paper-grid/20 border border-paper-grid/40 text-xs font-sans text-ink-light select-none">
-            {/* 多联版式选择 */}
-            <div className="flex items-center gap-1">
-              <span className="text-ink-faint text-[11px] px-0.5">版式:</span>
-              <select
-                value={`${grid.rows}x${grid.cols}`}
-                onChange={(e) => {
-                  const [r, c] = e.target.value.split('x').map(Number);
-                  if (r && c) {
-                    handleGridChange({ rows: r, cols: c });
-                  }
-                }}
-                className="bg-paper/90 border border-paper-grid/60 text-ink rounded px-1.5 py-0.5 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-accent cursor-pointer"
-              >
-                <optgroup label="基础">
-                  <option value="1x1">1×1 单张</option>
-                </optgroup>
-                <optgroup label="竖版多联">
-                  <option value="2x1">1×2 竖双联</option>
-                  <option value="3x1">1×3 竖三联</option>
-                  <option value="4x1">1×4 竖四联</option>
-                </optgroup>
-                <optgroup label="横版多联">
-                  <option value="1x2">2×1 横双联</option>
-                  <option value="1x3">3×1 横三联</option>
-                  <option value="1x4">4×1 横四联</option>
-                </optgroup>
-                <optgroup label="方形/网格多联">
-                  <option value="2x2">2×2 四方联</option>
-                  <option value="2x3">3×2 六联</option>
-                  <option value="3x2">2×3 六联</option>
-                  <option value="3x3">3×3 九联</option>
-                </optgroup>
-              </select>
-            </div>
+          <div className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg bg-paper-grid/20 border border-paper-grid/40 text-xs font-sans text-ink-light select-none shrink-0 flex-wrap">
+            {/* 左组：版式选择与比例分段控制 */}
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="flex items-center gap-1 shrink-0">
+                <span className="text-ink-faint text-[11px] px-0.5 whitespace-nowrap">版式:</span>
+                <select
+                  value={`${grid.rows}x${grid.cols}`}
+                  onChange={(e) => {
+                    const [r, c] = e.target.value.split('x').map(Number);
+                    if (r && c) {
+                      handleGridChange({ rows: r, cols: c });
+                    }
+                  }}
+                  className="bg-paper/90 border border-paper-grid/60 text-ink rounded px-1.5 py-0.5 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-accent cursor-pointer"
+                >
+                  <optgroup label="基础">
+                    <option value="1x1">1×1 单张</option>
+                  </optgroup>
+                  <optgroup label="竖版多联">
+                    <option value="2x1">1×2 竖双联</option>
+                    <option value="3x1">1×3 竖三联</option>
+                    <option value="4x1">1×4 竖四联</option>
+                  </optgroup>
+                  <optgroup label="横版多联">
+                    <option value="1x2">2×1 横双联</option>
+                    <option value="1x3">3×1 横三联</option>
+                    <option value="1x4">4×1 横四联</option>
+                  </optgroup>
+                  <optgroup label="方形/网格多联">
+                    <option value="2x2">2×2 四方联</option>
+                    <option value="2x3">3×2 六联</option>
+                    <option value="3x2">2×3 六联</option>
+                    <option value="3x3">3×3 九联</option>
+                  </optgroup>
+                </select>
+              </div>
 
-            {/* 比例与纸边 */}
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1">
-                <span className="text-ink-faint text-[11px] px-0.5">单张比例:</span>
+              <div className="w-px h-3.5 bg-paper-grid/60 my-auto shrink-0" />
+
+              <div className="flex items-center p-0.5 rounded-md bg-paper-grid/30 border border-paper-grid/50 select-none shrink-0">
                 {(['3:4', '4:3', '1:1', 'free'] as StampAspectRatio[]).map((r) => (
                   <button
                     key={r}
                     type="button"
                     onClick={() => handleRatioChange(r)}
-                    className={`px-1.5 py-0.5 rounded transition ${
+                    className={`px-1.5 py-0.5 rounded text-[11px] transition duration-150 ${
                       aspectRatio === r
-                        ? 'bg-accent/15 text-accent font-medium'
-                        : 'hover:bg-paper-grid/40 text-ink-light'
+                        ? 'bg-paper shadow-2xs text-accent font-medium'
+                        : 'text-ink-light hover:text-ink hover:bg-paper-grid/40'
                     }`}
                   >
                     {r === 'free' ? '自由' : r}
                   </button>
                 ))}
               </div>
+            </div>
 
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={handleToggleMargin}
-                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition ${
-                    withMargin
-                      ? 'bg-accent/15 text-accent font-medium'
-                      : 'hover:bg-paper-grid/40 text-ink-light'
-                  }`}
-                  title={withMargin ? '开启白边' : '关闭白边'}
-                >
-                  <Sparkles size={12} />
-                  <span>纸边</span>
-                </button>
-              </div>
+            {/* 右组：纸边开关与添加文字操作 */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={handleToggleMargin}
+                className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs transition duration-150 ${
+                  withMargin
+                    ? 'bg-accent/15 text-accent font-medium'
+                    : 'hover:bg-paper-grid/40 text-ink-light'
+                }`}
+                title={withMargin ? '开启白边' : '关闭白边'}
+              >
+                <Sparkles size={12} />
+                <span>纸边</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleAddText()}
+                className="flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-accent/15 hover:bg-accent/25 text-accent active:scale-95 transition duration-150 font-medium text-xs shadow-2xs"
+                title="在邮票上添加文字素材（面值/地名/志号）"
+              >
+                <Type size={12} />
+                <span>+ 文字</span>
+              </button>
             </div>
           </div>
         )}
@@ -694,7 +1054,29 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
           onWheel={handleWheelOnImage}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
+          onClick={() => setSelectedTextId(null)}
         >
+          {/* 选中文本时的顶部悬浮微交互工具栏（固定悬浮在画布顶部中央，不随选框跳动或被遮挡） */}
+          {selectedTextItem && !isDraggingBox && !isResizingBox && (
+            <div
+              className="absolute top-2 left-1/2 -translate-x-1/2 z-40 max-w-[94%] pointer-events-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <StampTextToolbar
+                item={selectedTextItem}
+                disabled={isExporting || isAnimatingCrop}
+                onUpdate={(patch) => handleUpdateTextItem(selectedTextItem.id, patch)}
+                onOpenEdit={() => {
+                  setEditingTextId(selectedTextItem.id);
+                  setEditingText(selectedTextItem.text || '');
+                }}
+                onDelete={() => handleDeleteTextItem(selectedTextItem.id)}
+                onBumpLayer={(mode) => handleBumpTextLayer(selectedTextItem.id, mode)}
+                onRotateStep={(dir) => handleRotateStepText(selectedTextItem.id, dir)}
+              />
+            </div>
+          )}
+
           <AnimatePresence mode="wait">
             {!hasGenerated ? (
               // 选框编辑模式
@@ -722,6 +1104,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
 
                     {/* 镂空高亮/打孔锯齿邮票选框 */}
                     <motion.div
+                      ref={cropBoxRef}
                       style={{
                         position: 'absolute',
                         left: `${cropBox.x * 100}%`,
@@ -800,24 +1183,46 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
                           );
                         })}
 
-                      {/* 中央截取快捷悬浮按钮 */}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleExecuteCrop();
-                        }}
-                        disabled={isExporting || isAnimatingCrop}
-                        className="relative z-20 px-2.5 py-1 rounded-full bg-paper/90 backdrop-blur text-ink font-medium text-xs shadow-md hover:bg-white hover:scale-105 active:scale-95 transition flex items-center gap-1.5 opacity-0 group-hover:opacity-100 duration-150"
-                      >
-                        <Scissors size={13} className="text-accent" />
-                        <span>点击截取</span>
-                      </button>
+                      {/* 选框内排版文字列表 */}
+                      {textItems.map((item) => (
+                        <StampTextItemView
+                          key={item.id}
+                          item={item}
+                          selected={item.id === selectedTextId}
+                          isGesturing={item.id === activeGestureId}
+                          stageWidth={cropBoxWidthPx}
+                          disabled={isExporting || isAnimatingCrop}
+                          onSelect={() => setSelectedTextId(item.id)}
+                          onOpenEdit={() => {
+                            setEditingTextId(item.id);
+                            setEditingText(item.text || '');
+                          }}
+                          onGestureStart={handleTextGestureStart}
+                          onGestureMove={handlePointerMove}
+                          onGestureEnd={handlePointerUp}
+                        />
+                      ))}
+
+                      {/* 中央截取快捷悬浮按钮（仅在未选中文字时展示，避免遮挡） */}
+                      {!selectedTextId && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleExecuteCrop();
+                          }}
+                          disabled={isExporting || isAnimatingCrop}
+                          className="relative z-20 px-2.5 py-1 rounded-full bg-paper/90 backdrop-blur text-ink font-medium text-xs shadow-md hover:bg-white hover:scale-105 active:scale-95 transition flex items-center gap-1.5 opacity-0 group-hover:opacity-100 duration-150"
+                        >
+                          <Scissors size={13} className="text-accent" />
+                          <span>点击截取</span>
+                        </button>
+                      )}
 
                       {/* 缩放手柄（右下角） */}
                       <div
                         onPointerDown={handleResizePointerDown}
-                        className="absolute -right-1.5 -bottom-1.5 w-4 h-4 bg-accent rounded-full border-2 border-white cursor-se-resize shadow-md flex items-center justify-center hover:scale-125 transition"
+                        className="absolute -right-1.5 -bottom-1.5 w-4 h-4 bg-accent rounded-full border-2 border-white cursor-se-resize shadow-md flex items-center justify-center hover:scale-125 transition z-20"
                         title="拖拽缩放选框"
                       >
                         <div className="w-1.5 h-1.5 bg-white rounded-full" />
@@ -856,7 +1261,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
                       className="absolute bottom-3 right-3 px-2.5 py-1 rounded-full bg-paper/90 backdrop-blur text-ink text-xs shadow-md border border-paper-grid/40 hover:bg-white hover:text-accent transition flex items-center gap-1.5 opacity-0 group-hover:opacity-100 duration-150"
                     >
                       <Pencil size={12} />
-                      <span>重新裁剪</span>
+                      <span>重新排版</span>
                     </button>
                   </div>
                 ) : (
@@ -865,6 +1270,93 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
               </motion.div>
             )}
           </AnimatePresence>
+
+          {/* 内联文字编辑弹层 */}
+          {editingTextId && (
+            <div
+              className="absolute inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4"
+              onClick={() => confirmTextEdit()}
+            >
+              <div
+                className="bg-paper border border-paper-grid/80 rounded-xl p-3.5 shadow-2xl w-full max-w-[320px] flex flex-col gap-2.5 animate-in fade-in zoom-in-95 duration-150 select-text"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between text-xs font-medium text-ink">
+                  <span className="font-sans font-semibold">编辑邮票文字</span>
+                  <span className="text-[10px] text-ink-faint">Enter 确定 · Shift+Enter 换行</span>
+                </div>
+                <textarea
+                  autoFocus
+                  value={editingText}
+                  onChange={(e) => setEditingText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      confirmTextEdit();
+                    } else if (e.key === 'Escape') {
+                      e.preventDefault();
+                      setEditingTextId(null);
+                      setEditingText('');
+                    }
+                  }}
+                  className="w-full h-20 bg-paper-grid/20 border border-paper-grid/60 rounded-md p-2 text-xs font-sans text-ink focus:outline-none focus:ring-1 focus:ring-accent resize-none"
+                  placeholder="输入面值、地名、志号或发行文字..."
+                />
+
+                {/* 常用邮票词条快捷填充 */}
+                <div className="flex flex-col gap-1.5 pt-1 border-t border-paper-grid/40">
+                  <span className="text-[10px] text-ink-faint select-none">快捷填入常用邮票格式:</span>
+                  <div className="flex flex-col gap-1">
+                    {STAMP_TEXT_PRESETS.map((group) => (
+                      <div key={group.group} className="flex items-center gap-1 flex-wrap">
+                        <span className="text-[10px] text-ink-faint w-14 shrink-0">{group.group}:</span>
+                        {group.items.map((pst) => (
+                          <button
+                            key={pst.label}
+                            type="button"
+                            onClick={() => {
+                              setEditingText(pst.text);
+                              if (selectedTextItem) {
+                                handleUpdateTextItem(selectedTextItem.id, {
+                                  ...(pst.writingMode ? { writingMode: pst.writingMode } : {}),
+                                  ...(pst.w ? { w: pst.w } : {}),
+                                });
+                              }
+                            }}
+                            className="px-1.5 py-0.5 rounded bg-paper-grid/30 hover:bg-paper-grid/60 text-ink-light hover:text-ink text-[10px] active:scale-95 transition"
+                          >
+                            {pst.label}
+                          </button>
+                        ))}
+
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-paper-grid/40">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingTextId(null);
+                      setEditingText('');
+                    }}
+                    className="px-3 py-1 rounded text-xs text-ink-light hover:bg-paper-grid/40 transition"
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmTextEdit}
+                    className="px-3.5 py-1 rounded text-xs bg-accent text-white font-medium hover:bg-accent/90 transition shadow-xs"
+                  >
+                    确定
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
         </div>
 
         {/* 状态与弱提示 */}

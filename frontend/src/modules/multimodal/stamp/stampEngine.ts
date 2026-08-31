@@ -4,6 +4,8 @@
  */
 
 import type { StampCropBox, StampEffectOptions } from './types';
+import { DEFAULT_FONT_FAMILY, DEFAULT_TEXT_COLOR, loadFontFamily } from '../journal/text/fontRegistry';
+import { drawVerticalColumns, textFontSize } from '../journal/text/drawText';
 
 /**
  * 加载图片 URL 为 HTMLImageElement
@@ -65,18 +67,26 @@ export async function renderStampFromImage(
   const sw = sWidth + margin * 2;
   const sh = sHeight + margin * 2;
 
-  // 3. 创建离屏 Canvas 绘制邮票本体（白色纸面 + 内容图 + destination-out 打孔）
+  // 3. 预加载文字所需字体
+  if (options.textItems && options.textItems.length > 0) {
+    const families = Array.from(
+      new Set(options.textItems.map((it) => it.fontFamily || DEFAULT_FONT_FAMILY))
+    );
+    await Promise.all(families.map((f) => loadFontFamily(f)));
+  }
+
+  // 4. 创建离屏 Canvas 绘制邮票本体（白色纸面 + 内容图 + 文字图层 + destination-out 打孔）
   const stampCanvas = document.createElement('canvas');
   stampCanvas.width = sw;
   stampCanvas.height = sh;
   const stampCtx = stampCanvas.getContext('2d');
   if (!stampCtx) throw new Error('创建 Canvas 2D 渲染上下文失败');
 
-  // 3.1 绘制白色底纸（即使无 margin 也能保证边缘干净）
+  // 4.1 绘制白色底纸（即使无 margin 也能保证边缘干净）
   stampCtx.fillStyle = '#ffffff';
   stampCtx.fillRect(0, 0, sw, sh);
 
-  // 3.2 绘制裁剪的内容图
+  // 4.2 绘制裁剪的内容图
   stampCtx.drawImage(
     sourceImg,
     sx,
@@ -89,9 +99,54 @@ export async function renderStampFromImage(
     sHeight
   );
 
-  // 3.3 进行半圆/圆孔齿孔打孔（剔除 alpha）
+  // 4.3 绘制邮票文字排版（支持横排、竖排、字号、颜色、字体与旋转）
+  if (options.textItems && options.textItems.length > 0) {
+    const sortedTexts = [...options.textItems].sort((a, b) => a.z - b.z);
+    for (const item of sortedTexts) {
+      const text = item.text || '';
+      if (!text.trim()) continue;
+
+      const fontFamily = item.fontFamily || DEFAULT_FONT_FAMILY;
+      const color = item.color || DEFAULT_TEXT_COLOR;
+      const fontSize = Math.max(10, textFontSize(item.w, sw));
+      const isVertical = item.writingMode === 'vertical';
+
+      const cx = (item.x / 100) * sw;
+      const cy = (item.y / 100) * sh;
+
+      stampCtx.save();
+      stampCtx.translate(cx, cy);
+      if (item.angle) {
+        stampCtx.rotate((item.angle * Math.PI) / 180);
+      }
+
+      stampCtx.font = `${fontSize}px "${fontFamily}", "Noto Serif SC", serif, sans-serif`;
+      stampCtx.textAlign = 'center';
+      stampCtx.textBaseline = 'middle';
+      stampCtx.fillStyle = color;
+      stampCtx.shadowColor = 'rgba(0, 0, 0, 0.15)';
+      stampCtx.shadowBlur = Math.max(1, fontSize * 0.08);
+      stampCtx.shadowOffsetY = Math.max(1, fontSize * 0.04);
+
+      if (isVertical) {
+        drawVerticalColumns(stampCtx, text, fontSize, (str, x, y) => stampCtx.fillText(str, x, y));
+      } else {
+        const lines = text.split('\n');
+        const lineH = fontSize * 1.25;
+        lines.forEach((line, i) => {
+          const yOffset = (i - (lines.length - 1) / 2) * lineH;
+          stampCtx.fillText(line, 0, yOffset);
+        });
+      }
+
+      stampCtx.restore();
+    }
+  }
+
+  // 4.4 进行半圆/圆孔齿孔打孔（剔除 alpha）
   stampCtx.globalCompositeOperation = 'destination-out';
   stampCtx.fillStyle = '#000000';
+
 
   const rows = Math.max(1, Math.min(10, options.grid?.rows || 1));
   const cols = Math.max(1, Math.min(10, options.grid?.cols || 1));

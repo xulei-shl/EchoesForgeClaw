@@ -17,6 +17,7 @@ import {
   Stamp,
   Crosshair,
   RotateCcw,
+  X,
 } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
@@ -29,6 +30,7 @@ import {
   type EmbossFoilState,
   type EmbossReliefStyle,
   type FoilShimmerType,
+  type LightPoint,
   EMBOSS_FOIL_PRESETS,
   DEFAULT_PRESET_ID,
   getEmbossFoilPreset,
@@ -77,10 +79,13 @@ const RELIEF_STYLE_OPTIONS: { label: string; value: EmbossReliefStyle }[] = [
 ];
 
 const SHIMMER_TYPE_OPTIONS: { label: string; value: FoilShimmerType }[] = [
-  { label: '磨砂银白', value: 'matte_silver' },
+  { label: '欧泊幻彩', value: 'prismatic_opal' },
   { label: '彩虹镭射', value: 'rainbow_foil' },
-  { label: '暖金微光', value: 'warm_gold' },
-  { label: '极光幻彩', value: 'aurora_cyan' },
+  { label: '赛博霓虹', value: 'neon_cyber' },
+  { label: '玫瑰香槟', value: 'rose_champagne' },
+  { label: '星云幽紫', value: 'nebula_violet' },
+  { label: '奢雅暖金', value: 'warm_gold' },
+  { label: '珠光铂金', value: 'pearl_platinum' },
 ];
 
 const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
@@ -118,13 +123,12 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
   // 参数状态与缺省回退
   const presetId = data.presetId || DEFAULT_PRESET_ID;
   const reliefStyle: EmbossReliefStyle = data.reliefStyle || 'topography';
-  const shimmerType: FoilShimmerType = data.shimmerType || 'matte_silver';
+  const shimmerType: FoilShimmerType = data.shimmerType || 'prismatic_opal';
   const depth = data.depth !== undefined ? data.depth : 68;
   const brightness = data.brightness !== undefined ? data.brightness : 72;
   const radius = data.radius !== undefined ? data.radius : 46;
   const lightAngle = data.lightAngle !== undefined ? data.lightAngle : 225;
-  const lightX = data.lightX ?? null;
-  const lightY = data.lightY ?? null;
+  const lightPoints: LightPoint[] = useMemo(() => data.lightPoints || [], [data.lightPoints]);
   const withPerforation = data.withPerforation !== undefined ? data.withPerforation : true;
   const withMargin = data.withMargin !== undefined ? data.withMargin : true;
 
@@ -141,9 +145,6 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
       y: Math.round(50 + Math.sin(rad) * 28),
     };
   }, [lightAngle]);
-
-  const activeLightX = lightX != null ? lightX : defaultLightPos.x;
-  const activeLightY = lightY != null ? lightY : defaultLightPos.y;
 
   // 3D 鼠标互动卡片 ref
   const cardContainerRef = useRef<HTMLDivElement>(null);
@@ -169,13 +170,12 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
       patchState({
         presetId: nextPresetId,
         reliefStyle: preset.params.reliefStyle || 'topography',
-        shimmerType: preset.params.shimmerType || 'matte_silver',
+        shimmerType: preset.params.shimmerType || 'prismatic_opal',
         depth: preset.params.depth ?? 65,
         brightness: preset.params.brightness ?? 70,
         radius: preset.params.radius ?? 45,
         lightAngle: preset.params.lightAngle ?? 225,
-        lightX: null,
-        lightY: null,
+        lightPoints: null,
         withPerforation: preset.params.withPerforation ?? true,
         withMargin: preset.params.withMargin ?? true,
       });
@@ -210,14 +210,14 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
   const handleCardMouseLeave = useCallback(() => {
     const el = cardElementRef.current;
     if (!el) return;
-    el.style.setProperty('--pointer-x', `${activeLightX}%`);
-    el.style.setProperty('--pointer-y', `${activeLightY}%`);
+    el.style.setProperty('--pointer-x', `${defaultLightPos.x}%`);
+    el.style.setProperty('--pointer-y', `${defaultLightPos.y}%`);
     el.style.setProperty('--rotate-x', '0deg');
     el.style.setProperty('--rotate-y', '0deg');
     el.style.setProperty('--shine-opacity', '0.75');
-  }, [activeLightX, activeLightY]);
+  }, [defaultLightPos.x, defaultLightPos.y]);
 
-  // 点击卡片直接锁定高光中心坐标（即点即落，所见即所得）
+  // 点击卡片直接添加高光落点（支持单点或多点，最多 6 个）
   const handleCardClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       const el = cardElementRef.current;
@@ -231,14 +231,35 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
       const px = Math.round(Math.max(0, Math.min(100, (x / rect.width) * 100)));
       const py = Math.round(Math.max(0, Math.min(100, (y / rect.height) * 100)));
 
-      patchState({ lightX: px, lightY: py });
+      if (lightPoints.length >= 6) {
+        showToast('最多支持添加 6 个高光落点', { type: 'warning' });
+        return;
+      }
+
+      const newPoint: LightPoint = {
+        id: `pt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        x: px,
+        y: py,
+      };
+
+      patchState({ lightPoints: [...lightPoints, newPoint] });
     },
-    [patchState]
+    [lightPoints, patchState, showToast]
+  );
+
+  // 删除单个高光落点
+  const handleRemovePoint = useCallback(
+    (pointId: string, e?: React.MouseEvent) => {
+      e?.stopPropagation();
+      const next = lightPoints.filter((pt) => pt.id !== pointId);
+      patchState({ lightPoints: next.length > 0 ? next : null });
+    },
+    [lightPoints, patchState]
   );
 
   // 清除自定义高光锁定，恢复自然光位
-  const handleResetLightPos = useCallback(() => {
-    patchState({ lightX: null, lightY: null });
+  const handleResetLightPoints = useCallback(() => {
+    patchState({ lightPoints: null });
     showToast('已恢复默认自然光位', { type: 'success' });
   }, [patchState, showToast]);
 
@@ -257,8 +278,7 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
           brightness,
           radius,
           lightAngle,
-          lightX: lightX != null ? lightX : undefined,
-          lightY: lightY != null ? lightY : undefined,
+          lightPoints: lightPoints.length > 0 ? lightPoints : undefined,
           withPerforation,
           withMargin,
         },
@@ -273,8 +293,7 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
         brightness,
         radius,
         lightAngle,
-        lightX: lightX != null ? lightX : null,
-        lightY: lightY != null ? lightY : null,
+        lightPoints: lightPoints.length > 0 ? lightPoints : null,
         withPerforation,
         withMargin,
         imageUrl: dataUrl,
@@ -297,8 +316,7 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
     brightness,
     radius,
     lightAngle,
-    lightX,
-    lightY,
+    lightPoints,
     withPerforation,
     withMargin,
     presetId,
@@ -320,8 +338,7 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
         brightness,
         radius,
         lightAngle,
-        lightX: lightX != null ? lightX : null,
-        lightY: lightY != null ? lightY : null,
+        lightPoints: lightPoints.length > 0 ? lightPoints : null,
         withPerforation,
         withMargin,
         uploadedImage: data.uploadedImage ?? null,
@@ -350,8 +367,7 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
     brightness,
     radius,
     lightAngle,
-    lightX,
-    lightY,
+    lightPoints,
     withPerforation,
     withMargin,
     patchState,
@@ -425,22 +441,38 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
     []
   );
 
-  // CSS 动态高光渐变规则（用于实时 3D 预览）
+  // CSS 动态高光渐变规则（支持单点/多点实时 3D 预览）
   const shimmerGradientCss = useMemo(() => {
     const alpha = (brightness / 100) * 0.9;
-    const posX = `var(--pointer-x, ${activeLightX}%)`;
-    const posY = `var(--pointer-y, ${activeLightY}%)`;
-    switch (shimmerType) {
-      case 'matte_silver':
-        return `radial-gradient(circle at ${posX} ${posY}, rgba(255, 255, 255, ${alpha}) 0%, rgba(240, 245, 255, ${alpha * 0.7}) 20%, rgba(215, 225, 240, ${alpha * 0.3}) 45%, transparent 70%)`;
-      case 'rainbow_foil':
-        return `radial-gradient(circle at ${posX} ${posY}, rgba(255, 255, 255, ${alpha}) 0%, rgba(255, 220, 100, ${alpha * 0.85}) 18%, rgba(255, 120, 180, ${alpha * 0.75}) 35%, rgba(160, 100, 255, ${alpha * 0.65}) 52%, rgba(80, 220, 255, ${alpha * 0.45}) 70%, transparent 85%)`;
-      case 'warm_gold':
-        return `radial-gradient(circle at ${posX} ${posY}, rgba(255, 255, 235, ${alpha}) 0%, rgba(255, 220, 130, ${alpha * 0.85}) 22%, rgba(230, 175, 60, ${alpha * 0.45}) 50%, rgba(180, 120, 30, ${alpha * 0.12}) 75%, transparent 90%)`;
-      case 'aurora_cyan':
-        return `radial-gradient(circle at ${posX} ${posY}, rgba(240, 255, 255, ${alpha}) 0%, rgba(64, 224, 208, ${alpha * 0.8}) 25%, rgba(138, 43, 226, ${alpha * 0.45}) 55%, transparent 80%)`;
+    const getGradForPos = (posX: string | number, posY: string | number) => {
+      const xStr = typeof posX === 'number' ? `${posX}%` : posX;
+      const yStr = typeof posY === 'number' ? `${posY}%` : posY;
+      switch (shimmerType) {
+        case 'prismatic_opal':
+          return `radial-gradient(circle at ${xStr} ${yStr}, rgba(255, 255, 255, ${alpha}) 0%, rgba(255, 185, 210, ${alpha * 0.9}) 16%, rgba(130, 245, 215, ${alpha * 0.78}) 36%, rgba(120, 210, 255, ${alpha * 0.65}) 56%, rgba(205, 160, 255, ${alpha * 0.35}) 76%, transparent 90%)`;
+        case 'neon_cyber':
+          return `radial-gradient(circle at ${xStr} ${yStr}, rgba(255, 255, 255, ${alpha}) 0%, rgba(255, 45, 150, ${alpha * 0.92}) 20%, rgba(150, 60, 255, ${alpha * 0.75}) 46%, rgba(0, 240, 255, ${alpha * 0.48}) 72%, transparent 88%)`;
+        case 'rose_champagne':
+          return `radial-gradient(circle at ${xStr} ${yStr}, rgba(255, 255, 245, ${alpha}) 0%, rgba(255, 195, 150, ${alpha * 0.88}) 20%, rgba(245, 130, 175, ${alpha * 0.68}) 46%, rgba(195, 120, 195, ${alpha * 0.25}) 76%, transparent 90%)`;
+        case 'nebula_violet':
+          return `radial-gradient(circle at ${xStr} ${yStr}, rgba(255, 240, 255, ${alpha}) 0%, rgba(215, 75, 255, ${alpha * 0.88}) 20%, rgba(75, 110, 255, ${alpha * 0.62}) 50%, rgba(0, 210, 255, ${alpha * 0.25}) 78%, transparent 90%)`;
+        case 'rainbow_foil':
+          return `radial-gradient(circle at ${xStr} ${yStr}, rgba(255, 255, 255, ${alpha}) 0%, rgba(255, 220, 100, ${alpha * 0.85}) 18%, rgba(255, 120, 180, ${alpha * 0.75}) 35%, rgba(160, 100, 255, ${alpha * 0.65}) 52%, rgba(80, 220, 255, ${alpha * 0.45}) 70%, transparent 85%)`;
+        case 'warm_gold':
+          return `radial-gradient(circle at ${xStr} ${yStr}, rgba(255, 255, 235, ${alpha}) 0%, rgba(255, 220, 130, ${alpha * 0.85}) 22%, rgba(230, 175, 60, ${alpha * 0.45}) 50%, rgba(180, 120, 30, ${alpha * 0.12}) 75%, transparent 90%)`;
+        case 'pearl_platinum':
+          return `radial-gradient(circle at ${xStr} ${yStr}, rgba(255, 255, 255, ${alpha}) 0%, rgba(225, 240, 255, ${alpha * 0.82}) 20%, rgba(235, 220, 250, ${alpha * 0.48}) 48%, rgba(190, 205, 230, ${alpha * 0.16}) 76%, transparent 88%)`;
+      }
+    };
+
+    if (lightPoints.length > 0) {
+      return lightPoints.map((pt) => getGradForPos(pt.x, pt.y)).join(', ');
     }
-  }, [shimmerType, brightness, activeLightX, activeLightY]);
+    return getGradForPos(
+      `var(--pointer-x, ${defaultLightPos.x}%)`,
+      `var(--pointer-y, ${defaultLightPos.y}%)`
+    );
+  }, [shimmerType, brightness, lightPoints, defaultLightPos.x, defaultLightPos.y]);
 
   return (
     <CanvasNode
@@ -776,17 +808,17 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
           {/* 画布层悬浮定光状态微 HUD */}
           {!hasGenerated && activeImageSrc && (
             <div className="absolute top-2 left-2 z-20 pointer-events-auto">
-              {lightX != null && lightY != null ? (
+              {lightPoints.length > 0 ? (
                 <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-paper/90 backdrop-blur-md border border-accent/40 text-[10px] text-accent font-medium shadow-xs">
                   <Crosshair size={11} className="text-accent animate-pulse" />
-                  <span>光位: {lightX}%, {lightY}%</span>
+                  <span>高光落点 ({lightPoints.length}/6)</span>
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleResetLightPos();
+                      handleResetLightPoints();
                     }}
-                    title="恢复默认自然光位"
+                    title="清空落点并恢复默认自然光位"
                     className="p-0.5 rounded-full hover:bg-accent/15 text-ink-faint hover:text-accent transition duration-150"
                   >
                     <RotateCcw size={10} />
@@ -795,7 +827,7 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
               ) : (
                 <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-paper/70 backdrop-blur-xs border border-paper-grid/60 text-[10px] text-ink-faint pointer-events-none shadow-2xs">
                   <Crosshair size={10} className="text-ink-faint/70" />
-                  <span>点击卡片锁定光位</span>
+                  <span>点击画面添加单点/多点高光</span>
                 </div>
               )}
             </div>
@@ -824,7 +856,7 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
                     className={`relative max-w-full max-h-full flex items-center justify-center rounded cursor-crosshair group shadow-lg ${
                       withMargin ? 'p-3 bg-white' : 'bg-transparent'
                     }`}
-                    title="点击画面任意位置可直接锁定高光落点（所见即所得）"
+                    title="点击画面任意位置可直接添加或调整高光落点（最多 6 个）"
                   >
                     {/* 1. 底层图片 */}
                     <img
@@ -864,18 +896,30 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
                       <div className="absolute inset-0 border-2 border-dashed border-black/25 pointer-events-none rounded-[2px]" />
                     )}
 
-                    {/* 5. 自定义高光焦点指示器（点击定光后的微光瞄准圈） */}
-                    {lightX != null && lightY != null && (
+                    {/* 5. 自定义高光焦点指示器（单点/多点瞄准微标与独立删除） */}
+                    {lightPoints.map((pt, index) => (
                       <div
-                        className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-none z-20 transition-all duration-150"
-                        style={{ left: `${lightX}%`, top: `${lightY}%` }}
+                        key={pt.id}
+                        className="absolute -translate-x-1/2 -translate-y-1/2 z-20 transition-all duration-150 group/point"
+                        style={{ left: `${pt.x}%`, top: `${pt.y}%` }}
+                        onClick={(e) => e.stopPropagation()}
                       >
                         <div className="relative flex items-center justify-center w-6 h-6">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent/40 opacity-75" />
-                          <span className="relative inline-flex rounded-full h-2 w-2 border-2 border-white bg-accent shadow-xs" />
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent/40 opacity-75 pointer-events-none" />
+                          <span className="relative inline-flex items-center justify-center rounded-full h-4 w-4 border-2 border-white bg-accent text-[9px] text-white font-bold shadow-xs pointer-events-none">
+                            {index + 1}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => handleRemovePoint(pt.id, e)}
+                            title={`删除高光落点 #${index + 1}`}
+                            className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full bg-paper/95 text-ink-faint hover:text-error border border-paper-grid/60 shadow-xs opacity-0 group-hover/point:opacity-100 transition-opacity"
+                          >
+                            <X size={9} strokeWidth={2.5} />
+                          </button>
                         </div>
                       </div>
-                    )}
+                    ))}
 
                     {/* 悬浮快捷生成按钮 */}
                     <button

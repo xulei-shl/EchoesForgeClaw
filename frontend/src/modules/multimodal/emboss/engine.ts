@@ -3,7 +3,7 @@
  * 基于 HTML5 Canvas 像素级光影与图层混合实现，输出高保真 PNG
  */
 
-import type { EmbossFoilParams, EmbossReliefStyle, FoilShimmerType } from './types';
+import type { EmbossFoilParams, EmbossReliefStyle, FoilShimmerType, LightPoint } from './types';
 
 /**
  * 加载图片 URL 为 HTMLImageElement
@@ -145,7 +145,7 @@ function processReliefPixels(
 }
 
 /**
- * 绘制高光光斑图层（支持磨砂银白、彩虹全息、暖金微光、极光幻彩）
+ * 绘制高光光斑图层（支持单点/多点高光叠加，支持磨砂银白、彩虹全息、暖金微光、极光幻彩）
  */
 function drawFoilShimmerLayer(
   ctx: CanvasRenderingContext2D,
@@ -154,18 +154,25 @@ function drawFoilShimmerLayer(
   shimmerType: FoilShimmerType,
   brightnessPercent: number,
   radiusPercent: number,
-  lightXPercent?: number,
-  lightYPercent?: number,
+  lightPoints?: LightPoint[],
   lightAngleDeg = 225
 ) {
-  // 计算光斑中心物理坐标
-  let cx = (width * (lightXPercent !== undefined ? lightXPercent : 50)) / 100;
-  let cy = (height * (lightYPercent !== undefined ? lightYPercent : 50)) / 100;
+  // 计算所有落点的物理坐标
+  const points: { cx: number; cy: number }[] = [];
 
-  if (lightXPercent === undefined && lightYPercent === undefined) {
+  if (lightPoints && lightPoints.length > 0) {
+    for (const pt of lightPoints) {
+      points.push({
+        cx: (width * pt.x) / 100,
+        cy: (height * pt.y) / 100,
+      });
+    }
+  } else {
     const rad = (lightAngleDeg * Math.PI) / 180;
-    cx = width * 0.5 + Math.cos(rad) * (width * 0.28);
-    cy = height * 0.5 + Math.sin(rad) * (height * 0.28);
+    points.push({
+      cx: width * 0.5 + Math.cos(rad) * (width * 0.28),
+      cy: height * 0.5 + Math.sin(rad) * (height * 0.28),
+    });
   }
 
   const maxDim = Math.max(width, height);
@@ -175,52 +182,82 @@ function drawFoilShimmerLayer(
   ctx.save();
   ctx.globalCompositeOperation = 'color-dodge';
 
-  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+  for (const { cx, cy } of points) {
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
 
-  switch (shimmerType) {
-    case 'matte_silver':
-      // 磨砂银白：纯净高亮柔白光晕，完美映射底纹
-      grad.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
-      grad.addColorStop(0.2, `rgba(242, 246, 252, ${alpha * 0.7})`);
-      grad.addColorStop(0.5, `rgba(215, 225, 240, ${alpha * 0.3})`);
-      grad.addColorStop(0.8, `rgba(180, 195, 210, ${alpha * 0.08})`);
-      grad.addColorStop(1, 'transparent');
-      break;
+    switch (shimmerType) {
+      case 'prismatic_opal':
+        // 欧泊幻彩：翡翠天青与蜜桃粉宝石折射色散
+        grad.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
+        grad.addColorStop(0.16, `rgba(255, 185, 210, ${alpha * 0.9})`);
+        grad.addColorStop(0.36, `rgba(130, 245, 215, ${alpha * 0.78})`);
+        grad.addColorStop(0.56, `rgba(120, 210, 255, ${alpha * 0.65})`);
+        grad.addColorStop(0.76, `rgba(205, 160, 255, ${alpha * 0.35})`);
+        grad.addColorStop(1, 'transparent');
+        break;
 
-    case 'rainbow_foil':
-      // 彩虹镭射全息：光谱色散渐变
-      grad.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
-      grad.addColorStop(0.18, `rgba(255, 220, 100, ${alpha * 0.85})`);
-      grad.addColorStop(0.35, `rgba(255, 120, 180, ${alpha * 0.75})`);
-      grad.addColorStop(0.52, `rgba(160, 100, 255, ${alpha * 0.65})`);
-      grad.addColorStop(0.7, `rgba(80, 220, 255, ${alpha * 0.45})`);
-      grad.addColorStop(0.88, `rgba(120, 255, 180, ${alpha * 0.2})`);
-      grad.addColorStop(1, 'transparent');
-      break;
+      case 'neon_cyber':
+        // 赛博霓虹：电光洋红 ↔ 极光电青冷暖激光冲突
+        grad.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
+        grad.addColorStop(0.2, `rgba(255, 45, 150, ${alpha * 0.92})`);
+        grad.addColorStop(0.46, `rgba(150, 60, 255, ${alpha * 0.75})`);
+        grad.addColorStop(0.72, `rgba(0, 240, 255, ${alpha * 0.48})`);
+        grad.addColorStop(1, 'transparent');
+        break;
 
-    case 'warm_gold':
-      // 暖金微光：香槟金与暖黄反光
-      grad.addColorStop(0, `rgba(255, 255, 235, ${alpha})`);
-      grad.addColorStop(0.22, `rgba(255, 220, 130, ${alpha * 0.85})`);
-      grad.addColorStop(0.5, `rgba(230, 175, 60, ${alpha * 0.45})`);
-      grad.addColorStop(0.8, `rgba(180, 120, 30, ${alpha * 0.12})`);
-      grad.addColorStop(1, 'transparent');
-      break;
+      case 'rose_champagne':
+        // 玫瑰香槟：蜜桃金与暮色玫瑰粉紫
+        grad.addColorStop(0, `rgba(255, 255, 245, ${alpha})`);
+        grad.addColorStop(0.2, `rgba(255, 195, 150, ${alpha * 0.88})`);
+        grad.addColorStop(0.46, `rgba(245, 130, 175, ${alpha * 0.68})`);
+        grad.addColorStop(0.76, `rgba(195, 120, 195, ${alpha * 0.25})`);
+        grad.addColorStop(1, 'transparent');
+        break;
 
-    case 'aurora_cyan':
-      // 极光幻彩：青绿到紫罗兰极光渐变
-      grad.addColorStop(0, `rgba(240, 255, 255, ${alpha})`);
-      grad.addColorStop(0.25, `rgba(64, 224, 208, ${alpha * 0.8})`);
-      grad.addColorStop(0.55, `rgba(138, 43, 226, ${alpha * 0.45})`);
-      grad.addColorStop(0.82, `rgba(75, 0, 130, ${alpha * 0.15})`);
-      grad.addColorStop(1, 'transparent');
-      break;
+      case 'nebula_violet':
+        // 星云幽紫：荧光魅紫 ↔ 深邃群青星尘
+        grad.addColorStop(0, `rgba(255, 240, 255, ${alpha})`);
+        grad.addColorStop(0.2, `rgba(215, 75, 255, ${alpha * 0.88})`);
+        grad.addColorStop(0.5, `rgba(75, 110, 255, ${alpha * 0.62})`);
+        grad.addColorStop(0.78, `rgba(0, 210, 255, ${alpha * 0.25})`);
+        grad.addColorStop(1, 'transparent');
+        break;
+
+      case 'rainbow_foil':
+        // 彩虹镭射全息：全光谱高密度色散
+        grad.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
+        grad.addColorStop(0.18, `rgba(255, 220, 100, ${alpha * 0.85})`);
+        grad.addColorStop(0.35, `rgba(255, 120, 180, ${alpha * 0.75})`);
+        grad.addColorStop(0.52, `rgba(160, 100, 255, ${alpha * 0.65})`);
+        grad.addColorStop(0.7, `rgba(80, 220, 255, ${alpha * 0.45})`);
+        grad.addColorStop(0.88, `rgba(120, 255, 180, ${alpha * 0.2})`);
+        grad.addColorStop(1, 'transparent');
+        break;
+
+      case 'warm_gold':
+        // 奢雅暖金：香槟金与古典暖黄反光
+        grad.addColorStop(0, `rgba(255, 255, 235, ${alpha})`);
+        grad.addColorStop(0.22, `rgba(255, 220, 130, ${alpha * 0.85})`);
+        grad.addColorStop(0.5, `rgba(230, 175, 60, ${alpha * 0.45})`);
+        grad.addColorStop(0.8, `rgba(180, 120, 30, ${alpha * 0.12})`);
+        grad.addColorStop(1, 'transparent');
+        break;
+
+      case 'pearl_platinum':
+        // 珠光铂金：冰蓝淡紫纯净冷冽冷光
+        grad.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
+        grad.addColorStop(0.2, `rgba(225, 240, 255, ${alpha * 0.82})`);
+        grad.addColorStop(0.48, `rgba(235, 220, 250, ${alpha * 0.48})`);
+        grad.addColorStop(0.76, `rgba(190, 205, 230, ${alpha * 0.16})`);
+        grad.addColorStop(1, 'transparent');
+        break;
+    }
+
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, width, height);
   }
 
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, width, height);
-
-  // 叠加第二层轻微柔和漫反射环境光，增强整体金属/纸面反光通透感
+  // 叠加柔和漫反射环境光，增强整体金属/纸面反光通透感
   const envGrad = ctx.createLinearGradient(0, 0, width, height);
   envGrad.addColorStop(0, `rgba(255, 255, 255, ${alpha * 0.2})`);
   envGrad.addColorStop(0.5, 'transparent');
@@ -314,8 +351,7 @@ export async function renderEmbossFoilFromImage(
     params.shimmerType,
     params.brightness,
     params.radius,
-    params.lightX,
-    params.lightY,
+    params.lightPoints,
     params.lightAngle
   );
 

@@ -1,5 +1,7 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
-import { Search, X, Layers, Sparkles } from 'lucide-react';
+import { Search, X, Layers, Sparkles, CornerDownLeft } from 'lucide-react';
+
+
 import { CATEGORY_LABELS, NODE_TEMPLATES, NODE_COLORS, NODE_TEMPLATE_MAP } from '../nodeTypes';
 import type { CanvasNodeType } from '../../../platform/types';
 
@@ -127,6 +129,8 @@ interface NodeItemRowProps {
   pendingChildId?: string | null;
   onPick: (item: NodePickerItem) => void;
   showCategoryBadge?: boolean;
+  isSelected?: boolean;
+  onMouseEnter?: () => void;
 }
 
 const NodeItemRow: React.FC<NodeItemRowProps> = ({
@@ -134,61 +138,95 @@ const NodeItemRow: React.FC<NodeItemRowProps> = ({
   pendingChildId,
   onPick,
   showCategoryBadge = false,
+  isSelected = false,
+  onMouseEnter,
 }) => {
   const themeColor = NODE_COLORS[item.nodeType] || '#5B8A5B';
   const categoryBadge = showCategoryBadge ? getItemCategoryLabel(item) : null;
+  const rowRef = useRef<HTMLButtonElement>(null);
+
+  // 键盘选中时自动滚动到可视区域
+  useEffect(() => {
+    if (isSelected && rowRef.current) {
+      rowRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }, [isSelected]);
 
   return (
     <button
+      ref={rowRef}
       key={item.key}
       type="button"
       disabled={!!pendingChildId}
+      onMouseEnter={onMouseEnter}
       onClick={(e) => {
         e.stopPropagation();
         onPick(item);
       }}
-      className="w-full flex items-start px-2.5 py-2 text-left rounded-lg border border-transparent hover:border-paper-grid/80 hover:bg-accent-surface/40 active:scale-[0.98] transition-all disabled:opacity-50 group/node"
+      className={`w-full flex items-center justify-between px-2.5 py-2 text-left rounded-lg border transition-all disabled:opacity-50 group/node ${
+        isSelected
+          ? 'bg-accent-surface/80 border-accent/40 shadow-xs ring-1 ring-accent/30'
+          : 'border-transparent hover:border-paper-grid/80 hover:bg-accent-surface/40'
+      } active:scale-[0.98]`}
     >
-      {/* 节点类型指示圆点 */}
-      <div className="flex items-center justify-center w-4 h-4 shrink-0 mt-0.5">
-        {item.mode === 'agent' ? (
-          <Sparkles className="w-3.5 h-3.5 text-accent animate-pulse" />
-        ) : (
-          <span
-            className="w-2 h-2 rounded-full transition-transform duration-150 group-hover/node:scale-125"
-            style={{
-              backgroundColor: item.fallback ? 'rgba(120, 113, 108, 0.5)' : themeColor,
-            }}
-          />
-        )}
-      </div>
-
-      {/* 节点文本内容 */}
-      <div className="ml-2 min-w-0 flex-1">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-xs font-sans text-ink font-medium truncate group-hover/node:text-accent transition-colors">
-            {item.label}
-          </span>
-          {categoryBadge && (
-            <span className="shrink-0 text-[9px] text-ink-faint bg-paper-grid/30 border border-dashed border-paper-grid/60 rounded px-1 py-px leading-none font-sans">
-              {categoryBadge}
-            </span>
-          )}
-          {item.fallback && (
-            <span className="shrink-0 text-[9px] text-ink-faint border border-dashed border-paper-grid rounded-sm px-1 py-px leading-none">
-              默认
-            </span>
-          )}
-          {item.mode === 'agent' && (
-            <span className="shrink-0 text-[9px] text-accent bg-accent-surface rounded-sm px-1 py-px leading-none font-medium">
-              Agent
-            </span>
+      <div className="flex items-start min-w-0 flex-1">
+        {/* 节点类型指示圆点 */}
+        <div className="flex items-center justify-center w-4 h-4 shrink-0 mt-0.5">
+          {item.mode === 'agent' ? (
+            <Sparkles className="w-3.5 h-3.5 text-accent animate-pulse" />
+          ) : (
+            <span
+              className={`w-2 h-2 rounded-full transition-transform duration-150 ${
+                isSelected ? 'scale-125' : 'group-hover/node:scale-125'
+              }`}
+              style={{
+                backgroundColor: item.fallback ? 'rgba(120, 113, 108, 0.5)' : themeColor,
+              }}
+            />
           )}
         </div>
-        <p className="text-[11px] text-ink-light/75 font-sans truncate mt-0.5 leading-tight">
-          {item.agentName ? `Agent · ${item.agentName}` : item.description}
-        </p>
+
+        {/* 节点文本内容 */}
+        <div className="ml-2 min-w-0 flex-1 pr-1">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span
+              className={`text-xs font-sans font-medium truncate transition-colors ${
+                isSelected ? 'text-accent' : 'text-ink group-hover/node:text-accent'
+              }`}
+            >
+              {item.label}
+            </span>
+            {categoryBadge && (
+              <span className="shrink-0 text-[9px] text-ink-faint bg-paper-grid/30 border border-dashed border-paper-grid/60 rounded px-1 py-px leading-none font-sans">
+                {categoryBadge}
+              </span>
+            )}
+            {item.fallback && (
+              <span className="shrink-0 text-[9px] text-ink-faint border border-dashed border-paper-grid rounded-sm px-1 py-px leading-none">
+                默认
+              </span>
+            )}
+            {item.mode === 'agent' && (
+              <span className="shrink-0 text-[9px] text-accent bg-accent-surface rounded-sm px-1 py-px leading-none font-medium">
+                Agent
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] text-ink-light/75 font-sans truncate mt-0.5 leading-tight">
+            {item.agentName ? `Agent · ${item.agentName}` : item.description}
+          </p>
+        </div>
       </div>
+
+      {/* 快捷键提示徽章 */}
+      {isSelected && (
+        <div className="shrink-0 flex items-center pl-1.5 animate-in fade-in duration-100">
+          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-sans font-medium text-accent bg-paper border border-accent/30 shadow-2xs">
+            <span>Enter</span>
+            <CornerDownLeft className="w-2.5 h-2.5 opacity-80" />
+          </span>
+        </div>
+      )}
     </button>
   );
 };
@@ -203,6 +241,7 @@ const EmptyPickerState = React.memo(({ message }: { message: string }) => (
 const NodePickerListInner: React.FC<NodePickerListProps> = ({ items, onPick, pendingChildId }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('all');
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // 打开时自动聚焦搜索输入框
@@ -222,6 +261,11 @@ const NodePickerListInner: React.FC<NodePickerListProps> = ({ items, onPick, pen
     );
   }, [items, searchQuery]);
 
+  // 搜索内容变动时，默认高亮第 1 项
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [searchQuery]);
+
   // 分类与节点归类映射
   const { categories, groupMap } = useMemo(() => buildCategories(items), [items]);
 
@@ -230,6 +274,37 @@ const NodePickerListInner: React.FC<NodePickerListProps> = ({ items, onPick, pen
     () => categories.filter((c) => c.key !== 'all'),
     [categories]
   );
+
+  // 键盘快捷操作（方向键导航 + Enter 创建）
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+
+    // 中文输入法选词期间不拦截回车
+    if (e.nativeEvent.isComposing) return;
+
+    const count = filteredItems.length;
+    if (searchQuery.trim() && count > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedIndex((prev) => (prev + 1) % count);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedIndex((prev) => (prev - 1 + count) % count);
+        return;
+      }
+      if (e.key === 'Enter') {
+        if (pendingChildId) return;
+        e.preventDefault();
+        const targetItem = filteredItems[selectedIndex] || filteredItems[0];
+        if (targetItem) {
+          onPick(targetItem);
+        }
+        return;
+      }
+    }
+  };
 
   return (
     <div className="flex flex-col select-none">
@@ -245,7 +320,7 @@ const NodePickerListInner: React.FC<NodePickerListProps> = ({ items, onPick, pen
             placeholder="搜索节点名称、描述或 Agent..."
             className="w-full pl-8 pr-7 py-1.5 bg-paper-grid/20 border border-dashed border-paper-grid rounded-md text-xs text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
             onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
+            onKeyDown={handleInputKeyDown}
           />
 
           {searchQuery && (
@@ -254,6 +329,7 @@ const NodePickerListInner: React.FC<NodePickerListProps> = ({ items, onPick, pen
               onClick={(e) => {
                 e.stopPropagation();
                 setSearchQuery('');
+                setSelectedIndex(0);
                 inputRef.current?.focus();
               }}
               className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-ink-faint hover:text-ink rounded transition-colors"
@@ -311,18 +387,20 @@ const NodePickerListInner: React.FC<NodePickerListProps> = ({ items, onPick, pen
         {/* 右侧节点列表 (Detail) */}
         <div className="flex-1 overflow-y-auto p-2 bg-paper/60 custom-scrollbar">
           {searchQuery.trim() ? (
-            // 搜索态：平铺展示，并显示所属类别微徽标
+            // 搜索态：平铺展示，支持键盘高亮与回车快速创建
             filteredItems.length === 0 ? (
               <EmptyPickerState message="未找到匹配的节点" />
             ) : (
               <div className="space-y-1">
-                {filteredItems.map((item) => (
+                {filteredItems.map((item, index) => (
                   <NodeItemRow
                     key={item.key}
                     item={item}
                     pendingChildId={pendingChildId}
                     onPick={onPick}
                     showCategoryBadge={true}
+                    isSelected={index === selectedIndex}
+                    onMouseEnter={() => setSelectedIndex(index)}
                   />
                 ))}
               </div>

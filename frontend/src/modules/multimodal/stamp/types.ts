@@ -38,6 +38,30 @@ export type StampLayoutPreset =
   | '3x3' // 九联
   | 'custom'; // 自定义行列
 
+/** 邮票排版文字项 */
+export interface StampTextItem {
+  /** 唯一标识 */
+  id: string;
+  /** 文字内容 */
+  text: string;
+  /** 字体族名称 (默认思源宋体/上图东观体) */
+  fontFamily?: string;
+  /** 文字颜色 (Hex/RGB/颜色名) */
+  color?: string;
+  /** 排版方向：横排 (horizontal) 或 竖排 (vertical) */
+  writingMode?: 'horizontal' | 'vertical';
+  /** 中心点 X (0~100 百分比，相对于邮票整张画布) */
+  x: number;
+  /** 中心点 Y (0~100 百分比，相对于邮票整张画布) */
+  y: number;
+  /** 字号缩放比例 (相对于邮票宽度的百分比，默认 6 左右) */
+  w: number;
+  /** 旋转角度 (度，默认 0) */
+  angle: number;
+  /** 图层层级 (z-index) */
+  z: number;
+}
+
 /** 邮票齿孔打孔与柔和投影渲染参数 */
 export interface StampEffectOptions {
   /** 多联网格版式（默认 { rows: 1, cols: 1 } 单张） */
@@ -56,6 +80,8 @@ export interface StampEffectOptions {
   shadowAlpha?: number;
   /** 背景色（默认 null 为真透明 RGBA，传颜色字符串则为填充底色） */
   bgColor?: string | null;
+  /** 邮票排版文字项列表 */
+  textItems?: StampTextItem[];
 }
 
 /** 邮票截图框节点内部持久化状态 */
@@ -68,6 +94,8 @@ export interface StampCutterState {
   aspectRatio: StampAspectRatio;
   /** 选框归一化坐标 */
   cropBox: StampCropBox | null;
+  /** 邮票排版文字素材列表 */
+  textItems?: StampTextItem[];
   /** 导出的最终高清邮票图片 URL (PNG) */
   imageUrl?: string | null;
   /** 用户本地直接上传/替换的图片 (Base64 Data URL) */
@@ -77,3 +105,4 @@ export interface StampCutterState {
   /** 错误信息 */
   error?: string | null;
 }
+
