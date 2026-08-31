@@ -3,7 +3,13 @@
  * 采用策略模式，支持 7 款标志性独立模板的 1:1 所见即所得 300DPI 导出
  */
 
-import type { EditorialPreset, EditorialState, PageRatioPreset } from '../types';
+import type {
+  EditorialArticleData,
+  EditorialFreeTextItem,
+  EditorialPreset,
+  EditorialState,
+  PageRatioPreset,
+} from '../types';
 import { computeEditorialLayout } from '../engine/layoutEngine';
 import { loadFontFamily } from '../../journal/text/fontRegistry';
 import { getEditorialTemplate } from '../templates';
@@ -19,6 +25,129 @@ function loadImage(src: string): Promise<HTMLImageElement> {
     img.onerror = (err) => reject(err);
     img.src = src;
   });
+}
+
+/**
+ * 文本按行折行（CJK 友好的逐字断行）
+ */
+function wrapCanvasText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number
+): string[] {
+  const lines: string[] = [];
+  let cur = '';
+  for (const ch of Array.from(text)) {
+    const cand = cur + ch;
+    if (cur && ctx.measureText(cand).width > maxWidth) {
+      lines.push(cur);
+      cur = ch;
+    } else {
+      cur = cand;
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines.length ? lines : [''];
+}
+
+/**
+ * 竖排（vertical-rl）绘制：列自上而下、自右向左
+ */
+function drawVerticalText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  regionW: number,
+  regionH: number,
+  fontSize: number,
+  align: 'left' | 'center' | 'right'
+) {
+  const lineHeight = Math.round(fontSize * 1.2);
+  const gap = Math.round(fontSize * 0.35);
+  const rows = Math.max(1, Math.floor(regionH / lineHeight));
+  const chars = Array.from(text);
+  const cols: string[][] = [];
+  for (let i = 0; i < chars.length; i += rows) cols.push(chars.slice(i, i + rows));
+
+  let right = regionW;
+  // 计算最后一列字符宽，用于对齐起点
+  const charW = Math.max(fontSize, ...chars.map((c) => ctx.measureText(c).width || 0));
+  if (align === 'left') right = Math.max(regionW, charW);
+  else if (align === 'center') right = Math.max(regionW, charW) + Math.max(0, regionW - charW) / 2;
+
+  let cx = cols.length > 0 ? right - charW : right;
+  for (const col of cols) {
+    col.forEach((ch, j) => {
+      const cw = ctx.measureText(ch).width;
+      ctx.fillText(ch, cx + (charW - cw) / 2, j * lineHeight);
+    });
+    cx -= charW + gap;
+  }
+}
+
+/**
+ * 绘制单个自由排版文本块（旋转原点为左上角，与 DOM 预览 1:1 对齐）
+ */
+function drawFreeTextBlock(
+  ctx: CanvasRenderingContext2D,
+  block: EditorialFreeTextItem,
+  text: string,
+  W: number,
+  H: number
+) {
+  const pxX = (block.x / 100) * W;
+  const pxY = (block.y / 100) * H;
+  const pxW = (block.width / 100) * W;
+  const isBold = block.fontStyle === 'bold' || block.fontStyle === 'bold-italic';
+  const isItalic = block.fontStyle === 'italic' || block.fontStyle === 'bold-italic';
+  const boldStr = isBold ? 'bold ' : '';
+  const italicStr = isItalic ? 'italic ' : '';
+  const fontSpec = `${italicStr}${boldStr}${block.fontSize}px ${block.fontFamily || 'serif'}`;
+  const align = block.textAlign || 'left';
+
+  ctx.save();
+  ctx.translate(pxX, pxY);
+  if (block.rotation) {
+    ctx.rotate((block.rotation * Math.PI) / 180);
+  }
+  ctx.fillStyle = block.color || '#1a1a1a';
+  ctx.font = fontSpec;
+  ctx.textBaseline = 'top';
+  ctx.textAlign = 'left';
+
+  if (block.writingMode === 'vertical') {
+    drawVerticalText(ctx, text, pxW, H - pxY, block.fontSize, align);
+  } else {
+    const lines = wrapCanvasText(ctx, text, pxW);
+    const lineHeight = Math.round(block.fontSize * 1.4);
+    lines.forEach((line, i) => {
+      const w = ctx.measureText(line).width;
+      let x = 0;
+      if (align === 'center') x = (pxW - w) / 2;
+      else if (align === 'right') x = pxW - w;
+      ctx.fillText(line, x, i * lineHeight);
+    });
+  }
+  ctx.restore();
+}
+
+/**
+ * 绘制全部自由排版文本块（绑定的字段内容取 state.article）
+ */
+function drawFreeTextBlocks(
+  ctx: CanvasRenderingContext2D,
+  state: EditorialState,
+  article: EditorialArticleData,
+  W: number,
+  H: number
+) {
+  const blocks = state.freeTexts || [];
+  for (const b of blocks) {
+    const text = b.bind && article
+      ? String((article as unknown as Record<string, unknown>)[b.bind] ?? '')
+      : b.text;
+    if (!(text || '').trim()) continue;
+    drawFreeTextBlock(ctx, b, text, W, H);
+  }
 }
 
 /**
@@ -60,12 +189,18 @@ export async function exportEditorialToPng(
   const template = getEditorialTemplate(preset.id || state.presetId);
   const layoutType = preset.features?.layoutType || 'newspaper';
 
-  // 1. 确保字体已加载
+  // 1. 确保字体已加载（含自由排版块单独设置的字体）
   try {
+    const freeFonts = [
+      ...new Set(
+        (state.freeTexts || []).map((f) => f.fontFamily).filter(Boolean) as string[]
+      ),
+    ];
     await Promise.all([
       loadFontFamily(typography.headlineFont),
       loadFontFamily(typography.bodyFont),
       typography.accentFont ? loadFontFamily(typography.accentFont) : Promise.resolve(),
+      ...freeFonts.map((f) => loadFontFamily(f)),
     ]);
     if (document.fonts) {
       await document.fonts.ready;
@@ -138,7 +273,7 @@ export async function exportEditorialToPng(
   });
 
   // 7. 通用刊头与分割线（当非特定模板时降级渲染）
-  if (article.masthead && !preset.features.hasDatelineRule && layoutType !== 'inverted' && layoutType !== 'cover') {
+  if (article.masthead && !preset.features.hasDatelineRule && layoutType !== 'inverted' && layoutType !== 'cover' && layoutType !== 'free') {
     const mastheadY = Math.round(H * 0.045);
     const mX = Math.round(W * 0.065);
     ctx.save();
@@ -220,6 +355,12 @@ export async function exportEditorialToPng(
       ctx.fillText(item.caption, imgX, imgY + imgH + Math.round(typography.bodyFontSize * 1.0));
       ctx.restore();
     }
+  }
+
+  // 8.5 自由排版文本块（自由画布专用）：绘制后即完成导出，跳过引擎自动文本区段
+  if (layoutType === 'free') {
+    drawFreeTextBlocks(ctx, state, article, W, H);
+    return canvas.toDataURL('image/png');
   }
 
   // 9. 绘制大标题 (Headline)

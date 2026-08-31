@@ -23,6 +23,34 @@ export const EDITORIAL_PAGE_RATIOS: PageRatioPreset[] = [
   { id: '4:5', name: '社媒图文 (4:5)', width: 1200, height: 1500, aspectRatio: 4 / 5 },
 ];
 
+/** 文本对齐方式 */
+export type EditorialTextAlign = 'left' | 'center' | 'right';
+
+/** 文本字重/字形 */
+export type EditorialTextStyle = 'normal' | 'bold' | 'italic' | 'bold-italic';
+
+/** 自由排版文本块（百分比坐标系 x/y/width 0~100，fontSize 基于标准画布尺寸） */
+export interface EditorialFreeTextItem {
+  id: string;
+  /** 绑定文章字段（可选）：绑定后内容跟随 article[bind]，可由图书元数据/上级节点继承自动填充 */
+  bind?: keyof EditorialArticleData;
+  /** 独立文本内容（未绑定或作为展示兜底时使用） */
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  fontSize: number;
+  fontFamily: string;
+  color: string;
+  textAlign: EditorialTextAlign;
+  /** 字形：正常/加粗/斜体 */
+  fontStyle: EditorialTextStyle;
+  rotation: number;
+  /** 行内 zIndex（仅在同数组内排序生效；自由排版中文本绘制于图片之上） */
+  zIndex: number;
+  writingMode?: 'horizontal' | 'vertical';
+}
+
 /** 图片素材项（百分比坐标系 0~100） */
 export interface EditorialImageItem {
   id: string;
@@ -103,7 +131,8 @@ export type EditorialLayoutType =
   | 'inverted'      // 粗野反色 (Brutalism & Inverted Split)
   | 'gallery'       // 双图画廊 (Gallery Exhibition)
   | 'minimal'       // 极简文学 (Minimalist Kinfolk)
-  | 'bold_poster';  // 意式波普 (Bold Pop Poster)
+  | 'bold_poster'   // 意式波普 (Bold Pop Poster)
+  | 'free';         // 自由排版 (Free Canvas)
 
 /** 风格专属特征标记 */
 export interface EditorialPresetFeatures {
@@ -147,6 +176,8 @@ export interface EditorialState {
   pageSize: EditorialPageRatio;
   article: EditorialArticleData;
   images: EditorialImageItem[];
+  /** 自由排版文本块（自由画布模板专用） */
+  freeTexts?: EditorialFreeTextItem[];
   typography: EditorialTypographySettings;
   background: EditorialBackground;
   /** 记录被用户手动删除的上游图片 ID/URL，防重复装载 */

@@ -11,6 +11,7 @@ import { invertedContrastTemplate } from './invertedContrast';
 import { galleryDuoTemplate } from './galleryDuo';
 import { minimalEditorialTemplate } from './minimalEditorial';
 import { boldPosterTemplate } from './boldPoster';
+import { freeBoardTemplate } from './freeBoard';
 
 export const EDITORIAL_TEMPLATES: EditorialTemplate[] = [
   newspaperEssayTemplate,
@@ -20,6 +21,7 @@ export const EDITORIAL_TEMPLATES: EditorialTemplate[] = [
   galleryDuoTemplate,
   minimalEditorialTemplate,
   boldPosterTemplate,
+  freeBoardTemplate,
 ];
 
 export const DEFAULT_EDITORIAL_TEMPLATE = EDITORIAL_TEMPLATES[0]!;
@@ -43,3 +45,4 @@ export * from './invertedContrast';
 export * from './galleryDuo';
 export * from './minimalEditorial';
 export * from './boldPoster';
+export * from './freeBoard';
