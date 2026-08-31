@@ -227,7 +227,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
   {
     type: NODE_TYPES.ZHIHU_SEARCH,
     name: '知乎检索',
-    description: '知乎开发者平台 3 类检索：站内搜索 / 全网搜索 / 直答问答，结果以文本输出（凭据在管理端「系统设置」配置，可连线文本节点传入关键词 / 问题）',
+    description: '知乎开发者平台站内 / 直答搜索',
     category: 'tool',
     configurable: false,
     output_type: 'text',
@@ -245,7 +245,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
   {
     type: NODE_TYPES.TEXT_TRANSLATION,
     name: '文本翻译',
-    description: 'Google 翻译 / DeepLX 多引擎翻译，支持随机源与自动降级（DeepLX URL 在管理端「系统设置」其他类别配置）',
+    description: 'Google 翻译 / DeepLX 多引擎翻译，支持随机源与自动降级',
     category: 'tool',
     configurable: false,
     output_type: 'text',
@@ -290,7 +290,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
   {
     type: NODE_TYPES.MAP_ART,
     name: '艺术地图生成',
-    description: '基于 prettymaps 服务端生成艺术风格地图图片',
+    description: '艺术风格地图图片生成',
     category: 'multimodal',
     configurable: false,
     output_type: 'image',
@@ -328,7 +328,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
   {
     type: NODE_TYPES.IMAGE_PROCESS,
     name: '图片处理',
-    description: '浏览器端 Canvas 多效果图片处理（第一阶段：噪点；后续 ASCII / 网点 / 抖动），效果注册表驱动切换，输出处理结果图片',
+    description: '噪点 / ASCII / 网点 / 抖动等风格化效果',
     category: 'multimodal',
     configurable: false,
     output_type: 'image',
@@ -337,7 +337,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
   {
     type: NODE_TYPES.STICKER_MAKER,
     name: '贴纸制作',
-    description: '一键抠图移除背景，生成带白边描边与投影的 die-cut 贴纸图片',
+    description: '一键抠图移除背景，生成带白边描边与投影的贴纸图片',
     category: 'multimodal',
     configurable: false,
     output_type: 'image',
@@ -346,7 +346,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
   {
     type: NODE_TYPES.JOURNAL_MAKER,
     name: '手账制作',
-    description: '多图拼贴排版（拖移/缩放/旋转/图层排序/随机布局），合成图片',
+    description: '多图拼贴排版（拖移/缩放/旋转/图层排序/随机布局）',
     category: 'multimodal',
     configurable: false,
     output_type: 'image',
@@ -355,7 +355,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
   {
     type: NODE_TYPES.TEXT_IMAGE,
     name: '文本成图',
-    description: '输入文字并调整字体/字号/颜色等参数，渲染为图片输出',
+    description: '输入文字并调整字体/字号/颜色等参数，渲染为图片',
     category: 'multimodal',
     configurable: false,
     output_type: 'image',
@@ -363,7 +363,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
   {
     type: NODE_TYPES.EMBOSS_FOIL,
     name: '微浮雕高光',
-    description: '为图片添加等高线/浮雕肌理与全息微光反光效果，支持邮票齿孔与纸边定制',
+    description: '为图片添加等高线/浮雕肌理与全息微光反光效果',
     category: 'multimodal',
     configurable: false,
     output_type: 'image',
@@ -372,7 +372,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
   {
     type: NODE_TYPES.GLASS_REFRACT,
     name: '玻璃折射',
-    description: '长虹/十字格/玻璃砖/雨滴/水波/波浪/锤纹/流动/磨砂等 9 种物理玻璃折射与色散高光效果',
+    description: '长虹/十字格/玻璃砖等 9 种物理玻璃折射与色散高光效果',
     category: 'multimodal',
     configurable: false,
     output_type: 'image',
@@ -381,7 +381,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
   {
     type: NODE_TYPES.EDITORIAL_LAYOUT,
     name: '杂志排版',
-    description: 'Pretext 动态无 DOM 避让图文混排，输出高保真杂志风格图片',
+    description: 'Pretext 动态图文混排',
     category: 'multimodal',
     configurable: false,
     output_type: 'image',
@@ -390,7 +390,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
   {
     type: NODE_TYPES.WATERCOLOR_BRUSH,
     name: '物理水彩手绘',
-    description: '基于 p5.brush 的物理水彩晕染、排线与流场手绘生成，支持 5 大构图与图生艺术',
+    description: '物理水彩晕染、排线与流场手绘生成',
     category: 'multimodal',
     configurable: false,
     output_type: 'image',

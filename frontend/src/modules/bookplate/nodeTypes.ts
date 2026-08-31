@@ -182,7 +182,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'zhihu_search',
     name: '知乎检索',
-    description: '知乎开发者平台 3 类检索：站内 / 全网 / 直答',
+    description: '知乎开发者平台站内 / 直答检索',
     category: 'tool',
     configurable: false,
     defaultSize: DEFAULT_SIZES.zhihu_search,
@@ -238,7 +238,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'sticker_maker',
     name: '贴纸制作',
-    description: '一键抠图移除背景，生成带白边描边与投影的 die-cut 贴纸图片',
+    description: '一键抠图移除背景，生成带白边描边与投影的贴纸图片',
     category: 'multimodal',
     configurable: false,
     defaultSize: DEFAULT_SIZES.sticker_maker,
@@ -246,7 +246,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'journal_maker',
     name: '手账制作',
-    description: '多图拼贴排版（拖移/缩放/旋转/图层排序/随机布局），合成图片',
+    description: '多图拼贴排版（拖移/缩放/旋转/图层排序/随机布局）',
     category: 'multimodal',
     configurable: false,
     defaultSize: DEFAULT_SIZES.journal_maker,
@@ -262,7 +262,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'map_art',
     name: '艺术地图生成',
-    description: '基于 prettymaps 服务端生成艺术风格地图图片',
+    description: '艺术风格地图图片生成',
     category: 'multimodal',
     configurable: false,
     defaultSize: DEFAULT_SIZES.map_art,
@@ -310,7 +310,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'emboss_foil',
     name: '微浮雕高光',
-    description: '等高线/浮雕肌理与全息微光反光，支持邮票齿孔与纸边定制',
+    description: '等高线/浮雕肌理与全息微光反光效果',
     category: 'multimodal',
     configurable: false,
     defaultSize: DEFAULT_SIZES.emboss_foil,
@@ -318,7 +318,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'glass_refract',
     name: '玻璃折射',
-    description: '长虹/十字格/玻璃砖/雨滴/水波/波浪/锤纹/流动/磨砂等 9 种物理玻璃折射与色散高光效果',
+    description: '长虹/十字格/玻璃砖等 9 种物理玻璃折射与色散高光效果',
     category: 'multimodal',
     configurable: false,
     defaultSize: DEFAULT_SIZES.glass_refract,
@@ -326,7 +326,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'editorial_layout',
     name: '杂志排版',
-    description: 'Pretext 动态无 DOM 避让图文混排，输出高保真杂志风格图片',
+    description: 'Pretext 动态图文混排',
     category: 'multimodal',
     configurable: false,
     defaultSize: DEFAULT_SIZES.editorial_layout,
@@ -334,7 +334,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'watercolor_brush',
     name: '物理水彩手绘',
-    description: '基于 p5.brush 的物理水彩晕染、排线与流场手绘生成，支持 5 大经典纯生成式算法构图',
+    description: '物理水彩晕染、排线与流场手绘生成',
     category: 'multimodal',
     configurable: false,
     defaultSize: DEFAULT_SIZES.watercolor_brush,
