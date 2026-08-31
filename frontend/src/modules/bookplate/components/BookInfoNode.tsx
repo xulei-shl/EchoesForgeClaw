@@ -216,6 +216,7 @@ const BookInfoNodeInner: React.FC<BookInfoNodeProps> = ({
               <p className="text-sm font-serif text-ink-light">输入 ISBN 获取图书元数据</p>
               <form onSubmit={handleIsbnSubmit} className="w-full max-w-[300px] flex gap-2">
                 <input
+                  autoFocus
                   value={isbnInput}
                   onChange={(e) => setIsbnInput(e.target.value)}
                   placeholder="如 9787020002207"

@@ -50,32 +50,39 @@ export const STAMP_TEXT_PRESETS: StampTextPresetGroup[] = [
 
 interface StampTextToolbarProps {
   item: StampTextItem;
+  variant?: 'floating' | 'docked';
   disabled?: boolean;
   onUpdate: (patch: Partial<StampTextItem>) => void;
   onOpenEdit: () => void;
   onDelete: () => void;
   onBumpLayer: (mode: 'up' | 'down' | 'top' | 'bottom') => void;
   onRotateStep?: (mode: 'cw' | 'ccw') => void;
+  onClose?: () => void;
 }
 
 export const StampTextToolbar: React.FC<StampTextToolbarProps> = ({
   item,
+  variant = 'floating',
   disabled = false,
   onUpdate,
   onOpenEdit,
   onDelete,
   onBumpLayer,
   onRotateStep,
+  onClose,
 }) => {
   return (
     <UniversalTextToolbar
       item={item}
+      variant={variant}
       disabled={disabled}
       onUpdate={onUpdate}
       onOpenEdit={onOpenEdit}
       onDelete={onDelete}
       onBumpLayer={onBumpLayer}
       onRotateStep={onRotateStep}
+      onClose={onClose}
     />
   );
 };
+

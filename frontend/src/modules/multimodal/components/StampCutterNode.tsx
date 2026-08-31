@@ -400,6 +400,37 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
     setEditingText('');
   }, [editingTextId, editingText, id, onUpdateState]);
 
+  // 监听键盘快捷键（Delete / Backspace 删除选中的文字，Esc 取消选中）
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 若处于弹窗编辑态或焦点在输入控件内，不拦截按键
+      if (editingTextId) return;
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tagName = target.tagName;
+        if (tagName === 'INPUT' || tagName === 'TEXTAREA' || target.isContentEditable) {
+          return;
+        }
+      }
+
+      if (selectedTextId) {
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+          e.preventDefault();
+          handleDeleteTextItem(selectedTextId);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          setSelectedTextId(null);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [selectedTextId, editingTextId, handleDeleteTextItem]);
+
+
   // 文字手势操作：拖动、缩放、旋转
   const handleTextGestureStart = (
     e: React.PointerEvent<HTMLElement>,
@@ -960,7 +991,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
       />
 
       <div className="h-full flex flex-col flex-1 min-h-0 gap-2">
-        {/* 顶部工具栏（仅在选框模式下展示核心版式、比例与纸边选项） */}
+        {/* 顶部工具栏（始终展示邮票版式参数） */}
         {isEditing && (
           <div className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg bg-paper-grid/20 border border-paper-grid/40 text-xs font-sans text-ink-light select-none shrink-0 flex-wrap">
             {/* 左组：版式选择与比例分段控制 */}
@@ -1057,13 +1088,11 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
           onPointerUp={handlePointerUp}
           onClick={() => setSelectedTextId(null)}
         >
-          {/* 选中文本时的顶部悬浮微交互工具栏（固定悬浮在画布顶部中央，不随选框跳动或被遮挡） */}
-          {selectedTextItem && !isDraggingBox && !isResizingBox && (
-            <div
-              className="absolute top-2 left-1/2 -translate-x-1/2 z-40 max-w-[94%] pointer-events-auto"
-              onClick={(e) => e.stopPropagation()}
-            >
+          {/* 选中文本时的悬浮微交互工具栏（字体、颜色、横竖排、字号、图层与删除） */}
+          {isEditing && selectedTextItem && (
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 z-40 pointer-events-auto">
               <StampTextToolbar
+                variant="floating"
                 item={selectedTextItem}
                 disabled={isExporting || isAnimatingCrop}
                 onUpdate={(patch) => handleUpdateTextItem(selectedTextItem.id, patch)}
@@ -1074,6 +1103,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
                 onDelete={() => handleDeleteTextItem(selectedTextItem.id)}
                 onBumpLayer={(mode) => handleBumpTextLayer(selectedTextItem.id, mode)}
                 onRotateStep={(dir) => handleRotateStepText(selectedTextItem.id, dir)}
+                onClose={() => setSelectedTextId(null)}
               />
             </div>
           )}

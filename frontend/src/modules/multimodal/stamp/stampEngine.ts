@@ -130,8 +130,9 @@ export async function renderStampFromImage(
 
       if (isVertical) {
         stampCtx.textAlign = 'center';
-        drawVerticalColumns(stampCtx, text, fontSize, (str, x, y) => stampCtx.fillText(str, x, y));
+        drawVerticalColumns(stampCtx, text, fontSize, (str, x, y) => stampCtx.fillText(str, x, y), align);
       } else {
+
         const lines = text.split('\n');
         const lineH = fontSize * 1.25;
         const maxLineWidth = Math.max(...lines.map((l) => stampCtx.measureText(l).width || 0), 0);

@@ -46,17 +46,16 @@ export function drawVerticalColumns(
   ctx: CanvasRenderingContext2D,
   text: string,
   fontSize: number,
-  emit: (str: string, x: number, y: number) => void
+  emit: (str: string, x: number, y: number) => void,
+  align: 'left' | 'center' | 'right' = 'center'
 ): void {
   const columns = text.split('\n');
   const colWidth = fontSize * 1.35;
   const charHeight = fontSize * 1.2;
 
-  columns.forEach((col, colIdx) => {
-    // 竖列从右向左分布
-    const xOffset = ((columns.length - 1) / 2 - colIdx) * colWidth;
+  // 预先解析所有列的单元与高度
+  const parsedCols = columns.map((col) => {
     const units = tokenizeVerticalSegment(col);
-    // 先测量列总高再自上而下绘制，保证列内容整体居中
     const heights = units.map((u) =>
       u.type === 'char'
         ? charHeight
@@ -65,7 +64,27 @@ export function drawVerticalColumns(
           : ctx.measureText(u.text).width + fontSize * 0.25
     );
     const totalHeight = heights.reduce((sum, h) => sum + h, 0);
-    let y = -totalHeight / 2;
+    return { units, heights, totalHeight };
+  });
+
+  const maxColHeight = Math.max(...parsedCols.map((c) => c.totalHeight), 0);
+
+  parsedCols.forEach(({ units, heights, totalHeight }, colIdx) => {
+    // 竖列从右向左分布
+    const xOffset = ((columns.length - 1) / 2 - colIdx) * colWidth;
+
+    let y = 0;
+    if (align === 'left') {
+      // 顶端对齐 (Top / Start)
+      y = -maxColHeight / 2;
+    } else if (align === 'right') {
+      // 底端对齐 (Bottom / End)
+      y = maxColHeight / 2 - totalHeight;
+    } else {
+      // 居中对齐 (Center)
+      y = -totalHeight / 2;
+    }
+
     units.forEach((u, i) => {
       const h = heights[i];
       if (u.type === 'word') {
@@ -139,9 +158,9 @@ export function drawTextItemToCanvas(
   ctx.shadowOffsetY = Math.max(1, fontSize * 0.04);
 
   if (isVertical) {
-    // 竖排模式：汉字直立逐字排列，英文单词整体旋转不拆分（共用竖排算法）
+    // 竖排模式：汉字直立逐字排列，英文单词整体旋转不拆分（支持顶端/居中/底端对齐）
     ctx.textAlign = 'center';
-    drawVerticalColumns(ctx, text, fontSize, (str, x, y) => ctx.fillText(str, x, y));
+    drawVerticalColumns(ctx, text, fontSize, (str, x, y) => ctx.fillText(str, x, y), align);
   } else {
     // 横排模式：按换行符与对齐方式排版
     const lines = text.split('\n');
@@ -163,4 +182,5 @@ export function drawTextItemToCanvas(
 
   ctx.restore();
 }
+
 

@@ -220,18 +220,8 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
     }
   }, [isSelected]);
 
-  // 按 Escape 键取消选中素材
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && selectedId && !editingTextId) {
-        setSelectedId(null);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedId, editingTextId]);
-
   // 点击画板空白区域取消素材选中
+
   const handleCanvasBlankPointerDown = useCallback((e: React.PointerEvent | React.MouseEvent) => {
     if (!(e.target as HTMLElement).closest('[data-journal-item]')) {
       setSelectedId(null);
@@ -394,24 +384,56 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
   };
 
   // 删除单个拼贴项：上传图彻底移除；上级/封面来源记入 dismissedSources 防自动回填
-  const deleteItem = (item: JournalMakerItem) => {
-    const nextItems = items.filter((it) => it.id !== item.id);
-    setItems(nextItems);
-    setSelectedId(null);
-    if (item.kind === 'text') {
-      commit({ items: nextItems }, true);
-    } else if (uploadedImages.includes(item.src)) {
-      commit(
-        { items: nextItems, uploadedImages: uploadedImages.filter((s) => s !== item.src) },
-        true
-      );
-    } else {
-      commit(
-        { items: nextItems, dismissedSources: Array.from(new Set([...dismissedSources, item.src])) },
-        true
-      );
-    }
-  };
+  const deleteItem = useCallback(
+    (item: JournalMakerItem) => {
+      const nextItems = items.filter((it) => it.id !== item.id);
+      setItems(nextItems);
+      setSelectedId(null);
+      if (item.kind === 'text') {
+        commit({ items: nextItems }, true);
+      } else if (uploadedImages.includes(item.src)) {
+        commit(
+          { items: nextItems, uploadedImages: uploadedImages.filter((s) => s !== item.src) },
+          true
+        );
+      } else {
+        commit(
+          { items: nextItems, dismissedSources: Array.from(new Set([...dismissedSources, item.src])) },
+          true
+        );
+      }
+    },
+    [items, uploadedImages, dismissedSources, commit]
+  );
+
+  // 键盘快捷键（Delete / Backspace 删除选中素材，Escape 取消选中）
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 处于文案编辑态或焦点在输入控件内时不拦截
+      if (editingTextId) return;
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tagName = target.tagName;
+        if (tagName === 'INPUT' || tagName === 'TEXTAREA' || target.isContentEditable) {
+          return;
+        }
+      }
+
+      if (selectedItem) {
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+          e.preventDefault();
+          deleteItem(selectedItem);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          setSelectedId(null);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedItem, editingTextId, deleteItem]);
+
 
   // 图层操作：上移/下移一层，置顶/置底（z 重排为连续序）
   const bumpLayer = (itemId: string, mode: 'up' | 'down' | 'top' | 'bottom') => {
@@ -1155,7 +1177,7 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
 
                       {/* 选中文本时的悬浮微交互工具栏（字体、颜色、横竖排、字号、图层与删除） */}
                       {selectedItem && selectedItem.kind === 'text' && (
-                        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-40 max-w-[94%] pointer-events-auto">
+                        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-40 pointer-events-auto">
                           <JournalTextToolbar
                             item={selectedItem}
                             onUpdate={(patch) => handleUpdateItem(selectedItem.id, patch)}
@@ -1167,6 +1189,7 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                             onDelete={() => deleteItem(selectedItem)}
                             onBumpLayer={(mode) => bumpLayer(selectedItem.id, mode)}
                             onRotateStep={(mode) => rotateStepItem(selectedItem.id, mode)}
+                            onClose={() => setSelectedId(null)}
                           />
                         </div>
                       )}

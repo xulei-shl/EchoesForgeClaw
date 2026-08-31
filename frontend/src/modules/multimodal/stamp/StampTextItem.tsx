@@ -87,12 +87,14 @@ export const StampTextItemView: React.FC<StampTextItemProps> = ({
                 textOrientation: 'mixed',
                 letterSpacing: '0.12em',
                 whiteSpace: 'pre-wrap',
+                textAlign: item.textAlign === 'left' ? 'start' : item.textAlign === 'right' ? 'end' : 'center',
               }
             : {
                 writingMode: 'horizontal-tb',
                 whiteSpace: 'pre-wrap',
                 textAlign: item.textAlign || 'center',
               }),
+
 
         }}
       >

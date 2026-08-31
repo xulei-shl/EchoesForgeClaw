@@ -1,8 +1,10 @@
 /**
- * 通用文本悬浮微交互工具栏 (UniversalTextToolbar)
- * 供全站多模态卡片节点（邮票制作、手账制作、文本成图等）共享复用
+ * 通用文本微交互工具栏 (UniversalTextToolbar)
+ * 支持悬浮模式 (variant="floating", 默认) 与 置顶嵌入模式 (variant="docked")
+ * 严格基于 28px (h-7) 统一度量衡与 flex-nowrap 水平垂直像素级对齐
  */
 import React from 'react';
+import { motion } from 'framer-motion';
 import {
   Edit3,
   Trash2,
@@ -34,20 +36,23 @@ export interface UniversalTextItem {
 
 export interface UniversalTextToolbarProps {
   item: UniversalTextItem;
+  variant?: 'floating' | 'docked';
   disabled?: boolean;
   onUpdate: (patch: Partial<UniversalTextItem>) => void;
   onOpenEdit: () => void;
   onDelete?: () => void;
   onBumpLayer?: (mode: 'up' | 'down' | 'top' | 'bottom') => void;
   onRotateStep?: (mode: 'cw' | 'ccw') => void;
-  /** 可选自定义右侧操作 */
+  onClose?: () => void;
+  /** 可选自定义第一行右侧额外操作 */
   extraActions?: React.ReactNode;
-  /** 可选自定义第二行插槽 */
+  /** 可选自定义第二行右侧插槽 */
   extraRow?: React.ReactNode;
 }
 
 export const UniversalTextToolbar: React.FC<UniversalTextToolbarProps> = ({
   item,
+  variant = 'floating',
   disabled = false,
   onUpdate,
   onOpenEdit,
@@ -62,146 +67,196 @@ export const UniversalTextToolbar: React.FC<UniversalTextToolbarProps> = ({
   const isVertical = item.writingMode === 'vertical';
   const currentAlign: TextAlignment = item.textAlign || 'center';
 
-  return (
+  const isDocked = variant === 'docked';
+
+  const content = (
     <div
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
-      className="flex flex-col gap-1 p-1.5 rounded-xl bg-paper/95 backdrop-blur-md shadow-xl border border-paper-grid/60 text-ink text-xs select-none pointer-events-auto w-max max-w-[94vw] z-40 animate-in fade-in zoom-in-95 duration-150"
+      className={`flex flex-col gap-2 text-xs select-none ${
+        isDocked
+          ? 'w-full px-2.5 py-2 rounded-xl bg-paper-grid/25 border border-paper-grid/70 shadow-2xs shrink-0'
+          : 'p-2.5 rounded-xl bg-paper/95 backdrop-blur-md shadow-[0_12px_32px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.06),0_0_0_1px_rgba(0,0,0,0.06)] border border-paper-grid/80 text-ink pointer-events-auto w-max z-40'
+      }`}
     >
-      {/* 第一行：主要文本属性与排版控制 */}
-      <div className="flex items-center gap-1 flex-wrap">
-        {/* 编辑文字 */}
-        <Tooltip content="编辑文字内容 (或双击文字)">
-          <button
-            type="button"
+      {/* 第一行：文本与排版属性（文案、字体、横竖排、对齐方式、自定义操作） */}
+      <div className="flex items-center justify-between gap-2 w-full flex-nowrap">
+        {/* 功能群：文案 + 字体 + 排版 + 对齐 */}
+        <div className="flex items-center gap-1.5 flex-nowrap shrink-0">
+          {/* 编辑文案按钮 */}
+          <Tooltip content="编辑文字内容 (或双击文字)">
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={onOpenEdit}
+              className="h-7 px-2.5 rounded-md bg-paper border border-paper-grid/80 hover:border-accent hover:text-accent text-ink text-xs font-medium flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer shrink-0"
+              aria-label="编辑文案"
+            >
+              <Edit3 size={12} strokeWidth={2} />
+              <span className="leading-none text-xs">文案</span>
+            </button>
+          </Tooltip>
+
+          {/* 紧凑字体选择下拉 */}
+          <FontFamilySelect
+            value={currentFont}
+            onChange={(family) => onUpdate({ fontFamily: family })}
             disabled={disabled}
-            onClick={onOpenEdit}
-            className="flex items-center gap-1 px-2 py-1 rounded-md text-ink-light hover:text-accent hover:bg-paper-grid/40 active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out font-medium whitespace-nowrap shrink-0"
-          >
-            <Edit3 size={13} strokeWidth={1.8} />
-            <span className="leading-none">文案</span>
-          </button>
-        </Tooltip>
+            className="w-[118px] shrink-0"
+          />
 
-        <div className="w-px h-3.5 bg-paper-grid/60 my-auto shrink-0" />
+          {/* 横排 / 竖排胶囊切换 */}
+          <div className="inline-flex items-center h-7 p-0.5 rounded-md bg-paper-grid/30 border border-paper-grid/50 select-none shrink-0">
+            <Tooltip content="横向自然排版">
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => onUpdate({ writingMode: 'horizontal' })}
+                className={`h-6 px-1.5 rounded text-[11px] font-sans transition-[transform,background-color,color,box-shadow] duration-150 ease-out active:scale-[0.96] disabled:cursor-not-allowed leading-none cursor-pointer ${
+                  !isVertical
+                    ? 'bg-paper text-accent font-medium shadow-2xs border border-paper-grid/40'
+                    : 'text-ink-light hover:text-ink'
+                }`}
+                aria-label="横排"
+              >
+                横排
+              </button>
+            </Tooltip>
+            <Tooltip content="纵向传统排版">
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => onUpdate({ writingMode: 'vertical' })}
+                className={`h-6 px-1.5 rounded text-[11px] font-sans transition-[transform,background-color,color,box-shadow] duration-150 ease-out active:scale-[0.96] disabled:cursor-not-allowed leading-none cursor-pointer ${
+                  isVertical
+                    ? 'bg-paper text-accent font-medium shadow-2xs border border-paper-grid/40'
+                    : 'text-ink-light hover:text-ink'
+                }`}
+                aria-label="竖排"
+              >
+                竖排
+              </button>
+            </Tooltip>
+          </div>
 
-        {/* 字体选择下拉 */}
-        <FontFamilySelect
-          value={currentFont}
-          onChange={(family) => onUpdate({ fontFamily: family })}
-          disabled={disabled}
-        />
-
-        <div className="w-px h-3.5 bg-paper-grid/60 my-auto shrink-0" />
-
-        {/* 横排 / 竖排切换 */}
-        <Tooltip content={isVertical ? '切换为横向排版' : '切换为纵向排版'}>
-          <button
-            type="button"
+          {/* 对齐方式切换（横排：左/中/右；竖排：顶/中/底） */}
+          <TextAlignToggle
+            value={currentAlign}
+            writingMode={item.writingMode}
+            onChange={(align) => onUpdate({ textAlign: align })}
             disabled={disabled}
-            onClick={() => onUpdate({ writingMode: isVertical ? 'horizontal' : 'vertical' })}
-            className={`flex items-center gap-0.5 px-2 py-1 rounded-md text-xs active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out whitespace-nowrap shrink-0 ${
-              isVertical
-                ? 'bg-accent/15 text-accent font-medium'
-                : 'text-ink-light hover:text-accent hover:bg-paper-grid/40'
-            }`}
-          >
-            <span className="font-mono text-[11px] leading-none">
-              {isVertical ? '竖排' : '横排'}
-            </span>
-          </button>
-        </Tooltip>
+          />
+        </div>
 
-        {/* 对齐方式切换（左对齐 / 居中 / 右对齐） */}
-        <TextAlignToggle
-          value={currentAlign}
-          onChange={(align) => onUpdate({ textAlign: align })}
-          disabled={disabled}
-        />
+        {/* 右侧：自定义扩展与删除按钮 */}
+        <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+          {extraActions}
 
-        <div className="w-px h-3.5 bg-paper-grid/60 my-auto shrink-0" />
-
-        {/* 图层控制 */}
-        {onBumpLayer &&
-          (
-            [
-              ['up', ArrowUp, '上移一层'],
-              ['down', ArrowDown, '下移一层'],
-              ['top', ChevronsUp, '置顶'],
-              ['bottom', ChevronsDown, '置底'],
-            ] as const
-          ).map(([mode, Icon, tip]) => (
-            <Tooltip key={mode} content={tip}>
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={() => onBumpLayer(mode)}
-                className="p-1 rounded text-ink-light hover:text-accent hover:bg-paper-grid/40 active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out disabled:opacity-40"
-              >
-                <Icon size={12} strokeWidth={1.8} />
-              </button>
-            </Tooltip>
-          ))}
-
-        {onRotateStep && (
-          <>
-            <div className="w-px h-3.5 bg-paper-grid/60 my-auto shrink-0" />
-            {/* 旋转 90 度（摆正） */}
-            <Tooltip content="逆时针旋转 90°">
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={() => onRotateStep('ccw')}
-                className="p-1 rounded text-ink-light hover:text-accent hover:bg-paper-grid/40 active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out disabled:opacity-40"
-              >
-                <RotateCcw size={12} strokeWidth={1.8} />
-              </button>
-            </Tooltip>
-            <Tooltip content="顺时针旋转 90°">
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={() => onRotateStep('cw')}
-                className="p-1 rounded text-ink-light hover:text-accent hover:bg-paper-grid/40 active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out disabled:opacity-40"
-              >
-                <RotateCw size={12} strokeWidth={1.8} />
-              </button>
-            </Tooltip>
-          </>
-        )}
-
-        {extraActions}
-
-        {onDelete && (
-          <>
-            <div className="w-px h-3.5 bg-paper-grid/60 my-auto shrink-0" />
-            <Tooltip content="删除该文字">
+          {/* 删除按钮（放置在右上角，带明显的警示悬停反馈） */}
+          {onDelete && (
+            <Tooltip content="删除该文字 (Delete)">
               <button
                 type="button"
                 disabled={disabled}
                 onClick={onDelete}
-                className="p-1 rounded text-ink-light hover:text-error hover:bg-error/10 active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out disabled:opacity-40"
+                className="w-7 h-7 rounded-md text-ink-faint hover:text-error hover:bg-error/15 active:scale-[0.94] transition-[background-color,color,transform] duration-150 ease-out disabled:opacity-40 flex items-center justify-center shrink-0 cursor-pointer border border-transparent hover:border-error/20"
+                aria-label="删除该文字"
               >
-                <Trash2 size={12} strokeWidth={1.8} />
+                <Trash2 size={13} strokeWidth={2} />
               </button>
             </Tooltip>
-          </>
-        )}
+          )}
+        </div>
       </div>
 
-      {/* 第二行：特色墨水色盘与自定义取色器 */}
-      <div className="flex items-center justify-between gap-1.5 pt-0.5 px-0.5 border-t border-paper-grid/40">
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px] text-ink-faint mr-0.5 select-none shrink-0">墨色:</span>
+      {/* 第二行：色彩与图层几何（墨色色盘、图层层级、旋转 90°） */}
+      <div className="flex items-center justify-between gap-3 pt-1.5 border-t border-paper-grid/50 flex-nowrap w-full">
+        {/* 左侧：墨水色盘 */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span className="text-[11px] text-ink-faint select-none shrink-0 font-medium leading-none">墨色:</span>
           <TextColorPalette
             value={currentColor}
             onChange={(color) => onUpdate({ color })}
             disabled={disabled}
-            size="normal"
+            size="compact"
           />
         </div>
-        {extraRow}
+
+        {/* 右侧：图层控制与旋转 */}
+        <div className="flex items-center gap-1 shrink-0 ml-auto">
+          {/* 图层控制图标组 */}
+          {onBumpLayer && (
+            <div className="flex items-center h-7 p-0.5 rounded-md bg-paper-grid/25 border border-paper-grid/40 shrink-0">
+              {(
+                [
+                  ['up', ArrowUp, '上移一层'],
+                  ['down', ArrowDown, '下移一层'],
+                  ['top', ChevronsUp, '置顶'],
+                  ['bottom', ChevronsDown, '置底'],
+                ] as const
+              ).map(([mode, Icon, tip]) => (
+                <Tooltip key={mode} content={tip}>
+                  <button
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => onBumpLayer(mode)}
+                    className="w-5.5 h-6 rounded flex items-center justify-center text-ink-light hover:text-accent hover:bg-paper active:scale-[0.94] transition-[background-color,color,transform] duration-150 ease-out disabled:opacity-40 cursor-pointer"
+                    aria-label={tip}
+                  >
+                    <Icon size={12} strokeWidth={2} />
+                  </button>
+                </Tooltip>
+              ))}
+            </div>
+          )}
+
+          {/* 旋转 90 度组 */}
+          {onRotateStep && (
+            <div className="flex items-center h-7 p-0.5 rounded-md bg-paper-grid/25 border border-paper-grid/40 shrink-0">
+              <Tooltip content="逆时针旋转 90°">
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => onRotateStep('ccw')}
+                  className="w-5.5 h-6 rounded flex items-center justify-center text-ink-light hover:text-accent hover:bg-paper active:scale-[0.94] transition-[background-color,color,transform] duration-150 ease-out disabled:opacity-40 cursor-pointer"
+                  aria-label="逆时针旋转 90°"
+                >
+                  <RotateCcw size={12} strokeWidth={2} />
+                </button>
+              </Tooltip>
+              <Tooltip content="顺时针旋转 90°">
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => onRotateStep('cw')}
+                  className="w-5.5 h-6 rounded flex items-center justify-center text-ink-light hover:text-accent hover:bg-paper active:scale-[0.94] transition-[background-color,color,transform] duration-150 ease-out disabled:opacity-40 cursor-pointer"
+                  aria-label="顺时针旋转 90°"
+                >
+                  <RotateCw size={12} strokeWidth={2} />
+                </button>
+              </Tooltip>
+            </div>
+          )}
+
+          {extraRow}
+        </div>
       </div>
     </div>
+  );
+
+  if (isDocked) {
+    return content;
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -8, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -6, scale: 0.97 }}
+      transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+      className="w-fit flex justify-center pointer-events-none"
+    >
+      {content}
+    </motion.div>
   );
 };

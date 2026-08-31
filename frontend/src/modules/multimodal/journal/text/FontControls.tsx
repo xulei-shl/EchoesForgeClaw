@@ -1,7 +1,8 @@
-import React, { useEffect } from 'react';
-import { Pipette, AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
+import React, { useEffect, useState, useRef } from 'react';
+import { Pipette, AlignLeft, AlignCenter, AlignRight, ChevronDown } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import clsx from 'clsx';
 import { Tooltip } from '../../../../platform/components/ui/Tooltip';
-import { Select, type SelectOption } from '../../../../platform/components/ui/Select';
 import { ColorPickerPopover } from '../../../../platform/components/ui/ColorPicker';
 import {
   JOURNAL_FONTS,
@@ -12,7 +13,6 @@ import {
 
 export type TextAlignment = 'left' | 'center' | 'right';
 
-
 /** 挂载即批量预载全部字体预设（与手账共享字体基建） */
 export function usePreloadJournalFonts(): void {
   useEffect(() => {
@@ -20,35 +20,94 @@ export function usePreloadJournalFonts(): void {
   }, []);
 }
 
-const FONT_OPTIONS: SelectOption[] = JOURNAL_FONTS.map((font) => ({
-  label: font.name,
-  value: font.family,
-}));
-
 interface FontFamilySelectProps {
   value: string;
   onChange: (family: string) => void;
   disabled?: boolean;
+  className?: string;
 }
 
-/** 字体选择下拉：复用平台公共 Select，切换时自动触发字体加载再回调选中的 family */
+/** 紧凑精致字体选择下拉：统一 h-7 (28px) 高度与实线微边框，切换时自动触发字体加载 */
 export const FontFamilySelect: React.FC<FontFamilySelectProps> = ({
   value,
   onChange,
   disabled = false,
-}) => (
-  <Select
-    size="sm"
-    value={value}
-    options={FONT_OPTIONS}
-    disabled={disabled}
-    className="w-[130px] shrink-0"
-    onChange={(family) => {
-      loadFontFamily(family);
-      onChange(family);
-    }}
-  />
-);
+  className = 'w-[118px] shrink-0',
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const openMenu = () => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    setMenuPos(
+      rect
+        ? { top: rect.bottom + 4, left: rect.left, width: Math.max(136, rect.width) }
+        : { top: window.innerHeight / 2, left: window.innerWidth / 2, width: 136 }
+    );
+    setIsOpen(true);
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (triggerRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setIsOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+
+  const selectedFont = JOURNAL_FONTS.find((f) => f.family === value);
+  const label = selectedFont ? selectedFont.name : value;
+
+  return (
+    <div className={clsx('relative', className)} ref={triggerRef}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => (isOpen ? setIsOpen(false) : openMenu())}
+        aria-expanded={isOpen}
+        aria-haspopup="listbox"
+        className="flex items-center justify-between w-full h-7 px-2 cursor-pointer rounded-md border border-paper-grid/80 bg-paper hover:border-accent text-xs font-medium text-ink focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-2xs"
+        aria-label="选择字体"
+      >
+        <span className="truncate text-left text-xs leading-none">{label}</span>
+        <ChevronDown size={12} className="ml-1 text-ink-faint shrink-0" />
+      </button>
+
+      {isOpen && menuPos && typeof document !== 'undefined' && createPortal(
+        <div
+          ref={menuRef}
+          style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, width: menuPos.width }}
+          className="bg-paper/95 backdrop-blur-md border border-paper-grid/80 rounded-lg shadow-xl z-[99999] overflow-hidden max-h-56 overflow-y-auto p-1 animate-in fade-in zoom-in-95 duration-100 text-xs"
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          {JOURNAL_FONTS.map((font) => (
+            <button
+              key={font.id}
+              type="button"
+              onClick={() => {
+                loadFontFamily(font.family);
+                onChange(font.family);
+                setIsOpen(false);
+              }}
+              className={clsx(
+                'flex items-center w-full px-2 py-1.5 rounded text-left text-xs transition-colors cursor-pointer',
+                value === font.family ? 'bg-accent/15 text-accent font-medium' : 'text-ink hover:bg-paper-grid/40'
+              )}
+            >
+              <span className="truncate">{font.name}</span>
+            </button>
+          ))}
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+};
 
 interface TextColorPaletteProps {
   value: string;
@@ -60,8 +119,8 @@ interface TextColorPaletteProps {
 }
 
 const PALETTE_SIZES = {
-  normal: { dot: 'w-3.5 h-3.5', hit: 'w-5.5 h-5.5' },
-  compact: { dot: 'w-3 h-3', hit: 'w-5 h-5' },
+  normal: { dot: 'w-3.5 h-3.5', hit: 'w-5 h-5' },
+  compact: { dot: 'w-3 h-3', hit: 'w-4.5 h-4.5' },
 } as const;
 
 /** 墨色色盘：预设圆点 + 分隔线 + 自定义取色（吸管），文本着色统一入口 */
@@ -78,7 +137,7 @@ export const TextColorPalette: React.FC<TextColorPaletteProps> = ({
   const { dot, hit } = PALETTE_SIZES[size];
 
   return (
-    <div className="flex items-center gap-0.5 flex-wrap">
+    <div className="flex items-center gap-0.5 flex-nowrap">
       {JOURNAL_TEXT_COLORS.map((preset) => {
         const selected = value.toLowerCase() === preset.color.toLowerCase();
         return (
@@ -135,42 +194,51 @@ export const TextColorPalette: React.FC<TextColorPaletteProps> = ({
 
 interface TextAlignToggleProps {
   value?: TextAlignment;
+  writingMode?: 'horizontal' | 'vertical';
   onChange: (align: TextAlignment) => void;
   disabled?: boolean;
 }
 
-/** 对齐方式切换组件：左对齐 / 居中对齐 / 右对齐 胶囊单选 */
+/** 对齐方式切换组件：横排（左/中/右）与 竖排（顶/中/底）胶囊单选，高度严格统一 h-7 (28px) */
 export const TextAlignToggle: React.FC<TextAlignToggleProps> = ({
   value = 'center',
+  writingMode = 'horizontal',
   onChange,
   disabled = false,
 }) => {
+  const isVertical = writingMode === 'vertical';
+
   const options: { id: TextAlignment; label: string; icon: React.FC<{ size?: number; className?: string; strokeWidth?: number }> }[] = [
-    { id: 'left', label: '左对齐', icon: AlignLeft },
+    { id: 'left', label: isVertical ? '顶端对齐' : '左对齐', icon: AlignLeft },
     { id: 'center', label: '居中对齐', icon: AlignCenter },
-    { id: 'right', label: '右对齐', icon: AlignRight },
+    { id: 'right', label: isVertical ? '底端对齐' : '右对齐', icon: AlignRight },
   ];
 
   return (
-    <div className="flex items-center p-0.5 rounded-md bg-paper-grid/30 border border-paper-grid/50 select-none shrink-0">
+    <div className="flex items-center h-7 p-0.5 rounded-md bg-paper-grid/30 border border-paper-grid/50 select-none shrink-0">
       {options.map(({ id, label, icon: Icon }) => (
         <Tooltip key={id} content={label}>
           <button
             type="button"
             disabled={disabled}
             onClick={() => onChange(id)}
-            className={`p-1 rounded text-xs transition duration-150 active:scale-95 disabled:opacity-40 cursor-pointer ${
+            className={`w-6 h-6 flex items-center justify-center rounded text-xs transition duration-150 active:scale-95 disabled:opacity-40 cursor-pointer ${
               value === id
                 ? 'bg-paper shadow-2xs text-accent font-medium'
                 : 'text-ink-light hover:text-ink hover:bg-paper-grid/40'
             }`}
             aria-label={label}
           >
-            <Icon size={12} strokeWidth={1.8} />
+            <Icon
+              size={12}
+              strokeWidth={1.8}
+              className={isVertical ? 'rotate-90' : ''}
+            />
           </button>
         </Tooltip>
       ))}
     </div>
   );
 };
+
 
