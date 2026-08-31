@@ -324,14 +324,23 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
   // 与图书小票的 buildReceiptState 挂载填充同口径；只填空/占位字段所以安全。
   const lastBookFingerprintRef = useRef<string>('');
   const lastAppendedRef = useRef<string>('');
+  // 跟踪当前模板：切换模板会重置文章到新模板占位，需强制重跑上游填充
+  const lastPresetIdRef = useRef<string>(presetId);
   useEffect(() => {
-    const bookChanged = Boolean(bookFingerprint) && bookFingerprint !== lastBookFingerprintRef.current;
-    const textsChanged = appendedSignature !== lastAppendedRef.current;
+    const templateChanged = lastPresetIdRef.current !== presetId;
+    if (templateChanged) lastPresetIdRef.current = presetId;
+    const bookChanged =
+      Boolean(bookFingerprint) &&
+      (templateChanged || bookFingerprint !== lastBookFingerprintRef.current);
+    const textsChanged = templateChanged || appendedSignature !== lastAppendedRef.current;
     if (!bookChanged && !textsChanged) return;
     if (bookChanged) lastBookFingerprintRef.current = bookFingerprint;
     if (textsChanged) lastAppendedRef.current = appendedSignature;
 
-    const patch = bookChanged && upstreamBookData ? mapBookToEditorialArticle(upstreamBookData) : {};
+    const patch =
+      upstreamBookData && (bookChanged || templateChanged)
+        ? mapBookToEditorialArticle(upstreamBookData)
+        : {};
 
     setArticle((prev) => {
       const merged = { ...prev };
@@ -367,6 +376,7 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
       return merged;
     });
   }, [
+    presetId,
     bookFingerprint,
     appendedSignature,
     appendedTexts,
