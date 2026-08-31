@@ -41,6 +41,11 @@ import {
 import { computeEditorialLayout } from '../editorial/engine/layoutEngine';
 import { exportEditorialToPng } from '../editorial/render/canvasExporter';
 import {
+  mapBookToEditorialArticle,
+  isEditorialFieldFillable,
+  bookMetadataFingerprint,
+} from '../editorial/fromBook';
+import {
   FontFamilySelect,
   TextColorPalette,
   snapRotateCw,
@@ -61,6 +66,8 @@ export interface EditorialLayoutNodeProps {
   };
   upstreamImages?: string[];
   upstreamText?: string;
+  /** 上游图书元数据（book_info 节点，兼容豆瓣 API 结构）——参照图书小票节点 */
+  upstreamBookData?: import('../receipt/types').BookMetadataInput | null;
   isFavorited?: boolean;
   isPublic?: boolean;
   isSelected?: boolean;
@@ -168,6 +175,7 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
   data = {},
   upstreamImages,
   upstreamText,
+  upstreamBookData,
   isFavorited = false,
   isPublic = false,
   isSelected = false,
@@ -305,6 +313,35 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
       }));
     }
   }, [upstreamText, data.article?.body]);
+
+  // 1.1 同步上游图书元数据（参照图书小票节点：仅当上游书变更时按映射只填空/默认字段，
+  //      用户手改过的内容永不覆盖）
+  const bookFingerprint = useMemo(() => bookMetadataFingerprint(upstreamBookData), [upstreamBookData]);
+  // 置空初值：挂载时若已带图书（如画布根图书节点兜底）也能在首次渲染即触发填充，
+  // 与图书小票的 buildReceiptState 挂载填充同口径；只填空/默认字段所以安全。
+  const lastBookFingerprintRef = useRef<string>('');
+  const defaultArticle = activeTemplate.defaultArticle;
+  useEffect(() => {
+    // 仅当图书从无到有 / 切换书籍（指纹变化）时触发填充；只填空/默认字段，故已存量的
+    // 真实用户编辑内容不会被覆盖
+    if (!bookFingerprint || bookFingerprint === lastBookFingerprintRef.current) return;
+    lastBookFingerprintRef.current = bookFingerprint;
+    const patch = mapBookToEditorialArticle(upstreamBookData || null);
+    if (Object.keys(patch).length === 0) return;
+    setArticle((prev) => {
+      const merged = { ...prev };
+      for (const [key, value] of Object.entries(patch)) {
+        const k = key as keyof EditorialArticleData;
+        const cur = String(prev[k] ?? '');
+        const def = String(defaultArticle[k] ?? '');
+        if (isEditorialFieldFillable(cur, def)) {
+          merged[k] = value as string;
+        }
+      }
+      onUpdateState?.(id, { article: merged });
+      return merged;
+    });
+  }, [bookFingerprint, upstreamBookData, defaultArticle, id, onUpdateState]);
 
   // 2. 多图并集装载并探测真实自然宽高比
   const dismissedSourcesRef = useRef<Set<string>>(new Set(data.dismissedSources || []));

@@ -1057,6 +1057,8 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       const d = node.data ?? {};
       const upstreamImages = resolveUpstreamImages(node, h);
       const upstreamText = firstUpstreamText(node, h.nodes, h.edges, h.portTypesOf);
+      // 上游图书元数据（直连 book_info 优先，无则连通上游，再兜底画布根节点）——与图书小票同口径
+      const { upstreamBookData } = resolveUpstreamImage(node, h);
       return (
         <EditorialLayoutNode
           key={node.id}
@@ -1064,6 +1066,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           data={d}
           upstreamImages={upstreamImages}
           upstreamText={upstreamText}
+          upstreamBookData={upstreamBookData}
           isFavorited={!!h.favoritedState[node.id]}
           isPublic={!!h.publishedState[node.id]}
           isSelected={node.id === h.activeImage?.id}
