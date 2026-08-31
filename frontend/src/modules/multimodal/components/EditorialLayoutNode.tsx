@@ -309,13 +309,19 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
   //     - 其他文本节点输入 → 默认追加到正文底部（追加在图书元数据继承的正文之后；无图书时覆盖占位正文）。
   const bookFingerprint = useMemo(() => bookMetadataFingerprint(upstreamBookData), [upstreamBookData]);
   const defaultArticle = activeTemplate.defaultArticle;
+  // 节点初始化时的占位文章（data.article 被 seed 占位文案填过，或回退模板默认）。
+  // 书本映射的「占位基准」需同时包含模板默认占位与该初始占位，否则 seed 的占位字段永远无法被覆盖。
+  const initialArticleRef = useRef<EditorialArticleData | undefined>(undefined);
+  if (initialArticleRef.current === undefined) {
+    initialArticleRef.current = data.article || activeTemplate.defaultArticle;
+  }
   const appendedTexts = useMemo(
     () => (upstreamTexts || []).map((t) => (t || '').trim()).filter(Boolean),
     [upstreamTexts]
   );
   const appendedSignature = useMemo(() => appendedTexts.join('\u0000'), [appendedTexts]);
   // 置空初值：挂载时若已带图书（如画布根图书节点兜底）也能在首次渲染即触发填充，
-  // 与图书小票的 buildReceiptState 挂载填充同口径；只填空/默认字段所以安全。
+  // 与图书小票的 buildReceiptState 挂载填充同口径；只填空/占位字段所以安全。
   const lastBookFingerprintRef = useRef<string>('');
   const lastAppendedRef = useRef<string>('');
   useEffect(() => {
@@ -330,12 +336,13 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
     setArticle((prev) => {
       const merged = { ...prev };
 
-      // 1) 图书元数据 → 各字段（只填空/默认字段，故已存量的真实用户编辑内容不会被覆盖）
+      // 1) 图书元数据 → 各字段（只填空/占位字段，故已存量的真实用户编辑内容不会被覆盖）
       for (const [key, value] of Object.entries(patch)) {
         const k = key as keyof EditorialArticleData;
         const cur = String(prev[k] ?? '');
         const def = String(defaultArticle[k] ?? '');
-        if (isEditorialFieldFillable(cur, def)) {
+        const seed = String(initialArticleRef.current?.[k] ?? '');
+        if (isEditorialFieldFillable(cur, def, seed)) {
           merged[k] = value as string;
         }
       }
@@ -344,11 +351,12 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
       if (appendedTexts.length > 0) {
         const bookBody = String(patch.body ?? '').trim();
         const curBody = String(merged.body ?? '').trim();
+        const seedBody = String(initialArticleRef.current?.body ?? '');
         let baseBody = '';
         if (bookBody) {
           // 图书元数据提供的正文作为基底，其他文本接在其后
           baseBody = bookBody;
-        } else if (!isEditorialFieldFillable(curBody, String(defaultArticle.body ?? ''))) {
+        } else if (!isEditorialFieldFillable(curBody, String(defaultArticle.body ?? ''), seedBody)) {
           // 无图书但正文已被用户手改过：保留用户正文作为基底，在其后追加
           baseBody = curBody;
         }

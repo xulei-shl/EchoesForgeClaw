@@ -100,16 +100,26 @@ export function mapBookToEditorialArticle(
 }
 
 /**
- * 「只填空/默认字段」策略下判断 article 某字段是否待填充：
- * 值为空，或仍等于该模板的默认占位文案（即用户未手改过）时返回 true。
- * @param defaultValue 当前模板 defaultArticle 中该字段的默认值
+ * 「只填空/占位字段」策略下判断 article 某字段是否待填充：
+ * 值为空，或仍等于任一「占位基准」（模板默认占位文案 / 节点初始占位文案）即视为用户未手改过，返回 true。
+ * 节点新建时会用 seed 占位文案（如 headline: 'MAGAZINE'）初始化 data.article，
+ * 与模板 defaultArticle（如 headline: 'AVANT-GARDE'）往往不同——故必须把当前字段的初始占位
+ * 值一并并入基准，否则书本映射永远覆盖率不到这些占位字段。
+ * @param currentValue 当前字段值（可能已被用户手改）
+ * @param placeholderValues 一个或多个占位基准（模板默认值 + 节点初始值）
  */
 export function isEditorialFieldFillable(
-  value: string | undefined,
-  defaultValue: string | undefined
+  currentValue: string | undefined,
+  ...placeholderValues: (string | undefined)[]
 ): boolean {
-  if (!value) return true;
-  return Boolean(defaultValue) && value === defaultValue;
+  if (!currentValue) return true;
+  const cur = currentValue.trim();
+  // 允许额外空白差异：任一基准与当前值（去首尾空）连空白抹平后一致即视为仍是占位
+  return placeholderValues.some((v) => {
+    if (!v) return false;
+    const base = v.trim();
+    return Boolean(base) && base === cur;
+  });
 }
 
 /** 图书元数据特征指纹（isbn+书名+作者+出版年），用于检测上游书变更 */
