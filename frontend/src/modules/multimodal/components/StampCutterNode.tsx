@@ -297,18 +297,19 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
       }
 
       const newItem: StampTextItem = {
-
         id: `st-text-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         text: preset?.text || defaultText,
         fontFamily: '思源宋体',
         color: defaultColor,
         writingMode: preset?.writingMode || defaultWritingMode,
+        textAlign: 'center',
         x: defaultX,
         y: defaultY,
         w: preset?.w || defaultW,
         angle: 0,
         z: maxZ + 1,
       };
+
 
       const next = [...textItems, newItem];
       setTextItems(next);

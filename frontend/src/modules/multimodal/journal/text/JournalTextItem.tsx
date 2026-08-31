@@ -86,8 +86,9 @@ export const JournalTextItem: React.FC<JournalTextItemProps> = ({
             : {
                 writingMode: 'horizontal-tb',
                 whiteSpace: 'pre-wrap',
-                textAlign: 'center',
+                textAlign: item.textAlign || 'center',
               }),
+
         }}
       >
         {item.text || ''}

@@ -1,9 +1,5 @@
-/**
- * 手账文本模块共用控件：字体预载 / 字体下拉 / 墨色色盘
- * 供手账制作（JournalTextToolbar）与文本成图（TextImageNode）共享同一套实现。
- */
 import React, { useEffect } from 'react';
-import { Pipette } from 'lucide-react';
+import { Pipette, AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
 import { Tooltip } from '../../../../platform/components/ui/Tooltip';
 import { Select, type SelectOption } from '../../../../platform/components/ui/Select';
 import { ColorPickerPopover } from '../../../../platform/components/ui/ColorPicker';
@@ -13,6 +9,9 @@ import {
   loadFontFamily,
   preloadAllJournalFonts,
 } from './fontRegistry';
+
+export type TextAlignment = 'left' | 'center' | 'right';
+
 
 /** 挂载即批量预载全部字体预设（与手账共享字体基建） */
 export function usePreloadJournalFonts(): void {
@@ -133,3 +132,45 @@ export const TextColorPalette: React.FC<TextColorPaletteProps> = ({
     </div>
   );
 };
+
+interface TextAlignToggleProps {
+  value?: TextAlignment;
+  onChange: (align: TextAlignment) => void;
+  disabled?: boolean;
+}
+
+/** 对齐方式切换组件：左对齐 / 居中对齐 / 右对齐 胶囊单选 */
+export const TextAlignToggle: React.FC<TextAlignToggleProps> = ({
+  value = 'center',
+  onChange,
+  disabled = false,
+}) => {
+  const options: { id: TextAlignment; label: string; icon: React.FC<{ size?: number; className?: string; strokeWidth?: number }> }[] = [
+    { id: 'left', label: '左对齐', icon: AlignLeft },
+    { id: 'center', label: '居中对齐', icon: AlignCenter },
+    { id: 'right', label: '右对齐', icon: AlignRight },
+  ];
+
+  return (
+    <div className="flex items-center p-0.5 rounded-md bg-paper-grid/30 border border-paper-grid/50 select-none shrink-0">
+      {options.map(({ id, label, icon: Icon }) => (
+        <Tooltip key={id} content={label}>
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => onChange(id)}
+            className={`p-1 rounded text-xs transition duration-150 active:scale-95 disabled:opacity-40 cursor-pointer ${
+              value === id
+                ? 'bg-paper shadow-2xs text-accent font-medium'
+                : 'text-ink-light hover:text-ink hover:bg-paper-grid/40'
+            }`}
+            aria-label={label}
+          >
+            <Icon size={12} strokeWidth={1.8} />
+          </button>
+        </Tooltip>
+      ))}
+    </div>
+  );
+};
+

@@ -120,8 +120,8 @@ export async function renderStampFromImage(
         stampCtx.rotate((item.angle * Math.PI) / 180);
       }
 
+      const align = item.textAlign || 'center';
       stampCtx.font = `${fontSize}px "${fontFamily}", "Noto Serif SC", serif, sans-serif`;
-      stampCtx.textAlign = 'center';
       stampCtx.textBaseline = 'middle';
       stampCtx.fillStyle = color;
       stampCtx.shadowColor = 'rgba(0, 0, 0, 0.15)';
@@ -129,15 +129,26 @@ export async function renderStampFromImage(
       stampCtx.shadowOffsetY = Math.max(1, fontSize * 0.04);
 
       if (isVertical) {
+        stampCtx.textAlign = 'center';
         drawVerticalColumns(stampCtx, text, fontSize, (str, x, y) => stampCtx.fillText(str, x, y));
       } else {
         const lines = text.split('\n');
         const lineH = fontSize * 1.25;
+        const maxLineWidth = Math.max(...lines.map((l) => stampCtx.measureText(l).width || 0), 0);
+
+        stampCtx.textAlign = align;
         lines.forEach((line, i) => {
           const yOffset = (i - (lines.length - 1) / 2) * lineH;
-          stampCtx.fillText(line, 0, yOffset);
+          let xOffset = 0;
+          if (align === 'left') {
+            xOffset = -maxLineWidth / 2;
+          } else if (align === 'right') {
+            xOffset = maxLineWidth / 2;
+          }
+          stampCtx.fillText(line, xOffset, yOffset);
         });
       }
+
 
       stampCtx.restore();
     }

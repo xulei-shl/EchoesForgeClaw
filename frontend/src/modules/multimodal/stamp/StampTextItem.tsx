@@ -91,8 +91,9 @@ export const StampTextItemView: React.FC<StampTextItemProps> = ({
             : {
                 writingMode: 'horizontal-tb',
                 whiteSpace: 'pre-wrap',
-                textAlign: 'center',
+                textAlign: item.textAlign || 'center',
               }),
+
         }}
       >
         {item.text || ''}

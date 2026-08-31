@@ -407,7 +407,9 @@ export interface JournalMakerItem {
   fontFamily?: string;
   color?: string;
   writingMode?: JournalWritingMode;
+  textAlign?: 'left' | 'center' | 'right';
   x: number;
+
   y: number;
   w: number;
   angle: number;

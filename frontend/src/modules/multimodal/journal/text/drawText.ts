@@ -125,28 +125,42 @@ export function drawTextItemToCanvas(
 
   ctx.save();
   ctx.translate(cx, cy);
-  ctx.rotate((item.angle * Math.PI) / 180);
-
+  if (item.angle) {
+    ctx.rotate((item.angle * Math.PI) / 180);
+  }
   ctx.font = `${fontSize}px "${fontFamily}", cursive, sans-serif`;
-  ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
+
+  const align = item.textAlign || 'center';
   ctx.fillStyle = color;
+
   ctx.shadowColor = 'rgba(15, 23, 42, 0.12)';
   ctx.shadowBlur = Math.max(1, fontSize * 0.08);
   ctx.shadowOffsetY = Math.max(1, fontSize * 0.04);
 
   if (isVertical) {
     // 竖排模式：汉字直立逐字排列，英文单词整体旋转不拆分（共用竖排算法）
+    ctx.textAlign = 'center';
     drawVerticalColumns(ctx, text, fontSize, (str, x, y) => ctx.fillText(str, x, y));
   } else {
-    // 横排模式：按换行符居中排版
+    // 横排模式：按换行符与对齐方式排版
     const lines = text.split('\n');
     const lineH = fontSize * 1.35;
+    const maxLineWidth = Math.max(...lines.map((l) => ctx.measureText(l).width || 0), 0);
+
+    ctx.textAlign = align;
     lines.forEach((line, i) => {
       const yOffset = (i - (lines.length - 1) / 2) * lineH;
-      ctx.fillText(line, 0, yOffset);
+      let xOffset = 0;
+      if (align === 'left') {
+        xOffset = -maxLineWidth / 2;
+      } else if (align === 'right') {
+        xOffset = maxLineWidth / 2;
+      }
+      ctx.fillText(line, xOffset, yOffset);
     });
   }
 
   ctx.restore();
 }
+

@@ -50,7 +50,10 @@ export interface StampTextItem {
   color?: string;
   /** 排版方向：横排 (horizontal) 或 竖排 (vertical) */
   writingMode?: 'horizontal' | 'vertical';
+  /** 对齐方式：左对齐 (left)、居中对齐 (center)、右对齐 (right) */
+  textAlign?: 'left' | 'center' | 'right';
   /** 中心点 X (0~100 百分比，相对于邮票整张画布) */
+
   x: number;
   /** 中心点 Y (0~100 百分比，相对于邮票整张画布) */
   y: number;
