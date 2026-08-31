@@ -9,17 +9,8 @@ import {
   Check,
   Dices,
   ChevronUp,
+  ChevronDown,
   SlidersHorizontal,
-  Waves,
-  Cloud,
-  Scissors,
-  Mountain,
-  Flower2,
-  LayoutGrid,
-  Sparkles,
-  Wind,
-  Layers,
-  Shapes,
 } from 'lucide-react';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
@@ -74,36 +65,35 @@ export interface WatercolorBrushNodeProps {
   onExport?: (id: string, dataUrl: string, state: WatercolorBrushState) => Promise<void>;
 }
 
-const PRESET_OPTIONS: {
-  label: string;
-  value: WatercolorCompositionMode;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-  desc: string;
-}[] = [
-  { label: '自由创想', value: 'custom', icon: Shapes, desc: '空白画板·自由拼装所有积木参数' },
-  { label: '云阶水彩', value: 'watercolor_clouds', icon: Cloud, desc: '纯净多层水彩晕染，无杂乱直线' },
-  { label: '山川层峦', value: 'topographic_strata', icon: Mountain, desc: '东方青绿等高线山川地貌' },
-  { label: '剪纸留白', value: 'matisse_cutouts', icon: Scissors, desc: '马蒂斯现代几何剪纸造型与负空间' },
-  { label: '绽放花轮', value: 'botanical_bloom', icon: Flower2, desc: '纯植物花瓣多层展开与色彩渗透' },
-  { label: '包豪斯', value: 'bauhaus_grid', icon: LayoutGrid, desc: '现代主义几何色块与贯穿一体排线' },
-  { label: '破墨飞白', value: 'zen_splash', icon: Sparkles, desc: '东方水墨书法粗重圆相与写意渗透' },
-  { label: '表现手绘', value: 'abstract_sketch', icon: Pencil, desc: '纯粹向量流场速写与飞线动势' },
-  { label: '浮世浪涌', value: 'ukiyo_wave', icon: Waves, desc: '卷曲翻滚的浮世绘巨浪浪峰' },
-  { label: '气溶胶', value: 'aerosol_spray', icon: Wind, desc: '喷枪微粒、街头艺术与气溶胶晕染' },
-  { label: '拓印岩彩', value: 'mineral_rubbing', icon: Layers, desc: '干画粉彩涂抹与粗粝矿物岩石' },
+const PRESET_SELECT_OPTIONS: SelectOption[] = [
+  { value: 'custom', label: '自由创想', title: '空白画板·自由拼装所有积木参数' },
+  { value: 'spiral_vortex', label: '螺线律动', title: '连续曲线笔触、流光彩带与漩涡星云' },
+  { value: 'woven_grid', label: '浮水织锦', title: '海床流场波动经纬、水彩光斑与交错排线' },
+  { value: 'watercolor_clouds', label: '云阶水彩', title: '纯净多层水彩晕染，无杂乱直线' },
+  { value: 'topographic_strata', label: '山川层峦', title: '东方青绿等高线山川地貌' },
+  { value: 'matisse_cutouts', label: '剪纸留白', title: '马蒂斯现代几何剪纸造型与负空间' },
+  { value: 'botanical_bloom', label: '绽放花轮', title: '纯植物花瓣多层展开与色彩渗透' },
+  { value: 'bauhaus_grid', label: '包豪斯', title: '现代主义几何色块与贯穿一体排线' },
+  { value: 'zen_splash', label: '破墨飞白', title: '东方水墨书法粗重圆相与写意渗透' },
+  { value: 'abstract_sketch', label: '表现手绘', title: '纯粹向量流场速写与飞线动势' },
+  { value: 'ukiyo_wave', label: '浮世浪涌', title: '卷曲翻滚的浮世绘巨浪浪峰' },
+  { value: 'aerosol_spray', label: '气溶胶', title: '喷枪微粒、街头艺术与气溶胶晕染' },
+  { value: 'mineral_rubbing', label: '拓印岩彩', title: '干画粉彩涂抹与粗粝矿物岩石' },
 ];
 
 const LAYOUT_MODE_OPTIONS: SelectOption[] = [
-  { value: 'blobs', label: '☁️ 有机块面 (Blobs)' },
-  { value: 'strata', label: '⛰️ 层叠流线 (Strata)' },
-  { value: 'flow_lines', label: '〰️ 流场线描 (Flow Lines)' },
-  { value: 'radial', label: '🌸 极坐标放射 (Radial)' },
-  { value: 'grid', label: '▦ 几何方阵 (Grid)' },
-  { value: 'rings', label: '🌀 同心环系 (Rings)' },
-  { value: 'cutouts', label: '✂️ 负空间镂空 (Cutouts)' },
-  { value: 'waves', label: '🌊 浮世浪峰 (Waves)' },
-  { value: 'spray', label: '✨ 气溶胶喷绘 (Spray)' },
-  { value: 'mineral', label: '🪨 拓印岩彩 (Mineral)' },
+  { value: 'blobs', label: '有机块面' },
+  { value: 'strata', label: '层叠流线' },
+  { value: 'flow_lines', label: '流场线描' },
+  { value: 'radial', label: '极坐标放射' },
+  { value: 'grid', label: '几何方阵' },
+  { value: 'woven_grid', label: '浮水织锦' },
+  { value: 'spirals', label: '螺线律动' },
+  { value: 'rings', label: '同心环系' },
+  { value: 'cutouts', label: '负空间镂空' },
+  { value: 'waves', label: '浮世浪峰' },
+  { value: 'spray', label: '气溶胶喷绘' },
+  { value: 'mineral', label: '拓印岩彩' },
 ];
 
 const PALETTE_OPTIONS: SelectOption[] = WATERCOLOR_PRESET_PALETTES.map((p) => ({
@@ -120,8 +110,8 @@ const ASPECT_RATIO_OPTIONS: SelectOption[] = [
 ];
 
 const RESOLUTION_OPTIONS: SelectOption[] = [
-  { value: '1024', label: '1K (1024px)' },
-  { value: '2048', label: '2K (2048px)' },
+  { value: '1024', label: '1K 标准' },
+  { value: '2048', label: '2K 超清' },
 ];
 
 const BACKGROUND_OPTIONS: SelectOption[] = [
@@ -130,37 +120,37 @@ const BACKGROUND_OPTIONS: SelectOption[] = [
 ];
 
 const BRUSH_TYPE_OPTIONS: SelectOption[] = [
-  { value: 'watercolor', label: '水彩笔 (Watercolor)' },
-  { value: 'pastel', label: '粉彩笔 (Pastel)' },
-  { value: 'charcoal', label: '炭笔 (Charcoal)' },
-  { value: 'rotring', label: '针管笔 (Rotring)' },
-  { value: 'pen', label: '钢笔 (Pen)' },
+  { value: 'watercolor', label: '水彩笔' },
+  { value: 'pastel', label: '粉彩笔' },
+  { value: 'charcoal', label: '炭笔' },
+  { value: 'rotring', label: '针管笔' },
+  { value: 'pen', label: '钢笔' },
   { value: '2B', label: '2B 软铅笔' },
   { value: 'HB', label: 'HB 铅笔' },
   { value: '2H', label: '2H 硬铅笔' },
-  { value: 'cpencil', label: '彩色铅笔 (Cpencil)' },
-  { value: 'spray', label: '喷枪微粒 (Spray)' },
-  { value: 'marker', label: '马克笔 (Marker)' },
+  { value: 'cpencil', label: '彩色铅笔' },
+  { value: 'spray', label: '喷枪微粒' },
+  { value: 'marker', label: '马克笔' },
 ];
 
 const FIELD_MODE_OPTIONS: SelectOption[] = [
-  { value: 'curved', label: '弧形流场 (Curved)' },
-  { value: 'seabed', label: '海床柔流 (Seabed)' },
-  { value: 'waves', label: '潮汐波浪 (Waves)' },
-  { value: 'spiral', label: '同心旋涡 (Spiral)' },
-  { value: 'zigzag', label: '之字折线 (Zigzag)' },
-  { value: 'hand', label: '手绘微颤 (Hand)' },
-  { value: 'columns', label: '纵向列流 (Columns)' },
-  { value: 'none', label: '无流场·纯直笔 (None)' },
+  { value: 'curved', label: '弧形流场' },
+  { value: 'seabed', label: '海床柔流' },
+  { value: 'waves', label: '潮汐波浪' },
+  { value: 'spiral', label: '同心旋涡' },
+  { value: 'zigzag', label: '之字折线' },
+  { value: 'hand', label: '手绘微颤' },
+  { value: 'columns', label: '纵向列流' },
+  { value: 'none', label: '无流场·纯直笔' },
 ];
 
 const TECHNIQUE_OPTIONS: SelectOption[] = [
-  { value: 'watercolor', label: '物理水彩晕染 (Bleed)' },
-  { value: 'massing', label: '干画粉彩手绘 (Massing)' },
-  { value: 'hatching', label: '密集单向排线 (Hatching)' },
-  { value: 'hatch_array', label: '贯穿一体排线 (Hatch Array)' },
-  { value: 'wash', label: '清透平涂水洗 (Wash)' },
-  { value: 'contour', label: '纯手绘轮廓 (Contour Only)' },
+  { value: 'watercolor', label: '物理水彩晕染' },
+  { value: 'massing', label: '干画粉彩手绘' },
+  { value: 'hatching', label: '密集单向排线' },
+  { value: 'hatch_array', label: '贯穿一体排线' },
+  { value: 'wash', label: '清透平涂水洗' },
+  { value: 'contour', label: '纯手绘轮廓' },
 ];
 
 const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
@@ -390,6 +380,8 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
       'flow_lines',
       'radial',
       'grid',
+      'woven_grid',
+      'spirals',
       'rings',
       'cutouts',
       'waves',
@@ -629,51 +621,40 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
               />
             </>
           )}
-          <NodeActionBar.ExternalLink
-            href="https://p5-brush.cargo.site/"
-            tooltip="点击浏览 p5.brush 官方艺术展"
-          />
         </NodeActionBar>
       }
     >
       <div className="h-full flex flex-col flex-1 min-h-0 gap-2">
         {/* 参数工具栏 */}
         {!hasGenerated && (
-          <div className="relative z-20 flex flex-col gap-2 p-2 rounded-xl bg-paper/95 border border-paper-grid/80 text-xs font-sans text-ink-light select-none shadow-2xs shrink-0">
-            {/* 预设与配方模板选择栏 + 右侧折叠按钮 */}
-            <div className="flex items-start gap-1.5 min-w-0">
-              <div className="grid grid-cols-6 flex-1 p-0.5 rounded-lg bg-paper-grid/40 border border-paper-grid/60 gap-0.5 shadow-2xs">
-                {PRESET_OPTIONS.map((opt) => {
-                  const isChecked = mode === opt.value;
-                  const IconComponent = opt.icon;
-                  return (
-                    <Tooltip key={opt.value} content={`${opt.label} (${opt.desc})`}>
-                      <button
-                        type="button"
-                        onClick={() => handleApplyPresetRecipe(opt.value)}
-                        disabled={isGenerating}
-                        className={`flex flex-col items-center justify-center py-1 px-0.5 rounded text-[10px] font-medium leading-tight transition duration-150 active:scale-[0.94] ${
-                          isChecked
-                            ? 'bg-paper text-accent font-semibold shadow-2xs border border-paper-grid/40'
-                            : 'text-ink-light hover:text-ink hover:bg-paper-grid/30'
-                        } disabled:cursor-not-allowed disabled:opacity-50`}
-                      >
-                        <IconComponent size={12} className="shrink-0 mb-0.5" />
-                        <span className="truncate scale-[0.88]">{opt.label}</span>
-                      </button>
-                    </Tooltip>
-                  );
-                })}
+          <div className="relative z-20 flex flex-col gap-1.5 p-2 rounded-xl bg-paper/95 border border-paper-grid/80 text-xs font-sans text-ink-light select-none shadow-2xs shrink-0">
+            {/* 预设美学配方选择器 + 右侧展开/收起参数工坊按钮 */}
+            <div className="flex items-center gap-1.5 min-w-0">
+              <div className="flex-1 min-w-0">
+                <Select
+                  value={mode}
+                  onChange={(val) => handleApplyPresetRecipe(val as WatercolorCompositionMode)}
+                  options={PRESET_SELECT_OPTIONS}
+                  disabled={isGenerating}
+                  size="sm"
+                  className="w-full"
+                />
               </div>
 
               <Tooltip content={isPanelCollapsed ? '展开画室参数工坊' : '收起参数工坊，最大化预览水彩'}>
                 <button
                   type="button"
                   onClick={() => setIsPanelCollapsed(!isPanelCollapsed)}
-                  className="p-1.5 rounded-lg border border-paper-grid/70 text-ink-faint hover:text-accent hover:border-accent/60 bg-paper/60 transition-[color,border-color,transform] active:scale-[0.94] shrink-0 mt-0.5"
+                  className={`h-8 px-2.5 flex items-center gap-1 rounded-md border border-dashed border-paper-grid text-xs font-medium transition-[color,border-color,background-color,transform] active:scale-[0.96] shrink-0 ${
+                    !isPanelCollapsed
+                      ? 'bg-accent/10 border-accent/40 text-accent font-semibold'
+                      : 'text-ink-light hover:text-accent hover:border-accent/40 bg-transparent'
+                  }`}
                   aria-label={isPanelCollapsed ? '展开画室参数工坊' : '收起画室参数工坊'}
                 >
-                  {isPanelCollapsed ? <SlidersHorizontal size={13} /> : <ChevronUp size={13} />}
+                  <SlidersHorizontal size={13} />
+                  <span className="text-[11px]">{isPanelCollapsed ? '参数' : '收起'}</span>
+                  {isPanelCollapsed ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
                 </button>
               </Tooltip>
             </div>
@@ -686,193 +667,183 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
                   transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-                  className="overflow-hidden flex flex-col gap-2 pt-0.5"
+                  className="overflow-hidden"
                 >
-                  {/* 1. 构图几何母题 & 主笔刷材质 */}
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="flex flex-col gap-1 min-w-0">
-                      <div className="flex items-center justify-between text-[10px] text-ink-faint">
-                        <span>构图母题</span>
+                  <div className="flex flex-col gap-2 pt-1 max-h-[220px] overflow-y-auto pr-1">
+                    {/* 1. 构图几何母题 & 主笔刷材质 */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="flex flex-col gap-1 min-w-0">
+                        <span className="text-[10px] text-ink-faint">构图母题</span>
+                        <Select
+                          value={layoutMode}
+                          onChange={(val) => patchParam({ layoutMode: val as WatercolorLayoutMode, mode: 'custom' })}
+                          options={LAYOUT_MODE_OPTIONS}
+                          disabled={isGenerating}
+                          size="sm"
+                          className="w-full"
+                        />
                       </div>
-                      <Select
-                        value={layoutMode}
-                        onChange={(val) => patchParam({ layoutMode: val as WatercolorLayoutMode, mode: 'custom' })}
-                        options={LAYOUT_MODE_OPTIONS}
-                        disabled={isGenerating}
-                        size="sm"
-                        className="w-full"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1 min-w-0">
-                      <div className="flex items-center justify-between text-[10px] text-ink-faint">
-                        <span>主笔刷材质</span>
+                      <div className="flex flex-col gap-1 min-w-0">
+                        <span className="text-[10px] text-ink-faint">主笔刷材质</span>
+                        <Select
+                          value={brushType}
+                          onChange={(val) => patchParam({ brushType: val as WatercolorBrushType, mode: 'custom' })}
+                          options={BRUSH_TYPE_OPTIONS}
+                          disabled={isGenerating}
+                          size="sm"
+                          className="w-full"
+                        />
                       </div>
-                      <Select
-                        value={brushType}
-                        onChange={(val) => patchParam({ brushType: val as WatercolorBrushType, mode: 'custom' })}
-                        options={BRUSH_TYPE_OPTIONS}
-                        disabled={isGenerating}
-                        size="sm"
-                        className="w-full"
-                      />
                     </div>
-                  </div>
 
-                  {/* 2. 向量流场引导 & 填色技法 */}
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="flex flex-col gap-1 min-w-0">
-                      <div className="flex items-center justify-between text-[10px] text-ink-faint">
-                        <span>向量流场</span>
+                    {/* 2. 向量流场引导 & 填色技法 */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="flex flex-col gap-1 min-w-0">
+                        <span className="text-[10px] text-ink-faint">向量流场</span>
+                        <Select
+                          value={fieldMode}
+                          onChange={(val) => patchParam({ fieldMode: val as WatercolorFieldMode, mode: 'custom' })}
+                          options={FIELD_MODE_OPTIONS}
+                          disabled={isGenerating}
+                          size="sm"
+                          className="w-full"
+                        />
                       </div>
-                      <Select
-                        value={fieldMode}
-                        onChange={(val) => patchParam({ fieldMode: val as WatercolorFieldMode, mode: 'custom' })}
-                        options={FIELD_MODE_OPTIONS}
-                        disabled={isGenerating}
-                        size="sm"
-                        className="w-full"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1 min-w-0">
-                      <div className="flex items-center justify-between text-[10px] text-ink-faint">
-                        <span>填色技法</span>
+                      <div className="flex flex-col gap-1 min-w-0">
+                        <span className="text-[10px] text-ink-faint">填色技法</span>
+                        <Select
+                          value={technique}
+                          onChange={(val) => patchParam({ technique: val as WatercolorTechnique, mode: 'custom' })}
+                          options={TECHNIQUE_OPTIONS}
+                          disabled={isGenerating}
+                          size="sm"
+                          className="w-full"
+                        />
                       </div>
-                      <Select
-                        value={technique}
-                        onChange={(val) => patchParam({ technique: val as WatercolorTechnique, mode: 'custom' })}
-                        options={TECHNIQUE_OPTIONS}
-                        disabled={isGenerating}
-                        size="sm"
-                        className="w-full"
-                      />
                     </div>
-                  </div>
 
-                  {/* 3. 形态曲率 & 元素密度 */}
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 pt-1 border-t border-paper-grid/40">
-                    <SliderRow
-                      label="曲率"
-                      value={curvature}
-                      min={0.0}
-                      max={1.0}
-                      step={0.05}
-                      display={`${Math.round(curvature * 100)}%`}
-                      labelWidth="w-6"
-                      valueWidth="min-w-[26px]"
-                      disabled={isGenerating}
-                      onChange={(v) => patchParam({ curvature: v, mode: 'custom' })}
-                    />
-                    <SliderRow
-                      label="密度"
-                      value={density}
-                      min={0.3}
-                      max={2.0}
-                      step={0.1}
-                      display={`${density.toFixed(1)}x`}
-                      labelWidth="w-6"
-                      valueWidth="min-w-[26px]"
-                      disabled={isGenerating}
-                      onChange={(v) => patchParam({ density: v, mode: 'custom' })}
-                    />
-                  </div>
+                    {/* 3. 物理特性微调滑杆（紧凑双列网格，减少视觉割裂） */}
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 pt-1 border-t border-paper-grid/40">
+                      <SliderRow
+                        label="曲率"
+                        value={curvature}
+                        min={0.0}
+                        max={1.0}
+                        step={0.05}
+                        display={`${Math.round(curvature * 100)}%`}
+                        labelWidth="w-6"
+                        valueWidth="min-w-[26px]"
+                        disabled={isGenerating}
+                        onChange={(v) => patchParam({ curvature: v, mode: 'custom' })}
+                      />
+                      <SliderRow
+                        label="密度"
+                        value={density}
+                        min={0.3}
+                        max={2.0}
+                        step={0.1}
+                        display={`${density.toFixed(1)}x`}
+                        labelWidth="w-6"
+                        valueWidth="min-w-[26px]"
+                        disabled={isGenerating}
+                        onChange={(v) => patchParam({ density: v, mode: 'custom' })}
+                      />
+                      <SliderRow
+                        label="手颤"
+                        value={wiggle}
+                        min={0.2}
+                        max={2.5}
+                        step={0.1}
+                        display={`${wiggle.toFixed(1)}x`}
+                        labelWidth="w-6"
+                        valueWidth="min-w-[26px]"
+                        disabled={isGenerating}
+                        onChange={(v) => patchParam({ wiggle: v, mode: 'custom' })}
+                      />
+                      <SliderRow
+                        label="出血"
+                        value={bleedStrength}
+                        min={0.0}
+                        max={0.8}
+                        step={0.05}
+                        display={`${Math.round(bleedStrength * 100)}%`}
+                        labelWidth="w-6"
+                        valueWidth="min-w-[26px]"
+                        disabled={isGenerating}
+                        onChange={(v) => patchParam({ bleedStrength: v, mode: 'custom' })}
+                      />
+                      <SliderRow
+                        label="纸纹"
+                        value={textureStrength}
+                        min={0.0}
+                        max={1.0}
+                        step={0.05}
+                        display={`${Math.round(textureStrength * 100)}%`}
+                        labelWidth="w-6"
+                        valueWidth="min-w-[26px]"
+                        disabled={isGenerating}
+                        onChange={(v) => patchParam({ textureStrength: v, mode: 'custom' })}
+                      />
+                      <SliderRow
+                        label="排线"
+                        value={hatchDist}
+                        min={4}
+                        max={20}
+                        step={1}
+                        display={`${hatchDist}px`}
+                        labelWidth="w-6"
+                        valueWidth="min-w-[26px]"
+                        disabled={isGenerating}
+                        onChange={(v) => patchParam({ hatchDist: v, mode: 'custom' })}
+                      />
+                    </div>
 
-                  {/* 4. 物理特性微调滑杆 */}
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 pt-1 border-t border-paper-grid/40">
-                    <SliderRow
-                      label="手颤"
-                      value={wiggle}
-                      min={0.2}
-                      max={2.5}
-                      step={0.1}
-                      display={`${wiggle.toFixed(1)}x`}
-                      labelWidth="w-6"
-                      valueWidth="min-w-[26px]"
-                      disabled={isGenerating}
-                      onChange={(v) => patchParam({ wiggle: v, mode: 'custom' })}
-                    />
-                    <SliderRow
-                      label="出血"
-                      value={bleedStrength}
-                      min={0.0}
-                      max={0.8}
-                      step={0.05}
-                      display={`${Math.round(bleedStrength * 100)}%`}
-                      labelWidth="w-6"
-                      valueWidth="min-w-[26px]"
-                      disabled={isGenerating}
-                      onChange={(v) => patchParam({ bleedStrength: v, mode: 'custom' })}
-                    />
-                    <SliderRow
-                      label="纸纹"
-                      value={textureStrength}
-                      min={0.0}
-                      max={1.0}
-                      step={0.05}
-                      display={`${Math.round(textureStrength * 100)}%`}
-                      labelWidth="w-6"
-                      valueWidth="min-w-[26px]"
-                      disabled={isGenerating}
-                      onChange={(v) => patchParam({ textureStrength: v, mode: 'custom' })}
-                    />
-                    <SliderRow
-                      label="排线"
-                      value={hatchDist}
-                      min={4}
-                      max={20}
-                      step={1}
-                      display={`${hatchDist}px`}
-                      labelWidth="w-6"
-                      valueWidth="min-w-[26px]"
-                      disabled={isGenerating}
-                      onChange={(v) => patchParam({ hatchDist: v, mode: 'custom' })}
-                    />
-                  </div>
-
-                  {/* 5. 配色与规格 */}
-                  <div className="grid grid-cols-2 gap-2 pt-1 border-t border-paper-grid/40">
-                    <div className="flex flex-col gap-1 min-w-0">
-                      <span className="text-[10px] text-ink-faint">配色方案</span>
-                      <Select
-                        value={paletteId}
-                        onChange={(val) => patchParam({ paletteId: val, mode: 'custom' })}
-                        options={PALETTE_OPTIONS}
-                        disabled={isGenerating || !!upstreamColors}
-                        size="sm"
-                        className="w-full"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1 min-w-0">
-                      <span className="text-[10px] text-ink-faint">画底质感</span>
-                      <Select
-                        value={transparentBackground ? 'transparent' : 'paper'}
-                        onChange={(val) => patchParam({ transparentBackground: val === 'transparent', mode: 'custom' })}
-                        options={BACKGROUND_OPTIONS}
-                        disabled={isGenerating}
-                        size="sm"
-                        className="w-full"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1 min-w-0">
-                      <span className="text-[10px] text-ink-faint">画幅比例</span>
-                      <Select
-                        value={aspectRatio}
-                        onChange={(val) => patchParam({ aspectRatio: val as WatercolorAspectRatio })}
-                        options={ASPECT_RATIO_OPTIONS}
-                        disabled={isGenerating}
-                        size="sm"
-                        className="w-full"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1 min-w-0">
-                      <span className="text-[10px] text-ink-faint">导出画质</span>
-                      <Select
-                        value={String(resolution)}
-                        onChange={(val) => patchParam({ resolution: Number(val) as WatercolorResolution })}
-                        options={RESOLUTION_OPTIONS}
-                        disabled={isGenerating}
-                        size="sm"
-                        className="w-full"
-                      />
+                    {/* 4. 配色与规格 */}
+                    <div className="grid grid-cols-2 gap-2 pt-1 border-t border-paper-grid/40">
+                      <div className="flex flex-col gap-1 min-w-0">
+                        <span className="text-[10px] text-ink-faint">配色方案</span>
+                        <Select
+                          value={paletteId}
+                          onChange={(val) => patchParam({ paletteId: val, mode: 'custom' })}
+                          options={PALETTE_OPTIONS}
+                          disabled={isGenerating || !!upstreamColors}
+                          size="sm"
+                          className="w-full"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1 min-w-0">
+                        <span className="text-[10px] text-ink-faint">画底质感</span>
+                        <Select
+                          value={transparentBackground ? 'transparent' : 'paper'}
+                          onChange={(val) => patchParam({ transparentBackground: val === 'transparent', mode: 'custom' })}
+                          options={BACKGROUND_OPTIONS}
+                          disabled={isGenerating}
+                          size="sm"
+                          className="w-full"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1 min-w-0">
+                        <span className="text-[10px] text-ink-faint">画幅比例</span>
+                        <Select
+                          value={aspectRatio}
+                          onChange={(val) => patchParam({ aspectRatio: val as WatercolorAspectRatio })}
+                          options={ASPECT_RATIO_OPTIONS}
+                          disabled={isGenerating}
+                          size="sm"
+                          className="w-full"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1 min-w-0">
+                        <span className="text-[10px] text-ink-faint">导出画质</span>
+                        <Select
+                          value={String(resolution)}
+                          onChange={(val) => patchParam({ resolution: Number(val) as WatercolorResolution })}
+                          options={RESOLUTION_OPTIONS}
+                          disabled={isGenerating}
+                          size="sm"
+                          className="w-full"
+                        />
+                      </div>
                     </div>
                   </div>
                 </motion.div>

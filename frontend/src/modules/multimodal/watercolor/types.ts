@@ -9,15 +9,19 @@ export type WatercolorLayoutMode =
   | 'flow_lines'  // 〰️ 流场线描（顺应流场的自由速写与动态飞线）
   | 'radial'      // 🌸 极坐标放射（纯植物花瓣多层展开与色彩渗透）
   | 'grid'        // ▦ 几何方阵（现代主义包豪斯色块与贯穿排线）
+  | 'woven_grid'  // 🧶 浮水织锦（海床流场波动织物经纬与斜向交错排线）
+  | 'spirals'     // 🌀 螺线律动（连续曲线笔触、流光彩带与漩涡星云）
   | 'rings'       // 🌀 同心环系（写意圆相、东方水墨书法粗重笔触）
   | 'cutouts'     // ✂️ 负空间镂空（马蒂斯现代几何剪纸与孔洞）
   | 'waves'       // 🌊 浮世浪峰（翻滚卷曲的浮世绘巨浪浪头与密集排线）
   | 'spray'       // ✨ 气溶胶喷绘（粗粝喷枪微粒、街头艺术与气溶胶晕染）
   | 'mineral';    // 🪨 拓印岩彩（粗砺炭质与天然矿物岩石截面肌理）
 
-/** 2. 预设模式标识（自由创想或 10 款完全差异化美学配方） */
+/** 2. 预设模式标识（自由创想或 12 款完全差异化美学配方） */
 export type WatercolorCompositionMode =
   | 'custom'              // 🎨 自由创想（完全由用户自由拼装所有参数）
+  | 'spiral_vortex'       // 🌀 螺线律动（连续曲线笔触、流光彩带与漩涡星云）
+  | 'woven_grid'          // 🧶 浮水织锦（海床流场波动经纬、水彩光斑与交错排线）
   | 'watercolor_clouds'   // 💧 云阶水彩（纯净水彩有机云团晕染，无杂乱直线）
   | 'topographic_strata'  // ⛰️ 山川层峦（东方青绿等高线山峦）
   | 'matisse_cutouts'     // ✂️ 剪纸留白（马蒂斯现代几何剪纸造型）
@@ -135,11 +139,43 @@ export interface WatercolorBrushState {
   error?: string | null;
 }
 
-/** 10 款完全差异化精选美学配方模板字典（零同质化，各具代表性） */
+/** 12 款完全差异化精选美学配方模板字典（零同质化，各具代表性） */
 export const WATERCOLOR_PRESET_RECIPES: Record<
   Exclude<WatercolorCompositionMode, 'custom'>,
   Partial<WatercolorBrushState>
 > = {
+  spiral_vortex: {
+    layoutMode: 'spirals',
+    brushType: 'marker',
+    fieldMode: 'curved',
+    technique: 'contour',
+    curvature: 0.85,
+    density: 1.0,
+    wiggle: 1.2,
+    bleedStrength: 0.3,
+    textureStrength: 0.6,
+    borderStrength: 0.5,
+    hatchDist: 10,
+    paletteId: 'vivid_impression',
+    transparentBackground: false,
+    grain: 0.7,
+  },
+  woven_grid: {
+    layoutMode: 'woven_grid',
+    brushType: 'marker',
+    fieldMode: 'seabed',
+    technique: 'hatching',
+    curvature: 0.75,
+    density: 1.0,
+    wiggle: 1.1,
+    bleedStrength: 0.35,
+    textureStrength: 0.55,
+    borderStrength: 0.5,
+    hatchDist: 14,
+    paletteId: 'vivid_impression',
+    transparentBackground: false,
+    grain: 0.7,
+  },
   watercolor_clouds: {
     layoutMode: 'blobs',
     brushType: 'watercolor',
@@ -225,16 +261,16 @@ export const WATERCOLOR_PRESET_RECIPES: Record<
     brushType: 'charcoal',
     fieldMode: 'hand',
     technique: 'watercolor',
-    curvature: 0.9,
+    curvature: 0.88,
     density: 0.8,
-    wiggle: 1.4,
-    bleedStrength: 0.5,
-    textureStrength: 0.8,
-    borderStrength: 0.7,
+    wiggle: 0.8,
+    bleedStrength: 0.3,
+    textureStrength: 0.75,
+    borderStrength: 0.4,
     hatchDist: 8,
     paletteId: 'monochrome_pencil',
     transparentBackground: false,
-    grain: 0.9,
+    grain: 0.8,
   },
   abstract_sketch: {
     layoutMode: 'flow_lines',

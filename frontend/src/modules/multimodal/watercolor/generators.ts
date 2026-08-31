@@ -39,9 +39,10 @@ const VALID_BRUSHES = new Set([
   'spray',
   'marker',
   'watercolor',
+  'diamond',
 ]);
 
-/** 确保内置注册 custom watercolor 笔尖 */
+/** 确保内置注册 custom watercolor 与 diamond 笔尖 */
 function ensureCustomBrushesRegistered() {
   try {
     const existing = brush.box();
@@ -59,6 +60,23 @@ function ensureCustomBrushesRegistered() {
           _m.rect(-18, -18, 36, 36);
           _m.circle(12, 12, 18);
         },
+      });
+    }
+
+    if (!existing.includes('diamond')) {
+      brush.add('diamond', {
+        type: 'custom',
+        weight: 5,
+        scatter: 0.08,
+        opacity: 28,
+        spacing: 0.5,
+        pressure: [0.6, 1.4, 0.6],
+        tip: (_m: any) => {
+          _m.rotate(Math.PI / 4);
+          _m.rect(-2, -2, 4, 4);
+        },
+        rotate: 'natural',
+        markerTip: false,
       });
     }
   } catch {
@@ -493,8 +511,115 @@ function renderGridLayout(
 }
 
 /**
- * 6. 🌀 同心环系母题 (Rings / 东方破墨书法飞白)
- * 粗重压感炭笔书法圆相 + 内部通透水墨渗透 + 外部飞墨颗粒
+ * 6. 🧶 浮水织锦母题 (Woven Grid / The Happy Grid)
+ * 海床流场波动织物经纬与斜向交错排线，交织通透水彩晕染光斑
+ */
+function renderWovenGridLayout(
+  width: number,
+  height: number,
+  params: WatercolorBrushState,
+  palette: string[]
+) {
+  const density = params.density ?? 1.0;
+  const numCols = Math.max(6, Math.round(12 * Math.sqrt(density)));
+  const numRows = Math.max(4, Math.round(6 * Math.sqrt(density)));
+
+  const borderX = width * 0.1;
+  const borderY = height * 0.1;
+  const colSize = (width - borderX) / numCols;
+  const rowSize = (height - borderY) / numRows;
+
+  const strokeBrushes = ['2H', 'HB', 'charcoal', 'rotring'];
+  const hatchBrushes = ['marker', 'diamond', 'watercolor', 'rotring'];
+
+  for (let i = 0; i < numRows; i++) {
+    for (let j = 0; j < numCols; j++) {
+      const x = borderX / 2 + colSize * j;
+      const y = borderY / 2 + rowSize * i;
+      const col = randChoice(palette);
+
+      brush.push();
+      // 约 35% 网格单元填充通透水彩晕染
+      if (Math.random() < 0.35) {
+        brush.noStroke();
+        brush.fillBleed(randRange(0.08, params.bleedStrength || 0.38));
+        brush.fillTexture(params.textureStrength || 0.55, params.borderStrength || 0.5);
+        brush.fill(col, Math.round(randRange(85, 140)));
+      } else {
+        // 约 65% 网格单元由细线条勾边 + 多角度排线
+        const sBrush = resolveBrush(params.brushType, randChoice(strokeBrushes));
+        const hBrush = randChoice(hatchBrushes);
+        brush.set(sBrush, randChoice(palette), randRange(0.7, 1.2));
+        brush.hatchStyle(hBrush, col, 1.0);
+        const hDist = Math.max(8, (params.hatchDist || 14) * randRange(0.8, 1.8));
+        brush.hatch(hDist, randRange(0, 180), {
+          rand: 0,
+          continuous: false,
+          gradient: false,
+        });
+      }
+
+      // 在 seabed/waves 等流场引导下，矩形边缘产生波浪起伏与经纬织物感
+      brush.rect(x, y, colSize, rowSize);
+
+      brush.noStroke();
+      brush.noFill();
+      brush.noHatch();
+      brush.pop();
+    }
+  }
+}
+
+/**
+ * 7. 🌀 螺线律动母题 (Spirals / Strokes & Spirals Vortex)
+ * 连续曲线笔触、流场涟漪扭曲与丝滑流光彩带漩涡
+ */
+function renderSpiralsLayout(
+  width: number,
+  height: number,
+  params: WatercolorBrushState,
+  palette: string[]
+) {
+  const densityFactor = params.density ?? 1.0;
+  const spiralCount = Math.max(3, Math.round(5 * densityFactor));
+  const brushName = resolveBrush(params.brushType, 'marker');
+
+  const scaleFactor = width / 1500;
+  const baseStepInc = 25 * scaleFactor * (1.1 / Math.sqrt(densityFactor));
+
+  brush.push();
+  brush.pick(brushName);
+
+  for (let j = 0; j < spiralCount; j++) {
+    const col = palette[j % palette.length];
+    brush.stroke(col);
+
+    const startX = width * randRange(0.18, 0.82);
+    const startY = height * randRange(0.18, 0.82);
+    brush.beginStroke('curve', startX, startY);
+
+    const initAngle = randRange(0, 360);
+    const maxSteps = Math.floor(randRange(25, 75) * Math.sqrt(densityFactor));
+
+    for (let i = 0; i < maxSteps; i++) {
+      const stepLen = i * baseStepInc;
+      // 4段象限弧线依次递增步长，形成丝滑扩张螺线
+      brush.move(0 + initAngle, stepLen, randRange(0.6, 1.6));
+      brush.move(90 + initAngle, 8 * scaleFactor + stepLen, randRange(0.6, 1.6));
+      brush.move(180 + initAngle, 13 * scaleFactor + stepLen, randRange(0.6, 1.6));
+      brush.move(270 + initAngle, 18 * scaleFactor + stepLen, randRange(0.6, 1.6));
+    }
+
+    brush.endStroke(initAngle, 1.0);
+  }
+
+  brush.noStroke();
+  brush.pop();
+}
+
+/**
+ * 8. 🌀 同心环系母题 (Rings / 东方破墨书法飞白)
+ * 苍劲有力的压感书法圆相 + 真实飞白丝缕 + 清透淡墨渗透 + 细密墨点
  */
 function renderRingsLayout(
   width: number,
@@ -505,35 +630,52 @@ function renderRingsLayout(
   const cx = width * 0.5;
   const cy = height * 0.48;
   const maxR = width * 0.32;
-  const curv = params.curvature ?? 0.85;
+  const curv = params.curvature ?? 0.88;
 
+  // 1. 主圆相 (Enso) 压感 Spline
   const ensoPts: [number, number, number][] = [];
-  const ptCount = 20;
+  const feibaiPts: [number, number, number][] = [];
+  const ptCount = 22;
+
   for (let i = 0; i <= ptCount; i++) {
     const ang = (i * Math.PI * 1.95) / ptCount - Math.PI / 2;
-    const rCurrent = maxR * (1 + 0.08 * Math.sin(ang * 3)) + randRange(-5, 5);
-    const pressure = i < 3 ? 0.3 + i * 0.4 : i > ptCount - 4 ? Math.max(0.2, (ptCount - i) * 0.35) : 2.0;
+    const rCurrent = maxR * (1 + 0.06 * Math.sin(ang * 3)) + randRange(-3, 3);
+    // 自然毛笔起承转合压感：起笔 0.35 -> 中段行笔 1.05 -> 收笔 0.35
+    const progress = i / ptCount;
+    const pressure = 0.35 + Math.sin(progress * Math.PI) * 0.7 + randRange(-0.08, 0.08);
+
     ensoPts.push([cx + Math.cos(ang) * rCurrent, cy + Math.sin(ang) * rCurrent, pressure]);
+
+    // 内部飞白丝缕（紧贴主弧内侧，模拟毛笔分叉飞白）
+    const rFeibai = rCurrent - randRange(4, 10);
+    feibaiPts.push([cx + Math.cos(ang) * rFeibai, cy + Math.sin(ang) * rFeibai, pressure * 0.6]);
   }
 
   brush.push();
+  // 内部通透极淡的墨韵微晕（绝不糊黑）
   renderShapeFill(
     ensoPts.map(([x, y]) => [x, y]),
     palette[1] || palette[0],
     params,
-    0.75
+    0.45
   );
 
+  // 2. 主墨圆相线条 (优雅的书法苍劲笔触，线宽适中)
   const ensoBrush = resolveBrush(params.brushType, 'charcoal');
-  brush.set(ensoBrush, palette[0], 2.4);
+  brush.set(ensoBrush, palette[0], 0.95);
   brush.spline(ensoPts, curv);
 
+  // 3. 飞白干笔细丝 (2H 硬铅细丝，塑造飞白留空)
+  brush.set('2H', palette[0], 0.55);
+  brush.spline(feibaiPts, curv);
+
+  // 4. 细碎飞墨星点 (Spray splatters)
   const sprayBrush = resolveBrush('spray');
-  brush.set(sprayBrush, palette[0], 1.2);
-  for (let s = 0; s < 20; s++) {
+  brush.set(sprayBrush, palette[0], 0.7);
+  for (let s = 0; s < 16; s++) {
     const sx = cx + randRange(-maxR * 1.1, maxR * 1.1);
     const sy = cy + randRange(-maxR * 1.1, maxR * 1.1);
-    brush.flowLine(sx, sy, randRange(15, 60), randRange(0, 360));
+    brush.flowLine(sx, sy, randRange(8, 35), randRange(0, 360));
   }
   brush.pop();
 }
@@ -815,6 +957,12 @@ export function executeWatercolorGeneration(
       break;
     case 'grid':
       renderGridLayout(width, height, params, palette);
+      break;
+    case 'woven_grid':
+      renderWovenGridLayout(width, height, params, palette);
+      break;
+    case 'spirals':
+      renderSpiralsLayout(width, height, params, palette);
       break;
     case 'rings':
       renderRingsLayout(width, height, params, palette);
