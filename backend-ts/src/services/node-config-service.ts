@@ -64,6 +64,8 @@ export function textConfigFrom(configId: number | null, nodeType: string): TextM
     base_url: llm.baseUrl ?? '',
     model_name: llm.modelName || 'gpt-3.5-turbo',
     system_prompt: prompt?.content && prompt.isActive ? prompt.content : '',
+    contextWindow: llm.contextWindow ?? null,
+    maxTokens: llm.maxTokens ?? null,
   };
 }
 
@@ -79,6 +81,8 @@ export function visionConfigFrom(configId: number | null, nodeType: string): Vis
     base_url: llm.baseUrl ?? '',
     model_name: llm.modelName || 'gpt-4o-mini',
     system_prompt: prompt?.content && prompt.isActive ? prompt.content : '',
+    contextWindow: llm.contextWindow ?? null,
+    maxTokens: llm.maxTokens ?? null,
   };
 }
 

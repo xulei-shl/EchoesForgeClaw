@@ -13,6 +13,10 @@ export interface TextModelConfig {
   model_name: string;
   /** 系统提示词（节点绑定的提示词模板），未绑定则为空串（不注入）。 */
   system_prompt?: string;
+  /** 模型上下文窗口大小（token；留空默认 128000，与 pi Skill Agent 语义一致）。 */
+  contextWindow?: number | null;
+  /** 模型最大单次输出 token（留空默认 16384）。 */
+  maxTokens?: number | null;
 }
 
 /** 多模态（视觉）模型配置，字段与文本模型一致。 */

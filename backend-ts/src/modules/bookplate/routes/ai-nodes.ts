@@ -37,7 +37,7 @@ import { fastclawDataRoot, harvestFastclawArtifacts } from '../../../services/fa
 import { chatStreamToResponse, chatStreamToSseResponse, type ChatStreamEvent } from '../stream.js';
 import { NODE_TYPES } from '../node-types.js';
 import { ImageGenerationError } from '../../../infrastructure/ai/errors.js';
-import type { ImageModelConfig } from '../../../infrastructure/ai/types.js';
+import type { ImageModelConfig, TextModelConfig } from '../../../infrastructure/ai/types.js';
 import { fetchCoverBytes } from '../covers.js';
 import {
   hasSkillAgentBinding,
@@ -60,19 +60,26 @@ import {
  * - 后端根据 name 查找匹配的 llm_config，自动补全 base_url / apiKey / model_name
  * - 显式传入的 base_url / api_key 优先级最高（用户手动填写）
  * - 三者皆空则原样返回 textConfig
+ * - contextWindow / maxTokens 一并透传（LLM 模式自动压缩的触发阈值依赖所选模型的窗口）；
+ *   手动填 base_url/api_key 分支也按 model_name 回查配置，避免丢失阈值。
  */
 function applyModelOverride(
-  textConfig: { apiKey: string; base_url: string; model_name: string } | null,
+  textConfig: TextModelConfig | null,
   payload: { model_name?: string | null; base_url?: string | null; api_key?: string | null }
-): typeof textConfig {
+): TextModelConfig | null {
   if (!textConfig && !payload.model_name && !payload.base_url && !payload.api_key) return null;
-  // 用户显式传了 base_url 或 api_key → 直接合并（最高优先级）
+  const EMPTY: TextModelConfig = { apiKey: '', base_url: '', model_name: '' };
+  // 用户显式传了 base_url 或 api_key → 直接合并（最高优先级）。此时仍按 model_name 查一次配置，
+  // 带回 context_window/max_tokens，否则手动覆盖模型会丢失压缩触发阈值（见 applyModelOverride 注释）。
   if (payload.base_url || payload.api_key) {
+    const matched = payload.model_name ? lookupLLMConfigByName(payload.model_name) : undefined;
     return {
-      ...(textConfig ?? { apiKey: '', base_url: '', model_name: '' }),
+      ...(textConfig ?? EMPTY),
       ...(payload.model_name ? { model_name: payload.model_name } : {}),
       ...(payload.base_url ? { base_url: payload.base_url } : {}),
       ...(payload.api_key ? { apiKey: payload.api_key } : {}),
+      contextWindow: matched?.contextWindow ?? textConfig?.contextWindow ?? null,
+      maxTokens: matched?.maxTokens ?? textConfig?.maxTokens ?? null,
     };
   }
   // 仅传了 model_name（实际是配置 name）→ 查找匹配的 llm_config，用它的完整配置
@@ -80,16 +87,20 @@ function applyModelOverride(
     const matched = lookupLLMConfigByName(payload.model_name);
     if (matched && matched.apiKey) {
       return {
-        ...(textConfig ?? { apiKey: '', base_url: '', model_name: '' }),
+        ...(textConfig ?? EMPTY),
         model_name: matched.modelName || payload.model_name,
         base_url: matched.baseUrl ?? textConfig?.base_url ?? '',
         apiKey: matched.apiKey ?? textConfig?.apiKey ?? '',
+        contextWindow: matched.contextWindow ?? textConfig?.contextWindow ?? null,
+        maxTokens: matched.maxTokens ?? textConfig?.maxTokens ?? null,
       };
     }
     // 未找到匹配配置 → 只覆盖模型名
     return {
-      ...(textConfig ?? { apiKey: '', base_url: '', model_name: '' }),
+      ...(textConfig ?? EMPTY),
       model_name: payload.model_name,
+      contextWindow: textConfig?.contextWindow ?? null,
+      maxTokens: textConfig?.maxTokens ?? null,
     };
   }
   return textConfig;

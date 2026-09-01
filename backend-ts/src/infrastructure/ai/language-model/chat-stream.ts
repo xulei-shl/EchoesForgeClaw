@@ -1,10 +1,11 @@
-import { streamText } from 'ai';
+import { generateText, streamText } from 'ai';
 import type { TextModelConfig } from '../types.js';
 import { LLM_REQUEST_TIMEOUT_MS } from '../types.js';
 import { createAIProvider } from '../provider.js';
 import { toAIMessages } from '../messages.js';
 import { LLMGenerationError, aiErrorMessage, classifyAIError } from '../errors.js';
 import { logUsage, normalizeUsage } from '../usage.js';
+import { compactModelMessages, SUMMARY_INSTRUCTIONS } from '../compaction.js';
 
 /**
  * 多轮对话流式生成（AI 对话节点 LLM 模式，对应 Python `llm_service.chat_stream`）。
@@ -44,9 +45,36 @@ export async function* chatStream(
   const provider = createAIProvider({ apiKey, base_url: config?.base_url ?? '' });
 
   // 携带图片的 user 消息经 toAIMessages 转为多模态 content（text + image）
-  const modelMessages = toAIMessages(messages ?? []);
+  let modelMessages = toAIMessages(messages ?? []);
   if (!modelMessages.some((m) => m.role === 'user')) {
     throw new LLMGenerationError('AI 对话缺少用户消息');
+  }
+
+  // 上下文自动压缩（复用 pi 语义）：估算超阈则把旧历史摘要注意（旧摘要 + 近距原样），
+  // 阈值随所选模型的 contextWindow 推导；压缩请求额外调一次同模型 generateText 生成摘要。
+  if (modelMessages.length > 1) {
+    const summarize = async (text: string): Promise<string> => {
+      try {
+        const r = await generateText({
+          model: provider(modelName),
+          system: SUMMARY_INSTRUCTIONS,
+          prompt: text,
+          maxRetries: 0,
+          timeout: LLM_REQUEST_TIMEOUT_MS,
+        });
+        return r.text.trim();
+      } catch {
+        // 摘要注意失败不阻塞主链路：保守地退回原消息（宁可超窗报错，也不丢历史）
+        return '';
+      }
+    };
+    const { messages: compactedMessages, compacted } = await compactModelMessages(
+      modelMessages,
+      systemPrompt,
+      config?.contextWindow,
+      summarize
+    );
+    if (compacted && compactedMessages) modelMessages = compactedMessages;
   }
 
   const startedAt = performance.now();
