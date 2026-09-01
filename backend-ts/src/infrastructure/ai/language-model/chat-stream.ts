@@ -72,7 +72,8 @@ export async function* chatStream(
       modelMessages,
       systemPrompt,
       config?.contextWindow,
-      summarize
+      summarize,
+      null // anchor: 暂不传入，后续接入跨轮 usage 追踪后可传入校准
     );
     if (compacted && compactedMessages) modelMessages = compactedMessages;
   }

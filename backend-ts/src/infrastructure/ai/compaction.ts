@@ -143,6 +143,7 @@ export const SUMMARY_INSTRUCTIONS = `你是对话压缩助手。把下方 [User]
  * @param systemPrompt system 提示词（计入上下文占用，但注入方式不变）
  * @param contextWindow 模型上下文窗口（null/undefined → 缺省 128000）
  * @param summarize 摘要函数：输入待摘要的序列化文本，返回结构化概要；由调用方接真实 LLM
+ * @param anchor 用量锚点（API 返回的真实 token 计数 + 对应消息索引），用于校准上下文估算
  * @returns 压缩后的消息 + 是否发生了压缩
  */
 export interface CompactResult {
@@ -152,14 +153,49 @@ export interface CompactResult {
   summary: string | null;
 }
 
+/**
+ * 用量锚点：API 返回的真实 token 计数，用于校准上下文估算。
+ * pi-agent 用最后一条 assistant 消息的 usage 作为锚点，只对尾部新消息做启发式估算，
+ * 避免纯启发式在长会话中累积漂移。
+ */
+export interface UsageAnchor {
+  /** 锚点对应的 usage.totalTokens（API 返回的真实上下文 token 数）。 */
+  totalTokens: number;
+  /** 锚点对应的消息索引（usage 覆盖到该索引，含）。 */
+  messageIndex: number;
+}
+
+/**
+ * 用锚点校准的上下文 token 估算（对齐 pi-agent estimateContextTokens 语义）。
+ *
+ * - 有锚点：锚点前的 token 直接用 usage.totalTokens，锚点后逐条启发式估算；
+ * - 无锚点：全部逐条启发式估算（回退到当前行为）。
+ */
+export function estimateContextTokens(
+  messages: ModelMessage[],
+  anchor?: UsageAnchor | null
+): number {
+  if (anchor && anchor.messageIndex >= 0 && anchor.messageIndex < messages.length) {
+    // 锚点前（含）用真实 usage，锚点后逐条启发式
+    let trailingTokens = 0;
+    for (let i = anchor.messageIndex + 1; i < messages.length; i++) {
+      trailingTokens += estimateMessageTokens(messages[i]!);
+    }
+    return anchor.totalTokens + trailingTokens;
+  }
+  // 无锚点：全部启发式
+  return estimateMessagesTokens(messages);
+}
+
 export async function compactModelMessages(
   messages: ModelMessage[],
   systemPrompt: string | undefined,
   contextWindow: number | null | undefined,
-  summarize: (text: string) => Promise<string>
+  summarize: (text: string) => Promise<string>,
+  anchor?: UsageAnchor | null
 ): Promise<CompactResult> {
   const { triggerTokens, keepRecentTokens } = computeCompactionBudgets(contextWindow);
-  const totalTokens = estimateMessagesTokens(messages) + estimateTokens(systemPrompt ?? '');
+  const totalTokens = estimateContextTokens(messages, anchor) + estimateTokens(systemPrompt ?? '');
   if (totalTokens <= triggerTokens) {
     return { messages, compacted: false, summary: null };
   }

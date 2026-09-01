@@ -4,6 +4,7 @@ import {
   compactModelMessages,
   computeCompactionBudgets,
   estimateTokens,
+  estimateContextTokens,
 } from '../../src/infrastructure/ai/compaction.js';
 import { chatStream } from '../../src/infrastructure/ai/language-model/chat-stream.js';
 import { startMockOpenAIServer, sseChunk, type MockOpenAIServer } from '../helpers/mock-openai-server.js';
@@ -42,6 +43,30 @@ describe('estimateTokens / budgets', () => {
   it('缺省窗口与 pi 一致为 128000', () => {
     const b = computeCompactionBudgets(null);
     expect(b.triggerTokens).toBe(128000 - b.reserveTokens);
+  });
+
+  it('estimateContextTokens: 无锚点时全部启发式估算', () => {
+    const messages = [u('甲'.repeat(100)), a('乙'.repeat(100))];
+    const tokens = estimateContextTokens(messages);
+    // 甲*100 → 100 CJK + 4 = 104; 乙*100 → 100 CJK + 4 = 104; + role overhead
+    expect(tokens).toBeGreaterThan(0);
+  });
+
+  it('estimateContextTokens: 有锚点时锚点后逐条启发式', () => {
+    const messages = [u('甲'.repeat(100)), a('乙'.repeat(100)), u('丙'.repeat(100))];
+    // 锚点：index=1 的 assistant 消息，usage.totalTokens=500
+    const tokens = estimateContextTokens(messages, { totalTokens: 500, messageIndex: 1 });
+    // 500 (锚点前含) + 丙*100 的启发式 (≈104)
+    expect(tokens).toBeGreaterThan(500);
+    expect(tokens).toBeLessThan(700);
+  });
+
+  it('estimateContextTokens: 锚点 index 超出范围时回退全部启发式', () => {
+    const messages = [u('甲'.repeat(100))];
+    const tokens = estimateContextTokens(messages, { totalTokens: 500, messageIndex: 5 });
+    // 锚点无效，回退全部启发式
+    const fallback = estimateContextTokens(messages);
+    expect(tokens).toBe(fallback);
   });
 });
 
@@ -107,6 +132,32 @@ describe('compactModelMessages', () => {
       async () => '摘要'
     );
     expect(noSummarize.compacted).toBe(false);
+  });
+
+  it('锚点校准：有锚点时不触发压缩（锚点降低估算值）', async () => {
+    // 三条大消息，每条 ≈804 tokens
+    const bigA = u('甲'.repeat(800));
+    const bigB = u('乙'.repeat(800));
+    const bigC = u('丙'.repeat(800));
+    const messages = [bigA, bigB, bigC];
+    const called: string[] = [];
+
+    // 无锚点：总估算 ≈ 2412，contextWindow=2000 时超阈值 → 会压缩
+    const noAnchor = await compactModelMessages(messages, '', 2000, async (t) => {
+      called.push(t);
+      return '摘要';
+    });
+    expect(noAnchor.compacted).toBe(true);
+    expect(called.length).toBe(1);
+
+    // 有锚点：假设 index=1 的真实 usage=100，总估算 = 100 + 第3条 ≈ 104 → 204 < 阈值 → 不压缩
+    called.length = 0;
+    const withAnchor = await compactModelMessages(messages, '', 2000, async (t) => {
+      called.push(t);
+      return '摘要';
+    }, { totalTokens: 100, messageIndex: 1 });
+    expect(withAnchor.compacted).toBe(false);
+    expect(called.length).toBe(0);
   });
 });
 
