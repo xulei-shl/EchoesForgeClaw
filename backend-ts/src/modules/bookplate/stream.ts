@@ -95,6 +95,10 @@ export type ChatStreamEvent =
     }
   /** pi-subagents 后台运行快照（Skill Agent RPC 模式；由 pi/events.ts setWidget 窄缝产出） */
   | { type: 'subagent_fleet'; runs: SubagentFleetRun[] }
+  /** 空闲监听续轮起始（后台子代理完成后 pi 自动触发的新一轮；前端据此开新步骤气泡） */
+  | { type: 'turn_start' }
+  /** 空闲监听期心跳（保持前端 SSE 连接活跃；前端仅重置 idle 计时，不渲染） */
+  | { type: 'heartbeat' }
   | { type: 'error'; message: string };
 
 /** 把归一化事件流映射为 AI SDK UI Message Stream 的 Response。 */

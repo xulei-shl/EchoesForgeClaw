@@ -89,8 +89,10 @@ export function* mapPiJsonEvent(
       const method = String(evt.method ?? '');
       if (!DIALOG_METHODS.has(method)) {
         if (method === 'setWidget') {
-          const runs = subagentFleetRunsFromUiRequest(evt);
-          if (runs.length > 0) yield { type: 'subagent_fleet', runs };
+          const { valid, runs } = subagentFleetRunsFromUiRequest(evt);
+          // 有效快照（含空快照=后台全部结束）都产出 subagent_fleet；
+          // 非 subagent-async key / 坏 JSON 则静默忽略。
+          if (valid) yield { type: 'subagent_fleet', runs };
         }
         break;
       }

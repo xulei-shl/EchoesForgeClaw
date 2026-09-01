@@ -36,6 +36,19 @@ export interface PiRoundState {
   aborted: boolean;
   /** 写 stdin 失败（子进程已退出）。 */
   writeFailed: boolean;
+  /**
+   * 空闲监听态：主轮 settled 后、存在运行中的后台子代理时置位。
+   * 置位期间 consumeLine 继续消费 stdout（捕获扩展 triggerTurn 自动触发的新轮），
+   * 且 runPiAgent 复用判定据此不杀进程（用户新消息进前端队列，SSE 关闭后自动续发）。
+   */
+  listening: boolean;
+  /**
+   * 监听态下捕获到 pi 自动触发的新轮起始（agent_start）。续轮开始时消费方据此
+   * 重置 settled=false 并继续 yield 事件直至下一次 agent_settled。
+   */
+  turnStarted: boolean;
+  /** 是否存在运行中的后台子代理（subagent_fleet 快照 / tool_result asyncId 判定）。 */
+  backgroundRunsActive: boolean;
 }
 
 export function createPiRoundState(): PiRoundState {
@@ -48,6 +61,9 @@ export function createPiRoundState(): PiRoundState {
     notify: null,
     aborted: false,
     writeFailed: false,
+    listening: false,
+    turnStarted: false,
+    backgroundRunsActive: false,
   };
 }
 

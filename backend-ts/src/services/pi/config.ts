@@ -43,6 +43,17 @@ export const PI_PROCESS_IDLE_MS = envInt('PI_PROCESS_IDLE_MS', 5 * 60 * 1000);
 /** 全局同时存活的 pi RPC 进程上限：多租户内存兜底，超限按 LRU（最近未用）驱逐。 */
 export const PI_MAX_PROCESSES = envInt('PI_MAX_PROCESSES', 20);
 
+/**
+ * 空闲监听总超时（毫秒，默认 10 分钟）：主轮 settled 后若有后台子代理运行中，
+ * 后端进入空闲监听态等待扩展 triggerTurn 自动触发的新一轮；该超时兜底后台任务
+ * 永不结束/无续轮事件时的长连接占用（防死等）。
+ */
+export const PI_SUBAGENT_LISTEN_TIMEOUT_MS = envInt('PI_SUBAGENT_LISTEN_TIMEOUT_MS', 10 * 60 * 1000);
+
+/** 监听期心跳间隔（毫秒，默认 15 秒）：后台子代理长时间无 fleet 快照事件时，
+ * 由后端周期性产出 heartbeat 事件，前端仅用于重置 idle 计时防误杀连接。 */
+export const PI_SUBAGENT_LISTEN_HEARTBEAT_MS = envInt('PI_SUBAGENT_LISTEN_HEARTBEAT_MS', 15 * 1000);
+
 // ---------------------------------------------------------------------------
 // thinking 档位映射
 // ---------------------------------------------------------------------------

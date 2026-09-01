@@ -53,7 +53,11 @@ export type PiStreamEvent =
       prefill?: string;
       timeout?: number;
     }
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string }
+  /** 空闲监听续轮起始（后台子代理完成后 pi 自动触发的新一轮；前端据此开新步骤气泡） */
+  | { type: 'turn_start' }
+  /** 空闲监听期心跳（保持 SSE 连接活跃；前端仅重置 idle 计时，不渲染） */
+  | { type: 'heartbeat' };
 
 /** 扩展 widget 展示项（服务端快照 / SSE 事件归约后的纯展示形态）。 */
 export interface ExtensionWidgetItem {
@@ -146,7 +150,11 @@ export type PiStreamAction =
   /** 作答已回写（POST 成功）→ 关闭弹层 */
   | { type: 'ui_response'; id: string }
   /** 本地取消（SSE 断线/新轮/取消回写失败）→ 关闭弹层 */
-  | { type: 'ui_cancel' };
+  | { type: 'ui_cancel' }
+  /** 空闲监听续轮起始（后台子代理完成自动续轮）：强制开启一条新的消息步骤 */
+  | { type: 'turn_start' }
+  /** 空闲监听期心跳（仅保持连接活跃，reducer 忽略） */
+  | { type: 'heartbeat' };
 
 function emptyLiveStep(): LiveAssistantStep {
   return { reasoning: '', content: '', agentSteps: [], sealed: false };
@@ -253,6 +261,14 @@ export function piStreamReducer(state: PiStreamState, action: PiStreamAction): P
       return state.pendingUi?.id === action.id ? { ...state, pendingUi: null } : state;
     case 'ui_cancel':
       return state.pendingUi ? { ...state, pendingUi: null } : state;
+    case 'turn_start':
+      // 空闲监听续轮起始：后台子代理完成自动续轮，强制开启一条新的消息步骤，
+      // 使续轮正文进入独立气泡（不等「上一条已 sealed」边界，直接开新步骤）。
+      return { ...state, steps: [...state.steps, emptyLiveStep()] };
+    case 'heartbeat':
+      // 心跳事件仅用于保持 SSE 连接活跃（PiChatNodeHost 收到任意事件即重置 idle），
+      // reducer 无状态变更。
+      return state;
     default:
       return state;
   }

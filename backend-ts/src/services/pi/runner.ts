@@ -6,6 +6,8 @@ import {
   DISABLED_TOOLS,
   PI_MAX_PROCESSES,
   PI_SESSION_REL,
+  PI_SUBAGENT_LISTEN_HEARTBEAT_MS,
+  PI_SUBAGENT_LISTEN_TIMEOUT_MS,
   RPC_AGENT_TIMEOUT_MS,
   resolveThinkingArgs,
 } from './config.js';
@@ -134,9 +136,36 @@ function consumeLine(entry: PiProcessEntry, line: string): void {
     wakeRound(entry);
     return;
   }
+  if (evt.type === 'agent_start') {
+    // 空闲监听态下：pi-subagents 后台子代理完成触发 triggerTurn 自动开的新轮起始。
+    // 置 turnStarted 让监听循环重置 settled 并继续 yield 新一轮事件；同时向前端
+    // 透传 turn_start（前端据此强制开启一条新的步骤气泡，避免续轮正文混入上一气泡）。
+    if (round.listening) {
+      round.turnStarted = true;
+      round.queue.push({ type: 'turn_start' });
+    }
+    wakeRound(entry);
+    return;
+  }
   for (const e of mapPiJsonEvent(evt, entry.mapper)) {
     round.sawAnyEvent = true;
     if (e.type === 'error') round.emittedError = true;
+    // 后台子代理运行状态：subagent_fleet 快照非空 = 有运行中后台任务（续轮监听依据）；
+    // 快照为空 = 全部结束。tool_result 携带 asyncId/background 视为仍有后台任务。
+    if (e.type === 'subagent_fleet') {
+      round.backgroundRunsActive = e.runs.length > 0;
+    } else if (e.type === 'tool_result' && e.name === 'subagent') {
+      let bg = false;
+      try {
+        const parsed = JSON.parse(e.result) as {
+          details?: { background?: unknown; asyncId?: unknown };
+        };
+        bg = parsed?.details?.background === true || typeof parsed?.details?.asyncId === 'string';
+      } catch {
+        /* 半截/非 JSON 信封：不据此判定 */
+      }
+      if (bg) round.backgroundRunsActive = true;
+    }
     round.queue.push(e);
   }
   wakeRound(entry);
@@ -271,7 +300,6 @@ async function* streamRound(
   let emittedAny = false;
   let runTimeout: ReturnType<typeof setTimeout> | undefined;
   let timedOut = false;
-  let finalized = false;
 
   try {
     // 1) 发送 prompt 命令（图片走 images 字段；RPC 禁止 @file）
@@ -307,7 +335,7 @@ async function* streamRound(
     }, RPC_AGENT_TIMEOUT_MS);
     runTimeout.unref?.();
 
-    // 2) 出队循环：队列空且（agent_settled 已到 或 子进程已退出）时结束。
+    // 2) 出队循环：队列空且（agent_settled 已到 或 子进程已退出）时结束本轮。
     //    正常收尾（settled）不杀进程——RPC 进程常驻，保留供下一轮复用；
     //    超时/错误/abort/写失败才杀树报废（下轮按 generation 重拉）。
     //    注意：不用 stdin.end() 让 pi 优雅退出——Windows 下 pi 的 shutdown 与
@@ -323,31 +351,98 @@ async function* streamRound(
     const isNormalSettle = (): boolean =>
       round.settled && !timedOut && !round.emittedError && !round.aborted && !round.writeFailed;
 
-    while (true) {
-      if (round.queue.length) {
-        emittedAny = true;
-        yield round.queue.shift()!;
-        continue;
-      }
-      if (isFinal() && !finalized) {
-        finalized = true;
-        if (isNormalSettle()) {
-          // 正常收尾：进程保活复用
-          entry.lastUsed = Date.now();
-          break;
+    // 单轮出队：消费事件直到 settled/异常终局；返回值表示是否正常收尾（settled 且无异常）。
+    async function* drainRound(): AsyncGenerator<ChatStreamEvent, boolean> {
+      let finalized = false;
+      while (true) {
+        if (round.queue.length) {
+          emittedAny = true;
+          yield round.queue.shift()!;
+          continue;
         }
-        // 异常/超时/abort：杀树报废（Windows taskkill /F 后文件句柄释放有时延，
-        // 仍等 child close + stdout end 再返回，避免撞上删除/差分对工作区的并发访问）
-        killTree(entry.child!);
-        await killPiProcess(opts.userId, opts.workspaceId);
+        if (isFinal() && !finalized) {
+          finalized = true;
+          if (isNormalSettle()) {
+            // 正常收尾：进程保活复用
+            entry.lastUsed = Date.now();
+            return true;
+          }
+          // 异常/超时/abort：杀树报废（Windows taskkill /F 后文件句柄释放有时延，
+          // 仍等 child close + stdout end 再返回，避免撞上删除/差分对工作区的并发访问）
+          killTree(entry.child!);
+          await killPiProcess(opts.userId, opts.workspaceId);
+          return false;
+        }
+        if (finalized && entry.closed && entry.stdoutEnded) return false;
+        await new Promise<void>((resolve) => {
+          round.notify = resolve;
+        });
       }
-      if (finalized && entry.closed && entry.stdoutEnded) break;
-      await new Promise<void>((resolve) => {
-        round.notify = resolve;
-      });
     }
 
-    // 3) 错误终局诊断（正常收尾路径此处不产出）
+    // 主轮：发送 prompt 后消费到 settled
+    const mainNormal = yield* drainRound();
+
+    // 3) 空闲监听续轮：主轮正常收尾且存在运行中的后台子代理 → 保持监听，
+    //    捕获 pi-subagents triggerTurn 自动触发的新一轮（agent_start → turnStarted），
+    //    续轮事件继续 yield 直至下一次 settled；后台任务全部结束 / 监听超时 / 异常才退出。
+    //    监听期持续 touchPiProcess（防空闲回收 / LRU 误杀监听中的进程）。
+    if (mainNormal && round.backgroundRunsActive) {
+      round.listening = true;
+      const listenStart = Date.now();
+      let lastHeartbeat = 0;
+      try {
+        while (round.listening) {
+          // 队列事件（fleet 更新 / turn_start / status 等）照常 yield（先于续轮判定，
+          // 确保 turn_start 本身先送达前端，再进入新一轮出队）
+          if (round.queue.length) {
+            emittedAny = true;
+            yield round.queue.shift()!;
+            continue;
+          }
+          // 捕获到续轮起始：重置本轮，消费新一轮直到 settled
+          if (round.turnStarted) {
+            round.turnStarted = false;
+            round.settled = false;
+            const contNormal = yield* drainRound();
+            if (!contNormal) break; // 续轮异常：收尾诊断走主流程
+            // 续轮正常：若仍有后台任务继续监听，否则退出
+            if (!round.backgroundRunsActive) break;
+            continue;
+          }
+          // 退出条件：后台任务全部结束 / 异常终局 / 监听超时
+          if (
+            !round.backgroundRunsActive ||
+            timedOut ||
+            round.emittedError ||
+            round.aborted ||
+            round.writeFailed ||
+            (entry.closed && entry.stdoutEnded)
+          ) {
+            round.listening = false;
+            break;
+          }
+          if (Date.now() - listenStart >= PI_SUBAGENT_LISTEN_TIMEOUT_MS) {
+            round.listening = false;
+            break;
+          }
+          // 心跳：保持前端 SSE 连接活跃（重置前端 idle 超时，防后台长跑误杀连接）
+          if (Date.now() - lastHeartbeat >= PI_SUBAGENT_LISTEN_HEARTBEAT_MS) {
+            lastHeartbeat = Date.now();
+            touchPiProcess(opts.userId, opts.workspaceId);
+            yield { type: 'heartbeat' };
+            continue;
+          }
+          await new Promise<void>((resolve) => {
+            round.notify = resolve;
+          });
+        }
+      } finally {
+        round.listening = false;
+      }
+    }
+
+    // 4) 错误终局诊断（正常收尾路径此处不产出）
     if (!round.emittedError) {
       if (round.aborted) {
         yield { type: 'status', message: '已中断' };

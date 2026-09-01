@@ -77,33 +77,53 @@ function projectRuns(raw: unknown[], depth: number, limit: number): SubagentFlee
   return runs;
 }
 
-/** 从一条 setWidget 载荷行解析出安全投影的 fleet runs；非本扩展行 / 坏 JSON → []。 */
-export function parseSubagentAsyncWidgetLine(line: string): SubagentFleetRun[] {
-  if (!line.startsWith(SUBAGENT_ASYNC_SNAPSHOT_PREFIX)) return [];
+/**
+ * 从一条 setWidget 载荷行解析出安全投影的 fleet runs。
+ * 返回 { ok, runs }：ok=false 表示损坏/非本扩展行（调用方静默忽略）；
+ * ok=true 且 runs 为空 = 合法空快照（后台任务全部结束，监听据此退出）。
+ */
+export function parseSubagentAsyncWidgetLineResult(line: string): {
+  ok: boolean;
+  runs: SubagentFleetRun[];
+} {
+  if (!line.startsWith(SUBAGENT_ASYNC_SNAPSHOT_PREFIX)) return { ok: false, runs: [] };
   const payload = line.slice(SUBAGENT_ASYNC_SNAPSHOT_PREFIX.length);
   let parsed: unknown;
   try {
     parsed = JSON.parse(payload) as unknown;
   } catch {
-    return []; // 损坏载荷：静默忽略（不卡流）
+    return { ok: false, runs: [] }; // 损坏载荷：静默忽略（不卡流）
   }
   const snapshot = isRecord(parsed) ? (parsed as RawAsyncStatusSnapshot) : {};
-  if (!Array.isArray(snapshot.runs)) return [];
-  return projectRuns(snapshot.runs, 0, MAX_RUNS);
+  if (!Array.isArray(snapshot.runs)) return { ok: false, runs: [] };
+  return { ok: true, runs: projectRuns(snapshot.runs, 0, MAX_RUNS) };
+}
+
+/** 从一条 setWidget 载荷行解析出安全投影的 fleet runs；非本扩展行 / 坏 JSON → []。 */
+export function parseSubagentAsyncWidgetLine(line: string): SubagentFleetRun[] {
+  return parseSubagentAsyncWidgetLineResult(line).runs;
 }
 
 /**
- * 从 extension_ui_request(setWidget) 事件提取 fleet runs。
- * 非 subagent-async key / 无快照行 → []（events.ts 据此静默忽略，不影响其他 setWidget）。
+ * 从 extension_ui_request(setWidget) 事件提取 fleet 状态。
+ * 返回 { valid, runs }：
+ * - valid=false：非 subagent-async key / 无有效快照行（events.ts 据此静默忽略）；
+ * - valid=true 且 runs 为空：subagent-async 的清除/空快照（后台任务全部结束信号，
+ *   监听据此退出，而不是非 subagent-async 的静默忽略）。
  */
-export function subagentFleetRunsFromUiRequest(evt: Record<string, unknown>): SubagentFleetRun[] {
-  if (String(evt.widgetKey ?? '') !== SUBAGENT_ASYNC_WIDGET_KEY) return [];
+export function subagentFleetRunsFromUiRequest(evt: Record<string, unknown>): {
+  valid: boolean;
+  runs: SubagentFleetRun[];
+} {
+  if (String(evt.widgetKey ?? '') !== SUBAGENT_ASYNC_WIDGET_KEY) return { valid: false, runs: [] };
   const lines = Array.isArray(evt.widgetLines)
     ? evt.widgetLines.filter((l): l is string => typeof l === 'string')
     : [];
   for (const line of lines) {
     if (!line.startsWith(SUBAGENT_ASYNC_SNAPSHOT_PREFIX)) continue;
-    return parseSubagentAsyncWidgetLine(line);
+    const parsed = parseSubagentAsyncWidgetLineResult(line);
+    return { valid: parsed.ok, runs: parsed.runs };
   }
-  return [];
+  // subagent-async 但无快照行：扩展清除 widget 的 RPC 形态（后台任务全部结束）→ 有效空快照
+  return { valid: true, runs: [] };
 }

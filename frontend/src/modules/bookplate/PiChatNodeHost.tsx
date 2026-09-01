@@ -670,6 +670,13 @@ export function PiChatNodeHost({
                   });
                 }
                 break;
+              case 'turn_start':
+                // 空闲监听续轮起始（后台子代理完成自动续轮）：强制开启新步骤气泡
+                dispatchStream({ type: 'turn_start' });
+                break;
+              case 'heartbeat':
+                // 心跳仅保持连接活跃（idle 计时已在上方统一 reset），无渲染
+                break;
               case 'status':
                 // 自动重试成功恢复：立即撤下倒计时横幅（步骤日志仍保留该状态）
                 if (evt.message.includes('已自动恢复')) setRetryNotice(null);

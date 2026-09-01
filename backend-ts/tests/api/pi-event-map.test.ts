@@ -159,7 +159,7 @@ describe('mapPiJsonEvent（pi json 事件 → ChatStreamEvent）', () => {
         ],
       },
     ]);
-    // 非 subagent-async key / 坏 JSON / 空行 / 非快照行 → 静默忽略
+    // 非 subagent-async key / 坏 JSON → 静默忽略
     expect(
       collect(
         { type: 'extension_ui_request', id: 'u2', method: 'setWidget', widgetKey: 'other', widgetLines: [snapshotLine] },
@@ -172,17 +172,18 @@ describe('mapPiJsonEvent（pi json 事件 → ChatStreamEvent）', () => {
         state
       )
     ).toEqual([]);
+    // subagent-async 空快照 / 清除 widget（后台任务全部结束信号）→ 产出空 subagent_fleet
     expect(
       collect(
         { type: 'extension_ui_request', id: 'u4', method: 'setWidget', widgetKey: 'subagent-async', widgetLines: [] },
         state
       )
-    ).toEqual([]);
+    ).toEqual([{ type: 'subagent_fleet', runs: [] }]);
     expect(
       collect(
         { type: 'extension_ui_request', id: 'u5', method: 'setWidget', widgetKey: 'subagent-async', widgetLines: ['plain line'] },
         state
       )
-    ).toEqual([]);
+    ).toEqual([{ type: 'subagent_fleet', runs: [] }]);
   });
 });
