@@ -217,6 +217,14 @@ export interface PositionedLine {
   text: string;
 }
 
+/** 自由排版文本块绕排结果（null 表示不绕排，维持 CSS 自动换行） */
+export interface FreeTextBlockWrapResult {
+  /** 逐行排版结果（页面绝对坐标，含 textAlign 对齐） */
+  lines: PositionedLine[];
+  /** 内容底部绝对 Y（px） */
+  contentHeight: number;
+}
+
 export interface DropCapPlacement {
   text: string;
   x: number;

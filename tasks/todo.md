@@ -67,3 +67,45 @@
 - 2026-08-29：阶段 1-4 全部完成并验证。复用路径**未跳过 preparePiWorkspace**（保守偏差：每轮仍幂等重装配，换取「重拉竞态为零」的正确性；spawn 冷启动这一主导成本已消除）。生产代码 tsc 通过，pi 相关 46 用例全过。
 - 2026-08-29：一并修复 2 个预存在编译错误——根因是 `frontend/src/platform/types` 是目录（`types/index.ts`）非文件：后端测试的 `types.js` 在 NodeNext 下解析不到、前端 `piQuestionnaireParser.ts` 无扩展名导入违反 NodeNext。改为 `types/index.js`，前后端 tsc 均通过。
 - 遗留：`fastclaw-artifacts.test.ts` 3 个失败为**预存在 + Windows 环境相关**（`extractFastclawPathCandidates` 只认 POSIX `/` 开头绝对路径，而 Windows 测试临时目录是 `C:\...`），与本次改动无关，未纳入本次范围。
+
+---
+
+# 自由排版（Free Canvas）接入 Pretext 图文混排
+
+## 背景
+
+- 原模型：自由排版模板（`free_board`）中图片（`items`）与文本块（`freeTexts`）是完全独立图层，文本块用 CSS `whitespace-pre-wrap` 自动换行，**不绕排图片**（EditorialLayoutNode.tsx:1331, 1505；canvasExporter.ts:361-364）。
+- 目标：当自由文本块与图片重叠时，块内文本自动避让图片（图文混排），预览 DOM 与 PNG 导出共用同一套 pretext 排版计算，保证 1:1 所见即所得。
+- 复用：`layoutEngine` 现有 `layoutTextColumn`/`carveTextLineSlots`/`getBlockedIntervalsForBand` 障碍物避让管线；自由块文本块宽固定、高度由内容自适应，天然适合「块内绕排」。
+
+## 任务清单
+
+### 阶段 1 — 类型与引擎
+- [x] 1.1 `types.ts`：新增 `FreeTextBlockWrapResult { lines: PositionedLine[]; contentHeight: number }`（contentHeight 为内容底部绝对 Y）
+- [x] 1.2 `layoutEngine.ts`：把 `computeEditorialLayout` 内联的「图片→障碍物」逻辑提取为 `buildImageObstacles(images, W, H, hPad, vPad, captionLineH)`（DRY，固定版式复用）
+- [x] 1.3 `layoutEngine.ts`：新增 `layoutFreeTextBlock(block, text, images, W, H)`：
+  - 竖排 / 旋转 / 空文本 / 无图片重叠 → 返回 null（维持现状 CSS 换行，既有版面零回归）
+  - 否则把全量图片转障碍物（几何函数自动过滤不重叠图片），用 `layoutTextColumn` 在块矩形内排文（区域高度 = 块 y→页面底），返回 `{ lines, contentHeight }`，行坐标按 `textAlign` 槽位内对齐
+  - 同时给 `layoutTextColumn` 增加可选 `align` 参数（默认 left，固定版式零影响）
+
+### 阶段 2 — DOM 预览
+- [x] 2.1 `EditorialLayoutNode.tsx`：`freeTextWraps` useMemo 计算所有自由块的绕排结果（依赖 freeTexts/items/article/ratioPreset/isFreeLayout）
+- [x] 2.2 渲染分支：绕排成功 → 块内逐行绝对定位 div（对齐 line 坐标），容器高度 = contentHeight - 块y；绕排失败/旋转/竖排/空块 → 维持现状
+- [x] 2.3 拖拽/缩放时仅更新 width（现有行为），块高由绕排内容自动撑开
+
+### 阶段 3 — Canvas 导出
+- [x] 3.1 `canvasExporter.ts`：`drawFreeTextBlock` 增加绕排分支（调同一 `layoutFreeTextBlock`，逐行 fillText 对齐坐标）；旋转/竖排/空块走原 `wrapCanvasText`/`drawVerticalText`
+
+### 阶段 4 — 验证
+- [x] 4.1 `npm run build`（tsc）+ `npm run lint`（均通过，lint 仅 public/maplibre 预存在警告）
+- [ ] 4.2 浏览器实测：横排无旋转重叠图 → 绕排；旋转/竖排块 → 不绕排；空块/无图 → 不变；导出与预览一致
+
+## 设计要点 / 边界
+- **只对横排、无旋转、非空、且与图片重叠的文本块绕排**；旋转/竖排块绕排过于复杂，维持原 CSS 换行（预览与导出两侧同判据，故仍 1:1）；无重叠块不启用（既有版面零回归）。
+- 块文本宽固定、高度由 `layoutTextColumn` 反推（内容自适应），与自由排版「块高内容决定」一致。
+- 图片障碍 padding 沿用现有排版语义（horizontalPadding/verticalPadding 随块字号缩放），保证避让留白与固定版式同感。
+- 层级不变：图片先画、文本后画（文本浮于图片之上），绕排只是避让不改变 z 序。
+
+## 评审记录
+- 2026-09-01：阶段 1-3 完成，`npm run build`（tsc）+ `npm run lint` 通过（lint 仅 public/maplibre 预存在警告）。DOM 预览与 Canvas 导出共用 `layoutFreeTextBlock`，逐行坐标/对齐/行高一致（1:1）。新增重叠判定：无重叠直接返回 null，避免改变既有自由版面换行。
+- 遗留：任务 4.2 浏览器实测（需在画布自由排版模板拖入图片与正文块重叠验证绕排、旋转/竖排块不绕排、导出 PNG 与预览一致）。

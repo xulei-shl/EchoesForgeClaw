@@ -36,6 +36,7 @@ import {
   type EditorialState,
   type EditorialTextAlign,
   type EditorialTypographySettings,
+  type FreeTextBlockWrapResult,
   EDITORIAL_PAGE_RATIOS,
 } from '../editorial/types';
 import {
@@ -46,7 +47,10 @@ import {
   getFreeLayoutSkeleton,
   DEFAULT_FREE_LAYOUT_SKELETON,
 } from '../editorial/templates';
-import { computeEditorialLayout } from '../editorial/engine/layoutEngine';
+import {
+  computeEditorialLayout,
+  layoutFreeTextBlock,
+} from '../editorial/engine/layoutEngine';
 import { exportEditorialToPng } from '../editorial/render/canvasExporter';
 import {
   mapBookToEditorialArticle,
@@ -912,6 +916,20 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
   const freeTextContent = (ft: EditorialFreeTextItem): string =>
     ft.bind ? String(article[ft.bind] ?? '') : ft.text;
 
+  // 自由排版文本块绕排：以块矩形为区域、图片为障碍物，用 Pretext 逐行排文。
+  // 竖排 / 旋转 / 空文本返回 null（维持原 CSS 换行），故渲染分支只需按结果分流。
+  const freeTextWraps = useMemo(() => {
+    const map = new Map<string, FreeTextBlockWrapResult | null>();
+    if (!isFreeLayout || ratioPreset.width <= 0 || ratioPreset.height <= 0) return map;
+    const W = ratioPreset.width;
+    const H = ratioPreset.height;
+    for (const ft of freeTexts) {
+      const text = ft.bind ? String(article[ft.bind] ?? '') : ft.text;
+      map.set(ft.id, layoutFreeTextBlock(ft, text, items, W, H));
+    }
+    return map;
+  }, [isFreeLayout, freeTexts, items, article, ratioPreset]);
+
   // 更新某个文本块的整体样式（工具栏 onUpdate）
   const patchFreeText = (txtId: string, patch: Partial<EditorialFreeTextItem>, undoable = true) => {
     setFreeTexts((prev) => {
@@ -1512,6 +1530,9 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
                       const isBold = ft.fontStyle === 'bold' || ft.fontStyle === 'bold-italic';
                       const isItalic = ft.fontStyle === 'italic' || ft.fontStyle === 'bold-italic';
                       const isEmptyBlock = !txtContent.trim();
+                      // 绕排结果：竖排/旋转/空文本为 null，维持原 CSS 换行
+                      const wrap = freeTextWraps.get(ft.id) ?? null;
+                      const wrapLines = wrap && wrap.lines.length > 0 ? wrap.lines : null;
 
                       return (
                         <div
@@ -1548,6 +1569,31 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
                                 style={{ minHeight: `${Math.max(18, ft.fontSize * 1.4)}px` }}
                               >
                                 空文本块
+                              </div>
+                            ) : wrapLines && wrap ? (
+                              /* 绕排渲染：逐行绝对定位（与 Canvas 导出 1:1 对齐） */
+                              <div
+                                className="relative w-full"
+                                style={{ height: `${Math.max(1, wrap.contentHeight - ftPxY)}px` }}
+                              >
+                                {wrapLines.map((line, li) => (
+                                  <div
+                                    key={li}
+                                    className="absolute whitespace-nowrap"
+                                    style={{
+                                      left: `${line.x - ftPxX}px`,
+                                      top: `${line.y - ftPxY}px`,
+                                      color: ft.color || '#1a1a1a',
+                                      fontFamily: ft.fontFamily || 'serif',
+                                      fontSize: `${ft.fontSize}px`,
+                                      fontWeight: isBold ? 'bold' : 'normal',
+                                      fontStyle: isItalic ? 'italic' : 'normal',
+                                      lineHeight: `${Math.round(ft.fontSize * 1.4)}px`,
+                                    }}
+                                  >
+                                    {line.text}
+                                  </div>
+                                ))}
                               </div>
                             ) : (
                               <div

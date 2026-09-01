@@ -6,11 +6,15 @@
 import type {
   EditorialArticleData,
   EditorialFreeTextItem,
+  EditorialImageItem,
   EditorialPreset,
   EditorialState,
   PageRatioPreset,
 } from '../types';
-import { computeEditorialLayout } from '../engine/layoutEngine';
+import {
+  computeEditorialLayout,
+  layoutFreeTextBlock,
+} from '../engine/layoutEngine';
 import { loadFontFamily } from '../../journal/text/fontRegistry';
 import { getEditorialTemplate } from '../templates';
 
@@ -92,7 +96,8 @@ function drawFreeTextBlock(
   block: EditorialFreeTextItem,
   text: string,
   W: number,
-  H: number
+  H: number,
+  images: EditorialImageItem[]
 ) {
   const pxX = (block.x / 100) * W;
   const pxY = (block.y / 100) * H;
@@ -117,15 +122,23 @@ function drawFreeTextBlock(
   if (block.writingMode === 'vertical') {
     drawVerticalText(ctx, text, pxW, H - pxY, block.fontSize, align);
   } else {
-    const lines = wrapCanvasText(ctx, text, pxW);
-    const lineHeight = Math.round(block.fontSize * 1.4);
-    lines.forEach((line, i) => {
-      const w = ctx.measureText(line).width;
-      let x = 0;
-      if (align === 'center') x = (pxW - w) / 2;
-      else if (align === 'right') x = pxW - w;
-      ctx.fillText(line, x, i * lineHeight);
-    });
+    // 绕排分支：与 DOM 预览共用同一 Pretext 排版结果（1:1）
+    const wrap = layoutFreeTextBlock(block, text, images, W, H);
+    if (wrap && wrap.lines.length > 0) {
+      for (const l of wrap.lines) {
+        ctx.fillText(l.text, l.x - pxX, l.y - pxY);
+      }
+    } else {
+      const lines = wrapCanvasText(ctx, text, pxW);
+      const lineHeight = Math.round(block.fontSize * 1.4);
+      lines.forEach((line, i) => {
+        const w = ctx.measureText(line).width;
+        let x = 0;
+        if (align === 'center') x = (pxW - w) / 2;
+        else if (align === 'right') x = pxW - w;
+        ctx.fillText(line, x, i * lineHeight);
+      });
+    }
   }
   ctx.restore();
 }
@@ -141,12 +154,13 @@ function drawFreeTextBlocks(
   H: number
 ) {
   const blocks = state.freeTexts || [];
+  const images = state.images || [];
   for (const b of blocks) {
     const text = b.bind && article
       ? String((article as unknown as Record<string, unknown>)[b.bind] ?? '')
       : b.text;
     if (!(text || '').trim()) continue;
-    drawFreeTextBlock(ctx, b, text, W, H);
+    drawFreeTextBlock(ctx, b, text, W, H, images);
   }
 }
 

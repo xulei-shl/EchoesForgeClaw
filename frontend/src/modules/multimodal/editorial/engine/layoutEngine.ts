@@ -13,8 +13,11 @@ import {
 import type {
   BandObstacle,
   DropCapPlacement,
+  EditorialFreeTextItem,
+  EditorialImageItem,
   EditorialPreset,
   EditorialState,
+  FreeTextBlockWrapResult,
   Interval,
   LayoutProjection,
   PageRatioPreset,
@@ -118,6 +121,55 @@ function getBlockedIntervalsForBand(
 }
 
 /**
+ * 将图片素材转化为排版障碍物（矩形 / 旋转多边形避让区间）
+ * 供固定版式正文流动与自由排版文本块绕排共用
+ */
+export function buildImageObstacles(
+  images: EditorialImageItem[],
+  W: number,
+  H: number,
+  hPad: number,
+  vPad: number,
+  captionLineH: number
+): BandObstacle[] {
+  const obstacles: BandObstacle[] = [];
+  for (let i = 0; i < images.length; i++) {
+    const img = images[i]!;
+    if (img.wrapMode === 'none') continue;
+
+    const imgW = (img.width / 100) * W;
+    const imgH = img.aspectRatio
+      ? imgW / img.aspectRatio
+      : ((img.height || 40) / 100) * H;
+
+    const imgPx: Rect = {
+      x: Math.round((img.x / 100) * W),
+      y: Math.round((img.y / 100) * H),
+      width: Math.round(imgW),
+      height: Math.round(imgH + (img.caption ? captionLineH : 0)),
+    };
+
+    if (img.rotation && img.rotation !== 0) {
+      const polygon = transformRectToPolygon(imgPx, img.rotation);
+      obstacles.push({
+        kind: 'polygon',
+        points: polygon,
+        horizontalPadding: hPad,
+        verticalPadding: vPad,
+      });
+    } else {
+      obstacles.push({
+        kind: 'rects',
+        rects: [imgPx],
+        horizontalPadding: hPad,
+        verticalPadding: vPad,
+      });
+    }
+  }
+  return obstacles;
+}
+
+/**
  * 在单栏区域内流动排版文本
  */
 export function layoutTextColumn(
@@ -126,7 +178,8 @@ export function layoutTextColumn(
   region: Rect,
   lineHeight: number,
   obstacles: BandObstacle[],
-  minSlotWidth = 48
+  minSlotWidth = 48,
+  align: 'left' | 'center' | 'right' = 'left'
 ): { lines: PositionedLine[]; endCursor: LayoutCursor | null } {
   let cursor: LayoutCursor = startCursor;
   let lineTop = region.y;
@@ -157,8 +210,12 @@ export function layoutTextColumn(
         return { lines, endCursor: null }; // 文本全部排完
       }
 
+      let x = slot.left;
+      if (align === 'center') x = slot.left + (slotWidth - line.width) / 2;
+      else if (align === 'right') x = slot.right - line.width;
+
       lines.push({
-        x: Math.round(slot.left),
+        x: Math.round(x),
         y: Math.round(lineTop),
         width: line.width,
         text: line.text,
@@ -171,6 +228,97 @@ export function layoutTextColumn(
   }
 
   return { lines, endCursor: cursor };
+}
+
+/**
+ * 自由排版文本块块内绕排：
+ * 以文本块矩形为排版区域，图片为障碍物，用 Pretext 逐行流动排文（含 textAlign 对齐），
+ * 返回逐行坐标与内容实际占用高度。
+ * - 竖排（writingMode vertical）或带旋转的块 → 返回 null（绕排语义不适用，维持 CSS 换行）
+ * - 空文本 → 返回 null（维持空块占位渲染）
+ */
+export function layoutFreeTextBlock(
+  block: EditorialFreeTextItem,
+  text: string,
+  images: EditorialImageItem[],
+  W: number,
+  H: number,
+  lineHeightFactor = 1.4
+): FreeTextBlockWrapResult | null {
+  if (block.writingMode === 'vertical') return null;
+  if (block.rotation && block.rotation !== 0) return null;
+  const raw = (text || '').trim();
+  if (!raw) return null;
+
+  const pxX = Math.round((block.x / 100) * W);
+  const pxY = Math.round((block.y / 100) * H);
+  const pxW = Math.round((block.width / 100) * W);
+  if (pxW <= 0) return null;
+
+  // 避让留白随块字号缩放（与固定版式 bodyFontSize 同比例），保证图文间距一致观感
+  const hPad = Math.round(block.fontSize * 0.85);
+  const vPad = Math.round(block.fontSize * 0.35);
+
+  // 仅当图片与块存在重叠（含避让留白）时才启用绕排：
+  // 无重叠维持原 CSS 换行（既有版面零回归），也避免多余计算
+  const blockLeft = pxX - hPad;
+  const blockRight = pxX + pxW + hPad;
+  let overlaps = false;
+  for (const img of images) {
+    if (img.wrapMode === 'none') continue;
+    const imgW = (img.width / 100) * W;
+    const imgH = img.aspectRatio
+      ? imgW / img.aspectRatio
+      : ((img.height || 40) / 100) * H;
+    const imgX = (img.x / 100) * W;
+    const imgY = (img.y / 100) * H;
+    // 水平区间重叠 && 图片下缘低于块上缘（块向下延伸至页底）
+    if (blockLeft < imgX + imgW + hPad && blockRight > imgX - hPad && pxY - vPad < imgY + imgH + vPad) {
+      overlaps = true;
+      break;
+    }
+  }
+  if (!overlaps) return null;
+
+  const lineHeight = Math.round(block.fontSize * lineHeightFactor);
+  const isBold = block.fontStyle === 'bold' || block.fontStyle === 'bold-italic';
+  const isItalic = block.fontStyle === 'italic' || block.fontStyle === 'bold-italic';
+  const font = `${isItalic ? 'italic ' : ''}${isBold ? 'bold ' : ''}${block.fontSize}px ${
+    block.fontFamily || 'serif'
+  }`;
+  const prepared = getCachedPreparedText(raw, font);
+
+  const obstacles = buildImageObstacles(
+    images,
+    W,
+    H,
+    hPad,
+    vPad,
+    Math.round(block.fontSize * 1.5)
+  );
+
+  const region: Rect = {
+    x: pxX,
+    y: pxY,
+    width: pxW,
+    height: Math.max(1, Math.round(H - pxY)),
+  };
+  const result = layoutTextColumn(
+    prepared,
+    { segmentIndex: 0, graphemeIndex: 0 },
+    region,
+    lineHeight,
+    obstacles,
+    Math.max(24, Math.round(block.fontSize * 1.2)),
+    block.textAlign || 'left'
+  );
+
+  if (result.lines.length === 0) return null;
+  const contentHeight = result.lines.reduce(
+    (max, l) => Math.max(max, l.y + lineHeight),
+    pxY
+  );
+  return { lines: result.lines, contentHeight };
 }
 
 /**
@@ -207,43 +355,16 @@ export function computeEditorialLayout(
   let contentW = W - marginX * 2;
 
   // 2. 将图片转化为几何障碍物
-  const obstacles: BandObstacle[] = [];
   const hPad = Math.round(typography.bodyFontSize * 0.85);
   const vPad = Math.round(typography.bodyFontSize * 0.35);
-
-  for (let i = 0; i < images.length; i++) {
-    const img = images[i]!;
-    if (img.wrapMode === 'none') continue;
-
-    const imgW = (img.width / 100) * W;
-    const imgH = img.aspectRatio
-      ? imgW / img.aspectRatio
-      : ((img.height || 40) / 100) * H;
-
-    const imgPx: Rect = {
-      x: Math.round((img.x / 100) * W),
-      y: Math.round((img.y / 100) * H),
-      width: Math.round(imgW),
-      height: Math.round(imgH + (img.caption ? typography.bodyFontSize * 1.5 : 0)),
-    };
-
-    if (img.rotation && img.rotation !== 0) {
-      const polygon = transformRectToPolygon(imgPx, img.rotation);
-      obstacles.push({
-        kind: 'polygon',
-        points: polygon,
-        horizontalPadding: hPad,
-        verticalPadding: vPad,
-      });
-    } else {
-      obstacles.push({
-        kind: 'rects',
-        rects: [imgPx],
-        horizontalPadding: hPad,
-        verticalPadding: vPad,
-      });
-    }
-  }
+  const obstacles: BandObstacle[] = buildImageObstacles(
+    images,
+    W,
+    H,
+    hPad,
+    vPad,
+    typography.bodyFontSize * 1.5
+  );
 
   // 3. 针对不同版式的特征划分区域
   let splitPanelRect: Rect | undefined;
