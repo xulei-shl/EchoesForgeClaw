@@ -14,10 +14,15 @@ import { spawn } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 
+/** 每用户/工作区 temp 根目录名（runner.ts 注入的 PI_SUBAGENTS_TEMP_ROOT 派生同一名字）。 */
+export function subagentsTempRootName(userId: number, workspaceId: string): string {
+  const safeWs = String(workspaceId).replace(/[^A-Za-z0-9._-]+/g, '-') || 'ws';
+  return `pi-subagents-${userId}-${safeWs}`;
+}
+
 /** 扩展默认 temp 根派生自 TEMP_ROOT_DIR；本模块统一派生函数与 runner.ts 注入一致。 */
 export function resolveSubagentsTempRoot(userId: number, workspaceId: string): string {
-  const safeWs = String(workspaceId).replace(/[^A-Za-z0-9._-]+/g, '-') || 'ws';
-  return path.join(os.tmpdir(), `pi-subagents-${userId}-${safeWs}`);
+  return path.join(os.tmpdir(), subagentsTempRootName(userId, workspaceId));
 }
 
 /** 终止单个 runner 进程（POSIX SIGKILL；Windows taskkill /T /F 杀整树）。 */
@@ -46,7 +51,9 @@ export function cleanupSubagentAsyncRuns(userId: number, workspaceId: string): n
   const root = resolveSubagentsTempRoot(userId, workspaceId);
   if (!existsSync(root)) return 0;
   const base = path.basename(root);
-  if (!base.includes(String(workspaceId)) && !base.includes(String(userId))) return 0; // 防御：归属不可证明
+  // 防御：归属不可证明 → 不动（保守）。精确全等匹配（不用 includes 真子串：语义不准——
+  // userId 恒在 basename 中，includes 闸几乎永不触发）。正常路径（派生名一致）行为不变。
+  if (base !== subagentsTempRootName(userId, workspaceId)) return 0;
 
   let killed = 0;
   const runsDir = path.join(root, 'async-subagent-runs');

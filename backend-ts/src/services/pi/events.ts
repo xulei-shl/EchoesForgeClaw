@@ -1,5 +1,7 @@
 import type { ChatStreamEvent } from '../../modules/bookplate/stream.js';
 import { subagentFleetRunsFromUiRequest } from './subagents/snapshot.js';
+import { assistantMessageEventSchema } from './schema.js';
+import { formatPiFailure, friendlyProviderError } from './errors.js';
 
 /**
  * pi json 事件 → ChatStreamEvent 归一化映射（纯函数，可单测）。
@@ -37,11 +39,18 @@ export function* mapPiJsonEvent(
 ): Generator<ChatStreamEvent> {
   switch (evt.type) {
     case 'message_update': {
-      const ame = evt.assistantMessageEvent as { type?: string; delta?: string } | undefined;
-      if (ame?.type === 'text_delta' && typeof ame.delta === 'string') {
-        yield { type: 'content_delta', delta: ame.delta };
-      } else if (ame?.type === 'thinking_delta' && typeof ame.delta === 'string') {
-        yield { type: 'reasoning_delta', delta: ame.delta };
+      // 0.84.0 起 message_update 只发 deltas；用 schema 收窄断言（不再手写 as）。
+      // 未知/坏 assistantMessageEvent（如非对象）静默忽略，不产出。
+      const ame = evt.assistantMessageEvent;
+      if (ame && typeof ame === 'object') {
+        const parsed = assistantMessageEventSchema.safeParse(ame);
+        if (parsed.success) {
+          if (parsed.data.type === 'text_delta' && typeof parsed.data.delta === 'string') {
+            yield { type: 'content_delta', delta: parsed.data.delta };
+          } else if (parsed.data.type === 'thinking_delta' && typeof parsed.data.delta === 'string') {
+            yield { type: 'reasoning_delta', delta: parsed.data.delta };
+          }
+        }
       }
       break;
     }
@@ -122,6 +131,7 @@ export function* mapPiJsonEvent(
       // 每条 assistant message_end 视为最新结果：auto-retry 恢复后的成功消息必须
       // 覆盖此前失败尝试的 errorMessage，否则进程正常结束后仍会误报
       // 「执行失败」——前端会在收尾 error chunk 上回滚整轮已流出的内容。
+      // 见 docs/skill-agent/rpc-invariants.md #2。
       state.lastError = msg.errorMessage ?? null;
       break;
     }
@@ -146,21 +156,4 @@ export function* mapPiJsonEvent(
     default:
       break;
   }
-}
-
-/** 把 pi/provider 的原始错误摘要为用户可读的中文短语（原始细节仍附在最终错误里）。 */
-export function friendlyProviderError(raw: string): string {
-  if (/\b429\b|rate.?limit|too many requests/i.test(raw)) return '模型服务繁忙（限流）';
-  if (/\b40[13]\b|unauthorized|forbidden|invalid.{0,12}api.?key/i.test(raw)) return '模型鉴权失败（请检查 API Key）';
-  if (/\b404\b|not found|no endpoints|model.*not.*exist/i.test(raw)) return '模型不存在或不可用';
-  if (/\b402\b|insufficient|quota|credit|balance/i.test(raw)) return '模型配额/余额不足';
-  if (/timed? ?out|timeout/i.test(raw)) return '模型请求超时';
-  if (/\b5\d\d\b|bad gateway|service unavailable/i.test(raw)) return '模型服务异常';
-  if (/aborted/i.test(raw)) return '请求已中断';
-  return '模型请求失败';
-}
-
-/** 组装节点展示的失败文案：友好原因在前，原始错误细节在后（便于排查）。 */
-export function formatPiFailure(lastError: string): string {
-  return `${friendlyProviderError(lastError)}：${lastError}`;
 }

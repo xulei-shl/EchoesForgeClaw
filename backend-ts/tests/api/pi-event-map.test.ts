@@ -17,6 +17,9 @@ describe('mapPiJsonEvent（pi json 事件 → ChatStreamEvent）', () => {
     ).toEqual([{ type: 'reasoning_delta', delta: 'b' }]);
     // 其他 assistantMessageEvent 类型静默
     expect(collect({ type: 'message_update', assistantMessageEvent: { type: 'toolcall_start' } }, state)).toEqual([]);
+    // 坏字段静默忽略（非对象 / 缺 delta）→ 不产出
+    expect(collect({ type: 'message_update', assistantMessageEvent: 'garbage' }, state)).toEqual([]);
+    expect(collect({ type: 'message_update', assistantMessageEvent: { type: 'text_delta' } }, state)).toEqual([]);
   });
 
   it('auto_retry_start 产出结构化 agent_retry；成功恢复推 status；失败转 error', () => {

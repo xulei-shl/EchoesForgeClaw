@@ -118,6 +118,7 @@ function markKilled(entry: PiProcessEntry): void {
  * 顶替语义：同 key 旧进程若仍存活（错误路径下旧轮清理被跳过/延迟），立即终止老进程，
  * 防止两个 pi 进程共写同一会话文件导致上下文损坏；注销做 identity 校验，过期轮的
  * finally 清理不得误删新进程的注册项（否则 ui-response 会对新轮 404）。
+ * 见 docs/skill-agent/rpc-invariants.md #3。
  */
 export function registerPiProcess(
   userId: number,
@@ -169,6 +170,22 @@ export function reapIdlePiProcesses(idleMs: number): number {
       markKilled(entry);
       killed += 1;
     }
+  }
+  return killed;
+}
+
+/**
+ * 终止并注销全部已注册 RPC 子进程（后端退出时统一回收，防孤儿进程永久驻留）。
+ * pi CLI RPC 模式会一直等 stdin，后端死亡后不回收即变孤儿。仅在进程退出路径调用，
+ * 不等待子进程真正退出（exit 钩子内禁止异步；taskkill 是同步 fire 的，足够）。
+ */
+export function killAllPiProcesses(): number {
+  let killed = 0;
+  for (const [key, entry] of [...piProcessRegistry]) {
+    if (entry.ended || !entry.alive) continue;
+    piProcessRegistry.delete(key);
+    markKilled(entry);
+    killed += 1;
   }
   return killed;
 }

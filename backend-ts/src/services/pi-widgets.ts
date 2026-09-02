@@ -354,6 +354,9 @@ export async function* withWidgetBridge(
       yield evt;
     }
   } finally {
+    // 防御：清空本轮 pending（工具 call 可能只有 tool_call 而无匹配 tool_result——
+    // 异常/中止时残留条目仅单轮作用域、轮末即 GC，非真实泄漏，但清空语义更干净）
+    pending.clear();
     // 收尾/中止都提交一次最终快照（服务端真相源）
     try {
       const snapshots = new Map<string, WidgetSnapshot>();

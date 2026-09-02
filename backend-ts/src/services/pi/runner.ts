@@ -23,15 +23,11 @@ import {
   touchPiProcess,
   type PiProcessEntry,
 } from './registry.js';
-import {
-  appendArtifactManifest,
-  isDiffExcluded,
-  snapshotWorkspace,
-  type ArtifactRecord,
-} from './snapshot.js';
-import { formatPiFailure, mapPiJsonEvent, type PiJsonEvent } from './events.js';
+import { diffWorkspace, snapshotWorkspace } from './snapshot.js';
+import { endgameDiagnostic } from './errors.js';
+import { mapPiJsonEvent, type PiJsonEvent } from './events.js';
+import { rpcEventSchema } from './schema.js';
 import { resolveSubagentsTempRoot } from './subagents/cleanup.js';
-import { mimeOf, skillFileDownloadUrl } from '../file-utils.js';
 
 /**
  * runPiAgent 运行器（RPC 模式编排，进程常驻复用）。
@@ -109,12 +105,17 @@ function consumeLine(entry: PiProcessEntry, line: string): void {
   if (!round) return;
   const trimmed = line.trim();
   if (!trimmed.startsWith('{')) return;
-  let evt: PiJsonEvent;
+  let raw: unknown;
   try {
-    evt = JSON.parse(trimmed) as PiJsonEvent;
+    raw = JSON.parse(trimmed);
   } catch {
     return;
   }
+  // 多租户外部进程边界：把 JSON.parse 后的宽断言收窄为 schema 校验（0.84.x 协议假设见
+  // docs/skill-agent/rpc-invariants.md）。未知 type / 已知类型坏字段 → 静默忽略（与现状一致）。
+  const parsed = rpcEventSchema.safeParse(raw);
+  if (!parsed.success) return;
+  const evt = parsed.data as PiJsonEvent;
   if (evt.type === 'response') {
     // RPC 命令响应：只认 prompt 受理状态；其余事件面与本模式无关
     if (evt.command === 'prompt') {
@@ -341,6 +342,7 @@ async function* streamRound(
     //    注意：不用 stdin.end() 让 pi 优雅退出——Windows 下 pi 的 shutdown 与
     //    扩展（pi-image-gen 等）的 async handle 存在 libuv 竞态（0xC0000409
     //    async.c Assertion），杀树更稳；agent_settled 即会话文件已落盘的权威信号。
+    //    见 docs/skill-agent/rpc-invariants.md #1 / #5。
     const isFinal = (): boolean =>
       round.settled ||
       timedOut ||
@@ -442,63 +444,29 @@ async function* streamRound(
       }
     }
 
-    // 4) 错误终局诊断（正常收尾路径此处不产出）
-    if (!round.emittedError) {
-      if (round.aborted) {
-        yield { type: 'status', message: '已中断' };
-      } else if (timedOut) {
-        round.emittedError = true;
-        yield { type: 'error', message: 'pi agent 对话超时已强制结束，请重试' };
-      } else {
-        const rpcExitCode = entry.exitCode;
-        const lastError = entry.mapper.lastError;
-        // settled 已收到（会话落盘完成）后，无论 pi 退出码如何都视为正常；
-        // Windows 下强制 kill 会留非 0 退出码/断言崩溃码，不应误报。
-        if (!round.settled && (rpcExitCode !== 0 || lastError)) {
-          round.emittedError = true;
-          if (lastError) {
-            yield { type: 'error', message: formatPiFailure(lastError) };
-          } else {
-            const tail = entry.stderrTail.trim();
-            yield {
-              type: 'error',
-              message: `pi agent 执行失败（退出码 ${rpcExitCode}）${tail ? `\n${tail.split('\n').at(-1)}` : ''}`,
-            };
-          }
-        } else if (!round.promptAccepted && !round.sawAnyEvent) {
-          // 进程正常退出但 prompt 未被受理且无任何事件：多半是扩展加载异常 / 参数错
-          const tail = entry.stderrTail.trim();
-          yield {
-            type: 'error',
-            message: `pi agent 未受理本轮消息（可能扩展装配异常）${
-              tail ? `\n${tail.split('\n').at(-1)}` : ''
-            }`,
-          };
-        }
-      }
+    // 4) 错误终局诊断（正常收尾路径此处不产出）；逻辑收敛在 errors.endgameDiagnostic
+    for (const e of endgameDiagnostic({
+      settled: round.settled,
+      aborted: round.aborted,
+      timedOut,
+      emittedError: round.emittedError,
+      promptAccepted: round.promptAccepted,
+      sawAnyEvent: round.sawAnyEvent,
+      exitCode: entry.exitCode,
+      lastError: entry.mapper.lastError,
+      stderrTail: entry.stderrTail,
+    })) {
+      if (e.type === 'error') round.emittedError = true;
+      yield e;
     }
 
     // 4) 产物差分（新增或修改的文件）→ agent_file 卡片 + manifest 落盘（服务端可再到达）
     const after = snapshotWorkspace(opts.ws);
-    const artifacts: ArtifactRecord[] = [];
-    for (const [rel, stamp] of after) {
-      if (isDiffExcluded(rel)) continue;
-      const prev = before.get(rel);
-      if (prev && prev.size === stamp.size && prev.mtimeMs === stamp.mtimeMs) continue;
-      artifacts.push({ rel, mime: mimeOf(rel), size: stamp.size, mtimeMs: stamp.mtimeMs });
+    const { events: diffEvents } = diffWorkspace(before, after, opts.ws, opts.workspaceId);
+    for (const e of diffEvents) {
       emittedAny = true;
-      yield {
-        type: 'agent_file',
-        file: {
-          url: skillFileDownloadUrl(rel, opts.workspaceId),
-          name: path.basename(rel),
-          mime: mimeOf(rel),
-          size: stamp.size,
-          path: rel,
-        },
-      };
+      yield e;
     }
-    appendArtifactManifest(opts.ws, artifacts);
 
     // 5) 零输出兜底诊断：pi 以 0 退出、无错误事件，但全程未产出任何事件（连会话文件都没落盘）。
     if (!round.emittedError && !round.aborted && !emittedAny) {

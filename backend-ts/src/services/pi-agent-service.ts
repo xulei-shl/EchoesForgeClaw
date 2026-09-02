@@ -50,6 +50,7 @@ export {
   registerPiProcess,
   getPiProcess,
   killPiProcess,
+  killAllPiProcesses,
   countActivePiProcesses,
   reapIdlePiProcesses,
   evictLeastRecentlyUsedPiProcess,

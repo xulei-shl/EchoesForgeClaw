@@ -283,3 +283,9 @@ A task is done when:
 - assumptions, deviations, and remaining risks are visible to the user
 
 If any of these are not true, say so clearly.
+
+---
+
+## 项目约束（pi-agent 集成）
+
+- 升级 `@earendil-works/pi-coding-agent` 前，先过 `docs/skill-agent/rpc-invariants.md` 核对 RPC 协议假设，再跑回归（`npx tsc --noEmit` + `npx vitest run tests/api/pi-*.test.ts`）。

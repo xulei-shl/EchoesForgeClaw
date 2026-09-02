@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import type { ChatStreamEvent } from '../../modules/bookplate/stream.js';
 import { mimeOf, skillFileDownloadUrl } from '../file-utils.js';
 
 /**
@@ -7,6 +8,7 @@ import { mimeOf, skillFileDownloadUrl } from '../file-utils.js';
  *
  * - snapshotWorkspace / walkWorkspace：递归盘点工作区文件（size + mtimeMs）；
  * - isDiffExcluded：装配物/会话配置排除（.agents/ .pi/ .pi-agent/ inputs/ AGENTS.md）；
+ * - diffWorkspace：前后快照差分 → agent_file 事件 + manifest 记录（runner.ts 调用）；
  * - appendArtifactManifest：本轮差分产物追加进 append-only JSONL 清单；
  * - listWorkspaceArtifacts：当前快照与 manifest 历史合并（已删文件保留 exists=false）。
  */
@@ -15,7 +17,7 @@ import { mimeOf, skillFileDownloadUrl } from '../file-utils.js';
 // 快照差分（产物探测）
 // ---------------------------------------------------------------------------
 
-interface FileStamp {
+export interface FileStamp {
   size: number;
   mtimeMs: number;
 }
@@ -55,6 +57,38 @@ export function snapshotWorkspace(ws: string): Map<string, FileStamp> {
   const map = new Map<string, FileStamp>();
   walkWorkspace(ws, map);
   return map;
+}
+
+/**
+ * 产物差分（纯函数，runner.ts 调用）：前后快照对比，产出 agent_file 事件与
+ * manifest 记录（新增/修改文件；未变化文件跳过）。manifest 落盘在此完成。
+ */
+export function diffWorkspace(
+  before: Map<string, FileStamp>,
+  after: Map<string, FileStamp>,
+  ws: string,
+  workspaceId: string
+): { artifacts: ArtifactRecord[]; events: ChatStreamEvent[] } {
+  const artifacts: ArtifactRecord[] = [];
+  const events: ChatStreamEvent[] = [];
+  for (const [rel, stamp] of after) {
+    if (isDiffExcluded(rel)) continue;
+    const prev = before.get(rel);
+    if (prev && prev.size === stamp.size && prev.mtimeMs === stamp.mtimeMs) continue;
+    artifacts.push({ rel, mime: mimeOf(rel), size: stamp.size, mtimeMs: stamp.mtimeMs });
+    events.push({
+      type: 'agent_file',
+      file: {
+        url: skillFileDownloadUrl(rel, workspaceId),
+        name: path.basename(rel),
+        mime: mimeOf(rel),
+        size: stamp.size,
+        path: rel,
+      },
+    });
+  }
+  appendArtifactManifest(ws, artifacts);
+  return { artifacts, events };
 }
 
 // ---------------------------------------------------------------------------
