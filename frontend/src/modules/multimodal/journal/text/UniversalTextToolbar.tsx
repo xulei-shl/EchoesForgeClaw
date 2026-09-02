@@ -170,7 +170,7 @@ export const UniversalTextToolbar: React.FC<UniversalTextToolbarProps> = ({
       </div>
 
       {/* 第二行：色彩与图层几何（墨色色盘、图层层级、旋转 90°） */}
-      <div className="flex items-center justify-between gap-3 pt-1.5 border-t border-paper-grid/50 flex-nowrap w-full">
+      <div className="flex items-center gap-2 pt-1.5 border-t border-paper-grid/50 flex-nowrap w-full">
         {/* 左侧：墨水色盘 */}
         <div className="flex items-center gap-1.5 shrink-0">
           <span className="text-[11px] text-ink-faint select-none shrink-0 font-medium leading-none">墨色:</span>
