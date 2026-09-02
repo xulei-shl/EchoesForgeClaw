@@ -19,6 +19,7 @@ import {
   userSkillsRoot,
 } from '../../src/services/skill-agent-service.js';
 import {
+  buildWebSearchConfig,
   clearPiSession,
   preparePiWorkspace,
   resolveImageGenExtension,
@@ -291,6 +292,67 @@ describe('preparePiWorkspace 装配', () => {
     ).providers.bookforge;
     expect(provider.api).toBe('openai-completions');
     expect(provider.models[0].compat).toBeUndefined();
+  });
+
+  it('web-search.json 装配：受支持 key + workflow=auto-summary；保留未知键；幂等；不支持源不写入', () => {
+    const agentDir = path.join(wsPath(), '.pi-agent');
+    mkdirSync(agentDir, { recursive: true });
+    // 预置一个带未知键（如 curator 运行时写入）的旧文件
+    writeFileSync(
+      path.join(agentDir, 'web-search.json'),
+      JSON.stringify({ curatorTimeoutSeconds: 5, exaApiKey: 'stale' }),
+      'utf-8'
+    );
+
+    const webSearchConfig = { exaApiKey: 'exa-1', anysearchApiKey: 'any-2' };
+    for (let i = 0; i < 2; i++) {
+      preparePiWorkspace(UID, WS_ID, {
+        agentId: 1,
+        chatModel: CHAT_MODEL,
+        imageModel: null,
+        skillNames: [],
+        webSearchConfig,
+      });
+      const wsCfg = JSON.parse(readFileSync(path.join(agentDir, 'web-search.json'), 'utf-8'));
+      expect(wsCfg.exaApiKey).toBe('exa-1');
+      expect(wsCfg.anysearchApiKey).toBe('any-2');
+      expect(wsCfg.workflow).toBe('auto-summary');
+      expect(wsCfg.curatorTimeoutSeconds).toBe(5); // 未知键保留
+      expect(wsCfg.tavilyApiKey).toBeUndefined();
+      expect(wsCfg.doubaoApiKey).toBeUndefined(); // 扩展不支持，绝不写入
+      expect(wsCfg.zhihuAccessSecret).toBeUndefined();
+    }
+
+    // 配置变化（Key 清空）：受管键被清理，不残留旧值；workflow 仍为后端权威值
+    preparePiWorkspace(UID, WS_ID, {
+      agentId: 1,
+      chatModel: CHAT_MODEL,
+      imageModel: null,
+      skillNames: [],
+      webSearchConfig: {},
+    });
+    const wsCfg2 = JSON.parse(readFileSync(path.join(agentDir, 'web-search.json'), 'utf-8'));
+    expect(wsCfg2.exaApiKey).toBeUndefined();
+    expect(wsCfg2.anysearchApiKey).toBeUndefined();
+    expect(wsCfg2.workflow).toBe('auto-summary');
+  });
+});
+
+describe('buildWebSearchConfig（DB app_settings → pi-web-access 配置映射）', () => {
+  it('只映射非空且扩展支持的字段，trim 后写入', () => {
+    const cfg = buildWebSearchConfig({
+      'tavily.api_key': 'tvly-x',
+      'exa.api_key': '  exa-y  ',
+      'anysearch.api_key': 'as-z',
+      'doubao.api_key': 'db-key',
+      'zhihu.access_secret': 'zh-secret',
+    });
+    expect(cfg).toEqual({ tavilyApiKey: 'tvly-x', exaApiKey: 'exa-y', anysearchApiKey: 'as-z' });
+  });
+
+  it('空值 / 缺失键不写入；全部为空返回 {}', () => {
+    expect(buildWebSearchConfig({})).toEqual({});
+    expect(buildWebSearchConfig({ 'exa.api_key': '', 'tavily.api_key': '   ' })).toEqual({});
   });
 });
 

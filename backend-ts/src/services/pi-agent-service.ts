@@ -29,6 +29,7 @@ export {
   type PreparedWorkspaceInfo,
   preparePiWorkspace,
   clearPiSession,
+  buildWebSearchConfig,
 } from './pi/workspace.js';
 export {
   PI_ARTIFACTS_REL,

@@ -36,13 +36,52 @@ import { removePathSafe } from '../file-utils.js';
  *   无条件扫描；.agents/skills 属 project scope，需 project trust，headless json 模式下不会加载；
  * - .pi-agent/extensions/{name}：白名单扩展包装配（symlinkOrCopy）；
  * - .pi-agent/models.json：对话模型物化（provider=bookforge）；
- * - .pi-agent/settings.json：pi-image-gen 段物化 + 运行时调优（自动压缩 / 自动重试）固化。
+ * - .pi-agent/settings.json：pi-image-gen 段物化 + 运行时调优（自动压缩 / 自动重试）固化；
+ * - .pi-agent/web-search.json：pi-web-access 扩展配置物化（DB 映射的 web search API Key +
+ *   固定 workflow=auto-summary，headless 下不开 curator/浏览器）。
  */
 
 /** pi-image-gen 扩展在 models.json 之外的 settings 键名（其自身约定）。 */
 const IMAGE_GEN_SETTINGS_KEY = 'pi-image-gen';
 /** 绘图产物目录（相对工作区根；默认隐藏目录不利于差分上报与下载卡片）。 */
 const IMAGE_OUTPUT_DIR = 'outputs';
+
+/**
+ * pi-web-access 扩展 web-search.json 的 DB 映射：app_settings 键 → 扩展配置键。
+ * 仅收录「后端有凭据且扩展支持」的 web search 源；扩展无 zhihu / doubao provider，
+ * 故 `zhihu.access_secret` / `doubao.api_key` 不映射（写入扩展也不会读取）。
+ */
+export const PI_WEB_SEARCH_SETTINGS_MAP: Record<string, string> = {
+  'tavily.api_key': 'tavilyApiKey',
+  'exa.api_key': 'exaApiKey',
+  'anysearch.api_key': 'anysearchApiKey',
+};
+
+/** web-search.json 中由后端固定管理的键（映射键 + workflow）；装配时先删再按权威值写入。 */
+const PI_WEB_SEARCH_MANAGED_KEYS = new Set<string>([
+  ...Object.values(PI_WEB_SEARCH_SETTINGS_MAP),
+  'workflow',
+]);
+
+/**
+ * headless 后端固定工作流：summary-review（默认）会启动本地 curator 服务并尝试拉浏览器，
+ * 在无头服务器上每次 web_search 阻塞至 curatorTimeoutSeconds（默认 20s）。固定
+ * auto-summary：保留合成摘要但不启动 curator/浏览器。模型仍可经工具参数按次覆盖。
+ */
+const PI_WEB_SEARCH_WORKFLOW = 'auto-summary';
+
+/**
+ * 由 app_settings 键值对映射出 pi-web-access 扩展配置（仅非空、受支持字段；trim 后写入）。
+ * 不含固定项（workflow）——该固定项由装配期注入。
+ */
+export function buildWebSearchConfig(settings: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [dbKey, extKey] of Object.entries(PI_WEB_SEARCH_SETTINGS_MAP)) {
+    const value = (settings[dbKey] ?? '').trim();
+    if (value) out[extKey] = value;
+  }
+  return out;
+}
 
 /** 对话模型运行时配置（来自 llm_configs，kind='text'|'multimodal'）。 */
 export interface PiChatModelConfig {
@@ -74,6 +113,8 @@ export interface PreparePiWorkspaceOptions {
   imageModel: PiImageModelConfig | null;
   /** 上游 skill_search 选中的 skill 名（空 = 不装配任何技能）。 */
   skillNames: string[];
+  /** pi-web-access 扩展配置（buildWebSearchConfig 产物；含 API Key，来自 app_settings 映射，仅受支持字段）。 */
+  webSearchConfig?: Record<string, string>;
 }
 
 export interface PreparedWorkspaceInfo {
@@ -301,6 +342,24 @@ export function preparePiWorkspace(
     baseDelayMs: RETRY_BASE_DELAY_MS,
   };
   writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
+
+  // pi-web-access 扩展配置（web-search.json）：扩展从 {PI_CODING_AGENT_DIR}/web-search.json 热读，
+  // 而 runner 把 PI_CODING_AGENT_DIR 指向 {ws}/.pi-agent——此处写入即自动生效，与 models.json/
+  // settings.json 同款装配。复用 settings.json 的「读旧 → 删受管键 → 合并当前值」模式：
+  // 保留 curator/扩展运行时（如 /curator）写入的其它键，同时确保受管键（API key + workflow）
+  // 始终为后端权威值（扩展按次 loadConfig，API key 变动无需重拉 RPC 进程）。
+  const webSearchPath = path.join(agentDir, 'web-search.json');
+  let webSearch: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(readFileSync(webSearchPath, 'utf-8'));
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) webSearch = parsed;
+  } catch {
+    /* 无文件或非法 JSON：重建 */
+  }
+  for (const key of PI_WEB_SEARCH_MANAGED_KEYS) delete webSearch[key];
+  Object.assign(webSearch, opts.webSearchConfig ?? {});
+  webSearch['workflow'] = PI_WEB_SEARCH_WORKFLOW;
+  writeFileSync(webSearchPath, JSON.stringify(webSearch, null, 2), 'utf-8');
 
   return {
     ws,

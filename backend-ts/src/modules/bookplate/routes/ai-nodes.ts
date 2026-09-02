@@ -2,6 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { statSync } from 'node:fs';
+import { getDb } from '../../../config/database.js';
+import { getAppSettingsMap } from '../../../repositories/index.js';
 import { llmService } from '../../../services/llm-service.js';
 import { imageService } from '../../../services/image-service.js';
 import {
@@ -21,6 +23,7 @@ import {
 } from '../../../services/node-config-service.js';
 import {
   appendArtifactManifest,
+  buildWebSearchConfig,
   clearPiSession,
   computeWorkspaceGeneration,
   listWorkspaceArtifacts,
@@ -157,6 +160,9 @@ export async function register(app: FastifyInstance): Promise<void> {
               chatModel,
               imageModel: saCfg.image,
               skillNames: payload.skills ?? [],
+              // pi-web-access 扩展配置：DB app_settings 的 web search API Key 映射（仅受支持字段；
+              // zhihu/doubao 扩展不支持，不写入）。装配期注入，扩展按次热读，改 Key 无需重拉进程。
+              webSearchConfig: buildWebSearchConfig(getAppSettingsMap(getDb())),
             });
           } catch (err) {
             yield {
