@@ -165,6 +165,7 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
+  const [isAddingNewText, setIsAddingNewText] = useState<boolean>(false);
   const [activeGestureId, setActiveGestureId] = useState<string | null>(null);
 
   const pageRef = useRef<HTMLDivElement>(null);
@@ -217,6 +218,7 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
     if (!isSelected) {
       setSelectedId(null);
       setEditingTextId(null);
+      setIsAddingNewText(false);
     }
   }, [isSelected]);
 
@@ -323,28 +325,20 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
     showToast('已清空本地上传素材', { type: 'success' });
   };
 
-  // 添加文字素材（默认手写体、墨色、横向排版）
+  // 取消文本编辑 / 添加
+  const handleCancelTextEdit = () => {
+    setIsAddingNewText(false);
+    setEditingTextId(null);
+    setEditingText('');
+  };
+
+  // 添加文字素材（弹出编辑框，确认后再添加）
   const handleAddText = () => {
-    const maxZ = items.reduce((m, it) => Math.max(m, it.z), -1);
-    const textItems = items.filter((it) => it.kind === 'text');
-    const newItem: JournalMakerItem = {
-      id: nextJournalItemId(),
-      kind: 'text',
-      src: '',
-      text: DEFAULT_TEXT,
-      fontFamily: DEFAULT_FONT_FAMILY,
-      color: DEFAULT_TEXT_COLOR,
-      writingMode: 'horizontal',
-      ...defaultTextPlacement(textItems.length),
-      z: maxZ + 1,
-    };
-    const nextItems = [...items, newItem];
-    setItems(nextItems);
-    commit({ items: nextItems, imageUrl: null }, true);
-    setSelectedId(newItem.id);
-    setEditingTextId(newItem.id);
-    setEditingText(DEFAULT_TEXT);
     setIsEditing(true);
+    setIsAddingNewText(true);
+    setEditingTextId('new');
+    setEditingText('');
+    setTimeout(() => textInputRef.current?.focus(), 50);
   };
 
   // 更新素材属性（字号、字体、颜色、排版方向等）
@@ -359,14 +353,43 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
     [commit]
   );
 
-  // 确认文本编辑
+  // 确认文本编辑 / 新增
   const confirmTextEdit = () => {
     if (!editingTextId) return;
+
+    if (isAddingNewText && editingTextId === 'new') {
+      const textContent = editingText.trim() || DEFAULT_TEXT;
+      const maxZ = items.reduce((m, it) => Math.max(m, it.z), -1);
+      const textItems = items.filter((it) => it.kind === 'text');
+      const newItem: JournalMakerItem = {
+        id: nextJournalItemId(),
+        kind: 'text',
+        src: '',
+        text: textContent,
+        fontFamily: DEFAULT_FONT_FAMILY,
+        color: DEFAULT_TEXT_COLOR,
+        writingMode: 'horizontal',
+        ...defaultTextPlacement(textItems.length),
+        z: maxZ + 1,
+      };
+      const nextItems = [...items, newItem];
+      setItems(nextItems);
+      commit({ items: nextItems, imageUrl: null }, true);
+      setSelectedId(newItem.id);
+      setIsAddingNewText(false);
+      setEditingTextId(null);
+      setEditingText('');
+      setIsEditing(true);
+      showToast('已添加文字素材', { type: 'success' });
+      return;
+    }
+
     const nextItems = items.map((it) =>
       it.id === editingTextId ? { ...it, text: editingText || DEFAULT_TEXT } : it
     );
     setItems(nextItems);
     commit({ items: nextItems }, true);
+    setIsAddingNewText(false);
     setEditingTextId(null);
     setEditingText('');
   };
@@ -375,8 +398,7 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
   const handleTextKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Escape') {
       e.preventDefault();
-      setEditingTextId(null);
-      setEditingText('');
+      handleCancelTextEdit();
     } else if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       confirmTextEdit();
@@ -1182,6 +1204,7 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                             item={selectedItem}
                             onUpdate={(patch) => handleUpdateItem(selectedItem.id, patch)}
                             onOpenEdit={() => {
+                              setIsAddingNewText(false);
                               setEditingTextId(selectedItem.id);
                               setEditingText((selectedItem.text || '').replace(/\\n/g, '\n'));
                               setTimeout(() => textInputRef.current?.select(), 50);
@@ -1212,6 +1235,7 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                                 setSelectedId(item.id);
                               }}
                               onOpenEdit={() => {
+                                setIsAddingNewText(false);
                                 setEditingTextId(item.id);
                                 setEditingText((item.text || '').replace(/\\n/g, '\n'));
                                 setTimeout(() => textInputRef.current?.select(), 50);
@@ -1341,11 +1365,15 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                             top: '50%',
                             left: '50%',
                             transform: 'translate(-50%, -50%)',
+                            width: 270,
                           }}
                           onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => e.stopPropagation()}
                         >
-                          <div className="flex items-center justify-between text-xs text-ink-light px-0.5">
-                            <span className="font-medium text-ink">编辑文字</span>
+                          <div className="flex items-center justify-between text-xs text-ink-light px-0.5 select-none">
+                            <span className="font-medium text-ink">
+                              {editingTextId === 'new' ? '添加文字' : '编辑文字'}
+                            </span>
                             <span className="text-[10px] text-ink-faint">Enter 确认 · Shift+Enter 换行</span>
                           </div>
                           <textarea
@@ -1353,17 +1381,14 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                             value={editingText}
                             onChange={(e) => setEditingText(e.target.value)}
                             onKeyDown={handleTextKeyDown}
-                            className="w-52 h-20 resize-none rounded-lg border border-paper-grid/60 bg-paper px-2.5 py-1.5 text-xs text-ink leading-relaxed outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 transition font-sans"
+                            className="w-full h-20 resize-none rounded-lg border border-paper-grid/60 bg-paper px-2.5 py-1.5 text-xs text-ink leading-relaxed outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 transition font-sans"
                             autoFocus
                             placeholder="输入文字…"
                           />
                           <div className="flex items-center justify-end gap-1.5">
                             <button
                               type="button"
-                              onClick={() => {
-                                setEditingTextId(null);
-                                setEditingText('');
-                              }}
+                              onClick={handleCancelTextEdit}
                               className="px-2.5 py-1 text-xs text-ink-light rounded-md hover:bg-paper-grid/30 active:scale-[0.96] transition"
                             >
                               取消
@@ -1371,8 +1396,9 @@ const JournalMakerNodeInner: React.FC<JournalMakerNodeProps> = ({
                             <button
                               type="button"
                               onClick={confirmTextEdit}
-                              className="px-3 py-1 text-xs text-white font-medium bg-accent rounded-md hover:bg-accent-hover active:scale-[0.96] shadow-sm transition"
+                              className="flex items-center gap-1 px-3 py-1 text-xs text-white font-medium bg-accent rounded-md hover:bg-accent-hover active:scale-[0.96] shadow-sm transition"
                             >
+                              <Check size={12} strokeWidth={2.5} />
                               确认
                             </button>
                           </div>

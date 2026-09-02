@@ -89,30 +89,31 @@ export interface FreeLayoutSkeleton {
 
 /* ==================== 各骨架定义 ==================== */
 
-// 经典期刊：顶部居中大标题 + 导语 + 作者，正文居左，金句靠右
+// 经典期刊：顶部居中大标题 + 导语 + 作者，正文居左，金句与图片居右
 const classicSkeleton: FreeLayoutSkeleton = {
   id: 'classic',
   name: '经典期刊',
-  description: '顶部居中大标题，正文居左、金句靠右的经典杂志排布',
+  description: '顶部居中大标题，正文居左、金句与图片居右的经典杂志排布',
   build: (article, typography) => {
     const { block, palette } = makeBlockBuilder(typography);
     return [
-      block('headline', article.headline || '自由排版标题', 6, 8, 88, 64, {
+      block('headline', article.headline || '自由排版标题', 6, 8, 88, 58, {
         textAlign: 'center',
         fontStyle: 'bold',
       }),
-      block('deck', article.deck || '', 12, 22, 76, 21, {
+      block('deck', article.deck || '', 10, 20, 80, 18, {
         color: palette.secondaryColor,
         fontStyle: 'italic',
         textAlign: 'center',
       }),
-      block('author', article.author || '', 12, 34, 40, 15, {
+      block('author', article.author || '', 10, 28, 80, 14, {
         fontFamily: palette.monoFont,
+        textAlign: 'center',
       }),
-      block('body', article.body || '', 12, 46, 54, typography.bodyFontSize || 19, {
+      block('body', article.body || '', 8, 38, 50, typography.bodyFontSize || 18, {
         fontFamily: palette.bodyFont,
       }),
-      block('pullquote', article.pullquote || '', 66, 32, 32, 26, {
+      block('pullquote', article.pullquote || '', 64, 38, 28, 22, {
         color: palette.accentColor,
         fontStyle: 'italic',
       }),
@@ -128,25 +129,25 @@ const posterSkeleton: FreeLayoutSkeleton = {
   build: (article, typography) => {
     const { block, palette } = makeBlockBuilder(typography);
     return [
-      block('headline', article.headline || '自由排版标题', 12, 16, 76, 76, {
+      block('headline', article.headline || '自由排版标题', 8, 12, 84, 70, {
         textAlign: 'center',
         fontStyle: 'bold',
       }),
-      block('deck', article.deck || '', 20, 38, 60, 20, {
+      block('deck', article.deck || '', 14, 28, 72, 18, {
         color: palette.secondaryColor,
         fontStyle: 'italic',
         textAlign: 'center',
       }),
-      block('body', article.body || '', 24, 56, 52, typography.bodyFontSize || 19, {
-        fontFamily: palette.bodyFont,
-        textAlign: 'center',
-      }),
-      block('pullquote', article.pullquote || '', 26, 74, 48, 24, {
+      block('pullquote', article.pullquote || '', 14, 40, 72, 22, {
         color: palette.accentColor,
         fontStyle: 'italic',
         textAlign: 'center',
       }),
-      block('author', article.author || '', 32, 86, 36, 14, {
+      block('body', article.body || '', 16, 54, 68, typography.bodyFontSize || 18, {
+        fontFamily: palette.bodyFont,
+        textAlign: 'center',
+      }),
+      block('author', article.author || '', 20, 88, 60, 13, {
         fontFamily: palette.monoFont,
         textAlign: 'center',
       }),
@@ -154,30 +155,30 @@ const posterSkeleton: FreeLayoutSkeleton = {
   },
 };
 
-// 左文右栏：标题/导语/作者靠左，正文右侧竖栏，金句左下
+// 左右分栏：标题/导语/作者/引语靠左，正文独立右栏，层次分明
 const leftcolSkeleton: FreeLayoutSkeleton = {
   id: 'leftcol',
   name: '左右分栏',
-  description: '标题与作者靠左，正文右栏，金句左下，双栏结构感',
+  description: '标题与作者引语靠左，正文独立右栏，结构感强',
   build: (article, typography) => {
     const { block, palette } = makeBlockBuilder(typography);
     return [
-      block('headline', article.headline || '自由排版标题', 8, 10, 44, 50, {
+      block('headline', article.headline || '自由排版标题', 6, 8, 42, 46, {
         fontStyle: 'bold',
       }),
-      block('deck', article.deck || '', 8, 26, 44, 16, {
+      block('deck', article.deck || '', 6, 22, 42, 16, {
         color: palette.secondaryColor,
         fontStyle: 'italic',
       }),
-      block('author', article.author || '', 8, 38, 32, 14, {
+      block('author', article.author || '', 6, 32, 38, 14, {
         fontFamily: palette.monoFont,
       }),
-      block('body', article.body || '', 56, 16, 38, typography.bodyFontSize || 19, {
-        fontFamily: palette.bodyFont,
-      }),
-      block('pullquote', article.pullquote || '', 8, 56, 42, 22, {
+      block('pullquote', article.pullquote || '', 6, 42, 42, 20, {
         color: palette.accentColor,
         fontStyle: 'italic',
+      }),
+      block('body', article.body || '', 52, 8, 42, typography.bodyFontSize || 18, {
+        fontFamily: palette.bodyFont,
       }),
     ];
   },
@@ -191,17 +192,17 @@ const oversizeSkeleton: FreeLayoutSkeleton = {
   build: (article, typography) => {
     const { block, palette } = makeBlockBuilder(typography);
     return [
-      block('headline', article.headline || '自由排版标题', 4, 8, 92, 96, {
+      block('headline', article.headline || '自由排版标题', 4, 6, 92, 88, {
         fontStyle: 'bold',
       }),
-      block('pullquote', article.pullquote || '', 66, 10, 30, 26, {
+      block('pullquote', article.pullquote || '', 64, 22, 30, 22, {
         color: palette.accentColor,
         fontStyle: 'italic',
       }),
-      block('body', article.body || '', 8, 72, 74, typography.bodyFontSize || 19, {
+      block('body', article.body || '', 8, 66, 84, typography.bodyFontSize || 18, {
         fontFamily: palette.bodyFont,
       }),
-      block('author', article.author || '', 8, 90, 34, 14, {
+      block('author', article.author || '', 8, 90, 40, 14, {
         fontFamily: palette.monoFont,
       }),
     ];

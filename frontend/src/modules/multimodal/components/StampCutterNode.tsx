@@ -128,6 +128,11 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
   const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState<string>('');
+  const [isAddingNewText, setIsAddingNewText] = useState<boolean>(false);
+  const [pendingTextPreset, setPendingTextPreset] = useState<{
+    writingMode?: 'horizontal' | 'vertical';
+    w?: number;
+  } | null>(null);
   const [activeGestureId, setActiveGestureId] = useState<string | null>(null);
 
   const [isExporting, setIsExporting] = useState<boolean>(false);
@@ -138,6 +143,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
   const cropBoxRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textInputRef = useRef<HTMLTextAreaElement>(null);
 
   // 选框实际像素宽度（供文字缩放计算字号）
   const [cropBoxWidthPx, setCropBoxWidthPx] = useState<number>(300);
@@ -252,72 +258,24 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
     onUpdateState?.(id, { withMargin: next, textItems });
   };
 
-  // 添加文字素材（智能分配默认位置与样式）
+  // 取消文字编辑 / 添加
+  const handleCancelTextEdit = useCallback(() => {
+    setIsAddingNewText(false);
+    setEditingTextId(null);
+    setEditingText('');
+    setPendingTextPreset(null);
+  }, []);
+
+  // 添加文字素材（弹出编辑框，确认后再添加）
   const handleAddText = useCallback(
     (preset?: { text: string; writingMode?: 'horizontal' | 'vertical'; w?: number }) => {
-      const count = textItems.length;
-      const maxZ = textItems.reduce((m, it) => Math.max(m, it.z), 0);
-
-      let defaultX = 50;
-      let defaultY = 50;
-      let defaultW = 7;
-      let defaultText = '¥6.00';
-      let defaultWritingMode: 'horizontal' | 'vertical' = 'horizontal';
-      let defaultColor = '#8b5e3c';
-
-      if (count === 0) {
-        // 第 1 个：经典左上面值
-        defaultX = 20;
-        defaultY = 16;
-        defaultW = 9;
-        defaultText = '¥6.00';
-        defaultColor = '#8b5e3c';
-      } else if (count === 1) {
-        // 第 2 个：右上竖排地名与主题
-        defaultX = 84;
-        defaultY = 26;
-        defaultW = 7;
-        defaultText = '北京\nBEIJING';
-        defaultWritingMode = 'vertical';
-        defaultColor = '#2d2a24';
-      } else if (count === 2) {
-        // 第 3 个：左下角志号/年份
-        defaultX = 18;
-        defaultY = 92;
-        defaultW = 4.5;
-        defaultText = '2024-1';
-        defaultColor = '#2d2a24';
-      } else {
-        // 第 4 个及以上：中国邮政铭记等
-        defaultX = 50;
-        defaultY = 92;
-        defaultW = 5;
-        defaultText = '中国邮政 CHINA';
-        defaultColor = '#2d2a24';
-      }
-
-      const newItem: StampTextItem = {
-        id: `st-text-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        text: preset?.text || defaultText,
-        fontFamily: '思源宋体',
-        color: defaultColor,
-        writingMode: preset?.writingMode || defaultWritingMode,
-        textAlign: 'center',
-        x: defaultX,
-        y: defaultY,
-        w: preset?.w || defaultW,
-        angle: 0,
-        z: maxZ + 1,
-      };
-
-
-      const next = [...textItems, newItem];
-      setTextItems(next);
-      setSelectedTextId(newItem.id);
-      onUpdateState?.(id, { textItems: next });
-      showToast('已添加文字素材', { type: 'success' });
+      setIsAddingNewText(true);
+      setEditingTextId('new');
+      setEditingText(preset?.text || '');
+      setPendingTextPreset(preset ? { writingMode: preset.writingMode, w: preset.w } : null);
+      setTimeout(() => textInputRef.current?.focus(), 50);
     },
-    [textItems, id, onUpdateState, showToast]
+    []
   );
 
   // 更新文字素材属性
@@ -386,9 +344,78 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
     [id, onUpdateState]
   );
 
-  // 确认修改文字内容
+  // 确认修改 / 添加文字内容
   const confirmTextEdit = useCallback(() => {
     if (!editingTextId) return;
+
+    if (isAddingNewText && editingTextId === 'new') {
+      const count = textItems.length;
+      const maxZ = textItems.reduce((m, it) => Math.max(m, it.z), 0);
+
+      let defaultX = 50;
+      let defaultY = 50;
+      let defaultW = 7;
+      let defaultText = '¥6.00';
+      let defaultWritingMode: 'horizontal' | 'vertical' = 'horizontal';
+      let defaultColor = '#8b5e3c';
+
+      if (count === 0) {
+        // 第 1 个：经典左上面值
+        defaultX = 20;
+        defaultY = 16;
+        defaultW = 9;
+        defaultText = '¥6.00';
+        defaultColor = '#8b5e3c';
+      } else if (count === 1) {
+        // 第 2 个：右上竖排地名与主题
+        defaultX = 84;
+        defaultY = 26;
+        defaultW = 7;
+        defaultText = '北京\nBEIJING';
+        defaultWritingMode = 'vertical';
+        defaultColor = '#2d2a24';
+      } else if (count === 2) {
+        // 第 3 个：左下角志号/年份
+        defaultX = 18;
+        defaultY = 92;
+        defaultW = 4.5;
+        defaultText = '2024-1';
+        defaultColor = '#2d2a24';
+      } else {
+        // 第 4 个及以上：中国邮政铭记等
+        defaultX = 50;
+        defaultY = 92;
+        defaultW = 5;
+        defaultText = '中国邮政 CHINA';
+        defaultColor = '#2d2a24';
+      }
+
+      const newItem: StampTextItem = {
+        id: `st-text-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        text: editingText.trim() || defaultText,
+        fontFamily: '思源宋体',
+        color: defaultColor,
+        writingMode: pendingTextPreset?.writingMode || defaultWritingMode,
+        textAlign: 'center',
+        x: defaultX,
+        y: defaultY,
+        w: pendingTextPreset?.w || defaultW,
+        angle: 0,
+        z: maxZ + 1,
+      };
+
+      const next = [...textItems, newItem];
+      setTextItems(next);
+      setSelectedTextId(newItem.id);
+      onUpdateState?.(id, { textItems: next });
+      setIsAddingNewText(false);
+      setEditingTextId(null);
+      setEditingText('');
+      setPendingTextPreset(null);
+      showToast('已添加文字素材', { type: 'success' });
+      return;
+    }
+
     setTextItems((prev) => {
       const next = prev.map((it) =>
         it.id === editingTextId ? { ...it, text: editingText.trim() || '文字' } : it
@@ -396,9 +423,20 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
       onUpdateState?.(id, { textItems: next });
       return next;
     });
+    setIsAddingNewText(false);
     setEditingTextId(null);
     setEditingText('');
-  }, [editingTextId, editingText, id, onUpdateState]);
+    setPendingTextPreset(null);
+  }, [
+    editingTextId,
+    isAddingNewText,
+    editingText,
+    pendingTextPreset,
+    textItems,
+    id,
+    onUpdateState,
+    showToast,
+  ]);
 
   // 监听键盘快捷键（Delete / Backspace 删除选中的文字，Esc 取消选中）
   useEffect(() => {
@@ -1087,8 +1125,11 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
                 disabled={isExporting || isAnimatingCrop}
                 onUpdate={(patch) => handleUpdateTextItem(selectedTextItem.id, patch)}
                 onOpenEdit={() => {
+                  setIsAddingNewText(false);
+                  setPendingTextPreset(null);
                   setEditingTextId(selectedTextItem.id);
                   setEditingText(selectedTextItem.text || '');
+                  setTimeout(() => textInputRef.current?.select(), 50);
                 }}
                 onDelete={() => handleDeleteTextItem(selectedTextItem.id)}
                 onBumpLayer={(mode) => handleBumpTextLayer(selectedTextItem.id, mode)}
@@ -1215,8 +1256,11 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
                           disabled={isExporting || isAnimatingCrop}
                           onSelect={() => setSelectedTextId(item.id)}
                           onOpenEdit={() => {
+                            setIsAddingNewText(false);
+                            setPendingTextPreset(null);
                             setEditingTextId(item.id);
                             setEditingText(item.text || '');
+                            setTimeout(() => textInputRef.current?.select(), 50);
                           }}
                           onGestureStart={handleTextGestureStart}
                           onGestureMove={handlePointerMove}
@@ -1261,18 +1305,18 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
               // 截取完成展示模式
               <motion.div
                 key="preview"
-                initial={{ scale: 0.88, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.88, opacity: 0 }}
-                transition={{ type: 'spring', damping: 22, stiffness: 240 }}
-                className="relative w-full h-full flex items-center justify-center p-3"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.2 }}
+                className="relative w-full h-full flex items-center justify-center p-2 group"
               >
-                {data.imageUrl ? (
-                  <div className="relative group max-w-full max-h-full flex items-center justify-center">
+                {data?.imageUrl ? (
+                  <div className="relative max-w-full max-h-full flex items-center justify-center">
                     <img
                       src={data.imageUrl}
-                      alt="Stamp Output"
-                      className="max-w-full max-h-[440px] object-contain drop-shadow-md select-none pointer-events-none"
+                      alt="Stamp Generated"
+                      className="max-w-full max-h-[420px] object-contain rounded drop-shadow-xl select-none"
                     />
 
                     {/* 快捷悬浮重新编辑按钮 */}
@@ -1296,17 +1340,20 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
           {editingTextId && (
             <div
               className="absolute inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4"
-              onClick={() => confirmTextEdit()}
+              onClick={handleCancelTextEdit}
             >
               <div
                 className="bg-paper border border-paper-grid/80 rounded-xl p-3.5 shadow-2xl w-full max-w-[320px] flex flex-col gap-2.5 animate-in fade-in zoom-in-95 duration-150 select-text"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex items-center justify-between text-xs font-medium text-ink">
-                  <span className="font-sans font-semibold">编辑邮票文字</span>
+                  <span className="font-sans font-semibold">
+                    {editingTextId === 'new' ? '添加邮票文字' : '编辑邮票文字'}
+                  </span>
                   <span className="text-[10px] text-ink-faint">Enter 确定 · Shift+Enter 换行</span>
                 </div>
                 <textarea
+                  ref={textInputRef}
                   autoFocus
                   value={editingText}
                   onChange={(e) => setEditingText(e.target.value)}
@@ -1316,8 +1363,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
                       confirmTextEdit();
                     } else if (e.key === 'Escape') {
                       e.preventDefault();
-                      setEditingTextId(null);
-                      setEditingText('');
+                      handleCancelTextEdit();
                     }
                   }}
                   className="w-full h-20 bg-paper-grid/20 border border-paper-grid/60 rounded-md p-2 text-xs font-sans text-ink focus:outline-none focus:ring-1 focus:ring-accent resize-none"
@@ -1337,7 +1383,12 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
                             type="button"
                             onClick={() => {
                               setEditingText(pst.text);
-                              if (selectedTextItem) {
+                              if (editingTextId === 'new') {
+                                setPendingTextPreset({
+                                  ...(pst.writingMode ? { writingMode: pst.writingMode } : {}),
+                                  ...(pst.w ? { w: pst.w } : {}),
+                                });
+                              } else if (selectedTextItem) {
                                 handleUpdateTextItem(selectedTextItem.id, {
                                   ...(pst.writingMode ? { writingMode: pst.writingMode } : {}),
                                   ...(pst.w ? { w: pst.w } : {}),
@@ -1349,7 +1400,6 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
                             {pst.label}
                           </button>
                         ))}
-
                       </div>
                     ))}
                   </div>
@@ -1358,10 +1408,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
                 <div className="flex items-center justify-end gap-2 pt-2 border-t border-paper-grid/40">
                   <button
                     type="button"
-                    onClick={() => {
-                      setEditingTextId(null);
-                      setEditingText('');
-                    }}
+                    onClick={handleCancelTextEdit}
                     className="px-3 py-1 rounded text-xs text-ink-light hover:bg-paper-grid/40 transition"
                   >
                     取消
@@ -1369,9 +1416,10 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
                   <button
                     type="button"
                     onClick={confirmTextEdit}
-                    className="px-3.5 py-1 rounded text-xs bg-accent text-white font-medium hover:bg-accent/90 transition shadow-xs"
+                    className="flex items-center gap-1 px-3.5 py-1 rounded text-xs bg-accent text-white font-medium hover:bg-accent/90 transition shadow-xs"
                   >
-                    确定
+                    <Check size={12} strokeWidth={2.5} />
+                    <span>确定</span>
                   </button>
                 </div>
               </div>

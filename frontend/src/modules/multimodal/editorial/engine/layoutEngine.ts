@@ -258,11 +258,17 @@ export function layoutFreeTextBlock(
   // 避让留白随块字号缩放（与固定版式 bodyFontSize 同比例），保证图文间距一致观感
   const hPad = Math.round(block.fontSize * 0.85);
   const vPad = Math.round(block.fontSize * 0.35);
+  const lineHeight = Math.round(block.fontSize * lineHeightFactor);
 
-  // 仅当图片与块存在重叠（含避让留白）时才启用绕排：
-  // 无重叠维持原 CSS 换行（既有版面零回归），也避免多余计算
+  // 预估文本块实际高度，避免把位于图片下方的正常段落误判为需要绕排
+  const charsPerLine = Math.max(1, Math.floor(pxW / Math.max(12, block.fontSize)));
+  const estimatedHeight = Math.max(lineHeight * 2, Math.ceil(raw.length / charsPerLine) * lineHeight);
+
   const blockLeft = pxX - hPad;
   const blockRight = pxX + pxW + hPad;
+  const blockTop = pxY - vPad;
+  const blockBottom = pxY + estimatedHeight + vPad;
+
   let overlaps = false;
   for (const img of images) {
     if (img.wrapMode === 'none') continue;
@@ -272,15 +278,17 @@ export function layoutFreeTextBlock(
       : ((img.height || 40) / 100) * H;
     const imgX = (img.x / 100) * W;
     const imgY = (img.y / 100) * H;
-    // 水平区间重叠 && 图片下缘低于块上缘（块向下延伸至页底）
-    if (blockLeft < imgX + imgW + hPad && blockRight > imgX - hPad && pxY - vPad < imgY + imgH + vPad) {
+
+    // 水平与垂直必须存在实质交集（侵入文本有效区域），上下错开的图文走纯 CSS 充满换行
+    const hOverlap = blockLeft < imgX + imgW && blockRight > imgX;
+    const vOverlap = blockTop < imgY + imgH && blockBottom > imgY + 8;
+    if (hOverlap && vOverlap) {
       overlaps = true;
       break;
     }
   }
   if (!overlaps) return null;
 
-  const lineHeight = Math.round(block.fontSize * lineHeightFactor);
   const isBold = block.fontStyle === 'bold' || block.fontStyle === 'bold-italic';
   const isItalic = block.fontStyle === 'italic' || block.fontStyle === 'bold-italic';
   const font = `${isItalic ? 'italic ' : ''}${isBold ? 'bold ' : ''}${block.fontSize}px ${
@@ -303,13 +311,19 @@ export function layoutFreeTextBlock(
     width: pxW,
     height: Math.max(1, Math.round(H - pxY)),
   };
+  // 遵循 Better Typography Measure 规范：过窄缝隙直接跳过，避免单列碎片碎字
+  const minSlotWidth = Math.max(
+    Math.round(block.fontSize * 4.5),
+    Math.round(pxW * 0.35),
+    36
+  );
   const result = layoutTextColumn(
     prepared,
     { segmentIndex: 0, graphemeIndex: 0 },
     region,
     lineHeight,
     obstacles,
-    Math.max(24, Math.round(block.fontSize * 1.2)),
+    minSlotWidth,
     block.textAlign || 'left'
   );
 
@@ -338,7 +352,7 @@ export function computeEditorialLayout(
   // 1. 根据版式计算页边距
   let marginX = Math.round(W * 0.065);
   let marginTop = Math.round(H * 0.065);
-  let marginBottom = Math.round(H * 0.055);
+  let marginBottom = Math.round(H * 0.042);
   const colGap = typography.colGap || Math.round(W * 0.032);
   let colCount = Math.max(1, Math.min(3, preset.columns || 2));
 
@@ -365,6 +379,27 @@ export function computeEditorialLayout(
     vPad,
     typography.bodyFontSize * 1.5
   );
+
+  // 2.1 底部条形码避让障碍物：防止第 1 栏正文流动至底部与条形码叠印
+  if (preset.features?.hasBarcode) {
+    const singleColW = Math.round((contentW - colGap * (colCount - 1)) / colCount);
+    const barcodeBottom = Math.round(H * 0.048);
+    const barcodeH = Math.round(H * 0.018);
+    const barcodeY = H - barcodeBottom - barcodeH;
+    obstacles.push({
+      kind: 'rects',
+      rects: [
+        {
+          x: marginX,
+          y: barcodeY - Math.round(typography.bodyFontSize * 0.4),
+          width: singleColW,
+          height: H - barcodeY + Math.round(typography.bodyFontSize * 0.4),
+        },
+      ],
+      horizontalPadding: 0,
+      verticalPadding: 0,
+    });
+  }
 
   // 3. 针对不同版式的特征划分区域
   let splitPanelRect: Rect | undefined;

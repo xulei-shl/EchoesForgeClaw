@@ -481,7 +481,7 @@ export async function exportEditorialToPng(
   ctx.restore();
 
   // 14. 绘制底部版记与条形码 (Folio & Barcode)
-  const footerY = H - Math.round(H * 0.038);
+  const footerY = H - Math.round(H * 0.028);
   const mX = Math.round(W * 0.065);
   ctx.save();
   ctx.fillStyle = secondaryColor;
@@ -498,12 +498,15 @@ export async function exportEditorialToPng(
   }
 
   if (preset.features.hasBarcode) {
+    const barcodeW = Math.round(W * 0.13);
+    const barcodeH = Math.round(H * 0.018);
+    const barcodeBottom = Math.round(H * 0.048);
     drawBarcode(
       ctx,
       mX,
-      footerY - Math.round(H * 0.028),
-      Math.round(W * 0.13),
-      Math.round(H * 0.018),
+      H - barcodeBottom - barcodeH,
+      barcodeW,
+      barcodeH,
       textColor
     );
   }

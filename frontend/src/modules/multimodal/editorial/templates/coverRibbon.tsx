@@ -1,23 +1,36 @@
 import type { EditorialTemplate, CanvasRenderContext } from '../types';
 
 /**
- * 分割印章文本为多行，确保圆形内完美居中
+ * 分割印章文本为多行，智能拆词确保在圆形印章内完美居中不溢出
  */
 function parseBadgeLines(text?: string): string[] {
   if (!text || !text.trim()) return [];
   const trimmed = text.trim();
-  if (trimmed.includes('·')) {
-    return trimmed.split('·').map((s) => s.trim()).filter(Boolean);
-  }
+  let rawLines: string[] = [];
   if (trimmed.includes('\n')) {
-    return trimmed.split('\n').map((s) => s.trim()).filter(Boolean);
+    rawLines = trimmed.split('\n');
+  } else if (trimmed.includes('·')) {
+    rawLines = trimmed.split('·');
+  } else {
+    rawLines = [trimmed];
   }
-  const words = trimmed.split(' ').filter(Boolean);
-  if (words.length >= 3) {
-    const mid = Math.ceil(words.length / 2);
-    return [words.slice(0, mid).join(' '), words.slice(mid).join(' ')];
+
+  const finalLines: string[] = [];
+  for (const raw of rawLines) {
+    const line = raw.trim();
+    if (!line) continue;
+    // 如果单行包含空格且较长（>= 8 个字符），按词拆分以适应圆形内部宽度
+    const words = line.split(/\s+/).filter(Boolean);
+    if (words.length >= 2 && line.length >= 8) {
+      for (const w of words) {
+        finalLines.push(w);
+      }
+    } else {
+      finalLines.push(line);
+    }
   }
-  return [trimmed];
+
+  return finalLines.length > 0 ? finalLines : [trimmed];
 }
 
 /**
@@ -28,11 +41,11 @@ const drawCoverRibbonDecorations = (
   ctx: CanvasRenderingContext2D,
   { article, typography, W, H, accentColor, secondaryColor }: CanvasRenderContext
 ) => {
-  const ribbonX = Math.round(W * 0.055);
-  const ribbonW = Math.round(W * 0.065);
-  const ribbonH = Math.round(H * 0.17);
+  const ribbonX = Math.round(W * 0.065);
+  const ribbonW = Math.round(W * 0.048);
+  const ribbonH = Math.round(H * 0.115);
   const ribbonText = article.issueDate ? `ISSUE · ${article.issueDate}` : 'ISSUE · VOL 08';
-  const ribbonFontSize = Math.round(W * 0.0115);
+  const ribbonFontSize = Math.round(W * 0.010);
 
   // 1. 绘制左上角纯黑 Ribbon 挂签
   ctx.save();
@@ -52,8 +65,8 @@ const drawCoverRibbonDecorations = (
   ctx.restore();
 
   // 2. 刊头与日期（位于挂签右侧，形成清晰纵横秩序，彻底杜绝重叠）
-  const mastheadX = ribbonX + ribbonW + Math.round(W * 0.035);
-  const mastheadY = Math.round(H * 0.042);
+  const mastheadX = ribbonX + ribbonW + Math.round(W * 0.028);
+  const mastheadY = Math.round(H * 0.038);
   const rightMargin = Math.round(W * 0.065);
 
   if (article.masthead) {
@@ -81,52 +94,60 @@ const drawCoverRibbonDecorations = (
     ctx.restore();
   }
 
-  // 3. 贴纸印章 (多行折行与中心坐标计算，严格与 DOM 1:1 对齐)
+  // 3. 贴纸印章 (多行自适应折行与中心坐标计算，严格与 DOM 1:1 对齐)
   if (article.badgeText) {
-    const badgeSize = Math.round(W * 0.14);
-    const radius = badgeSize / 2;
-    const badgeRightMargin = Math.round(W * 0.075);
-    const badgeTopMargin = Math.round(H * 0.10);
-
-    const cx = W - badgeRightMargin - radius;
-    const cy = badgeTopMargin + radius;
-
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate((-8 * Math.PI) / 180);
-
-    // 外圈实线圆
-    ctx.strokeStyle = accentColor || '#e53e3e';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(0, 0, radius, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // 内圈虚线圆
-    ctx.setLineDash([4, 4]);
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.arc(0, 0, radius - 6, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    // 内部多行文字居中排版
     const lines = parseBadgeLines(article.badgeText);
-    const fontSize = Math.round(radius * 0.25);
-    const lineHeight = fontSize + 4;
-    ctx.fillStyle = accentColor || '#e53e3e';
-    ctx.font = `bold ${fontSize}px sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
+    if (lines.length > 0) {
+      const badgeSize = Math.round(W * 0.155);
+      const radius = badgeSize / 2;
+      const innerRadius = radius - 6;
+      const badgeRightMargin = Math.round(W * 0.075);
+      const badgeTopMargin = Math.round(H * 0.095);
 
-    const totalH = lines.length * lineHeight;
-    const startY = -(totalH / 2) + lineHeight / 2;
+      const cx = W - badgeRightMargin - radius;
+      const cy = badgeTopMargin + radius;
 
-    for (let i = 0; i < lines.length; i++) {
-      ctx.fillText(lines[i]!.toUpperCase(), 0, startY + i * lineHeight);
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate((-8 * Math.PI) / 180);
+
+      // 外圈实线圆
+      ctx.strokeStyle = accentColor || '#e53e3e';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, radius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // 内圈虚线圆
+      ctx.setLineDash([4, 4]);
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(0, 0, innerRadius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // 内部多行文字居中排版（动态适配字号，确保绝不出界）
+      const maxChars = Math.max(...lines.map((l) => l.length), 1);
+      const baseFontSize = Math.round(radius * (lines.length >= 3 ? 0.20 : 0.23));
+      const maxSafeWidth = innerRadius * 1.5;
+      const fitFontSize = Math.floor(maxSafeWidth / (maxChars * 0.72));
+      const fontSize = Math.max(10, Math.min(baseFontSize, fitFontSize));
+      const lineHeight = Math.round(fontSize * 1.25);
+
+      ctx.fillStyle = accentColor || '#e53e3e';
+      ctx.font = `bold ${fontSize}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      const totalH = lines.length * lineHeight;
+      const startY = -(totalH / 2) + lineHeight / 2;
+
+      for (let i = 0; i < lines.length; i++) {
+        ctx.fillText(lines[i]!.toUpperCase(), 0, startY + i * lineHeight);
+      }
+
+      ctx.restore();
     }
-
-    ctx.restore();
   }
 };
 
@@ -176,23 +197,31 @@ export const coverRibbonTemplate: EditorialTemplate = {
   renderDecorations: ({ article, typography, ratioPreset }) => {
     const W = ratioPreset.width;
     const H = ratioPreset.height;
-    const ribbonX = Math.round(W * 0.055);
-    const ribbonW = Math.round(W * 0.065);
-    const ribbonH = Math.round(H * 0.17);
+    const ribbonX = Math.round(W * 0.065);
+    const ribbonW = Math.round(W * 0.048);
+    const ribbonH = Math.round(H * 0.115);
     const ribbonText = article.issueDate ? `ISSUE · ${article.issueDate}` : 'ISSUE · VOL 08';
-    const ribbonFontSize = Math.round(W * 0.0115);
+    const ribbonFontSize = Math.round(W * 0.010);
 
-    const mastheadX = ribbonX + ribbonW + Math.round(W * 0.035);
-    const mastheadY = Math.round(H * 0.042);
+    const mastheadX = ribbonX + ribbonW + Math.round(W * 0.028);
+    const mastheadY = Math.round(H * 0.038);
     const rightMargin = Math.round(W * 0.065);
 
     const badgeLines = parseBadgeLines(article.badgeText);
-    const badgeSize = Math.round(W * 0.14);
+    const badgeSize = Math.round(W * 0.155);
     const radius = badgeSize / 2;
+    const innerRadius = radius - 6;
     const badgeRightMargin = Math.round(W * 0.075);
-    const badgeTopMargin = Math.round(H * 0.10);
+    const badgeTopMargin = Math.round(H * 0.095);
     const badgeCx = W - badgeRightMargin - radius;
     const badgeCy = badgeTopMargin + radius;
+
+    const maxChars = Math.max(...badgeLines.map((l) => l.length), 1);
+    const baseFontSize = Math.round(radius * (badgeLines.length >= 3 ? 0.20 : 0.23));
+    const maxSafeWidth = innerRadius * 1.5;
+    const fitFontSize = Math.floor(maxSafeWidth / (maxChars * 0.72));
+    const badgeFontSize = Math.max(10, Math.min(baseFontSize, fitFontSize));
+    const badgeLineHeight = Math.round(badgeFontSize * 1.25);
 
     return (
       <>
@@ -274,14 +303,16 @@ export const coverRibbonTemplate: EditorialTemplate = {
               }}
             />
             <div
-              className="z-10 px-2 flex flex-col items-center justify-center leading-tight"
+              className="z-10 px-1 flex flex-col items-center justify-center"
               style={{
-                fontSize: `${Math.round(radius * 0.25)}px`,
-                gap: '2px',
+                fontSize: `${badgeFontSize}px`,
+                lineHeight: `${badgeLineHeight}px`,
+                gap: '1px',
+                maxWidth: `${Math.round(innerRadius * 1.6)}px`,
               }}
             >
               {badgeLines.map((line, idx) => (
-                <div key={idx} className="tracking-wider uppercase whitespace-nowrap font-bold">
+                <div key={idx} className="tracking-wide uppercase whitespace-nowrap font-bold">
                   {line}
                 </div>
               ))}

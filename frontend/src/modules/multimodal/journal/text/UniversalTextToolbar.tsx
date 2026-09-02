@@ -102,7 +102,7 @@ export const UniversalTextToolbar: React.FC<UniversalTextToolbarProps> = ({
             value={currentFont}
             onChange={(family) => onUpdate({ fontFamily: family })}
             disabled={disabled}
-            className="w-[118px] shrink-0"
+            className="w-[104px] shrink-0"
           />
 
           {/* 横排 / 竖排胶囊切换 */}
@@ -182,8 +182,13 @@ export const UniversalTextToolbar: React.FC<UniversalTextToolbarProps> = ({
           />
         </div>
 
-        {/* 右侧：图层控制与旋转 */}
-        <div className="flex items-center gap-1 shrink-0 ml-auto">
+        {/* 分组微细分割线 */}
+        {(onBumpLayer || onRotateStep || extraRow) && (
+          <div className="w-px h-3.5 bg-paper-grid/70 my-auto shrink-0" />
+        )}
+
+        {/* 紧邻右侧：图层控制与旋转 */}
+        <div className="flex items-center gap-1.5 shrink-0">
           {/* 图层控制图标组 */}
           {onBumpLayer && (
             <div className="flex items-center h-7 p-0.5 rounded-md bg-paper-grid/25 border border-paper-grid/40 shrink-0">

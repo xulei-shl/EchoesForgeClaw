@@ -60,8 +60,35 @@ export const FontFamilySelect: React.FC<FontFamilySelectProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
 
-  const selectedFont = JOURNAL_FONTS.find((f) => f.family === value);
-  const label = selectedFont ? selectedFont.name : value;
+  const selectedFont = React.useMemo(() => {
+    if (!value) return JOURNAL_FONTS[0];
+    const valLower = value.trim().toLowerCase();
+    // 1. 精确匹配 family、name 或 id
+    const exact = JOURNAL_FONTS.find(
+      (f) => f.family.toLowerCase() === valLower || f.name.toLowerCase() === valLower || f.id.toLowerCase() === valLower
+    );
+    if (exact) return exact;
+    // 2. 识别系统默认无衬线字体（含 MiSans、sans-serif、system-ui、PingFang、Helvetica 等）
+    if (/misans|sans-serif|system-ui|helvetica|arial|pingfang/i.test(value)) {
+      const sys = JOURNAL_FONTS.find((f) => f.id === 'system_default');
+      if (sys) return sys;
+    }
+    // 3. 复合字体声明模糊包含匹配
+    const partial = JOURNAL_FONTS.find(
+      (f) => valLower.includes(f.name.toLowerCase()) || valLower.includes(f.family.toLowerCase())
+    );
+    if (partial) return partial;
+    return null;
+  }, [value]);
+
+  const label = selectedFont ? selectedFont.name : (value || '系统默认');
+
+  const isSelected = (font: (typeof JOURNAL_FONTS)[number]) => {
+    if (selectedFont) {
+      return selectedFont.id === font.id;
+    }
+    return value === font.family;
+  };
 
   return (
     <div className={clsx('relative', className)} ref={triggerRef}>
@@ -96,7 +123,7 @@ export const FontFamilySelect: React.FC<FontFamilySelectProps> = ({
               }}
               className={clsx(
                 'flex items-center w-full px-2 py-1.5 rounded text-left text-xs transition-colors cursor-pointer',
-                value === font.family ? 'bg-accent/15 text-accent font-medium' : 'text-ink hover:bg-paper-grid/40'
+                isSelected(font) ? 'bg-accent/15 text-accent font-medium' : 'text-ink hover:bg-paper-grid/40'
               )}
             >
               <span className="truncate">{font.name}</span>

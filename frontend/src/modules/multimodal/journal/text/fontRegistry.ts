@@ -12,6 +12,7 @@ export interface JournalFontPreset {
 }
 
 export const JOURNAL_FONTS: JournalFontPreset[] = [
+  { id: 'system_default', name: '系统默认', family: 'MiSans, "PingFang SC", "Noto Sans SC", sans-serif', googleFont: '', category: 'chinese', localOnly: true },
   { id: 'shangtudongguan', name: '上图东观体', family: '上图东观体', googleFont: '', category: 'chinese', localOnly: true },
   { id: 'youyouyisong', name: '又又意宋', family: '又又意宋', googleFont: '', category: 'chinese', localOnly: true },
   { id: 'huiwenmincho', name: '汇文明朝体', family: 'Huiwen-mincho', googleFont: '', category: 'chinese', localOnly: true },
@@ -75,15 +76,18 @@ export async function loadFontFamily(family: string = DEFAULT_FONT_FAMILY): Prom
     category: 'chinese',
   };
 
-  if (!preset.localOnly) {
-    const linkId = `journal-font-${family.toLowerCase().replace(/\s+/g, '-')}`;
-    if (!document.getElementById(linkId)) {
-      const link = document.createElement('link');
-      link.id = linkId;
-      link.href = `https://fonts.googleapis.com/css2?family=${preset.googleFont}&display=swap`;
-      link.rel = 'stylesheet';
-      document.head.appendChild(link);
-    }
+  if (preset.localOnly) {
+    loadedFontsCache.add(family);
+    return;
+  }
+
+  const linkId = `journal-font-${family.toLowerCase().replace(/\s+/g, '-')}`;
+  if (!document.getElementById(linkId)) {
+    const link = document.createElement('link');
+    link.id = linkId;
+    link.href = `https://fonts.googleapis.com/css2?family=${preset.googleFont}&display=swap`;
+    link.rel = 'stylesheet';
+    document.head.appendChild(link);
   }
 
   if (loadedFontsCache.has(family)) return;

@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
@@ -143,37 +143,89 @@ function probeImageAspectRatio(src: string): Promise<number> {
   });
 }
 
-/** 紧凑字号调节器（自由文本块工具栏用） */
+/** 紧凑字号调节器（自由文本块工具栏用，支持手动输入与加减微调） */
 const TextSizeStepper: React.FC<{ value: number; onChange: (v: number) => void }> = ({
   value,
   onChange,
-}) => (
-  <div className="flex items-center h-7 px-1 rounded-md bg-paper-grid/25 border border-paper-grid/40 shrink-0 select-none">
-    <button
-      type="button"
-      onClick={() => onChange(Math.max(8, value - 2))}
-      className="w-5 h-6 flex items-center justify-center rounded text-ink-light hover:text-accent hover:bg-paper active:scale-[0.94] transition-[background-color,color,transform] duration-150 ease-out cursor-pointer"
-      aria-label="减小字号"
+}) => {
+  const roundedValue = Math.round(value);
+  const [inputValue, setInputValue] = useState<string>(String(roundedValue));
+
+  useEffect(() => {
+    setInputValue(String(Math.round(value)));
+  }, [value]);
+
+  const commitValue = (text: string) => {
+    const parsed = parseInt(text.trim(), 10);
+    if (!Number.isNaN(parsed)) {
+      const clamped = Math.max(8, Math.min(240, parsed));
+      onChange(clamped);
+      setInputValue(String(clamped));
+    } else {
+      setInputValue(String(Math.round(value)));
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') {
+      commitValue(inputValue);
+      (e.target as HTMLInputElement).blur();
+    } else if (e.key === 'Escape') {
+      setInputValue(String(Math.round(value)));
+      (e.target as HTMLInputElement).blur();
+    }
+  };
+
+  return (
+    <div
+      className="flex items-center h-7 px-1 rounded-md bg-paper-grid/25 border border-paper-grid/40 shrink-0 select-none"
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
     >
-      <Minus size={11} strokeWidth={2} />
-    </button>
-    <span className="w-8 text-center text-[11px] tabular-nums font-mono text-ink leading-none">
-      {Math.round(value)}
-    </span>
-    <button
-      type="button"
-      onClick={() => onChange(Math.min(240, value + 2))}
-      className="w-5 h-6 flex items-center justify-center rounded text-ink-light hover:text-accent hover:bg-paper active:scale-[0.94] transition-[background-color,color,transform] duration-150 ease-out cursor-pointer"
-      aria-label="增大字号"
-    >
-      <Plus size={11} strokeWidth={2} />
-    </button>
-  </div>
-);
+      <button
+        type="button"
+        onClick={() => {
+          const next = Math.max(8, roundedValue - 2);
+          onChange(next);
+          setInputValue(String(next));
+        }}
+        className="w-5 h-6 flex items-center justify-center rounded text-ink-light hover:text-accent hover:bg-paper active:scale-[0.94] transition-[background-color,color,transform] duration-150 ease-out cursor-pointer"
+        aria-label="减小字号"
+      >
+        <Minus size={11} strokeWidth={2} />
+      </button>
+      <input
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        value={inputValue}
+        onChange={(e) => setInputValue(e.target.value)}
+        onBlur={() => commitValue(inputValue)}
+        onFocus={(e) => e.target.select()}
+        onKeyDown={handleKeyDown}
+        className="w-8 h-6 text-center text-[11px] tabular-nums font-mono text-ink leading-none bg-transparent hover:bg-paper/40 focus:bg-paper focus:text-accent focus:outline-none focus:ring-1 focus:ring-accent/40 rounded transition-colors"
+        aria-label="输入字号"
+      />
+      <button
+        type="button"
+        onClick={() => {
+          const next = Math.min(240, roundedValue + 2);
+          onChange(next);
+          setInputValue(String(next));
+        }}
+        className="w-5 h-6 flex items-center justify-center rounded text-ink-light hover:text-accent hover:bg-paper active:scale-[0.94] transition-[background-color,color,transform] duration-150 ease-out cursor-pointer"
+        aria-label="增大字号"
+      >
+        <Plus size={11} strokeWidth={2} />
+      </button>
+    </div>
+  );
+};
 
 /** 预设选择下拉选项 */
 const PRESET_OPTIONS: SelectOption[] = EDITORIAL_TEMPLATES.map((p) => ({
-  label: `${p.name} (${p.englishName})`,
+  label: p.name,
   value: p.id,
 }));
 
@@ -251,13 +303,17 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
   // 预设与基础配置
   const [presetId, setPresetId] = useState<string>(data.presetId || defaultPreset.id);
   const activeTemplate = useMemo(() => getEditorialTemplate(presetId), [presetId]);
+  const layoutType = activeTemplate.features?.layoutType || 'newspaper';
+  const isFreeLayout = layoutType === 'free';
 
   const [pageSize, setPageSize] = useState<EditorialPageRatio>(
     data.pageSize || activeTemplate.defaultRatio
   );
+  // 固定模板锁定自身最佳设计比例（如 3:4），自由排版模式下允许用户自由切换多种画幅
+  const currentRatioId = isFreeLayout ? pageSize : (activeTemplate.defaultRatio || '3:4');
   const ratioPreset = useMemo(
-    () => EDITORIAL_PAGE_RATIOS.find((r) => r.id === pageSize) || EDITORIAL_PAGE_RATIOS[0]!,
-    [pageSize]
+    () => EDITORIAL_PAGE_RATIOS.find((r) => r.id === currentRatioId) || EDITORIAL_PAGE_RATIOS[0]!,
+    [currentRatioId]
   );
 
   const [article, setArticle] = useState<EditorialArticleData>(
@@ -285,8 +341,80 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
+  // 外部数据变更同步（支持 Ctrl+Z 撤销 / 重做 / 上级或历史快照恢复）
+  useEffect(() => {
+    if (data.freeTexts !== undefined) {
+      setFreeTexts(data.freeTexts);
+      setSelectedTextId((cur) => {
+        if (!cur) return null;
+        return data.freeTexts?.some((ft) => ft.id === cur) ? cur : null;
+      });
+    }
+  }, [data.freeTexts]);
+
+  useEffect(() => {
+    if (data.images !== undefined) {
+      setItems(data.images);
+      setSelectedItemId((cur) => {
+        if (!cur) return null;
+        return data.images?.some((it) => it.id === cur) ? cur : null;
+      });
+    }
+  }, [data.images]);
+
+  useEffect(() => {
+    if (data.article !== undefined) {
+      setArticle(data.article);
+    }
+  }, [data.article]);
+
+  useEffect(() => {
+    if (data.presetId !== undefined) {
+      setPresetId(data.presetId);
+    }
+  }, [data.presetId]);
+
+  useEffect(() => {
+    if (data.pageSize !== undefined) {
+      setPageSize(data.pageSize);
+    }
+  }, [data.pageSize]);
+
+  useEffect(() => {
+    if (data.typography !== undefined) {
+      setTypography(data.typography);
+    }
+  }, [data.typography]);
+
+  useEffect(() => {
+    if (data.background !== undefined) {
+      setBackground(data.background);
+    }
+  }, [data.background]);
+
+  useEffect(() => {
+    if (data.freeSkeleton !== undefined) {
+      setFreeSkeletonId(data.freeSkeleton);
+    }
+  }, [data.freeSkeleton]);
+
+  useEffect(() => {
+    if (data?.imageUrl) {
+      setIsEditing(false);
+    } else {
+      setIsEditing(true);
+    }
+  }, [data?.imageUrl]);
+
+  useEffect(() => {
+    if (data.dismissedSources !== undefined) {
+      dismissedSourcesRef.current = new Set(data.dismissedSources);
+    }
+  }, [data.dismissedSources]);
+
   const stageWrapperRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textInputRef = useRef<HTMLTextAreaElement>(null);
   const gestureRef = useRef<GestureState | null>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
   const toolbarTabsRef = useRef<HTMLDivElement>(null);
@@ -459,9 +587,9 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
       if (toAdd.length === 0) return;
 
       const defaultPlacements = [
-        { x: 44, y: 18, width: 50, height: 60 },
-        { x: 6, y: 56, width: 38, height: 32 },
-        { x: 48, y: 54, width: 46, height: 34 },
+        { x: 52, y: 14, width: 42, height: 48 },
+        { x: 6, y: 58, width: 38, height: 34 },
+        { x: 52, y: 64, width: 42, height: 30 },
       ];
 
       const newItems: EditorialImageItem[] = [];
@@ -501,7 +629,7 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
   const currentState: EditorialState = useMemo(
     () => ({
       presetId,
-      pageSize,
+      pageSize: currentRatioId,
       article,
       images: items,
       freeTexts,
@@ -514,7 +642,7 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
     }),
     [
       presetId,
-      pageSize,
+      currentRatioId,
       article,
       items,
       freeTexts,
@@ -534,6 +662,7 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
   const handleSelectPreset = (newPresetId: string) => {
     const t = getEditorialTemplate(newPresetId);
     setPresetId(newPresetId);
+    setPageSize(t.defaultRatio);
     setArticle(t.defaultArticle);
     // 保留用户手动设置的首字下沉偏好，不随意覆盖
     const nextTypography = {
@@ -551,6 +680,7 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
       id,
       {
         presetId: newPresetId,
+        pageSize: t.defaultRatio,
         article: t.defaultArticle,
         typography: nextTypography,
         background: t.defaultBackground,
@@ -631,8 +761,9 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
     if (g.mode === 'move') {
       const dxPct = ((e.clientX - g.startPx) / actualWidthPx) * 100;
       const dyPct = ((e.clientY - g.startPy) / actualHeightPx) * 100;
-      const nextX = Math.round(Math.max(-90, Math.min(150, g.startX + dxPct)));
-      const nextY = Math.round(Math.max(-90, Math.min(150, g.startY + dyPct)));
+      // 边界保护：严禁拖出画布顶部或左侧边缘（0~95%）
+      const nextX = Math.round(Math.max(0, Math.min(95, g.startX + dxPct)));
+      const nextY = Math.round(Math.max(0, Math.min(95, g.startY + dyPct)));
 
       if (g.layer === 'image') {
         setItems((prev) => map(prev, (it) => ({ ...it, x: nextX, y: nextY })));
@@ -711,9 +842,9 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
     if (files.length === 0) return;
 
     const uploadPlacements = [
-      { x: 44, y: 18, width: 50, height: 60 },
-      { x: 6, y: 56, width: 38, height: 32 },
-      { x: 48, y: 54, width: 46, height: 34 },
+      { x: 52, y: 14, width: 42, height: 48 },
+      { x: 6, y: 58, width: 38, height: 34 },
+      { x: 52, y: 64, width: 42, height: 30 },
     ];
 
     const newItems: EditorialImageItem[] = [];
@@ -748,6 +879,7 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
         onUpdateState?.(id, { images: updated }, true);
         return updated;
       });
+      setIsEditing(true);
       showToast(`已添加 ${newItems.length} 张图片素材`, { type: 'success' });
     }
 
@@ -826,24 +958,26 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
   };
 
   const handleReset = () => {
-    setPresetId(defaultPreset.id);
-    setPageSize(defaultPreset.defaultRatio);
-    setArticle(defaultPreset.defaultArticle);
-    setTypography(defaultPreset.defaultTypography);
-    setBackground(defaultPreset.defaultBackground);
+    setPageSize(activeTemplate.defaultRatio);
+    setArticle(activeTemplate.defaultArticle);
+    setTypography(activeTemplate.defaultTypography);
+    setBackground(activeTemplate.defaultBackground);
     setItems([]);
     setFreeTexts([]);
+    setFreeSkeletonId(DEFAULT_FREE_LAYOUT_SKELETON);
     seededFreeTextForRef.current = null;
+    setSelectedItemId(null);
     setSelectedTextId(null);
     setEditingTextId(null);
     onUpdateState?.(
       id,
       {
-        presetId: defaultPreset.id,
-        pageSize: defaultPreset.defaultRatio,
-        article: defaultPreset.defaultArticle,
-        typography: defaultPreset.defaultTypography,
-        background: defaultPreset.defaultBackground,
+        presetId,
+        pageSize: activeTemplate.defaultRatio,
+        article: activeTemplate.defaultArticle,
+        typography: activeTemplate.defaultTypography,
+        background: activeTemplate.defaultBackground,
+        freeSkeleton: DEFAULT_FREE_LAYOUT_SKELETON,
         images: [],
         freeTexts: [],
         imageUrl: null,
@@ -852,7 +986,7 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
       true
     );
     setIsEditing(true);
-    showToast('已重置为默认杂志版式', { type: 'info' });
+    showToast(`已重置为【${activeTemplate.name}】默认版式`, { type: 'info' });
   };
 
   const runToggle = async (
@@ -867,9 +1001,6 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
       showToast('操作失败，请重试', { type: 'error' });
     }
   };
-
-  const layoutType = activeTemplate.features?.layoutType || 'newspaper';
-  const isFreeLayout = layoutType === 'free';
 
   /* ==================== 自由排版文本块专用逻辑 ==================== */
   const seededFreeTextForRef = useRef<string | null>(null);
@@ -937,15 +1068,49 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
     onUpdateState?.(id, { freeTexts: updated }, undoable);
   };
 
-  const removeFreeText = (txtId: string) => {
-    setFreeTexts((prev) => {
-      const updated = prev.filter((t) => t.id !== txtId);
-      onUpdateState?.(id, { freeTexts: updated }, true);
-      return updated;
-    });
-    if (selectedTextId === txtId) setSelectedTextId(null);
-    if (editingTextId === txtId) setEditingTextId(null);
-  };
+  const removeFreeText = useCallback(
+    (txtId: string) => {
+      setFreeTexts((prev) => {
+        const updated = prev.filter((t) => t.id !== txtId);
+        onUpdateState?.(id, { freeTexts: updated }, true);
+        return updated;
+      });
+      setSelectedTextId((cur) => (cur === txtId ? null : cur));
+      setEditingTextId((cur) => (cur === txtId ? null : cur));
+      showToast('已删除文本块', { type: 'success' });
+    },
+    [id, onUpdateState, showToast]
+  );
+
+  // 监听键盘快捷键（Delete / Backspace 删除选中的自由文本块，Esc 取消选中）
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 若处于文本编辑态或焦点在输入控件内，不拦截按键
+      if (editingTextId) return;
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tagName = target.tagName;
+        if (tagName === 'INPUT' || tagName === 'TEXTAREA' || target.isContentEditable) {
+          return;
+        }
+      }
+
+      if (selectedTextId) {
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+          e.preventDefault();
+          removeFreeText(selectedTextId);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          setSelectedTextId(null);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [selectedTextId, editingTextId, removeFreeText]);
 
   const bumpFreeTextLayer = (txtId: string, mode: 'up' | 'down' | 'top' | 'bottom') => {
     setFreeTexts((prev) => {
@@ -980,15 +1145,31 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
   };
 
   const addFreeTextBlock = () => {
+    setIsEditing(true);
     // 先弹出编辑框，确认后再添加
     setIsAddingNewText(true);
     setEditingTextId('new');
     setEditingTextValue('');
+    setTimeout(() => textInputRef.current?.focus(), 50);
   };
 
   const openFreeTextEditor = (ft: EditorialFreeTextItem) => {
+    setIsAddingNewText(false);
     setEditingTextId(ft.id);
     setEditingTextValue(freeTextContent(ft));
+    setTimeout(() => textInputRef.current?.select(), 50);
+  };
+
+  const handleTextKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      setIsAddingNewText(false);
+      setEditingTextId(null);
+      setEditingTextValue('');
+    } else if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      saveFreeTextEditor();
+    }
   };
 
   const saveFreeTextEditor = () => {
@@ -1018,13 +1199,16 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
       setSelectedTextId(newId);
       setIsAddingNewText(false);
       setEditingTextId(null);
+      setEditingTextValue('');
       return;
     }
 
     // 编辑已有文本块模式
     const target = freeTexts.find((t) => t.id === editingTextId);
     if (!target) {
+      setIsAddingNewText(false);
       setEditingTextId(null);
+      setEditingTextValue('');
       return;
     }
     const value = editingTextValue;
@@ -1037,7 +1221,9 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
     } else {
       patchFreeText(editingTextId!, { text: value }, true);
     }
+    setIsAddingNewText(false);
     setEditingTextId(null);
+    setEditingTextValue('');
   };
 
   return (
@@ -1067,20 +1253,20 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
         <NodeActionBar>
           {hasGenerated ? (
             <>
-              {isFreeLayout && (
-                <NodeActionBar.Custom
-                  icon={<Type size={16} strokeWidth={1.5} />}
-                  tooltip="添加一块新的自由文本"
-                  onClick={addFreeTextBlock}
-                  disabled={isSaving}
-                />
-              )}
               <NodeActionBar.Retry
                 onClick={() => setIsEditing(true)}
                 disabled={isSaving}
                 tooltip="返回编辑排版模式"
                 aria-label="返回编辑排版模式"
               />
+              {isFreeLayout && (
+                <NodeActionBar.Custom
+                  icon={<Type size={16} strokeWidth={1.5} />}
+                  tooltip="添加自由文本"
+                  onClick={addFreeTextBlock}
+                  disabled={isSaving}
+                />
+              )}
               <NodeActionBar.Custom
                 icon={<Upload size={16} strokeWidth={1.5} />}
                 tooltip="添加图片素材（可多选）"
@@ -1155,7 +1341,7 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
               {isFreeLayout && (
                 <NodeActionBar.Custom
                   icon={<Type size={16} strokeWidth={1.5} />}
-                  tooltip="添加一块新的自由文本"
+                  tooltip="添加自由文本"
                   onClick={addFreeTextBlock}
                   disabled={isGenerating}
                 />
@@ -1221,7 +1407,7 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
         ) : (
           /* 编辑排版模式：100% 绝对所见即所得基准容器 */
           <>
-            {/* 顶部工具栏：版式预设下拉 + 比例选择下拉 + 文章/排版抽屉切换 */}
+            {/* 顶部工具栏：版式预设下拉 + (仅自由排版模式下的画幅尺寸与骨架下拉) + 文章/排版抽屉切换 */}
             <div className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg bg-paper-grid/20 border border-paper-grid/40 text-xs font-sans text-ink-light select-none">
               <div className="flex items-center gap-1.5 flex-1 min-w-0">
                 <Select
@@ -1229,29 +1415,31 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
                   value={presetId}
                   onChange={(val) => handleSelectPreset(val)}
                   options={PRESET_OPTIONS}
-                  className="w-[180px] shrink-0"
-                />
-
-                <Select
-                  size="sm"
-                  value={pageSize}
-                  onChange={(val) => {
-                    const r = val as EditorialPageRatio;
-                    setPageSize(r);
-                    onUpdateState?.(id, { pageSize: r }, true);
-                  }}
-                  options={RATIO_OPTIONS}
-                  className="w-[142px] shrink-0"
+                  className={isFreeLayout ? 'flex-[1.2] min-w-0' : 'flex-1 min-w-0'}
                 />
 
                 {isFreeLayout && (
-                  <Select
-                    size="sm"
-                    value={freeSkeletonId}
-                    onChange={(val) => applyFreeSkeleton(String(val))}
-                    options={SKELETON_OPTIONS}
-                    className="w-[128px] shrink-0"
-                  />
+                  <>
+                    <Select
+                      size="sm"
+                      value={pageSize}
+                      onChange={(val) => {
+                        const r = val as EditorialPageRatio;
+                        setPageSize(r);
+                        onUpdateState?.(id, { pageSize: r }, true);
+                      }}
+                      options={RATIO_OPTIONS}
+                      className="flex-1 min-w-0"
+                    />
+
+                    <Select
+                      size="sm"
+                      value={freeSkeletonId}
+                      onChange={(val) => applyFreeSkeleton(String(val))}
+                      options={SKELETON_OPTIONS}
+                      className="flex-1 min-w-0"
+                    />
+                  </>
                 )}
               </div>
 
@@ -1555,6 +1743,10 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
                             setSelectedItemId(null);
                             setSelectedTextId(ft.id);
                           }}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            openFreeTextEditor(ft);
+                          }}
                           onPointerMove={moveGesture}
                           onPointerUp={endGesture}
                           onPointerCancel={endGesture}
@@ -1571,6 +1763,10 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
                               transformOrigin: 'left top',
                             }}
                             onPointerDown={(e) => beginGesture(e, 'text', ft.id, 'move')}
+                            onDoubleClick={(e) => {
+                              e.stopPropagation();
+                              openFreeTextEditor(ft);
+                            }}
                           >
                             {isEmptyBlock ? (
                               <div
@@ -1670,169 +1866,9 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
                               </div>
                             )}
                           </div>
-
-                          {/* 行内编辑浮层 */}
-                          {editingTextId === ft.id && (
-                            <motion.div
-                              initial={{ opacity: 0, y: -6 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              transition={{ duration: 0.14 }}
-                              className="absolute z-50"
-                              style={{
-                                left: '50%',
-                                bottom: `calc(100% + ${10 / (scale || 0.3)}px)`,
-                                transform: `translateX(-50%) scale(${1 / (scale || 0.3)})`,
-                                transformOrigin: 'center bottom',
-                                width: 220,
-                              }}
-                              onPointerDown={(e) => e.stopPropagation()}
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <div className="flex flex-col gap-1.5 p-2 rounded-xl bg-paper/95 backdrop-blur-md shadow-xl border border-paper-grid/80">
-                                <textarea
-                                  autoFocus
-                                  rows={3}
-                                  value={editingTextValue}
-                                  onChange={(e) => setEditingTextValue(e.target.value)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Escape') {
-                                      setIsAddingNewText(false);
-                                      setEditingTextId(null);
-                                    }
-                                    if (e.key === 'Enter' && !e.shiftKey) {
-                                      e.preventDefault();
-                                      saveFreeTextEditor();
-                                    }
-                                  }}
-                                  placeholder="输入文本内容…"
-                                  className="w-full resize-none rounded-lg border border-paper-grid/80 bg-paper px-2 py-1.5 text-xs text-ink leading-relaxed outline-none focus:border-accent focus:ring-1 focus:ring-accent/20"
-                                />
-                                <div className="flex items-center justify-end gap-1.5">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setIsAddingNewText(false);
-                                      setEditingTextId(null);
-                                    }}
-                                    className="px-2 py-1 rounded-md text-[11px] text-ink-light hover:text-ink hover:bg-paper-grid/40 transition-colors"
-                                  >
-                                    取消
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={saveFreeTextEditor}
-                                    className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium text-paper bg-accent hover:opacity-90 active:scale-[0.97] transition-[opacity,transform]"
-                                  >
-                                    <Check size={11} strokeWidth={2.5} />
-                                    确定
-                                  </button>
-                                </div>
-                              </div>
-                            </motion.div>
-                          )}
                         </div>
                       );
                     })}
-
-                  {/* 3.5.1 新增文本块编辑浮层（编辑框居中显示在舞台内） */}
-                  {isFreeLayout && editingTextId === 'new' && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.14 }}
-                      className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-auto"
-                      style={{ width: 260 }}
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <div className="flex flex-col gap-1.5 p-2 rounded-xl bg-paper/95 backdrop-blur-md shadow-xl border border-paper-grid/80">
-                        <span className="text-[11px] font-medium text-ink select-none">添加文本块</span>
-                        <textarea
-                          autoFocus
-                          rows={3}
-                          value={editingTextValue}
-                          onChange={(e) => setEditingTextValue(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Escape') {
-                              setIsAddingNewText(false);
-                              setEditingTextId(null);
-                            }
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                              e.preventDefault();
-                              saveFreeTextEditor();
-                            }
-                          }}
-                          placeholder="输入文本内容…"
-                          className="w-full resize-none rounded-lg border border-paper-grid/80 bg-paper px-2 py-1.5 text-xs text-ink leading-relaxed outline-none focus:border-accent focus:ring-1 focus:ring-accent/20"
-                        />
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setIsAddingNewText(false);
-                              setEditingTextId(null);
-                            }}
-                            className="px-2 py-1 rounded-md text-[11px] text-ink-light hover:text-ink hover:bg-paper-grid/40 transition-colors"
-                          >
-                            取消
-                          </button>
-                          <button
-                            type="button"
-                            onClick={saveFreeTextEditor}
-                            className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium text-paper bg-accent hover:opacity-90 active:scale-[0.97] transition-[opacity,transform]"
-                          >
-                            <Check size={11} strokeWidth={2.5} />
-                            确定
-                          </button>
-                        </div>
-                      </div>
-                    </motion.div>
-                  )}
-
-                  {/* 3.6 自由排版选中文本悬浮工具栏（固定在舞台顶部，不跟随文本块移动） */}
-                  {isFreeLayout && selectedTextId && (() => {
-                    const selFt = freeTexts.find((ft) => ft.id === selectedTextId);
-                    if (!selFt) return null;
-                    const txtContent = freeTextContent(selFt);
-                    return (
-                      <div
-                        className="absolute top-2 z-40 pointer-events-auto"
-                        style={{ left: '50%', transform: `translateX(-50%) scale(${1 / (scale || 0.3)})`, transformOrigin: 'center top' }}
-                        onPointerDown={(e) => e.stopPropagation()}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <UniversalTextToolbar
-                          item={{
-                            id: selFt.id,
-                            text: txtContent,
-                            fontFamily: selFt.fontFamily,
-                            color: selFt.color,
-                            writingMode: selFt.writingMode || 'horizontal',
-                            textAlign: (selFt.textAlign || 'left') as TextAlignment,
-                          }}
-                          variant="floating"
-                          onUpdate={(patch) =>
-                            patchFreeText(selFt.id, {
-                              fontFamily: patch.fontFamily,
-                              color: patch.color,
-                              writingMode: patch.writingMode as 'horizontal' | 'vertical' | undefined,
-                              textAlign: (patch.textAlign || selFt.textAlign || 'left') as EditorialTextAlign,
-                            })
-                          }
-                          onOpenEdit={() => openFreeTextEditor(selFt)}
-                          extraActions={
-                            <TextSizeStepper
-                              value={selFt.fontSize}
-                              onChange={(v) => patchFreeText(selFt.id, { fontSize: v }, false)}
-                            />
-                          }
-                          onDelete={() => removeFreeText(selFt.id)}
-                          onBumpLayer={(mode) => bumpFreeTextLayer(selFt.id, mode)}
-                          onRotateStep={(mode) => rotateFreeTextStep(selFt.id, mode)}
-                        />
-                      </div>
-                    );
-                  })()}
 
                   {/* 4. 大标题 Headline（自由排版下由 freeTexts 块接管） */}
                   {!isFreeLayout && (
@@ -1971,7 +2007,7 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
                     <div
                       className="absolute flex items-center justify-between font-semibold pointer-events-none opacity-60"
                       style={{
-                        bottom: `${Math.round(ratioPreset.height * 0.038)}px`,
+                        bottom: `${Math.round(ratioPreset.height * 0.028)}px`,
                         left: `${Math.round(ratioPreset.width * 0.065)}px`,
                         right: `${Math.round(ratioPreset.width * 0.065)}px`,
                         fontSize: `${Math.round(ratioPreset.width * 0.0115)}px`,
@@ -1989,7 +2025,7 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
                     <div
                       className="absolute pointer-events-none"
                       style={{
-                        bottom: `${Math.round(ratioPreset.height * 0.066)}px`,
+                        bottom: `${Math.round(ratioPreset.height * 0.048)}px`,
                         left: `${Math.round(ratioPreset.width * 0.065)}px`,
                       }}
                     >
@@ -2001,7 +2037,104 @@ const EditorialLayoutNodeInner: React.FC<EditorialLayoutNodeProps> = ({
                     </div>
                   )}
                 </div>
+
+                {/* 文本编辑居中浮层（参考手账制作节点设计，居中呈现且不受内部 scale 影响） */}
+                {editingTextId && (
+                  <div
+                    className="absolute z-50 flex flex-col gap-2 p-2.5 rounded-xl bg-paper/95 backdrop-blur-md shadow-2xl border border-paper-grid/60"
+                    style={{
+                      top: '50%',
+                      left: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      width: 270,
+                    }}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="flex items-center justify-between text-xs text-ink-light px-0.5 select-none">
+                      <span className="font-medium text-ink">
+                        {editingTextId === 'new' ? '添加文字' : '编辑文字'}
+                      </span>
+                      <span className="text-[10px] text-ink-faint">Enter 确认 · Shift+Enter 换行</span>
+                    </div>
+                    <textarea
+                      ref={textInputRef}
+                      value={editingTextValue}
+                      onChange={(e) => setEditingTextValue(e.target.value)}
+                      onKeyDown={handleTextKeyDown}
+                      className="w-full h-20 resize-none rounded-lg border border-paper-grid/60 bg-paper px-2.5 py-1.5 text-xs text-ink leading-relaxed outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 transition font-sans"
+                      autoFocus
+                      placeholder="输入文字…"
+                    />
+                    <div className="flex items-center justify-end gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsAddingNewText(false);
+                          setEditingTextId(null);
+                          setEditingTextValue('');
+                        }}
+                        className="px-2.5 py-1 text-xs text-ink-light rounded-md hover:bg-paper-grid/30 active:scale-[0.96] transition"
+                      >
+                        取消
+                      </button>
+                      <button
+                        type="button"
+                        onClick={saveFreeTextEditor}
+                        className="flex items-center gap-1 px-3 py-1 text-xs text-white font-medium bg-accent rounded-md hover:bg-accent-hover active:scale-[0.96] shadow-sm transition"
+                      >
+                        <Check size={12} strokeWidth={2.5} />
+                        确认
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
+
+              {/* 自由排版选中文本悬浮工具栏（浮于舞台顶层，不受内部 scale 和卡片 overflow-hidden 裁切影响） */}
+              {isFreeLayout && selectedTextId && !editingTextId && (() => {
+                const selFt = freeTexts.find((ft) => ft.id === selectedTextId);
+                if (!selFt) return null;
+                const txtContent = freeTextContent(selFt);
+                return (
+                  <div
+                    className="absolute top-2 z-40 pointer-events-auto max-w-[calc(100%-16px)]"
+                    style={{ left: '50%', transform: 'translateX(-50%)' }}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <UniversalTextToolbar
+                      item={{
+                        id: selFt.id,
+                        text: txtContent,
+                        fontFamily: selFt.fontFamily,
+                        color: selFt.color,
+                        writingMode: selFt.writingMode || 'horizontal',
+                        textAlign: (selFt.textAlign || 'left') as TextAlignment,
+                      }}
+                      variant="floating"
+                      onUpdate={(patch) =>
+                        patchFreeText(selFt.id, {
+                          fontFamily: patch.fontFamily,
+                          color: patch.color,
+                          writingMode: patch.writingMode as 'horizontal' | 'vertical' | undefined,
+                          textAlign: (patch.textAlign || selFt.textAlign || 'left') as EditorialTextAlign,
+                        })
+                      }
+                      onOpenEdit={() => openFreeTextEditor(selFt)}
+                      extraActions={
+                        <TextSizeStepper
+                          value={selFt.fontSize}
+                          onChange={(v) => patchFreeText(selFt.id, { fontSize: v }, false)}
+                        />
+                      }
+                      onDelete={() => removeFreeText(selFt.id)}
+                      onBumpLayer={(mode) => bumpFreeTextLayer(selFt.id, mode)}
+                      onRotateStep={(mode) => rotateFreeTextStep(selFt.id, mode)}
+                    />
+                  </div>
+                );
+              })()}
 
               {/* 抽屉浮层：文章内容编辑 */}
               <AnimatePresence>
