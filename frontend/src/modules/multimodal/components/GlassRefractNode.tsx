@@ -1,5 +1,4 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
 import {
@@ -10,35 +9,25 @@ import {
   Trash2,
   Loader2,
   Check,
-  ChevronUp,
   SlidersHorizontal,
-  Dices,
-  Columns3,
-  Grid,
   Boxes,
-  Disc,
-  CloudRain,
-  Waves,
-  Hexagon,
-  Wind,
-  Dot,
 } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { Tooltip } from '../../../platform/components/ui/Tooltip';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
-import { SliderRow } from '../../../platform/components/ui/Slider';
 import { NODE_COLORS } from '../../bookplate/nodeTypes';
 import {
   type GlassPattern,
   type GlassRefractState,
   type GlassRefractParams,
   DEFAULT_GLASS_PARAMS,
-  PATTERN_DESCRIPTIONS,
   getGlassPresetByPattern,
   loadImage,
   GlassRenderer,
   renderGlassRefractFromImage,
+  GlassRefractStudioPanel,
+  PATTERN_OPTIONS,
 } from '../glassrefract';
 
 export interface GlassRefractNodeProps {
@@ -73,19 +62,6 @@ export interface GlassRefractNodeProps {
     state: Partial<GlassRefractState>
   ) => Promise<void>;
 }
-
-/** 9 种玻璃图案定义 */
-const PATTERN_OPTIONS: { label: string; value: GlassPattern; icon: React.ComponentType<{ size?: number; className?: string }> }[] = [
-  { label: '长虹', value: 'fluted', icon: Columns3 },
-  { label: '十字', value: 'cross', icon: Grid },
-  { label: '砖块', value: 'block', icon: Boxes },
-  { label: '水波', value: 'ripple', icon: Disc },
-  { label: '雨滴', value: 'rain', icon: CloudRain },
-  { label: '波浪', value: 'wave', icon: Waves },
-  { label: '锤纹', value: 'hammer', icon: Hexagon },
-  { label: '流动', value: 'flemish', icon: Wind },
-  { label: '磨砂', value: 'frosted', icon: Dot },
-];
 
 const GlassRefractNodeInner: React.FC<GlassRefractNodeProps> = ({
   id,
@@ -133,7 +109,7 @@ const GlassRefractNodeInner: React.FC<GlassRefractNodeProps> = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isEditing, setIsEditing] = useState<boolean>(!data?.imageUrl);
-  const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   const hasGenerated = Boolean(data?.imageUrl && !isEditing);
   const isSaved = Boolean(data?.isSaved);
@@ -177,13 +153,19 @@ const GlassRefractNodeInner: React.FC<GlassRefractNodeProps> = ({
     [patchState]
   );
 
-  // 重置回默认参数
+  // 统一重置回默认参数（编辑态重置全部滑块参数；结果态一并清空成图回到编辑态）
   const handleResetParams = useCallback(() => {
-    patchState({
+    const patch: Partial<GlassRefractState> = {
       ...DEFAULT_GLASS_PARAMS,
-    });
+    };
+    if (data?.imageUrl && !isEditing) {
+      setIsEditing(true);
+      patch.imageUrl = null;
+      patch.isSaved = false;
+    }
+    patchState(patch);
     showToast('已重置为默认玻璃折射参数', { type: 'success' });
-  }, [patchState, showToast]);
+  }, [data?.imageUrl, isEditing, patchState, showToast]);
 
   // 换一批随机雨滴分布
   const handleRandomizeRain = useCallback(() => {
@@ -336,14 +318,14 @@ const GlassRefractNodeInner: React.FC<GlassRefractNodeProps> = ({
     };
   }, [activeImageSrc, requestRedraw]);
 
-  // 当状态切回编辑态或面板展开/收起时延时一帧重绘
+  // 当状态切回编辑态时延时一帧重绘
   useEffect(() => {
     if (!hasGenerated && activeImageSrc) {
       requestAnimationFrame(() => {
         requestRedraw();
       });
     }
-  }, [hasGenerated, activeImageSrc, isPanelCollapsed, requestRedraw]);
+  }, [hasGenerated, activeImageSrc, requestRedraw]);
 
   // 执行高保真烘焙生成
   const handleGenerate = useCallback(async () => {
@@ -528,6 +510,26 @@ const GlassRefractNodeInner: React.FC<GlassRefractNodeProps> = ({
       onClick={() => onSelect?.(id)}
       footer={footer}
       mismatchBadge={mismatchBadge}
+      sideDrawer={
+        isEditing ? (
+          <GlassRefractStudioPanel
+            isOpen={isDrawerOpen}
+            pattern={pattern}
+            scale={scale}
+            relief={relief}
+            thickness={thickness}
+            angle={angle}
+            dispersion={dispersion}
+            specular={specular}
+            gap={gap}
+            seed={seed}
+            disabled={isGenerating}
+            onUpdate={patchState}
+            onRandomizeRain={handleRandomizeRain}
+            onClose={() => setIsDrawerOpen(false)}
+          />
+        ) : undefined
+      }
       actionBar={
         <NodeActionBar>
           {hasGenerated ? (
@@ -608,9 +610,9 @@ const GlassRefractNodeInner: React.FC<GlassRefractNodeProps> = ({
                 tooltip="直接下载结果 PNG"
               />
               <NodeActionBar.Reset
-                onClick={() => patchState({ imageUrl: null, isSaved: false })}
+                onClick={handleResetParams}
                 disabled={isExporting}
-                tooltip="清空结果回到参数编辑态"
+                tooltip="清空结果并重置为初始默认参数"
               />
             </>
           ) : (
@@ -626,6 +628,18 @@ const GlassRefractNodeInner: React.FC<GlassRefractNodeProps> = ({
                 tooltip="生成玻璃折射图片"
                 onClick={handleGenerate}
                 disabled={!activeImageSrc || isGenerating}
+              />
+              <NodeActionBar.Custom
+                icon={
+                  <SlidersHorizontal
+                    size={16}
+                    strokeWidth={1.5}
+                    className={isDrawerOpen ? 'text-accent' : ''}
+                  />
+                }
+                tooltip={isDrawerOpen ? '收起配置抽屉' : '展开参数配置抽屉'}
+                onClick={() => setIsDrawerOpen((prev) => !prev)}
+                className={isDrawerOpen ? 'text-accent' : ''}
               />
               <NodeActionBar.Custom
                 icon={<Upload size={16} strokeWidth={1.5} />}
@@ -644,7 +658,7 @@ const GlassRefractNodeInner: React.FC<GlassRefractNodeProps> = ({
               <NodeActionBar.Reset
                 onClick={handleResetParams}
                 disabled={isGenerating}
-                tooltip="重置为默认参数"
+                tooltip="重置为初始默认参数"
               />
             </>
           )}
@@ -661,175 +675,50 @@ const GlassRefractNodeInner: React.FC<GlassRefractNodeProps> = ({
       />
 
       <div className="h-full flex flex-col flex-1 min-h-0 gap-2">
-        {/* 控制工具栏（编辑态展示：9 风格图标切分栏 + 高密度参数调节面板） */}
+        {/* 控制工具栏（编辑态展示：9 风格图标切分栏横版排列 + 右侧侧边吸附抽屉展开按钮） */}
         {!hasGenerated && (
-          <div className="relative z-20 flex flex-col gap-1.5 p-2 rounded-xl bg-paper/95 border border-paper-grid/80 text-xs font-sans text-ink-light select-none shadow-2xs shrink-0">
-            {/* 9 种玻璃图案横向等宽 Segmented 选择栏 + 右侧折叠按钮 */}
-            <div className="flex items-center gap-1.5 min-w-0">
-              <div className="grid grid-cols-9 flex-1 p-0.5 rounded-lg bg-paper-grid/40 border border-paper-grid/60 gap-0.5 shadow-2xs">
-                {PATTERN_OPTIONS.map((opt) => {
-                  const isChecked = pattern === opt.value;
-                  const IconComponent = opt.icon;
-                  return (
-                    <Tooltip key={opt.value} content={`${opt.label} (${opt.value})`}>
-                      <button
-                        type="button"
-                        onClick={() => handlePatternChange(opt.value)}
-                        disabled={isGenerating}
-                        className={`flex flex-col items-center justify-center py-1 px-0.5 rounded text-[10px] font-medium leading-tight transition duration-150 active:scale-[0.94] ${
-                          isChecked
-                            ? 'bg-paper text-accent font-semibold shadow-2xs border border-paper-grid/40'
-                            : 'text-ink-light hover:text-ink hover:bg-paper-grid/30'
-                        } disabled:cursor-not-allowed disabled:opacity-50`}
-                      >
-                        <IconComponent size={13} className="shrink-0 mb-0.5" />
-                        <span className="truncate scale-90">{opt.label}</span>
-                      </button>
-                    </Tooltip>
-                  );
-                })}
-              </div>
-
-              <Tooltip content={isPanelCollapsed ? '展开参数配置' : '收起参数配置，最大化查看实时折射'}>
-                <button
-                  type="button"
-                  onClick={() => setIsPanelCollapsed(!isPanelCollapsed)}
-                  className="p-1.5 rounded-lg border border-paper-grid/70 text-ink-faint hover:text-accent hover:border-accent/60 bg-paper/60 transition-[color,border-color,transform] active:scale-[0.94] shrink-0"
-                  aria-label={isPanelCollapsed ? '展开面板' : '收起面板'}
-                >
-                  {isPanelCollapsed ? <SlidersHorizontal size={13} /> : <ChevronUp size={13} />}
-                </button>
-              </Tooltip>
+          <div className="relative z-20 flex items-center gap-1.5 p-1.5 rounded-xl bg-paper/95 border border-paper-grid/80 text-xs font-sans text-ink-light select-none shadow-2xs shrink-0">
+            {/* 9 种玻璃图案横向等宽 Segmented 选择栏 */}
+            <div className="grid grid-cols-9 flex-1 p-0.5 rounded-lg bg-paper-grid/40 border border-paper-grid/60 gap-0.5 shadow-2xs min-w-0">
+              {PATTERN_OPTIONS.map((opt) => {
+                const isChecked = pattern === opt.value;
+                const IconComponent = opt.icon;
+                return (
+                  <Tooltip key={opt.value} content={`${opt.label} (${opt.value})`}>
+                    <button
+                      type="button"
+                      onClick={() => handlePatternChange(opt.value)}
+                      disabled={isGenerating}
+                      className={`flex flex-col items-center justify-center py-1 px-0.5 rounded text-[10px] font-medium leading-tight transition duration-150 cursor-pointer active:scale-[0.94] ${
+                        isChecked
+                          ? 'bg-paper text-accent font-semibold shadow-2xs border border-paper-grid/40'
+                          : 'text-ink-light hover:text-ink hover:bg-paper-grid/30'
+                      } disabled:cursor-not-allowed disabled:opacity-50`}
+                    >
+                      <IconComponent size={13} className="shrink-0 mb-0.5" />
+                      <span className="truncate scale-90">{opt.label}</span>
+                    </button>
+                  </Tooltip>
+                );
+              })}
             </div>
 
-            {/* 可平滑收起的参数设置区 */}
-            <AnimatePresence initial={false}>
-              {!isPanelCollapsed && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-                  className="overflow-hidden flex flex-col gap-1.5 pt-0.5"
-                >
-                  {/* 风格提示说明 */}
-                  <div className="text-[10px] text-ink-faint leading-relaxed px-1 bg-paper-grid/20 py-1 rounded border border-paper-grid/30">
-                    {PATTERN_DESCRIPTIONS[pattern]}
-                  </div>
-
-                  {/* 6 核心参数 2x3 等宽对齐网格 */}
-                  <div className="grid gap-x-3 gap-y-1.5 grid-cols-2 pt-0.5">
-                    <SliderRow
-                      label={pattern === 'rain' ? '滴粒' : '周期'}
-                      value={scale}
-                      min={6}
-                      max={220}
-                      step={1}
-                      display={`${scale}px`}
-                      labelWidth="w-6"
-                      valueWidth="min-w-[34px]"
-                      disabled={isGenerating}
-                      onChange={(v) => patchState({ scale: v })}
-                    />
-                    <SliderRow
-                      label="浮雕"
-                      value={Math.round(relief * 100)}
-                      min={0}
-                      max={300}
-                      step={1}
-                      display={relief === 0 ? '平切' : `${Math.round(relief * 100)}%`}
-                      labelWidth="w-6"
-                      valueWidth="min-w-[34px]"
-                      disabled={isGenerating}
-                      onChange={(v) => patchState({ relief: v / 100 })}
-                    />
-                    <SliderRow
-                      label="深度"
-                      value={Math.round(thickness)}
-                      min={0}
-                      max={200}
-                      step={1}
-                      display={thickness === 0 ? '贴合' : `${Math.round(thickness)}px`}
-                      labelWidth="w-6"
-                      valueWidth="min-w-[34px]"
-                      disabled={isGenerating}
-                      onChange={(v) => patchState({ thickness: v })}
-                    />
-                    <SliderRow
-                      label="角度"
-                      value={angle}
-                      min={0}
-                      max={180}
-                      step={1}
-                      display={pattern === 'ripple' ? '同心' : `${angle}°`}
-                      labelWidth="w-6"
-                      valueWidth="min-w-[30px]"
-                      disabled={isGenerating || pattern === 'ripple'}
-                      onChange={(v) => patchState({ angle: v })}
-                    />
-                    <SliderRow
-                      label="色散"
-                      value={Math.round(dispersion * 1000)}
-                      min={0}
-                      max={100}
-                      step={1}
-                      display={dispersion === 0 ? '无' : `${(dispersion * 100).toFixed(1)}%`}
-                      labelWidth="w-6"
-                      valueWidth="min-w-[34px]"
-                      disabled={isGenerating}
-                      onChange={(v) => patchState({ dispersion: v / 1000 })}
-                    />
-                    <SliderRow
-                      label="光泽"
-                      value={Math.round(specular * 100)}
-                      min={0}
-                      max={100}
-                      step={1}
-                      display={specular === 0 ? '无' : `${Math.round(specular * 100)}%`}
-                      labelWidth="w-6"
-                      valueWidth="min-w-[30px]"
-                      disabled={isGenerating}
-                      onChange={(v) => patchState({ specular: v / 100 })}
-                    />
-                  </div>
-
-                  {/* 特殊模式专属调节行 */}
-                  {pattern === 'block' && (
-                    <div className="flex items-center gap-2 pt-0.5 border-t border-paper-grid/30">
-                      <div className="flex-1">
-                        <SliderRow
-                          label="砖缝"
-                          value={Math.round((gap ?? 0.06) * 100)}
-                          min={0}
-                          max={50}
-                          step={1}
-                          display={gap === 0 ? '无缝' : `${Math.round((gap ?? 0.06) * 100)}%`}
-                          labelWidth="w-6"
-                          valueWidth="min-w-[30px]"
-                          disabled={isGenerating}
-                          onChange={(v) => patchState({ gap: v / 100 })}
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {pattern === 'rain' && (
-                    <div className="flex items-center justify-between gap-2 pt-0.5 border-t border-paper-grid/30">
-                      <span className="text-ink-faint text-[10px]">雨滴分布种子: {seed}</span>
-                      <button
-                        type="button"
-                        onClick={handleRandomizeRain}
-                        disabled={isGenerating}
-                        className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border border-paper-grid/60 bg-paper/80 hover:bg-accent/15 hover:border-accent/40 text-ink-light hover:text-accent transition duration-150"
-                      >
-                        <Dices size={12} />
-                        <span>换一批雨滴</span>
-                      </button>
-                    </div>
-                  )}
-                </motion.div>
-              )}
-            </AnimatePresence>
+            {/* 右侧吸附抽屉展开/收起按钮 */}
+            <Tooltip content={isDrawerOpen ? '收起参数配置抽屉' : '展开侧边参数配置抽屉'}>
+              <button
+                type="button"
+                onClick={() => setIsDrawerOpen((prev) => !prev)}
+                disabled={isGenerating}
+                className={`p-1.5 rounded-lg border transition-[color,border-color,background-color,transform] active:scale-[0.94] shrink-0 cursor-pointer ${
+                  isDrawerOpen
+                    ? 'bg-accent/15 border-accent/40 text-accent font-medium shadow-2xs'
+                    : 'border-paper-grid/70 text-ink-faint hover:text-accent hover:border-accent/60 bg-paper/60'
+                }`}
+                aria-label={isDrawerOpen ? '收起配置抽屉' : '展开配置抽屉'}
+              >
+                <SlidersHorizontal size={13} />
+              </button>
+            </Tooltip>
           </div>
         )}
 
