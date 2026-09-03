@@ -45,7 +45,7 @@ export const StampTextEditModal: React.FC<StampTextEditModalProps> = ({
           <span className="font-sans font-semibold">
             {isNew ? '添加邮票文字' : '编辑邮票文字'}
           </span>
-          <span className="text-[10px] text-ink-faint">Enter 确定 · Shift+Enter 换行</span>
+          <span className="text-[10px] text-ink-faint tabular-nums">Enter 确定 · Shift+Enter 换行</span>
         </div>
 
         <textarea
@@ -84,7 +84,7 @@ export const StampTextEditModal: React.FC<StampTextEditModalProps> = ({
                         w: pst.w,
                       });
                     }}
-                    className="px-1.5 py-0.5 rounded bg-paper-grid/30 hover:bg-paper-grid/60 text-ink-light hover:text-ink text-[10px] active:scale-95 transition"
+                    className="px-1.5 py-0.5 rounded bg-paper-grid/30 hover:bg-paper-grid/60 text-ink-light hover:text-ink text-[10px] tabular-nums active:scale-[0.96] transition-[color,background-color,transform] duration-150 cursor-pointer"
                   >
                     {pst.label}
                   </button>
@@ -98,14 +98,14 @@ export const StampTextEditModal: React.FC<StampTextEditModalProps> = ({
           <button
             type="button"
             onClick={onCancel}
-            className="px-3 py-1 rounded text-xs text-ink-light hover:bg-paper-grid/40 transition"
+            className="px-3 py-1 rounded text-xs text-ink-light hover:bg-paper-grid/40 active:scale-[0.96] transition-[color,background-color,transform] duration-150 cursor-pointer"
           >
             取消
           </button>
           <button
             type="button"
             onClick={onConfirm}
-            className="flex items-center gap-1 px-3.5 py-1 rounded text-xs bg-accent text-white font-medium hover:bg-accent/90 transition shadow-xs"
+            className="flex items-center gap-1 px-3.5 py-1 rounded text-xs bg-accent text-white font-medium hover:bg-accent/90 active:scale-[0.96] transition-[color,background-color,transform] duration-150 shadow-xs cursor-pointer"
           >
             <Check size={12} strokeWidth={2.5} />
             <span>确定</span>

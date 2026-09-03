@@ -25,6 +25,7 @@ interface StampCropEditorProps {
   isAnimatingCrop: boolean;
   studioSettings?: StampStudioSettings;
   onCropBoxChange: (box: StampCropBox) => void;
+  onCropBoxCommit?: (box: StampCropBox) => void;
   onUpdateTextItems: (items: StampTextItem[]) => void;
   onSelectText: (id: string | null) => void;
   onOpenEditText: (id: string) => void;
@@ -45,6 +46,7 @@ export const StampCropEditor: React.FC<StampCropEditorProps> = ({
   isAnimatingCrop,
   studioSettings,
   onCropBoxChange,
+  onCropBoxCommit,
   onUpdateTextItems,
   onSelectText,
   onOpenEditText,
@@ -59,18 +61,25 @@ export const StampCropEditor: React.FC<StampCropEditorProps> = ({
   const [cropBoxWidthPx, setCropBoxWidthPx] = useState<number>(300);
   const [activeGestureId, setActiveGestureId] = useState<string | null>(null);
 
-  // 选框内全实时所见即所得渲染 (Live Canvas Preview)
+  // 选框内全实时所见即所得渲染 (Live Canvas Preview - rAF 节流防抖)
   useEffect(() => {
     if (!studioSettings?.designOn || !activeImageSrc || !imgRef.current) return;
     const canvas = liveCanvasRef.current;
     const img = imgRef.current;
     if (!canvas || !img.complete || !img.naturalWidth) return;
 
-    paintStampFace(canvas, img, cropBox, {
-      withMargin,
-      grid,
-      studioSettings,
+    let rafId: number;
+    rafId = requestAnimationFrame(() => {
+      paintStampFace(canvas, img, cropBox, {
+        withMargin,
+        grid,
+        studioSettings,
+      });
     });
+
+    return () => {
+      cancelAnimationFrame(rafId);
+    };
   }, [cropBox, studioSettings, activeImageSrc, withMargin, grid]);
 
   // 选框拖拽与缩放
@@ -272,6 +281,7 @@ export const StampCropEditor: React.FC<StampCropEditorProps> = ({
       setIsDraggingBox(false);
       setIsResizingBox(false);
       dragStartRef.current = null;
+      onCropBoxCommit?.(cropBox);
       try {
         (e.target as HTMLElement).releasePointerCapture(e.pointerId);
       } catch {
@@ -300,13 +310,15 @@ export const StampCropEditor: React.FC<StampCropEditorProps> = ({
 
     const newX = Math.max(0, Math.min(1 - newW, cropBox.x + (cropBox.width - newW) / 2));
     const newY = Math.max(0, Math.min(1 - newH, cropBox.y + (cropBox.height - newH) / 2));
-    onCropBoxChange({ x: newX, y: newY, width: newW, height: newH });
+    const nextBox = { x: newX, y: newY, width: newW, height: newH };
+    onCropBoxChange(nextBox);
+    onCropBoxCommit?.(nextBox);
   };
 
   return (
     <div
       ref={containerRef}
-      className="relative flex-1 min-h-0 w-full overflow-hidden rounded bg-paper-grid/10 border border-paper-grid/40 flex items-center justify-center select-none"
+      className="relative flex-1 min-h-0 w-full overflow-hidden rounded-lg bg-paper-grid/10 border border-paper-grid/40 flex items-center justify-center select-none"
       onWheel={handleWheelOnImage}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -347,12 +359,12 @@ export const StampCropEditor: React.FC<StampCropEditorProps> = ({
               animate={
                 isAnimatingCrop
                   ? {
-                      scale: 1.15,
-                      boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
+                      scale: 1.08,
+                      boxShadow: '0 16px 32px rgba(0,0,0,0.35)',
                     }
                   : { scale: 1 }
               }
-              transition={{ type: 'spring', damping: 20, stiffness: 220 }}
+              transition={{ duration: 0.22, ease: [0.2, 0, 0, 1] }}
               onPointerDown={handleBoxPointerDown}
               className={`group cursor-move z-10 box-border flex items-center justify-center ${
                 isDraggingBox ? 'cursor-grabbing' : ''
@@ -463,20 +475,24 @@ export const StampCropEditor: React.FC<StampCropEditorProps> = ({
                     onExecuteCrop();
                   }}
                   disabled={isExporting || isAnimatingCrop}
-                  className="relative z-20 px-2.5 py-1 rounded-full bg-paper/90 backdrop-blur text-ink font-medium text-xs shadow-md hover:bg-white hover:scale-105 active:scale-95 transition flex items-center gap-1.5 opacity-0 group-hover:opacity-100 duration-150 cursor-pointer"
+                  className="relative z-20 px-2.5 py-1 rounded-full bg-paper/90 backdrop-blur text-ink font-medium text-xs shadow-md hover:bg-white hover:text-accent hover:scale-105 active:scale-[0.96] transition-[transform,color,background-color,opacity] flex items-center gap-1.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 max-sm:opacity-90 duration-150 cursor-pointer"
                 >
                   <Scissors size={13} className="text-accent" />
                   <span>点击截取</span>
                 </button>
               )}
 
-              {/* 缩放手柄（右下角） */}
+              {/* 缩放手柄（右下角）- 40px 热区与辅助特性 */}
               <div
+                role="slider"
+                aria-label="拖拽缩放选框大小"
+                aria-valuenow={Math.round(cropBox.width * 100)}
+                tabIndex={0}
                 onPointerDown={handleResizePointerDown}
-                className="absolute -right-1.5 -bottom-1.5 w-4 h-4 bg-accent rounded-full border-2 border-white cursor-se-resize shadow-md flex items-center justify-center hover:scale-125 transition z-20"
+                className="absolute -right-1.5 -bottom-1.5 w-4 h-4 bg-accent rounded-full border-2 border-white cursor-se-resize shadow-md flex items-center justify-center hover:scale-110 active:scale-95 transition-transform duration-150 z-20 before:absolute before:-inset-3 before:content-[''] focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:outline-none"
                 title="拖拽缩放选框"
               >
-                <div className="w-1.5 h-1.5 bg-white rounded-full" />
+                <div className="w-1.5 h-1.5 bg-white rounded-full pointer-events-none" />
               </div>
             </motion.div>
           </div>

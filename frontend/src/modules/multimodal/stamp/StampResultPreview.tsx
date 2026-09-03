@@ -31,7 +31,7 @@ export const StampResultPreview: React.FC<StampResultPreviewProps> = ({
                 <img
                   src={imageUrl}
                   alt="Stamp Generated"
-                  className="max-w-full max-h-[420px] object-contain rounded drop-shadow-xl select-none cursor-zoom-in group-hover:opacity-95 active:scale-[0.99] transition-transform transition-opacity"
+                  className="max-w-full max-h-[420px] object-contain rounded drop-shadow-xl select-none cursor-zoom-in group-hover:opacity-95 active:scale-[0.98] transition-[transform,opacity] duration-150"
                   loading="lazy"
                 />
               </Tooltip>
@@ -42,7 +42,7 @@ export const StampResultPreview: React.FC<StampResultPreviewProps> = ({
           <button
             type="button"
             onClick={onEditAgain}
-            className="absolute bottom-3 right-3 z-10 px-2.5 py-1 rounded-full bg-paper/90 backdrop-blur text-ink text-xs shadow-md border border-paper-grid/40 hover:bg-white hover:text-accent transition flex items-center gap-1.5 opacity-0 group-hover:opacity-100 duration-150 cursor-pointer"
+            className="absolute bottom-3 right-3 z-10 px-2.5 py-1 rounded-full bg-paper/90 backdrop-blur text-ink text-xs shadow-md border border-paper-grid/40 hover:bg-white hover:text-accent active:scale-[0.96] transition-[transform,color,background-color,opacity] flex items-center gap-1.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 max-sm:opacity-90 duration-150 cursor-pointer select-none"
           >
             <Pencil size={12} />
             <span>重新排版</span>

@@ -1,4 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence } from 'framer-motion';
 import {
   Scissors,
   Heart,
@@ -505,7 +506,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
         studioSettings,
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 360));
+      await new Promise((resolve) => setTimeout(resolve, 220));
 
       onUpdateState?.(id, {
         imageUrl: resultDataUrl,
@@ -522,7 +523,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
 
       setIsEditing(false);
       // 保留 isStudioOpen 状态：用户重新调整选框与排版时无缝恢复原有工坊吸附状态
-      showToast('邮票制作完成（可点击保存写入数据库）', { type: 'success' });
+      showToast('邮票制作完成，可点击保存入库', { type: 'success' });
     } catch (err: any) {
       console.error('截取邮票失败:', err);
       showToast(err?.message || '生成邮票失败，请重试', { type: 'error' });
@@ -565,7 +566,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
       });
       onUpdateState?.(id, { isSaved: true });
       onSelect?.(id);
-      showToast('邮票已保存到数据库，已解锁公开与收藏', { type: 'success' });
+      showToast('邮票已保存入库，已解锁公开与收藏', { type: 'success' });
     } catch (err: any) {
       console.error('保存到数据库失败:', err);
       showToast(err?.detail || err?.message || '保存失败，请重试', { type: 'error' });
@@ -678,7 +679,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
                 icon={<Check size={16} strokeWidth={isSaved ? 2.5 : 1.5} className={isSaved ? 'text-accent' : ''} />}
                 onClick={handleSaveToDatabase}
                 disabled={isExporting || isSaved}
-                tooltip={isSaved ? '已保存到数据库' : '保存到数据库（保存后可公开/收藏）'}
+                tooltip={isSaved ? '已保存入库' : '保存入库（保存后可公开/收藏）'}
                 className={isSaved ? 'text-accent opacity-70' : 'text-ink-light hover:text-accent'}
               />
               <NodeActionBar.Custom
@@ -691,7 +692,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
                 }
                 tooltip={
                   !isSaved
-                    ? '请先保存到数据库后再收藏'
+                    ? '请先保存入库后再收藏'
                     : isFavorited
                       ? '取消收藏'
                       : '收藏'
@@ -711,7 +712,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
                 }
                 tooltip={
                   !isSaved
-                    ? '请先保存到数据库后再公开'
+                    ? '请先保存入库后再公开'
                     : isPublic
                       ? '从画廊撤下'
                       : '公开到画廊'
@@ -773,6 +774,10 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
               />
             </>
           )}
+          <NodeActionBar.ExternalLink
+            href="https://github.com/jal-co/stampstudio"
+            tooltip="点击使用完整功能"
+          />
         </NodeActionBar>
       }
     >
@@ -801,7 +806,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
         )}
 
         {/* 主视口区域：选框编辑器 vs 结果展示 */}
-        <div className="relative flex-1 min-h-0 w-full overflow-hidden rounded bg-paper-grid/10 border border-paper-grid/40 flex items-center justify-center select-none">
+        <div className="relative flex-1 min-h-0 w-full overflow-hidden rounded-lg bg-paper-grid/10 border border-paper-grid/40 flex items-center justify-center select-none">
           {/* 选中文本悬浮微交互工具栏 */}
           {isEditing && selectedTextItem && (
             <div className="absolute top-2 left-1/2 -translate-x-1/2 z-40 pointer-events-auto">
@@ -824,44 +829,50 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
             </div>
           )}
 
-          {!hasGenerated ? (
-            <StampCropEditor
-              activeImageSrc={activeImageSrc}
-              cropBox={cropBox}
-              grid={grid}
-              aspectRatio={aspectRatio}
-              withMargin={withMargin}
-              vignetteShape={studioSettings.designOn ? studioSettings.vignette : 'none'}
-              textItems={textItems}
-              selectedTextId={selectedTextId}
-              isExporting={isExporting}
-              isAnimatingCrop={isAnimatingCrop}
-              studioSettings={studioSettings}
-              onCropBoxChange={(nextBox) => {
-                setCropBox(nextBox);
-                onUpdateState?.(id, { cropBox: nextBox, textItems });
-              }}
-              onUpdateTextItems={(nextItems) => {
-                setTextItems(nextItems);
-                onUpdateState?.(id, { textItems: nextItems });
-              }}
-              onSelectText={setSelectedTextId}
-              onOpenEditText={(textId) => {
-                const it = textItems.find((t) => t.id === textId);
-                setIsAddingNewText(false);
-                setPendingTextPreset(null);
-                setEditingTextId(textId);
-                setEditingText(it?.text || '');
-              }}
-              onExecuteCrop={handleExecuteCrop}
-              onUploadClick={() => fileInputRef.current?.click()}
-            />
-          ) : (
-            <StampResultPreview
-              imageUrl={data?.imageUrl || null}
-              onEditAgain={() => setIsEditing(true)}
-            />
-          )}
+          <AnimatePresence mode="wait" initial={false}>
+            {!hasGenerated ? (
+              <StampCropEditor
+                key="crop-editor"
+                activeImageSrc={activeImageSrc}
+                cropBox={cropBox}
+                grid={grid}
+                aspectRatio={aspectRatio}
+                withMargin={withMargin}
+                vignetteShape={studioSettings.designOn ? studioSettings.vignette : 'none'}
+                textItems={textItems}
+                selectedTextId={selectedTextId}
+                isExporting={isExporting}
+                isAnimatingCrop={isAnimatingCrop}
+                studioSettings={studioSettings}
+                onCropBoxChange={(nextBox) => {
+                  setCropBox(nextBox);
+                }}
+                onCropBoxCommit={(committedBox) => {
+                  onUpdateState?.(id, { cropBox: committedBox, textItems });
+                }}
+                onUpdateTextItems={(nextItems) => {
+                  setTextItems(nextItems);
+                  onUpdateState?.(id, { textItems: nextItems });
+                }}
+                onSelectText={setSelectedTextId}
+                onOpenEditText={(textId) => {
+                  const it = textItems.find((t) => t.id === textId);
+                  setIsAddingNewText(false);
+                  setPendingTextPreset(null);
+                  setEditingTextId(textId);
+                  setEditingText(it?.text || '');
+                }}
+                onExecuteCrop={handleExecuteCrop}
+                onUploadClick={() => fileInputRef.current?.click()}
+              />
+            ) : (
+              <StampResultPreview
+                key="result-preview"
+                imageUrl={data?.imageUrl || null}
+                onEditAgain={() => setIsEditing(true)}
+              />
+            )}
+          </AnimatePresence>
 
           {/* 内联文字编辑弹层 */}
           {editingTextId && (
@@ -897,7 +908,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
         {recordDeleted && hasGenerated && !isExporting && (
           <div className="flex items-center justify-end gap-1.5 text-right text-xs text-ink-faint font-sans">
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-accent/60" />
-            记录已删除 · 收藏将重新生成记录
+            记录已从画廊移除 · 收藏将重新入库
           </div>
         )}
       </div>

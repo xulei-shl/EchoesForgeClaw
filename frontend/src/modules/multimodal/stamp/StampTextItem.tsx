@@ -72,7 +72,7 @@ export const StampTextItemView: React.FC<StampTextItemProps> = ({
           e.stopPropagation();
           if (!disabled) onOpenEdit();
         }}
-        className={`cursor-move select-none transition-[outline,box-shadow] duration-150 ease-out rounded px-1.5 py-0.5 ${
+        className={`cursor-move select-none tabular-nums transition-[outline,box-shadow] duration-150 ease-out rounded px-1.5 py-0.5 ${
           selected ? 'outline outline-2 outline-accent ring-1 ring-white/90 shadow-sm' : ''
         }`}
         style={{
@@ -104,30 +104,36 @@ export const StampTextItemView: React.FC<StampTextItemProps> = ({
       {/* 选中态交互手柄：右下角缩放手柄与底部旋转手柄 */}
       {selected && !disabled && (
         <>
-          {/* 右下角缩放手柄 */}
+          {/* 右下角缩放手柄 - 38px 点击热区 */}
           <div
+            role="slider"
+            aria-label="拖拽调整字号大小"
+            tabIndex={0}
             onPointerDown={(e) => onGestureStart(e, item, 'resize')}
             onPointerMove={onGestureMove}
             onPointerUp={onGestureEnd}
             onPointerCancel={onGestureEnd}
             title="拖拽调整字号"
-            className="absolute -right-2 -bottom-2 w-3.5 h-3.5 rounded-full bg-accent border-2 border-white shadow-md cursor-nwse-resize hover:scale-125 active:scale-95 transition-transform duration-150 ease-out flex items-center justify-center z-30"
+            className="absolute -right-2 -bottom-2 w-3.5 h-3.5 rounded-full bg-accent border-2 border-white shadow-md cursor-nwse-resize hover:scale-110 active:scale-[0.96] transition-transform duration-150 ease-out flex items-center justify-center z-30 before:absolute before:-inset-3 before:content-[''] focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
           >
-            <span className="w-1 h-1 rounded-full bg-white/90" />
+            <span className="w-1 h-1 rounded-full bg-white/90 pointer-events-none" />
           </div>
 
-          {/* 底部居中旋转手柄与引线 */}
+          {/* 底部居中旋转手柄与引线 - 38px 点击热区 */}
           <div className="absolute left-1/2 -bottom-5 -translate-x-1/2 flex flex-col items-center pointer-events-none z-30">
             <div className="w-px h-1.5 bg-accent/80" />
             <div
+              role="slider"
+              aria-label="拖拽旋转文本角度"
+              tabIndex={0}
               onPointerDown={(e) => onGestureStart(e, item, 'rotate')}
               onPointerMove={onGestureMove}
               onPointerUp={onGestureEnd}
               onPointerCancel={onGestureEnd}
               title="拖拽旋转角度"
-              className="w-3.5 h-3.5 rounded-full bg-accent border-2 border-white shadow-md cursor-grab active:cursor-grabbing hover:scale-125 active:scale-95 transition-transform duration-150 ease-out pointer-events-auto flex items-center justify-center"
+              className="w-3.5 h-3.5 rounded-full bg-accent border-2 border-white shadow-md cursor-grab active:cursor-grabbing hover:scale-110 active:scale-[0.96] transition-transform duration-150 ease-out pointer-events-auto flex items-center justify-center before:absolute before:-inset-3 before:content-[''] focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
             >
-              <div className="w-1 h-1 rounded-full bg-white/90" />
+              <div className="w-1 h-1 rounded-full bg-white/90 pointer-events-none" />
             </div>
           </div>
         </>

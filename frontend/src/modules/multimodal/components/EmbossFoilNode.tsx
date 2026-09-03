@@ -12,7 +12,6 @@ import {
   Pencil,
   Check,
   Layers,
-  ChevronUp,
   SlidersHorizontal,
   Stamp,
   Crosshair,
@@ -21,21 +20,18 @@ import {
 } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
-import { Tooltip } from '../../../platform/components/ui/Tooltip';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
-import { Select, type SelectOption } from '../../../platform/components/ui/Select';
-import { SliderRow } from '../../../platform/components/ui/Slider';
 import { NODE_COLORS } from '../../bookplate/nodeTypes';
 import {
   type EmbossFoilState,
   type EmbossReliefStyle,
   type FoilShimmerType,
   type LightPoint,
-  EMBOSS_FOIL_PRESETS,
   DEFAULT_PRESET_ID,
   getEmbossFoilPreset,
   loadImage,
   renderEmbossFoilFromImage,
+  EmbossFoilStudioPanel,
 } from '../emboss';
 
 export interface EmbossFoilNodeProps {
@@ -70,24 +66,6 @@ export interface EmbossFoilNodeProps {
     state: Partial<EmbossFoilState>
   ) => Promise<void>;
 }
-
-const RELIEF_STYLE_OPTIONS: { label: string; value: EmbossReliefStyle }[] = [
-  { label: '等高线', value: 'topography' },
-  { label: '纸质浮雕', value: 'paper_emboss' },
-  { label: '细腻磨砂', value: 'fine_grain' },
-  { label: '网格几何', value: 'contour_mesh' },
-];
-
-const SHIMMER_TYPE_OPTIONS: { label: string; value: FoilShimmerType }[] = [
-  { label: '欧泊幻彩', value: 'prismatic_opal' },
-  { label: '彩虹镭射', value: 'rainbow_foil' },
-  { label: '赛博霓虹', value: 'neon_cyber' },
-  { label: '玫瑰香槟', value: 'rose_champagne' },
-  { label: '星云幽紫', value: 'nebula_violet' },
-  { label: '奢雅暖金', value: 'warm_gold' },
-  { label: '珠光铂金', value: 'pearl_platinum' },
-  { label: '黑曜暗金', value: 'obsidian_gold' },
-];
 
 const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
   id,
@@ -136,7 +114,7 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isEditing, setIsEditing] = useState<boolean>(!data?.imageUrl);
-  const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   // 计算默认自然光照中心（依据 lightAngle 三角换算，225° 默认偏左上）
   const defaultLightPos = useMemo(() => {
@@ -263,6 +241,32 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
     patchState({ lightPoints: null });
     showToast('已恢复默认自然光位', { type: 'success' });
   }, [patchState, showToast]);
+
+  // 重置工艺全部参数为初始默认预设（若处于预览态则一并清空成图回到编辑态）
+  const handleResetParams = useCallback(() => {
+    const defaultPreset = getEmbossFoilPreset(DEFAULT_PRESET_ID);
+    const patch: Partial<EmbossFoilState> = {
+      presetId: DEFAULT_PRESET_ID,
+      reliefStyle: defaultPreset.params.reliefStyle || 'topography',
+      shimmerType: defaultPreset.params.shimmerType || 'prismatic_opal',
+      depth: defaultPreset.params.depth ?? 68,
+      brightness: defaultPreset.params.brightness ?? 72,
+      radius: defaultPreset.params.radius ?? 46,
+      lightAngle: defaultPreset.params.lightAngle ?? 225,
+      lightPoints: null,
+      withPerforation: defaultPreset.params.withPerforation ?? true,
+      withMargin: defaultPreset.params.withMargin ?? true,
+    };
+
+    if (data?.imageUrl && !isEditing) {
+      setIsEditing(true);
+      patch.imageUrl = null;
+      patch.isSaved = false;
+    }
+
+    patchState(patch);
+    showToast('已重置为初始默认参数', { type: 'success' });
+  }, [data?.imageUrl, isEditing, patchState, showToast]);
 
   // 执行 Canvas 高保真渲染烘焙
   const handleGenerate = useCallback(async () => {
@@ -432,16 +436,6 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
   const hasGenerated = Boolean(data?.imageUrl && !isEditing);
   const isSaved = Boolean(data?.isSaved);
 
-  const presetOptions: SelectOption[] = useMemo(
-    () =>
-      EMBOSS_FOIL_PRESETS.map((p) => ({
-        label: p.name,
-        value: p.id,
-        title: p.description,
-      })),
-    []
-  );
-
   // CSS 动态高光渐变规则（支持单点/多点实时 3D 预览）
   const shimmerGradientCss = useMemo(() => {
     const alpha = (brightness / 100) * 0.9;
@@ -498,6 +492,28 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
       showRightAnchor={true}
       onClick={() => onSelect?.(id)}
       footer={footer}
+      sideDrawer={
+        isEditing ? (
+          <EmbossFoilStudioPanel
+            isOpen={isDrawerOpen}
+            presetId={presetId}
+            reliefStyle={reliefStyle}
+            shimmerType={shimmerType}
+            depth={depth}
+            brightness={brightness}
+            radius={radius}
+            lightAngle={lightAngle}
+            lightPoints={lightPoints}
+            withPerforation={withPerforation}
+            withMargin={withMargin}
+            disabled={isGenerating}
+            onUpdate={patchState}
+            onSelectPreset={handlePresetChange}
+            onResetPoints={handleResetLightPoints}
+            onClose={() => setIsDrawerOpen(false)}
+          />
+        ) : undefined
+      }
       mismatchBadge={mismatchBadge}
       actionBar={
         <NodeActionBar>
@@ -579,9 +595,9 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
                 tooltip="直接下载结果 PNG"
               />
               <NodeActionBar.Reset
-                onClick={() => patchState({ imageUrl: null, isSaved: false })}
+                onClick={handleResetParams}
                 disabled={isExporting}
-                tooltip="清空结果回到参数编辑态"
+                tooltip="重置为初始默认参数"
               />
             </>
           ) : (
@@ -599,6 +615,18 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
                 disabled={!activeImageSrc || isGenerating}
               />
               <NodeActionBar.Custom
+                icon={
+                  <SlidersHorizontal
+                    size={16}
+                    strokeWidth={1.5}
+                    className={isDrawerOpen ? 'text-accent' : ''}
+                  />
+                }
+                tooltip={isDrawerOpen ? '收起配置抽屉' : '展开参数配置抽屉'}
+                onClick={() => setIsDrawerOpen((prev) => !prev)}
+                className={isDrawerOpen ? 'text-accent' : ''}
+              />
+              <NodeActionBar.Custom
                 icon={<Upload size={16} strokeWidth={1.5} />}
                 tooltip="上传/替换本地图片"
                 onClick={() => fileInputRef.current?.click()}
@@ -612,6 +640,11 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
                   disabled={isGenerating}
                 />
               )}
+              <NodeActionBar.Reset
+                onClick={handleResetParams}
+                disabled={isGenerating}
+                tooltip="重置为初始默认参数"
+              />
             </>
           )}
         </NodeActionBar>
@@ -627,179 +660,68 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
       />
 
       <div className="h-full flex flex-col flex-1 min-h-0 gap-2.5">
-        {/* 控制工具栏（编辑态展示：预设切换 + 高密度参数调节面板） */}
-        {!hasGenerated && (
-          <div className="relative z-20 flex flex-col gap-1.5 p-2 rounded-xl bg-paper/95 border border-paper-grid/80 text-xs font-sans text-ink-light select-none shadow-2xs shrink-0">
-            {/* 顶部预设切换行 + 打孔/留白快捷开关 + 折叠按钮 */}
-            <div className="flex items-center justify-between gap-2 pb-1 border-b border-paper-grid/40">
-              <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                <Layers size={13} className="text-accent shrink-0" />
-                <span className="text-ink-faint text-[10px] shrink-0 font-medium">预设</span>
-                <Select
-                  size="sm"
-                  value={presetId}
-                  disabled={isGenerating}
-                  onChange={handlePresetChange}
-                  options={presetOptions}
-                  className="w-full min-w-[100px] max-w-[150px] text-xs"
-                />
-              </div>
-
-              <div className="flex items-center gap-1.5 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => patchState({ withPerforation: !withPerforation })}
-                  disabled={isGenerating}
-                  title={withPerforation ? '已开启邮票齿孔' : '已关闭邮票齿孔'}
-                  className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition duration-150 ${
-                    withPerforation
-                      ? 'bg-accent/15 border-accent/40 text-accent font-medium'
-                      : 'bg-paper-grid/20 border-paper-grid/50 text-ink-faint hover:bg-paper-grid/40'
-                  }`}
-                >
-                  <Stamp size={11} />
-                  <span>齿孔</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => patchState({ withMargin: !withMargin })}
-                  disabled={isGenerating}
-                  title={withMargin ? '已开启纸面留白' : '已关闭纸面留白'}
-                  className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition duration-150 ${
-                    withMargin
-                      ? 'bg-accent/15 border-accent/40 text-accent font-medium'
-                      : 'bg-paper-grid/20 border-paper-grid/50 text-ink-faint hover:bg-paper-grid/40'
-                  }`}
-                >
-                  <Sparkles size={11} />
-                  <span>留白</span>
-                </button>
-
-                <Tooltip content={isPanelCollapsed ? '展开参数配置' : '收起参数配置，最大化查看 3D 预览'}>
-                  <button
-                    type="button"
-                    onClick={() => setIsPanelCollapsed(!isPanelCollapsed)}
-                    className="p-1 rounded-md border border-paper-grid/70 text-ink-faint hover:text-accent hover:border-accent/60 bg-paper/60 transition-[color,border-color,transform] active:scale-[0.94] shrink-0"
-                    aria-label={isPanelCollapsed ? '展开面板' : '收起面板'}
-                  >
-                    {isPanelCollapsed ? <SlidersHorizontal size={12} /> : <ChevronUp size={12} />}
-                  </button>
-                </Tooltip>
-              </div>
+        {/* 控制工具栏（编辑态轻量顶栏：当前预设徽章 + 齿孔/留白快捷开关 + 侧边抽屉展开按钮） */}
+        {isEditing && (
+          <div className="relative z-20 flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl bg-paper/90 backdrop-blur-xs border border-paper-grid/70 text-xs font-sans text-ink-light select-none shadow-2xs shrink-0">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <Layers size={13} className="text-accent shrink-0" />
+              <span className="text-ink-faint text-[10px] shrink-0 font-medium">预设</span>
+              <button
+                type="button"
+                onClick={() => setIsDrawerOpen(true)}
+                disabled={isGenerating}
+                title="点击展开抽屉切换预设方案"
+                className="px-2 py-0.5 rounded-md bg-paper-grid/30 hover:bg-paper-grid/50 border border-paper-grid/50 text-ink text-xs font-medium truncate max-w-[140px] transition cursor-pointer active:scale-[0.98]"
+              >
+                {getEmbossFoilPreset(presetId).name}
+              </button>
             </div>
 
-            {/* 可平滑收起的参数设置区 */}
-            <AnimatePresence initial={false}>
-              {!isPanelCollapsed && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-                  className="overflow-hidden flex flex-col gap-1.5"
-                >
-                  {/* 肌理风格等宽分段 */}
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <span className="text-ink-faint text-[10px] shrink-0 w-6 text-left">肌理</span>
-                    <div className="flex-1 min-w-0 grid grid-cols-4 p-0.5 rounded-md bg-paper-grid/40 border border-paper-grid/60 gap-0.5 shadow-2xs">
-                      {RELIEF_STYLE_OPTIONS.map((opt) => {
-                        const isChecked = reliefStyle === opt.value;
-                        return (
-                          <button
-                            key={opt.value}
-                            type="button"
-                            onClick={() => patchState({ reliefStyle: opt.value })}
-                            disabled={isGenerating}
-                            className={`py-0.5 rounded text-[10px] font-medium leading-none text-center transition-[background-color,color,box-shadow,transform] duration-150 active:scale-[0.96] truncate ${
-                              isChecked
-                                ? 'bg-paper text-accent font-medium shadow-2xs border border-paper-grid/40'
-                                : 'text-ink-light hover:text-ink hover:bg-paper-grid/30'
-                            } disabled:cursor-not-allowed disabled:opacity-50`}
-                          >
-                            {opt.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => patchState({ withPerforation: !withPerforation })}
+                disabled={isGenerating}
+                title={withPerforation ? '已开启邮票齿孔' : '已关闭邮票齿孔'}
+                className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition duration-150 cursor-pointer active:scale-[0.96] ${
+                  withPerforation
+                    ? 'bg-accent/15 border-accent/40 text-accent font-medium'
+                    : 'bg-paper-grid/20 border-paper-grid/50 text-ink-faint hover:bg-paper-grid/40'
+                }`}
+              >
+                <Stamp size={11} />
+                <span>齿孔</span>
+              </button>
 
-                  {/* 高光类型等宽分段 */}
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <span className="text-ink-faint text-[10px] shrink-0 w-6 text-left">高光</span>
-                    <div className="flex-1 min-w-0 grid grid-cols-4 p-0.5 rounded-md bg-paper-grid/40 border border-paper-grid/60 gap-0.5 shadow-2xs">
-                      {SHIMMER_TYPE_OPTIONS.map((opt) => {
-                        const isChecked = shimmerType === opt.value;
-                        return (
-                          <button
-                            key={opt.value}
-                            type="button"
-                            onClick={() => patchState({ shimmerType: opt.value })}
-                            disabled={isGenerating}
-                            className={`py-0.5 rounded text-[10px] font-medium leading-none text-center transition-[background-color,color,box-shadow,transform] duration-150 active:scale-[0.96] truncate ${
-                              isChecked
-                                ? 'bg-paper text-accent font-medium shadow-2xs border border-paper-grid/40'
-                                : 'text-ink-light hover:text-ink hover:bg-paper-grid/30'
-                            } disabled:cursor-not-allowed disabled:opacity-50`}
-                          >
-                            {opt.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
+              <button
+                type="button"
+                onClick={() => patchState({ withMargin: !withMargin })}
+                disabled={isGenerating}
+                title={withMargin ? '已开启纸面留白' : '已关闭纸面留白'}
+                className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition duration-150 cursor-pointer active:scale-[0.96] ${
+                  withMargin
+                    ? 'bg-accent/15 border-accent/40 text-accent font-medium'
+                    : 'bg-paper-grid/20 border-paper-grid/50 text-ink-faint hover:bg-paper-grid/40'
+                }`}
+              >
+                <Sparkles size={11} />
+                <span>留白</span>
+              </button>
 
-                  {/* 滑杆参数 2x2 等宽对齐网格（精简 2 字标签，彻底消除重叠） */}
-                  <div className="grid gap-x-4 gap-y-1.5 grid-cols-2 pt-0.5">
-                    <SliderRow
-                      label="深度"
-                      value={depth}
-                      min={0}
-                      max={100}
-                      step={1}
-                      labelWidth="w-6"
-                      valueWidth="min-w-[26px]"
-                      disabled={isGenerating}
-                      onChange={(v) => patchState({ depth: v })}
-                    />
-                    <SliderRow
-                      label="亮度"
-                      value={brightness}
-                      min={0}
-                      max={100}
-                      step={1}
-                      labelWidth="w-6"
-                      valueWidth="min-w-[26px]"
-                      disabled={isGenerating}
-                      onChange={(v) => patchState({ brightness: v })}
-                    />
-                    <SliderRow
-                      label="散焦"
-                      value={radius}
-                      min={10}
-                      max={80}
-                      step={1}
-                      labelWidth="w-6"
-                      valueWidth="min-w-[26px]"
-                      disabled={isGenerating}
-                      onChange={(v) => patchState({ radius: v })}
-                    />
-                    <SliderRow
-                      label="角度"
-                      value={lightAngle}
-                      min={0}
-                      max={360}
-                      step={5}
-                      display={`${lightAngle}°`}
-                      labelWidth="w-6"
-                      valueWidth="min-w-[30px]"
-                      disabled={isGenerating}
-                      onChange={(v) => patchState({ lightAngle: v })}
-                    />
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+              <button
+                type="button"
+                onClick={() => setIsDrawerOpen((prev) => !prev)}
+                title={isDrawerOpen ? '收起配置抽屉' : '展开参数配置抽屉'}
+                className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition duration-150 cursor-pointer active:scale-[0.96] ${
+                  isDrawerOpen
+                    ? 'bg-accent border-accent text-white font-medium shadow-2xs'
+                    : 'bg-paper/80 border-paper-grid/70 text-ink-light hover:text-accent hover:border-accent/60'
+                }`}
+              >
+                <SlidersHorizontal size={11} />
+                <span>参数配置</span>
+              </button>
+            </div>
           </div>
         )}
 

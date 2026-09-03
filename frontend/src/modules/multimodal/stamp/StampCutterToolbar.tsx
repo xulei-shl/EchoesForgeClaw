@@ -33,13 +33,14 @@ export const StampCutterToolbar: React.FC<StampCutterToolbarProps> = ({
           <span className="text-ink-faint text-[11px] px-0.5 whitespace-nowrap">版式:</span>
           <select
             value={`${grid.rows}x${grid.cols}`}
+            aria-label="邮票多联网格版式"
             onChange={(e) => {
               const [r, c] = e.target.value.split('x').map(Number);
               if (r && c) {
                 onGridChange({ rows: r, cols: c });
               }
             }}
-            className="bg-paper/90 border border-paper-grid/60 text-ink rounded px-1.5 py-0.5 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-accent cursor-pointer"
+            className="bg-paper/90 border border-paper-grid/60 text-ink rounded px-1.5 py-0.5 text-xs font-medium tabular-nums focus:outline-none focus:ring-1 focus:ring-accent cursor-pointer"
           >
             <optgroup label="基础">
               <option value="1x1">1×1 单张</option>
@@ -71,7 +72,7 @@ export const StampCutterToolbar: React.FC<StampCutterToolbarProps> = ({
               key={r}
               type="button"
               onClick={() => onRatioChange(r)}
-              className={`px-1.5 py-0.5 rounded text-[11px] transition duration-150 cursor-pointer ${
+              className={`px-1.5 py-0.5 rounded text-[11px] tabular-nums active:scale-[0.96] transition-[color,background-color,transform] duration-150 cursor-pointer ${
                 aspectRatio === r
                   ? 'bg-paper shadow-2xs text-accent font-medium'
                   : 'text-ink-light hover:text-ink hover:bg-paper-grid/40'
@@ -89,7 +90,8 @@ export const StampCutterToolbar: React.FC<StampCutterToolbarProps> = ({
         <button
           type="button"
           onClick={onToggleMargin}
-          className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs transition duration-150 cursor-pointer ${
+          aria-pressed={withMargin}
+          className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs active:scale-[0.96] transition-[color,background-color,transform] duration-150 cursor-pointer ${
             withMargin
               ? 'bg-accent/15 text-accent font-medium'
               : 'hover:bg-paper-grid/40 text-ink-light'
@@ -103,7 +105,8 @@ export const StampCutterToolbar: React.FC<StampCutterToolbarProps> = ({
         <button
           type="button"
           onClick={onToggleStudio}
-          className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs transition duration-150 cursor-pointer ${
+          aria-pressed={isStudioOpen}
+          className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs active:scale-[0.96] transition-[color,background-color,transform] duration-150 cursor-pointer ${
             isStudioOpen
               ? 'bg-accent text-white font-medium shadow-2xs'
               : hasStudioActive
