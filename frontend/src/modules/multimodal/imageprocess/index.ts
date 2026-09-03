@@ -15,6 +15,7 @@ export * from './effects/ascii';
 export * from './effects/texture';
 export * from './effects/crt';
 export * from './state';
+export * from './ImageProcessStudioPanel';
 
 import { getImageFxEffect } from './effects/registry';
 import type { ImageFxId, ImageFxParamValue, ImageFxRenderOptions } from './types';

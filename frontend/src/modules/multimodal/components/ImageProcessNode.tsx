@@ -12,35 +12,50 @@ import {
   Pencil,
   Check,
   Layers,
-  ChevronUp,
   SlidersHorizontal,
+  Tv,
+  CircleDot,
+  Grid3X3,
+  Terminal,
 } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { Tooltip } from '../../../platform/components/ui/Tooltip';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
-import { Select, type SelectOption } from '../../../platform/components/ui/Select';
-import { SliderRow } from '../../../platform/components/ui/Slider';
 import { NODE_COLORS } from '../../bookplate/nodeTypes';
 import {
   applyImageFx,
-  getAllImageFxEffects,
+  defaultFxParamsOf,
   resolveFxParams,
   switchFxEffectPatch,
   TEXTURE_STYLE_PRESETS,
+  ImageProcessStudioPanel,
 } from '../imageprocess';
 import type {
   ImageProcessState,
+  ImageFxId,
   ImageFxParamValue,
-  ImageFxSliderParamDef,
-  ImageFxSelectParamDef,
   TextureStyleId,
 } from '../imageprocess';
-import { CustomPaletteEditor } from './CustomPaletteEditor';
 
 /** 预览渲染最长边（提速）；导出生成用大值保清晰 */
 const PREVIEW_MAX_EDGE = 1024;
 const EXPORT_MAX_EDGE = 2048;
+
+/** 6 大效果模板配置（用于顶部横版切换栏，对齐 GlassRefractNode 交互规范） */
+const EFFECT_CONFIGS: {
+  id: ImageFxId;
+  name: string;
+  shortLabel: string;
+  icon: React.ComponentType<{ size?: number; className?: string; strokeWidth?: number }>;
+}[] = [
+  { id: 'crt', name: 'CRT显像管', shortLabel: 'CRT', icon: Tv },
+  { id: 'texture', name: '触感质感', shortLabel: '质感', icon: Layers },
+  { id: 'grain', name: '胶片颗粒', shortLabel: '颗粒', icon: Sparkles },
+  { id: 'halftone', name: '半色调印刷', shortLabel: '网点', icon: CircleDot },
+  { id: 'dither', name: '像素抖动', shortLabel: '抖动', icon: Grid3X3 },
+  { id: 'ascii', name: '字符艺术', shortLabel: '字符', icon: Terminal },
+];
 
 export interface ImageProcessNodeProps {
   id: string;
@@ -114,16 +129,6 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [data?.effectId, data?.fxParams]
   );
-  const allEffects = useMemo(() => getAllImageFxEffects(), []);
-  const effectOptions: SelectOption[] = useMemo(
-    () =>
-      allEffects.map((fx) => ({
-        label: fx.name,
-        value: fx.id,
-        title: fx.description,
-      })),
-    [allEffects]
-  );
   const paramsKey = JSON.stringify(params);
 
   const [isGenerating, setIsGenerating] = useState(false);
@@ -132,7 +137,7 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [isRenderingPreview, setIsRenderingPreview] = useState(false);
   const [isEditing, setIsEditing] = useState<boolean>(!data?.imageUrl);
-  const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   /** 预览手动重试计数（仅触发重渲，不写入持久化参数） */
   const [previewNonce, setPreviewNonce] = useState(0);
 
@@ -313,6 +318,24 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
     showToast('已恢复上级输入图片', { type: 'success' });
   };
 
+  // 统一重置回当前模板默认参数（编辑态恢复默认；结果态一并清空成图回到编辑态）
+  const handleResetParams = useCallback(() => {
+    const defaultParams = defaultFxParamsOf(effect);
+    const patch: Partial<ImageProcessState> = {
+      fxParams: {
+        ...(data?.fxParams ?? {}),
+        [effect.id]: defaultParams,
+      },
+    };
+    if (data?.imageUrl && !isEditing) {
+      setIsEditing(true);
+      patch.imageUrl = null;
+      patch.isSaved = false;
+    }
+    patchState(patch);
+    showToast(`已重置为${effect.name}初始默认参数`, { type: 'success' });
+  }, [effect, data?.fxParams, data?.imageUrl, isEditing, patchState, showToast]);
+
   // 收藏与公开
   const runToggle = async (
     fn: ((id: string) => Promise<boolean>) | undefined,
@@ -329,11 +352,6 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
 
   const hasGenerated = Boolean(data?.imageUrl && !isEditing);
   const isSaved = Boolean(data?.isSaved);
-
-  // 参数控件按声明分组：滑杆、分段控件与下拉选择
-  const sliderDefs = effect.params.filter((p): p is ImageFxSliderParamDef => p.kind === 'slider');
-  const segmentDefs = effect.params.filter((p) => p.kind === 'segment');
-  const selectDefs = effect.params.filter((p): p is ImageFxSelectParamDef => p.kind === 'select');
 
   return (
     <CanvasNode
@@ -356,6 +374,19 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
       showRightAnchor={true}
       onClick={() => onSelect?.(id)}
       footer={footer}
+      sideDrawer={
+        isEditing ? (
+          <ImageProcessStudioPanel
+            isOpen={isDrawerOpen}
+            effect={effect}
+            params={params}
+            activeImageSrc={activeImageSrc}
+            disabled={isGenerating}
+            onParamChange={setParam}
+            onClose={() => setIsDrawerOpen(false)}
+          />
+        ) : undefined
+      }
       mismatchBadge={mismatchBadge}
       actionBar={
         <NodeActionBar>
@@ -437,9 +468,9 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
                 tooltip="直接下载结果 PNG"
               />
               <NodeActionBar.Reset
-                onClick={() => patchState({ imageUrl: null, isSaved: false })}
+                onClick={handleResetParams}
                 disabled={isExporting}
-                tooltip="清空结果回到参数编辑态"
+                tooltip="清空结果回到参数编辑态并重置参数"
               />
             </>
           ) : (
@@ -457,6 +488,18 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
                 disabled={!activeImageSrc || isGenerating}
               />
               <NodeActionBar.Custom
+                icon={
+                  <SlidersHorizontal
+                    size={16}
+                    strokeWidth={1.5}
+                    className={isDrawerOpen ? 'text-accent' : ''}
+                  />
+                }
+                tooltip={isDrawerOpen ? '收起配置抽屉' : '展开参数配置抽屉'}
+                onClick={() => setIsDrawerOpen((prev) => !prev)}
+                className={isDrawerOpen ? 'text-accent' : ''}
+              />
+              <NodeActionBar.Custom
                 icon={<Upload size={16} strokeWidth={1.5} />}
                 tooltip="上传/替换本地图片"
                 onClick={() => fileInputRef.current?.click()}
@@ -470,6 +513,11 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
                   disabled={isGenerating}
                 />
               )}
+              <NodeActionBar.Reset
+                onClick={handleResetParams}
+                disabled={isGenerating}
+                tooltip="重置为初始默认参数"
+              />
             </>
           )}
         </NodeActionBar>
@@ -484,137 +532,58 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
         onChange={handleFileUpload}
       />
 
-      <div className="h-full flex flex-col flex-1 min-h-0 gap-2.5">
-        {/* 控制工具栏（编辑态展示：效果切换 + 按声明渲染的高密度参数控件） */}
+      <div className="h-full flex flex-col flex-1 min-h-0 gap-2">
+        {/* 控制工具栏（编辑态展示：6 效果图标切分栏横版排列 + 右侧侧边吸附抽屉展开按钮） */}
         {!hasGenerated && (
-          <div className="relative z-20 flex flex-col gap-1.5 p-2 rounded-xl bg-paper/95 border border-paper-grid/80 text-xs font-sans text-ink-light select-none shadow-2xs shrink-0">
-            {/* 顶部主效果切换行 + 折叠/展开快捷按钮 */}
-            <div className="flex items-center justify-between gap-1.5 pb-1 border-b border-paper-grid/40">
-              <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                <Layers size={13} className="text-accent shrink-0" />
-                <span className="text-ink-faint text-[10px] shrink-0 font-medium">效果</span>
-                <Select
-                  size="sm"
-                  value={effect.id}
-                  disabled={isGenerating}
-                  onChange={handleEffectChange}
-                  options={effectOptions}
-                  className="w-28 shrink-0 text-xs"
-                />
-                <span className="text-[10px] text-ink-faint/80 truncate hidden sm:inline" title={effect.description}>
-                  {effect.description.split('：')[0]}
-                </span>
-              </div>
-
-              {/* 收起/展开整个样式设置面板 */}
-              <Tooltip content={isPanelCollapsed ? '展开参数配置' : '收起参数配置，最大化查看图片'}>
-                <button
-                  type="button"
-                  onClick={() => setIsPanelCollapsed(!isPanelCollapsed)}
-                  className="p-1 rounded-md border border-paper-grid/70 text-ink-faint hover:text-accent hover:border-accent/60 bg-paper/60 transition-[color,border-color,transform] active:scale-[0.94] shrink-0"
-                  aria-label={isPanelCollapsed ? '展开面板' : '收起面板'}
-                >
-                  {isPanelCollapsed ? <SlidersHorizontal size={13} /> : <ChevronUp size={13} />}
-                </button>
-              </Tooltip>
+          <div className="relative z-20 flex items-center gap-1.5 p-1.5 rounded-xl bg-paper/95 border border-paper-grid/80 text-xs font-sans text-ink-light select-none shadow-2xs shrink-0">
+            {/* 6 种工艺横向等宽 Segmented 选择栏 */}
+            <div
+              role="radiogroup"
+              aria-label="图片处理效果模板"
+              className="grid grid-cols-6 flex-1 p-0.5 rounded-lg bg-paper-grid/40 border border-paper-grid/60 gap-0.5 shadow-2xs min-w-0"
+            >
+              {EFFECT_CONFIGS.map((cfg) => {
+                const isChecked = effect.id === cfg.id;
+                const IconComponent = cfg.icon;
+                return (
+                  <button
+                    key={cfg.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={isChecked}
+                    aria-label={cfg.name}
+                    onClick={() => handleEffectChange(cfg.id)}
+                    disabled={isGenerating}
+                    className={`flex flex-col items-center justify-center py-1 px-0.5 rounded-md text-[10px] font-medium leading-tight transition-[background-color,color,border-color,box-shadow,transform] duration-150 ease-out cursor-pointer active:scale-[0.96] motion-reduce:transform-none focus-visible:outline-none focus-visible:ring-1.5 focus-visible:ring-accent ${
+                      isChecked
+                        ? 'bg-paper text-accent font-semibold shadow-2xs border border-paper-grid/40'
+                        : 'text-ink-light hover:text-ink hover:bg-paper-grid/30 border border-transparent'
+                    } disabled:cursor-not-allowed disabled:opacity-50`}
+                  >
+                    <IconComponent size={13} strokeWidth={1.5} className="shrink-0 mb-0.5" aria-hidden="true" />
+                    <span className="truncate text-[10px] leading-none tracking-tight">{cfg.shortLabel}</span>
+                  </button>
+                );
+              })}
             </div>
 
-            {/* 可平滑收起的参数设置区 */}
-            <AnimatePresence initial={false}>
-              {!isPanelCollapsed && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-                  className="overflow-hidden flex flex-col gap-1.5"
-                >
-                  {/* 下拉选择控件（如 24 种质感风格选择器） */}
-                  {selectDefs.length > 0 && (
-                    <div className="flex flex-col gap-1">
-                      {selectDefs.map((def) => (
-                        <div key={def.key} className="flex items-center gap-1.5 min-w-0">
-                          <span className="text-ink-faint text-[10px] shrink-0 font-medium">{def.label}</span>
-                          <Select
-                            size="sm"
-                            value={String(params[def.key] ?? def.default)}
-                            disabled={isGenerating}
-                            onChange={(val) => setParam(def.key, val)}
-                            options={def.options}
-                            className="flex-1 min-w-0 text-xs"
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* 分段选项控件（算法、像素块、色板、形状等） */}
-                  {segmentDefs.length > 0 && (
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                      {segmentDefs.map((def) =>
-                        def.kind === 'segment' ? (
-                          <div key={def.key} className="flex items-center gap-1 shrink-0" role="radiogroup" aria-label={def.label}>
-                            <span className="text-ink-faint text-[10px] shrink-0">{def.label}</span>
-                            <div className="flex items-center p-0.5 rounded-md bg-paper-grid/40 border border-paper-grid/60 gap-0.5 shadow-2xs">
-                              {def.options.map((opt) => {
-                                const isChecked = params[def.key] === opt.value;
-                                return (
-                                  <button
-                                    key={opt.value}
-                                    type="button"
-                                    role="radio"
-                                    aria-checked={isChecked}
-                                    onClick={() => setParam(def.key, opt.value)}
-                                    disabled={isGenerating}
-                                    className={`px-1.5 py-0.5 rounded text-[10px] font-medium leading-none text-center transition-[background-color,color,box-shadow,transform] duration-150 active:scale-[0.96] ${
-                                      isChecked
-                                        ? 'bg-paper text-accent font-medium shadow-2xs border border-paper-grid/40'
-                                        : 'text-ink-light hover:text-ink hover:bg-paper-grid/30'
-                                    } disabled:cursor-not-allowed disabled:opacity-50`}
-                                  >
-                                    {opt.label}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        ) : null
-                      )}
-                    </div>
-                  )}
-
-                  {/* 自定义色板高级配置栏（抖动模式 / ASCII 模式且选用自定义色板时展示） */}
-                  {((effect.id === 'dither' && params.palette === 'custom') ||
-                    (effect.id === 'ascii' && params.colorMode === 'custom')) && (
-                    <CustomPaletteEditor
-                      value={String(params.customPalette ?? '#000000,#ffffff')}
-                      onChange={(nextPalette) => setParam('customPalette', nextPalette)}
-                      disabled={isGenerating}
-                      imageSrc={activeImageSrc}
-                    />
-                  )}
-
-                  {/* 滑杆参数网格 */}
-                  {sliderDefs.length > 0 && (
-                    <div className={`grid gap-x-3 gap-y-1 ${sliderDefs.length === 1 ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'}`}>
-                      {sliderDefs.map((def) => (
-                        <SliderRow
-                          key={def.key}
-                          label={def.label}
-                          value={Number(params[def.key])}
-                          min={def.min}
-                          max={def.max}
-                          step={def.step}
-                          display={def.display ? def.display(Number(params[def.key])) : String(params[def.key])}
-                          disabled={isGenerating}
-                          onChange={(v) => setParam(def.key, v)}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </motion.div>
-              )}
-            </AnimatePresence>
+            {/* 右侧吸附抽屉展开/收起按钮（带扩展热区与焦点环） */}
+            <Tooltip content={isDrawerOpen ? '收起参数配置抽屉' : '展开侧边参数配置抽屉'}>
+              <button
+                type="button"
+                onClick={() => setIsDrawerOpen((prev) => !prev)}
+                disabled={isGenerating}
+                className={`relative p-1.5 rounded-md border transition-[color,border-color,background-color,transform] duration-150 ease-out active:scale-[0.96] motion-reduce:transform-none shrink-0 cursor-pointer before:absolute before:-inset-1 before:content-[''] focus-visible:outline-none focus-visible:ring-1.5 focus-visible:ring-accent ${
+                  isDrawerOpen
+                    ? 'bg-accent text-white border-accent shadow-2xs'
+                    : 'bg-paper/80 border-paper-grid/70 text-ink-light hover:text-accent hover:border-accent/60'
+                } disabled:cursor-not-allowed disabled:opacity-50`}
+                aria-label={isDrawerOpen ? '收起参数配置抽屉' : '展开侧边参数配置抽屉'}
+                aria-pressed={isDrawerOpen}
+              >
+                <SlidersHorizontal size={13} strokeWidth={1.5} />
+              </button>
+            </Tooltip>
           </div>
         )}
 

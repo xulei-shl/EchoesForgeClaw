@@ -327,32 +327,43 @@ export const CustomPaletteEditor: React.FC<CustomPaletteEditorProps> = memo(({
         </div>
       </div>
 
-      {/* Tab 1: 渐变色阶生成器（小白最推荐） */}
+      {/* Tab 1: 渐变色阶生成器（双行规整布局，彻底杜绝横向溢出截断） */}
       {activeTab === 'ramp' && (
-        <div className="flex items-center justify-between gap-1.5 pt-0.5">
-          {/* 暗部色选择 */}
-          <div className="flex items-center gap-1">
-            <span className="text-[10px] text-ink-faint shrink-0">暗部:</span>
-            <ColorPickerPopover
-              value={rampDark}
-              disabled={disabled}
-              onChange={(nextDark) => handleRampChange(nextDark, rampLight, rampSteps)}
-            />
+        <div className="flex flex-col gap-1.5 pt-0.5">
+          {/* 上排：暗部起点与亮部终点双色选择卡片（对称分布、宽度充裕） */}
+          <div className="grid grid-cols-2 gap-1.5">
+            <div className="flex items-center justify-between p-1 rounded-md bg-paper border border-paper-grid/50 shadow-2xs min-w-0">
+              <span className="text-[10px] text-ink-faint shrink-0 pl-0.5 font-medium">暗部</span>
+              <ColorPickerPopover
+                value={rampDark}
+                disabled={disabled}
+                onChange={(nextDark) => handleRampChange(nextDark, rampLight, rampSteps)}
+              />
+            </div>
+            <div className="flex items-center justify-between p-1 rounded-md bg-paper border border-paper-grid/50 shadow-2xs min-w-0">
+              <span className="text-[10px] text-ink-faint shrink-0 pl-0.5 font-medium">亮部</span>
+              <ColorPickerPopover
+                value={rampLight}
+                disabled={disabled}
+                align="right"
+                onChange={(nextLight) => handleRampChange(rampDark, nextLight, rampSteps)}
+              />
+            </div>
           </div>
 
-          {/* 色阶数选择 */}
-          <div className="flex items-center gap-1">
-            <span className="text-[10px] text-ink-faint shrink-0">阶数:</span>
-            <div className="flex items-center p-0.5 rounded bg-paper border border-paper-grid/50 gap-0.5">
+          {/* 下排：色阶数选择（2~6 阶等宽整齐排列） */}
+          <div className="flex items-center justify-between gap-1.5 p-1 rounded-md bg-paper border border-paper-grid/50 shadow-2xs">
+            <span className="text-[10px] text-ink-faint shrink-0 pl-0.5 font-medium">色阶数</span>
+            <div className="flex items-center flex-1 max-w-[150px] p-0.5 rounded bg-paper-grid/30 border border-paper-grid/50 gap-0.5">
               {[2, 3, 4, 5, 6].map((num) => (
                 <button
                   key={num}
                   type="button"
                   onClick={() => handleRampChange(rampDark, rampLight, num)}
                   disabled={disabled}
-                  className={`w-4.5 h-4 rounded text-[10px] font-medium leading-none transition-all ${
+                  className={`flex-1 h-4 rounded text-[10px] font-medium leading-none transition-all ${
                     rampSteps === num
-                      ? 'bg-accent text-paper shadow-2xs'
+                      ? 'bg-accent text-paper shadow-2xs font-semibold'
                       : 'text-ink-faint hover:text-ink hover:bg-paper-grid/30'
                   }`}
                 >
@@ -360,17 +371,6 @@ export const CustomPaletteEditor: React.FC<CustomPaletteEditorProps> = memo(({
                 </button>
               ))}
             </div>
-          </div>
-
-          {/* 亮部色选择 */}
-          <div className="flex items-center gap-1">
-            <span className="text-[10px] text-ink-faint shrink-0">亮部:</span>
-            <ColorPickerPopover
-              value={rampLight}
-              disabled={disabled}
-              align="right"
-              onChange={(nextLight) => handleRampChange(rampDark, nextLight, rampSteps)}
-            />
           </div>
         </div>
       )}
