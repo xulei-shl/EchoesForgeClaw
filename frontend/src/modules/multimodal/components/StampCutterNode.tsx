@@ -243,9 +243,23 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
         onUpdateState?.(id, { studioSettings: next, templateId: tid });
         return next;
       });
-      showToast('工坊参数已更新', { type: 'success' });
+      if (newTemplateId !== undefined) {
+        showToast(newTemplateId ? '已应用工坊模板' : '已重置工坊预设', { type: 'success' });
+      }
     },
     [id, templateId, onUpdateState, showToast]
+  );
+
+  // 供画布内即时交互手势（如拖拽盖销邮戳）高频轻量更新配置
+  const handleUpdateStudioSettings = useCallback(
+    (patch: Partial<StampStudioSettings>) => {
+      setStudioSettings((prev) => {
+        const next = { ...prev, ...patch };
+        onUpdateState?.(id, { studioSettings: next, templateId });
+        return next;
+      });
+    },
+    [id, templateId, onUpdateState]
   );
 
   // 文字添加与编辑
@@ -844,6 +858,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
                 isExporting={isExporting}
                 isAnimatingCrop={isAnimatingCrop}
                 studioSettings={studioSettings}
+                onUpdateStudioSettings={handleUpdateStudioSettings}
                 onCropBoxChange={(nextBox) => {
                   setCropBox(nextBox);
                 }}

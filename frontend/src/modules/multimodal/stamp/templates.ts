@@ -62,7 +62,9 @@ export const defaultStudioSettings: StampStudioSettings = {
 
   postmarkOn: false,
   postmarkStyle: 'both',
+  postmarkColor: '#1c1b1f',
   postmarkCity: 'BEIJING',
+  postmarkSubtext: '中国邮政',
   postmarkDate: '2024.10.01',
   postmarkAngle: 0.53,
   postmarkPos: { x: 0.35, y: 0.62 },

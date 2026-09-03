@@ -192,8 +192,12 @@ export interface StampStudioSettings {
   postmarkOn: boolean;
   /** 邮戳类型 */
   postmarkStyle: PostmarkStyle;
+  /** 邮戳颜色 (Hex，默认 '#1c1b1f') */
+  postmarkColor?: string;
   /** 邮戳所属城市名 */
   postmarkCity: string;
+  /** 邮戳底部环形文本（默认 '中国邮政'） */
+  postmarkSubtext?: string;
   /** 邮戳印鉴日期 */
   postmarkDate: string;
   /** 邮戳倾斜旋转角度 (0~1 圈) */
@@ -226,6 +230,8 @@ export interface StampEffectOptions {
   textItems?: StampTextItem[];
   /** Stamp Studio 工坊高级参数配置（可选，启用时触发高级工坊渲染管道） */
   studioSettings?: Partial<StampStudioSettings>;
+  /** 是否跳过绘制盖销邮戳（用于离屏底图缓存优化） */
+  skipPostmark?: boolean;
 }
 
 /** 邮票制作节点内部持久化状态 */

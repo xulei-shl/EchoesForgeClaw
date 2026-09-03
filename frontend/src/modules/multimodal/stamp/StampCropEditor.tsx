@@ -1,5 +1,5 @@
-import React, { useRef, useState, useEffect } from 'react';
-import { Scissors, Upload } from 'lucide-react';
+import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
+import { Scissors, Upload, Move } from 'lucide-react';
 import { motion } from 'framer-motion';
 import type {
   StampAspectRatio,
@@ -10,7 +10,7 @@ import type {
   VignetteShape,
 } from './types';
 import { StampTextItemView, type StampGestureMode } from './StampTextItem';
-import { paintStampFace } from './stampStudioEngine';
+import { paintStampFace, paintPostmark } from './stampStudioEngine';
 
 interface StampCropEditorProps {
   activeImageSrc: string | null;
@@ -31,6 +31,8 @@ interface StampCropEditorProps {
   onOpenEditText: (id: string) => void;
   onExecuteCrop: () => void;
   onUploadClick: () => void;
+  /** 更新工坊高级配置（如邮戳位置拖拽等） */
+  onUpdateStudioSettings?: (patch: Partial<StampStudioSettings>) => void;
 }
 
 export const StampCropEditor: React.FC<StampCropEditorProps> = ({
@@ -52,35 +54,139 @@ export const StampCropEditor: React.FC<StampCropEditorProps> = ({
   onOpenEditText,
   onExecuteCrop,
   onUploadClick,
+  onUpdateStudioSettings,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const cropBoxRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const liveCanvasRef = useRef<HTMLCanvasElement>(null);
+  const baseStampCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const postmarkHandleRef = useRef<HTMLDivElement | null>(null);
+  const rafPostmarkIdRef = useRef<number | null>(null);
 
   const [cropBoxWidthPx, setCropBoxWidthPx] = useState<number>(300);
   const [activeGestureId, setActiveGestureId] = useState<string | null>(null);
 
-  // 选框内全实时所见即所得渲染 (Live Canvas Preview - rAF 节流防抖)
+  // 盖销邮戳拖拽手势
+  const [isDraggingPostmark, setIsDraggingPostmark] = useState(false);
+  const currentPostmarkPosRef = useRef<{ x: number; y: number }>({
+    x: studioSettings?.postmarkPos?.x ?? 0.35,
+    y: studioSettings?.postmarkPos?.y ?? 0.62,
+  });
+  const postmarkDragStartRef = useRef<{
+    mouseX: number;
+    mouseY: number;
+    origX: number;
+    origY: number;
+    boxW: number;
+    boxH: number;
+  } | null>(null);
+
+  // 当外部非拖动变更（如侧栏滑块或模板切换）时同步当前坐标与手柄位置
+  useEffect(() => {
+    if (!isDraggingPostmark && studioSettings?.postmarkPos) {
+      currentPostmarkPosRef.current = { ...studioSettings.postmarkPos };
+      if (postmarkHandleRef.current) {
+        postmarkHandleRef.current.style.left = `${studioSettings.postmarkPos.x * 100}%`;
+        postmarkHandleRef.current.style.top = `${(1 - studioSettings.postmarkPos.y) * 100}%`;
+      }
+    }
+  }, [studioSettings?.postmarkPos, isDraggingPostmark]);
+
+  // 提取除邮戳外的底图特征指纹，避免拖拽邮戳时重复进行数百万像素的分色与底纸计算
+  const baseSignature = useMemo(() => {
+    if (!studioSettings?.designOn) {
+      return `${activeImageSrc}|${cropBox.x},${cropBox.y},${cropBox.width},${cropBox.height}|${withMargin}|${grid.rows}x${grid.cols}`;
+    }
+    const s = studioSettings;
+    return [
+      activeImageSrc,
+      cropBox.x, cropBox.y, cropBox.width, cropBox.height,
+      withMargin, grid.rows, grid.cols,
+      s.designOn, s.print, s.inkColor, s.ink, s.relief,
+      s.frame, s.frameColor, s.margin, s.ornament, s.ornamentSize,
+      s.vignette, s.vignetteRule, s.vignetteColor, s.feather, s.artFit,
+      s.country, s.countryArc, s.denomination, s.denomAnchor, s.tablets, s.caption, s.ribbon, s.typeface,
+      s.ground, s.groundColor, s.groundWeight, s.groundScale, s.groundAngle, s.groundStrength, s.groundUnderArt, s.groundClear,
+      s.toning, s.fiber, s.foxing, s.wear,
+    ].join('::');
+  }, [cropBox, studioSettings, activeImageSrc, withMargin, grid]);
+
+  // 高速合成底图 + 邮戳至目标画布（耗时 <0.1ms）
+  const compositeLiveCanvas = useCallback((overridePos?: { x: number; y: number }) => {
+    const liveCanvas = liveCanvasRef.current;
+    const baseCanvas = baseStampCanvasRef.current;
+    if (!liveCanvas || !baseCanvas || !baseCanvas.width || !baseCanvas.height) return;
+
+    if (liveCanvas.width !== baseCanvas.width || liveCanvas.height !== baseCanvas.height) {
+      liveCanvas.width = baseCanvas.width;
+      liveCanvas.height = baseCanvas.height;
+    }
+
+    const ctx = liveCanvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, liveCanvas.width, liveCanvas.height);
+    ctx.drawImage(baseCanvas, 0, 0);
+
+    if (studioSettings?.designOn && studioSettings?.postmarkOn) {
+      const pos = overridePos || currentPostmarkPosRef.current;
+      paintPostmark(
+        ctx,
+        {
+          ...studioSettings,
+          postmarkPos: pos,
+        },
+        liveCanvas.width,
+        liveCanvas.height
+      );
+    }
+  }, [studioSettings]);
+
+  // 1. 底图重绘调度（仅在 baseSignature 改变时执行全量离屏渲染并缓存）
   useEffect(() => {
     if (!studioSettings?.designOn || !activeImageSrc || !imgRef.current) return;
-    const canvas = liveCanvasRef.current;
     const img = imgRef.current;
-    if (!canvas || !img.complete || !img.naturalWidth) return;
+    if (!img.complete || !img.naturalWidth) return;
+
+    if (!baseStampCanvasRef.current) {
+      baseStampCanvasRef.current = document.createElement('canvas');
+    }
+    const baseCanvas = baseStampCanvasRef.current;
 
     let rafId: number;
     rafId = requestAnimationFrame(() => {
-      paintStampFace(canvas, img, cropBox, {
+      paintStampFace(baseCanvas, img, cropBox, {
         withMargin,
         grid,
         studioSettings,
+        skipPostmark: true,
       });
+      compositeLiveCanvas();
     });
 
     return () => {
       cancelAnimationFrame(rafId);
     };
-  }, [cropBox, studioSettings, activeImageSrc, withMargin, grid]);
+  }, [baseSignature, compositeLiveCanvas, studioSettings?.designOn, activeImageSrc, cropBox, withMargin, grid]);
+
+  // 2. 当邮戳属性（开关、样式、文字、颜色、角度、浓度）变化时，复用底图进行微秒级快速重绘
+  useEffect(() => {
+    if (!isDraggingPostmark && studioSettings?.designOn && baseStampCanvasRef.current) {
+      compositeLiveCanvas();
+    }
+  }, [
+    studioSettings?.postmarkOn,
+    studioSettings?.postmarkStyle,
+    studioSettings?.postmarkCity,
+    studioSettings?.postmarkSubtext,
+    studioSettings?.postmarkDate,
+    studioSettings?.postmarkColor,
+    studioSettings?.postmarkAngle,
+    studioSettings?.postmarkStrength,
+    compositeLiveCanvas,
+    isDraggingPostmark,
+  ]);
 
   // 选框拖拽与缩放
   const [isDraggingBox, setIsDraggingBox] = useState(false);
@@ -185,8 +291,67 @@ export const StampCropEditor: React.FC<StampCropEditorProps> = ({
     };
   };
 
+  const handlePostmarkPointerDown = (e: React.PointerEvent<HTMLElement>) => {
+    if (e.button !== 0 || isExporting || isAnimatingCrop || !studioSettings?.postmarkOn) return;
+    onSelectText(null);
+    e.stopPropagation();
+    e.preventDefault();
+
+    const boxEl = cropBoxRef.current;
+    if (!boxEl) return;
+    const boxRect = boxEl.getBoundingClientRect();
+    if (boxRect.width <= 0 || boxRect.height <= 0) return;
+
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    } catch {
+      // ignore
+    }
+
+    setIsDraggingPostmark(true);
+    postmarkDragStartRef.current = {
+      mouseX: e.clientX,
+      mouseY: e.clientY,
+      origX: currentPostmarkPosRef.current.x,
+      origY: currentPostmarkPosRef.current.y,
+      boxW: boxRect.width,
+      boxH: boxRect.height,
+    };
+  };
+
   const handlePointerMove = (e: React.PointerEvent) => {
-    // 优先响应文字手势
+    // 优先响应盖销邮戳拖拽（原生 DOM 零延迟直接驱动 + rAF 极速合成）
+    if (isDraggingPostmark && postmarkDragStartRef.current) {
+      const g = postmarkDragStartRef.current;
+      if (g.boxW <= 0 || g.boxH <= 0) return;
+      e.stopPropagation();
+
+      const deltaX = (e.clientX - g.mouseX) / g.boxW;
+      const deltaY = (e.clientY - g.mouseY) / g.boxH;
+      const nextX = Math.max(0, Math.min(1, g.origX + deltaX));
+      const nextY = Math.max(0, Math.min(1, g.origY - deltaY));
+      const roundedX = Math.round(nextX * 1000) / 1000;
+      const roundedY = Math.round(nextY * 1000) / 1000;
+
+      currentPostmarkPosRef.current = { x: roundedX, y: roundedY };
+
+      // 1. 原生 DOM 绝对即时同步手柄位置（无 transition 缓动阻力，无 React State 重渲染）
+      if (postmarkHandleRef.current) {
+        postmarkHandleRef.current.style.left = `${roundedX * 100}%`;
+        postmarkHandleRef.current.style.top = `${(1 - roundedY) * 100}%`;
+      }
+
+      // 2. rAF 节流防抖微秒级局部重绘 Canvas（基于离屏缓存 <0.1ms）
+      if (rafPostmarkIdRef.current) {
+        cancelAnimationFrame(rafPostmarkIdRef.current);
+      }
+      rafPostmarkIdRef.current = requestAnimationFrame(() => {
+        compositeLiveCanvas({ x: roundedX, y: roundedY });
+      });
+      return;
+    }
+
+    // 响应文字手势
     if (textGestureRef.current) {
       const g = textGestureRef.current;
       if (g.boxW <= 0 || g.boxH <= 0) return;
@@ -266,6 +431,27 @@ export const StampCropEditor: React.FC<StampCropEditorProps> = ({
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
+    if (isDraggingPostmark) {
+      try {
+        (e.target as HTMLElement).releasePointerCapture?.(e.pointerId);
+      } catch {
+        // ignore
+      }
+      setIsDraggingPostmark(false);
+      postmarkDragStartRef.current = null;
+      if (rafPostmarkIdRef.current) {
+        cancelAnimationFrame(rafPostmarkIdRef.current);
+        rafPostmarkIdRef.current = null;
+      }
+
+      // 仅在拖拽释放时单次持久化状态，消除主线程频繁重算与广播
+      const finalPos = currentPostmarkPosRef.current;
+      onUpdateStudioSettings?.({
+        postmarkPos: { x: finalPos.x, y: finalPos.y },
+      });
+      return;
+    }
+
     if (textGestureRef.current) {
       try {
         (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
@@ -448,6 +634,50 @@ export const StampCropEditor: React.FC<StampCropEditorProps> = ({
                     </div>
                   );
                 })}
+
+              {/* 盖销邮戳交互手柄（当启用邮戳时支持在画面上直接拖拽定位） */}
+              {studioSettings?.postmarkOn && (
+                <div
+                  ref={postmarkHandleRef}
+                  role="button"
+                  tabIndex={0}
+                  aria-label="拖拽调整盖销邮戳位置"
+                  title="按住拖拽调整邮戳位置"
+                  onPointerDown={handlePostmarkPointerDown}
+                  onPointerMove={handlePointerMove}
+                  onPointerUp={handlePointerUp}
+                  onPointerCancel={handlePointerUp}
+                  className={`absolute z-30 rounded-full touch-none select-none flex items-center justify-center cursor-grab group/pmhandle ${
+                    isDraggingPostmark
+                      ? 'cursor-grabbing border-2 border-dashed border-accent bg-accent/20 ring-4 ring-accent/25 scale-105 shadow-md transition-none will-change-transform'
+                      : 'border-2 border-dashed border-transparent hover:border-accent/70 hover:bg-accent/10 transition-[border-color,background-color,box-shadow] duration-150'
+                  }`}
+                  style={{
+                    left: `${currentPostmarkPosRef.current.x * 100}%`,
+                    top: `${(1 - currentPostmarkPosRef.current.y) * 100}%`,
+                    width: `${Math.max(56, Math.round(cropBoxWidthPx * 0.31))}px`,
+                    height: `${Math.max(56, Math.round(cropBoxWidthPx * 0.31))}px`,
+                    transform: 'translate(-50%, -50%)',
+                  }}
+                >
+                  {/* 悬浮/拖拽时浮现的徽标与中心指引十字 */}
+                  <div
+                    className={`absolute -top-6 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded bg-ink/85 text-paper text-[9px] whitespace-nowrap pointer-events-none transition-opacity duration-150 flex items-center gap-1 shadow-sm ${
+                      isDraggingPostmark ? 'opacity-100' : 'opacity-0 group-hover/pmhandle:opacity-100'
+                    }`}
+                  >
+                    <Move size={9} />
+                    <span>拖动邮戳</span>
+                  </div>
+                  <div
+                    className={`w-6 h-6 rounded-full bg-paper/85 backdrop-blur-xs border border-accent/50 text-accent flex items-center justify-center transition-opacity duration-150 shadow-2xs pointer-events-none ${
+                      isDraggingPostmark ? 'opacity-100' : 'opacity-0 group-hover/pmhandle:opacity-100'
+                    }`}
+                  >
+                    <Move size={12} strokeWidth={2.2} />
+                  </div>
+                </div>
+              )}
 
               {/* 选框内排版文字列表 */}
               {textItems.map((item) => (

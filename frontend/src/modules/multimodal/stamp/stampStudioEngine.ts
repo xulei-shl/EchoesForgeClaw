@@ -229,7 +229,7 @@ function paintStampFrame(
 }
 
 /** 绘制复古盖销邮戳 (Postmark) */
-function paintPostmark(
+export function paintPostmark(
   ctx: CanvasRenderingContext2D,
   s: StampStudioSettings,
   w: number,
@@ -244,8 +244,9 @@ function paintPostmark(
   ctx.save();
   ctx.globalAlpha = s.postmarkStrength;
   ctx.globalCompositeOperation = 'multiply';
-  ctx.fillStyle = '#1c1b1f';
-  ctx.strokeStyle = '#1c1b1f';
+  const postmarkColor = s.postmarkColor || '#1c1b1f';
+  ctx.fillStyle = postmarkColor;
+  ctx.strokeStyle = postmarkColor;
   ctx.translate(cx, cy);
   ctx.rotate(ang);
 
@@ -293,8 +294,16 @@ function paintPostmark(
     ctx.arc(0, 0, dial - unit * 2, 0, Math.PI * 2);
     ctx.stroke();
 
-    ctx.font = `600 ${unit * 3.4}px "Libre Baskerville", Georgia, serif`;
-    arcText(ctx, s.postmarkCity.toUpperCase(), 0, 0, dial - unit * 4.6, -Math.PI / 2, false);
+    ctx.font = `600 ${unit * 3.4}px "Noto Serif SC", "Libre Baskerville", "Source Han Serif CN", Georgia, serif`;
+    if (s.postmarkCity?.trim()) {
+      arcText(ctx, s.postmarkCity.toUpperCase(), 0, 0, dial - unit * 4.6, -Math.PI / 2, false);
+    }
+
+    const bottomText = (s.postmarkSubtext ?? '中国邮政').trim();
+    if (bottomText) {
+      ctx.font = `600 ${unit * 3.2}px "Noto Serif SC", "Libre Baskerville", "Source Han Serif CN", Georgia, serif`;
+      arcText(ctx, bottomText.toUpperCase(), 0, 0, dial - unit * 4.6, Math.PI / 2, true);
+    }
 
     ctx.textAlign = 'center';
     ctx.font = `600 ${unit * 3.6}px "Libre Baskerville", Georgia, serif`;
@@ -581,7 +590,7 @@ export function paintStampFace(
   }
 
   // 10. 盖销邮戳
-  if (s.designOn && s.postmarkOn) {
+  if (s.designOn && s.postmarkOn && !options.skipPostmark) {
     paintPostmark(ctx, s, sw, sh);
   }
 

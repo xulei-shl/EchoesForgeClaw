@@ -7,6 +7,7 @@ import {
   Scroll,
   Check,
   Pipette,
+  RotateCcw,
 } from 'lucide-react';
 import type {
   StampStudioSettings,
@@ -56,6 +57,24 @@ const INK_SWATCH_LABELS: Record<string, string> = {
   '#222222': '炭黑色 (Charcoal Black)',
 };
 
+const POSTMARK_SWATCHES = [
+  '#1c1b1f', // 经典炭黑
+  '#b91c1c', // 印章红
+  '#1d3f6e', // 邮政蓝
+  '#581c87', // 印泥紫
+  '#14532d', // 暗墨绿
+  '#78350f', // 铁锈赭
+];
+
+const POSTMARK_SWATCH_LABELS: Record<string, string> = {
+  '#1c1b1f': '经典炭黑 (Retro Black)',
+  '#b91c1c': '印章红 (Postmark Red)',
+  '#1d3f6e': '邮政蓝 (Airmail Blue)',
+  '#581c87': '印泥紫 (Ink Purple)',
+  '#14532d': '暗墨绿 (Vintage Green)',
+  '#78350f': '铁锈赭 (Rust Brown)',
+};
+
 /**
  * 切换单选选项：若已选中目标值则取消并回退至 fallback，否则选中 target
  */
@@ -76,6 +95,11 @@ export const StampStudioPanel: React.FC<StampStudioPanelProps> = ({
 
   const isCustomInkColor = !INK_SWATCHES.map((c) => c.toLowerCase()).includes(
     (settings.inkColor || '').toLowerCase()
+  );
+
+  const currentPostmarkColor = settings.postmarkColor || '#1c1b1f';
+  const isCustomPostmarkColor = !POSTMARK_SWATCHES.map((c) => c.toLowerCase()).includes(
+    currentPostmarkColor.toLowerCase()
   );
 
   const handleApplyTemplate = (tmpl: StampTemplate) => {
@@ -552,7 +576,7 @@ export const StampStudioPanel: React.FC<StampStudioPanelProps> = ({
             </div>
 
             {/* 盖销邮戳 */}
-            <div className="p-2 rounded-lg bg-paper-grid/20 border border-paper-grid/50 space-y-2">
+            <div className="p-2 rounded-lg bg-paper-grid/20 border border-paper-grid/50 space-y-2.5">
               <div className="flex items-center justify-between">
                 <span className="font-semibold text-xs text-ink">盖销邮戳 (Postmark)</span>
                 <Toggle
@@ -562,7 +586,8 @@ export const StampStudioPanel: React.FC<StampStudioPanelProps> = ({
                 />
               </div>
               {settings.postmarkOn && (
-                <div className="space-y-1.5 pt-1">
+                <div className="space-y-2.5 pt-1">
+                  {/* 样式切换 */}
                   <div className="grid grid-cols-4 gap-1">
                     {(
                       [
@@ -592,20 +617,162 @@ export const StampStudioPanel: React.FC<StampStudioPanelProps> = ({
                       </button>
                     ))}
                   </div>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    <input
-                      type="text"
-                      value={settings.postmarkCity}
-                      onChange={(e) => onUpdate({ postmarkCity: e.target.value })}
-                      placeholder="城市 (如 BEIJING)"
-                      className="bg-paper border border-paper-grid/60 rounded px-1.5 py-0.5 text-xs text-ink focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition"
+
+                  {/* 邮戳文本输入（适用于日戳与双联戳） */}
+                  {(settings.postmarkStyle === 'datestamp' || settings.postmarkStyle === 'both') && (
+                    <div className="space-y-1.5">
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <input
+                          type="text"
+                          value={settings.postmarkCity}
+                          onChange={(e) => onUpdate({ postmarkCity: e.target.value })}
+                          placeholder="顶部 (如 BEIJING)"
+                          title="邮戳上弧城市或局名"
+                          className="bg-paper border border-paper-grid/60 rounded px-1.5 py-0.5 text-xs text-ink focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition"
+                        />
+                        <input
+                          type="text"
+                          value={settings.postmarkSubtext ?? '中国邮政'}
+                          onChange={(e) => onUpdate({ postmarkSubtext: e.target.value })}
+                          placeholder="底部 (如 中国邮政)"
+                          title="邮戳下弧铭记或支局"
+                          className="bg-paper border border-paper-grid/60 rounded px-1.5 py-0.5 text-xs text-ink focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition"
+                        />
+                      </div>
+                      <input
+                        type="text"
+                        value={settings.postmarkDate}
+                        onChange={(e) => onUpdate({ postmarkDate: e.target.value })}
+                        placeholder="中央日期 (如 2024.10.01)"
+                        title="邮戳中央印鉴日期"
+                        className="w-full bg-paper border border-paper-grid/60 rounded px-1.5 py-0.5 text-xs text-ink focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition"
+                      />
+                    </div>
+                  )}
+
+                  {/* 邮戳颜色选择 */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-ink-light font-medium text-[11px]">邮戳颜色 (Ink Colour)</label>
+                      <span className="text-[10px] text-ink-faint font-mono">{currentPostmarkColor}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {POSTMARK_SWATCHES.map((color) => (
+                        <Tooltip
+                          key={color}
+                          content={POSTMARK_SWATCH_LABELS[color] || `邮戳颜色 ${color}`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => onUpdate({ postmarkColor: color, postmarkOn: true, designOn: true })}
+                            className={`w-4.5 h-4.5 rounded-full border transition cursor-pointer ${
+                              currentPostmarkColor.toLowerCase() === color.toLowerCase()
+                                ? 'border-accent ring-2 ring-accent/40 scale-110 shadow-2xs'
+                                : 'border-paper-grid/70 hover:scale-110'
+                            }`}
+                            style={{ backgroundColor: color }}
+                          />
+                        </Tooltip>
+                      ))}
+
+                      <ColorPickerPopover
+                        value={currentPostmarkColor}
+                        onChange={(hex) => onUpdate({ postmarkColor: hex, postmarkOn: true, designOn: true })}
+                        align="right"
+                      >
+                        <Tooltip
+                          content={
+                            isCustomPostmarkColor
+                              ? `自定义邮戳颜色（当前: ${currentPostmarkColor}）`
+                              : '自定义颜色 / 吸管取色'
+                          }
+                        >
+                          <button
+                            type="button"
+                            style={{ backgroundColor: isCustomPostmarkColor ? currentPostmarkColor : undefined }}
+                            className={`w-4.5 h-4.5 rounded-full border flex items-center justify-center transition cursor-pointer ${
+                              isCustomPostmarkColor
+                                ? 'border-accent ring-2 ring-accent/40 scale-110 shadow-2xs'
+                                : 'border-paper-grid/80 hover:border-accent hover:scale-110 bg-paper text-ink-light hover:text-accent'
+                            }`}
+                          >
+                            {!isCustomPostmarkColor && <Pipette size={9} strokeWidth={2} />}
+                          </button>
+                        </Tooltip>
+                      </ColorPickerPopover>
+                    </div>
+                  </div>
+
+                  {/* 邮戳位置微调与重置 */}
+                  <div className="space-y-1 pt-0.5 border-t border-paper-grid/30">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-ink-light font-medium">盖销位置 (Position)</span>
+                      <button
+                        type="button"
+                        onClick={() => onUpdate({ postmarkPos: { x: 0.35, y: 0.62 } })}
+                        className="text-[10px] text-accent hover:underline flex items-center gap-0.5 cursor-pointer"
+                        title="恢复默认位置"
+                      >
+                        <RotateCcw size={10} />
+                        <span>重置位置</span>
+                      </button>
+                    </div>
+                    <SliderRow
+                      label="横向位置 (X)"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={settings.postmarkPos?.x ?? 0.35}
+                      display={`${Math.round((settings.postmarkPos?.x ?? 0.35) * 100)}%`}
+                      labelWidth="w-20"
+                      onChange={(val) =>
+                        onUpdate({
+                          postmarkPos: { ...(settings.postmarkPos || { x: 0.35, y: 0.62 }), x: val },
+                          postmarkOn: true,
+                          designOn: true,
+                        })
+                      }
                     />
-                    <input
-                      type="text"
-                      value={settings.postmarkDate}
-                      onChange={(e) => onUpdate({ postmarkDate: e.target.value })}
-                      placeholder="日期 (如 2024.10.01)"
-                      className="bg-paper border border-paper-grid/60 rounded px-1.5 py-0.5 text-xs text-ink focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition"
+                    <SliderRow
+                      label="纵向位置 (Y)"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={settings.postmarkPos?.y ?? 0.62}
+                      display={`${Math.round((settings.postmarkPos?.y ?? 0.62) * 100)}%`}
+                      labelWidth="w-20"
+                      onChange={(val) =>
+                        onUpdate({
+                          postmarkPos: { ...(settings.postmarkPos || { x: 0.35, y: 0.62 }), y: val },
+                          postmarkOn: true,
+                          designOn: true,
+                        })
+                      }
+                    />
+                    <p className="text-[10px] text-ink-faint">💡 提示：也可直接在左侧选框中拖拽邮戳</p>
+                  </div>
+
+                  {/* 倾斜角度与印油浓度 */}
+                  <div className="space-y-1 pt-0.5 border-t border-paper-grid/30">
+                    <SliderRow
+                      label="倾斜角度"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={settings.postmarkAngle ?? 0.53}
+                      display={`${Math.round(((settings.postmarkAngle ?? 0.53) - 0.5) * 180)}°`}
+                      labelWidth="w-20"
+                      onChange={(val) => onUpdate({ postmarkAngle: val, postmarkOn: true, designOn: true })}
+                    />
+                    <SliderRow
+                      label="墨印浓度"
+                      min={0.1}
+                      max={1.0}
+                      step={0.02}
+                      value={settings.postmarkStrength ?? 0.55}
+                      display={`${Math.round((settings.postmarkStrength ?? 0.55) * 100)}%`}
+                      labelWidth="w-20"
+                      onChange={(val) => onUpdate({ postmarkStrength: val, postmarkOn: true, designOn: true })}
                     />
                   </div>
                 </div>
