@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
 import {
@@ -125,10 +125,24 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
     };
   }, [lightAngle]);
 
-  // 3D 鼠标互动卡片 ref
+  // 动效无障碍偏好
+  const prefersReducedMotion = useReducedMotion();
+
+  // 3D 鼠标互动卡片 ref 与布局缓存
   const cardContainerRef = useRef<HTMLDivElement>(null);
   const cardElementRef = useRef<HTMLDivElement>(null);
+  const cardRectRef = useRef<DOMRect | null>(null);
+  const rafIdRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 组件卸载时清理 rAF
+  useEffect(() => {
+    return () => {
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+      }
+    };
+  }, []);
 
   // 当外部 data.imageUrl 变更时同步编辑态
   useEffect(() => {
@@ -162,33 +176,65 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
     [patchState]
   );
 
-  // 鼠标在 3D 卡片上移动：计算倾斜角度与高光坐标
-  const handleCardMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+  // 鼠标移入卡片：缓存尺寸并关闭 transition 达到 1:1 跟手
+  const handleCardMouseEnter = useCallback(() => {
     const el = cardElementRef.current;
     if (!el) return;
-    const rect = el.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return;
-
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    const px = (x / rect.width) * 100;
-    const py = (y / rect.height) * 100;
-
-    // 旋转倾斜限制在 ±12deg
-    const rx = ((py - 50) / 50) * -12;
-    const ry = ((px - 50) / 50) * 12;
-
-    el.style.setProperty('--pointer-x', `${px.toFixed(1)}%`);
-    el.style.setProperty('--pointer-y', `${py.toFixed(1)}%`);
-    el.style.setProperty('--rotate-x', `${rx.toFixed(1)}deg`);
-    el.style.setProperty('--rotate-y', `${ry.toFixed(1)}deg`);
-    el.style.setProperty('--shine-opacity', '1');
+    cardRectRef.current = el.getBoundingClientRect();
+    el.style.transition = 'none';
   }, []);
 
+  // 鼠标在 3D 卡片上移动：通过 rAF 计算倾斜角度与高光坐标（避免 Layout Thrashing）
+  const handleCardMouseMove = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const el = cardElementRef.current;
+      if (!el) return;
+
+      if (!cardRectRef.current || cardRectRef.current.width <= 0) {
+        cardRectRef.current = el.getBoundingClientRect();
+      }
+      const rect = cardRectRef.current;
+      if (!rect || rect.width <= 0 || rect.height <= 0) return;
+
+      const clientX = e.clientX;
+      const clientY = e.clientY;
+
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+      }
+
+      rafIdRef.current = requestAnimationFrame(() => {
+        const x = clientX - rect.left;
+        const y = clientY - rect.top;
+
+        const px = Math.max(0, Math.min(100, (x / rect.width) * 100));
+        const py = Math.max(0, Math.min(100, (y / rect.height) * 100));
+
+        // 减少动效模式下保持平面，不触发 3D 倾斜
+        const rx = prefersReducedMotion ? 0 : ((py - 50) / 50) * -12;
+        const ry = prefersReducedMotion ? 0 : ((px - 50) / 50) * 12;
+
+        el.style.setProperty('--pointer-x', `${px.toFixed(1)}%`);
+        el.style.setProperty('--pointer-y', `${py.toFixed(1)}%`);
+        el.style.setProperty('--rotate-x', `${rx.toFixed(1)}deg`);
+        el.style.setProperty('--rotate-y', `${ry.toFixed(1)}deg`);
+        el.style.setProperty('--shine-opacity', '1');
+      });
+    },
+    [prefersReducedMotion]
+  );
+
+  // 鼠标移出卡片：启用弹性 ease-out 回正
   const handleCardMouseLeave = useCallback(() => {
     const el = cardElementRef.current;
     if (!el) return;
+    if (rafIdRef.current !== null) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
+    cardRectRef.current = null;
+
+    el.style.transition = 'transform 0.26s cubic-bezier(0.23, 1, 0.32, 1), opacity 0.2s ease-out';
     el.style.setProperty('--pointer-x', `${defaultLightPos.x}%`);
     el.style.setProperty('--pointer-y', `${defaultLightPos.y}%`);
     el.style.setProperty('--rotate-x', '0deg');
@@ -201,7 +247,7 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
     (e: React.MouseEvent<HTMLDivElement>) => {
       const el = cardElementRef.current;
       if (!el) return;
-      const rect = el.getBoundingClientRect();
+      const rect = cardRectRef.current || el.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return;
 
       const x = e.clientX - rect.left;
@@ -655,6 +701,7 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
         ref={fileInputRef}
         type="file"
         accept="image/*"
+        aria-label="上传工艺背景图片"
         className="hidden"
         onChange={handleFileUpload}
       />
@@ -671,7 +718,7 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
                 onClick={() => setIsDrawerOpen(true)}
                 disabled={isGenerating}
                 title="点击展开抽屉切换预设方案"
-                className="px-2 py-0.5 rounded-md bg-paper-grid/30 hover:bg-paper-grid/50 border border-paper-grid/50 text-ink text-xs font-medium truncate max-w-[140px] transition cursor-pointer active:scale-[0.98]"
+                className="px-2 py-0.5 rounded-md bg-paper-grid/30 hover:bg-paper-grid/50 border border-paper-grid/50 text-ink text-xs font-medium truncate max-w-[140px] transition-colors cursor-pointer active:scale-[0.96] focus-visible:ring-1 focus-visible:ring-accent"
               >
                 {getEmbossFoilPreset(presetId).name}
               </button>
@@ -683,7 +730,7 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
                 onClick={() => patchState({ withPerforation: !withPerforation })}
                 disabled={isGenerating}
                 title={withPerforation ? '已开启邮票齿孔' : '已关闭邮票齿孔'}
-                className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition duration-150 cursor-pointer active:scale-[0.96] ${
+                className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] border transition-colors duration-150 cursor-pointer active:scale-[0.96] focus-visible:ring-1 focus-visible:ring-accent ${
                   withPerforation
                     ? 'bg-accent/15 border-accent/40 text-accent font-medium'
                     : 'bg-paper-grid/20 border-paper-grid/50 text-ink-faint hover:bg-paper-grid/40'
@@ -698,7 +745,7 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
                 onClick={() => patchState({ withMargin: !withMargin })}
                 disabled={isGenerating}
                 title={withMargin ? '已开启纸面留白' : '已关闭纸面留白'}
-                className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition duration-150 cursor-pointer active:scale-[0.96] ${
+                className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] border transition-colors duration-150 cursor-pointer active:scale-[0.96] focus-visible:ring-1 focus-visible:ring-accent ${
                   withMargin
                     ? 'bg-accent/15 border-accent/40 text-accent font-medium'
                     : 'bg-paper-grid/20 border-paper-grid/50 text-ink-faint hover:bg-paper-grid/40'
@@ -712,7 +759,7 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
                 type="button"
                 onClick={() => setIsDrawerOpen((prev) => !prev)}
                 title={isDrawerOpen ? '收起配置抽屉' : '展开参数配置抽屉'}
-                className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border transition duration-150 cursor-pointer active:scale-[0.96] ${
+                className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] border transition-colors duration-150 cursor-pointer active:scale-[0.96] focus-visible:ring-1 focus-visible:ring-accent ${
                   isDrawerOpen
                     ? 'bg-accent border-accent text-white font-medium shadow-2xs'
                     : 'bg-paper/80 border-paper-grid/70 text-ink-light hover:text-accent hover:border-accent/60'
@@ -734,9 +781,14 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
           {!hasGenerated && activeImageSrc && (
             <div className="absolute top-2 left-2 z-20 pointer-events-auto">
               {lightPoints.length > 0 ? (
-                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-paper/90 backdrop-blur-md border border-accent/40 text-[10px] text-accent font-medium shadow-xs">
-                  <Crosshair size={11} className="text-accent animate-pulse" />
-                  <span>高光落点 ({lightPoints.length}/6)</span>
+                <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-paper/95 backdrop-blur-md border border-accent/40 text-[10px] text-accent font-medium shadow-xs">
+                  <Crosshair
+                    size={11}
+                    className={prefersReducedMotion ? 'text-accent' : 'text-accent animate-pulse'}
+                  />
+                  <span className="tabular-nums font-mono">
+                    高光落点 ({lightPoints.length}/6)
+                  </span>
                   <button
                     type="button"
                     onClick={(e) => {
@@ -744,39 +796,42 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
                       handleResetLightPoints();
                     }}
                     title="清空落点并恢复默认自然光位"
-                    className="p-0.5 rounded-full hover:bg-accent/15 text-ink-faint hover:text-accent transition duration-150"
+                    aria-label="清空落点并恢复默认自然光位"
+                    className="relative p-1 rounded-full hover:bg-accent/15 text-ink-faint hover:text-accent transition-colors duration-150 focus-visible:ring-1 focus-visible:ring-accent after:absolute after:-inset-1.5 after:content-[''] cursor-pointer"
                   >
                     <RotateCcw size={10} />
                   </button>
                 </div>
               ) : (
-                <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-paper/70 backdrop-blur-xs border border-paper-grid/60 text-[10px] text-ink-faint pointer-events-none shadow-2xs">
-                  <Crosshair size={10} className="text-ink-faint/70" />
+                <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-paper/85 backdrop-blur-xs border border-paper-grid/70 text-[10px] text-ink-light pointer-events-none shadow-2xs">
+                  <Crosshair size={10} className="text-ink-light/80" />
                   <span>点击画面添加单点/多点高光</span>
                 </div>
               )}
             </div>
           )}
-          <AnimatePresence mode="wait" initial={false}>
+          <AnimatePresence initial={false}>
             {!hasGenerated ? (
               <motion.div
                 key="editor"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
+                exit={{ opacity: 0, transition: { duration: 0.12, ease: 'easeOut' } }}
+                transition={{ duration: 0.15, ease: 'easeOut' }}
                 className="relative w-full h-full flex items-center justify-center overflow-hidden p-3"
               >
                 {activeImageSrc ? (
                   <div
                     ref={cardElementRef}
                     onClick={handleCardClick}
+                    onMouseEnter={handleCardMouseEnter}
                     onMouseMove={handleCardMouseMove}
                     onMouseLeave={handleCardMouseLeave}
                     style={{
-                      transform: 'perspective(1000px) rotateX(var(--rotate-x, 0deg)) rotateY(var(--rotate-y, 0deg))',
+                      transform:
+                        'perspective(1000px) rotateX(var(--rotate-x, 0deg)) rotateY(var(--rotate-y, 0deg))',
                       transformStyle: 'preserve-3d',
-                      transition: 'transform 0.08s ease-out',
+                      willChange: 'transform',
                     }}
                     className={`relative max-w-full max-h-full flex items-center justify-center rounded cursor-crosshair group shadow-lg ${
                       withMargin ? 'p-3 bg-white' : 'bg-transparent'
@@ -825,20 +880,23 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
                     {lightPoints.map((pt, index) => (
                       <div
                         key={pt.id}
-                        className="absolute -translate-x-1/2 -translate-y-1/2 z-20 transition-all duration-150 group/point"
+                        className="absolute -translate-x-1/2 -translate-y-1/2 z-20 transition-[transform,opacity] duration-150 ease-out group/point"
                         style={{ left: `${pt.x}%`, top: `${pt.y}%` }}
                         onClick={(e) => e.stopPropagation()}
                       >
                         <div className="relative flex items-center justify-center w-6 h-6">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent/40 opacity-75 pointer-events-none" />
-                          <span className="relative inline-flex items-center justify-center rounded-full h-4 w-4 border-2 border-white bg-accent text-[9px] text-white font-bold shadow-xs pointer-events-none">
+                          {!prefersReducedMotion && (
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent/40 opacity-75 pointer-events-none" />
+                          )}
+                          <span className="relative inline-flex items-center justify-center rounded-full h-4 w-4 border-2 border-white bg-accent text-[9px] text-white font-bold shadow-xs pointer-events-none tabular-nums font-mono">
                             {index + 1}
                           </span>
                           <button
                             type="button"
                             onClick={(e) => handleRemovePoint(pt.id, e)}
                             title={`删除高光落点 #${index + 1}`}
-                            className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full bg-paper/95 text-ink-faint hover:text-error border border-paper-grid/60 shadow-xs opacity-0 group-hover/point:opacity-100 transition-opacity"
+                            aria-label={`删除高光落点 #${index + 1}`}
+                            className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full bg-paper/95 text-ink-faint hover:text-error border border-paper-grid/60 shadow-xs opacity-0 group-hover/point:opacity-100 focus-visible:opacity-100 transition-opacity after:absolute after:-inset-2 after:content-[''] focus-visible:ring-1 focus-visible:ring-error cursor-pointer"
                           >
                             <X size={9} strokeWidth={2.5} />
                           </button>
@@ -846,7 +904,7 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
                       </div>
                     ))}
 
-                    {/* 悬浮快捷生成按钮 */}
+                    {/* 悬浮快捷生成按钮（光学居中 + 标准 scale 触感） */}
                     <button
                       type="button"
                       onClick={(e) => {
@@ -854,7 +912,7 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
                         handleGenerate();
                       }}
                       disabled={isGenerating}
-                      className="absolute z-30 px-3 py-1.5 rounded-full bg-paper/90 backdrop-blur text-ink font-medium text-xs shadow-md hover:bg-white hover:text-accent hover:scale-105 active:scale-95 transition flex items-center gap-1.5 opacity-0 group-hover:opacity-100 duration-150"
+                      className="absolute z-30 pl-2.5 pr-3.5 py-1.5 rounded-full bg-paper/90 backdrop-blur text-ink font-medium text-xs shadow-md hover:bg-white hover:text-accent active:scale-[0.96] transition-[transform,opacity,background-color,color] flex items-center gap-1.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 duration-150 cursor-pointer"
                     >
                       <Sparkles size={13} className="text-accent" />
                       <span>点击生成高光图片</span>
@@ -870,10 +928,14 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
             ) : (
               <motion.div
                 key="preview"
-                initial={{ scale: 0.95, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.95, opacity: 0 }}
-                transition={{ type: 'spring', damping: 24, stiffness: 260 }}
+                initial={{ opacity: 0, scale: prefersReducedMotion ? 1 : 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{
+                  opacity: 0,
+                  scale: prefersReducedMotion ? 1 : 0.98,
+                  transition: { duration: 0.12, ease: 'easeOut' },
+                }}
+                transition={{ type: 'spring', damping: 26, stiffness: 320, mass: 0.8 }}
                 className="relative w-full h-full flex items-center justify-center p-3"
               >
                 {data.imageUrl ? (
@@ -890,7 +952,7 @@ const EmbossFoilNodeInner: React.FC<EmbossFoilNodeProps> = ({
                     <button
                       type="button"
                       onClick={() => setIsEditing(true)}
-                      className="absolute bottom-3 right-3 px-2.5 py-1.5 rounded-full bg-paper/90 backdrop-blur text-ink text-xs shadow-md border border-paper-grid/40 hover:bg-white hover:text-accent active:scale-[0.96] transition-[opacity,transform,background-color,color] flex items-center gap-1.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 duration-150"
+                      className="absolute bottom-3 right-3 pl-2.5 pr-3.5 py-1.5 rounded-full bg-paper/90 backdrop-blur text-ink text-xs shadow-md border border-paper-grid/40 hover:bg-white hover:text-accent active:scale-[0.96] transition-[opacity,transform,background-color,color] flex items-center gap-1.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 duration-150 cursor-pointer"
                     >
                       <Pencil size={12} strokeWidth={1.5} />
                       <span>调整参数</span>

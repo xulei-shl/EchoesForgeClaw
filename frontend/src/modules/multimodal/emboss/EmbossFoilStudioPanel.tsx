@@ -159,12 +159,12 @@ export const EmbossFoilStudioPanel: React.FC<EmbossFoilStudioPanelProps> = ({
       width={310}
     >
       <div className="flex flex-col gap-3 font-sans">
-        {/* 顶部 Tab 分段按钮（负空间胶囊分组） */}
+        {/* 顶部 Tab 分段按钮（负空间胶囊分组，外 8px 内 6px + 2px 间距实现同心圆角） */}
         <div className="grid grid-cols-3 gap-0.5 p-0.5 rounded-lg bg-paper-grid/30 border border-paper-grid/50 select-none shrink-0">
           <button
             type="button"
             onClick={() => setActiveTab('presets')}
-            className={`flex items-center justify-center gap-1 py-1 px-1.5 rounded text-[11px] transition cursor-pointer active:scale-[0.97] ${
+            className={`flex items-center justify-center gap-1 py-1 px-1.5 rounded-md text-[11px] transition-[transform,background-color,color] duration-150 cursor-pointer active:scale-[0.96] focus-visible:ring-1 focus-visible:ring-accent ${
               activeTab === 'presets'
                 ? 'bg-paper shadow-2xs text-accent font-medium'
                 : 'text-ink-light hover:text-ink'
@@ -177,7 +177,7 @@ export const EmbossFoilStudioPanel: React.FC<EmbossFoilStudioPanelProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('relief')}
-            className={`flex items-center justify-center gap-1 py-1 px-1.5 rounded text-[11px] transition cursor-pointer active:scale-[0.97] ${
+            className={`flex items-center justify-center gap-1 py-1 px-1.5 rounded-md text-[11px] transition-[transform,background-color,color] duration-150 cursor-pointer active:scale-[0.96] focus-visible:ring-1 focus-visible:ring-accent ${
               activeTab === 'relief'
                 ? 'bg-paper shadow-2xs text-accent font-medium'
                 : 'text-ink-light hover:text-ink'
@@ -190,7 +190,7 @@ export const EmbossFoilStudioPanel: React.FC<EmbossFoilStudioPanelProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('shimmer')}
-            className={`flex items-center justify-center gap-1 py-1 px-1.5 rounded text-[11px] transition cursor-pointer active:scale-[0.97] ${
+            className={`flex items-center justify-center gap-1 py-1 px-1.5 rounded-md text-[11px] transition-[transform,background-color,color] duration-150 cursor-pointer active:scale-[0.96] focus-visible:ring-1 focus-visible:ring-accent ${
               activeTab === 'shimmer'
                 ? 'bg-paper shadow-2xs text-accent font-medium'
                 : 'text-ink-light hover:text-ink'
@@ -220,7 +220,7 @@ export const EmbossFoilStudioPanel: React.FC<EmbossFoilStudioPanelProps> = ({
                     type="button"
                     onClick={() => onSelectPreset(p.id)}
                     disabled={disabled}
-                    className={`flex flex-col text-left p-2 rounded-lg border transition cursor-pointer active:scale-[0.98] ${
+                    className={`flex flex-col text-left p-2 rounded-lg border transition-[transform,background-color,border-color] duration-150 cursor-pointer active:scale-[0.96] focus-visible:ring-1 focus-visible:ring-accent ${
                       isSelected
                         ? 'border-accent bg-accent/10 shadow-2xs'
                         : 'border-paper-grid/60 bg-paper/80 hover:border-paper-grid hover:bg-paper'
@@ -267,7 +267,7 @@ export const EmbossFoilStudioPanel: React.FC<EmbossFoilStudioPanelProps> = ({
                       type="button"
                       onClick={() => onUpdate({ reliefStyle: r.id })}
                       disabled={disabled}
-                      className={`flex flex-col p-2 rounded-lg border text-left transition cursor-pointer active:scale-[0.97] ${
+                      className={`flex flex-col p-2 rounded-lg border text-left transition-[transform,background-color,border-color,color] duration-150 cursor-pointer active:scale-[0.96] focus-visible:ring-1 focus-visible:ring-accent ${
                         isChecked
                           ? 'border-accent bg-accent/10 text-accent font-medium shadow-2xs'
                           : 'border-paper-grid/60 bg-paper/60 hover:bg-paper-grid/30 text-ink-light'
@@ -367,7 +367,7 @@ export const EmbossFoilStudioPanel: React.FC<EmbossFoilStudioPanelProps> = ({
                       type="button"
                       onClick={() => onUpdate({ shimmerType: s.id })}
                       disabled={disabled}
-                      className={`flex items-center gap-2 p-1.5 rounded-lg border text-left transition cursor-pointer active:scale-[0.97] ${
+                      className={`flex items-center gap-2 p-1.5 rounded-lg border text-left transition-[transform,background-color,border-color,color] duration-150 cursor-pointer active:scale-[0.96] focus-visible:ring-1 focus-visible:ring-accent ${
                         isChecked
                           ? 'border-accent bg-accent/10 text-accent font-medium shadow-2xs'
                           : 'border-paper-grid/60 bg-paper/60 hover:bg-paper-grid/30 text-ink-light'
@@ -440,7 +440,7 @@ export const EmbossFoilStudioPanel: React.FC<EmbossFoilStudioPanelProps> = ({
                     定点高光落点
                   </span>
                 </div>
-                <span className="text-[10px] text-ink-faint font-mono">
+                <span className="text-[10px] text-ink-faint font-mono tabular-nums">
                   {lightPoints.length} / 6
                 </span>
               </div>
@@ -456,7 +456,7 @@ export const EmbossFoilStudioPanel: React.FC<EmbossFoilStudioPanelProps> = ({
                   type="button"
                   onClick={onResetPoints}
                   disabled={disabled}
-                  className="w-full flex items-center justify-center gap-1 py-1 rounded border border-paper-grid/60 bg-paper/80 hover:border-accent hover:text-accent text-[11px] text-ink-light transition cursor-pointer active:scale-[0.98]"
+                  className="w-full flex items-center justify-center gap-1 py-1 rounded-md border border-paper-grid/60 bg-paper/80 hover:border-accent hover:text-accent text-[11px] text-ink-light transition-[transform,background-color,border-color,color] duration-150 cursor-pointer active:scale-[0.96] focus-visible:ring-1 focus-visible:ring-accent"
                 >
                   <RotateCcw size={11} />
                   <span>清除落点，恢复自然光位</span>
