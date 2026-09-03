@@ -7,7 +7,7 @@ import {
   Link,
 } from 'lucide-react';
 import { NodeSideDrawer } from '../../../platform/components/node/NodeSideDrawer';
-import { SliderRow } from '../../../platform/components/ui/Slider';
+import { NumberStepperRow } from '../../../platform/components/ui/NumberStepper';
 import { Select, type SelectOption } from '../../../platform/components/ui/Select';
 import {
   type WatercolorBrushState,
@@ -289,81 +289,77 @@ export const WatercolorStudioPanel: React.FC<WatercolorStudioPanelProps> = ({
               <span className="text-[10px] text-ink-faint">60fps 实时模拟</span>
             </div>
 
-            <div className="flex flex-col gap-1.5 p-2 rounded-lg bg-paper/70 border border-paper-grid/50">
-              <SliderRow
+            <div className="flex flex-col gap-2 p-2 rounded-lg bg-paper/70 border border-paper-grid/50">
+              <NumberStepperRow
                 label="几何曲率"
-                value={curvature}
-                min={0.0}
-                max={1.0}
-                step={0.05}
-                display={`${Math.round(curvature * 100)}%`}
+                value={Math.round(curvature * 100)}
+                min={0}
+                max={100}
+                step={1}
+                unit="%"
                 labelWidth="w-16"
-                valueWidth="min-w-[32px]"
                 disabled={disabled}
-                onChange={(v) => onUpdate({ curvature: v, mode: 'custom' })}
+                onChange={(v) => onUpdate({ curvature: Number((v / 100).toFixed(2)), mode: 'custom' })}
               />
-              <SliderRow
+              <NumberStepperRow
                 label="元素密度"
-                value={density}
+                value={Number(density.toFixed(1))}
                 min={0.3}
                 max={2.0}
                 step={0.1}
-                display={`${density.toFixed(1)}x`}
+                unit="x"
+                formatDisplay={(v) => `${v.toFixed(1)}x`}
                 labelWidth="w-16"
-                valueWidth="min-w-[32px]"
                 disabled={disabled}
-                onChange={(v) => onUpdate({ density: v, mode: 'custom' })}
+                onChange={(v) => onUpdate({ density: Number(v.toFixed(1)), mode: 'custom' })}
               />
-              <SliderRow
+              <NumberStepperRow
                 label="手绘微颤"
-                value={wiggle}
+                value={Number(wiggle.toFixed(1))}
                 min={0.2}
                 max={2.5}
                 step={0.1}
-                display={`${wiggle.toFixed(1)}x`}
+                unit="x"
+                formatDisplay={(v) => `${v.toFixed(1)}x`}
                 labelWidth="w-16"
-                valueWidth="min-w-[32px]"
                 disabled={disabled}
-                onChange={(v) => onUpdate({ wiggle: v, mode: 'custom' })}
+                onChange={(v) => onUpdate({ wiggle: Number(v.toFixed(1)), mode: 'custom' })}
               />
             </div>
 
-            <div className="flex flex-col gap-1.5 p-2 rounded-lg bg-paper/70 border border-paper-grid/50">
-              <SliderRow
+            <div className="flex flex-col gap-2 p-2 rounded-lg bg-paper/70 border border-paper-grid/50">
+              <NumberStepperRow
                 label="水晕出血"
-                value={bleedStrength}
-                min={0.0}
-                max={0.8}
-                step={0.05}
-                display={`${Math.round(bleedStrength * 100)}%`}
+                value={Math.round(bleedStrength * 100)}
+                min={0}
+                max={80}
+                step={1}
+                unit="%"
                 labelWidth="w-16"
-                valueWidth="min-w-[32px]"
                 disabled={disabled}
-                onChange={(v) => onUpdate({ bleedStrength: v, mode: 'custom' })}
+                onChange={(v) => onUpdate({ bleedStrength: Number((v / 100).toFixed(2)), mode: 'custom' })}
               />
-              <SliderRow
+              <NumberStepperRow
                 label="纸纹留白"
-                value={textureStrength}
-                min={0.0}
-                max={1.0}
-                step={0.05}
-                display={`${Math.round(textureStrength * 100)}%`}
+                value={Math.round(textureStrength * 100)}
+                min={0}
+                max={100}
+                step={1}
+                unit="%"
                 labelWidth="w-16"
-                valueWidth="min-w-[32px]"
                 disabled={disabled}
-                onChange={(v) => onUpdate({ textureStrength: v, mode: 'custom' })}
+                onChange={(v) => onUpdate({ textureStrength: Number((v / 100).toFixed(2)), mode: 'custom' })}
               />
-              <SliderRow
+              <NumberStepperRow
                 label="排线间距"
-                value={hatchDist}
+                value={Math.round(hatchDist)}
                 min={4}
                 max={20}
                 step={1}
-                display={`${hatchDist}px`}
+                unit="px"
                 labelWidth="w-16"
-                valueWidth="min-w-[32px]"
                 disabled={disabled}
-                onChange={(v) => onUpdate({ hatchDist: v, mode: 'custom' })}
+                onChange={(v) => onUpdate({ hatchDist: Math.round(v), mode: 'custom' })}
               />
             </div>
           </div>

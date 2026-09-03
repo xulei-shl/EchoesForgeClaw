@@ -9,7 +9,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { NodeSideDrawer } from '../../../platform/components/node/NodeSideDrawer';
-import { SliderRow } from '../../../platform/components/ui/Slider';
+import { NumberStepperRow } from '../../../platform/components/ui/NumberStepper';
 import { Select, type SelectOption } from '../../../platform/components/ui/Select';
 import {
   type InkWashState,
@@ -150,85 +150,79 @@ export const InkWashStudioPanel: React.FC<InkWashStudioPanelProps> = ({
               <span className="text-[10px] text-ink-faint">60fps 实时流体模拟</span>
             </div>
 
-            <div className="flex flex-col gap-1.5 p-2 rounded-lg bg-paper/70 border border-paper-grid/50">
-              <SliderRow
+            <div className="flex flex-col gap-2 p-2 rounded-lg bg-paper/70 border border-paper-grid/50">
+              <NumberStepperRow
                 label="笔触尺寸"
-                value={size}
-                min={0.1}
-                max={1.0}
-                step={0.02}
-                display={`${Math.round(size * 100)}%`}
+                value={Math.round(size * 100)}
+                min={10}
+                max={100}
+                step={1}
+                unit="%"
                 labelWidth="w-18"
-                valueWidth="min-w-[32px]"
                 disabled={disabled}
-                onChange={(val) => onUpdate({ size: val, mode: 'custom' })}
+                onChange={(val) => onUpdate({ size: Number((val / 100).toFixed(2)), mode: 'custom' })}
               />
 
-              <SliderRow
+              <NumberStepperRow
                 label="水流扩散"
-                value={flow}
-                min={0.1}
-                max={1.0}
-                step={0.02}
-                display={`${Math.round(flow * 100)}%`}
+                value={Math.round(flow * 100)}
+                min={10}
+                max={100}
+                step={1}
+                unit="%"
                 labelWidth="w-18"
-                valueWidth="min-w-[32px]"
                 disabled={disabled}
-                onChange={(val) => onUpdate({ flow: val, mode: 'custom' })}
+                onChange={(val) => onUpdate({ flow: Number((val / 100).toFixed(2)), mode: 'custom' })}
               />
 
-              <SliderRow
+              <NumberStepperRow
                 label="渗墨晕染"
-                value={bleed}
-                min={0.0}
-                max={1.0}
-                step={0.02}
-                display={`${Math.round(bleed * 100)}%`}
+                value={Math.round(bleed * 100)}
+                min={0}
+                max={100}
+                step={1}
+                unit="%"
                 labelWidth="w-18"
-                valueWidth="min-w-[32px]"
                 disabled={disabled}
-                onChange={(val) => onUpdate({ bleed: val, mode: 'custom' })}
+                onChange={(val) => onUpdate({ bleed: Number((val / 100).toFixed(2)), mode: 'custom' })}
               />
             </div>
 
-            <div className="flex flex-col gap-1.5 p-2 rounded-lg bg-paper/70 border border-paper-grid/50">
-              <SliderRow
+            <div className="flex flex-col gap-2 p-2 rounded-lg bg-paper/70 border border-paper-grid/50">
+              <NumberStepperRow
                 label="干燥速度"
-                value={dry}
-                min={0.05}
-                max={0.95}
-                step={0.02}
-                display={`${Math.round(dry * 100)}%`}
+                value={Math.round(dry * 100)}
+                min={5}
+                max={95}
+                step={1}
+                unit="%"
                 labelWidth="w-18"
-                valueWidth="min-w-[32px]"
                 disabled={disabled}
-                onChange={(val) => onUpdate({ dry: val, mode: 'custom' })}
+                onChange={(val) => onUpdate({ dry: Number((val / 100).toFixed(2)), mode: 'custom' })}
               />
 
-              <SliderRow
+              <NumberStepperRow
                 label="边缘泛彩"
-                value={color}
-                min={0.0}
-                max={1.0}
-                step={0.02}
-                display={`${Math.round(color * 100)}%`}
+                value={Math.round(color * 100)}
+                min={0}
+                max={100}
+                step={1}
+                unit="%"
                 labelWidth="w-18"
-                valueWidth="min-w-[32px]"
                 disabled={disabled}
-                onChange={(val) => onUpdate({ color: val, mode: 'custom' })}
+                onChange={(val) => onUpdate({ color: Number((val / 100).toFixed(2)), mode: 'custom' })}
               />
 
-              <SliderRow
+              <NumberStepperRow
                 label="笔刷含墨"
-                value={bink}
-                min={0.0}
-                max={0.8}
-                step={0.02}
-                display={`${Math.round(bink * 100)}%`}
+                value={Math.round(bink * 100)}
+                min={0}
+                max={80}
+                step={1}
+                unit="%"
                 labelWidth="w-18"
-                valueWidth="min-w-[32px]"
                 disabled={disabled}
-                onChange={(val) => onUpdate({ bink: val, mode: 'custom' })}
+                onChange={(val) => onUpdate({ bink: Number((val / 100).toFixed(2)), mode: 'custom' })}
               />
             </div>
 

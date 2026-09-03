@@ -200,7 +200,7 @@ export interface StampStudioSettings {
   postmarkSubtext?: string;
   /** 邮戳印鉴日期 */
   postmarkDate: string;
-  /** 邮戳倾斜旋转角度 (0~1 圈) */
+  /** 邮戳倾斜旋转角度 (度数 -180° ~ +180°) */
   postmarkAngle: number;
   /** 邮戳盖印中心坐标 (归一化 0~1) */
   postmarkPos: { x: number; y: number };

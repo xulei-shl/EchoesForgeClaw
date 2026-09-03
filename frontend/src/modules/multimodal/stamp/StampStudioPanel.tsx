@@ -24,7 +24,7 @@ import { STAMP_TEMPLATES, type StampTemplate, defaultStudioSettings } from './te
 import { NodeSideDrawer } from '../../../platform/components/node/NodeSideDrawer';
 import { ColorPickerPopover } from '../../../platform/components/ui/ColorPicker';
 import { Tooltip } from '../../../platform/components/ui/Tooltip';
-import { SliderRow } from '../../../platform/components/ui/Slider';
+import { NumberStepperRow } from '../../../platform/components/ui/NumberStepper';
 import { Toggle } from '../../../platform/components/ui/Toggle';
 
 interface StampStudioPanelProps {
@@ -333,15 +333,16 @@ export const StampStudioPanel: React.FC<StampStudioPanelProps> = ({
 
             {/* 油墨厚度 */}
             <div className="pt-1">
-              <SliderRow
+              <NumberStepperRow
                 label="油墨浓度"
                 min={0.4}
                 max={2.0}
                 step={0.05}
-                value={settings.ink}
-                display={`${settings.ink.toFixed(2)}x`}
+                unit="x"
+                value={Number(settings.ink.toFixed(2))}
+                formatDisplay={(v) => `${v.toFixed(2)}x`}
                 labelWidth="w-16"
-                onChange={(val) => onUpdate({ ink: val })}
+                onChange={(val) => onUpdate({ ink: Number(val.toFixed(2)) })}
               />
             </div>
           </div>
@@ -409,15 +410,15 @@ export const StampStudioPanel: React.FC<StampStudioPanelProps> = ({
 
             {/* 边缘羽化与内描边 */}
             <div className="space-y-2 pt-1 border-t border-paper-grid/30">
-              <SliderRow
+              <NumberStepperRow
                 label="边缘羽化"
                 min={0}
-                max={0.8}
-                step={0.02}
-                value={settings.feather}
-                display={`${Math.round(settings.feather * 100)}%`}
+                max={80}
+                step={2}
+                unit="%"
+                value={Math.round(settings.feather * 100)}
                 labelWidth="w-16"
-                onChange={(val) => onUpdate({ feather: val, designOn: true })}
+                onChange={(val) => onUpdate({ feather: Math.round(val) / 100, designOn: true })}
               />
 
               <div className="flex items-center justify-between py-0.5">
@@ -717,33 +718,37 @@ export const StampStudioPanel: React.FC<StampStudioPanelProps> = ({
                         <span>重置位置</span>
                       </button>
                     </div>
-                    <SliderRow
+                    <NumberStepperRow
                       label="横向位置 (X)"
                       min={0}
-                      max={1}
-                      step={0.01}
-                      value={settings.postmarkPos?.x ?? 0.35}
-                      display={`${Math.round((settings.postmarkPos?.x ?? 0.35) * 100)}%`}
-                      labelWidth="w-20"
+                      max={100}
+                      step={1}
+                      unit="%"
+                      value={Math.round((settings.postmarkPos?.x ?? 0.35) * 100)}
                       onChange={(val) =>
                         onUpdate({
-                          postmarkPos: { ...(settings.postmarkPos || { x: 0.35, y: 0.62 }), x: val },
+                          postmarkPos: {
+                            ...(settings.postmarkPos || { x: 0.35, y: 0.62 }),
+                            x: Math.round(val) / 100,
+                          },
                           postmarkOn: true,
                           designOn: true,
                         })
                       }
                     />
-                    <SliderRow
+                    <NumberStepperRow
                       label="纵向位置 (Y)"
                       min={0}
-                      max={1}
-                      step={0.01}
-                      value={settings.postmarkPos?.y ?? 0.62}
-                      display={`${Math.round((settings.postmarkPos?.y ?? 0.62) * 100)}%`}
-                      labelWidth="w-20"
+                      max={100}
+                      step={1}
+                      unit="%"
+                      value={Math.round((settings.postmarkPos?.y ?? 0.62) * 100)}
                       onChange={(val) =>
                         onUpdate({
-                          postmarkPos: { ...(settings.postmarkPos || { x: 0.35, y: 0.62 }), y: val },
+                          postmarkPos: {
+                            ...(settings.postmarkPos || { x: 0.35, y: 0.62 }),
+                            y: Math.round(val) / 100,
+                          },
                           postmarkOn: true,
                           designOn: true,
                         })
@@ -753,26 +758,30 @@ export const StampStudioPanel: React.FC<StampStudioPanelProps> = ({
                   </div>
 
                   {/* 倾斜角度与印油浓度 */}
-                  <div className="space-y-1 pt-0.5 border-t border-paper-grid/30">
-                    <SliderRow
+                  <div className="space-y-1.5 pt-0.5 border-t border-paper-grid/30">
+                    <NumberStepperRow
                       label="倾斜角度"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={settings.postmarkAngle ?? 0.53}
-                      display={`${Math.round(((settings.postmarkAngle ?? 0.53) - 0.5) * 180)}°`}
-                      labelWidth="w-20"
-                      onChange={(val) => onUpdate({ postmarkAngle: val, postmarkOn: true, designOn: true })}
+                      min={-180}
+                      max={180}
+                      step={1}
+                      unit="°"
+                      value={Math.round(
+                        (settings.postmarkAngle ?? 11) >= -1 &&
+                          (settings.postmarkAngle ?? 11) <= 1 &&
+                          (settings.postmarkAngle ?? 11) !== 0
+                          ? ((settings.postmarkAngle ?? 11) - 0.5) * 360
+                          : settings.postmarkAngle ?? 11
+                      )}
+                      onChange={(val) => onUpdate({ postmarkAngle: Math.round(val), postmarkOn: true, designOn: true })}
                     />
-                    <SliderRow
+                    <NumberStepperRow
                       label="墨印浓度"
-                      min={0.1}
-                      max={1.0}
-                      step={0.02}
-                      value={settings.postmarkStrength ?? 0.55}
-                      display={`${Math.round((settings.postmarkStrength ?? 0.55) * 100)}%`}
-                      labelWidth="w-20"
-                      onChange={(val) => onUpdate({ postmarkStrength: val, postmarkOn: true, designOn: true })}
+                      min={10}
+                      max={100}
+                      step={5}
+                      unit="%"
+                      value={Math.round((settings.postmarkStrength ?? 0.55) * 100)}
+                      onChange={(val) => onUpdate({ postmarkStrength: Math.round(val) / 100, postmarkOn: true, designOn: true })}
                     />
                   </div>
                 </div>
@@ -843,40 +852,40 @@ export const StampStudioPanel: React.FC<StampStudioPanelProps> = ({
             </div>
 
             {/* 岁月质感 */}
-            <div className="space-y-2.5 pt-1 border-t border-paper-grid/30">
+            <div className="space-y-2 pt-1 border-t border-paper-grid/30">
               <label className="text-ink-light font-medium text-xs">纸张岁月质感</label>
 
-              <SliderRow
+              <NumberStepperRow
                 label="泛黄古感"
                 min={0}
-                max={0.6}
-                step={0.02}
-                value={settings.toning}
-                display={`${Math.round(settings.toning * 100)}%`}
+                max={60}
+                step={2}
+                unit="%"
+                value={Math.round(settings.toning * 100)}
                 labelWidth="w-16"
-                onChange={(val) => onUpdate({ toning: val, designOn: true })}
+                onChange={(val) => onUpdate({ toning: Math.round(val) / 100, designOn: true })}
               />
 
-              <SliderRow
+              <NumberStepperRow
                 label="潮湿霉斑"
                 min={0}
-                max={0.4}
-                step={0.02}
-                value={settings.foxing}
-                display={`${Math.round(settings.foxing * 100)}%`}
+                max={40}
+                step={2}
+                unit="%"
+                value={Math.round(settings.foxing * 100)}
                 labelWidth="w-16"
-                onChange={(val) => onUpdate({ foxing: val, designOn: true })}
+                onChange={(val) => onUpdate({ foxing: Math.round(val) / 100, designOn: true })}
               />
 
-              <SliderRow
+              <NumberStepperRow
                 label="手感折痕"
                 min={0}
-                max={0.5}
-                step={0.02}
-                value={settings.wear}
-                display={`${Math.round(settings.wear * 100)}%`}
+                max={50}
+                step={2}
+                unit="%"
+                value={Math.round(settings.wear * 100)}
                 labelWidth="w-16"
-                onChange={(val) => onUpdate({ wear: val, designOn: true })}
+                onChange={(val) => onUpdate({ wear: Math.round(val) / 100, designOn: true })}
               />
             </div>
           </div>

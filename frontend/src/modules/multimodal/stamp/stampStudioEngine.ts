@@ -237,9 +237,16 @@ export function paintPostmark(
 ) {
   if (!s.postmarkOn) return;
   const unit = Math.min(w, h) / 110;
-  const cx = s.postmarkPos.x * w;
-  const cy = (1 - s.postmarkPos.y) * h;
-  const ang = (s.postmarkAngle - 0.5) * Math.PI;
+  const posX = s.postmarkPos?.x ?? 0.35;
+  const posY = s.postmarkPos?.y ?? 0.62;
+  const cx = posX * w;
+  const cy = (1 - posY) * h;
+  const rawAngle = s.postmarkAngle ?? 11;
+  const angleDeg =
+    rawAngle >= -1 && rawAngle <= 1 && rawAngle !== 0
+      ? (rawAngle - 0.5) * 360
+      : rawAngle;
+  const ang = (angleDeg * Math.PI) / 180;
 
   ctx.save();
   ctx.globalAlpha = s.postmarkStrength;
