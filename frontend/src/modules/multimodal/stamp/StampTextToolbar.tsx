@@ -1,5 +1,5 @@
 /**
- * 邮票截图框文字模块 - 文本悬浮微交互工具栏
+ * 邮票制作文字模块 - 文本悬浮微交互工具栏
  * 结构复用 UniversalTextToolbar，并保留邮票专属预设词条
  */
 import React from 'react';

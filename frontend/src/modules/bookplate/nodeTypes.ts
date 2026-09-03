@@ -229,7 +229,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   },
   {
     type: 'stamp_cutter',
-    name: '邮票截图框',
+    name: '邮票制作',
     description: '锯齿邮票框自由截取，生成带打孔边缘与边框的邮票图片',
     category: 'multimodal',
     configurable: false,
@@ -417,7 +417,7 @@ export const NODE_PORT_TYPES: Record<
   receipt_printer: { output: 'image', inputs: ['text', 'image'] },
   // 图书卡片：输出生成的卡片图片；可连线图书元数据（封面兜底根节点）与文本/图片上级（连线即输入）
   book_card: { output: 'image', inputs: ['text', 'image'] },
-  // 邮票截图框：输出生成的邮票图片；可连线图片或图书元数据作为输入源（连线即输入）
+  // 邮票制作：输出生成的邮票图片；可连线图片或图书元数据作为输入源（连线即输入）
   stamp_cutter: { output: 'image', inputs: ['image', 'text'] },
   // 贴纸制作：输出生成的贴纸图片；可连线图片或图书元数据作为输入源（连线即输入）
   sticker_maker: { output: 'image', inputs: ['image', 'text'] },

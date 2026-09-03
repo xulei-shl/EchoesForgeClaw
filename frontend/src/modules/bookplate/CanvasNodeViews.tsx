@@ -166,12 +166,12 @@ export interface NodeViewHelpers {
   handleExportBookCardFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   /** 图书卡片节点：状态更新写入 node.data（持久化） */
   handleUpdateBookCardStateFor: (id: string, patch: Record<string, any>) => void;
-  /** 邮票截图框节点：导出 PNG data URL 落盘（保存到后端 + 记录数据库历史 + 写回 node.data） */
+  /** 邮票制作节点：导出 PNG data URL 落盘（保存到后端 + 记录数据库历史 + 写回 node.data） */
   handleExportStampFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportStickerFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   /** 手账制作节点：导出 PNG data URL 落盘（保存到后端 + 记录数据库历史 + 写回 node.data） */
   handleExportJournalFor: (id: string, dataUrl: string, state: any) => Promise<void>;
-  /** 邮票截图框节点：状态更新写入 node.data（持久化） */
+  /** 邮票制作节点：状态更新写入 node.data（持久化） */
   handleUpdateStampStateFor: (id: string, patch: Record<string, any>) => void;
   handleUpdateStickerMakerStateFor: (id: string, patch: Record<string, any>) => void;
   /** 手账制作节点：状态更新写入 node.data（用户排版动作带 undoable 记撤销历史） */

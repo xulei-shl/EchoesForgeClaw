@@ -1,5 +1,5 @@
 /**
- * 邮票截图框（Stamp Cutter）类型定义
+ * 邮票制作（Stamp Cutter）类型定义
  */
 
 /** 邮票常用长宽比 */
@@ -228,7 +228,7 @@ export interface StampEffectOptions {
   studioSettings?: Partial<StampStudioSettings>;
 }
 
-/** 邮票截图框节点内部持久化状态 */
+/** 邮票制作节点内部持久化状态 */
 export interface StampCutterState {
   /** 多联网格版式（行与列） */
   grid?: StampGrid;

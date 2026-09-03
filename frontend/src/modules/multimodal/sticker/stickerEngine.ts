@@ -1,7 +1,7 @@
 /**
  * 贴纸静态渲染引擎：抠图结果（或任意带透明通道图片）→ die-cut 白边描边 → 投影 → PNG。
  * 距离变换描边移植自 services/sticker-forge/lib/source.ts（MIT），
- * 纯 Canvas 实现、零 WebGL 依赖，与邮票截图框同属浏览器端合成图片后输出。
+ * 纯 Canvas 实现、零 WebGL 依赖，与邮票制作同属浏览器端合成图片后输出。
  */
 import type { StickerOutlineOptions, StickerRenderOptions } from './types';
 

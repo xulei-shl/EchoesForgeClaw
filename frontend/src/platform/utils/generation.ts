@@ -74,7 +74,7 @@ export function generationNodeTypeLabel(nodeType?: string | null): string {
     image_search: '图片检索',
     art_image_search: '艺术图片检索',
     receipt_printer: '图书小票',
-    stamp_cutter: '邮票截图框',
+    stamp_cutter: '邮票制作',
     sticker_maker: '贴纸制作',
     journal_maker: '手账制作',
     text_image: '文本成图',

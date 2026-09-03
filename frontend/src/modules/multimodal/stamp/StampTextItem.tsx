@@ -1,5 +1,5 @@
 /**
- * 邮票截图框文字模块 - 邮票内独立文字排版组件
+ * 邮票制作文字模块 - 邮票内独立文字排版组件
  */
 import React from 'react';
 import type { StampTextItem as IStampTextItem } from './types';
