@@ -431,7 +431,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedTextId, editingTextId, handleDeleteTextItem]);
 
-  // 重置选框
+  // 重置选框与工坊全部参数为初始极简模式
   const handleResetCrop = useCallback(() => {
     const defaultGrid = { rows: 1, cols: 1 };
     setGrid(defaultGrid);
@@ -439,27 +439,29 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
     setCropBox(initial);
     setAspectRatio('3:4');
     setWithMargin(true);
+    setTextItems([]);
     setSelectedTextId(null);
+    const minimalSettings: StampStudioSettings = { ...defaultStudioSettings, designOn: false };
+    setStudioSettings(minimalSettings);
+    setTemplateId(null);
 
     const patch: Partial<StampCutterState> = {
       cropBox: initial,
       aspectRatio: '3:4',
       withMargin: true,
       grid: defaultGrid,
-      textItems,
-      studioSettings,
-      templateId,
+      textItems: [],
+      studioSettings: minimalSettings,
+      templateId: null,
     };
 
     if (data?.imageUrl && !isEditing) {
       setIsEditing(true);
       patch.imageUrl = null;
-      showToast('已重置并返回选框模式', { type: 'success' });
-    } else {
-      showToast('选框已重置为居中', { type: 'success' });
     }
+    showToast('已重置为初始极简参数', { type: 'success' });
     onUpdateState?.(id, patch);
-  }, [applyAspectRatio, data?.imageUrl, isEditing, id, textItems, studioSettings, templateId, onUpdateState, showToast]);
+  }, [applyAspectRatio, data?.imageUrl, isEditing, id, onUpdateState, showToast]);
 
   // 上传图片
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -519,7 +521,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
       });
 
       setIsEditing(false);
-      setIsStudioOpen(false);
+      // 保留 isStudioOpen 状态：用户重新调整选框与排版时无缝恢复原有工坊吸附状态
       showToast('邮票制作完成（可点击保存写入数据库）', { type: 'success' });
     } catch (err: any) {
       console.error('截取邮票失败:', err);
@@ -727,7 +729,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
               <NodeActionBar.Reset
                 onClick={handleResetCrop}
                 disabled={isExporting}
-                tooltip="重置为初始选框态"
+                tooltip="重置为初始极简参数"
               />
             </>
           ) : (
@@ -767,7 +769,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
               <NodeActionBar.Reset
                 onClick={handleResetCrop}
                 disabled={isExporting || isAnimatingCrop}
-                tooltip="重置选框位置"
+                tooltip="重置为初始极简参数"
               />
             </>
           )}

@@ -71,7 +71,7 @@ export const StampCutterToolbar: React.FC<StampCutterToolbarProps> = ({
               key={r}
               type="button"
               onClick={() => onRatioChange(r)}
-              className={`px-1.5 py-0.5 rounded text-[11px] transition duration-150 ${
+              className={`px-1.5 py-0.5 rounded text-[11px] transition duration-150 cursor-pointer ${
                 aspectRatio === r
                   ? 'bg-paper shadow-2xs text-accent font-medium'
                   : 'text-ink-light hover:text-ink hover:bg-paper-grid/40'
@@ -85,10 +85,11 @@ export const StampCutterToolbar: React.FC<StampCutterToolbarProps> = ({
 
       {/* 右组：纸边开关与工坊高级面板开关 */}
       <div className="flex items-center gap-1.5 shrink-0">
+
         <button
           type="button"
           onClick={onToggleMargin}
-          className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs transition duration-150 ${
+          className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs transition duration-150 cursor-pointer ${
             withMargin
               ? 'bg-accent/15 text-accent font-medium'
               : 'hover:bg-paper-grid/40 text-ink-light'
@@ -102,7 +103,7 @@ export const StampCutterToolbar: React.FC<StampCutterToolbarProps> = ({
         <button
           type="button"
           onClick={onToggleStudio}
-          className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs transition duration-150 ${
+          className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs transition duration-150 cursor-pointer ${
             isStudioOpen
               ? 'bg-accent text-white font-medium shadow-2xs'
               : hasStudioActive

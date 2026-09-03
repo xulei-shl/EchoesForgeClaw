@@ -1,6 +1,9 @@
 import React from 'react';
 import { Pencil } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { PhotoProvider, PhotoView } from 'react-photo-view';
+import 'react-photo-view/dist/react-photo-view.css';
+import { Tooltip } from '../../../platform/components/ui/Tooltip';
 
 interface StampResultPreviewProps {
   imageUrl: string | null;
@@ -22,17 +25,24 @@ export const StampResultPreview: React.FC<StampResultPreviewProps> = ({
     >
       {imageUrl ? (
         <div className="relative max-w-full max-h-full flex items-center justify-center">
-          <img
-            src={imageUrl}
-            alt="Stamp Generated"
-            className="max-w-full max-h-[420px] object-contain rounded drop-shadow-xl select-none"
-          />
+          <PhotoProvider maskOpacity={0.8} bannerVisible={false}>
+            <PhotoView src={imageUrl}>
+              <Tooltip content="点击全屏查看">
+                <img
+                  src={imageUrl}
+                  alt="Stamp Generated"
+                  className="max-w-full max-h-[420px] object-contain rounded drop-shadow-xl select-none cursor-zoom-in group-hover:opacity-95 active:scale-[0.99] transition-transform transition-opacity"
+                  loading="lazy"
+                />
+              </Tooltip>
+            </PhotoView>
+          </PhotoProvider>
 
           {/* 快捷悬浮重新编辑按钮 */}
           <button
             type="button"
             onClick={onEditAgain}
-            className="absolute bottom-3 right-3 px-2.5 py-1 rounded-full bg-paper/90 backdrop-blur text-ink text-xs shadow-md border border-paper-grid/40 hover:bg-white hover:text-accent transition flex items-center gap-1.5 opacity-0 group-hover:opacity-100 duration-150 cursor-pointer"
+            className="absolute bottom-3 right-3 z-10 px-2.5 py-1 rounded-full bg-paper/90 backdrop-blur text-ink text-xs shadow-md border border-paper-grid/40 hover:bg-white hover:text-accent transition flex items-center gap-1.5 opacity-0 group-hover:opacity-100 duration-150 cursor-pointer"
           >
             <Pencil size={12} />
             <span>重新排版</span>
