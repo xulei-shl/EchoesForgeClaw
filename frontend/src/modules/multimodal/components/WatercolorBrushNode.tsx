@@ -279,7 +279,7 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
     [id, onUpdateState]
   );
 
-  /** 一键装载美学配方（同步装载所有参数） */
+  /** 一键装载美学配方（同步装载所有参数、刷新随机种子并同步调色板） */
   const handleApplyPresetRecipe = useCallback(
     (presetValue: WatercolorCompositionMode) => {
       if (presetValue === 'custom') {
@@ -288,13 +288,17 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
       }
       const recipe = WATERCOLOR_PRESET_RECIPES[presetValue];
       if (recipe) {
+        const nextPalette = WATERCOLOR_PRESET_PALETTES.find((p) => p.id === recipe.paletteId);
+        const nextColors = upstreamColors && upstreamColors.length > 0 ? upstreamColors : nextPalette?.colors || [];
         patchParam({
           mode: presetValue,
+          seed: Math.floor(Math.random() * 999999),
+          customColors: nextColors,
           ...recipe,
         });
       }
     },
-    [patchParam]
+    [patchParam, upstreamColors]
   );
 
   /** 全参数灵感洗牌（全维度随机生成独特的创作组合，附带触觉反馈与微动效） */

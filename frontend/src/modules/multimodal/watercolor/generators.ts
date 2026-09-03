@@ -437,61 +437,17 @@ function renderGridLayout(
   const paddingY = height * 0.08;
   const cellW = (width - paddingX * 2) / cols;
   const cellH = (height - paddingY * 2) / rows;
-  const curv = params.curvature ?? 0.15;
+  const contourBrush = resolveBrush(params.brushType, 'rotring');
 
-  if (params.technique === 'hatch_array') {
-    const shapes: { points: [number, number][]; curvature: number }[] = [];
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        if (Math.random() < 0.18) continue;
-        const x = paddingX + c * cellW + 3;
-        const y = paddingY + r * cellH + 3;
-        const w = cellW - 6;
-        const h = cellH - 6;
-        shapes.push({
-          points: [
-            [x, y],
-            [x + w, y],
-            [x + w, y + h],
-            [x, y + h],
-          ],
-          curvature: curv,
-        });
-      }
-    }
-
-    brush.push();
-    const polygons = shapes.map(toPolygon);
-    const hatchBrush = resolveBrush(params.brushType, 'rotring');
-    brush.hatchStyle(hatchBrush, palette[0], 1.1);
-    brush.hatch(params.hatchDist, 35, {
-      rand: 0.1,
-      gradient: 0.15,
-      continuous: false,
-    });
-    brush.hatchArray(polygons);
-    brush.noHatch();
-
-    const contourBrush = resolveBrush(params.brushType, '2B');
-    brush.set(contourBrush, palette[1] || palette[0], 1.0);
-    shapes.forEach((s) => {
-      brush.beginShape(s.curvature);
-      s.points.forEach(([x, y]) => brush.vertex(x, y));
-      brush.endShape(true);
-    });
-    brush.pop();
-    return;
-  }
-
-  // 常规包豪斯色块方阵
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       if (Math.random() < 0.12) continue;
-      const x = paddingX + c * cellW + 4;
-      const y = paddingY + r * cellH + 4;
-      const w = cellW - 8;
-      const h = cellH - 8;
-      const col = randChoice(palette);
+      const x = paddingX + c * cellW + 3;
+      const y = paddingY + r * cellH + 3;
+      const w = cellW - 6;
+      const h = cellH - 6;
+      const col = palette[(r * cols + c) % palette.length];
+      const col2 = palette[(r + c + 1) % palette.length];
 
       const verts: [number, number][] = [
         [x, y],
@@ -501,9 +457,25 @@ function renderGridLayout(
       ];
 
       brush.push();
-      renderShapeFill(verts, col, params, 0.85);
-      const contourBrush = resolveBrush(params.brushType, 'HB');
-      brush.set(contourBrush, col, 0.9);
+      const cellRand = Math.random();
+      if (cellRand < 0.45) {
+        // 1. 经典现代主义实色/水彩几何方块
+        renderShapeFill(verts, col, params, 0.85);
+      } else if (cellRand < 0.8) {
+        // 2. 几何扫描排线单元
+        const hatchAngle = randChoice([0, 45, -45, 90]);
+        brush.hatch(params.hatchDist * randRange(0.85, 1.25), hatchAngle, {
+          rand: 0.08,
+          continuous: params.technique === 'hatch_array',
+        });
+        const hBrush = resolveBrush(params.brushType, 'rotring');
+        brush.hatchStyle(hBrush, col, 1.1);
+        brush.polygon(verts);
+        brush.noHatch();
+      }
+
+      // 3. 包豪斯风格手绘边框勾勒
+      brush.set(contourBrush, col2, randRange(0.7, 1.2));
       brush.rect(x, y, w, h);
       brush.pop();
     }
@@ -571,8 +543,8 @@ function renderWovenGridLayout(
 }
 
 /**
- * 7. 🌀 螺线律动母题 (Spirals / Strokes & Spirals Vortex)
- * 连续曲线笔触、流场涟漪扭曲与丝滑流光彩带漩涡
+ * 7. 🌀 螺线律动母题 (Spirals / 丝滑流光彩带漩涡)
+ * 梦幻水彩星云光斑底晕 + 向心多层流光彩带螺旋曲线
  */
 function renderSpiralsLayout(
   width: number,
@@ -582,44 +554,56 @@ function renderSpiralsLayout(
 ) {
   const densityFactor = params.density ?? 1.0;
   const spiralCount = Math.max(3, Math.round(5 * densityFactor));
-  const brushName = resolveBrush(params.brushType, 'marker');
+  const cx = width * 0.5;
+  const cy = height * 0.5;
 
-  const scaleFactor = width / 1500;
-  const baseStepInc = 25 * scaleFactor * (1.1 / Math.sqrt(densityFactor));
-
+  // 1. 底层水彩星云光斑微晕
   brush.push();
-  brush.pick(brushName);
+  const nebulaCount = 3;
+  for (let n = 0; n < nebulaCount; n++) {
+    const nx = cx + randRange(-width * 0.15, width * 0.15);
+    const ny = cy + randRange(-height * 0.15, height * 0.15);
+    const nRad = randRange(width * 0.15, width * 0.28);
+    const nPts: [number, number][] = [];
+    for (let p = 0; p < 8; p++) {
+      const ang = (p * Math.PI * 2) / 8;
+      nPts.push([nx + Math.cos(ang) * nRad * randRange(0.8, 1.25), ny + Math.sin(ang) * nRad * randRange(0.8, 1.25)]);
+    }
+    renderShapeFill(nPts, palette[n % palette.length], params, 0.4);
+  }
+  brush.pop();
 
+  // 2. 连续丝滑流光螺旋彩带
+  const spiralBrushes = ['marker', 'rotring', '2B', 'cpencil'];
   for (let j = 0; j < spiralCount; j++) {
     const col = palette[j % palette.length];
-    brush.stroke(col);
+    const sBrush = resolveBrush(params.brushType, spiralBrushes[j % spiralBrushes.length]);
+    const startAngle = (j * (360 / spiralCount)) + randRange(-15, 15);
+    const maxR = width * randRange(0.32, 0.44);
+    const turns = randRange(2.2, 3.8);
+    const stepCount = 45;
 
-    const startX = width * randRange(0.18, 0.82);
-    const startY = height * randRange(0.18, 0.82);
-    brush.beginStroke('curve', startX, startY);
-
-    const initAngle = randRange(0, 360);
-    const maxSteps = Math.floor(randRange(25, 75) * Math.sqrt(densityFactor));
-
-    for (let i = 0; i < maxSteps; i++) {
-      const stepLen = i * baseStepInc;
-      // 4段象限弧线依次递增步长，形成丝滑扩张螺线
-      brush.move(0 + initAngle, stepLen, randRange(0.6, 1.6));
-      brush.move(90 + initAngle, 8 * scaleFactor + stepLen, randRange(0.6, 1.6));
-      brush.move(180 + initAngle, 13 * scaleFactor + stepLen, randRange(0.6, 1.6));
-      brush.move(270 + initAngle, 18 * scaleFactor + stepLen, randRange(0.6, 1.6));
+    const splinePts: [number, number, number][] = [];
+    for (let s = 0; s <= stepCount; s++) {
+      const t = s / stepCount;
+      const angle = (startAngle + t * turns * 360) * (Math.PI / 180);
+      const r = Math.pow(t, 0.85) * maxR;
+      const px = cx + Math.cos(angle) * r;
+      const py = cy + Math.sin(angle) * r;
+      const pressure = 0.5 + Math.sin(t * Math.PI) * 1.5;
+      splinePts.push([px, py, pressure]);
     }
 
-    brush.endStroke(initAngle, 1.0);
+    brush.push();
+    brush.set(sBrush, col, randRange(1.6, 2.8));
+    brush.spline(splinePts, params.curvature ?? 0.85);
+    brush.pop();
   }
-
-  brush.noStroke();
-  brush.pop();
 }
 
 /**
  * 8. 🌀 同心环系母题 (Rings / 东方破墨书法飞白)
- * 苍劲有力的压感书法圆相 + 真实飞白丝缕 + 清透淡墨渗透 + 细密墨点
+ * 苍劲有力的压感书法圆相 + 沿圆弧笔势的水墨带状微晕 + 真实飞白丝缕 + 细密墨点
  */
 function renderRingsLayout(
   width: number,
@@ -632,57 +616,65 @@ function renderRingsLayout(
   const maxR = width * 0.32;
   const curv = params.curvature ?? 0.88;
 
-  // 1. 主圆相 (Enso) 压感 Spline
+  // 1. 主圆相 (Enso) 压感 Spline 与 沿笔势的双轨带状多边形（避免未闭合弧线直连导致的生硬切角扇形）
   const ensoPts: [number, number, number][] = [];
   const feibaiPts: [number, number, number][] = [];
-  const ptCount = 22;
+  const outerBand: [number, number][] = [];
+  const innerBand: [number, number][] = [];
+  const ptCount = 28;
+  const bandThickness = maxR * 0.14;
 
   for (let i = 0; i <= ptCount; i++) {
-    const ang = (i * Math.PI * 1.95) / ptCount - Math.PI / 2;
-    const rCurrent = maxR * (1 + 0.06 * Math.sin(ang * 3)) + randRange(-3, 3);
-    // 自然毛笔起承转合压感：起笔 0.35 -> 中段行笔 1.05 -> 收笔 0.35
+    const ang = (i * Math.PI * 1.92) / ptCount - Math.PI / 2;
+    const rCurrent = maxR * (1 + 0.05 * Math.sin(ang * 3)) + randRange(-3, 3);
     const progress = i / ptCount;
-    const pressure = 0.35 + Math.sin(progress * Math.PI) * 0.7 + randRange(-0.08, 0.08);
+    // 毛笔压感：起笔 0.4 -> 运笔中段饱满 1.2 -> 收笔枯润 0.4
+    const pressure = 0.4 + Math.sin(progress * Math.PI) * 0.8 + randRange(-0.06, 0.06);
 
-    ensoPts.push([cx + Math.cos(ang) * rCurrent, cy + Math.sin(ang) * rCurrent, pressure]);
+    const px = cx + Math.cos(ang) * rCurrent;
+    const py = cy + Math.sin(ang) * rCurrent;
+    ensoPts.push([px, py, pressure]);
+
+    // 沿笔画法向扩展的闭合带状水墨微晕
+    const rOut = rCurrent + (bandThickness * 0.5) * (0.6 + pressure * 0.4);
+    const rIn = rCurrent - (bandThickness * 0.5) * (0.6 + pressure * 0.4);
+    outerBand.push([cx + Math.cos(ang) * rOut, cy + Math.sin(ang) * rOut]);
+    innerBand.push([cx + Math.cos(ang) * rIn, cy + Math.sin(ang) * rIn]);
 
     // 内部飞白丝缕（紧贴主弧内侧，模拟毛笔分叉飞白）
-    const rFeibai = rCurrent - randRange(4, 10);
-    feibaiPts.push([cx + Math.cos(ang) * rFeibai, cy + Math.sin(ang) * rFeibai, pressure * 0.6]);
+    const rFeibai = rCurrent - randRange(4, 9);
+    feibaiPts.push([cx + Math.cos(ang) * rFeibai, cy + Math.sin(ang) * rFeibai, pressure * 0.5]);
   }
 
-  brush.push();
-  // 内部通透极淡的墨韵微晕（绝不糊黑）
-  renderShapeFill(
-    ensoPts.map(([x, y]) => [x, y]),
-    palette[1] || palette[0],
-    params,
-    0.45
-  );
+  const ribbonPoly: [number, number][] = [...outerBand, ...[...innerBand].reverse()];
 
-  // 2. 主墨圆相线条 (优雅的书法苍劲笔触，线宽适中)
+  brush.push();
+  // 通透淡雅的水墨笔触带状晕染
+  renderShapeFill(ribbonPoly, palette[1] || palette[0], params, 0.35);
+
+  // 2. 主墨圆相线条 (苍劲毛笔笔触，带有浓墨压感)
   const ensoBrush = resolveBrush(params.brushType, 'charcoal');
-  brush.set(ensoBrush, palette[0], 0.95);
+  brush.set(ensoBrush, palette[0], 1.2);
   brush.spline(ensoPts, curv);
 
-  // 3. 飞白干笔细丝 (2H 硬铅细丝，塑造飞白留空)
-  brush.set('2H', palette[0], 0.55);
+  // 3. 飞白干笔细丝 (2H 硬铅细丝，塑造真实毛笔飞白)
+  brush.set('2H', palette[0], 0.5);
   brush.spline(feibaiPts, curv);
 
   // 4. 细碎飞墨星点 (Spray splatters)
   const sprayBrush = resolveBrush('spray');
   brush.set(sprayBrush, palette[0], 0.7);
-  for (let s = 0; s < 16; s++) {
-    const sx = cx + randRange(-maxR * 1.1, maxR * 1.1);
-    const sy = cy + randRange(-maxR * 1.1, maxR * 1.1);
-    brush.flowLine(sx, sy, randRange(8, 35), randRange(0, 360));
+  for (let s = 0; s < 18; s++) {
+    const sx = cx + randRange(-maxR * 1.15, maxR * 1.15);
+    const sy = cy + randRange(-maxR * 1.15, maxR * 1.15);
+    brush.flowLine(sx, sy, randRange(8, 30), randRange(0, 360));
   }
   brush.pop();
 }
 
 /**
  * 7. ✂️ 负空间镂空母题 (Cutouts / 马蒂斯现代剪纸留白)
- * 经典马蒂斯几何剪纸形体与打孔负空间
+ * 经典马蒂斯现代主义几何剪纸形体与负空间对比
  */
 function renderCutoutsLayout(
   width: number,
@@ -701,61 +693,50 @@ function renderCutoutsLayout(
   centers.forEach((item, idx) => {
     brush.push();
     const outerPts: [number, number][] = [];
-    const numPts = 8;
+    const numPts = 10;
     for (let i = 0; i < numPts; i++) {
       const ang = (i * Math.PI * 2) / numPts;
-      const rMod = 1 + 0.16 * Math.sin(2 * ang + idx);
+      const rMod = 1 + 0.22 * Math.sin(3 * ang + idx * 1.2);
       outerPts.push([
         item.cx + item.rx * rMod * Math.cos(ang),
         item.cy + item.ry * rMod * Math.sin(ang),
       ]);
     }
 
-    const holeCount = 2 + (idx % 2);
-    const holes: { points: [number, number][]; curvature: number }[] = [];
+    // 1. 剪纸大块面色块
+    renderShapeFill(outerPts, item.col, params, 0.88);
+
+    // 2. 剪纸柔和手绘轮廓线
+    const contourBrush = resolveBrush(params.brushType, 'HB');
+    brush.set(contourBrush, item.col, 1.1);
+    brush.beginShape(curv);
+    outerPts.forEach(([x, y]) => brush.vertex(x, y));
+    brush.endShape(true);
+
+    // 3. 负空间打孔留白（真实镂空效果）
+    const holeCount = 2;
     for (let h = 0; h < holeCount; h++) {
-      const hx = item.cx + randRange(-item.rx * 0.35, item.rx * 0.35);
-      const hy = item.cy + randRange(-item.ry * 0.35, item.ry * 0.35);
-      const hr = randRange(width * 0.03, width * 0.06);
+      const hx = item.cx + randRange(-item.rx * 0.32, item.rx * 0.32);
+      const hy = item.cy + randRange(-item.ry * 0.32, item.ry * 0.32);
+      const hr = randRange(width * 0.035, width * 0.065);
       const hPts: [number, number][] = [];
-      for (let p = 0; p < 6; p++) {
-        const a = (p * Math.PI * 2) / 6;
+      for (let p = 0; p < 7; p++) {
+        const a = (p * Math.PI * 2) / 7;
         hPts.push([hx + hr * Math.cos(a), hy + hr * Math.sin(a)]);
       }
-      holes.push({ points: hPts, curvature: curv });
-    }
-
-    const outerShape = { points: outerPts, curvature: curv };
-    const allRings = [outerShape, ...holes];
-    const polygons = allRings.map(toPolygon);
-
-    if (params.technique === 'massing' || params.technique === 'auto') {
-      const massBrush = resolveBrush(params.brushType, 'pastel');
-      brush.mass(massBrush, item.col, {
-        precision: 0.3,
-        strength: 0.85,
-        gradient: 0.2,
-        outline: false,
-      });
-      brush.massArray(polygons);
-      brush.noMass();
-    } else if (params.technique === 'hatch_array' || params.technique === 'hatching') {
-      const hatchBrush = resolveBrush(params.brushType, 'rotring');
-      brush.hatchStyle(hatchBrush, item.col, 1.0);
-      brush.hatch(params.hatchDist, 45, { rand: 0.1, continuous: false });
-      brush.hatchArray(polygons);
-      brush.noHatch();
-    } else {
-      renderShapeFill(outerPts, item.col, params, 0.85);
-    }
-
-    const contourBrush = resolveBrush(params.brushType, 'HB');
-    brush.set(contourBrush, item.col, 0.9);
-    allRings.forEach((ring) => {
-      brush.beginShape(ring.curvature);
-      ring.points.forEach(([x, y]) => brush.vertex(x, y));
+      brush.push();
+      if (!params.transparentBackground) {
+        brush.fillBleed(0);
+        brush.fill('#FAF6EC', 255);
+        brush.polygon(hPts);
+      }
+      brush.set(contourBrush, item.col, 0.75);
+      brush.beginShape(curv);
+      hPts.forEach(([x, y]) => brush.vertex(x, y));
       brush.endShape(true);
-    });
+      brush.pop();
+    }
+
     brush.noStroke();
     brush.pop();
   });
@@ -763,7 +744,7 @@ function renderCutoutsLayout(
 
 /**
  * 8. 🌊 浮世浪峰母题 (Waves / 卷曲翻滚的浮世绘巨浪浪头)
- * 卷曲浪爪几何 + 密实排线 + 浪花水花
+ * 卷曲浪爪几何 + 清透水彩底晕 + 浪面密实排线 + 浪尖飞溅白沫
  */
 function renderWavesLayout(
   width: number,
@@ -777,33 +758,46 @@ function renderWavesLayout(
 
   for (let w = 0; w < waveCount; w++) {
     const col = palette[w % palette.length];
-    const baseY = height * (0.35 + (w * 0.55) / waveCount);
-    const startX = width * (0.1 + w * 0.15);
-    const waveRadius = width * (0.2 + (w % 2) * 0.1);
+    const baseY = height * (0.35 + (w * 0.52) / waveCount);
+    const startX = width * (0.12 + w * 0.16);
+    const waveRadius = width * (0.18 + (w % 2) * 0.08);
 
-    // 绘制卷曲浪爪多边形
+    // 绘制卷曲浪爪多边形（自然延伸至波谷基线，避免底部大面积死板堆积）
     const wavePts: [number, number][] = [];
     const steps = 14;
     for (let s = 0; s <= steps; s++) {
       const t = s / steps;
-      const ang = t * Math.PI * 1.4 - Math.PI * 0.2;
-      const r = waveRadius * (1 - t * 0.45);
+      const ang = t * Math.PI * 1.35 - Math.PI * 0.18;
+      const r = waveRadius * (1 - t * 0.42);
       const wx = startX + Math.cos(ang) * r;
-      const wy = baseY - Math.sin(ang) * r + Math.sin(t * Math.PI * 2) * 15;
+      const wy = baseY - Math.sin(ang) * r + Math.sin(t * Math.PI * 2) * 12;
       wavePts.push([wx, wy]);
     }
-    wavePts.push([startX + waveRadius * 0.8, height * 0.95]);
-    wavePts.push([startX - waveRadius * 0.4, height * 0.95]);
+    const waveBaseY = Math.min(height * 0.92, baseY + waveRadius * 0.85);
+    wavePts.push([startX + waveRadius * 0.75, waveBaseY]);
+    wavePts.push([startX - waveRadius * 0.35, waveBaseY]);
 
     brush.push();
+    // 1. 浪身通透水彩底色
+    renderShapeFill(wavePts, col, params, 0.75);
+
+    // 2. 密实动势浪面排线
     const hatchBrush = resolveBrush(params.brushType, 'cpencil');
-    brush.hatchStyle(hatchBrush, col, 1.1);
-    brush.hatch(params.hatchDist, 65, { rand: 0.12, continuous: true });
+    brush.hatchStyle(hatchBrush, palette[(w + 1) % palette.length], 1.1);
+    brush.hatch(params.hatchDist, 60, { rand: 0.1, continuous: true });
     brush.polygon(wavePts);
     brush.noHatch();
 
-    // 浪花外脊线
-    const waveSplinePts: [number, number, number][] = wavePts.slice(0, 14).map(([x, y]) => [x, y, randRange(0.8, 1.8)]);
+    // 3. 浪尖白沫水花散点
+    const sprayBrush = resolveBrush('spray');
+    brush.set(sprayBrush, palette[0], 0.9);
+    for (let sp = 0; sp < 8; sp++) {
+      const tipPt = wavePts[Math.floor(randRange(0, 7))];
+      brush.circle(tipPt[0] + randRange(-6, 6), tipPt[1] + randRange(-6, 6), randRange(2.5, 6));
+    }
+
+    // 4. 浪花脊线
+    const waveSplinePts: [number, number, number][] = wavePts.slice(0, 14).map(([x, y]) => [x, y, randRange(0.8, 1.5)]);
     brush.set(resolveBrush(params.brushType, 'rotring'), palette[0], 1.2);
     brush.spline(waveSplinePts, curv);
     brush.pop();
@@ -812,7 +806,7 @@ function renderWavesLayout(
 
 /**
  * 9. ✨ 气溶胶喷绘母题 (Spray / 街头艺术与气溶胶晕染)
- * 粗粝喷枪微粒、气溶胶云团与散点星云
+ * 粗粝喷枪微粒、圆形雾化水洗微晕与散点星云
  */
 function renderSprayLayout(
   width: number,
@@ -833,26 +827,24 @@ function renderSprayLayout(
     brush.push();
     brush.set(sprayBrush, col, randRange(1.2, 2.5));
     // 气溶胶放射微粒
-    for (let p = 0; p < 24; p++) {
+    for (let p = 0; p < 28; p++) {
       const ang = randRange(0, 360);
       const dist = randRange(0, burstR);
       const px = cx + Math.cos((ang * Math.PI) / 180) * dist;
       const py = cy + Math.sin((ang * Math.PI) / 180) * dist;
-      brush.flowLine(px, py, randRange(8, 30), ang);
+      brush.flowLine(px, py, randRange(8, 28), ang);
     }
 
-    // 核心微弱水洗晕染
-    renderShapeFill(
-      [
-        [cx - burstR * 0.3, cy - burstR * 0.3],
-        [cx + burstR * 0.3, cy - burstR * 0.3],
-        [cx + burstR * 0.3, cy + burstR * 0.3],
-        [cx - burstR * 0.3, cy + burstR * 0.3],
-      ],
-      col,
-      params,
-      0.6
-    );
+    // 核心圆形雾化微弱水洗晕染（平滑多边形，告别生硬矩形水渍）
+    const numPts = 10;
+    const washPts: [number, number][] = [];
+    const washR = burstR * 0.42;
+    for (let p = 0; p < numPts; p++) {
+      const a = (p * Math.PI * 2) / numPts;
+      const r = washR * randRange(0.75, 1.25);
+      washPts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
+    }
+    renderShapeFill(washPts, col, params, 0.45);
     brush.pop();
   }
 }
