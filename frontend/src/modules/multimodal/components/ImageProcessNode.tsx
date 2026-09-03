@@ -9,7 +9,6 @@ import {
   Upload,
   Trash2,
   Loader2,
-  Pencil,
   Check,
   Layers,
   SlidersHorizontal,
@@ -140,6 +139,8 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   /** 预览手动重试计数（仅触发重渲，不写入持久化参数） */
   const [previewNonce, setPreviewNonce] = useState(0);
+  /** 拖拽文件悬停高亮状态 */
+  const [isDragOver, setIsDragOver] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -290,25 +291,41 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data?.imageUrl, effect.id, showToast]);
 
+  // 统一图片文件处理（支持 input 上传与拖拽 Drop）
+  const processUploadedFile = useCallback(
+    (file: File) => {
+      if (!file.type.startsWith('image/')) {
+        showToast('请选择图片文件', { type: 'warning' });
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const result = evt.target?.result as string;
+        if (result) {
+          onUpdateState?.(id, { uploadedImage: result, imageUrl: null });
+          setIsEditing(true);
+          showToast('已加载本地图片', { type: 'success' });
+        }
+      };
+      reader.readAsDataURL(file);
+    },
+    [id, onUpdateState, showToast]
+  );
+
   // 本地上传图片
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      showToast('请选择图片文件', { type: 'warning' });
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const result = evt.target?.result as string;
-      if (result) {
-        onUpdateState?.(id, { uploadedImage: result, imageUrl: null });
-        setIsEditing(true);
-        showToast('已加载本地图片', { type: 'success' });
-      }
-    };
-    reader.readAsDataURL(file);
+    if (file) processUploadedFile(file);
     e.target.value = '';
+  };
+
+  // 拖拽上传图片
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) processUploadedFile(file);
   };
 
   // 清空本地上传图片，恢复上游继承
@@ -554,13 +571,13 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
                     aria-label={cfg.name}
                     onClick={() => handleEffectChange(cfg.id)}
                     disabled={isGenerating}
-                    className={`flex flex-col items-center justify-center py-1 px-0.5 rounded-md text-[10px] font-medium leading-tight transition-[background-color,color,border-color,box-shadow,transform] duration-150 ease-out cursor-pointer active:scale-[0.96] motion-reduce:transform-none focus-visible:outline-none focus-visible:ring-1.5 focus-visible:ring-accent ${
+                    className={`flex flex-col items-center justify-center py-1.5 px-0.5 rounded-md text-[10px] font-medium leading-tight transition-[background-color,color,border-color,box-shadow,transform] duration-150 ease-out cursor-pointer active:scale-[0.96] motion-reduce:transform-none focus-visible:outline-none focus-visible:ring-1.5 focus-visible:ring-accent ${
                       isChecked
                         ? 'bg-paper text-accent font-semibold shadow-2xs border border-paper-grid/40'
                         : 'text-ink-light hover:text-ink hover:bg-paper-grid/30 border border-transparent'
                     } disabled:cursor-not-allowed disabled:opacity-50`}
                   >
-                    <IconComponent size={13} strokeWidth={1.5} className="shrink-0 mb-0.5" aria-hidden="true" />
+                    <IconComponent size={14} strokeWidth={1.5} className="shrink-0 mb-0.5" aria-hidden="true" />
                     <span className="truncate text-[10px] leading-none tracking-tight">{cfg.shortLabel}</span>
                   </button>
                 );
@@ -581,30 +598,30 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
                 aria-label={isDrawerOpen ? '收起参数配置抽屉' : '展开侧边参数配置抽屉'}
                 aria-pressed={isDrawerOpen}
               >
-                <SlidersHorizontal size={13} strokeWidth={1.5} />
+                <SlidersHorizontal size={14} strokeWidth={1.5} />
               </button>
             </Tooltip>
           </div>
         )}
 
-        {/* 预览区（编辑态=实时效果预览；结果态=生成结果） */}
-        <div className="relative flex-1 min-h-0 w-full overflow-hidden rounded bg-paper-grid/10 border border-paper-grid/40 flex items-center justify-center select-none">
-          <AnimatePresence mode="wait" initial={false}>
+        {/* 预览区（编辑态=实时效果预览；结果态=生成结果；采用严格同心圆角与弹性自适应） */}
+        <div className="relative flex-1 min-h-0 w-full overflow-hidden rounded-xl bg-paper-grid/10 border border-paper-grid/40 flex items-center justify-center select-none">
+          <AnimatePresence initial={false}>
             {!hasGenerated ? (
               <motion.div
                 key="editor"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="relative w-full h-full flex items-center justify-center overflow-hidden p-2"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.16, ease: 'easeOut' }}
+                className="absolute inset-0 flex items-center justify-center overflow-hidden p-2.5"
               >
                 {activeImageSrc ? (
                   previewUrl ? (
                     <img
                       src={previewUrl}
                       alt={`${effect.name}效果实时预览`}
-                      className="max-w-full max-h-full object-contain rounded"
+                      className="max-w-full max-h-full object-contain rounded-lg shadow-sm outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
                     />
                   ) : previewError ? (
                     <div className="flex flex-col items-center gap-2 text-ink-faint p-4 text-center">
@@ -612,7 +629,7 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
                       <button
                         type="button"
                         onClick={() => setPreviewNonce((n) => n + 1)}
-                        className="px-2.5 py-1 rounded text-xs bg-paper-grid/40 hover:bg-paper-grid/70 active:scale-[0.96] transition-colors duration-150"
+                        className="px-2.5 py-1 rounded text-xs bg-paper-grid/40 hover:bg-paper-grid/70 active:scale-[0.96] transition-[background-color,transform] duration-150 ease-out focus-visible:outline-none focus-visible:ring-1.5 focus-visible:ring-accent"
                       >
                         重试
                       </button>
@@ -624,46 +641,84 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
                     </div>
                   )
                 ) : (
-                  <div className="flex flex-col items-center justify-center text-ink-faint gap-2 p-6 text-center">
-                    <Upload size={32} strokeWidth={1.5} />
-                    <p className="text-xs">请连线上级图片或点击上方按钮上传本地图片</p>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setIsDragOver(true);
+                    }}
+                    onDragLeave={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setIsDragOver(false);
+                    }}
+                    onDrop={handleDrop}
+                    className={`group/empty flex flex-col items-center justify-center gap-2.5 p-6 text-center rounded-xl border border-dashed transition-[border-color,background-color,transform,color] duration-150 ease-out cursor-pointer active:scale-[0.98] motion-reduce:transform-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                      isDragOver
+                        ? 'border-accent bg-accent/10 text-accent'
+                        : 'border-paper-grid/80 hover:border-accent hover:bg-paper-grid/20 text-ink-faint hover:text-ink'
+                    }`}
+                    aria-label="点击或拖拽上传本地图片"
+                  >
+                    <div className="w-11 h-11 rounded-full bg-paper-grid/30 flex items-center justify-center text-ink-light group-hover/empty:bg-accent/15 group-hover/empty:text-accent transition-colors duration-150">
+                      <Upload size={22} strokeWidth={1.5} />
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-xs font-medium text-ink-light group-hover/empty:text-accent transition-colors duration-150">
+                        点击上传图片 或 拖拽到此
+                      </span>
+                      <span className="text-[11px] text-ink-faint">
+                        支持 JPG、PNG、WebP，也可连线上级节点
+                      </span>
+                    </div>
+                  </button>
                 )}
-                {isRenderingPreview && activeImageSrc && previewUrl && (
-                  <div className="absolute top-2 right-2 z-10 flex items-center gap-1 px-2 py-1 rounded-full bg-paper/85 backdrop-blur text-[11px] text-ink-light shadow-sm">
-                    <Loader2 size={12} className="animate-spin" />
-                    渲染中…
-                  </div>
-                )}
+
+                {/* 实时预览渲染中状态药丸（淡入淡出平滑过渡） */}
+                <AnimatePresence>
+                  {isRenderingPreview && activeImageSrc && previewUrl && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      transition={{ duration: 0.12, ease: 'easeOut' }}
+                      className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-paper/90 backdrop-blur-md border border-paper-grid/60 text-[11px] font-sans text-ink-light shadow-sm"
+                    >
+                      <Loader2 size={12} className="animate-spin text-accent" />
+                      <span>渲染中…</span>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </motion.div>
             ) : (
               <motion.div
                 key="preview"
-                initial={{ scale: 0.96, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.96, opacity: 0 }}
-                transition={{ type: 'spring', damping: 24, stiffness: 260 }}
-                className="relative w-full h-full flex items-center justify-center p-3"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.16, ease: 'easeOut' }}
+                className="absolute inset-0 flex items-center justify-center p-3"
               >
                 {data.imageUrl ? (
-                  <div className="relative group max-w-full max-h-full flex items-center justify-center">
+                  <div className="relative w-full h-full flex items-center justify-center">
                     <PhotoProvider maskOpacity={0.8} bannerVisible={false}>
                       <PhotoView src={data.imageUrl}>
                         <img
                           src={data.imageUrl}
                           alt={`${effect.name}效果结果`}
-                          className="max-w-full max-h-[440px] object-contain drop-shadow-md select-none rounded cursor-zoom-in hover:opacity-90 transition-opacity"
+                          className="max-w-full max-h-full object-contain drop-shadow-md select-none rounded-lg outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10 cursor-zoom-in hover:opacity-95 transition-opacity duration-150"
                         />
                       </PhotoView>
                     </PhotoProvider>
-                    <button
-                      type="button"
-                      onClick={() => setIsEditing(true)}
-                      className="absolute bottom-3 right-3 px-2.5 py-1.5 rounded-full bg-paper/90 backdrop-blur text-ink text-xs shadow-md border border-paper-grid/40 hover:bg-white hover:text-accent active:scale-[0.96] transition-[opacity,transform,background-color,color] flex items-center gap-1.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent duration-150"
-                    >
-                      <Pencil size={12} strokeWidth={1.5} />
-                      <span>调整参数</span>
-                    </button>
+
+                    {/* 成品效果微标（对齐系统级规范，左下角弱化信息，不遮挡主画面） */}
+                    <div className="absolute bottom-2.5 left-2.5 z-10 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-paper/85 backdrop-blur-xs border border-paper-grid/70 text-[10px] text-ink-light font-sans shadow-2xs select-none pointer-events-none">
+                      <span>{effect.name}</span>
+                      <span className="text-ink-faint">·</span>
+                      <span className="text-ink-faint">点击放大</span>
+                    </div>
                   </div>
                 ) : (
                   <div className="text-xs text-ink-faint">暂无处理结果</div>
@@ -672,12 +727,21 @@ const ImageProcessNodeInner: React.FC<ImageProcessNodeProps> = ({
             )}
           </AnimatePresence>
 
-          {isGenerating && (
-            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-black/35 backdrop-blur-sm text-paper">
-              <Loader2 size={28} className="animate-spin" />
-              <span className="text-xs">正在处理图片…</span>
-            </div>
-          )}
+          {/* 高清导出生成中遮罩（带平滑淡入淡出） */}
+          <AnimatePresence>
+            {isGenerating && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15, ease: 'easeOut' }}
+                className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2.5 bg-black/40 backdrop-blur-xs text-paper"
+              >
+                <Loader2 size={26} className="animate-spin text-accent" />
+                <span className="text-xs tracking-wide">正在处理图片…</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* 状态与弱提示 */}
