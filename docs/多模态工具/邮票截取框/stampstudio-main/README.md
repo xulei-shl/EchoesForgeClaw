@@ -1,13 +1,5 @@
 # Stamp Studio
 
-<p>
-  <a href="https://stampstud.io"><img alt="Website" src="https://shieldcn.dev/badge/stampstud.io-live-1d3f6e.svg?size=xs&variant=secondary&logo=vercel" /></a>
-  <a href="https://github.com/jal-co/stampstudio/releases"><img alt="Release" src="https://shieldcn.dev/github/v/release/jal-co/stampstudio.svg?size=xs&variant=secondary" /></a>
-  <a href="https://github.com/jal-co/stampstudio/stargazers"><img alt="GitHub stars" src="https://shieldcn.dev/github/stars/jal-co/stampstudio.svg?size=xs&variant=secondary" /></a>
-  <a href="https://github.com/jal-co/stampstudio/blob/main/LICENSE"><img alt="License" src="https://shieldcn.dev/github/license/jal-co/stampstudio.svg?size=xs&variant=secondary" /></a>
-  <a href="https://github.com/jal-co/stampstudio/commits/main"><img alt="Last commit" src="https://shieldcn.dev/github/last-commit/jal-co/stampstudio.svg?size=xs&variant=secondary" /></a>
-  <a href="https://github.com/sponsors/jal-co"><img alt="Sponsor" src="https://shieldcn.dev/badge/sponsor-%E2%9D%A4-ec4899.svg?size=xs&variant=secondary&logo=githubsponsors" /></a>
-</p>
 
 An online, open source stamp creator. Upload artwork, set the perforation gauge, age the paper, strike a postmark, and export a postage stamp as a transparent PNG.
 

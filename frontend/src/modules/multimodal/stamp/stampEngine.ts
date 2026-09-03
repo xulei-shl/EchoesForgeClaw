@@ -4,8 +4,7 @@
  */
 
 import type { StampCropBox, StampEffectOptions } from './types';
-import { DEFAULT_FONT_FAMILY, DEFAULT_TEXT_COLOR, loadFontFamily } from '../journal/text/fontRegistry';
-import { drawVerticalColumns, textFontSize } from '../journal/text/drawText';
+import { renderStampCore } from './stampStudioEngine';
 
 /**
  * 加载图片 URL 为 HTMLImageElement
@@ -22,6 +21,7 @@ export function loadImage(src: string): Promise<HTMLImageElement> {
 
 /**
  * 依据裁剪选框与渲染参数，将源图渲染为带齿孔打孔、白色纸边与柔和投影的邮票 PNG
+ * 统一委托给物理质感综合渲染引擎处理
  *
  * @param sourceImg 已加载完成的 HTMLImageElement
  * @param cropBox   归一化裁剪坐标 (0 ~ 1)
@@ -33,227 +33,9 @@ export async function renderStampFromImage(
   cropBox: StampCropBox,
   options: StampEffectOptions = {}
 ): Promise<string> {
-  const natW = sourceImg.naturalWidth || sourceImg.width;
-  const natH = sourceImg.naturalHeight || sourceImg.height;
-
-  if (!natW || !natH) {
-    throw new Error('源图片尺寸无效');
-  }
-
-  // 1. 计算源图实际裁剪像素坐标
-  const sx = Math.max(0, Math.min(natW, Math.round(cropBox.x * natW)));
-  const sy = Math.max(0, Math.min(natH, Math.round(cropBox.y * natH)));
-  const sWidth = Math.max(10, Math.min(natW - sx, Math.round(cropBox.width * natW)));
-  const sHeight = Math.max(10, Math.min(natH - sy, Math.round(cropBox.height * natH)));
-
-  const withMargin = options.withMargin !== false;
-
-  // 2. 根据裁剪图尺寸自适应打孔比例（以 600px 宽度为基准 1x）
-  const scaleFactor = Math.max(0.6, Math.min(3.5, sWidth / 600));
-
-  const margin = withMargin
-    ? (options.margin ? options.margin : Math.round(42 * scaleFactor))
-    : 0;
-  const holeRadius = options.holeRadius
-    ? options.holeRadius
-    : Math.round(13 * scaleFactor);
-  const pitch = options.pitch
-    ? options.pitch
-    : Math.round(holeRadius * 2 + 16 * scaleFactor);
-  const outerPad = options.outerPad
-    ? options.outerPad
-    : Math.round(64 * scaleFactor);
-
-  const sw = sWidth + margin * 2;
-  const sh = sHeight + margin * 2;
-
-  // 3. 预加载文字所需字体
-  if (options.textItems && options.textItems.length > 0) {
-    const families = Array.from(
-      new Set(options.textItems.map((it) => it.fontFamily || DEFAULT_FONT_FAMILY))
-    );
-    await Promise.all(families.map((f) => loadFontFamily(f)));
-  }
-
-  // 4. 创建离屏 Canvas 绘制邮票本体（白色纸面 + 内容图 + 文字图层 + destination-out 打孔）
-  const stampCanvas = document.createElement('canvas');
-  stampCanvas.width = sw;
-  stampCanvas.height = sh;
-  const stampCtx = stampCanvas.getContext('2d');
-  if (!stampCtx) throw new Error('创建 Canvas 2D 渲染上下文失败');
-
-  // 4.1 绘制白色底纸（即使无 margin 也能保证边缘干净）
-  stampCtx.fillStyle = '#ffffff';
-  stampCtx.fillRect(0, 0, sw, sh);
-
-  // 4.2 绘制裁剪的内容图
-  stampCtx.drawImage(
-    sourceImg,
-    sx,
-    sy,
-    sWidth,
-    sHeight,
-    margin,
-    margin,
-    sWidth,
-    sHeight
-  );
-
-  // 4.3 绘制邮票文字排版（支持横排、竖排、字号、颜色、字体与旋转）
-  if (options.textItems && options.textItems.length > 0) {
-    const sortedTexts = [...options.textItems].sort((a, b) => a.z - b.z);
-    for (const item of sortedTexts) {
-      const text = item.text || '';
-      if (!text.trim()) continue;
-
-      const fontFamily = item.fontFamily || DEFAULT_FONT_FAMILY;
-      const color = item.color || DEFAULT_TEXT_COLOR;
-      const fontSize = Math.max(10, textFontSize(item.w, sw));
-      const isVertical = item.writingMode === 'vertical';
-
-      const cx = (item.x / 100) * sw;
-      const cy = (item.y / 100) * sh;
-
-      stampCtx.save();
-      stampCtx.translate(cx, cy);
-      if (item.angle) {
-        stampCtx.rotate((item.angle * Math.PI) / 180);
-      }
-
-      const align = item.textAlign || 'center';
-      stampCtx.font = `${fontSize}px "${fontFamily}", "Noto Serif SC", serif, sans-serif`;
-      stampCtx.textBaseline = 'middle';
-      stampCtx.fillStyle = color;
-      stampCtx.shadowColor = 'rgba(0, 0, 0, 0.15)';
-      stampCtx.shadowBlur = Math.max(1, fontSize * 0.08);
-      stampCtx.shadowOffsetY = Math.max(1, fontSize * 0.04);
-
-      if (isVertical) {
-        stampCtx.textAlign = 'center';
-        drawVerticalColumns(stampCtx, text, fontSize, (str, x, y) => stampCtx.fillText(str, x, y), align);
-      } else {
-
-        const lines = text.split('\n');
-        const lineH = fontSize * 1.25;
-        const maxLineWidth = Math.max(...lines.map((l) => stampCtx.measureText(l).width || 0), 0);
-
-        stampCtx.textAlign = align;
-        lines.forEach((line, i) => {
-          const yOffset = (i - (lines.length - 1) / 2) * lineH;
-          let xOffset = 0;
-          if (align === 'left') {
-            xOffset = -maxLineWidth / 2;
-          } else if (align === 'right') {
-            xOffset = maxLineWidth / 2;
-          }
-          stampCtx.fillText(line, xOffset, yOffset);
-        });
-      }
-
-
-      stampCtx.restore();
-    }
-  }
-
-  // 4.4 进行半圆/圆孔齿孔打孔（剔除 alpha）
-  stampCtx.globalCompositeOperation = 'destination-out';
-  stampCtx.fillStyle = '#000000';
-
-
-  const rows = Math.max(1, Math.min(10, options.grid?.rows || 1));
-  const cols = Math.max(1, Math.min(10, options.grid?.cols || 1));
-
-  // 水平打孔（顶部 y=0 与 底部 y=sh）
-  const numH = Math.max(1, Math.round((sw - pitch) / pitch));
-  const startH = (sw - numH * pitch) / 2 + pitch / 2;
-  for (let i = 0; i <= numH; i++) {
-    const cx = startH + i * pitch - pitch / 2;
-    // 顶部外齿半圆
-    stampCtx.beginPath();
-    stampCtx.arc(cx, 0, holeRadius, 0, Math.PI * 2);
-    stampCtx.fill();
-    // 底部外齿半圆
-    stampCtx.beginPath();
-    stampCtx.arc(cx, sh, holeRadius, 0, Math.PI * 2);
-    stampCtx.fill();
-  }
-
-  // 垂直打孔（左侧 x=0 与 右侧 x=sw）
-  const numV = Math.max(1, Math.round((sh - pitch) / pitch));
-  const startV = (sh - numV * pitch) / 2 + pitch / 2;
-  for (let i = 0; i <= numV; i++) {
-    const cy = startV + i * pitch - pitch / 2;
-    // 左侧外齿半圆
-    stampCtx.beginPath();
-    stampCtx.arc(0, cy, holeRadius, 0, Math.PI * 2);
-    stampCtx.fill();
-    // 右侧外齿半圆
-    stampCtx.beginPath();
-    stampCtx.arc(sw, cy, holeRadius, 0, Math.PI * 2);
-    stampCtx.fill();
-  }
-
-  // 多联票内部横向分割打孔线 (rows > 1)
-  if (rows > 1) {
-    for (let r = 1; r < rows; r++) {
-      const cy = margin + (r / rows) * sHeight;
-      for (let i = 0; i <= numH; i++) {
-        const cx = startH + i * pitch - pitch / 2;
-        stampCtx.beginPath();
-        stampCtx.arc(cx, cy, holeRadius, 0, Math.PI * 2);
-        stampCtx.fill();
-      }
-    }
-  }
-
-  // 多联票内部纵向分割打孔线 (cols > 1)
-  if (cols > 1) {
-    for (let c = 1; c < cols; c++) {
-      const cx = margin + (c / cols) * sWidth;
-      for (let i = 0; i <= numV; i++) {
-        const cy = startV + i * pitch - pitch / 2;
-        stampCtx.beginPath();
-        stampCtx.arc(cx, cy, holeRadius, 0, Math.PI * 2);
-        stampCtx.fill();
-      }
-    }
-  }
-
-  // 4. 创建最终画布（合成四周柔和立体投影 + 贴上邮票本体）
-  const finalCanvas = document.createElement('canvas');
-  finalCanvas.width = sw + outerPad * 2;
-  finalCanvas.height = sh + outerPad * 2;
-  const finalCtx = finalCanvas.getContext('2d');
-  if (!finalCtx) throw new Error('创建最终 Canvas 上下文失败');
-
-  // 4.1 可选底色（默认 null 保持全透明 RGBA）
-  if (options.bgColor) {
-    finalCtx.fillStyle = options.bgColor;
-    finalCtx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
-  }
-
-  // 4.2 绘制柔和立体阴影（模拟环境光与直射光双层弥散）
-  finalCtx.save();
-  // 底层宽泛浅柔影
-  finalCtx.shadowColor = 'rgba(0, 0, 0, 0.18)';
-  finalCtx.shadowBlur = Math.round(20 * scaleFactor);
-  finalCtx.shadowOffsetX = Math.round(2 * scaleFactor);
-  finalCtx.shadowOffsetY = Math.round(8 * scaleFactor);
-  finalCtx.drawImage(stampCanvas, outerPad, outerPad);
-
-  // 顶层贴近硬影增强立体轮廓
-  finalCtx.shadowColor = 'rgba(0, 0, 0, 0.12)';
-  finalCtx.shadowBlur = Math.round(8 * scaleFactor);
-  finalCtx.shadowOffsetX = Math.round(1 * scaleFactor);
-  finalCtx.shadowOffsetY = Math.round(3 * scaleFactor);
-  finalCtx.drawImage(stampCanvas, outerPad, outerPad);
-  finalCtx.restore();
-
-  // 4.3 清晰贴上邮票本体（覆盖在阴影上方）
-  finalCtx.drawImage(stampCanvas, outerPad, outerPad);
-
-  return finalCanvas.toDataURL('image/png');
+  return renderStampCore(sourceImg, cropBox, options);
 }
+
 
 /**
  * 实时生成打孔选框的 SVG 路径，供 UI 选框无缝呈现锯齿边缘

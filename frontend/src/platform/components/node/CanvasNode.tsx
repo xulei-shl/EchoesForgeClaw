@@ -18,6 +18,8 @@ export interface CanvasNodeProps {
   actionBar?: React.ReactNode;
   /** 卡片边框外侧底部的插槽（如「+ 添加子节点」按钮），随卡片拖动 */
   footer?: React.ReactNode;
+  /** 边框外侧吸附侧边抽屉/检查器面板（如 NodeSideDrawer），挂载在根层级避免被内容区 overflow 裁剪 */
+  sideDrawer?: React.ReactNode;
   /** 所属自定义分组（有分组时在标题旁展示小标签） */
   groupBadge?: string;
   /** 标题旁的类型不匹配提示（红色徽标，如「类型不匹配 ×2」）；null/undefined 不展示 */
@@ -69,6 +71,7 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
   onClick,
   onContextMenu,
   footer,
+  sideDrawer,
   groupBadge,
   mismatchBadge,
   dotColor,
@@ -450,6 +453,9 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
       <div className="relative z-10 p-4 flex-1 overflow-y-auto overflow-x-hidden min-h-0 flex flex-col">
         {children}
       </div>
+
+      {/* 边框外侧吸附侧边抽屉/检查器面板（不被内容区 overflow 裁剪） */}
+      {sideDrawer}
 
       {/* 边框外侧右下角操作按钮 */}
       {actionBar && (
