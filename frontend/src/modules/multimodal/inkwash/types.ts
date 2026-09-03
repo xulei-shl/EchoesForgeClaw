@@ -118,7 +118,105 @@ export interface InkWashState {
   error?: string | null;
   /** 外部输入/上传的参考底稿图片 */
   uploadedImage?: string | null;
+  /** 书画题款与真迹印章列表（支持多段题款组件） */
+  inscriptions?: InkWashInscriptionItem[];
+  /** 单个题款兼容字段 */
+  inscription?: InkWashInscriptionItem;
+  /** 工笔白描底图拓印调校参数 */
+  traceConfig?: InkWashTraceConfig;
 }
+
+/** 8. 诗书画印：独立题款与古籍钤印数据结构 */
+export interface InkWashInscriptionItem {
+  /** 唯一标识 */
+  id: string;
+  /** 是否启用该题款 */
+  enabled: boolean;
+  /** 题款正文（支持换行） */
+  text: string;
+  /** 书法字体名称（默认：钟齐志莽行书） */
+  fontFamily?: string;
+  /** 排版方式（默认：vertical 竖排，符合传统国画题跋） */
+  writingMode?: 'vertical' | 'horizontal';
+  /** 对齐方式（默认：center） */
+  textAlign?: 'left' | 'center' | 'right';
+  /** 题款墨色（默认：#16161e 焦墨） */
+  color?: string;
+  /** 字号相对画幅短边的比例 (0.015 ~ 0.08，默认 0.038) */
+  fontSizeRatio?: number;
+  /** 题款位置 X 百分比 (0 ~ 100) */
+  x?: number;
+  /** 题款位置 Y 百分比 (0 ~ 100) */
+  y?: number;
+  /** 是否钤印 */
+  sealEnabled?: boolean;
+  /** 古籍真迹印章图片 URL */
+  sealSrc?: string;
+}
+
+/** 9. 工笔白描底图拓印参数配置 */
+export interface InkWashTraceConfig {
+  /** 勾线纯净度 / 结构阈值 (0.1 ~ 0.8，默认 0.35，越高越极简纯净，过滤杂线排线) */
+  threshold: number;
+  /** 去噪平滑等级 (1 ~ 5，默认 2，越过滤除微观颗粒) */
+  smooth: number;
+  /** 铁线描线宽缩放 (0.5 ~ 2.5，默认 1.0) */
+  lineWidth: number;
+  /** 焦墨浓度缩放 (0.5 ~ 2.0，默认 1.4) */
+  density: number;
+  /** 密集阴影排线抑制 (0.0 ~ 1.0，默认 0.6，越过滤版画素描密集线) */
+  hatchSuppression: number;
+}
+
+export const DEFAULT_INKWASH_TRACE_CONFIG: InkWashTraceConfig = {
+  threshold: 0.35,
+  smooth: 2,
+  lineWidth: 1.0,
+  density: 1.4,
+  hatchSuppression: 0.6,
+};
+
+export const INKWASH_TRACE_PRESETS: Record<
+  string,
+  { label: string; desc: string; config: InkWashTraceConfig }
+> = {
+  minimal: {
+    label: '极简纯白描',
+    desc: '大面积留白·过滤全部排线·仅留主轮廓大骨架',
+    config: {
+      threshold: 0.48,
+      smooth: 3,
+      lineWidth: 1.1,
+      density: 1.5,
+      hatchSuppression: 0.85,
+    },
+  },
+  refined: {
+    label: '工笔精描',
+    desc: '骨肉停匀·保留优美衣褶内线与字形细节',
+    config: {
+      threshold: 0.32,
+      smooth: 2,
+      lineWidth: 0.9,
+      density: 1.35,
+      hatchSuppression: 0.5,
+    },
+  },
+  engraving: {
+    label: '古典版画',
+    desc: '保留细腻素描排线与木刻版画质感',
+    config: {
+      threshold: 0.18,
+      smooth: 1,
+      lineWidth: 0.8,
+      density: 1.2,
+      hatchSuppression: 0.15,
+    },
+  },
+};
+
+/** 兼容类型别名 */
+export type InkWashInscription = InkWashInscriptionItem;
 
 /** 默认初始化参数 */
 export const INKWASH_DEFAULT_PARAMS: InkWashState = {
@@ -131,6 +229,7 @@ export const INKWASH_DEFAULT_PARAMS: InkWashState = {
   color: 0.5,
   bink: 0.0,
   inkColor: '#16161e',
+  traceConfig: DEFAULT_INKWASH_TRACE_CONFIG,
   paperStyle: 'raw_xuan',
   aspectRatio: '1:1',
   resolution: 1024,
@@ -139,6 +238,22 @@ export const INKWASH_DEFAULT_PARAMS: InkWashState = {
   isSaved: false,
   error: null,
   uploadedImage: null,
+  inscriptions: [
+    {
+      id: 'insc_default',
+      enabled: true,
+      text: '',
+      fontFamily: '钟齐志莽行书',
+      writingMode: 'vertical',
+      textAlign: 'center',
+      color: '#16161e',
+      fontSizeRatio: 0.038,
+      x: 82,
+      y: 28,
+      sealEnabled: true,
+      sealSrc: '/assets/receipt/yin/m_0640-1-3A-2.jpg',
+    },
+  ],
 };
 
 /** 8. 意境配方参数预设 */
@@ -207,14 +322,14 @@ export const INKWASH_PRESET_RECIPES: Record<
     paperStyle: 'sized_xuan',
   },
   image_trace: {
-    size: 0.5,
-    flow: 0.5,
-    bleed: 0.42,
-    dry: 0.55,
-    color: 0.35,
+    size: 0.28,
+    flow: 0.2,
+    bleed: 0.12,
+    dry: 0.85,
+    color: 0.2,
     bink: 0.0,
-    inkColor: '#16161e',
-    paperStyle: 'raw_xuan',
+    inkColor: '#121218',
+    paperStyle: 'sized_xuan',
   },
   splashing_waves: {
     size: 0.65,

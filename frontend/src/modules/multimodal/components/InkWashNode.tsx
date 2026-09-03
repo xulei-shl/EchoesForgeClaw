@@ -11,6 +11,7 @@ import {
   PenTool,
   Brush,
   CircleDot,
+  Type,
 } from 'lucide-react';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
@@ -27,6 +28,9 @@ import {
   type InkWashPaperStyle,
   type InkWashAspectRatio,
   type InkWashResolution,
+  type InkWashInscriptionItem,
+  type InkWashTraceConfig,
+  DEFAULT_INKWASH_TRACE_CONFIG,
   INKWASH_DEFAULT_PARAMS,
   INKWASH_PRESET_RECIPES,
   InkWashSession,
@@ -34,11 +38,15 @@ import {
   renderInkWashArt,
   InkWashStudioPanel,
   getInkWashDimensions,
+  composeInkWashArtwork,
+  extractInscriptionFromUpstream,
+  getRandomSealSrc,
+  InkWashInscriptionOverlay,
 } from '../inkwash';
 
 const PRESET_SELECT_OPTIONS: SelectOption[] = [
   { value: 'custom', label: '自由挥毫', title: '空白宣纸·尽情手绘互动' },
-  { value: 'image_trace', label: '底图拓印', title: '提取参考图边缘与明暗·宣纸水墨拓印' },
+  { value: 'image_trace', label: '底图拓印', title: '工笔白描·焦墨铁线勾勒·熟宣精细拓印' },
   { value: 'zen_splash', label: '破墨飞白', title: '《降临》外星水墨圆相·荆棘触须·垂滴飞白' },
   { value: 'mountain_mist', label: '远山烟岚', title: '层峦叠嶂·远山如黛·烟雨溟蒙' },
   { value: 'misty_rain', label: '烟雨江南', title: '柔水润墨·水汽氤氲·水墨清岚' },
@@ -74,7 +82,7 @@ export interface InkWashNodeProps {
   footer?: React.ReactNode;
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
   mismatchBadge?: string | null;
-  onUpdateState?: (id: string, patch: Partial<InkWashState>) => void;
+  onUpdateState?: (id: string, patch: Partial<InkWashState>, undoable?: boolean) => void;
   onExport?: (id: string, dataUrl: string, state: InkWashState) => Promise<void>;
 }
 
@@ -119,6 +127,7 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
   const aspectRatio: InkWashAspectRatio = data.aspectRatio ?? INKWASH_DEFAULT_PARAMS.aspectRatio;
   const resolution: InkWashResolution = data.resolution ?? INKWASH_DEFAULT_PARAMS.resolution;
   const seed = data.seed ?? INKWASH_DEFAULT_PARAMS.seed;
+  const traceConfig: InkWashTraceConfig = data.traceConfig ?? DEFAULT_INKWASH_TRACE_CONFIG;
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -134,6 +143,30 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
   useEffect(() => {
     setIsEditing(!data?.imageUrl);
   }, [data?.imageUrl]);
+
+  // 诗书画印题款与印章多文本列表
+  const inscriptions: InkWashInscriptionItem[] = useMemo(() => {
+    if (Array.isArray(data.inscriptions) && data.inscriptions.length > 0) {
+      return data.inscriptions;
+    }
+    if (data.inscription) {
+      return [{ ...data.inscription, id: data.inscription.id || 'insc_1' }];
+    }
+    if (upstreamText) {
+      return [
+        {
+          ...INKWASH_DEFAULT_PARAMS.inscriptions![0],
+          id: 'insc_upstream',
+          text: extractInscriptionFromUpstream(upstreamText),
+          enabled: true,
+        },
+      ];
+    }
+    return INKWASH_DEFAULT_PARAMS.inscriptions || [];
+  }, [data.inscriptions, data.inscription, upstreamText]);
+
+  const [selectedInscriptionId, setSelectedInscriptionId] = useState<string | null>(null);
+  const [isAddingNewInscription, setIsAddingNewInscription] = useState(false);
 
   const currentState: InkWashState = useMemo(
     () => ({
@@ -154,6 +187,9 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
       isSaved: data.isSaved,
       error: null,
       uploadedImage: data.uploadedImage || upstreamImageUrl || null,
+      inscriptions,
+      inscription: inscriptions[0],
+      traceConfig,
     }),
     [
       mode,
@@ -173,6 +209,8 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
       data.isSaved,
       data.uploadedImage,
       upstreamImageUrl,
+      inscriptions,
+      traceConfig,
     ]
   );
 
@@ -216,7 +254,13 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
 
         // 若不是自由模式且尚无图片，自动渲染所选意境配方
         if (mode !== 'custom') {
-          await applyInkWashPreset(session, mode, seed, currentState.uploadedImage);
+          await applyInkWashPreset(
+            session,
+            mode,
+            seed,
+            currentState.uploadedImage,
+            currentState.traceConfig
+          );
         }
 
         setSessionStatus('ready');
@@ -249,15 +293,38 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
     const session = sessionRef.current;
     if (!session || sessionStatus !== 'ready') return;
     if (mode === 'image_trace') {
-      applyInkWashPreset(session, 'image_trace', seed, currentState.uploadedImage);
+      applyInkWashPreset(
+        session,
+        'image_trace',
+        seed,
+        currentState.uploadedImage,
+        currentState.traceConfig
+      );
     }
-  }, [currentState.uploadedImage, mode, seed, sessionStatus]);
+  }, [currentState.uploadedImage, currentState.traceConfig, mode, seed, sessionStatus]);
 
   const patchParam = useCallback(
-    (patch: Partial<InkWashState>) => {
-      onUpdateState?.(id, patch);
+    (patch: Partial<InkWashState>, undoable?: boolean) => {
+      onUpdateState?.(id, patch, undoable);
     },
     [id, onUpdateState]
+  );
+
+  /** 重新执行底图拓印（支持使用最新的 traceConfig 即时重算） */
+  const handleRetrace = useCallback(
+    (customCfg?: InkWashTraceConfig) => {
+      const session = sessionRef.current;
+      if (!session || sessionStatus !== 'ready' || !currentState.uploadedImage) return;
+      const cfg = customCfg || currentState.traceConfig || DEFAULT_INKWASH_TRACE_CONFIG;
+      applyInkWashPreset(
+        session,
+        mode === 'image_trace' ? 'image_trace' : mode,
+        seed,
+        currentState.uploadedImage,
+        cfg
+      );
+    },
+    [currentState.uploadedImage, currentState.traceConfig, mode, seed, sessionStatus]
   );
 
   /** 切换装载意境配方 */
@@ -359,6 +426,96 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
     showToast('已澄心洗纸，宣纸已洁净', { type: 'info' });
   }, [showToast]);
 
+  /** 触发添加书画题款：弹出编辑输入框（对齐手账制作交互规范） */
+  const handleStartAddInscription = useCallback(() => {
+    setIsAddingNewInscription(true);
+  }, []);
+
+  /** 确认添加书画题款（真正加入宣纸并记入撤销历史） */
+  const handleConfirmAddInscription = useCallback(
+    (textContent: string) => {
+      const text = textContent.trim() || '松风水月';
+      const newId = 'insc_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+      const count = inscriptions.length;
+      // 依据当前已有题款数量自适应向左排布避开重叠
+      const newX = count === 0 ? 82 : Math.max(15, 82 - count * 15);
+      const newItem: InkWashInscriptionItem = {
+        id: newId,
+        enabled: true,
+        text,
+        fontFamily: '钟齐志莽行书',
+        writingMode: 'vertical',
+        textAlign: 'center',
+        color: '#16161e',
+        fontSizeRatio: 0.038,
+        x: newX,
+        y: 28,
+        sealEnabled: false,
+        sealSrc: getRandomSealSrc(),
+      };
+      const nextInscriptions = [...inscriptions, newItem];
+      patchParam({ inscriptions: nextInscriptions }, true);
+      setSelectedInscriptionId(newId);
+      setIsAddingNewInscription(false);
+      showToast('已添加书画题款', { type: 'success' });
+    },
+    [inscriptions, patchParam, showToast]
+  );
+
+  /** 取消添加书画题款 */
+  const handleCancelAddInscription = useCallback(() => {
+    setIsAddingNewInscription(false);
+  }, []);
+
+  /** 更新单个题款组件（修改文案/样式时带 undoable 记撤销历史） */
+  const handleUpdateInscriptionItem = useCallback(
+    (targetId: string, patch: Partial<InkWashInscriptionItem>, undoable = false) => {
+      const next = inscriptions.map((it) => (it.id === targetId ? { ...it, ...patch } : it));
+      patchParam({ inscriptions: next }, undoable);
+    },
+    [inscriptions, patchParam]
+  );
+
+  /** 删除单个题款组件（记入撤销历史） */
+  const handleDeleteInscriptionItem = useCallback(
+    (targetId: string) => {
+      const next = inscriptions.filter((it) => it.id !== targetId);
+      patchParam({ inscriptions: next }, true);
+      if (selectedInscriptionId === targetId) {
+        setSelectedInscriptionId(null);
+      }
+      showToast('已删除该题款', { type: 'info' });
+    },
+    [inscriptions, patchParam, selectedInscriptionId, showToast]
+  );
+
+  // 键盘快捷键监听：Delete / Backspace 快速删除选中文本，Escape 取消选中（对齐手账制作节点）
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isAddingNewInscription) return;
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tagName = target.tagName;
+        if (tagName === 'INPUT' || tagName === 'TEXTAREA' || target.isContentEditable) {
+          return;
+        }
+      }
+
+      if (selectedInscriptionId) {
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+          e.preventDefault();
+          handleDeleteInscriptionItem(selectedInscriptionId);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          setSelectedInscriptionId(null);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isAddingNewInscription, selectedInscriptionId, handleDeleteInscriptionItem]);
+
   /** 生成：执行高清物理水墨渲染导出 */
   const handleGenerate = useCallback(async () => {
     if (isGenerating) return;
@@ -381,6 +538,10 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
         dataUrl = result.dataUrl;
       }
 
+      // 诗书画印：执行高清书法题款与朱砂真迹印章离屏多图层批量合成
+      const dims = getInkWashDimensions(aspectRatio, resolution);
+      dataUrl = await composeInkWashArtwork(dataUrl, inscriptions, dims.width, dims.height);
+
       setIsEditing(false);
 
       onUpdateState?.(id, {
@@ -398,7 +559,7 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
     } finally {
       setIsGenerating(false);
     }
-  }, [isGenerating, sessionStatus, currentState, id, mode, seed, resolution, paperStyle, onUpdateState, showToast]);
+  }, [isGenerating, sessionStatus, currentState, id, mode, seed, aspectRatio, resolution, paperStyle, inscriptions, onUpdateState, showToast]);
 
   /** 独立保存到数据库 */
   const handleSaveToDatabase = useCallback(async () => {
@@ -506,8 +667,26 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
             aspectRatio={aspectRatio}
             resolution={resolution}
             upstreamText={upstreamText}
+            inscription={inscriptions[0]}
+            traceConfig={currentState.traceConfig || DEFAULT_INKWASH_TRACE_CONFIG}
             disabled={isGenerating}
-            onUpdate={patchParam}
+            onUpdate={(patch) => {
+              if (patch.inscription) {
+                const updatedFirst = patch.inscription;
+                const nextInscriptions =
+                  inscriptions.length > 0
+                    ? inscriptions.map((it, idx) => (idx === 0 ? { ...it, ...updatedFirst } : it))
+                    : [{ ...updatedFirst, id: 'insc_1' }];
+                patchParam({ ...patch, inscriptions: nextInscriptions });
+              } else if (patch.traceConfig) {
+                patchParam(patch);
+                // 调节拓印参数时实时联动重新拓印
+                handleRetrace(patch.traceConfig);
+              } else {
+                patchParam(patch);
+              }
+            }}
+            onRetrace={() => handleRetrace()}
             onClose={() => setIsDrawerOpen(false)}
             onFix={handleFix}
             onClear={handleClear}
@@ -594,6 +773,12 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
                 }
                 tooltip="生成水墨"
                 onClick={handleGenerate}
+                disabled={isGenerating}
+              />
+              <NodeActionBar.Custom
+                icon={<Type size={16} strokeWidth={1.5} />}
+                tooltip="添加书画题款文本"
+                onClick={handleStartAddInscription}
                 disabled={isGenerating}
               />
               <NodeActionBar.Custom
@@ -719,6 +904,24 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
             <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
               {/* Canvas 挂载容器 */}
               <div ref={setContainerEl} className="w-full h-full flex items-center justify-center" />
+
+              {/* 诗书画印：所见即所得多段书画题款与真迹印章浮动层 */}
+              {sessionStatus === 'ready' && !hasGenerated && (
+                <InkWashInscriptionOverlay
+                  inscriptions={inscriptions}
+                  selectedId={selectedInscriptionId}
+                  onSelectId={setSelectedInscriptionId}
+                  containerWidth={containerEl?.clientWidth || 400}
+                  containerHeight={containerEl?.clientHeight || 400}
+                  disabled={isGenerating}
+                  isAddingNew={isAddingNewInscription}
+                  onConfirmAdd={handleConfirmAddInscription}
+                  onCancelAdd={handleCancelAddInscription}
+                  onUpdateItem={handleUpdateInscriptionItem}
+                  onDeleteItem={handleDeleteInscriptionItem}
+                />
+              )}
+
 
               {/* 加载动效遮罩 */}
               {sessionStatus === 'loading' && (

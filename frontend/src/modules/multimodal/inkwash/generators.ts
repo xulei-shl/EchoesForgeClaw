@@ -3,7 +3,8 @@
  * 包含 8 款中国水墨经典意境配方算法与上游图像水墨转译拓印
  */
 
-import type { InkWashCompositionMode } from './types';
+import type { InkWashCompositionMode, InkWashTraceConfig } from './types';
+import { DEFAULT_INKWASH_TRACE_CONFIG } from './types';
 import type { InkWashSession } from './engine';
 
 /** 伪随机数生成器（根据种子确定性生成） */
@@ -593,18 +594,20 @@ function generateSplashingWaves(session: InkWashSession, rng: () => number): voi
   }
 }
 
-/** 8. 上游图像水墨拓印转译（从图像轮廓和明暗提取水墨笔触与水韵） */
+/** 8. 上游图像工笔白描水墨拓印（纯结构轮廓勾勒·高斯平滑去噪·动态阈值·计白当黑） */
 export async function traceImageToInkWash(
   session: InkWashSession,
-  imageUrl: string
+  imageUrl: string,
+  config?: InkWashTraceConfig
 ): Promise<void> {
+  const cfg = config || DEFAULT_INKWASH_TRACE_CONFIG;
   return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
       try {
         const offCanvas = document.createElement('canvas');
-        const simW = 160;
+        const simW = Math.min(512, Math.max(384, img.width));
         const simH = Math.round((simW * img.height) / img.width);
         offCanvas.width = simW;
         offCanvas.height = simH;
@@ -618,71 +621,135 @@ export async function traceImageToInkWash(
         const imgData = ctx.getImageData(0, 0, simW, simH);
         const data = imgData.data;
 
-        // 计算灰度矩阵
-        const gray = new Float32Array(simW * simH);
+        // 1. 原始灰度计算
+        let curGray = new Float32Array(simW * simH);
         for (let i = 0; i < data.length; i += 4) {
           const r = data[i];
           const g = data[i + 1];
           const b = data[i + 2];
-          gray[i / 4] = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+          curGray[i / 4] = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
         }
 
-        // 遍历提取暗部沉墨与边缘轮廓
-        for (let y = 2; y < simH - 2; y += 3) {
-          for (let x = 2; x < simW - 2; x += 3) {
-            const idx = y * simW + x;
-            const val = gray[idx];
-            // 归一化 UV 坐标 (y 轴向上翻转对齐 WebGL)
-            const uvX = x / simW;
-            const uvY = 1 - y / simH;
+        // 2. 高斯平滑滤波（根据 cfg.smooth 执行 1 ~ 4 遍平滑卷积，抚平纸纹与石料颗粒）
+        const passes = Math.max(1, Math.min(4, Math.round(cfg.smooth)));
+        for (let p = 0; p < passes; p++) {
+          const nextGray = new Float32Array(simW * simH);
+          for (let y = 1; y < simH - 1; y++) {
+            for (let x = 1; x < simW - 1; x++) {
+              const v =
+                curGray[(y - 1) * simW + (x - 1)] * 1 +
+                curGray[(y - 1) * simW + x] * 2 +
+                curGray[(y - 1) * simW + (x + 1)] * 1 +
+                curGray[y * simW + (x - 1)] * 2 +
+                curGray[y * simW + x] * 4 +
+                curGray[y * simW + (x + 1)] * 2 +
+                curGray[(y + 1) * simW + (x - 1)] * 1 +
+                curGray[(y + 1) * simW + x] * 2 +
+                curGray[(y + 1) * simW + (x + 1)] * 1;
+              nextGray[y * simW + x] = v / 16;
+            }
+          }
+          curGray = nextGray;
+        }
 
-            // 暗部重墨沉淀
-            if (val < 0.45) {
-              const darkness = (0.45 - val) / 0.45;
-              const r = 0.012 + darkness * 0.018;
-              const dens = darkness * 1.3;
-              session.splat(
-                session.ink,
-                uvX,
-                uvY,
-                r,
-                [session.inkAbs[0] * dens, session.inkAbs[1] * dens, session.inkAbs[2] * dens, 0],
-                false
-              );
-              session.splat(session.wet, uvX, uvY, r * 2.2, [0.35, 0, 0, 0], true);
+        // 3. Sobel 梯度计算
+        const gradMag = new Float32Array(simW * simH);
+        const gradDir = new Float32Array(simW * simH);
+
+        for (let y = 2; y < simH - 2; y++) {
+          for (let x = 2; x < simW - 2; x++) {
+            const idx = y * simW + x;
+            const gx =
+              -curGray[(y - 1) * simW + (x - 1)] +
+              curGray[(y - 1) * simW + (x + 1)] -
+              2 * curGray[y * simW + (x - 1)] +
+              2 * curGray[y * simW + (x + 1)] -
+              curGray[(y + 1) * simW + (x - 1)] +
+              curGray[(y + 1) * simW + (x + 1)];
+            const gy =
+              -curGray[(y - 1) * simW + (x - 1)] -
+              2 * curGray[(y - 1) * simW + x] -
+              curGray[(y - 1) * simW + (x + 1)] +
+              curGray[(y + 1) * simW + (x - 1)] +
+              2 * curGray[(y + 1) * simW + x] +
+              curGray[(y + 1) * simW + (x + 1)];
+
+            gradMag[idx] = Math.hypot(gx, gy);
+            gradDir[idx] = Math.atan2(gy, gx);
+          }
+        }
+
+        // 4. 非极大值抑制（NMS）+ 动态阈值过滤 + 阴影排线抑制
+        const nmsEdges: Array<{ x: number; y: number; mag: number }> = [];
+        const threshold = Math.max(0.08, Math.min(0.85, cfg.threshold));
+
+        const hatchSuppression = Math.max(0, Math.min(1, cfg.hatchSuppression ?? 0.5));
+        const gridCellSize = 6;
+        const gridCols = Math.ceil(simW / gridCellSize);
+        const gridRows = Math.ceil(simH / gridCellSize);
+        const cellEdgeCounts = new Uint16Array(gridCols * gridRows);
+
+        for (let y = 3; y < simH - 3; y++) {
+          for (let x = 3; x < simW - 3; x++) {
+            const idx = y * simW + x;
+            const mag = gradMag[idx];
+            if (mag < threshold) continue;
+
+            let angle = (gradDir[idx] * 180) / Math.PI;
+            if (angle < 0) angle += 180;
+
+            let m1 = 0;
+            let m2 = 0;
+
+            if ((angle >= 0 && angle < 22.5) || (angle >= 157.5 && angle <= 180)) {
+              m1 = gradMag[y * simW + (x - 1)];
+              m2 = gradMag[y * simW + (x + 1)];
+            } else if (angle >= 22.5 && angle < 67.5) {
+              m1 = gradMag[(y - 1) * simW + (x + 1)];
+              m2 = gradMag[(y + 1) * simW + (x - 1)];
+            } else if (angle >= 67.5 && angle < 112.5) {
+              m1 = gradMag[(y - 1) * simW + x];
+              m2 = gradMag[(y + 1) * simW + x];
+            } else {
+              m1 = gradMag[(y - 1) * simW + (x - 1)];
+              m2 = gradMag[(y + 1) * simW + (x + 1)];
             }
 
-            // Sobel 梯度边缘提取
-            const gx =
-              -gray[(y - 1) * simW + (x - 1)] +
-              gray[(y - 1) * simW + (x + 1)] -
-              2 * gray[y * simW + (x - 1)] +
-              2 * gray[y * simW + (x + 1)] -
-              gray[(y + 1) * simW + (x - 1)] +
-              gray[(y + 1) * simW + (x + 1)];
-            const gy =
-              -gray[(y - 1) * simW + (x - 1)] -
-              2 * gray[(y - 1) * simW + x] -
-              gray[(y - 1) * simW + (x + 1)] +
-              gray[(y + 1) * simW + (x - 1)] +
-              2 * gray[(y + 1) * simW + x] +
-              gray[(y + 1) * simW + (x + 1)];
-            const edge = Math.hypot(gx, gy);
+            if (mag >= m1 && mag >= m2) {
+              // 排线密度抑制：若局部小窗口内边缘点密集（典型的版画交叉阴影），且未达到极强主骨架标准，则按 hatchSuppression 滤除
+              const cellIdx = Math.floor(y / gridCellSize) * gridCols + Math.floor(x / gridCellSize);
+              cellEdgeCounts[cellIdx]++;
+              if (hatchSuppression > 0.1 && cellEdgeCounts[cellIdx] > 4 && mag < threshold * 1.55) {
+                continue;
+              }
 
-            if (edge > 0.35) {
-              const r = 0.006 + Math.min(edge * 0.008, 0.015);
-              session.splat(
-                session.ink,
-                uvX,
-                uvY,
-                r,
-                [session.inkAbs[0] * 1.4, session.inkAbs[1] * 1.4, session.inkAbs[2] * 1.4, 0],
-                false
-              );
-              session.splat(session.wet, uvX, uvY, r * 2.0, [0.25, 0, 0, 0], true);
+              nmsEdges.push({ x, y, mag });
             }
           }
         }
+
+        // 5. 纯线条工笔落墨（动态线宽与焦墨浓度，useMax = true 严格封顶）
+        const widthScale = Math.max(0.4, Math.min(2.5, cfg.lineWidth || 1.0));
+        const densScale = Math.max(0.4, Math.min(2.5, (cfg.density || 1.4) / 1.4));
+
+        for (const e of nmsEdges) {
+          const uvX = e.x / simW;
+          const uvY = 1 - e.y / simH;
+
+          const isHeavy = e.mag > threshold * 1.7;
+          const r = (isHeavy ? 0.0018 : 0.0014) * widthScale;
+          const inkDens = (isHeavy ? 1.55 : 1.15) * densScale;
+
+          session.splat(
+            session.ink,
+            uvX,
+            uvY,
+            r,
+            [session.inkAbs[0] * inkDens, session.inkAbs[1] * inkDens, session.inkAbs[2] * inkDens, 0],
+            true
+          );
+        }
+
         resolve();
       } catch {
         resolve();
@@ -700,7 +767,8 @@ export async function applyInkWashPreset(
   session: InkWashSession,
   mode: InkWashCompositionMode,
   seed = 2026,
-  uploadedImageUrl?: string | null
+  uploadedImageUrl?: string | null,
+  traceConfig?: InkWashTraceConfig
 ): Promise<void> {
   session.clear();
   const rng = createRng(seed);
@@ -708,7 +776,7 @@ export async function applyInkWashPreset(
   // 1. 底图拓印模式：提取参考图明暗与边缘
   if (mode === 'image_trace') {
     if (uploadedImageUrl) {
-      await traceImageToInkWash(session, uploadedImageUrl);
+      await traceImageToInkWash(session, uploadedImageUrl, traceConfig);
     }
     return;
   }
@@ -716,7 +784,7 @@ export async function applyInkWashPreset(
   // 2. 自由挥毫模式：若有参考图则铺底稿供手绘勾染，无则空白宣纸
   if (mode === 'custom') {
     if (uploadedImageUrl) {
-      await traceImageToInkWash(session, uploadedImageUrl);
+      await traceImageToInkWash(session, uploadedImageUrl, traceConfig);
     }
     return;
   }

@@ -8,6 +8,10 @@ import {
   Eraser,
   Sparkles,
   Pipette,
+  Stamp,
+  Dices,
+  ScanLine,
+  RotateCcw,
 } from 'lucide-react';
 import { NodeSideDrawer } from '../../../platform/components/node/NodeSideDrawer';
 import { NumberStepperRow } from '../../../platform/components/ui/NumberStepper';
@@ -19,8 +23,14 @@ import {
   type InkWashPaperStyle,
   type InkWashAspectRatio,
   type InkWashResolution,
+  type InkWashInscription,
+  type InkWashTraceConfig,
+  DEFAULT_INKWASH_TRACE_CONFIG,
+  INKWASH_TRACE_PRESETS,
   INKWASH_PRESET_INKS,
 } from './types';
+import { JOURNAL_FONTS } from '../journal/text/fontRegistry';
+import { extractInscriptionFromUpstream, getRandomSealSrc } from './inscription';
 
 export interface InkWashStudioPanelProps {
   isOpen: boolean;
@@ -35,14 +45,17 @@ export interface InkWashStudioPanelProps {
   aspectRatio: InkWashAspectRatio;
   resolution: InkWashResolution;
   upstreamText?: string | null;
+  inscription?: InkWashInscription;
+  traceConfig?: InkWashTraceConfig;
   disabled?: boolean;
   onUpdate: (patch: Partial<InkWashState>) => void;
   onClose: () => void;
   onFix?: () => void;
   onClear?: () => void;
+  onRetrace?: () => void;
 }
 
-type PanelTab = 'physics' | 'palette' | 'canvas';
+type PanelTab = 'physics' | 'palette' | 'trace' | 'canvas';
 
 const PAPER_STYLE_OPTIONS: SelectOption[] = [
   { value: 'raw_xuan', label: '生宣纸·墨韵洇漫', title: '吸水迅速、渗漏生动、古朴温润' },
@@ -79,11 +92,14 @@ export const InkWashStudioPanel: React.FC<InkWashStudioPanelProps> = ({
   aspectRatio,
   resolution,
   upstreamText,
+  inscription,
+  traceConfig,
   disabled = false,
   onUpdate,
   onClose,
   onFix,
   onClear,
+  onRetrace,
 }) => {
   const [activeTab, setActiveTab] = useState<PanelTab>('physics');
 
@@ -98,16 +114,37 @@ export const InkWashStudioPanel: React.FC<InkWashStudioPanelProps> = ({
   // 是否为自定义墨色（与贴纸制作节点一致，未匹配到预设墨色时为自定义模式）
   const isCustomInkColor = !activePresetInkId;
 
+  // 拓印参数快捷更新逻辑
+  const currentTraceConfig = useMemo(
+    () => traceConfig || DEFAULT_INKWASH_TRACE_CONFIG,
+    [traceConfig]
+  );
+
+  const updateTraceField = (field: keyof InkWashTraceConfig, val: number) => {
+    onUpdate({
+      traceConfig: {
+        ...currentTraceConfig,
+        [field]: val,
+      },
+    });
+  };
+
+  const handleApplyTracePreset = (cfg: InkWashTraceConfig) => {
+    onUpdate({
+      traceConfig: { ...cfg },
+    });
+  };
+
   return (
     <NodeSideDrawer
       isOpen={isOpen}
       onClose={onClose}
       title="水墨画室参数"
-      subtitle="流体物理动力学、名家墨色与宣纸质感精调"
+      subtitle="流体物理动力学、名家墨色与工笔白描拓印精调"
     >
       <div className="flex flex-col gap-4 text-xs font-sans">
-        {/* 顶部三段式 Tab 切换器 */}
-        <div className="grid grid-cols-3 p-0.5 rounded-lg bg-paper-grid/40 border border-paper-grid text-ink-light select-none">
+        {/* 顶部四段式 Tab 切换器 */}
+        <div className="grid grid-cols-4 p-0.5 rounded-lg bg-paper-grid/40 border border-paper-grid text-ink-light select-none">
           <button
             type="button"
             onClick={() => setActiveTab('physics')}
@@ -132,6 +169,19 @@ export const InkWashStudioPanel: React.FC<InkWashStudioPanelProps> = ({
           >
             <Palette size={11} className="shrink-0" />
             <span>名家墨色</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('trace')}
+            className={`flex items-center justify-center gap-1 py-1 px-1 rounded-md text-[11px] transition-[transform,background-color,color] duration-150 cursor-pointer active:scale-[0.96] focus-visible:ring-1 focus-visible:ring-accent ${
+              activeTab === 'trace'
+                ? 'bg-paper shadow-2xs text-accent font-medium'
+                : 'text-ink-light hover:text-ink'
+            }`}
+          >
+            <ScanLine size={11} className="shrink-0" />
+            <span>白描拓印</span>
           </button>
 
           <button
@@ -354,16 +404,362 @@ export const InkWashStudioPanel: React.FC<InkWashStudioPanelProps> = ({
               </span>
             </div>
 
-            {upstreamText && (
-              <div className="p-2 rounded-lg bg-accent/5 border border-accent/20 text-[11px] text-ink-light">
-                <span className="text-accent font-medium">上游题款建议：</span>
-                <span className="line-clamp-2">{upstreamText}</span>
+            {/* 诗书画印：题款与钤印控制组 */}
+            <div className="flex flex-col gap-2 pt-2 border-t border-paper-grid/60">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-medium text-ink flex items-center gap-1.5">
+                  <Stamp size={13} className="text-accent" />
+                  <span>书画题款与古印</span>
+                </label>
+                <label className="text-[11px] text-ink-light flex items-center gap-1 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(inscription?.enabled)}
+                    onChange={(e) =>
+                      onUpdate({
+                        inscription: {
+                          ...(inscription || {
+                            id: 'default',
+                            text: extractInscriptionFromUpstream(upstreamText),
+                            fontFamily: '钟齐志莽行书',
+                            writingMode: 'vertical',
+                            textAlign: 'center',
+                            color: '#16161e',
+                            fontSizeRatio: 0.038,
+                            x: 82,
+                            y: 28,
+                            sealEnabled: true,
+                            sealSrc: getRandomSealSrc(),
+                          }),
+                          enabled: e.target.checked,
+                        },
+                      })
+                    }
+                    disabled={disabled}
+                    className="rounded text-accent focus:ring-accent"
+                  />
+                  <span>开启题款</span>
+                </label>
               </div>
-            )}
+
+              {inscription?.enabled && (
+                <div className="flex flex-col gap-2 p-2 rounded-xl bg-paper/80 border border-paper-grid text-[11px]">
+                  {/* 题款文本输入与填入上游建议 */}
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between text-[10px] text-ink-faint">
+                      <span>题款文字（支持换行）</span>
+                      {upstreamText && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const extracted = extractInscriptionFromUpstream(upstreamText);
+                            onUpdate({
+                              inscription: {
+                                ...inscription,
+                                text: extracted,
+                              },
+                            });
+                          }}
+                          className="text-accent hover:underline flex items-center gap-0.5 cursor-pointer"
+                        >
+                          <Sparkles size={10} />
+                          <span>填入上游建议</span>
+                        </button>
+                      )}
+                    </div>
+                    <textarea
+                      rows={2}
+                      value={inscription.text || ''}
+                      onChange={(e) =>
+                        onUpdate({
+                          inscription: {
+                            ...inscription,
+                            text: e.target.value,
+                          },
+                        })
+                      }
+                      placeholder="题款文案（如：松风水月）"
+                      disabled={disabled}
+                      className="w-full px-2 py-1.5 rounded-lg border border-paper-grid bg-white text-ink text-xs focus:outline-none focus:border-accent resize-none leading-relaxed"
+                    />
+                  </div>
+
+                  {/* 字体选择与横竖排 */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] text-ink-faint">书法字体</span>
+                      <Select
+                        value={inscription.fontFamily || '钟齐志莽行书'}
+                        onChange={(val) =>
+                          onUpdate({
+                            inscription: {
+                              ...inscription,
+                              fontFamily: val,
+                            },
+                          })
+                        }
+                        options={JOURNAL_FONTS.filter((f) => f.category === 'chinese').map((f) => ({
+                          value: f.family,
+                          label: f.name,
+                        }))}
+                        disabled={disabled}
+                        size="sm"
+                        className="w-full"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] text-ink-faint">排版方式</span>
+                      <div className="flex items-center h-8 p-0.5 rounded-lg bg-paper-grid/40 border border-paper-grid">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onUpdate({
+                              inscription: {
+                                ...inscription,
+                                writingMode: 'vertical',
+                              },
+                            })
+                          }
+                          className={`flex-1 h-full rounded text-[11px] font-medium transition-colors ${
+                            inscription.writingMode !== 'horizontal'
+                              ? 'bg-paper text-accent shadow-2xs'
+                              : 'text-ink-light hover:text-ink'
+                          }`}
+                        >
+                          传统竖排
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onUpdate({
+                              inscription: {
+                                ...inscription,
+                                writingMode: 'horizontal',
+                              },
+                            })
+                          }
+                          className={`flex-1 h-full rounded text-[11px] font-medium transition-colors ${
+                            inscription.writingMode === 'horizontal'
+                              ? 'bg-paper text-accent shadow-2xs'
+                              : 'text-ink-light hover:text-ink'
+                          }`}
+                        >
+                          横向排版
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 印章控制与随机换印 */}
+                  <div className="flex items-center justify-between pt-1 border-t border-paper-grid/40">
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(inscription.sealEnabled)}
+                        onChange={(e) =>
+                          onUpdate({
+                            inscription: {
+                              ...inscription,
+                              sealEnabled: e.target.checked,
+                            },
+                          })
+                        }
+                        disabled={disabled}
+                        className="rounded text-accent focus:ring-accent"
+                      />
+                      <span className="text-[11px] text-ink-light">钤盖古籍朱砂印</span>
+                    </label>
+
+                    <button
+                      type="button"
+                      disabled={disabled || !inscription.sealEnabled}
+                      onClick={() =>
+                        onUpdate({
+                          inscription: {
+                            ...inscription,
+                            sealSrc: getRandomSealSrc(),
+                            sealEnabled: true,
+                          },
+                        })
+                      }
+                      className="px-2 py-1 rounded-md bg-paper border border-paper-grid text-ink-light hover:text-accent hover:border-accent flex items-center gap-1 transition-colors text-[10px] disabled:opacity-40 cursor-pointer shadow-2xs"
+                    >
+                      <Dices size={11} className="text-accent" />
+                      <span>换一枚古印</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* 上游只读弱提示 */}
+              {upstreamText && !inscription?.enabled && (
+                <div className="p-2 rounded-lg bg-accent/5 border border-accent/20 text-[11px] text-ink-light flex items-center justify-between">
+                  <div className="min-w-0 flex-1 mr-2">
+                    <span className="text-accent font-medium">上游题款建议：</span>
+                    <span className="line-clamp-1">{upstreamText}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onUpdate({
+                        inscription: {
+                          ...(inscription || {
+                            id: 'default',
+                            fontFamily: '钟齐志莽行书',
+                            writingMode: 'vertical',
+                            textAlign: 'center',
+                            color: '#16161e',
+                            fontSizeRatio: 0.038,
+                            x: 82,
+                            y: 28,
+                            sealEnabled: true,
+                            sealSrc: getRandomSealSrc(),
+                          }),
+                          text: extractInscriptionFromUpstream(upstreamText),
+                          enabled: true,
+                        },
+                      })
+                    }
+                    className="px-2 py-1 rounded bg-accent/10 hover:bg-accent/20 text-accent font-medium text-[10px] shrink-0 cursor-pointer"
+                  >
+                    采用题款
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
-        {/* Tab 3: 宣纸画幅 */}
+        {/* Tab 3: 白描拓印 */}
+        {activeTab === 'trace' && (
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between text-[11px] text-ink-light font-medium px-0.5">
+              <span>底图拓印与工笔白描调校</span>
+              <span className="text-[10px] text-accent font-normal">计白当黑·纯线勾勒</span>
+            </div>
+
+            {/* 一键风格预设 */}
+            <div className="flex flex-col gap-1.5 p-2 rounded-xl bg-paper/70 border border-paper-grid/50">
+              <span className="text-[11px] font-medium text-ink-light">一键白描风格</span>
+              <div className="grid grid-cols-3 gap-1.5">
+                {Object.entries(INKWASH_TRACE_PRESETS).map(([key, item]) => {
+                  const isSelected =
+                    Math.abs((currentTraceConfig.threshold || 0.35) - item.config.threshold) < 0.02 &&
+                    Math.abs((currentTraceConfig.hatchSuppression ?? 0.6) - item.config.hatchSuppression) < 0.02;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => handleApplyTracePreset(item.config)}
+                      disabled={disabled}
+                      className={`px-2 py-1.5 rounded-lg border text-center transition-all cursor-pointer ${
+                        isSelected
+                          ? 'border-accent bg-accent/10 text-accent font-medium shadow-2xs'
+                          : 'border-paper-grid hover:border-accent/40 bg-paper/50 text-ink-light hover:text-ink'
+                      }`}
+                    >
+                      <div className="text-[11px] font-medium">{item.label}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 核心微调滑块组 */}
+            <div className="flex flex-col gap-2 p-2 rounded-xl bg-paper/70 border border-paper-grid/50">
+              <NumberStepperRow
+                label="勾线纯净度"
+                value={Math.round((currentTraceConfig.threshold || 0.35) * 100)}
+                min={10}
+                max={85}
+                step={5}
+                unit="%"
+                disabled={disabled}
+                onChange={(val) =>
+                  updateTraceField('threshold', Number((val / 100).toFixed(2)))
+                }
+              />
+              <span className="text-[10px] text-ink-faint -mt-1 px-1">
+                数值越高越极简纯净，强力滤除版画石刻阴影与密集排线
+              </span>
+
+              <NumberStepperRow
+                label="排线抑制力"
+                value={Math.round((currentTraceConfig.hatchSuppression ?? 0.6) * 100)}
+                min={0}
+                max={100}
+                step={5}
+                unit="%"
+                disabled={disabled}
+                onChange={(val) =>
+                  updateTraceField('hatchSuppression', Number((val / 100).toFixed(2)))
+                }
+              />
+              <span className="text-[10px] text-ink-faint -mt-1 px-1">
+                智能识别并消除平行阴影排线（Hatching），凸显主骨架
+              </span>
+
+              <NumberStepperRow
+                label="去噪平滑度"
+                value={currentTraceConfig.smooth || 2}
+                min={1}
+                max={4}
+                step={1}
+                unit="级"
+                disabled={disabled}
+                onChange={(val) => updateTraceField('smooth', val)}
+              />
+              <span className="text-[10px] text-ink-faint -mt-1 px-1">
+                高斯滤波强度，彻底平息古纸纤维与石材质感杂点
+              </span>
+
+              <NumberStepperRow
+                label="铁线线宽"
+                value={Math.round((currentTraceConfig.lineWidth || 1.0) * 100)}
+                min={40}
+                max={220}
+                step={10}
+                unit="%"
+                disabled={disabled}
+                onChange={(val) =>
+                  updateTraceField('lineWidth', Number((val / 100).toFixed(2)))
+                }
+              />
+              <span className="text-[10px] text-ink-faint -mt-1 px-1">
+                控制焦墨工笔勾线笔笔骨，从游丝描到铁线描自由缩放
+              </span>
+
+              <NumberStepperRow
+                label="焦墨浓黑度"
+                value={Math.round(((currentTraceConfig.density || 1.4) / 1.4) * 100)}
+                min={50}
+                max={200}
+                step={10}
+                unit="%"
+                disabled={disabled}
+                onChange={(val) =>
+                  updateTraceField('density', Number(((val / 100) * 1.4).toFixed(2)))
+                }
+              />
+            </div>
+
+            {/* 重置为默认拓印参数按钮 */}
+            <button
+              type="button"
+              onClick={() => {
+                handleApplyTracePreset(DEFAULT_INKWASH_TRACE_CONFIG);
+                onRetrace?.();
+              }}
+              disabled={disabled}
+              className="w-full py-2 px-3 rounded-xl border border-paper-grid hover:border-accent/40 bg-paper/60 hover:bg-paper text-ink-light hover:text-ink text-xs font-medium transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs active:scale-[0.98]"
+            >
+              <RotateCcw size={12} className="text-ink-faint" />
+              <span>参数重置</span>
+            </button>
+          </div>
+        )}
+
+        {/* Tab 4: 宣纸画幅 */}
         {activeTab === 'canvas' && (
           <div className="flex flex-col gap-3">
             {/* 宣纸底色 */}
