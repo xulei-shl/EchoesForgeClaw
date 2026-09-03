@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 
 export interface NodeSideDrawerProps {
@@ -48,6 +48,23 @@ export const NodeSideDrawer: React.FC<NodeSideDrawerProps> = ({
   className = '',
 }) => {
   const drawerRef = useRef<HTMLDivElement>(null);
+  const [shouldRender, setShouldRender] = useState(isOpen);
+  const [isAnimatingOut, setIsAnimatingOut] = useState(false);
+
+  // 监听 isOpen 变化实现平滑退场过渡 (Subtle Exit Transition)
+  useEffect(() => {
+    if (isOpen) {
+      setShouldRender(true);
+      setIsAnimatingOut(false);
+    } else if (shouldRender) {
+      setIsAnimatingOut(true);
+      const timer = window.setTimeout(() => {
+        setShouldRender(false);
+        setIsAnimatingOut(false);
+      }, 150);
+      return () => window.clearTimeout(timer);
+    }
+  }, [isOpen, shouldRender]);
 
   // 监听 Escape 键快速收起抽屉
   useEffect(() => {
@@ -62,9 +79,10 @@ export const NodeSideDrawer: React.FC<NodeSideDrawerProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
+  if (!shouldRender) return null;
 
   const isRight = side === 'right';
+  const isVisible = isOpen && !isAnimatingOut;
 
   return (
     <aside
@@ -74,8 +92,12 @@ export const NodeSideDrawer: React.FC<NodeSideDrawerProps> = ({
         width: `${width}px`,
         ...(isRight ? { left: 'calc(100% + 12px)' } : { right: 'calc(100% + 12px)' }),
       }}
-      className={`absolute top-0 bottom-0 min-h-[480px] z-40 bg-paper/95 backdrop-blur-md border border-paper-grid/80 rounded-xl shadow-2xl flex flex-col overflow-hidden text-ink select-none animate-in fade-in duration-150 ${
-        isRight ? 'slide-in-from-left-2' : 'slide-in-from-right-2'
+      className={`absolute top-0 bottom-0 min-h-[480px] z-40 bg-paper/95 backdrop-blur-md border border-paper-grid/80 rounded-xl shadow-2xl flex flex-col overflow-hidden text-ink select-none transition-[transform,opacity] duration-150 ease-out motion-reduce:transition-none ${
+        isVisible
+          ? 'opacity-100 translate-x-0'
+          : isRight
+            ? 'opacity-0 -translate-x-2'
+            : 'opacity-0 translate-x-2'
       } ${className}`}
       // 事件拦截：防止点击与滑动穿透触发外层画布拖动或节点位移
       onPointerDown={(e) => e.stopPropagation()}
@@ -107,7 +129,7 @@ export const NodeSideDrawer: React.FC<NodeSideDrawerProps> = ({
             onClick={onClose}
             aria-label="关闭配置抽屉"
             title="关闭 (Esc)"
-            className="p-1 rounded text-ink-light hover:text-ink hover:bg-paper-grid/50 transition cursor-pointer"
+            className="relative p-1 rounded text-ink-light hover:text-ink hover:bg-paper-grid/50 active:scale-[0.96] transition cursor-pointer before:absolute before:-inset-2 before:content-['']"
           >
             <X size={14} />
           </button>

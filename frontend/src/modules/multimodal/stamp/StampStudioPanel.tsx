@@ -96,12 +96,12 @@ export const StampStudioPanel: React.FC<StampStudioPanelProps> = ({
       width={310}
     >
       <div className="flex flex-col gap-3">
-        {/* 顶部 Tab 分段按钮 */}
+        {/* 顶部 Tab 分段按钮（同心圆角 6px+2px=8px） */}
         <div className="grid grid-cols-5 gap-0.5 p-0.5 rounded-lg bg-paper-grid/30 border border-paper-grid/50 select-none shrink-0">
           <button
             type="button"
             onClick={() => setActiveTab('templates')}
-            className={`flex items-center justify-center gap-1 py-1 px-1 rounded text-[11px] transition whitespace-nowrap cursor-pointer ${
+            className={`flex items-center justify-center gap-1 py-1 px-1 rounded-md text-[11px] transition active:scale-[0.96] whitespace-nowrap cursor-pointer ${
               activeTab === 'templates'
                 ? 'bg-paper shadow-2xs text-accent font-medium'
                 : 'text-ink-light hover:text-ink'
@@ -115,7 +115,7 @@ export const StampStudioPanel: React.FC<StampStudioPanelProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('printing')}
-            className={`flex items-center justify-center gap-1 py-1 px-1 rounded text-[11px] transition whitespace-nowrap cursor-pointer ${
+            className={`flex items-center justify-center gap-1 py-1 px-1 rounded-md text-[11px] transition active:scale-[0.96] whitespace-nowrap cursor-pointer ${
               activeTab === 'printing'
                 ? 'bg-paper shadow-2xs text-accent font-medium'
                 : 'text-ink-light hover:text-ink'
@@ -129,7 +129,7 @@ export const StampStudioPanel: React.FC<StampStudioPanelProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('frame')}
-            className={`flex items-center justify-center gap-1 py-1 px-1 rounded text-[11px] transition whitespace-nowrap cursor-pointer ${
+            className={`flex items-center justify-center gap-1 py-1 px-1 rounded-md text-[11px] transition active:scale-[0.96] whitespace-nowrap cursor-pointer ${
               activeTab === 'frame'
                 ? 'bg-paper shadow-2xs text-accent font-medium'
                 : 'text-ink-light hover:text-ink'
@@ -143,7 +143,7 @@ export const StampStudioPanel: React.FC<StampStudioPanelProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('lettering')}
-            className={`flex items-center justify-center gap-1 py-1 px-1 rounded text-[11px] transition whitespace-nowrap cursor-pointer ${
+            className={`flex items-center justify-center gap-1 py-1 px-1 rounded-md text-[11px] transition active:scale-[0.96] whitespace-nowrap cursor-pointer ${
               activeTab === 'lettering'
                 ? 'bg-paper shadow-2xs text-accent font-medium'
                 : 'text-ink-light hover:text-ink'
@@ -157,7 +157,7 @@ export const StampStudioPanel: React.FC<StampStudioPanelProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('ground_paper')}
-            className={`flex items-center justify-center gap-1 py-1 px-1 rounded text-[11px] transition whitespace-nowrap cursor-pointer ${
+            className={`flex items-center justify-center gap-1 py-1 px-1 rounded-md text-[11px] transition active:scale-[0.96] whitespace-nowrap cursor-pointer ${
               activeTab === 'ground_paper'
                 ? 'bg-paper shadow-2xs text-accent font-medium'
                 : 'text-ink-light hover:text-ink'

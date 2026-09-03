@@ -633,7 +633,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
       onContextMenu={onContextMenu}
       resizable
       defaultSize={{ width: 440, height: 560 }}
-      className={`transition-[opacity,transform,box-shadow,border-color] duration-150 ease-out ${
+      className={`transition-[opacity,transform] duration-150 ease-out ${
         isSelected ? 'ring-2 ring-accent/70 shadow-md' : ''
       }`}
       showLeftAnchor={true}
@@ -738,7 +738,7 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
               <NodeActionBar.Custom
                 icon={
                   isExporting || isAnimatingCrop ? (
-                    <Loader2 size={16} className="animate-spin text-accent" />
+                    <Loader2 size={16} className="animate-spin motion-reduce:animate-none text-accent" />
                   ) : (
                     <Scissors size={16} strokeWidth={1.5} />
                   )

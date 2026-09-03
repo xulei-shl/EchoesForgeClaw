@@ -48,8 +48,34 @@ const PRESET_SELECT_OPTIONS: SelectOption[] = [
   { value: 'aerosol_spray', label: '气溶胶', title: '喷枪微粒、街头艺术与气溶胶晕染' },
   { value: 'mineral_rubbing', label: '拓印岩彩', title: '干画粉彩涂抹与粗粝矿物岩石' },
 ];
-
-
+export interface WatercolorBrushNodeProps {
+  id: string;
+  initialX?: number;
+  initialY?: number;
+  title?: string;
+  data?: Partial<WatercolorBrushState> & {
+    imageUrl?: string | null;
+    isSaved?: boolean;
+    error?: string | null;
+  };
+  upstreamColors?: string[] | null;
+  isFavorited?: boolean;
+  isPublic?: boolean;
+  isSelected?: boolean;
+  recordDeleted?: boolean;
+  onSelect?: (id: string) => void;
+  onRemove?: (id: string) => void;
+  onToggleFavorite?: (id: string) => Promise<boolean>;
+  onTogglePublic?: (id: string) => Promise<boolean>;
+  onPositionChange?: (id: string, x: number, y: number) => void;
+  onSizeChange?: (id: string, width: number, height: number) => void;
+  onDrag?: (id: string, x: number, y: number) => void;
+  footer?: React.ReactNode;
+  onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
+  mismatchBadge?: string | null;
+  onUpdateState?: (id: string, patch: Partial<WatercolorBrushState>) => void;
+  onExport?: (id: string, dataUrl: string, state: WatercolorBrushState) => Promise<void>;
+}
 
 const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
   id,
@@ -109,7 +135,7 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
   const [sessionStatus, setSessionStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [isEditing, setIsEditing] = useState<boolean>(!data?.imageUrl);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-
+  const [isRollingDice, setIsRollingDice] = useState(false);
 
   const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null);
   const sessionRef = useRef<WatercolorSession | null>(null);
@@ -221,7 +247,7 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEditing, aspectRatio]);
 
-  // 参数更新实时响应（防抖 200ms）
+  // 参数更新实时响应（极速防抖 60ms，兼顾帧率与物理模拟性能）
   useEffect(() => {
     const session = sessionRef.current;
     if (!session || sessionStatus !== 'ready') return;
@@ -237,7 +263,7 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
       } catch (err) {
         console.error('更新物理水彩预览失败:', err);
       }
-    }, 200);
+    }, 60);
 
     return () => {
       if (updateTimerRef.current !== null) {
@@ -271,8 +297,11 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
     [patchParam]
   );
 
-  /** 全参数灵感洗牌（全维度随机生成独特的创作组合） */
+  /** 全参数灵感洗牌（全维度随机生成独特的创作组合，附带触觉反馈与微动效） */
   const handleRandomizeAll = useCallback(() => {
+    setIsRollingDice(true);
+    window.setTimeout(() => setIsRollingDice(false), 350);
+
     const layoutModes: WatercolorLayoutMode[] = [
       'blobs',
       'strata',
@@ -442,7 +471,7 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
       onContextMenu={onContextMenu}
       resizable
       defaultSize={{ width: 450, height: 640 }}
-      className={`transition-[opacity,transform,box-shadow,border-color] duration-150 ease-out ${
+      className={`transition-[opacity,transform] duration-150 ease-out ${
         isSelected ? 'ring-2 ring-accent/70 shadow-md' : ''
       }`}
       showLeftAnchor={true}
@@ -548,7 +577,7 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
               <NodeActionBar.Custom
                 icon={
                   isGenerating ? (
-                    <Loader2 size={16} className="animate-spin text-accent" />
+                    <Loader2 size={16} className="animate-spin motion-reduce:animate-none text-accent" />
                   ) : (
                     <Palette size={16} strokeWidth={1.5} />
                   )
@@ -570,7 +599,15 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
                 className={isDrawerOpen ? 'text-accent' : ''}
               />
               <NodeActionBar.Custom
-                icon={<Dices size={16} strokeWidth={1.5} />}
+                icon={
+                  <Dices
+                    size={16}
+                    strokeWidth={1.5}
+                    className={`transition-transform duration-300 ease-out ${
+                      isRollingDice ? 'rotate-180 scale-110 text-accent' : ''
+                    }`}
+                  />
+                }
                 tooltip="全参数灵感洗牌（一键随机生成全新组合）"
                 onClick={handleRandomizeAll}
                 disabled={isGenerating}
@@ -632,7 +669,7 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
               {/* 加载动效遮罩：严格居中覆盖整个视口 */}
               {sessionStatus === 'loading' && (
                 <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2.5 bg-paper/80 backdrop-blur-[2px] text-ink-light pointer-events-none">
-                  <Loader2 size={26} className="animate-spin text-accent" />
+                  <Loader2 size={26} className="animate-spin motion-reduce:animate-none text-accent" />
                   <span className="text-xs font-sans text-ink-light font-medium">正在渲染物理水彩…</span>
                 </div>
               )}
@@ -684,7 +721,7 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
 
           {isGenerating && (
             <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-2 bg-black/35 backdrop-blur-sm text-paper">
-              <Loader2 size={28} className="animate-spin" />
+              <Loader2 size={28} className="animate-spin motion-reduce:animate-none" />
               <span className="text-xs">正在渲染物理水彩…</span>
             </div>
           )}
