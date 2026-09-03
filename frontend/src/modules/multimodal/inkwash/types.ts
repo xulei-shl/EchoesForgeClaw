@@ -12,6 +12,7 @@ export type InkWashToolMode =
 /** 2. 写意意境配方标识 */
 export type InkWashCompositionMode =
   | 'custom'          // 🎨 自由挥毫（留白生宣，供自由交互挥洒）
+  | 'image_trace'     // 🖼️ 底图拓印（根据上游图像明暗与边缘梯度，宣纸水墨拓印）
   | 'zen_splash'      // 🖌️ 破墨飞白（苍劲书法圆相、浓墨破水、飞白留韵）
   | 'mountain_mist'   // ⛰️ 远山烟岚（层峦叠嶂、远山如黛、烟雨溟蒙）
   | 'misty_rain'      // 🌧️ 烟雨江南（柔水润墨、水汽氤氲、水墨清岚）
@@ -204,6 +205,16 @@ export const INKWASH_PRESET_RECIPES: Record<
     bink: 0.0,
     inkColor: '#101016',
     paperStyle: 'sized_xuan',
+  },
+  image_trace: {
+    size: 0.5,
+    flow: 0.6,
+    bleed: 0.45,
+    dry: 0.55,
+    color: 0.35,
+    bink: 0.0,
+    inkColor: '#16161e',
+    paperStyle: 'raw_xuan',
   },
   splashing_waves: {
     size: 0.68,

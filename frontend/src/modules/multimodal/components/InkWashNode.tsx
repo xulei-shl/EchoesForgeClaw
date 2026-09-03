@@ -38,6 +38,7 @@ import {
 
 const PRESET_SELECT_OPTIONS: SelectOption[] = [
   { value: 'custom', label: '自由挥毫', title: '空白宣纸·尽情手绘互动' },
+  { value: 'image_trace', label: '底图拓印', title: '提取参考图边缘与明暗·宣纸水墨拓印' },
   { value: 'zen_splash', label: '破墨飞白', title: '苍劲圆相·浓墨破水·飞白留韵' },
   { value: 'mountain_mist', label: '远山烟岚', title: '层峦叠嶂·远山如黛·烟雨溟蒙' },
   { value: 'misty_rain', label: '烟雨江南', title: '柔水润墨·水汽氤氲·水墨清岚' },
@@ -240,6 +241,18 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
     session.updateParams(currentState);
   }, [currentState, sessionStatus]);
 
+  // 监听参考底图变动：如果处于底图拓印模式，自动刷新拓印
+  const prevUploadedImageRef = useRef<string | null>(currentState.uploadedImage);
+  useEffect(() => {
+    if (prevUploadedImageRef.current === currentState.uploadedImage) return;
+    prevUploadedImageRef.current = currentState.uploadedImage;
+    const session = sessionRef.current;
+    if (!session || sessionStatus !== 'ready') return;
+    if (mode === 'image_trace') {
+      applyInkWashPreset(session, 'image_trace', seed, currentState.uploadedImage);
+    }
+  }, [currentState.uploadedImage, mode, seed, sessionStatus]);
+
   const patchParam = useCallback(
     (patch: Partial<InkWashState>) => {
       onUpdateState?.(id, patch);
@@ -252,7 +265,11 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
     async (newMode: InkWashCompositionMode) => {
       if (newMode === 'custom') {
         patchParam({ mode: 'custom' });
+        sessionRef.current?.clear();
         return;
+      }
+      if (newMode === 'image_trace' && !currentState.uploadedImage) {
+        showToast('暂无参考图，请连线上游图片节点进行水墨拓印', { type: 'info' });
       }
       const recipe = INKWASH_PRESET_RECIPES[newMode as Exclude<InkWashCompositionMode, 'custom'>];
       const newSeed = Math.floor(Math.random() * 999999);
@@ -269,7 +286,7 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
         await applyInkWashPreset(session, newMode, newSeed, currentState.uploadedImage);
       }
     },
-    [patchParam, currentState, sessionStatus]
+    [patchParam, currentState, sessionStatus, showToast]
   );
 
   /** 全维度灵感洗牌 */

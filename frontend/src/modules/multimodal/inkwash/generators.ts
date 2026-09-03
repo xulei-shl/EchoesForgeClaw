@@ -528,12 +528,23 @@ export async function applyInkWashPreset(
   session.clear();
   const rng = createRng(seed);
 
-  // 若存在外部参考图片，优先转译底图
-  if (uploadedImageUrl) {
-    await traceImageToInkWash(session, uploadedImageUrl);
+  // 1. 底图拓印模式：提取参考图明暗与边缘
+  if (mode === 'image_trace') {
+    if (uploadedImageUrl) {
+      await traceImageToInkWash(session, uploadedImageUrl);
+    }
     return;
   }
 
+  // 2. 自由挥毫模式：若有参考图则铺底稿供手绘勾染，无则空白宣纸
+  if (mode === 'custom') {
+    if (uploadedImageUrl) {
+      await traceImageToInkWash(session, uploadedImageUrl);
+    }
+    return;
+  }
+
+  // 3. 具体意境配方：执行对应水墨写意生成算法
   switch (mode) {
     case 'zen_splash':
       generateZenSplash(session, rng);
@@ -556,9 +567,7 @@ export async function applyInkWashPreset(
     case 'splashing_waves':
       generateSplashingWaves(session, rng);
       break;
-    case 'custom':
     default:
-      // 自由创想保留空白宣纸，供直接手绘
       break;
   }
 }

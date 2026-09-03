@@ -1125,7 +1125,17 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
     case 'ink_wash': {
       const d = node.data ?? {};
       const upstreamText = firstUpstreamText(node, h.nodes, h.edges, h.portTypesOf);
-      const { upstreamImageUrl } = resolveUpstreamImage(node, h);
+      // 仅在显式连线上游图片节点（上传/生图）或图书元数据时才提取图片，未连线时不自动兜底 rootBookCover
+      const inputs = collectNodeInputs(node, h.nodes, h.edges, h.portTypesOf);
+      const nonBookImageParents = inputs.images.filter((p) => p.type !== 'book_info');
+      const directParentImage = resolveReferenceImage(nonBookImageParents) ?? null;
+      const connectedBookNode = findConnectedBookInfoUpstream(node.id, h.nodes, h.edges);
+      const connectedBookCover =
+        connectedBookNode?.data?.cover_image_local ||
+        connectedBookNode?.data?.cover_image ||
+        connectedBookNode?.data?.coverUrl ||
+        null;
+      const upstreamImageUrl = directParentImage || connectedBookCover || null;
 
       return (
         <InkWashNode
