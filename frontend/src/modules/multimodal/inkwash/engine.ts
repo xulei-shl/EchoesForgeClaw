@@ -845,8 +845,16 @@ export class InkWashSession {
         const steps = Math.min(Math.ceil(dist / spacing), 25);
         const wAmp = (options.wetness ?? 0.5) * (0.6 + 0.4 * pr);
         const bdens = (this.params.bink + 0.08) * 0.15 * pr;
-        const vx = (dx / Math.max(dist, 1e-4)) * (20 + this.params.flow * 80);
-        const vy = (dy / Math.max(dist, 1e-4)) * (20 + this.params.flow * 80);
+        // 温和自然的流场扰动，避免过高单向流速冲垮画作
+        const force = 6 + this.params.flow * 22;
+        const maxV = 28;
+        let vx = (dx / Math.max(dist, 1e-4)) * force;
+        let vy = (dy / Math.max(dist, 1e-4)) * force;
+        const vm = Math.hypot(vx, vy);
+        if (vm > maxV) {
+          vx = (vx / vm) * maxV;
+          vy = (vy / vm) * maxV;
+        }
 
         for (let s = 0; s <= steps; s++) {
           const t = steps === 0 ? 0 : s / steps;
@@ -882,7 +890,7 @@ export class InkWashSession {
     gl.uniform1f(this.progAdvVel.u.uDt, dt);
     gl.uniform1f(
       this.progAdvVel.u.uDissipation,
-      Math.exp(-dt * (3.0 - this.params.flow * 2.4)) * (fixing ? Math.exp(-dt * 7) : 1)
+      Math.exp(-dt * (4.2 - this.params.flow * 2.5)) * (fixing ? Math.exp(-dt * 8) : 1)
     );
     this.blit(this.velocity.write);
     this.velocity.swap();

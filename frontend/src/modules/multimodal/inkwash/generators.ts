@@ -35,58 +35,222 @@ function sampleBezier(
   return pts;
 }
 
-/** 1. 破墨飞白（苍劲书法圆相、浓墨破水、飞白留韵） */
+/** 1. 破墨飞白（电影《降临》七肢桶外星水墨圆环文字·Arrival Heptapod Logogram） */
 function generateZenSplash(session: InkWashSession, rng: () => number): void {
-  const cx = 0.5 + (rng() - 0.5) * 0.08;
-  const cy = 0.52 + (rng() - 0.5) * 0.08;
-  const r = 0.26 + rng() * 0.06;
+  const aspect = session.canvas.width / session.canvas.height;
+  const cx = 0.5 + (rng() - 0.5) * 0.03;
+  const cy = 0.5 + (rng() - 0.5) * 0.03;
+  const r = 0.28 + rng() * 0.025;
 
-  // 1. 先用运水毛笔在中心和边缘打湿宣纸，形成水韵底
-  session.splat(session.wet, cx, cy, r * 1.2, [0.45, 0, 0, 0], true);
-  session.splat(session.velocity, cx, cy, r * 0.9, [(rng() - 0.5) * 35, (rng() - 0.5) * 35, 0, 0], false);
+  // 1. 常态化显著留白缺口（约 85% 概率出现如《降临》特异字符的大开口，约 35°~70°）
+  const hasOpening = rng() < 0.85;
+  // 缺口方位：常在左侧、左上方或左下方
+  const gapCenterAngle = Math.PI * (0.65 + rng() * 0.5);
+  const gapWidth = hasOpening ? 0.65 + rng() * 0.55 : 0.2; // 显著留白大缺口
 
-  // 2. 苍劲书法圆相运笔
-  const circlePts: Array<{ x: number; y: number; pr: number }> = [];
-  const startAngle = rng() * Math.PI * 0.4 + Math.PI * 0.8;
-  const endAngle = startAngle + Math.PI * 1.85 + rng() * 0.2;
-  const steps = 45;
+  // 2. 确定语义浓墨触须簇的核心角度（主簇在顶部 70°~110°，次簇常在底部）
+  const numClusters = rng() < 0.65 ? 2 : 1;
+  const primaryClusterAngle = Math.PI * 0.5 + (rng() - 0.5) * 0.3; // 顶部附近
+  const secondaryClusterAngle = primaryClusterAngle + Math.PI + (rng() - 0.5) * 0.35; // 底部附近
+  const clusterAngles = numClusters === 2 ? [primaryClusterAngle, secondaryClusterAngle] : [primaryClusterAngle];
 
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    const angle = startAngle + (endAngle - startAngle) * t;
-    const rad = r * (0.92 + Math.sin(t * Math.PI * 2) * 0.12 + (rng() - 0.5) * 0.04);
-    const x = cx + Math.cos(angle) * rad;
-    const y = cy + Math.sin(angle) * rad * (session.canvas.width / session.canvas.height);
-    const pr = Math.min(1.0, Math.sin(t * Math.PI) * 1.1 + 0.35 + (rng() - 0.5) * 0.15);
-    circlePts.push({ x, y, pr });
+  // 环形最小角距辅助函数
+  const angularDist = (a1: number, a2: number) => {
+    let d = Math.abs(a1 - a2) % (Math.PI * 2);
+    if (d > Math.PI) d = Math.PI * 2 - d;
+    return d;
+  };
+
+  const steps = 80;
+  const startAngle = gapCenterAngle + gapWidth * 0.5;
+  const endAngle = gapCenterAngle + Math.PI * 2 - gapWidth * 0.5;
+
+  // 3. 多股开叉与枯笔飞白笔触（4 股并行微错位散毫，粗段汇聚、细段枯笔露白）
+  const numStrands = 4;
+  for (let s = 0; s < numStrands; s++) {
+    const strandOffset = (s - (numStrands - 1) / 2) * 0.0065;
+    const strandPts: Array<{ x: number; y: number; pr: number }> = [];
+
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const angle = startAngle + (endAngle - startAngle) * t;
+
+      // 距各语义簇的角距
+      let minClusterDist = 999;
+      for (const ca of clusterAngles) {
+        minClusterDist = Math.min(minClusterDist, angularDist(angle, ca));
+      }
+      const clusterInfluence = Math.max(0, 1 - minClusterDist / 0.58);
+
+      // 缺口两端自然提笔渐尖出锋（Tapering 甩尾）
+      const edgeFactor = Math.min(Math.pow(t * 7, 0.8), Math.pow((1 - t) * 7, 0.8), 1.0);
+
+      // 飞白断续露白（在非浓墨区，各股产生自然的断续枯墨空隙）
+      const strandNoise = Math.sin(angle * 9 + s * 2.3) * 0.5 + Math.cos(angle * 17 - s * 1.5) * 0.5;
+      const isDropout = clusterInfluence < 0.22 && strandNoise > (0.28 + s * 0.12);
+
+      const radJitter = (rng() - 0.5) * 0.003;
+      const curR = r + strandOffset * (1.2 - clusterInfluence * 0.5) + radJitter;
+
+      const x = cx + Math.cos(angle) * curR;
+      const y = cy + Math.sin(angle) * curR * aspect;
+
+      // 笔压：浓墨簇处聚集加厚（pr 0.9~1.3），散毫段纤细飞白（pr 0.08~0.25）
+      let pr = (0.16 + clusterInfluence * 0.85 + (1 - s / numStrands) * 0.16) * edgeFactor;
+      if (isDropout) pr *= 0.15; // 枯笔飞白断丝
+
+      strandPts.push({ x, y, pr: Math.max(0.02, Math.min(1.35, pr)) });
+    }
+    // 刚劲焦墨勾线，轻微水晕
+    session.drawStroke(strandPts, 'pen', 0.65 + rng() * 0.25, { wetness: 0.12, speed: 0.45 });
   }
-  session.drawStroke(circlePts, 'pen', 1.35, { wetness: 0.35, speed: 0.4 });
 
-  // 3. 毛笔破墨晕染
-  const washPts: Array<{ x: number; y: number; pr: number }> = [];
-  for (let i = 0; i < 15; i++) {
-    const t = i / 14;
-    const a = startAngle + t * Math.PI * 1.2;
-    washPts.push({
-      x: cx + Math.cos(a) * (r * 0.85),
-      y: cy + Math.sin(a) * (r * 0.85),
-      pr: 0.8,
-    });
+  // 4. 缺口两端的枯笔飞白游丝甩尾（出锋）
+  for (const endPoint of [
+    { a: startAngle - 0.03, dir: -1 },
+    { a: endAngle + 0.03, dir: 1 },
+  ]) {
+    for (let f = 0; f < 3; f++) {
+      const fa = endPoint.a + endPoint.dir * (0.02 + f * 0.025);
+      const fr = r + (rng() - 0.5) * 0.01;
+      const fx = cx + Math.cos(fa) * fr;
+      const fy = cy + Math.sin(fa) * fr * aspect;
+      session.drawStroke(
+        [[fx, fy], [fx + endPoint.dir * 0.008, fy + (rng() - 0.5) * 0.006]],
+        'pen',
+        0.3,
+        { wetness: 0.08 }
+      );
+    }
   }
-  session.drawStroke(washPts, 'brush', 1.5, { wetness: 0.7, speed: 0.2 });
 
-  // 4. 飞白落墨散点
-  const splashCount = 18 + Math.floor(rng() * 15);
-  for (let i = 0; i < splashCount; i++) {
-    const a = rng() * Math.PI * 2;
-    const dist = r * (1.05 + rng() * 0.65);
-    const sx = cx + Math.cos(a) * dist;
-    const sy = cy + Math.sin(a) * dist;
-    if (sx >= 0.05 && sx <= 0.95 && sy >= 0.05 && sy <= 0.95) {
-      const dropR = 0.003 + rng() * 0.008;
-      const dens = 0.5 + rng() * 0.8;
-      session.splat(session.ink, sx, sy, dropR, [session.inkAbs[0] * dens, session.inkAbs[1] * dens, session.inkAbs[2] * dens, 0], false);
-      session.splat(session.wet, sx, sy, dropR * 2.5, [0.3, 0, 0, 0], true);
+  // 5. 浓墨语义核心块（Heavy Ink Mass）
+  for (const cAngle of clusterAngles) {
+    const isPrimary = cAngle === primaryClusterAngle;
+    const massPtsCount = 16;
+    const massArc = isPrimary ? 0.52 : 0.35;
+    const massPts: Array<{ x: number; y: number; pr: number }> = [];
+
+    for (let m = 0; m <= massPtsCount; m++) {
+      const ma = cAngle - massArc * 0.5 + massArc * (m / massPtsCount);
+      const mr = r + (rng() - 0.5) * 0.014;
+      massPts.push({
+        x: cx + Math.cos(ma) * mr,
+        y: cy + Math.sin(ma) * mr * aspect,
+        pr: 1.25 + rng() * 0.35,
+      });
+    }
+    // 浓黑如漆的重墨骨肉
+    session.drawStroke(massPts, 'pen', isPrimary ? 1.7 : 1.35, { wetness: 0.16, speed: 0.3 });
+    // 局部极微弱运水毛笔浸润（闭水流，保持边缘微渗）
+    session.drawStroke(massPts, 'brush', isPrimary ? 1.2 : 1.0, { wetness: 0.22, speed: 0.2, stirWater: false });
+
+    // 6. 肆意伸展的荆棘长刺与分叉枝桠 (Branching Spikes & Filaments)
+    const numSpikes = isPrimary ? 18 + Math.floor(rng() * 10) : 9 + Math.floor(rng() * 6);
+    for (let s = 0; s < numSpikes; s++) {
+      const spikeAngle = cAngle + (rng() - 0.5) * (massArc * 1.18);
+      const isOuter = rng() > 0.32; // 68% 向外突刺，32% 向内伸展
+      const rootR = r + (rng() - 0.5) * 0.01;
+      const rootX = cx + Math.cos(spikeAngle) * rootR;
+      const rootY = cy + Math.sin(spikeAngle) * rootR * aspect;
+
+      // 触须长短悬殊：有短茸须，亦有突出的狂野长荆棘
+      const isLongSpike = rng() < 0.42;
+      const baseLen = isLongSpike
+        ? (0.055 + rng() * 0.065) // 显著长刺
+        : (0.018 + rng() * 0.032); // 密集短刺
+      const length = baseLen * (isPrimary ? 1.0 : 0.75);
+
+      const normalAngle = Math.atan2((rootY - cy) / aspect, rootX - cx);
+      const dir = isOuter ? 1 : -1;
+      const slantAngle = normalAngle + (rng() - 0.5) * 0.85;
+
+      const p0: [number, number] = [rootX, rootY];
+      const p1: [number, number] = [
+        rootX + Math.cos(slantAngle) * length * 0.5 * dir,
+        rootY + Math.sin(slantAngle) * length * 0.5 * dir * aspect,
+      ];
+      // 尖端折角曲度
+      const bendAngle = slantAngle + (rng() - 0.5) * 0.8;
+      const p2: [number, number] = [
+        p1[0] + Math.cos(bendAngle) * length * 0.5 * dir,
+        p1[1] + Math.sin(bendAngle) * length * 0.5 * dir * aspect,
+      ];
+
+      const spikePts = [
+        { x: p0[0], y: p0[1], pr: 0.95 + rng() * 0.3 },
+        { x: p1[0], y: p1[1], pr: 0.5 + rng() * 0.2 },
+        { x: p2[0], y: p2[1], pr: 0.12 },
+      ];
+      session.drawStroke(spikePts, 'pen', 0.5 + rng() * 0.35, { wetness: 0.1 });
+
+      // 40% 的长刺在节点处生出次生小分叉刺（Branching Thorn）
+      if (isLongSpike && rng() < 0.45) {
+        const branchAngle = bendAngle + (rng() > 0.5 ? 0.75 : -0.75);
+        const branchLen = length * 0.42;
+        const bp1: [number, number] = [
+          p1[0] + Math.cos(branchAngle) * branchLen * dir,
+          p1[1] + Math.sin(branchAngle) * branchLen * dir * aspect,
+        ];
+        session.drawStroke([p1, bp1], 'pen', 0.35, { wetness: 0.08 });
+      }
+    }
+
+    // 7. 特异修饰符：向圆心深处弯曲垂滴的墨钩（Inner Curved Drip）
+    if (isPrimary && rng() < 0.55) {
+      const dripAngle = cAngle + (rng() - 0.5) * 0.15;
+      const startX = cx + Math.cos(dripAngle) * (r - 0.015);
+      const startY = cy + Math.sin(dripAngle) * (r - 0.015) * aspect;
+      const dripLen = 0.1 + rng() * 0.07;
+      const bendDir = rng() > 0.5 ? 1 : -1;
+
+      const d0: [number, number] = [startX, startY];
+      const d1: [number, number] = [startX + bendDir * 0.018, startY - dripLen * 0.45 * aspect];
+      const d2: [number, number] = [startX + bendDir * 0.042, startY - dripLen * 0.82 * aspect];
+      const d3: [number, number] = [startX + bendDir * 0.022, startY - dripLen * 1.05 * aspect];
+
+      const dripPts = sampleBezier(d0, d1, d2, d3, 18).map((pt, idx) => ({
+        x: pt[0],
+        y: pt[1],
+        pr: idx < 4 ? 1.1 : idx > 14 ? 0.9 : 0.38, // 饱满根部、修长墨颈、末梢泪滴
+      }));
+
+      session.drawStroke(dripPts, 'pen', 0.85, { wetness: 0.15 });
+      // 末梢墨滴泪珠圆核
+      session.splat(session.ink, d3[0], d3[1], 0.007, [session.inkAbs[0] * 1.3, session.inkAbs[1] * 1.3, session.inkAbs[2] * 1.3, 0], false);
+      session.splat(session.wet, d3[0], d3[1], 0.012, [0.18, 0, 0, 0], true);
+    }
+  }
+
+  // 8. 内弧平行飞白副线（Ghost Echo Arc）
+  const ghostStartAngle = primaryClusterAngle + 0.65;
+  const ghostEndAngle = ghostStartAngle + Math.PI * 0.65;
+  const ghostPtsCount = 24;
+  const ghostPts: Array<{ x: number; y: number; pr: number }> = [];
+
+  for (let g = 0; g <= ghostPtsCount; g++) {
+    const ga = ghostStartAngle + (ghostEndAngle - ghostStartAngle) * (g / ghostPtsCount);
+    const gr = r - 0.015 + (rng() - 0.5) * 0.003;
+    const gx = cx + Math.cos(ga) * gr;
+    const gy = cy + Math.sin(ga) * gr * aspect;
+    const pr = rng() > 0.28 ? 0.2 + rng() * 0.16 : 0.03; // 细微断续
+    ghostPts.push({ x: gx, y: gy, pr });
+  }
+  session.drawStroke(ghostPts, 'pen', 0.38, { wetness: 0.08 });
+
+  // 9. 局部悬浮水墨微粒气溶胶散点（Aerosol Micro-splatters，保持宣纸清透）
+  const mistDrops = 14 + Math.floor(rng() * 10);
+  for (let d = 0; d < mistDrops; d++) {
+    const ca = clusterAngles[Math.floor(rng() * clusterAngles.length)];
+    const da = ca + (rng() - 0.5) * 0.85;
+    const dist = r * (0.9 + rng() * 0.32);
+    const mx = cx + Math.cos(da) * dist;
+    const my = cy + Math.sin(da) * dist * aspect;
+    if (mx >= 0.04 && mx <= 0.96 && my >= 0.04 && my <= 0.96) {
+      const dropR = 0.0018 + rng() * 0.0035;
+      const dens = 0.6 + rng() * 0.5;
+      session.splat(session.ink, mx, my, dropR, [session.inkAbs[0] * dens, session.inkAbs[1] * dens, session.inkAbs[2] * dens, 0], false);
+      session.splat(session.wet, mx, my, dropR * 1.5, [0.12, 0, 0, 0], true);
     }
   }
 }
@@ -111,19 +275,19 @@ function generateMountainMist(session: InkWashSession, rng: () => number): void 
       pts.push({ x, y, pr });
     }
 
-    // 远层多水少墨，近层重墨沉着
+    // 远层水润淡墨，近层重墨骨干
     if (l === 0) {
-      // 远山烟岚：水刷大面积平涂
-      session.drawStroke(pts, 'brush', 2.0, { wetness: 0.85, speed: 0.15 });
+      // 远山烟岚：平涂润纸微含淡墨，关闭横向推水，保持山影静立
+      session.drawStroke(pts, 'brush', 1.6, { wetness: 0.35, speed: 0.15, stirWater: false });
     } else if (l === 1) {
-      session.drawStroke(pts, 'brush', 1.6, { wetness: 0.65, speed: 0.25 });
-      session.drawStroke(pts, 'pen', 0.8, { wetness: 0.25, speed: 0.4 });
+      session.drawStroke(pts, 'brush', 1.2, { wetness: 0.28, speed: 0.2, stirWater: false });
+      session.drawStroke(pts, 'pen', 0.8, { wetness: 0.15, speed: 0.35 });
     } else {
-      // 近山浓墨骨干
-      session.drawStroke(pts, 'pen', 1.25, { wetness: 0.3, speed: 0.35 });
-      // 山脚云气水洗
-      const mistPts = pts.map((p) => ({ x: p.x, y: Math.max(0.02, p.y - 0.05), pr: 0.6 }));
-      session.drawStroke(mistPts, 'brush', 2.2, { wetness: 0.6, speed: 0.15, stirWater: true });
+      // 近山浓墨骨干牢固
+      session.drawStroke(pts, 'pen', 1.35, { wetness: 0.2, speed: 0.35 });
+      // 山脚云气水洗微润
+      const mistPts = pts.map((p) => ({ x: p.x, y: Math.max(0.02, p.y - 0.05), pr: 0.5 }));
+      session.drawStroke(mistPts, 'brush', 1.3, { wetness: 0.3, speed: 0.15, stirWater: false });
     }
   }
 
@@ -144,32 +308,32 @@ function generateMountainMist(session: InkWashSession, rng: () => number): void 
 
 /** 3. 烟雨江南（柔水润墨、水汽氤氲、水墨清岚） */
 function generateMistyRain(session: InkWashSession, rng: () => number): void {
-  // 1. 全局大面积横向水波润纸
-  for (let y = 0.2; y <= 0.85; y += 0.15) {
+  // 1. 全局微水湿纸（关闭横向大推水，防止雨丝与瓦檐被冲走）
+  for (let y = 0.22; y <= 0.82; y += 0.18) {
     const washPts: Array<[number, number]> = [
-      [0.05, y + (rng() - 0.5) * 0.03],
-      [0.5, y + (rng() - 0.5) * 0.04],
-      [0.95, y + (rng() - 0.5) * 0.03],
+      [0.05, y + (rng() - 0.5) * 0.02],
+      [0.5, y + (rng() - 0.5) * 0.03],
+      [0.95, y + (rng() - 0.5) * 0.02],
     ];
-    session.drawStroke(washPts, 'brush', 3.0, { wetness: 0.8, speed: 0.2 });
+    session.drawStroke(washPts, 'brush', 1.6, { wetness: 0.32, speed: 0.15, stirWater: false });
   }
 
-  // 2. 纵向细密烟雨丝缕
+  // 2. 纵向细密烟雨丝缕（焦墨微带水汽）
   const rainLines = 14 + Math.floor(rng() * 8);
   for (let r = 0; r < rainLines; r++) {
     const rx = 0.1 + rng() * 0.8;
     const ry1 = 0.45 + rng() * 0.45;
     const ry2 = ry1 - (0.15 + rng() * 0.25);
-    const slant = (rng() - 0.45) * 0.04;
+    const slant = (rng() - 0.45) * 0.03;
     session.drawStroke(
       [[rx, ry1], [rx + slant, ry2]],
       'pen',
       0.35 + rng() * 0.25,
-      { wetness: 0.5, speed: 0.8 }
+      { wetness: 0.2, speed: 0.6 }
     );
   }
 
-  // 3. 江南瓦顶屋檐简笔勾勒
+  // 3. 江南瓦顶屋檐简笔勾勒（骨法用笔定型）
   const roofY = 0.38 + (rng() - 0.5) * 0.04;
   const roofX = 0.28 + rng() * 0.2;
   const roofPts: Array<[number, number]> = [
@@ -179,14 +343,14 @@ function generateMistyRain(session: InkWashSession, rng: () => number): void {
     [roofX + 0.06, roofY + 0.002],
     [roofX + 0.11, roofY + 0.02],
   ];
-  session.drawStroke(roofPts, 'pen', 0.7, { wetness: 0.15 });
+  session.drawStroke(roofPts, 'pen', 0.85, { wetness: 0.15 });
 
-  // 屋下微水倒影
+  // 屋下微水倒影轻柔晕染
   session.drawStroke(
-    [[roofX - 0.08, roofY - 0.03], [roofX + 0.1, roofY - 0.03]],
+    [[roofX - 0.08, roofY - 0.025], [roofX + 0.1, roofY - 0.025]],
     'brush',
-    1.4,
-    { wetness: 0.6 }
+    1.1,
+    { wetness: 0.35, stirWater: false }
   );
 }
 
@@ -382,37 +546,50 @@ function generateScorchedBamboo(session: InkWashSession, rng: () => number): voi
 
 /** 7. 惊涛骇浪（激流翻卷、水汽喷涌、气势磅礴） */
 function generateSplashingWaves(session: InkWashSession, rng: () => number): void {
-  // 1. 底层大面积激流涡旋水动力注入
-  for (let i = 0; i < 6; i++) {
-    const cx = 0.25 + rng() * 0.5;
-    const cy = 0.25 + rng() * 0.4;
-    session.splat(session.wet, cx, cy, 0.35, [0.85, 0, 0, 0], true);
-    const force = 90 + rng() * 80;
-    const dir = rng() > 0.5 ? 1 : -1;
-    session.splat(session.velocity, cx, cy, 0.3, [Math.cos(rng() * Math.PI) * force, Math.sin(rng() * Math.PI) * force * dir, 0, 0], false);
+  // 1. 底层浪涌回旋水汽与局部温和微流场
+  for (let i = 0; i < 4; i++) {
+    const cx = 0.3 + rng() * 0.4;
+    const cy = 0.25 + rng() * 0.3;
+    session.splat(session.wet, cx, cy, 0.2, [0.4, 0, 0, 0], true);
+    const force = 16 + rng() * 12;
+    const angle = rng() * Math.PI * 2;
+    session.splat(session.velocity, cx, cy, 0.16, [Math.cos(angle) * force, Math.sin(angle) * force, 0, 0], false);
   }
 
-  // 2. 卷浪巨弧（葛饰北斋式浮世浪头）
-  const waveArcs = 5;
+  // 2. 卷浪巨弧（葛饰北斋式浮世浪头·骨肉相生）
+  const waveArcs = 4;
   for (let w = 0; w < waveArcs; w++) {
-    const sx = 0.05 + w * 0.18;
-    const sy = 0.15 + w * 0.08;
+    const sx = 0.12 + w * 0.2;
+    const sy = 0.16 + w * 0.07;
     const p0: [number, number] = [sx, sy];
-    const p1: [number, number] = [sx + 0.25, sy + 0.35 + (rng() - 0.5) * 0.08];
-    const p2: [number, number] = [sx + 0.15, sy + 0.52 + (rng() - 0.5) * 0.08];
-    const p3: [number, number] = [sx - 0.06, sy + 0.46];
+    const p1: [number, number] = [sx + 0.22, sy + 0.3 + (rng() - 0.5) * 0.06];
+    const p2: [number, number] = [sx + 0.12, sy + 0.46 + (rng() - 0.5) * 0.06];
+    const p3: [number, number] = [sx - 0.06, sy + 0.4];
 
     const pts = sampleBezier(p0, p1, p2, p3, 30);
-    session.drawStroke(pts, 'pen', 1.3, { wetness: 0.5, speed: 0.5 });
-    session.drawStroke(pts, 'brush', 2.2, { wetness: 0.7, speed: 0.3 });
+    // 焦墨勾勒浪脊骨干
+    session.drawStroke(pts, 'pen', 1.25, { wetness: 0.2, speed: 0.4 });
+    // 运水毛笔局部破水烘托浪身水汽
+    session.drawStroke(pts, 'brush', 1.25, { wetness: 0.35, speed: 0.25, stirWater: true });
 
-    // 浪头爪状水珠与白沫
-    for (let d = 0; d < 8; d++) {
-      const dropX = pts[pts.length - 1][0] + (rng() - 0.5) * 0.08;
-      const dropY = pts[pts.length - 1][1] + (rng() - 0.5) * 0.08;
-      session.splat(session.ink, dropX, dropY, 0.008 + rng() * 0.008, [0, 0, 0, 1.3], false);
-      session.splat(session.wet, dropX, dropY, 0.02, [0.4, 0, 0, 0], true);
+    // 浪头爪状水珠与白沫点染
+    for (let d = 0; d < 7; d++) {
+      const dropX = pts[pts.length - 1][0] + (rng() - 0.5) * 0.06;
+      const dropY = pts[pts.length - 1][1] + (rng() - 0.5) * 0.06;
+      session.splat(session.ink, dropX, dropY, 0.007 + rng() * 0.006, [0, 0, 0, 1.2], false);
+      session.splat(session.wet, dropX, dropY, 0.015, [0.25, 0, 0, 0], true);
     }
+  }
+
+  // 3. 浪底微澜水线（计白当黑）
+  for (let b = 0; b < 3; b++) {
+    const by = 0.12 + b * 0.07;
+    session.drawStroke(
+      [[0.08, by], [0.48, by + 0.015], [0.92, by]],
+      'pen',
+      0.65,
+      { wetness: 0.15 }
+    );
   }
 }
 

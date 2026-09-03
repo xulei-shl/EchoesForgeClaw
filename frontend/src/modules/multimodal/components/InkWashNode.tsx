@@ -39,7 +39,7 @@ import {
 const PRESET_SELECT_OPTIONS: SelectOption[] = [
   { value: 'custom', label: '自由挥毫', title: '空白宣纸·尽情手绘互动' },
   { value: 'image_trace', label: '底图拓印', title: '提取参考图边缘与明暗·宣纸水墨拓印' },
-  { value: 'zen_splash', label: '破墨飞白', title: '苍劲圆相·浓墨破水·飞白留韵' },
+  { value: 'zen_splash', label: '破墨飞白', title: '《降临》外星水墨圆相·荆棘触须·垂滴飞白' },
   { value: 'mountain_mist', label: '远山烟岚', title: '层峦叠嶂·远山如黛·烟雨溟蒙' },
   { value: 'misty_rain', label: '烟雨江南', title: '柔水润墨·水汽氤氲·水墨清岚' },
   { value: 'plum_branch', label: '疏影横斜', title: '劲挺寒枝·点染墨梅·虚实相生' },

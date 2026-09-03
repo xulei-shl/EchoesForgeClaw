@@ -7,10 +7,13 @@ import {
   Flame,
   Eraser,
   Sparkles,
+  Pipette,
 } from 'lucide-react';
 import { NodeSideDrawer } from '../../../platform/components/node/NodeSideDrawer';
 import { NumberStepperRow } from '../../../platform/components/ui/NumberStepper';
 import { Select, type SelectOption } from '../../../platform/components/ui/Select';
+import { ColorPickerPopover } from '../../../platform/components/ui/ColorPicker';
+import { Tooltip } from '../../../platform/components/ui/Tooltip';
 import {
   type InkWashState,
   type InkWashPaperStyle,
@@ -91,6 +94,9 @@ export const InkWashStudioPanel: React.FC<InkWashStudioPanelProps> = ({
     );
     return match?.id || null;
   }, [inkColor]);
+
+  // 是否为自定义墨色（与贴纸制作节点一致，未匹配到预设墨色时为自定义模式）
+  const isCustomInkColor = !activePresetInkId;
 
   return (
     <NodeSideDrawer
@@ -226,24 +232,31 @@ export const InkWashStudioPanel: React.FC<InkWashStudioPanelProps> = ({
               />
             </div>
 
-            {/* 快捷物理操作按钮 */}
-            <div className="pt-2 border-t border-paper-grid flex items-center gap-2">
-              <button
-                type="button"
-                onClick={onFix}
-                className="flex-1 py-1.5 px-2.5 rounded-lg border border-paper-grid bg-paper hover:bg-accent/10 hover:border-accent/40 text-ink hover:text-accent flex items-center justify-center gap-1.5 transition-colors duration-150 cursor-pointer text-xs"
-              >
-                <Flame size={12} />
-                <span>定墨烘干 (Fix)</span>
-              </button>
-              <button
-                type="button"
-                onClick={onClear}
-                className="flex-1 py-1.5 px-2.5 rounded-lg border border-paper-grid bg-paper hover:bg-rose-500/10 hover:border-rose-500/40 text-ink hover:text-rose-600 flex items-center justify-center gap-1.5 transition-colors duration-150 cursor-pointer text-xs"
-              >
-                <Eraser size={12} />
-                <span>澄心洗纸 (Clear)</span>
-              </button>
+            {/* 快捷物理操作按钮：两列等宽等高网格排版，附带详细功能 Tooltip 说明 */}
+            <div className="pt-2 border-t border-paper-grid grid grid-cols-2 gap-2">
+              <Tooltip content="立即烘干并固化当前画布上的流动水墨，锁定墨韵停止扩散，便于多层积墨与罩染 (Fix)">
+                <button
+                  type="button"
+                  onClick={onFix}
+                  disabled={disabled}
+                  className="w-full h-8 px-2 rounded-lg border border-paper-grid bg-paper hover:bg-accent/10 hover:border-accent/40 text-ink hover:text-accent flex items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer text-xs whitespace-nowrap active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed shadow-2xs"
+                >
+                  <Flame size={13} className="shrink-0 text-amber-600" />
+                  <span className="font-medium">定墨烘干</span>
+                </button>
+              </Tooltip>
+
+              <Tooltip content="清空宣纸上的所有墨痕与水流，洗去铅华恢复洁净宣纸重新挥毫 (Clear)">
+                <button
+                  type="button"
+                  onClick={onClear}
+                  disabled={disabled}
+                  className="w-full h-8 px-2 rounded-lg border border-paper-grid bg-paper hover:bg-rose-500/10 hover:border-rose-500/40 text-ink hover:text-rose-600 flex items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer text-xs whitespace-nowrap active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed shadow-2xs"
+                >
+                  <Eraser size={13} className="shrink-0 text-rose-500" />
+                  <span className="font-medium">澄心洗纸</span>
+                </button>
+              </Tooltip>
             </div>
           </div>
         )}
@@ -260,46 +273,80 @@ export const InkWashStudioPanel: React.FC<InkWashStudioPanelProps> = ({
                 {INKWASH_PRESET_INKS.map((ink) => {
                   const isSelected = activePresetInkId === ink.id;
                   return (
-                    <button
-                      key={ink.id}
-                      type="button"
-                      onClick={() => onUpdate({ inkColor: ink.hex })}
-                      className={`flex items-center gap-2 p-2 rounded-lg border text-left transition-all duration-150 cursor-pointer active:scale-[0.98] ${
-                        isSelected
-                          ? 'border-accent bg-accent/10 ring-1 ring-accent text-accent font-medium shadow-2xs'
-                          : 'border-paper-grid bg-paper/60 hover:bg-paper hover:border-paper-grid/80 text-ink'
-                      }`}
-                    >
-                      <span
-                        className="w-4 h-4 rounded-full border border-paper-grid shrink-0 shadow-2xs"
-                        style={{ backgroundColor: ink.hex }}
-                      />
-                      <span className="text-xs flex-1 truncate">{ink.name}</span>
-                      {isSelected && <Check size={12} className="text-accent shrink-0" />}
-                    </button>
+                    <Tooltip key={ink.id} content={`${ink.name} (${ink.hex})`}>
+                      <button
+                        type="button"
+                        onClick={() => onUpdate({ inkColor: ink.hex })}
+                        disabled={disabled}
+                        className={`flex items-center gap-2 p-2 rounded-lg border text-left transition-all duration-150 cursor-pointer active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed ${
+                          isSelected
+                            ? 'border-accent bg-accent/10 ring-1 ring-accent text-accent font-medium shadow-2xs'
+                            : 'border-paper-grid bg-paper/60 hover:bg-paper hover:border-paper-grid/80 text-ink'
+                        }`}
+                      >
+                        <span
+                          className="w-4 h-4 rounded-full border border-paper-grid shrink-0 shadow-2xs"
+                          style={{ backgroundColor: ink.hex }}
+                        />
+                        <span className="text-xs flex-1 truncate">{ink.name}</span>
+                        {isSelected && <Check size={12} className="text-accent shrink-0" />}
+                      </button>
+                    </Tooltip>
                   );
                 })}
               </div>
             </div>
 
-            {/* 自定义十六进制取色 */}
+            {/* 自定义墨色色调：复用贴纸制作节点自定义颜色样式 */}
             <div className="flex flex-col gap-1.5 pt-2 border-t border-paper-grid">
-              <label className="text-xs font-medium text-ink-light">自定义墨色色调</label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-medium text-ink-light">自定义墨色色调</label>
+                <span className="text-[10px] text-ink-faint font-mono uppercase">
+                  {inkColor || '#16161e'}
+                </span>
+              </div>
               <div className="flex items-center gap-2">
-                <input
-                  type="color"
+                {/* 贴纸制作节点同款 ColorPickerPopover 自定义色盘与取色器 */}
+                <ColorPickerPopover
                   value={inkColor || '#16161e'}
-                  onChange={(e) => onUpdate({ inkColor: e.target.value })}
+                  onChange={(hex) => onUpdate({ inkColor: hex })}
                   disabled={disabled}
-                  className="w-8 h-8 rounded-lg border border-paper-grid cursor-pointer p-0.5 bg-paper"
-                />
+                  align="left"
+                >
+                  <Tooltip
+                    content={
+                      isCustomInkColor
+                        ? `自定义墨色（当前: ${inkColor || '#16161e'}）`
+                        : '自定义颜色 / 吸管取色'
+                    }
+                  >
+                    <button
+                      type="button"
+                      disabled={disabled}
+                      style={{ backgroundColor: isCustomInkColor ? inkColor : undefined }}
+                      className={`w-8 h-8 rounded-lg border flex items-center justify-center transition cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+                        isCustomInkColor
+                          ? 'border-accent ring-2 ring-accent/40 shadow-2xs'
+                          : 'border-paper-grid/80 hover:border-accent hover:scale-105 bg-paper/80 text-ink-light hover:text-accent'
+                      }`}
+                    >
+                      {!isCustomInkColor ? (
+                        <Pipette size={13} strokeWidth={2} />
+                      ) : (
+                        <Pipette size={12} strokeWidth={2} className="text-white drop-shadow-xs" />
+                      )}
+                    </button>
+                  </Tooltip>
+                </ColorPickerPopover>
+
                 <input
                   type="text"
                   value={inkColor || '#16161e'}
                   onChange={(e) => onUpdate({ inkColor: e.target.value })}
                   disabled={disabled}
                   placeholder="#16161e"
-                  className="flex-1 px-2.5 py-1.5 rounded-lg border border-paper-grid bg-paper text-xs font-mono text-ink uppercase"
+                  maxLength={7}
+                  className="flex-1 px-2.5 py-1.5 rounded-lg border border-paper-grid bg-paper text-xs font-mono text-ink uppercase focus:outline-none focus:border-accent disabled:opacity-50"
                 />
               </div>
               <span className="text-[10px] text-ink-faint">

@@ -106,7 +106,7 @@ function applyField(fieldMode?: WatercolorFieldMode) {
 }
 
 /** 将封闭路径安全转为 p5.brush Polygon 几何对象 */
-function toPolygon(shape: { points: [number, number][]; curvature?: number }) {
+export function toPolygon(shape: { points: [number, number][]; curvature?: number }) {
   brush.noStroke();
   brush.noFill();
   brush.noHatch();
