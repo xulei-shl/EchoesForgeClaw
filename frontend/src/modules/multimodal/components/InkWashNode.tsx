@@ -336,7 +336,7 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
         return;
       }
       if (newMode === 'image_trace' && !currentState.uploadedImage) {
-        showToast('暂无参考图，请连线上游图片节点进行水墨拓印', { type: 'info' });
+        showToast('暂无参考底图（可连线图片/图书节点，或在画布添加图书元数据）', { type: 'info' });
       }
       const recipe = INKWASH_PRESET_RECIPES[newMode as Exclude<InkWashCompositionMode, 'custom'>];
       const newSeed = Math.floor(Math.random() * 999999);
@@ -350,7 +350,13 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
       const session = sessionRef.current;
       if (session && sessionStatus === 'ready') {
         session.updateParams({ ...currentState, ...patch });
-        await applyInkWashPreset(session, newMode, newSeed, currentState.uploadedImage);
+        await applyInkWashPreset(
+          session,
+          newMode,
+          newSeed,
+          currentState.uploadedImage,
+          currentState.traceConfig
+        );
       }
     },
     [patchParam, currentState, sessionStatus, showToast]
@@ -532,7 +538,13 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
       } else {
         const result = await renderInkWashArt(currentState, async (s) => {
           if (mode !== 'custom') {
-            await applyInkWashPreset(s, mode, seed, currentState.uploadedImage);
+            await applyInkWashPreset(
+              s,
+              mode,
+              seed,
+              currentState.uploadedImage,
+              currentState.traceConfig
+            );
           }
         });
         dataUrl = result.dataUrl;
