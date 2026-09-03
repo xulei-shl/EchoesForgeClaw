@@ -10,7 +10,6 @@ import {
   Loader2,
   Check,
   SlidersHorizontal,
-  Boxes,
 } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
@@ -228,7 +227,31 @@ const GlassRefractNodeInner: React.FC<GlassRefractNodeProps> = ({
     };
   }, [activeImageSrc]);
 
-  // requestAnimationFrame 驱动的 GPU 重绘
+  // 稳定参数引用，避免高频拖拽滑块时反复重建 requestRedraw 闭包
+  const latestParamsRef = useRef<GlassRefractParams>({
+    pattern,
+    scale,
+    relief,
+    thickness,
+    angle,
+    dispersion,
+    specular,
+    gap,
+    seed,
+  });
+  latestParamsRef.current = {
+    pattern,
+    scale,
+    relief,
+    thickness,
+    angle,
+    dispersion,
+    specular,
+    gap,
+    seed,
+  };
+
+  // requestAnimationFrame 驱动的 GPU 重绘（单例稳定引用，降低 React 重复调度开销）
   const renderQueuedRef = useRef(false);
   const requestRedraw = useCallback(() => {
     if (renderQueuedRef.current || !containerRef.current) {
@@ -275,31 +298,32 @@ const GlassRefractNodeInner: React.FC<GlassRefractNodeProps> = ({
       const pixelW = Math.round(drawW * dpr);
       const pixelH = Math.round(drawH * dpr);
 
-      const params: GlassRefractParams = {
-        pattern,
-        scale,
-        relief,
-        thickness,
-        angle,
-        dispersion,
-        specular,
-        gap,
-        seed,
-      };
-
-      renderer.draw(pixelW, pixelH, params);
+      renderer.draw(pixelW, pixelH, latestParamsRef.current);
 
       canvas.style.width = `${Math.floor(drawW)}px`;
       canvas.style.height = `${Math.floor(drawH)}px`;
     });
-  }, [pattern, scale, relief, thickness, angle, dispersion, specular, gap, seed]);
+  }, []);
 
-  // 当参数或尺寸变更时实时触发 WebGL 绘制
+  // 当参数或底图变更时实时触发 WebGL 绘制
   useEffect(() => {
     if (isEditing && activeImageSrc) {
       requestRedraw();
     }
-  }, [isEditing, activeImageSrc, requestRedraw]);
+  }, [
+    isEditing,
+    activeImageSrc,
+    pattern,
+    scale,
+    relief,
+    thickness,
+    angle,
+    dispersion,
+    specular,
+    gap,
+    seed,
+    requestRedraw,
+  ]);
 
   // 监听容器尺寸变化（包括节点缩放、面板展开/收起）自动触发 WebGL 重绘自适应
   useEffect(() => {
@@ -502,7 +526,7 @@ const GlassRefractNodeInner: React.FC<GlassRefractNodeProps> = ({
       onContextMenu={onContextMenu}
       resizable
       defaultSize={{ width: 440, height: 620 }}
-      className={`transition-[opacity,transform,box-shadow,border-color] duration-150 ease-out ${
+      className={`transition-[box-shadow,ring-color] duration-150 ease-out motion-reduce:transition-none ${
         isSelected ? 'ring-2 ring-accent/70 shadow-md' : ''
       }`}
       showLeftAnchor={true}
@@ -511,24 +535,22 @@ const GlassRefractNodeInner: React.FC<GlassRefractNodeProps> = ({
       footer={footer}
       mismatchBadge={mismatchBadge}
       sideDrawer={
-        isEditing ? (
-          <GlassRefractStudioPanel
-            isOpen={isDrawerOpen}
-            pattern={pattern}
-            scale={scale}
-            relief={relief}
-            thickness={thickness}
-            angle={angle}
-            dispersion={dispersion}
-            specular={specular}
-            gap={gap}
-            seed={seed}
-            disabled={isGenerating}
-            onUpdate={patchState}
-            onRandomizeRain={handleRandomizeRain}
-            onClose={() => setIsDrawerOpen(false)}
-          />
-        ) : undefined
+        <GlassRefractStudioPanel
+          isOpen={Boolean(isEditing && isDrawerOpen)}
+          pattern={pattern}
+          scale={scale}
+          relief={relief}
+          thickness={thickness}
+          angle={angle}
+          dispersion={dispersion}
+          specular={specular}
+          gap={gap}
+          seed={seed}
+          disabled={isGenerating}
+          onUpdate={patchState}
+          onRandomizeRain={handleRandomizeRain}
+          onClose={() => setIsDrawerOpen(false)}
+        />
       }
       actionBar={
         <NodeActionBar>
@@ -678,45 +700,51 @@ const GlassRefractNodeInner: React.FC<GlassRefractNodeProps> = ({
         {/* 控制工具栏（编辑态展示：9 风格图标切分栏横版排列 + 右侧侧边吸附抽屉展开按钮） */}
         {!hasGenerated && (
           <div className="relative z-20 flex items-center gap-1.5 p-1.5 rounded-xl bg-paper/95 border border-paper-grid/80 text-xs font-sans text-ink-light select-none shadow-2xs shrink-0">
-            {/* 9 种玻璃图案横向等宽 Segmented 选择栏 */}
-            <div className="grid grid-cols-9 flex-1 p-0.5 rounded-lg bg-paper-grid/40 border border-paper-grid/60 gap-0.5 shadow-2xs min-w-0">
+            {/* 9 种玻璃图案横向等宽 Segmented 选择栏（符合单选组无障碍标准） */}
+            <div
+              role="radiogroup"
+              aria-label="玻璃图案风格"
+              className="grid grid-cols-9 flex-1 p-0.5 rounded-lg bg-paper-grid/40 border border-paper-grid/60 gap-0.5 shadow-2xs min-w-0"
+            >
               {PATTERN_OPTIONS.map((opt) => {
                 const isChecked = pattern === opt.value;
                 const IconComponent = opt.icon;
                 return (
-                  <Tooltip key={opt.value} content={`${opt.label} (${opt.value})`}>
-                    <button
-                      type="button"
-                      onClick={() => handlePatternChange(opt.value)}
-                      disabled={isGenerating}
-                      className={`flex flex-col items-center justify-center py-1 px-0.5 rounded text-[10px] font-medium leading-tight transition duration-150 cursor-pointer active:scale-[0.94] ${
-                        isChecked
-                          ? 'bg-paper text-accent font-semibold shadow-2xs border border-paper-grid/40'
-                          : 'text-ink-light hover:text-ink hover:bg-paper-grid/30'
-                      } disabled:cursor-not-allowed disabled:opacity-50`}
-                    >
-                      <IconComponent size={13} className="shrink-0 mb-0.5" />
-                      <span className="truncate scale-90">{opt.label}</span>
-                    </button>
-                  </Tooltip>
+                  <button
+                    key={opt.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={isChecked}
+                    aria-label={`${opt.label}风格`}
+                    onClick={() => handlePatternChange(opt.value)}
+                    disabled={isGenerating}
+                    className={`flex flex-col items-center justify-center py-1 px-0.5 rounded-md text-[10px] font-medium leading-tight transition-[background-color,color,border-color,box-shadow,transform] duration-150 ease-out cursor-pointer active:scale-[0.96] motion-reduce:transform-none focus-visible:outline-none focus-visible:ring-1.5 focus-visible:ring-accent ${
+                      isChecked
+                        ? 'bg-paper text-accent font-semibold shadow-2xs border border-paper-grid/40'
+                        : 'text-ink-light hover:text-ink hover:bg-paper-grid/30 border border-transparent'
+                    } disabled:cursor-not-allowed disabled:opacity-50`}
+                  >
+                    <IconComponent size={13} strokeWidth={1.5} className="shrink-0 mb-0.5" aria-hidden="true" />
+                    <span className="truncate text-[10px] leading-none tracking-tight">{opt.label}</span>
+                  </button>
                 );
               })}
             </div>
 
-            {/* 右侧吸附抽屉展开/收起按钮 */}
+            {/* 右侧吸附抽屉展开/收起按钮（带 34px 扩展热区与焦点环） */}
             <Tooltip content={isDrawerOpen ? '收起参数配置抽屉' : '展开侧边参数配置抽屉'}>
               <button
                 type="button"
                 onClick={() => setIsDrawerOpen((prev) => !prev)}
                 disabled={isGenerating}
-                className={`p-1.5 rounded-lg border transition-[color,border-color,background-color,transform] active:scale-[0.94] shrink-0 cursor-pointer ${
+                className={`relative p-1.5 rounded-md border transition-[color,border-color,background-color,transform] duration-150 ease-out active:scale-[0.96] motion-reduce:transform-none shrink-0 cursor-pointer before:absolute before:-inset-1 before:content-[''] focus-visible:outline-none focus-visible:ring-1.5 focus-visible:ring-accent ${
                   isDrawerOpen
                     ? 'bg-accent/15 border-accent/40 text-accent font-medium shadow-2xs'
                     : 'border-paper-grid/70 text-ink-faint hover:text-accent hover:border-accent/60 bg-paper/60'
                 }`}
                 aria-label={isDrawerOpen ? '收起配置抽屉' : '展开配置抽屉'}
               >
-                <SlidersHorizontal size={13} />
+                <SlidersHorizontal size={13} strokeWidth={1.5} />
               </button>
             </Tooltip>
           </div>
@@ -727,24 +755,31 @@ const GlassRefractNodeInner: React.FC<GlassRefractNodeProps> = ({
           ref={containerRef}
           className="relative flex-1 min-h-0 w-full overflow-hidden rounded-xl bg-paper-grid/15 border border-paper-grid/50 flex items-center justify-center select-none"
         >
-          {/* 1. 结果展示模式（支持点击放大查看） */}
+          {/* 1. 结果展示模式（支持点击放大查看，带 Image Outline 保持深浅色模式边缘清晰度） */}
           {hasGenerated && data.imageUrl && (
             <PhotoProvider>
-              <div className="relative w-full h-full flex items-center justify-center p-2">
+              <div className="relative w-full h-full flex items-center justify-center p-2 transition-opacity duration-150 ease-out">
                 <PhotoView src={data.imageUrl}>
                   <img
                     src={data.imageUrl}
-                    alt="Glass Refraction Output"
-                    className="max-w-full max-h-full object-contain rounded shadow-sm cursor-zoom-in transition-transform duration-200 hover:scale-[1.01]"
+                    alt={title ? `${title}玻璃折射成品` : '玻璃折射效果预览'}
+                    className="max-w-full max-h-full object-contain rounded shadow-sm cursor-zoom-in outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
                   />
                 </PhotoView>
+
+                {/* 风格与尺寸参数微标 */}
+                <div className="absolute bottom-2.5 left-2.5 z-20 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-paper/85 backdrop-blur-xs border border-paper-grid/70 text-[10px] text-ink-light font-sans shadow-2xs select-none pointer-events-none">
+                  <span>{getGlassPresetByPattern(pattern)?.name || pattern}</span>
+                  <span className="text-ink-faint">·</span>
+                  <span className="tabular-nums">周期 {scale}px</span>
+                </div>
               </div>
             </PhotoProvider>
           )}
 
           {/* 2. 实时 WebGL 渲染模式（常驻 DOM 保证 WebGL 上下文不丢失） */}
           <div
-            className={`relative w-full h-full flex items-center justify-center p-2 ${
+            className={`relative w-full h-full flex items-center justify-center p-2 transition-opacity duration-150 ease-out ${
               !hasGenerated && activeImageSrc ? 'block' : 'hidden'
             }`}
           >
@@ -754,11 +789,33 @@ const GlassRefractNodeInner: React.FC<GlassRefractNodeProps> = ({
             />
           </div>
 
-          {/* 3. 空状态提示 */}
+          {/* 3. 空状态提示（可直接点击唤起本地文件选择） */}
           {!hasGenerated && !activeImageSrc && (
-            <div className="flex flex-col items-center justify-center gap-2 p-4 text-center text-ink-faint text-xs">
-              <Boxes size={28} strokeWidth={1.2} className="text-ink-faint/60" />
-              <span>请连接上游图片节点（如图像生成、图片检索、封面图）或点击上方上传图片</span>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="group/empty flex flex-col items-center justify-center gap-2 p-6 text-center rounded-xl border border-dashed border-paper-grid/80 hover:border-accent/60 hover:bg-paper/60 transition-[background-color,border-color] duration-150 ease-out cursor-pointer active:scale-[0.98] motion-reduce:transform-none focus-visible:outline-none focus-visible:ring-1.5 focus-visible:ring-accent"
+              aria-label="点击上传玻璃折射底图"
+            >
+              <div className="p-2.5 rounded-full bg-paper-grid/40 text-ink-faint group-hover/empty:bg-accent/15 group-hover/empty:text-accent transition-colors duration-150">
+                <Upload size={20} strokeWidth={1.5} />
+              </div>
+              <div className="flex flex-col gap-0.5 text-xs">
+                <span className="font-medium text-ink-light group-hover/empty:text-accent transition-colors duration-150">
+                  点击上传图片 或 连接上游节点
+                </span>
+                <span className="text-[11px] text-ink-faint">
+                  支持 JPG、PNG、WebP 等格式作为玻璃底图
+                </span>
+              </div>
+            </button>
+          )}
+
+          {/* 4. 高保真烘焙中视口加载遮罩反馈 */}
+          {isGenerating && (
+            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-2 bg-paper/65 backdrop-blur-xs transition-opacity duration-150 ease-out text-ink">
+              <Loader2 size={24} className="animate-spin text-accent" />
+              <span className="text-xs font-serif font-medium text-ink-light">正在烘焙高清玻璃折射...</span>
             </div>
           )}
 

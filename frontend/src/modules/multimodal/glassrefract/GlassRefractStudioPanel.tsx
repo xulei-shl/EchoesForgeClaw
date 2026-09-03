@@ -55,7 +55,7 @@ export interface GlassRefractStudioPanelProps {
 export const PATTERN_OPTIONS: {
   label: string;
   value: GlassPattern;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
+  icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string; 'aria-hidden'?: boolean | 'true' | 'false' }>;
 }[] = [
   { label: '长虹', value: 'fluted', icon: Columns3 },
   { label: '十字', value: 'cross', icon: Grid },
