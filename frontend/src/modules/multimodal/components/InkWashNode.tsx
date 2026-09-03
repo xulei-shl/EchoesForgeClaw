@@ -11,9 +11,6 @@ import {
   PenTool,
   Brush,
   CircleDot,
-  Flame,
-  Eraser,
-  Download,
 } from 'lucide-react';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
@@ -257,7 +254,7 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
         patchParam({ mode: 'custom' });
         return;
       }
-      const recipe = INKWASH_PRESET_RECIPES[newMode];
+      const recipe = INKWASH_PRESET_RECIPES[newMode as Exclude<InkWashCompositionMode, 'custom'>];
       const newSeed = Math.floor(Math.random() * 999999);
       const patch = {
         mode: newMode,
@@ -280,7 +277,7 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
     setIsRollingDice(true);
     window.setTimeout(() => setIsRollingDice(false), 350);
 
-    const modes: InkWashCompositionMode[] = [
+    const modes: Array<Exclude<InkWashCompositionMode, 'custom'>> = [
       'zen_splash',
       'mountain_mist',
       'misty_rain',

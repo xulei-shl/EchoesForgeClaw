@@ -297,6 +297,7 @@ export interface ImageOutputHandlers {
   handleExportGlassRefractFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportEditorialFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportWatercolorBrushFor: (id: string, dataUrl: string, state: any) => Promise<void>;
+  handleExportInkWashFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportMapPosterFor: (id: string, imageUrl: string) => Promise<void>;
   handleExportMapArtFor: (id: string, imageUrl: string) => Promise<void>;
 }
@@ -473,6 +474,18 @@ export function useImageOutputHandlers(ctx: ImageOutputCtx): ImageOutputHandlers
     historyWarn: '记录物理水彩到历史数据库失败(不阻断导出):',
   });
 
+  // 水墨写意：WebGL2 流体水墨渲染 → /save-image 落盘 → generations 记录
+  const handleExportInkWashFor = useImageExportHandler(ctx, {
+    nodeType: 'ink_wash',
+    historyNodeType: 'ink_wash',
+    promptOf: (state) => `水墨写意 · ${state?.mode || '写意'}`,
+    okExtras: () => ({}),
+    onHistorySaved: () => {},
+    emptyError: '保存水墨画作失败',
+    errLabel: '水墨写意保存',
+    historyWarn: '记录水墨写意到历史数据库失败(不阻断导出):',
+  });
+
   const handleExportMapPosterFor = useSimpleImageExportHandler(ctx, 'map_poster');
   const handleExportMapArtFor = useSimpleImageExportHandler(ctx, 'map_art');
 
@@ -493,6 +506,7 @@ export function useImageOutputHandlers(ctx: ImageOutputCtx): ImageOutputHandlers
     handleExportGlassRefractFor,
     handleExportEditorialFor,
     handleExportWatercolorBrushFor,
+    handleExportInkWashFor,
     handleExportMapPosterFor,
     handleExportMapArtFor,
   };

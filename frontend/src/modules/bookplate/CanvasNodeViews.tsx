@@ -32,6 +32,7 @@ import { EmbossFoilNode } from '../../modules/multimodal/components/EmbossFoilNo
 import { GlassRefractNode } from '../../modules/multimodal/components/GlassRefractNode';
 import { EditorialLayoutNode } from '../../modules/multimodal/components/EditorialLayoutNode';
 import { WatercolorBrushNode } from '../../modules/multimodal/components/WatercolorBrushNode';
+import { InkWashNode } from '../../modules/multimodal/components/InkWashNode';
 import { MapArtNode } from '../../modules/multimodal/components/MapArtNode';
 import { PatternSearchNode, type PatternItem } from '../../modules/multimodal/components/PatternSearchNode';
 import { ColorSearchNode, type ColorItem } from '../../modules/multimodal/components/ColorSearchNode';
@@ -216,6 +217,10 @@ export interface NodeViewHelpers {
   handleExportWatercolorBrushFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   /** 物理水彩手绘节点：状态更新写入 node.data（持久化） */
   handleUpdateWatercolorBrushStateFor: (id: string, patch: Record<string, any>) => void;
+  /** 水墨写意节点：导出 PNG data URL 落盘（保存到后端 + 记录数据库历史 + 写回 node.data） */
+  handleExportInkWashFor: (id: string, dataUrl: string, state: any) => Promise<void>;
+  /** 水墨写意节点：状态更新写入 node.data（持久化） */
+  handleUpdateInkWashStateFor: (id: string, patch: Record<string, any>) => void;
   /** 文本聚合节点：保存占位符模板 */
   handleUpdateAggregateTemplateFor: (id: string, template: string) => void;
   /** 文本聚合节点：重命名某上级节点的占位符别名 */
@@ -1113,6 +1118,32 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           mismatchBadge={mismatchBadge}
           onUpdateState={h.handleUpdateWatercolorBrushStateFor}
           onExport={h.handleExportWatercolorBrushFor}
+        />
+      );
+    }
+
+    case 'ink_wash': {
+      const d = node.data ?? {};
+      const upstreamText = firstUpstreamText(node, h.nodes, h.edges, h.portTypesOf);
+      const { upstreamImageUrl } = resolveUpstreamImage(node, h);
+
+      return (
+        <InkWashNode
+          key={node.id}
+          {...common}
+          data={d}
+          upstreamText={upstreamText}
+          upstreamImageUrl={upstreamImageUrl}
+          isFavorited={!!h.favoritedState[node.id]}
+          isPublic={!!h.publishedState[node.id]}
+          isSelected={node.id === h.activeImage?.id}
+          recordDeleted={h.staleRecordIds.has(node.id)}
+          onSelect={h.handleSelectImage}
+          onToggleFavorite={h.handleToggleFavoriteFor}
+          onTogglePublic={h.handleTogglePublicFor}
+          mismatchBadge={mismatchBadge}
+          onUpdateState={h.handleUpdateInkWashStateFor}
+          onExport={h.handleExportInkWashFor}
         />
       );
     }

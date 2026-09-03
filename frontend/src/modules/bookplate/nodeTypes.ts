@@ -40,6 +40,7 @@ export const NODE_COLORS: Record<CanvasNodeType, string> = {
   text_image: 'oklch(0.68 0.15 195)',
   editorial_layout: 'oklch(0.68 0.15 285)',
   watercolor_brush: 'oklch(0.68 0.18 190)',
+  ink_wash: 'oklch(0.38 0.04 260)',
   vufind_call_number: 'oklch(0.62 0.18 280)',
 };
 
@@ -339,6 +340,14 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     configurable: false,
     defaultSize: DEFAULT_SIZES.watercolor_brush,
   },
+  {
+    type: 'ink_wash',
+    name: '水墨写意',
+    description: '流体动力学水墨晕染、笔触手绘与意境生成',
+    category: 'multimodal',
+    configurable: false,
+    defaultSize: DEFAULT_SIZES.ink_wash,
+  },
 ];
 
 export const NODE_TEMPLATE_MAP: Record<CanvasNodeType, NodeTemplateDef> = Object.fromEntries(
@@ -443,6 +452,8 @@ export const NODE_PORT_TYPES: Record<
   editorial_layout: { output: 'image', inputs: ['text', 'image'] },
   // 物理水彩手绘：输出生成的水彩画作图片；可连线文本/中国传统配色节点（注入配色与主题）
   watercolor_brush: { output: 'image', inputs: ['text'] },
+  // 水墨写意：输出生成的水墨画作图片；可连线上游文本（题款/配色）与图片（拓印转译）
+  ink_wash: { output: 'image', inputs: ['image', 'text'] },
   // VuFind 馆藏：输出获取的索书号文本；可连线图书元数据/文本节点自动读取 ISBN（连线即输入）
   vufind_call_number: { output: 'text', inputs: ['text'] },
 };

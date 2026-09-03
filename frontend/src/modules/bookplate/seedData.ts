@@ -320,6 +320,26 @@ export function seedDataFor(type: NodeType, parent?: NodeData): any {
         isSaved: false,
         error: null,
       };
+    case 'ink_wash':
+      return {
+        mode: 'zen_splash',
+        toolMode: 'pen',
+        size: 0.5,
+        flow: 0.6,
+        bleed: 0.55,
+        dry: 0.45,
+        color: 0.5,
+        bink: 0.0,
+        inkColor: '#16161e',
+        paperStyle: 'raw_xuan',
+        aspectRatio: '1:1',
+        resolution: 1024,
+        seed: 2026,
+        imageUrl: null,
+        uploadedImage: null,
+        isSaved: false,
+        error: null,
+      };
     case 'vufind_call_number':
       return {
         isbn: '',

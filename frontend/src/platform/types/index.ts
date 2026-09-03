@@ -266,6 +266,8 @@ export type CanvasNodeType =
   | 'editorial_layout'
   /** 物理水彩手绘节点：基于 p5.brush 的物理水彩晕染、排线与流场生成艺术（多模态工具） */
   | 'watercolor_brush'
+  /** 水墨写意节点：流体动力学水墨晕染、笔触手绘与意境生成（多模态工具） */
+  | 'ink_wash'
   /** VuFind 馆藏节点：根据 ISBN 获取索书号（GLAM 工具） */
   | 'vufind_call_number';
 

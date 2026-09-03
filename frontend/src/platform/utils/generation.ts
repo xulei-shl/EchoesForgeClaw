@@ -84,6 +84,7 @@ export function generationNodeTypeLabel(nodeType?: string | null): string {
     glass_refract: '玻璃折射',
     editorial_layout: '杂志排版',
     watercolor_brush: '物理水彩手绘',
+    ink_wash: '水墨写意',
     
     zhihu_search: '知乎检索',
     wikipedia_search: 'Wikipedia 检索',

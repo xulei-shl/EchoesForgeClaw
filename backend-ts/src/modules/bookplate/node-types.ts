@@ -62,6 +62,8 @@ export const NODE_TYPES = {
   EDITORIAL_LAYOUT: 'editorial_layout',
   /** 物理水彩手绘（多模态工具）：基于 p5.brush 的物理水彩晕染、排线与流场生成艺术 */
   WATERCOLOR_BRUSH: 'watercolor_brush',
+  /** 水墨写意（多模态工具）：流体动力学水墨晕染、笔触手绘与意境生成 */
+  INK_WASH: 'ink_wash',
   /** VuFind 馆藏（GLAM 工具）：根据 ISBN 获取索书号 */
   VUFIND_CALL_NUMBER: 'vufind_call_number',
 } as const;
@@ -391,6 +393,15 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
     type: NODE_TYPES.WATERCOLOR_BRUSH,
     name: '物理水彩手绘',
     description: '物理水彩晕染、排线与流场手绘生成',
+    category: 'multimodal',
+    configurable: false,
+    output_type: 'image',
+    input_types: ['image', 'text'],
+  },
+  {
+    type: NODE_TYPES.INK_WASH,
+    name: '水墨写意',
+    description: '流体动力学水墨晕染、笔触手绘与意境生成',
     category: 'multimodal',
     configurable: false,
     output_type: 'image',
