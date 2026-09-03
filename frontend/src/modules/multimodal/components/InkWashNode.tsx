@@ -138,6 +138,17 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
 
   const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null);
   const sessionRef = useRef<InkWashSession | null>(null);
+  const retraceTimerRef = useRef<number | null>(null);
+
+  // 清理防抖定时器
+  useEffect(() => {
+    return () => {
+      if (retraceTimerRef.current) {
+        window.clearTimeout(retraceTimerRef.current);
+        retraceTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // 当外部 data.imageUrl 变更时同步编辑态
   useEffect(() => {
@@ -364,8 +375,8 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
 
   /** 全维度灵感洗牌 */
   const handleRandomizeAll = useCallback(async () => {
+    if (isRollingDice || isGenerating) return;
     setIsRollingDice(true);
-    window.setTimeout(() => setIsRollingDice(false), 350);
 
     const modes: Array<Exclude<InkWashCompositionMode, 'custom'>> = [
       'zen_splash',
@@ -393,15 +404,19 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
 
     patchParam(randomState);
 
-    const session = sessionRef.current;
-    if (session && sessionStatus === 'ready') {
-      session.updateParams({ ...currentState, ...randomState });
-      await applyInkWashPreset(session, pickedMode, newSeed, currentState.uploadedImage);
+    try {
+      const session = sessionRef.current;
+      if (session && sessionStatus === 'ready') {
+        session.updateParams({ ...currentState, ...randomState });
+        await applyInkWashPreset(session, pickedMode, newSeed, currentState.uploadedImage);
+      }
+      showToast(`已生成全新水墨意境：${PRESET_SELECT_OPTIONS.find((o) => o.value === pickedMode)?.label}`, {
+        type: 'success',
+      });
+    } finally {
+      window.setTimeout(() => setIsRollingDice(false), 300);
     }
-    showToast(`已生成全新水墨意境：${PRESET_SELECT_OPTIONS.find((o) => o.value === pickedMode)?.label}`, {
-      type: 'success',
-    });
-  }, [patchParam, currentState, sessionStatus, showToast]);
+  }, [isRollingDice, isGenerating, patchParam, currentState, sessionStatus, showToast]);
 
   /** 统一重置参数为初始默认值 */
   const handleResetParams = useCallback(() => {
@@ -628,13 +643,13 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
     if (paperStyle === 'transparent') {
       return {
         backgroundImage: `
-          linear-gradient(45deg, rgba(0, 0, 0, 0.06) 25%, transparent 25%),
-          linear-gradient(-45deg, rgba(0, 0, 0, 0.06) 25%, transparent 25%),
-          linear-gradient(45deg, transparent 75%, rgba(0, 0, 0, 0.06) 75%),
-          linear-gradient(-45deg, transparent 75%, rgba(0, 0, 0, 0.06) 75%)
+          linear-gradient(45deg, rgba(128, 128, 128, 0.1) 25%, transparent 25%),
+          linear-gradient(-45deg, rgba(128, 128, 128, 0.1) 25%, transparent 25%),
+          linear-gradient(45deg, transparent 75%, rgba(128, 128, 128, 0.1) 75%),
+          linear-gradient(-45deg, transparent 75%, rgba(128, 128, 128, 0.1) 75%)
         `,
         backgroundSize: '16px 16px',
-        backgroundColor: '#f8f8fa',
+        backgroundColor: 'var(--color-paper, #f8f8fa)',
       };
     }
     if (paperStyle === 'sized_xuan') return { backgroundColor: '#F9F8F5' };
@@ -692,8 +707,14 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
                 patchParam({ ...patch, inscriptions: nextInscriptions });
               } else if (patch.traceConfig) {
                 patchParam(patch);
-                // 调节拓印参数时实时联动重新拓印
-                handleRetrace(patch.traceConfig);
+                // 调节拓印参数时加入 120ms 防抖，避免连续高频滑动滑块引发图像梯度密集重算
+                if (retraceTimerRef.current) {
+                  window.clearTimeout(retraceTimerRef.current);
+                }
+                const targetCfg = patch.traceConfig;
+                retraceTimerRef.current = window.setTimeout(() => {
+                  handleRetrace(targetCfg);
+                }, 120);
               } else {
                 patchParam(patch);
               }
@@ -810,14 +831,14 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
                   <Dices
                     size={16}
                     strokeWidth={1.5}
-                    className={`transition-transform duration-300 ease-out ${
+                    className={`transition-transform duration-300 ease-out motion-reduce:transition-none motion-reduce:transform-none ${
                       isRollingDice ? 'rotate-180 scale-110 text-accent' : ''
                     }`}
                   />
                 }
                 tooltip="全参数灵感洗牌（一键随机生成全新水墨意境）"
                 onClick={handleRandomizeAll}
-                disabled={isGenerating}
+                disabled={isGenerating || isRollingDice}
               />
               <NodeActionBar.Reset
                 onClick={handleResetParams}
@@ -850,7 +871,8 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
                 <button
                   type="button"
                   onClick={() => patchParam({ toolMode: 'pen' })}
-                  className={`p-1.5 rounded-md transition-colors ${
+                  aria-label="焦墨勾线笔（焦墨细线）"
+                  className={`relative p-1.5 rounded-md transition-colors cursor-pointer before:absolute before:-inset-1 before:content-[''] ${
                     toolMode === 'pen'
                       ? 'bg-paper text-accent shadow-2xs font-medium'
                       : 'text-ink-light hover:text-ink'
@@ -864,7 +886,8 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
                 <button
                   type="button"
                   onClick={() => patchParam({ toolMode: 'brush' })}
-                  className={`p-1.5 rounded-md transition-colors ${
+                  aria-label="运水毛笔（铺水带墨，浸润晕化）"
+                  className={`relative p-1.5 rounded-md transition-colors cursor-pointer before:absolute before:-inset-1 before:content-[''] ${
                     toolMode === 'brush'
                       ? 'bg-paper text-accent shadow-2xs font-medium'
                       : 'text-ink-light hover:text-ink'
@@ -878,7 +901,8 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
                 <button
                   type="button"
                   onClick={() => patchParam({ toolMode: 'white' })}
-                  className={`p-1.5 rounded-md transition-colors ${
+                  aria-label="白墨提亮（洗白、白毫留白）"
+                  className={`relative p-1.5 rounded-md transition-colors cursor-pointer before:absolute before:-inset-1 before:content-[''] ${
                     toolMode === 'white'
                       ? 'bg-paper text-accent shadow-2xs font-medium'
                       : 'text-ink-light hover:text-ink'
@@ -909,7 +933,7 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
 
         {/* 视口：交互宣纸画布或成画预览 */}
         <div
-          className="relative flex-1 min-h-0 w-full overflow-hidden rounded border border-paper-grid/40 flex flex-col items-center justify-center select-none shadow-inner p-2"
+          className="relative flex-1 min-h-0 w-full overflow-hidden rounded-lg border border-paper-grid/40 flex flex-col items-center justify-center select-none shadow-inner p-2"
           style={paperBackgroundStyle}
         >
           {!hasGenerated ? (
@@ -953,7 +977,7 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
                       setSessionStatus('idle');
                       patchParam({ seed: Date.now() % 100000 });
                     }}
-                    className="px-2.5 py-1 rounded text-xs bg-paper-grid/40 hover:bg-paper-grid/70 active:scale-[0.96] transition-colors duration-150"
+                    className="px-2.5 py-1 rounded text-xs bg-paper-grid/40 hover:bg-paper-grid/70 active:scale-[0.96] transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                   >
                     重试
                   </button>

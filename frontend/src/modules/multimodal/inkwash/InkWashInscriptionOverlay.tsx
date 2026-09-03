@@ -41,6 +41,7 @@ export const InkWashInscriptionOverlay: React.FC<InkWashInscriptionOverlayProps>
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [draftText, setDraftText] = useState('');
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOffset, setDragOffset] = useState<{ dxPercent: number; dyPercent: number } | null>(null);
 
   const dragStartRef = useRef<{ startX: number; startY: number; initX: number; initY: number } | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -87,6 +88,7 @@ export const InkWashInscriptionOverlay: React.FC<InkWashInscriptionOverlayProps>
     e.stopPropagation();
     onSelectId(item.id);
     setDraggingId(item.id);
+    setDragOffset(null);
 
     dragStartRef.current = {
       startX: e.clientX,
@@ -98,7 +100,7 @@ export const InkWashInscriptionOverlay: React.FC<InkWashInscriptionOverlayProps>
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
   };
 
-  /** 拖拽移动中 */
+  /** 拖拽移动中：仅在当前浮层局部更新偏移量，解耦顶层组件与 WebGL 参数更新的高频开销 */
   const handlePointerMoveItem = (e: React.PointerEvent, item: InkWashInscriptionItem) => {
     if (draggingId !== item.id || !dragStartRef.current) return;
     e.stopPropagation();
@@ -109,17 +111,29 @@ export const InkWashInscriptionOverlay: React.FC<InkWashInscriptionOverlayProps>
     const deltaXPercent = (dx / (containerWidth || 400)) * 100;
     const deltaYPercent = (dy / (containerHeight || 400)) * 100;
 
-    const newX = Math.max(5, Math.min(95, Number((dragStartRef.current.initX + deltaXPercent).toFixed(1))));
-    const newY = Math.max(5, Math.min(95, Number((dragStartRef.current.initY + deltaYPercent).toFixed(1))));
-
-    onUpdateItem(item.id, { x: newX, y: newY }, false);
+    setDragOffset({ dxPercent: deltaXPercent, dyPercent: deltaYPercent });
   };
 
-  /** 结束拖拽 */
-  const handlePointerUpItem = (e: React.PointerEvent) => {
-    if (draggingId) {
+  /** 结束拖拽：提交最终坐标并记入撤销栈 */
+  const handlePointerUpItem = (e: React.PointerEvent, item: InkWashInscriptionItem) => {
+    if (draggingId === item.id && dragStartRef.current) {
       e.stopPropagation();
+      const dx = e.clientX - dragStartRef.current.startX;
+      const dy = e.clientY - dragStartRef.current.startY;
+
+      const deltaXPercent = (dx / (containerWidth || 400)) * 100;
+      const deltaYPercent = (dy / (containerHeight || 400)) * 100;
+
+      const finalX = Math.max(5, Math.min(95, Number((dragStartRef.current.initX + deltaXPercent).toFixed(1))));
+      const finalY = Math.max(5, Math.min(95, Number((dragStartRef.current.initY + deltaYPercent).toFixed(1))));
+
+      // 仅在发生真实拖拽位移时更新父级状态并记入撤销栈
+      if (Math.abs(deltaXPercent) > 0.2 || Math.abs(deltaYPercent) > 0.2) {
+        onUpdateItem(item.id, { x: finalX, y: finalY }, true);
+      }
+
       setDraggingId(null);
+      setDragOffset(null);
       dragStartRef.current = null;
       try {
         (e.target as HTMLElement).releasePointerCapture?.(e.pointerId);
@@ -181,7 +195,7 @@ export const InkWashInscriptionOverlay: React.FC<InkWashInscriptionOverlayProps>
       {selectedItem && !disabled && !isModalOpen && (
         <div
           ref={toolbarRef}
-          className="absolute top-2 left-1/2 -translate-x-1/2 pointer-events-auto z-40 max-w-[calc(100%-16px)]"
+          className="absolute top-2 left-1/2 -translate-x-1/2 pointer-events-auto z-40 max-w-[calc(100%-16px)] transition-[opacity,transform] duration-150 ease-out motion-reduce:transition-none"
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
@@ -251,21 +265,33 @@ export const InkWashInscriptionOverlay: React.FC<InkWashInscriptionOverlayProps>
         const fontSizePx = Math.max(14, Math.round(minDim * (item.fontSizeRatio || 0.038)));
         const sealSizePx = Math.max(20, Math.round(fontSizePx * 1.35));
 
+        const posX =
+          isDragging && dragOffset
+            ? Math.max(5, Math.min(95, Number(((item.x ?? 82) + dragOffset.dxPercent).toFixed(1))))
+            : (item.x ?? 82);
+        const posY =
+          isDragging && dragOffset
+            ? Math.max(5, Math.min(95, Number(((item.y ?? 28) + dragOffset.dyPercent).toFixed(1))))
+            : (item.y ?? 28);
+
         return (
           <div
             key={item.id}
-            className={`absolute pointer-events-auto touch-none transition-shadow ${
+            tabIndex={0}
+            role="button"
+            aria-label={`书画题款：${item.text || '点击输入题款'}，按回车编辑`}
+            className={`absolute pointer-events-auto touch-none transition-[box-shadow,outline] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded ${
               isDragging ? 'cursor-grabbing will-change-transform z-35' : 'cursor-grab z-30'
             }`}
             style={{
-              left: `${item.x ?? 82}%`,
-              top: `${item.y ?? 28}%`,
+              left: `${posX}%`,
+              top: `${posY}%`,
               transform: 'translate(-50%, -50%)',
             }}
             onPointerDown={(e) => handlePointerDownItem(e, item)}
             onPointerMove={(e) => handlePointerMoveItem(e, item)}
-            onPointerUp={handlePointerUpItem}
-            onPointerCancel={handlePointerUpItem}
+            onPointerUp={(e) => handlePointerUpItem(e, item)}
+            onPointerCancel={(e) => handlePointerUpItem(e, item)}
             onClick={(e) => {
               e.stopPropagation();
               onSelectId(item.id);
@@ -273,6 +299,17 @@ export const InkWashInscriptionOverlay: React.FC<InkWashInscriptionOverlayProps>
             onDoubleClick={(e) => {
               e.stopPropagation();
               if (!disabled) handleOpenEdit(item);
+            }}
+            onKeyDown={(e) => {
+              if (disabled) return;
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleOpenEdit(item);
+              } else if (e.key === 'Delete' || e.key === 'Backspace') {
+                e.preventDefault();
+                onDeleteItem(item.id);
+                onSelectId(null);
+              }
             }}
           >
             {/* 题款与印章展示体 */}
@@ -342,11 +379,11 @@ export const InkWashInscriptionOverlay: React.FC<InkWashInscriptionOverlayProps>
       {/* 文案快捷编辑 / 前置添加弹窗 */}
       {isModalOpen && (
         <div
-          className="fixed inset-0 z-60 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 pointer-events-auto"
+          className="fixed inset-0 z-60 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 pointer-events-auto transition-opacity duration-150 motion-reduce:transition-none"
           onClick={handleCancel}
         >
           <div
-            className="w-full max-w-sm rounded-xl bg-paper p-4 shadow-2xl border border-paper-grid flex flex-col gap-3 font-sans text-xs"
+            className="w-full max-w-sm rounded-xl bg-paper p-4 shadow-2xl border border-paper-grid flex flex-col gap-3 font-sans text-xs transition-[transform,opacity] duration-150 ease-out motion-reduce:transition-none scale-100 opacity-100"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
@@ -356,7 +393,8 @@ export const InkWashInscriptionOverlay: React.FC<InkWashInscriptionOverlayProps>
               <button
                 type="button"
                 onClick={handleCancel}
-                className="p-1 rounded text-ink-light hover:text-ink hover:bg-paper-grid/50 transition-colors cursor-pointer"
+                aria-label="关闭题款编辑"
+                className="relative p-1 rounded text-ink-light hover:text-ink hover:bg-paper-grid/50 transition-colors cursor-pointer before:absolute before:-inset-2 before:content-['']"
               >
                 <X size={14} />
               </button>
@@ -382,14 +420,14 @@ export const InkWashInscriptionOverlay: React.FC<InkWashInscriptionOverlayProps>
                 <button
                   type="button"
                   onClick={handleCancel}
-                  className="px-2.5 py-1.5 rounded-md border border-paper-grid text-ink-light hover:text-ink cursor-pointer"
+                  className="px-2.5 py-1.5 rounded-md border border-paper-grid text-ink-light hover:text-ink cursor-pointer active:scale-[0.96] transition-[color,transform] duration-150"
                 >
                   取消
                 </button>
                 <button
                   type="button"
                   onClick={handleSaveText}
-                  className="px-3 py-1.5 rounded-md bg-accent text-white font-medium hover:bg-accent/90 flex items-center gap-1 shadow-xs cursor-pointer"
+                  className="px-3 py-1.5 rounded-md bg-accent text-white font-medium hover:bg-accent/90 flex items-center gap-1 shadow-xs cursor-pointer active:scale-[0.96] transition-[background-color,transform] duration-150"
                 >
                   <Check size={12} strokeWidth={2.5} />
                   <span>确定</span>

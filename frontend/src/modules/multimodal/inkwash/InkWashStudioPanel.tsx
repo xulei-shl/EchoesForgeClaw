@@ -34,6 +34,7 @@ import { extractInscriptionFromUpstream, getRandomSealSrc } from './inscription'
 
 export interface InkWashStudioPanelProps {
   isOpen: boolean;
+  width?: number;
   size: number;
   flow: number;
   bleed: number;
@@ -81,6 +82,7 @@ const RESOLUTION_OPTIONS: SelectOption[] = [
 
 export const InkWashStudioPanel: React.FC<InkWashStudioPanelProps> = ({
   isOpen,
+  width = 320,
   size,
   flow,
   bleed,
@@ -141,60 +143,61 @@ export const InkWashStudioPanel: React.FC<InkWashStudioPanelProps> = ({
       onClose={onClose}
       title="水墨画室参数"
       subtitle="流体物理动力学、名家墨色与工笔白描拓印精调"
+      width={width}
     >
       <div className="flex flex-col gap-4 text-xs font-sans">
-        {/* 顶部四段式 Tab 切换器 */}
-        <div className="grid grid-cols-4 p-0.5 rounded-lg bg-paper-grid/40 border border-paper-grid text-ink-light select-none">
+        {/* 顶部四段式 Tab 切换器：使用 gap-0.5 和 whitespace-nowrap 确保单行排布 */}
+        <div className="grid grid-cols-4 gap-0.5 p-0.5 rounded-lg bg-paper-grid/40 border border-paper-grid text-ink-light select-none shrink-0">
           <button
             type="button"
             onClick={() => setActiveTab('physics')}
-            className={`flex items-center justify-center gap-1 py-1 px-1 rounded-md text-[11px] transition-[transform,background-color,color] duration-150 cursor-pointer active:scale-[0.96] focus-visible:ring-1 focus-visible:ring-accent ${
+            className={`flex items-center justify-center gap-1 py-1.5 px-0.5 rounded-md text-[11px] whitespace-nowrap transition-[transform,background-color,color] duration-150 cursor-pointer active:scale-[0.96] focus-visible:ring-1 focus-visible:ring-accent ${
               activeTab === 'physics'
                 ? 'bg-paper shadow-2xs text-accent font-medium'
                 : 'text-ink-light hover:text-ink'
             }`}
           >
             <Gauge size={11} className="shrink-0" />
-            <span>水墨流场</span>
+            <span className="whitespace-nowrap">水墨流场</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('palette')}
-            className={`flex items-center justify-center gap-1 py-1 px-1 rounded-md text-[11px] transition-[transform,background-color,color] duration-150 cursor-pointer active:scale-[0.96] focus-visible:ring-1 focus-visible:ring-accent ${
+            className={`flex items-center justify-center gap-1 py-1.5 px-0.5 rounded-md text-[11px] whitespace-nowrap transition-[transform,background-color,color] duration-150 cursor-pointer active:scale-[0.96] focus-visible:ring-1 focus-visible:ring-accent ${
               activeTab === 'palette'
                 ? 'bg-paper shadow-2xs text-accent font-medium'
                 : 'text-ink-light hover:text-ink'
             }`}
           >
             <Palette size={11} className="shrink-0" />
-            <span>名家墨色</span>
+            <span className="whitespace-nowrap">名家墨色</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('trace')}
-            className={`flex items-center justify-center gap-1 py-1 px-1 rounded-md text-[11px] transition-[transform,background-color,color] duration-150 cursor-pointer active:scale-[0.96] focus-visible:ring-1 focus-visible:ring-accent ${
+            className={`flex items-center justify-center gap-1 py-1.5 px-0.5 rounded-md text-[11px] whitespace-nowrap transition-[transform,background-color,color] duration-150 cursor-pointer active:scale-[0.96] focus-visible:ring-1 focus-visible:ring-accent ${
               activeTab === 'trace'
                 ? 'bg-paper shadow-2xs text-accent font-medium'
                 : 'text-ink-light hover:text-ink'
             }`}
           >
             <ScanLine size={11} className="shrink-0" />
-            <span>白描拓印</span>
+            <span className="whitespace-nowrap">白描拓印</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('canvas')}
-            className={`flex items-center justify-center gap-1 py-1 px-1 rounded-md text-[11px] transition-[transform,background-color,color] duration-150 cursor-pointer active:scale-[0.96] focus-visible:ring-1 focus-visible:ring-accent ${
+            className={`flex items-center justify-center gap-1 py-1.5 px-0.5 rounded-md text-[11px] whitespace-nowrap transition-[transform,background-color,color] duration-150 cursor-pointer active:scale-[0.96] focus-visible:ring-1 focus-visible:ring-accent ${
               activeTab === 'canvas'
                 ? 'bg-paper shadow-2xs text-accent font-medium'
                 : 'text-ink-light hover:text-ink'
             }`}
           >
             <Sliders size={11} className="shrink-0" />
-            <span>宣纸画幅</span>
+            <span className="whitespace-nowrap">宣纸画幅</span>
           </button>
         </div>
 
@@ -289,7 +292,7 @@ export const InkWashStudioPanel: React.FC<InkWashStudioPanelProps> = ({
                   type="button"
                   onClick={onFix}
                   disabled={disabled}
-                  className="w-full h-8 px-2 rounded-lg border border-paper-grid bg-paper hover:bg-accent/10 hover:border-accent/40 text-ink hover:text-accent flex items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer text-xs whitespace-nowrap active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed shadow-2xs"
+                  className="w-full h-8 px-2 rounded-lg border border-paper-grid bg-paper hover:bg-accent/10 hover:border-accent/40 text-ink hover:text-accent flex items-center justify-center gap-1.5 transition-[color,background-color,border-color,transform] duration-150 ease-out cursor-pointer text-xs whitespace-nowrap active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed shadow-2xs"
                 >
                   <Flame size={13} className="shrink-0 text-amber-600" />
                   <span className="font-medium">定墨烘干</span>
@@ -301,7 +304,7 @@ export const InkWashStudioPanel: React.FC<InkWashStudioPanelProps> = ({
                   type="button"
                   onClick={onClear}
                   disabled={disabled}
-                  className="w-full h-8 px-2 rounded-lg border border-paper-grid bg-paper hover:bg-rose-500/10 hover:border-rose-500/40 text-ink hover:text-rose-600 flex items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer text-xs whitespace-nowrap active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed shadow-2xs"
+                  className="w-full h-8 px-2 rounded-lg border border-paper-grid bg-paper hover:bg-rose-500/10 hover:border-rose-500/40 text-ink hover:text-rose-600 flex items-center justify-center gap-1.5 transition-[color,background-color,border-color,transform] duration-150 ease-out cursor-pointer text-xs whitespace-nowrap active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed shadow-2xs"
                 >
                   <Eraser size={13} className="shrink-0 text-rose-500" />
                   <span className="font-medium">澄心洗纸</span>
@@ -328,7 +331,7 @@ export const InkWashStudioPanel: React.FC<InkWashStudioPanelProps> = ({
                         type="button"
                         onClick={() => onUpdate({ inkColor: ink.hex })}
                         disabled={disabled}
-                        className={`flex items-center gap-2 p-2 rounded-lg border text-left transition-all duration-150 cursor-pointer active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed ${
+                        className={`flex items-center gap-2 p-2 rounded-lg border text-left transition-[color,background-color,border-color,box-shadow,transform] duration-150 ease-out cursor-pointer active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed ${
                           isSelected
                             ? 'border-accent bg-accent/10 ring-1 ring-accent text-accent font-medium shadow-2xs'
                             : 'border-paper-grid bg-paper/60 hover:bg-paper hover:border-paper-grid/80 text-ink'
@@ -373,8 +376,9 @@ export const InkWashStudioPanel: React.FC<InkWashStudioPanelProps> = ({
                     <button
                       type="button"
                       disabled={disabled}
+                      aria-label="自定义墨色与吸管取色"
                       style={{ backgroundColor: isCustomInkColor ? inkColor : undefined }}
-                      className={`w-8 h-8 rounded-lg border flex items-center justify-center transition cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+                      className={`relative w-8 h-8 rounded-lg border flex items-center justify-center transition-[transform,border-color,background-color] duration-150 ease-out cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed before:absolute before:-inset-1 before:content-[''] ${
                         isCustomInkColor
                           ? 'border-accent ring-2 ring-accent/40 shadow-2xs'
                           : 'border-paper-grid/80 hover:border-accent hover:scale-105 bg-paper/80 text-ink-light hover:text-accent'
@@ -582,7 +586,7 @@ export const InkWashStudioPanel: React.FC<InkWashStudioPanelProps> = ({
                           },
                         })
                       }
-                      className="px-2 py-1 rounded-md bg-paper border border-paper-grid text-ink-light hover:text-accent hover:border-accent flex items-center gap-1 transition-colors text-[10px] disabled:opacity-40 cursor-pointer shadow-2xs"
+                      className="relative px-2 py-1 rounded-md bg-paper border border-paper-grid text-ink-light hover:text-accent hover:border-accent flex items-center gap-1 transition-colors text-[10px] disabled:opacity-40 cursor-pointer shadow-2xs before:absolute before:-inset-1 before:content-['']"
                     >
                       <Dices size={11} className="text-accent" />
                       <span>换一枚古印</span>
@@ -620,7 +624,7 @@ export const InkWashStudioPanel: React.FC<InkWashStudioPanelProps> = ({
                         },
                       })
                     }
-                    className="px-2 py-1 rounded bg-accent/10 hover:bg-accent/20 text-accent font-medium text-[10px] shrink-0 cursor-pointer"
+                    className="relative px-2 py-1 rounded bg-accent/10 hover:bg-accent/20 text-accent font-medium text-[10px] shrink-0 cursor-pointer before:absolute before:-inset-1 before:content-['']"
                   >
                     采用题款
                   </button>
@@ -652,7 +656,7 @@ export const InkWashStudioPanel: React.FC<InkWashStudioPanelProps> = ({
                       type="button"
                       onClick={() => handleApplyTracePreset(item.config)}
                       disabled={disabled}
-                      className={`px-2 py-1.5 rounded-lg border text-center transition-all cursor-pointer ${
+                      className={`px-2 py-1.5 rounded-lg border text-center transition-[color,background-color,border-color,box-shadow] duration-150 ease-out cursor-pointer active:scale-[0.98] ${
                         isSelected
                           ? 'border-accent bg-accent/10 text-accent font-medium shadow-2xs'
                           : 'border-paper-grid hover:border-accent/40 bg-paper/50 text-ink-light hover:text-ink'
@@ -751,7 +755,7 @@ export const InkWashStudioPanel: React.FC<InkWashStudioPanelProps> = ({
                 onRetrace?.();
               }}
               disabled={disabled}
-              className="w-full py-2 px-3 rounded-xl border border-paper-grid hover:border-accent/40 bg-paper/60 hover:bg-paper text-ink-light hover:text-ink text-xs font-medium transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs active:scale-[0.98]"
+              className="w-full py-2 px-3 rounded-xl border border-paper-grid hover:border-accent/40 bg-paper/60 hover:bg-paper text-ink-light hover:text-ink text-xs font-medium transition-[color,background-color,border-color,transform] duration-150 ease-out flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs active:scale-[0.98]"
             >
               <RotateCcw size={12} className="text-ink-faint" />
               <span>参数重置</span>
