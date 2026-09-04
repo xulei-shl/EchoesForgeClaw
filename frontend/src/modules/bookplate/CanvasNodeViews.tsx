@@ -23,6 +23,7 @@ import { ArtImageSearchNode, type GlamSearchSelection } from '../../modules/mult
 import { ReceiptPrinterNode } from '../../modules/multimodal/components/ReceiptPrinterNode';
 import { BookCardNode } from '../../modules/multimodal/components/BookCardNode';
 import { StampCutterNode } from '../../modules/multimodal/components/StampCutterNode';
+import { ImageBgRemoveNode } from '../../modules/multimodal/components/ImageBgRemoveNode';
 import { StickerMakerNode } from '../../modules/multimodal/components/StickerMakerNode';
 import { JournalMakerNode } from '../../modules/multimodal/components/JournalMakerNode';
 import { TextImageNode } from '../../modules/multimodal/components/TextImageNode';
@@ -171,11 +172,15 @@ export interface NodeViewHelpers {
   handleUpdateBookCardStateFor: (id: string, patch: Record<string, any>) => void;
   /** 邮票制作节点：导出 PNG data URL 落盘（保存到后端 + 记录数据库历史 + 写回 node.data） */
   handleExportStampFor: (id: string, dataUrl: string, state: any) => Promise<void>;
+  /** 图像去背景节点：导出 PNG data URL 落盘（保存到后端 + 记录数据库历史 + 写回 node.data） */
+  handleExportImageBgRemoveFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportStickerFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   /** 手账制作节点：导出 PNG data URL 落盘（保存到后端 + 记录数据库历史 + 写回 node.data） */
   handleExportJournalFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   /** 邮票制作节点：状态更新写入 node.data（持久化） */
   handleUpdateStampStateFor: (id: string, patch: Record<string, any>) => void;
+  /** 图像去背景节点：状态更新写入 node.data（持久化） */
+  handleUpdateImageBgRemoveStateFor: (id: string, patch: Record<string, any>) => void;
   handleUpdateStickerMakerStateFor: (id: string, patch: Record<string, any>) => void;
   /** 手账制作节点：状态更新写入 node.data（用户排版动作带 undoable 记撤销历史） */
   handleUpdateJournalMakerStateFor: (
@@ -880,6 +885,29 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           mismatchBadge={mismatchBadge}
           onUpdateState={h.handleUpdateStampStateFor}
           onExport={h.handleExportStampFor}
+        />
+      );
+    }
+
+    case 'image_bg_remove': {
+      const d = node.data ?? {};
+      const { upstreamImageUrl } = resolveUpstreamImage(node, h);
+      return (
+        <ImageBgRemoveNode
+          key={node.id}
+          {...common}
+          data={d}
+          upstreamImageUrl={upstreamImageUrl}
+          isFavorited={!!h.favoritedState[node.id]}
+          isPublic={!!h.publishedState[node.id]}
+          isSelected={node.id === h.activeImage?.id}
+          recordDeleted={h.staleRecordIds.has(node.id)}
+          onSelect={h.handleSelectImage}
+          onToggleFavorite={h.handleToggleFavoriteFor}
+          onTogglePublic={h.handleTogglePublicFor}
+          mismatchBadge={mismatchBadge}
+          onUpdateState={h.handleUpdateImageBgRemoveStateFor}
+          onExport={h.handleExportImageBgRemoveFor}
         />
       );
     }

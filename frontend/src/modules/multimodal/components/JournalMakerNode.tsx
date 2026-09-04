@@ -27,7 +27,7 @@ import { ColorPickerPopover } from '../../../platform/components/ui/ColorPicker'
 import { Slider } from '../../../platform/components/ui/Slider';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
 import { NODE_COLORS } from '../../bookplate/nodeTypes';
-import { removeImageBackground } from '../sticker';
+import { removeImageBackground } from '../matting';
 import {
   type JournalBackground,
   type JournalMakerItem,

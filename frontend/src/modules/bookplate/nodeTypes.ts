@@ -35,6 +35,7 @@ export const NODE_COLORS: Record<CanvasNodeType, string> = {
   image_process: 'oklch(0.66 0.15 105)',
   emboss_foil: 'oklch(0.68 0.16 160)',
   glass_refract: 'oklch(0.68 0.16 210)',
+  image_bg_remove: 'oklch(0.70 0.16 300)',
   sticker_maker: 'oklch(0.72 0.15 340)',
   journal_maker: 'oklch(0.7 0.14 150)',
   text_image: 'oklch(0.68 0.15 195)',
@@ -237,6 +238,14 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
     defaultSize: DEFAULT_SIZES.stamp_cutter,
   },
   {
+    type: 'image_bg_remove',
+    name: '图像去背景',
+    description: 'AI 抠图移除背景，输出透明通道 PNG 或纯色背景图',
+    category: 'multimodal',
+    configurable: false,
+    defaultSize: DEFAULT_SIZES.image_bg_remove,
+  },
+  {
     type: 'sticker_maker',
     name: '贴纸制作',
     description: '一键抠图移除背景，生成带白边描边与投影的贴纸图片',
@@ -428,6 +437,8 @@ export const NODE_PORT_TYPES: Record<
   book_card: { output: 'image', inputs: ['text', 'image'] },
   // 邮票制作：输出生成的邮票图片；可连线图片或图书元数据作为输入源（连线即输入）
   stamp_cutter: { output: 'image', inputs: ['image', 'text'] },
+  // 图像去背景：输出透明通道或纯色背景图片；可连线图片或图书元数据作为输入源（连线即输入）
+  image_bg_remove: { output: 'image', inputs: ['image', 'text'] },
   // 贴纸制作：输出生成的贴纸图片；可连线图片或图书元数据作为输入源（连线即输入）
   sticker_maker: { output: 'image', inputs: ['image', 'text'] },
   // 手账制作：输出合成的整张手账页图片；可连线多张图片或图书元数据一并作为素材源（连线即输入）

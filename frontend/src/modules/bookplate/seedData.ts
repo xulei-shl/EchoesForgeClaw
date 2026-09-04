@@ -167,6 +167,14 @@ export function seedDataFor(type: NodeType, parent?: NodeData): any {
         uploadedImage: null,
         error: null,
       };
+    case 'image_bg_remove':
+      return {
+        imageUrl: null,
+        rawCutoutUrl: null,
+        bgColor: '',
+        uploadedImage: null,
+        error: null,
+      };
     case 'sticker_maker':
       return {
         removeBackground: true,

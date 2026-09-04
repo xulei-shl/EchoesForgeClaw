@@ -222,7 +222,7 @@ const BookplatePage: React.FC = () => {
 
   // 操作栏作用目标：优先选中且已有图片的 ImageNode / ReceiptNode / StampCutterNode / StickerMakerNode / OilPaintNode / ImageProcessNode / EmbossFoilNode / GlassRefractNode / EditorialLayoutNode / WatercolorBrushNode，否则回退到最近生成的图片节点
   const isImageResultNode = (n: any) =>
-    (n.type === 'image_generation' || n.type === 'receipt_printer' || n.type === 'stamp_cutter' || n.type === 'sticker_maker' || n.type === 'journal_maker' || n.type === 'text_image' || n.type === 'oil_paint' || n.type === 'image_process' || n.type === 'emboss_foil' || n.type === 'glass_refract' || n.type === 'editorial_layout' || n.type === 'watercolor_brush' || n.type === 'ink_wash') && Boolean(n.data?.imageUrl);
+    (n.type === 'image_generation' || n.type === 'receipt_printer' || n.type === 'stamp_cutter' || n.type === 'image_bg_remove' || n.type === 'sticker_maker' || n.type === 'journal_maker' || n.type === 'text_image' || n.type === 'oil_paint' || n.type === 'image_process' || n.type === 'emboss_foil' || n.type === 'glass_refract' || n.type === 'editorial_layout' || n.type === 'watercolor_brush' || n.type === 'ink_wash') && Boolean(n.data?.imageUrl);
 
   const selectedImageNode =
     selectedImageId &&
@@ -1007,6 +1007,8 @@ const BookplatePage: React.FC = () => {
     handleUpdateBookCardStateFor,
     handleExportStampFor,
     handleUpdateStampStateFor,
+    handleExportImageBgRemoveFor,
+    handleUpdateImageBgRemoveStateFor,
     handleExportStickerFor,
     handleUpdateStickerMakerStateFor,
     handleExportJournalFor,
@@ -1252,6 +1254,8 @@ const BookplatePage: React.FC = () => {
     handleUpdateBookCardStateFor,
     handleExportStampFor,
     handleUpdateStampStateFor,
+    handleExportImageBgRemoveFor,
+    handleUpdateImageBgRemoveStateFor,
     handleExportStickerFor,
     handleUpdateStickerMakerStateFor,
     handleExportJournalFor,

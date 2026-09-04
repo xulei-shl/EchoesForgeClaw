@@ -288,6 +288,7 @@ export interface ImageOutputHandlers {
   handleExportReceiptFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportBookCardFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportStampFor: (id: string, dataUrl: string, state: any) => Promise<void>;
+  handleExportImageBgRemoveFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportStickerFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportJournalFor: (id: string, dataUrl: string, state: any) => Promise<void>;
   handleExportTextImageFor: (id: string, dataUrl: string, state: any) => Promise<void>;
@@ -362,6 +363,18 @@ export function useImageOutputHandlers(ctx: ImageOutputCtx): ImageOutputHandlers
     emptyError: '保存邮票图片失败',
     errLabel: '邮票图片保存',
     historyWarn: '记录邮票到历史数据库失败(不阻断导出):',
+  });
+
+  // 图像去背景：与贴纸同流程——手动点击保存 → /save-image 落盘 → generations 记录
+  const handleExportImageBgRemoveFor = useImageExportHandler(ctx, {
+    nodeType: 'image_bg_remove',
+    historyNodeType: 'image_bg_remove',
+    promptOf: (state) => `图像去背景 · ${state?.bgColor ? '纯色' : '透明'}`,
+    okExtras: () => ({}),
+    onHistorySaved: () => {},
+    emptyError: '保存去背景图片失败',
+    errLabel: '图像去背景保存',
+    historyWarn: '记录去背景图片到历史数据库失败(不阻断导出):',
   });
 
   // 贴纸制作：与邮票同流程——手动点击保存 → /save-image 落盘 → generations 记录
@@ -497,6 +510,7 @@ export function useImageOutputHandlers(ctx: ImageOutputCtx): ImageOutputHandlers
     handleExportReceiptFor,
     handleExportBookCardFor,
     handleExportStampFor,
+    handleExportImageBgRemoveFor,
     handleExportStickerFor,
     handleExportJournalFor,
     handleExportTextImageFor,

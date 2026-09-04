@@ -57,7 +57,9 @@ export function useGenerationHistory(ctx: GenerationHistoryContext): GenerationH
             ? '图书卡片生成'
             : imageNode.type === 'stamp_cutter'
               ? '邮票截图'
-              : imageNode.type === 'sticker_maker'
+              : imageNode.type === 'image_bg_remove'
+                ? '图像去背景'
+                : imageNode.type === 'sticker_maker'
                 ? '贴纸制作'
                 : imageNode.type === 'journal_maker'
                   ? '手账制作'
@@ -101,7 +103,7 @@ export function useGenerationHistory(ctx: GenerationHistoryContext): GenerationH
                   : undefined,
               agent_steps: promptSteps.length > 0 ? promptSteps : undefined,
             }
-          : (imageNode.type === 'receipt_printer' || imageNode.type === 'book_card' || imageNode.type === 'stamp_cutter' || imageNode.type === 'sticker_maker' || imageNode.type === 'journal_maker' || imageNode.type === 'text_image' || imageNode.type === 'oil_paint' || imageNode.type === 'image_process' || imageNode.type === 'emboss_foil' || imageNode.type === 'glass_refract' || imageNode.type === 'editorial_layout' || imageNode.type === 'watercolor_brush' || imageNode.type === 'ink_wash')
+          : (imageNode.type === 'receipt_printer' || imageNode.type === 'book_card' || imageNode.type === 'stamp_cutter' || imageNode.type === 'image_bg_remove' || imageNode.type === 'sticker_maker' || imageNode.type === 'journal_maker' || imageNode.type === 'text_image' || imageNode.type === 'oil_paint' || imageNode.type === 'image_process' || imageNode.type === 'emboss_foil' || imageNode.type === 'glass_refract' || imageNode.type === 'editorial_layout' || imageNode.type === 'watercolor_brush' || imageNode.type === 'ink_wash')
             ? { prompt: promptText }
             : undefined,
         stage3: {

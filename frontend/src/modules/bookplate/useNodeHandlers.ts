@@ -462,6 +462,7 @@ export function useNodeHandlers({
   const handleUpdateWebSearchEditorFor = useEditorPatchHandler(['web_search'], editorPatchFns);
   const handleUpdateVuFindEditorFor = useEditorPatchHandler(['vufind_call_number'], editorPatchFns);
   const handleUpdateStampStateFor = useEditorPatchHandler(['stamp_cutter'], editorPatchFns);
+  const handleUpdateImageBgRemoveStateFor = useEditorPatchHandler(['image_bg_remove'], editorPatchFns);
   const handleUpdateStickerMakerStateFor = useEditorPatchHandler(['sticker_maker'], editorPatchFns);
   const handleUpdateJournalMakerStateFor = useEditorPatchHandler(['journal_maker'], editorPatchFns);
   const handleUpdateTextImageStateFor = useEditorPatchHandler(['text_image'], editorPatchFns);
@@ -566,6 +567,7 @@ export function useNodeHandlers({
     handleExportReceiptFor,
     handleExportBookCardFor,
     handleExportStampFor,
+    handleExportImageBgRemoveFor,
     handleExportStickerFor,
     handleExportJournalFor,
     handleExportTextImageFor,
@@ -685,6 +687,8 @@ export function useNodeHandlers({
     handleUpdateBookCardStateFor,
     handleExportStampFor,
     handleUpdateStampStateFor,
+    handleUpdateImageBgRemoveStateFor,
+    handleExportImageBgRemoveFor,
     handleUpdateStickerMakerStateFor,
     handleExportStickerFor,
     handleUpdateJournalMakerStateFor,
