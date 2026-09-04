@@ -159,18 +159,47 @@ export function mergeAgentFiles(a?: AgentFile[], b?: AgentFile[]): AgentFile[] {
   return [...out.values()];
 }
 
-/** 把工作区文件按来源分桶：inputs/ = 用户上传，其余 = agent 产物（含 manifest 历史）。 */
-export function splitWorkspaceFiles(files: AgentFile[] | null | undefined): {
-  artifacts: AgentFile[];
-  uploads: AgentFile[];
-} {
-  const artifacts: AgentFile[] = [];
-  const uploads: AgentFile[] = [];
-  for (const f of files ?? []) {
-    if (f && typeof f.path === 'string' && f.path.startsWith('inputs/')) uploads.push(f);
-    else if (f) artifacts.push(f);
-  }
-  return { artifacts, uploads };
+/**
+ * 工作区文件类别（侧边抽屉 tab 的注册表数据源）：
+ * - 各类别 matches 判定需互斥（每个文件恰好命中一个类别），注册表顺序即抽屉 Tab 顺序；
+ *   「工作区产物」为兜底（承接所有非 inputs/ 文件）；
+ * - 未来新增类别（如输出快照 / 共享素材等）= 在此追加一条描述 + 互斥判定即可，
+ *   抽屉 Tab 与列表会自动扩展，无需改动组件逻辑。
+ */
+export interface WorkspaceFileCategory<ID extends string = string> {
+  /** 类别唯一标识（tab 切换 key；默认选中第一个类别） */
+  id: ID;
+  /** tab 展示名 */
+  label: string;
+  /** 文件归属判定（inputs/ = 我的上传；其余兜底 = 工作区产物） */
+  matches: (file: AgentFile) => boolean;
+}
+
+/** 工作区相对路径是否属于用户上传（inputs/ 前缀；上传文件不是 agent 产物）。 */
+function isUploadedPath(path: unknown): path is string {
+  return typeof path === 'string' && path.startsWith('inputs/');
+}
+
+/** 当前内置类别：工作区产物 / 我的上传（顺序即抽屉 Tab 默认顺序）。 */
+export const WORKSPACE_FILE_CATEGORIES: WorkspaceFileCategory<'artifacts' | 'uploads'>[] = [
+  {
+    id: 'artifacts',
+    label: '工作区产物',
+    matches: (f) => !isUploadedPath(f.path),
+  },
+  {
+    id: 'uploads',
+    label: '我的上传',
+    matches: (f) => isUploadedPath(f.path),
+  },
+];
+
+/**
+ * 按文件修改时间倒序（最新在前）：时间戳缺失（agent_file 事件 / FastClaw 列表）时
+ * 落到 0 并保持传入相对顺序（Array.prototype.sort 稳定），不改变既有无时间戳行为。
+ */
+export function sortWorkspaceFilesByTime<T extends AgentFile>(files: T[]): T[] {
+  return [...files].sort((a, b) => (b.mtimeMs ?? 0) - (a.mtimeMs ?? 0));
 }
 
 /**

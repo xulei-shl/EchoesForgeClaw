@@ -23,7 +23,11 @@ import {
 import { ChatNodeComposer } from './chat/ChatNodeComposer';
 import { ChatNodeSettingsPopover } from './chat/ChatNodeSettingsPopover';
 import { ScrollButtons } from './chat/ScrollButtons';
-import { WorkspaceFilesPanel, type ChatWorkspaceFilesPanel } from './chat/WorkspaceFilesPanel';
+import {
+  WorkspaceFilesDrawer,
+  WorkspaceFilesTrigger,
+  type ChatWorkspaceFilesPanel,
+} from './chat/WorkspaceFilesPanel';
 import { CHAT_STYLE_INJECTIONS } from './chatStyles';
 
 export type { ChatRetryNotice, ChatMessageQueue } from './chat/ChatStatusBanners';
@@ -314,6 +318,11 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
       footer={footer}
       groupBadge={group}
       mismatchBadge={mismatchBadge}
+      // 工作区文件抽屉必须挂在 sideDrawer 根级插槽（渲染在内容区 overflow 之外，见
+      // docs/节点侧边吸附抽屉使用指南.md 2.1：写进 children 会被 overflow-x-hidden 裁切）
+      sideDrawer={
+        workspaceFiles ? <WorkspaceFilesDrawer panel={workspaceFiles} /> : undefined
+      }
       actionBar={renderActionBar()}
     >
       <style dangerouslySetInnerHTML={{ __html: CHAT_STYLE_INJECTIONS }} />
@@ -446,8 +455,9 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
           }}
         />
 
-        {/* 工作区文件面板（skill_agent）：服务端 outputs/ 快照 ∪ manifest 历史 ∪ inputs/ 上传 */}
-        {workspaceFiles && <WorkspaceFilesPanel panel={workspaceFiles} />}
+        {/* 工作区文件入口条（skill_agent / FastClaw agent）：点击展开右侧吸附抽屉
+            （分类 Tab + 时间倒序文件名列表，见 WorkspaceFilesDrawer） */}
+        {workspaceFiles && <WorkspaceFilesTrigger panel={workspaceFiles} />}
 
         {/* 排队消息（skill_agent）：流式中发送的消息先入队，当前轮结束后自动依次发出 */}
         {messageQueue && messageQueue.items.length > 0 && (

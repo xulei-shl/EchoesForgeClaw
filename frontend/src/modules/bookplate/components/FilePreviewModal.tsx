@@ -8,9 +8,13 @@ import { authHeaders } from '../authUtils';
  * 工作区文件内联预览弹层（portal 到 body）：
  * - 文本类（txt/md/json/csv/代码等）→ fetch → 文本截断渲染（React 转义，无 HTML 注入面）
  * - PDF → fetch → blob URL → <iframe> 走浏览器原生查看器
+ * - 图片类 → fetch → blob URL → <img> 居中预览
  * - 其余格式 → 提示不支持预览（保留下载按钮）
- * skill-files 接口需要鉴权头，<iframe src> 无法携带，统一 fetch → blob → objectURL。
+ * skill-files 接口需要鉴权头，<img>/<iframe src> 无法携带，统一 fetch → blob → objectURL。
  */
+
+/** 图片类可预览扩展名（走 fetch → blob → <img> 预览） */
+const IMAGE_PREVIEW_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg']);
 
 /** 文本类可预览扩展名（其余按二进制处理） */
 const TEXT_PREVIEW_EXTS = new Set([
@@ -49,10 +53,11 @@ const TEXT_PREVIEW_EXTS = new Set([
 /** 预览展示的文本上限（字符）；超出截断并提示（避免大文件整读进渲染） */
 const MAX_PREVIEW_CHARS = 100_000;
 
-export function previewKindOf(file: AgentFile): 'text' | 'pdf' | 'binary' {
+export function previewKindOf(file: AgentFile): 'text' | 'pdf' | 'image' | 'binary' {
   const dot = file.name.lastIndexOf('.');
   const ext = dot >= 0 ? file.name.slice(dot + 1).toLowerCase() : '';
   if (ext === 'pdf') return 'pdf';
+  if (IMAGE_PREVIEW_EXTS.has(ext)) return 'image';
   if (TEXT_PREVIEW_EXTS.has(ext)) return 'text';
   return 'binary';
 }
@@ -71,7 +76,7 @@ export const FilePreviewModal: React.FC<{
   const kind = previewKindOf(file);
   const [state, setState] = useState<'loading' | 'ready' | 'error'>(kind === 'binary' ? 'ready' : 'loading');
   const [text, setText] = useState('');
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
@@ -84,9 +89,9 @@ export const FilePreviewModal: React.FC<{
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const blob = await resp.blob();
         if (!active) return;
-        if (kind === 'pdf') {
+        if (kind === 'pdf' || kind === 'image') {
           createdUrl = URL.createObjectURL(blob);
-          setPdfUrl(createdUrl);
+          setBlobUrl(createdUrl);
         } else {
           setText((await blob.text()).slice(0, MAX_PREVIEW_CHARS));
         }
@@ -103,7 +108,11 @@ export const FilePreviewModal: React.FC<{
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        // 拦截冒泡到 window 级监听：弹层优先于外层 NodeSideDrawer 的 Esc 收抽屉
+        e.stopPropagation();
+        onClose();
+      }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
@@ -179,9 +188,17 @@ export const FilePreviewModal: React.FC<{
             <div className="h-full flex items-center justify-center text-error text-xs font-sans px-6 text-center">
               预览加载失败，请下载后查看
             </div>
-          ) : kind === 'pdf' && pdfUrl ? (
+          ) : kind === 'image' && blobUrl ? (
+            <div className="h-full flex items-center justify-center p-4 bg-paper-grid/10">
+              <img
+                src={blobUrl}
+                alt={file.name}
+                className="max-h-full max-w-full object-contain drop-shadow-md select-none"
+              />
+            </div>
+          ) : kind === 'pdf' && blobUrl ? (
             <iframe
-              src={pdfUrl}
+              src={blobUrl}
               title={file.name}
               className="w-full h-full bg-paper"
             />
