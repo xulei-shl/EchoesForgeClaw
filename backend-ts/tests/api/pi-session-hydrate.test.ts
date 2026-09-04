@@ -230,6 +230,91 @@ describe('hydratePiSession（jsonl → UI 历史）', () => {
     expect(files[0]!.mime).toBe('text/markdown');
   });
 
+  it('manifest 差分产物按轮次绑定到 assistant 消息（bash 写文件场景）；与 write 卡去重', () => {
+    seedSession([
+      {
+        type: 'message',
+        id: 'u1',
+        message: { role: 'user', content: '生成报告', timestamp: 1000 },
+      },
+      {
+        type: 'message',
+        id: 'a1',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'toolCall', id: 'c1', name: 'write', arguments: { path: 'outputs/report.md', content: '# r' } },
+            { type: 'text', text: '已生成' },
+          ],
+          stopReason: 'stop',
+          timestamp: 2000,
+        },
+      },
+      {
+        type: 'message',
+        id: 'u2',
+        message: { role: 'user', content: '继续', timestamp: 3000 },
+      },
+      {
+        type: 'message',
+        id: 'a2',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: '完成' }],
+          stopReason: 'stop',
+          timestamp: 4000,
+        },
+      },
+    ]);
+    const ws = nodeWorkspace(uid, WS_ID);
+    mkdirSync(path.join(ws, 'outputs'), { recursive: true });
+    writeFileSync(path.join(ws, 'outputs', 'report.md'), '# r');
+    writeFileSync(path.join(ws, 'outputs', 'later.csv'), 'a,b');
+    appendManifestForTest(ws, [
+      // 第 1 轮（a1: ts=2000 → 产物 ts=2500）：report.md 同时被 write 卡与 manifest 命中 → 去重
+      { rel: 'outputs/report.md', mime: 'text/markdown', size: 5, mtimeMs: 1, ts: 2500 },
+      // 第 2 轮（a2: ts=4000 → 产物 ts=4500）：later.csv 归属 a2
+      { rel: 'outputs/later.csv', mime: 'text/csv', size: 3, mtimeMs: 2, ts: 4500 },
+      // 文件已被删除：不绑定（面板保留 exists=false 语义，消息卡不做 404 链接）
+      { rel: 'outputs/gone.txt', mime: 'text/plain', size: 2, mtimeMs: 3, ts: 2500 },
+    ]);
+    const result = hydratePiSession(ws, WS_ID);
+    const a1 = result.messages[1]!;
+    const a2 = result.messages[3]!;
+    expect(a1.files?.map((f) => f.path)).toEqual(['outputs/report.md']);
+    expect(a1.files![0]!.url).toContain('/skill-files?path=');
+    // write 卡先命中 → manifest 同 path 去重（size 保留 write 推断的 0，不重复成卡）
+    expect(a1.files![0]!.size).toBe(0);
+    expect(a2.files?.map((f) => f.path)).toEqual(['outputs/later.csv']);
+    // manifest 专属产物（正文未声明、非 write/edit）：真实 size 上卡
+    expect(a2.files![0]!.size).toBe(3);
+  });
+
+  it('manifest 无 ts 的历史行与坏行不参与绑定（列表合并仍兼容）', () => {
+    seedSession([
+      {
+        type: 'message',
+        id: 'a1',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: '完成' }],
+          stopReason: 'stop',
+          timestamp: 1000,
+        },
+      },
+    ]);
+    const ws = nodeWorkspace(uid, WS_ID);
+    mkdirSync(path.join(ws, 'outputs'), { recursive: true });
+    writeFileSync(path.join(ws, 'outputs', 'legacy.md'), 'x');
+    // 与本文件其它用例共享工作区：先清掉残留 manifest，仅保留本用例的坏行/无 ts 历史行
+    const file = path.join(ws, '.pi-agent', 'artifacts.jsonl');
+    rmSync(file, { force: true });
+    mkdirSync(path.dirname(file), { recursive: true });
+    appendFileSync(file, 'not-json\n{"rel":"outputs/legacy.md","mime":"text/markdown"}\n', 'utf-8');
+    const result = hydratePiSession(ws, WS_ID);
+    expect(result.messages[0]!.files ?? []).toEqual([]); // 无 ts 不绑定，但列表端点仍可合并
+  });
+
   it('超长字段截断并保留可读标记；遗留根级 chat.jsonl 可回退解析', () => {
     seedSession(
       [
@@ -342,7 +427,7 @@ describe('chat 会话/图片/文件路由（鉴权）', () => {
 /** 测试专用：直接写 manifest 行（绕过 pi 执行器）。 */
 function appendManifestForTest(
   ws: string,
-  records: { rel: string; mime: string; size: number; mtimeMs: number }[]
+  records: { rel: string; mime: string; size: number; mtimeMs: number; ts?: number }[]
 ): void {
   const file = path.join(ws, '.pi-agent', 'artifacts.jsonl');
   mkdirSync(path.dirname(file), { recursive: true });

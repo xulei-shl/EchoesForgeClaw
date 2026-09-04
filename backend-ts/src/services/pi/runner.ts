@@ -23,7 +23,12 @@ import {
   touchPiProcess,
   type PiProcessEntry,
 } from './registry.js';
-import { diffWorkspace, snapshotWorkspace } from './snapshot.js';
+import {
+  diffWorkspace,
+  readWorkspaceBaseline,
+  snapshotWorkspace,
+  writeWorkspaceBaseline,
+} from './snapshot.js';
 import { endgameDiagnostic } from './errors.js';
 import { mapPiJsonEvent, type PiJsonEvent } from './events.js';
 import { rpcEventSchema } from './schema.js';
@@ -297,7 +302,10 @@ async function* streamRound(
   };
   opts.signal?.addEventListener('abort', onAbort, { once: true });
 
-  const before = snapshotWorkspace(opts.ws);
+  // 轮首不再全量遍历：上一轮结束的快照已落盘为基线（readWorkspaceBaseline），仅首轮/
+  // 基线缺失时回退整树遍历（语义与旧「轮首遍历」一致）。每轮 walk 由 2 次降为 1 次，
+  // 缩小同步文件 I/O 在共享事件循环上的阻塞面。见 services/pi/snapshot.ts。
+  const before = readWorkspaceBaseline(opts.ws) ?? snapshotWorkspace(opts.ws);
   let emittedAny = false;
   let runTimeout: ReturnType<typeof setTimeout> | undefined;
   let timedOut = false;
@@ -462,6 +470,9 @@ async function* streamRound(
 
     // 4) 产物差分（新增或修改的文件）→ agent_file 卡片 + manifest 落盘（服务端可再到达）
     const after = snapshotWorkspace(opts.ws);
+    // 单次遍历的落点：本轮 after 即下一轮 before（落盘持久，跨进程/重启存活，
+    // 防既有产物被重复上报为 agent_file）
+    writeWorkspaceBaseline(opts.ws, after);
     const { events: diffEvents } = diffWorkspace(before, after, opts.ws, opts.workspaceId);
     for (const e of diffEvents) {
       emittedAny = true;

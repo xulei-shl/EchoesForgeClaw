@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { mimeOf, skillFileDownloadUrl } from './file-utils.js';
+import { readArtifactManifest } from './pi/snapshot.js';
 
 /**
  * pi 会话水合（服务端为真相源）：
@@ -14,6 +15,8 @@ import { mimeOf, skillFileDownloadUrl } from './file-utils.js';
  *   stopReason=aborted → interrupted；errorMessage → agent_status 错误步骤
  * - message/toolResult：按 toolCallId 归并出 agent_tool_result 步骤，附到对应 assistant 消息
  * - compaction：合成一条「上下文已压缩」状态消息；session/model_change 等元数据条目跳过
+ * - manifest：差分检测到的产物（bash/脚本写入、正文未声明的文件）按 ts 归属到
+ *   产出该轮次的 assistant 消息（与 write/edit 推断、内联图片卡按 path 去重）
  * - 容错：坏行静默跳过；字段级防御（null content / 超长截断）
  */
 
@@ -312,6 +315,40 @@ export function hydratePiSession(ws: string, workspaceId: string): HydratedSessi
       const card = writeFileCard(args, ws, workspaceId);
       if (card && !(m.files ?? []).some((f) => f.path === card.path)) {
         m.files = [...(m.files ?? []), card];
+      }
+    }
+  }
+
+  // manifest 产物绑定：差分检测到的产物（bash/脚本写入、正文未声明的文件）按产生轮次
+  // 归属到对应 assistant 消息。manifest ts = 轮末差分时刻，落在该轮 assistant 消息 ts
+  // 之后、下一轮 user 消息 ts 之前 → 取「ts ≤ 产物 ts 的最后一条 assistant」即产出者。
+  // 仅绑定仍存在的文件，并与 write/edit 推断/内联图片卡按 path 去重。
+  const manifest = readArtifactManifest(ws);
+  if (manifest.length) {
+    const assistantMsgs = messages
+      .filter(
+        (m): m is HydratedMessage & { ts: number } =>
+          m.role === 'assistant' && typeof m.ts === 'number'
+      )
+      .sort((a, b) => a.ts - b.ts);
+    for (const entry of manifest) {
+      if (typeof entry.ts !== 'number' || !entry.rel) continue;
+      if (!existsSync(path.join(ws, entry.rel))) continue;
+      let target: (HydratedMessage & { ts: number }) | null = null;
+      for (const m of assistantMsgs) {
+        if (m.ts <= entry.ts) target = m;
+        else break;
+      }
+      if (!target) continue;
+      const card: HydratedFile = {
+        url: skillFileDownloadUrl(entry.rel, workspaceId),
+        name: path.basename(entry.rel),
+        mime: entry.mime,
+        size: entry.size,
+        path: entry.rel,
+      };
+      if (!(target.files ?? []).some((f) => f.path === card.path)) {
+        target.files = [...(target.files ?? []), card];
       }
     }
   }

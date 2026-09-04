@@ -196,6 +196,64 @@ describe('runPiAgent（pi CLI 子进程端到端）', () => {
   );
 
   it(
+    '跨轮基线：产物只上报一次（换进程后不重复上报既有文件，轮末基线落盘持久）',
+    async () => {
+      const prepared = preparePiWorkspace(UID, WS_ID, {
+        agentId: 1,
+        chatModel: {
+          baseUrl: `http://127.0.0.1:${mock.port}/v1`,
+          apiKey: 'k',
+          modelName: 'test-model',
+          multimodal: true,
+        },
+        imageModel: {
+          baseUrl: `http://127.0.0.1:${mock.port}/v1`,
+          apiKey: 'k',
+          modelName: 'img-model',
+        },
+        skillNames: [],
+      });
+      // 第 1 轮：生图 → 差分上报 agent_file，并落盘基线
+      const run1 = [];
+      for await (const evt of runPiAgent({
+        userId: UID,
+        workspaceId: WS_ID,
+        ws: prepared.ws,
+        hasPrompt: false,
+        chatModelName: 'test-model',
+        imageGenEnabled: true,
+        message: 'draw a cat',
+      })) {
+        run1.push(evt);
+      }
+      const files1 = run1.filter((e) => e.type === 'agent_file');
+      expect(files1.length).toBeGreaterThanOrEqual(1);
+      expect(existsSync(path.join(prepared.ws, '.pi-agent', 'snapshot.json'))).toBe(true);
+
+      // 模拟进程重启：杀掉常驻子进程，下一轮按 generation 重拉新进程
+      await killPiProcess(UID, WS_ID);
+
+      // 第 2 轮：纯文本轮，无新文件 → 既有产物不得重复上报（基线跨进程/重启持久）
+      const run2 = [];
+      for await (const evt of runPiAgent({
+        userId: UID,
+        workspaceId: WS_ID,
+        ws: prepared.ws,
+        hasPrompt: false,
+        chatModelName: 'test-model',
+        imageGenEnabled: true,
+        message: 'ping',
+      })) {
+        run2.push(evt);
+      }
+      const files2 = run2.filter((e) => e.type === 'agent_file');
+      expect(files2).toEqual([]);
+      expect(run2.some((e) => e.type === 'content_delta' && e.delta.includes('pong'))).toBe(true);
+    },
+    120_000
+  );
+
+  it(
     '限流重试轮：429 失败后 auto-retry 恢复成功，不得在流末尾误报 error',
     async () => {
       const failMock = await startMock(1);
