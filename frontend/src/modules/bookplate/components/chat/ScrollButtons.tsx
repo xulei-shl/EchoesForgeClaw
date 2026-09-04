@@ -5,11 +5,13 @@ const ScrollButton = memo(({ direction, onClick, title }: {
   direction: 'up' | 'down'; onClick: () => void; title: string;
 }) => (
   <button
+    type="button"
     onClick={onClick}
-    className="pointer-events-auto flex items-center justify-center w-7 h-7 rounded-full bg-paper/90 border border-paper-grid/60 shadow-sm text-ink-faint hover:text-ink hover:bg-paper-grid hover:shadow backdrop-blur-md transition-all active:scale-[0.96]"
+    aria-label={title}
     title={title}
+    className="pointer-events-auto flex items-center justify-center w-8 h-8 rounded-full bg-paper/95 border border-paper-grid/70 shadow-sm text-ink-faint hover:text-ink hover:bg-paper-grid/60 hover:shadow backdrop-blur-md transition-[color,background-color,box-shadow,transform] duration-150 ease-out active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
   >
-    {direction === 'up' ? <ChevronUp size={16} strokeWidth={2} /> : <ChevronDown size={16} strokeWidth={2} />}
+    {direction === 'up' ? <ChevronUp size={15} strokeWidth={2} /> : <ChevronDown size={15} strokeWidth={2} />}
   </button>
 ));
 ScrollButton.displayName = 'ScrollButton';
@@ -21,11 +23,11 @@ export const ScrollButtons = memo(({ showTop, showBottom, onScrollTop, onScrollB
   onScrollTop: () => void;
   onScrollBottom: () => void;
 }) => (
-  <div className="absolute right-4 bottom-14 flex flex-col gap-2 z-20 pointer-events-none">
-    <div className={`transition-all duration-200 ${showTop ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2 pointer-events-none'}`}>
+  <div className="absolute right-3.5 bottom-14 flex flex-col gap-1.5 z-20 pointer-events-none">
+    <div className={`transition-[opacity,transform] duration-200 ease-out ${showTop ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2 pointer-events-none'}`}>
       <ScrollButton direction="up" onClick={onScrollTop} title="回到顶部" />
     </div>
-    <div className={`transition-all duration-200 ${showBottom ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2 pointer-events-none'}`}>
+    <div className={`transition-[opacity,transform] duration-200 ease-out ${showBottom ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2 pointer-events-none'}`}>
       <ScrollButton
         direction="down"
         onClick={onScrollBottom}

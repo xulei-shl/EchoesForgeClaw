@@ -203,9 +203,15 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
       const el = listRef.current;
       if (!el) return;
       const { scrollTop, scrollHeight, clientHeight } = el;
-      stickBottomRef.current = scrollHeight - scrollTop - clientHeight < 40;
-      const needTop = scrollTop > 200;
-      const needBottom = scrollHeight - scrollTop - clientHeight > 100;
+      const distFromBottom = scrollHeight - scrollTop - clientHeight;
+      // 迟滞区间保护：离底 <= 24px 自动恢复吸附，离底 > 48px 稳定保持自由阅览
+      if (distFromBottom <= 24) {
+        stickBottomRef.current = true;
+      } else if (distFromBottom > 48) {
+        stickBottomRef.current = false;
+      }
+      const needTop = scrollTop > 160;
+      const needBottom = distFromBottom > 80;
       setShowScrollTop((prev) => (prev !== needTop ? needTop : prev));
       setShowScrollBottom((prev) => (prev !== needBottom ? needBottom : prev));
     });
@@ -338,12 +344,14 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
             {/* 无用户消息时没有可重试的轮次（如异常初始状态），隐藏重试避免空转 */}
             {messages.some((m) => m.role === 'user') && (
               <button
+                type="button"
                 onClick={() => {
                   stickBottomRef.current = true;
                   onRetry?.(id);
                 }}
+                aria-label="重新发送最后一轮对话"
                 title="重新发送最后一轮对话"
-                className="shrink-0 flex items-center gap-1 rounded-md border border-error/25 px-2 py-1 text-[10px] font-sans text-error hover:bg-error/10 active:scale-[0.96] transition"
+                className="shrink-0 flex items-center gap-1 rounded-md border border-error/25 px-2 py-1 text-[10px] font-sans text-error hover:bg-error/10 active:scale-[0.96] transition-[color,background-color,border-color,transform] duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-error"
               >
                 <RefreshCw size={11} strokeWidth={2} />
                 重试

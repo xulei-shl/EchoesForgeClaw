@@ -30,18 +30,19 @@ export const RetryNoticeBanner: React.FC<{ notice: ChatRetryNotice }> = ({ notic
   return (
     <div className="mb-2 p-2 rounded-md border border-accent/25 bg-accent/5">
       <button
+        type="button"
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-2 text-left"
+        className="w-full flex items-center gap-2 text-left select-none"
         title="点击查看详情"
       >
         <RefreshCw size={12} strokeWidth={2} className="text-accent animate-spin shrink-0" />
         <span className="flex-1 min-w-0 text-[11px] font-sans text-accent/90 leading-snug">
-          {notice.reason}，{remaining}s 后自动重试（第 {notice.attempt}/{notice.maxAttempts || '?'} 次）
+          {notice.reason}，<span className="tabular-nums font-mono font-medium">{remaining}s</span> 后自动重试（第 <span className="tabular-nums font-mono">{notice.attempt}</span>/{notice.maxAttempts || '?'} 次）
         </span>
         <ChevronDown
           size={11}
           strokeWidth={2}
-          className={`shrink-0 text-accent/70 transition-transform ${open ? 'rotate-180' : ''}`}
+          className={`shrink-0 text-accent/70 transition-transform duration-200 ease-out ${open ? 'rotate-180' : ''}`}
         />
       </button>
       {open && (
@@ -65,21 +66,25 @@ export const QueuedMessageRow: React.FC<{
       {item.text || `图片 ×${item.images?.length ?? 0}`}
     </p>
     {!!item.images?.length && item.text && (
-      <span className="shrink-0 text-[9px] font-sans text-ink-faint">+{item.images.length}图</span>
+      <span className="shrink-0 text-[9px] font-sans tabular-nums text-ink-faint">+{item.images.length}图</span>
     )}
     <button
+      type="button"
       onClick={() => onSendNow(item.id)}
+      aria-label="立即发送"
       title="立即发送"
-      className="shrink-0 flex items-center justify-center w-5 h-5 rounded-md text-ink-faint hover:text-accent hover:bg-accent/10 active:scale-95 transition opacity-60 group-hover/queue:opacity-100"
+      className="shrink-0 flex items-center justify-center w-6 h-6 rounded-md text-ink-faint hover:text-accent hover:bg-accent/10 active:scale-[0.96] transition-[color,background-color,transform] duration-150 opacity-60 group-hover/queue:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
     >
-      <Send size={10} strokeWidth={2} />
+      <Send size={11} strokeWidth={2} />
     </button>
     <button
+      type="button"
       onClick={() => onRecall(item.id)}
+      aria-label="撤回排队消息"
       title="撤回"
-      className="shrink-0 flex items-center justify-center w-5 h-5 rounded-md text-ink-faint hover:text-error hover:bg-error/10 active:scale-95 transition opacity-60 group-hover/queue:opacity-100"
+      className="shrink-0 flex items-center justify-center w-6 h-6 rounded-md text-ink-faint hover:text-error hover:bg-error/10 active:scale-[0.96] transition-[color,background-color,transform] duration-150 opacity-60 group-hover/queue:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-error"
     >
-      <X size={10} strokeWidth={2.5} />
+      <X size={11} strokeWidth={2.5} />
     </button>
   </div>
 );

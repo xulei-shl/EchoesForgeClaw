@@ -87,9 +87,11 @@ export const SkillFileCard = memo(({ file }: { file: AgentFile }) => {
           </div>
         )}
         <button
+          type="button"
           onClick={handleDownload}
+          aria-label={`下载 ${file.name}`}
           title={`下载 ${file.name}`}
-          className="absolute right-1 bottom-1 p-1 rounded-md bg-paper/90 text-ink-light hover:text-accent opacity-0 group-hover/file:opacity-100 transition shadow-sm"
+          className="absolute right-1 bottom-1 p-1.5 rounded-md bg-paper/95 text-ink-light hover:text-accent opacity-0 group-hover/file:opacity-100 transition-[color,background-color,transform,opacity] duration-150 active:scale-[0.96] shadow-xs focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
         >
           {downloading ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
         </button>
@@ -101,7 +103,7 @@ export const SkillFileCard = memo(({ file }: { file: AgentFile }) => {
     <>
       <div
         className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-paper-grid bg-paper-grid/20 text-xs font-sans max-w-[260px] ${
-          canPreview ? 'cursor-pointer hover:border-accent/40 hover:bg-accent/5 transition' : ''
+          canPreview ? 'cursor-pointer hover:border-accent/40 hover:bg-accent/5 transition-[border-color,background-color] duration-150' : ''
         }`}
         onClick={canPreview ? () => setPreviewOpen(true) : undefined}
         title={canPreview ? `预览 ${file.name}` : undefined}
@@ -111,27 +113,31 @@ export const SkillFileCard = memo(({ file }: { file: AgentFile }) => {
           <p className="truncate text-ink font-medium leading-tight" title={file.name}>
             {file.name}
           </p>
-          <p className="text-[10px] text-ink-faint mt-0.5">{formatFileSize(file.size)}</p>
+          <p className="text-[10px] text-ink-faint mt-0.5 tabular-nums font-mono">{formatFileSize(file.size)}</p>
         </div>
         {canPreview && (
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               setPreviewOpen(true);
             }}
+            aria-label={`预览 ${file.name}`}
             title={`预览 ${file.name}`}
-            className="p-1 rounded text-ink-faint hover:text-accent transition"
+            className="p-1.5 rounded text-ink-faint hover:text-accent hover:bg-accent/10 active:scale-[0.96] transition-[color,background-color,transform] duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
           >
             <Eye size={12} />
           </button>
         )}
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             void handleDownload();
           }}
+          aria-label={`下载 ${file.name}`}
           title={`下载 ${file.name}`}
-          className="p-1 rounded text-ink-faint hover:text-accent transition"
+          className="p-1.5 rounded text-ink-faint hover:text-accent hover:bg-accent/10 active:scale-[0.96] transition-[color,background-color,transform] duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
         >
           {downloading ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
         </button>

@@ -357,7 +357,7 @@ export const ChatNodeComposer: React.FC<ChatNodeComposerProps> = ({
             {fileAttachments.map((a) => (
               <div
                 key={a.path}
-                className="group flex items-center gap-1 max-w-[190px] rounded-md border border-paper-grid bg-paper-grid/20 pl-2 pr-1 py-0.5"
+                className="group flex items-center gap-1 max-w-[190px] rounded-md border border-paper-grid/70 bg-paper-grid/20 pl-2 pr-1 py-0.5"
               >
                 <FileText size={11} strokeWidth={1.75} className="shrink-0 text-accent" />
                 <span
@@ -367,10 +367,12 @@ export const ChatNodeComposer: React.FC<ChatNodeComposerProps> = ({
                   {a.name}
                 </span>
                 <button
+                  type="button"
                   onClick={() => removeFileAttachment(a.path)}
                   disabled={isGenerating}
+                  aria-label={`移除附件 ${a.name}`}
                   title="移除文件"
-                  className="shrink-0 flex items-center justify-center w-4 h-4 rounded text-ink-faint hover:text-error hover:bg-error/10 transition disabled:opacity-40"
+                  className="shrink-0 flex items-center justify-center w-5 h-5 -mr-0.5 rounded text-ink-faint hover:text-error hover:bg-error/10 active:scale-[0.96] transition-[color,background-color,transform] duration-150 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-error"
                 >
                   <X size={10} strokeWidth={2.5} />
                 </button>
@@ -392,12 +394,14 @@ export const ChatNodeComposer: React.FC<ChatNodeComposerProps> = ({
                   className="w-full h-full object-cover"
                 />
                 <button
+                  type="button"
                   onClick={() => setAttachments((prev) => prev.filter((_, j) => j !== i))}
                   disabled={isGenerating}
+                  aria-label={`移除附件图片 ${i + 1}`}
                   title="移除图片"
-                  className="absolute -top-1.5 -right-1.5 flex items-center justify-center w-4 h-4 rounded-full bg-paper border border-paper-grid shadow-sm text-ink-faint hover:text-error hover:border-error/40 transition disabled:opacity-40"
+                  className="absolute -top-1.5 -right-1.5 flex items-center justify-center w-5 h-5 rounded-full bg-paper border border-paper-grid shadow-xs text-ink-faint hover:text-error hover:border-error/40 active:scale-[0.96] transition-[color,background-color,border-color,transform] duration-150 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-error"
                 >
-                  <X size={9} strokeWidth={2.5} />
+                  <X size={10} strokeWidth={2.5} />
                 </button>
               </div>
             ))}
@@ -465,8 +469,16 @@ export const ChatNodeComposer: React.FC<ChatNodeComposerProps> = ({
           onChange={handlePick}
         />
         <button
+          type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={isGenerating}
+          aria-label={
+            skillAgentFiles
+              ? '上传文件到工作区（任意格式）'
+              : attachments.length >= MAX_ATTACHMENTS
+                ? `最多附带 ${MAX_ATTACHMENTS} 张图片`
+                : '附带图片'
+          }
           title={
             skillAgentFiles
               ? '上传文件到工作区（任意格式）'
@@ -474,7 +486,7 @@ export const ChatNodeComposer: React.FC<ChatNodeComposerProps> = ({
                 ? `最多附带 ${MAX_ATTACHMENTS} 张图片`
                 : '附带图片'
           }
-          className="flex shrink-0 items-center justify-center w-9 h-9 rounded-lg border border-dashed border-paper-grid text-ink-faint hover:text-accent hover:border-accent/40 hover:bg-accent/5 active:scale-[0.96] transition disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          className="flex shrink-0 items-center justify-center w-9 h-9 rounded-lg border border-paper-grid/70 text-ink-faint hover:text-accent hover:border-accent/40 hover:bg-accent/5 active:scale-[0.96] transition-[color,background-color,border-color,transform] duration-150 ease-out disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           {skillAgentFiles ? <Paperclip size={15} strokeWidth={2} /> : <ImagePlus size={15} strokeWidth={2} />}
         </button>
@@ -492,22 +504,26 @@ export const ChatNodeComposer: React.FC<ChatNodeComposerProps> = ({
                 ? '输入消息，@ 引用工作区文件，Enter 发送'
                 : '输入消息，Enter 发送，Shift+Enter 换行'
           }
-          className="flex-1 min-w-0 min-h-[36px] max-h-32 overflow-y-auto resize-none rounded-lg border border-dashed border-paper-grid bg-node-bg px-3 py-1.5 text-sm font-sans text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors disabled:opacity-60"
+          className="flex-1 min-w-0 min-h-[36px] max-h-32 overflow-y-auto resize-none rounded-lg border border-paper-grid/70 bg-node-bg px-3 py-1.5 text-sm font-sans text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-[border-color,box-shadow] duration-150 disabled:opacity-60 [text-wrap:pretty]"
         />
         {isGenerating ? (
           <button
+            type="button"
             onClick={onStop}
+            aria-label="停止生成"
             title="停止生成"
-            className="flex shrink-0 items-center justify-center w-9 h-9 rounded-lg border border-error/30 bg-error/5 text-error hover:bg-error/10 active:scale-[0.96] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error"
+            className="flex shrink-0 items-center justify-center w-9 h-9 rounded-lg border border-error/30 bg-error/5 text-error hover:bg-error/10 active:scale-[0.96] transition-[color,background-color,transform] duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error"
           >
-            <Square size={15} strokeWidth={2} fill="currentColor" />
+            <Square size={14} strokeWidth={2} fill="currentColor" />
           </button>
         ) : (
           <button
+            type="button"
             onClick={handleSend}
             disabled={!draft.trim() && attachments.length === 0}
+            aria-label="发送消息 (Enter)"
             title="发送 (Enter)"
-            className="flex items-center justify-center w-9 h-9 rounded-lg bg-accent text-white shadow-sm hover:bg-accent/90 active:scale-[0.96] transition disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            className="flex items-center justify-center w-9 h-9 rounded-lg bg-accent text-white shadow-xs hover:bg-accent/90 active:scale-[0.96] transition-[background-color,transform] duration-150 ease-out disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             <Send size={15} strokeWidth={2} />
           </button>

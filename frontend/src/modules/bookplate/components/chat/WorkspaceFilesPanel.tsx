@@ -81,14 +81,15 @@ export const WorkspaceFilesTrigger: React.FC<{ panel: ChatWorkspaceFilesPanel }>
       <button
         type="button"
         onClick={panel.onToggle}
+        aria-expanded={panel.open}
         title={panel.open ? '收起工作区文件抽屉' : '展开工作区文件抽屉'}
-        className={`flex items-center gap-1.5 text-[11px] font-sans transition-colors cursor-pointer select-none ${
+        className={`flex items-center gap-1.5 text-[11px] font-sans transition-[color] duration-150 cursor-pointer select-none active:scale-[0.98] ${
           panel.open ? 'text-accent font-medium' : 'text-ink-faint hover:text-accent'
         }`}
       >
         <FolderOpen size={12} strokeWidth={2} />
         <span>工作区文件{total > 0 ? ` (${total})` : ''}</span>
-        <ChevronDown size={11} strokeWidth={2} className={panel.open ? 'rotate-180' : ''} />
+        <ChevronDown size={11} strokeWidth={2} className={`transition-transform duration-200 ease-out ${panel.open ? 'rotate-180' : ''}`} />
       </button>
       {panel.loading && <Loader2 size={10} className="animate-spin text-ink-faint" />}
     </div>
@@ -134,7 +135,7 @@ export const WorkspaceFilesDrawer: React.FC<{ panel: ChatWorkspaceFilesPanel }> 
       disabled={panel.loading}
       title="刷新文件列表"
       aria-label="刷新文件列表"
-      className="flex items-center justify-center w-6 h-6 rounded-md text-ink-faint hover:text-accent hover:bg-accent/10 active:scale-95 transition disabled:opacity-40 cursor-pointer"
+      className="flex items-center justify-center w-6 h-6 rounded-md text-ink-faint hover:text-accent hover:bg-accent/10 active:scale-[0.96] transition-[color,background-color,transform] duration-150 disabled:opacity-40 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
     >
       <RefreshCw size={12} strokeWidth={2} className={panel.loading ? 'animate-spin' : ''} />
     </button>
@@ -236,7 +237,7 @@ const WorkspaceFileRow: React.FC<{
         <span className="truncate text-ink font-medium" title={file.path || file.name}>
           {file.name}
         </span>
-        {meta && <span className="truncate text-[10px] text-ink-faint">{meta}</span>}
+        {meta && <span className="truncate text-[10px] text-ink-faint tabular-nums font-mono">{meta}</span>}
       </span>
     </div>
   );

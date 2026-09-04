@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState } from 'react';
-import { Bot, Brain, ChevronDown, ChevronUp, Loader2, TerminalSquare, Wrench } from 'lucide-react';
+import { Bot, Brain, ChevronDown, Loader2, TerminalSquare, Wrench } from 'lucide-react';
 import type { AgentStep } from '../../../../platform/types';
 
 const TRUNCATE_STEP_TEXT = 300;
@@ -24,8 +24,6 @@ export const StepActivityCard: React.FC<{
   const hasReasoning = Boolean(reasoning && reasoning.trim().length > 0);
   const hasSteps = agentSteps.length > 0;
 
-  if (!hasReasoning && !hasSteps && !streaming) return null;
-
   // 展开状态逻辑：若用户手动开合则尊重用户选择；若未手动操作，流式且无正文时自动展开，有正文后自动收起
   const [userToggledOpen, setUserToggledOpen] = useState<boolean | null>(null);
   const sawContentRef = useRef(hasContent);
@@ -37,6 +35,8 @@ export const StepActivityCard: React.FC<{
       setUserToggledOpen(false);
     }
   }, [hasContent]);
+
+  if (!hasReasoning && !hasSteps && !streaming) return null;
 
   const open = userToggledOpen ?? (streaming && !hasContent);
 
@@ -103,7 +103,8 @@ export const StepActivityCard: React.FC<{
       <button
         type="button"
         onClick={toggleOpen}
-        className="w-full flex items-center gap-1.5 px-2 py-1 text-left text-[10px] text-ink-faint hover:text-ink-light font-sans transition-colors overflow-hidden select-none active:scale-[0.99]"
+        aria-expanded={open}
+        className="w-full flex items-center gap-1.5 px-2 py-1 text-left text-[10px] text-ink-faint hover:text-ink-light font-sans transition-[color,background-color,transform] duration-150 ease-out overflow-hidden select-none active:scale-[0.98] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
         title={open ? '收起步骤详情' : '展开步骤详情'}
       >
         <Bot size={11} strokeWidth={1.75} className={open ? 'text-accent shrink-0' : 'shrink-0'} />
@@ -124,11 +125,11 @@ export const StepActivityCard: React.FC<{
               {agentSteps.length} 步
             </span>
           )}
-          {open ? (
-            <ChevronUp size={11} strokeWidth={2} />
-          ) : (
-            <ChevronDown size={11} strokeWidth={2} />
-          )}
+          <ChevronDown
+            size={11}
+            strokeWidth={2}
+            className={`shrink-0 transition-transform duration-200 ease-out ${open ? 'rotate-180 text-accent' : ''}`}
+          />
         </span>
       </button>
 

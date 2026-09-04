@@ -52,7 +52,7 @@ export const ChatNodeSettingsPopover: React.FC<ChatNodeSettingsPopoverProps> = (
 }) => {
   if (!open || typeof document === 'undefined') return null;
   return createPortal(
-    <div ref={popupRef} className="fixed z-[9999]" style={{ right: coords.x, bottom: coords.y }}>
+    <div ref={popupRef} className="fixed z-[9999]" style={{ right: coords.x, bottom: coords.y, ['--pop-origin' as any]: 'bottom right' }}>
       <div className="w-64 pop-enter-anim">
         <div className="bg-paper border border-paper-grid rounded-xl shadow-xl overflow-hidden">
           <div className="px-3 py-2.5 border-b border-dashed border-paper-grid bg-paper-grid/10">
@@ -166,11 +166,12 @@ export const ChatNodeSettingsPopover: React.FC<ChatNodeSettingsPopoverProps> = (
             {hasMessages && (
               <div>
                 <button
+                  type="button"
                   onClick={() => {
                     onClose();
                     onClearChat();
                   }}
-                  className="w-full flex items-center justify-center gap-1.5 rounded-md border border-dashed py-1.5 text-[11px] font-sans transition border-error/30 text-error/90 hover:bg-error/5 active:scale-[0.98]"
+                  className="w-full flex items-center justify-center gap-1.5 rounded-md border border-dashed py-1.5 text-[11px] font-sans transition-[color,background-color,border-color,transform] duration-150 ease-out border-error/30 text-error/90 hover:bg-error/5 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-error cursor-pointer"
                 >
                   <Eraser size={11} strokeWidth={2} />
                   清空对话（清空后重新注入上下文）
