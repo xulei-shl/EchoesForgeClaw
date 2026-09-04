@@ -2,7 +2,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { nodesRef, edgesRef } from '../../platform/stores/useCanvasState';
 import { ChatNode } from './components/ChatNode';
 import { getNodeTitle } from './nodeTypes';
-import { buildInjectedContextBlocks } from './contextBlocks';
+import { buildContextBlocks } from './contextBlocks';
 import { isBookCoverEnabled } from './execution';
 import { authHeaders, handleUnauthorized } from './authUtils';
 import { makeIdleTimeout } from './idleTimeout';
@@ -10,11 +10,21 @@ import { urlToDataUrl } from './imageUpload';
 import { PROMPT_SSE_IDLE_TIMEOUT_MS } from '../../platform/utils/timeouts';
 import { mismatchBadgeOf, type NodeViewHelpers } from './CanvasNodeViews';
 import { mergeAgentFiles } from './workspaceFiles';
+import { useWorkspaceFilesPanel } from './useWorkspaceFilesPanel';
+import {
+  cachedSessionOf,
+  putSessionCache,
+  fetchPiSession,
+  fetchWorkspaceFiles,
+  uploadWorkspaceFile,
+  importInheritedImages,
+  postUiResponse,
+  type UploadedWorkspaceFile,
+} from './piSessionApi';
 import {
   piStreamReducer,
   INITIAL_PI_STREAM,
   parseSseStream,
-  type ExtensionWidgetItem,
   type PendingUiRequest,
 } from './piStream';
 import {
@@ -53,25 +63,8 @@ import type { NodeData } from './graphTypes';
  */
 
 // ---------------------------------------------------------------------------
-// 服务端水合（会话真相源）
+// 服务端会话 API（水合 / 文件 / 上传 / 导入 / UI 作答）见 piSessionApi.ts
 // ---------------------------------------------------------------------------
-
-/** GET /chat/session 返回的消息 DTO（与后端 pi-session-hydrate.ts 对齐）。 */
-interface HydratedMessageDto {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  reasoning?: string;
-  agentSteps?: AgentStep[];
-  files?: AgentFile[];
-  interrupted?: boolean;
-}
-
-/** GET /chat/session 返回体（消息 DTO + 扩展 widget 快照）。 */
-interface HydratedSessionDto {
-  messages?: HydratedMessageDto[];
-  widgets?: ExtensionWidgetItem[];
-}
 
 /** 排队消息（流式中发送不中断当前轮；当前轮结束后自动依次发出，借鉴 Proma followUp 队列） */
 interface QueuedMessage {
@@ -89,167 +82,6 @@ interface RetryNoticeState {
 }
 
 const MAX_QUEUE = 10;
-
-const SESSION_CACHE_MAX = 8;
-/** 模块级 LRU：key = workspaceId（含节点创建时间戳，跨账号碰撞概率可忽略）；缓存消息 + widget 快照。 */
-const sessionCache = new Map<string, { messages: ChatMessage[]; widgets: ExtensionWidgetItem[] }>();
-
-function cachedSessionOf(ws: string): { messages: ChatMessage[]; widgets: ExtensionWidgetItem[] } | null {
-  const hit = sessionCache.get(ws);
-  if (hit) {
-    sessionCache.delete(ws);
-    sessionCache.set(ws, hit);
-  }
-  return hit ?? null;
-}
-
-function putSessionCache(
-  ws: string,
-  data: { messages: ChatMessage[]; widgets: ExtensionWidgetItem[] }
-): void {
-  sessionCache.delete(ws);
-  sessionCache.set(ws, data);
-  while (sessionCache.size > SESSION_CACHE_MAX) {
-    const oldest = sessionCache.keys().next().value;
-    if (oldest === undefined) break;
-    sessionCache.delete(oldest);
-  }
-}
-
-function dtoToChatMessage(m: HydratedMessageDto): ChatMessage {
-  return {
-    role: m.role,
-    content: m.content ?? '',
-    ...(m.reasoning ? { reasoning: m.reasoning } : {}),
-    ...(m.agentSteps?.length ? { agentSteps: m.agentSteps } : {}),
-    ...(m.files?.length ? { files: m.files } : {}),
-    ...(m.interrupted ? { interrupted: true } : {}),
-  };
-}
-
-async function fetchPiSession(ws: string): Promise<{ messages: ChatMessage[]; widgets: ExtensionWidgetItem[] }> {
-  const resp = await fetch(
-    `/api/modules/bookplate/chat/session?workspace_id=${encodeURIComponent(ws)}`,
-    { headers: authHeaders() }
-  );
-  if (resp.status === 401) {
-    handleUnauthorized();
-    throw new Error('401');
-  }
-  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  const data = (await resp.json()) as HydratedSessionDto;
-  return {
-    messages: (data.messages ?? []).map(dtoToChatMessage),
-    // 只取前端需要的展示字段（剥离 updatedAt/toolCallId 等服务端溯源元数据）
-    widgets: (data.widgets ?? []).map((w) => ({
-      key: w.key,
-      ...(w.label ? { label: w.label } : {}),
-      lines: w.lines,
-      placement: w.placement ?? 'aboveEditor',
-      ...(w.data !== undefined ? { data: w.data } : {}),
-    })),
-  };
-}
-
-async function fetchWorkspaceFiles(ws: string): Promise<AgentFile[]> {
-  // include_inputs=1：面板同时展示用户上传到 inputs/ 的文件（产物 + 上传物统一视图）
-  const resp = await fetch(
-    `/api/modules/bookplate/chat/files?workspace_id=${encodeURIComponent(ws)}&include_inputs=1`,
-    { headers: authHeaders() }
-  );
-  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  const data = (await resp.json()) as { files?: AgentFile[] };
-  // 已删除的历史产物不进面板（manifest 可追溯语义由服务端保留）
-  return (data.files ?? []).filter((f) => f.exists !== false);
-}
-
-/** 已上传到工作区 inputs/ 的文件信息（/chat/upload 返回体）。 */
-interface UploadedWorkspaceFile {
-  name: string;
-  path: string;
-  mime: string;
-  size: number;
-}
-
-/**
- * 任意格式文件 → 工作区 inputs/（Skill Agent 附件通道）。
- * multipart（字段名 file）；workspace_id 走查询参数。返回工作区相对路径供消息引用。
- */
-async function uploadWorkspaceFile(ws: string, file: File): Promise<UploadedWorkspaceFile> {
-  const body = new FormData();
-  body.append('file', file);
-  const resp = await fetch(`/api/modules/bookplate/chat/upload?workspace_id=${encodeURIComponent(ws)}`, {
-    method: 'POST',
-    headers: authHeaders(),
-    body,
-  });
-  if (resp.status === 401) {
-    handleUnauthorized();
-    throw new Error('401');
-  }
-  if (!resp.ok) {
-    let detail = `HTTP ${resp.status}`;
-    try {
-      const j = (await resp.json()) as { detail?: string };
-      if (j?.detail) detail = j.detail;
-    } catch {
-      /* 非 JSON 错误体：用状态码兜底 */
-    }
-    throw new Error(detail);
-  }
-  return (await resp.json()) as UploadedWorkspaceFile;
-}
-
-/**
- * 上游继承的图片 → 拷入工作区 inputs/（服务端 /chat/import 白名单拷贝 + data URL 解码），
- * 返回工作区相对路径列表。失败时抛错（前端在首轮注入处兜底降级为 base64 通道）。
- */
-async function importInheritedImages(
-  ws: string,
-  req: { urls: string[]; dataUrls?: string[] }
-): Promise<string[]> {
-  if (!req.urls.length && !req.dataUrls?.length) return [];
-  const resp = await fetch('/api/modules/bookplate/chat/import', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
-    body: JSON.stringify({
-      workspace_id: ws,
-      urls: req.urls,
-      ...(req.dataUrls?.length ? { data_urls: req.dataUrls } : {}),
-    }),
-  });
-  if (resp.status === 401) {
-    handleUnauthorized();
-    throw new Error('401');
-  }
-  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  const data = (await resp.json()) as { files?: { path: string }[] };
-  return (data.files ?? []).map((f) => f.path);
-}
-
-/** 扩展交互作答 → POST /chat/ui-response 写回 RPC 子进程。404（会话已结束）静默。 */
-async function postUiResponse(
-  ws: string,
-  id: string,
-  response: { value?: string; confirmed?: boolean; cancelled?: boolean }
-): Promise<boolean> {
-  try {
-    const resp = await fetch('/api/modules/bookplate/chat/ui-response', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ workspace_id: ws, id, ...response }),
-    });
-    if (resp.status === 401) {
-      handleUnauthorized();
-      return false;
-    }
-    return resp.ok;
-  } catch {
-    return false;
-  }
-}
-
-// ---------------------------------------------------------------------------
 
 /**
  * Skill Agent 节点宿主（mode==='skill_agent' 的 chat 节点由此渲染）。
@@ -306,13 +138,12 @@ export function PiChatNodeHost({
   const activeRequestWsRef = useRef<string | null>(wsId);
 
   // ---------- 工作区文件面板 ----------
-  const [panelOpen, setPanelOpen] = useState(false);
-  const panelOpenRef = useRef(panelOpen);
-  panelOpenRef.current = panelOpen;
-  const [panelFiles, setPanelFiles] = useState<AgentFile[] | null>(null);
-  const [panelLoading, setPanelLoading] = useState(false);
-  /** 流收尾时递增，驱动展开状态下的面板刷新 */
-  const [panelVersion, setPanelVersion] = useState(0);
+  // 状态机复用 useWorkspaceFilesPanel（展开时加载 / 收尾自动刷新）；loader 返回 null 表示跳过
+  const panel = useWorkspaceFilesPanel(async () => {
+    const ws = wsIdRef.current;
+    if (!ws) return null;
+    return fetchWorkspaceFiles(ws);
+  });
 
   // ---------- 排队消息 / 重试横幅 ----------
   const [msgQueue, setMsgQueue] = useState<QueuedMessage[]>([]);
@@ -320,23 +151,6 @@ export function PiChatNodeHost({
   msgQueueRef.current = msgQueue;
   const queueIdRef = useRef(1);
   const [retryNotice, setRetryNotice] = useState<RetryNoticeState | null>(null);
-  const loadPanel = useCallback(async () => {
-    const ws = wsIdRef.current;
-    if (!ws) return;
-    setPanelLoading(true);
-    try {
-      const files = await fetchWorkspaceFiles(ws);
-      setPanelFiles(files);
-    } catch {
-      setPanelFiles([]);
-    } finally {
-      setPanelLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (panelOpen) void loadPanel();
-  }, [panelOpen, panelVersion, loadPanel]);
 
   // ---------- 流式状态：原始 SSE + 纯 reducer（替代 useChat 一次性 live 缓冲） ----------
   // streamState.steps 按「每条助手消息」拆分（思考 + 正文 + 工具步骤，见 piStream），
@@ -353,15 +167,9 @@ export function PiChatNodeHost({
       const cur = nodesRef.current.find((n) => n.id === nodeId);
       const curSettings: ChatNodeSettings = cur?.data?.settings ?? DEFAULT_CHAT_SETTINGS;
       const blocks = cur
-        ? buildInjectedContextBlocks(
+        ? buildContextBlocks(
             cur,
-            {
-              includeBook: curSettings.includeBook,
-              includeBookCover: isBookCoverEnabled(cur, nodesRef.current, edgesRef.current),
-              includeUpstreamText: curSettings.includeUpstream !== false,
-              includeUpstreamImages: curSettings.includeUpstreamImages !== false,
-              includeSkills: true,
-            },
+            curSettings,
             nodesRef.current,
             edgesRef.current,
             portTypesRef.current
@@ -403,8 +211,8 @@ export function PiChatNodeHost({
         optimisticUserRef.current = null;
         activeRequestWsRef.current = ws;
         setSettledSeq((v) => v + 1);
-        setPanelVersion((v) => v + 1);
-        if (panelOpenRef.current) void loadPanel();
+        panel.bump();
+        panel.refreshIfOpen();
         // 自然收尾（非用户停止/出错中断）才自动续发排队消息
         autoNextArmedRef.current =
           !interruptedByUserRef.current && !runErroredRef.current && msgQueueRef.current.length > 0;
@@ -412,7 +220,7 @@ export function PiChatNodeHost({
       .catch(() => {
         /* 水合失败：保留 live 展示（下次挂载/收尾再对齐服务端） */
       });
-  }, [loadPanel, sanitizeHydrated]);
+  }, [panel.refreshIfOpen, sanitizeHydrated]);
   finishRunRef.current = finishRun;
 
   // workspaceId 变化（含清空对话再生）：作废旧轮（SSE/水合）、复位 live 状态与缓存。
@@ -431,7 +239,7 @@ export function PiChatNodeHost({
       idleRef.current?.controller.abort();
       dispatchStream({ type: 'end' });
       dispatchStream({ type: 'widget_set_all', widgets: [] });
-      setPanelFiles(null);
+      panel.reset();
       forcedErrorRef.current = null;
       pendingFilesRef.current.clear();
       contextSentRef.current = false;
@@ -641,15 +449,9 @@ export function PiChatNodeHost({
         let wireText = text;
         if (!contextSentRef.current && cur) {
           contextBlocksForMeta.push(
-            ...buildInjectedContextBlocks(
+            ...buildContextBlocks(
               cur,
-              {
-                includeBook: nodeSettings.includeBook,
-                includeBookCover: isBookCoverEnabled(cur, nodesRef.current, edgesRef.current),
-                includeUpstreamText: nodeSettings.includeUpstream !== false,
-                includeUpstreamImages: nodeSettings.includeUpstreamImages !== false,
-                includeSkills: true,
-              },
+              nodeSettings,
               nodesRef.current,
               edgesRef.current,
               portTypesRef.current
@@ -1007,15 +809,9 @@ export function PiChatNodeHost({
 
   // 上下文块展示：始终实时根据画布连线与配置动态重算，上级重新生成时折叠卡片同步更新。
   // 仅展示层实时；首轮发送仍按当时快照注入会话（服务端真相源），清空对话后重新注入最新。
-  const contextBlocks = buildInjectedContextBlocks(
+  const contextBlocks = buildContextBlocks(
     node,
-    {
-      includeBook: settings.includeBook,
-      includeBookCover: isBookCoverEnabled(node, h.nodes, h.edges),
-      includeUpstreamText: settings.includeUpstream !== false,
-      includeUpstreamImages: settings.includeUpstreamImages !== false,
-      includeSkills: true,
-    },
+    settings,
     h.nodes,
     h.edges,
     portTypesRef.current
@@ -1053,11 +849,11 @@ export function PiChatNodeHost({
       footer={h.renderFooter(node)}
       onContextMenu={(e) => h.handleNodeContextMenu(e, node.id)}
       workspaceFiles={{
-        open: panelOpen,
-        loading: panelLoading,
-        files: panelFiles ?? [],
-        onToggle: () => setPanelOpen((v) => !v),
-        onRefresh: () => void loadPanel(),
+        open: panel.open,
+        loading: panel.loading,
+        files: panel.files,
+        onToggle: () => panel.setOpen((v) => !v),
+        onRefresh: panel.refresh,
       }}
       retryNotice={retryNotice}
       messageQueue={{

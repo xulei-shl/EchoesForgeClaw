@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import { nodesRef, edgesRef } from '../../platform/stores/useCanvasState';
 import { ChatNode } from './components/ChatNode';
 import { getNodeTitle } from './nodeTypes';
-import { buildInjectedContextBlocks } from './contextBlocks';
+import { buildContextBlocks } from './contextBlocks';
 import { isBookCoverEnabled } from './execution';
 import { toWireChatMessages } from './graphTypes';
+import { useWorkspaceFilesPanel } from './useWorkspaceFilesPanel';
 import { handleAgentSseMessage } from './agentSteps';
 import { authHeaders, handleUnauthorized } from './authUtils';
 import { makeIdleTimeout } from './idleTimeout';
@@ -90,37 +91,19 @@ export function ChatNodeHost({
   const pendingFilesRef = useRef<Map<string, AgentFile>>(new Map());
 
   // ---------- FastClaw（Agent 模式）工作区文件面板 ----------
-  // 数据源是 FastClaw 服务端当前会话目录（跨轮保留），与 Skill Agent 的本节点工作区面板对齐
-  const [panelOpen, setPanelOpen] = useState(false);
-  const [panelFiles, setPanelFiles] = useState<AgentFile[]>([]);
-  const [panelLoading, setPanelLoading] = useState(false);
-  /** 生成收尾时递增，驱动展开状态下的面板刷新 */
-  const [panelVersion, setPanelVersion] = useState(0);
-
-  const loadFastClawWorkspaceFiles = useCallback(async () => {
+  // 数据源是 FastClaw 服务端当前会话目录（跨轮保留），与 Skill Agent 的本节点工作区面板对齐；
+  // 状态机复用 useWorkspaceFilesPanel（展开时加载 / 收尾自动刷新），loader 返回 null 表示跳过
+  const panel = useWorkspaceFilesPanel(async () => {
     const cur = nodesRef.current.find((n) => n.id === nodeId) ?? null;
-    if (!cur || cur.type !== 'chat') return;
+    if (!cur || cur.type !== 'chat') return null;
     const settings: ChatNodeSettings = cur.data?.settings ?? DEFAULT_CHAT_SETTINGS;
-    setPanelLoading(true);
-    try {
-      const files = await fetchFastClawWorkspaceFiles({
-        nodeId,
-        epoch: cur.data?.epoch ?? 0,
-        configId: cur.configId ?? null,
-        agentConfigId: settings.agentOverride ?? null,
-      });
-      setPanelFiles(files);
-    } catch {
-      setPanelFiles([]);
-    } finally {
-      setPanelLoading(false);
-    }
-  }, [nodeId]);
-
-  // 面板展开时加载开启；生成收尾（status → ready）在展开状态下自动刷新（见下方 status effect）
-  useEffect(() => {
-    if (panelOpen) void loadFastClawWorkspaceFiles();
-  }, [panelOpen, panelVersion, loadFastClawWorkspaceFiles]);
+    return fetchFastClawWorkspaceFiles({
+      nodeId,
+      epoch: cur.data?.epoch ?? 0,
+      configId: cur.configId ?? null,
+      agentConfigId: settings.agentOverride ?? null,
+    });
+  });
 
   const chat = useChat({
     id: nodeId,
@@ -137,15 +120,9 @@ export function ChatNodeHost({
         if (!alreadyHasContext && cur) {
           const chatSettings: ChatNodeSettings =
             cur.data?.settings ?? DEFAULT_CHAT_SETTINGS;
-          const blocks = buildInjectedContextBlocks(
+          const blocks = buildContextBlocks(
             cur,
-            {
-              includeBook: chatSettings.includeBook,
-              includeBookCover: isBookCoverEnabled(cur, nodesRef.current, edgesRef.current),
-              includeUpstreamText: chatSettings.includeUpstream !== false,
-              includeUpstreamImages: chatSettings.includeUpstreamImages !== false,
-              includeSkills: true,
-            },
+            chatSettings,
             nodesRef.current,
             edgesRef.current,
             portTypesRef.current
@@ -270,8 +247,8 @@ export function ChatNodeHost({
   // 使新产生的会话文件（图片/报告等）及时出现在面板里
   const panelStatusReady = status === 'ready';
   useEffect(() => {
-    if (panelStatusReady && panelOpen) setPanelVersion((v) => v + 1);
-  }, [panelStatusReady, panelOpen]);
+    if (panelStatusReady && panel.open) panel.bump();
+  }, [panelStatusReady, panel.open, panel.bump]);
   // 外部变更检测 effect 经此读取最新 useChat 消息（不进依赖数组，避免流式高频重跑）
   const uiMessagesRef = useRef(uiMessages);
   uiMessagesRef.current = uiMessages;
@@ -641,15 +618,9 @@ export function ChatNodeHost({
   // 计算上下文块：始终实时根据画布连线与配置动态重算，上级重新生成时折叠卡片同步更新。
   // 仅展示层实时；发送时首轮仍按当时快照注入并持久化到首条 user 消息（对话历史不可追溯
   // 改写），清空对话后下一轮自然注入最新上下文。
-  const contextBlocks: InjectedContextBlock[] = buildInjectedContextBlocks(
+  const contextBlocks: InjectedContextBlock[] = buildContextBlocks(
     node,
-    {
-      includeBook: settings.includeBook,
-      includeBookCover: isBookCoverEnabled(node, h.nodes, h.edges),
-      includeUpstreamText: settings.includeUpstream !== false,
-      includeUpstreamImages: settings.includeUpstreamImages !== false,
-      includeSkills: true,
-    },
+    settings,
     h.nodes,
     h.edges,
     portTypesRef.current
@@ -694,11 +665,11 @@ export function ChatNodeHost({
       workspaceFiles={
         isFastClawAgent
           ? {
-              open: panelOpen,
-              loading: panelLoading,
-              files: panelFiles,
-              onToggle: () => setPanelOpen((v) => !v),
-              onRefresh: () => void loadFastClawWorkspaceFiles(),
+              open: panel.open,
+              loading: panel.loading,
+              files: panel.files,
+              onToggle: () => panel.setOpen((v) => !v),
+              onRefresh: panel.refresh,
             }
           : undefined
       }

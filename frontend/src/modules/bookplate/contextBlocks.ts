@@ -5,9 +5,9 @@ import {
   nodeOutputImages,
   nodeOutputText,
 } from './nodeTypes';
-import { collectNodeInputs, resolveNodeRunInputs, type PortTypesLookup } from './execution';
+import { collectNodeInputs, isBookCoverEnabled, resolveNodeRunInputs, type PortTypesLookup } from './execution';
 import type { EdgeData, NodeData } from './graphTypes';
-import type { CanvasNodeType, InjectedContextBlock } from '../../platform/types';
+import type { CanvasNodeType, ChatNodeSettings, InjectedContextBlock } from '../../platform/types';
 
 /** 上下文块构建选项：chat 与图像生成等节点按各自运行设置传入 */
 export interface ContextBlocksOptions {
@@ -140,4 +140,43 @@ export function buildInjectedContextBlocks(
   }
 
   return blocks;
+}
+
+/**
+ * 按 chat 节点运行设置推导上下文注入开关（ChatNodeHost / PiChatNodeHost 两宿主共用，
+ * 消除各调用点重复构造同一组开关）。封面开关默认值跟随 book_info 连通性（见 isBookCoverEnabled）。
+ */
+export function contextOptionsOf(
+  node: NodeData,
+  settings: ChatNodeSettings,
+  nodes: NodeData[],
+  edges: EdgeData[]
+): ContextBlocksOptions {
+  return {
+    includeBook: settings.includeBook,
+    includeBookCover: isBookCoverEnabled(node, nodes, edges),
+    includeUpstreamText: settings.includeUpstream !== false,
+    includeUpstreamImages: settings.includeUpstreamImages !== false,
+    includeSkills: true,
+  };
+}
+
+/**
+ * 收集 chat 节点的注入上下文块（开关由节点运行设置推导）。
+ * ChatNodeHost / PiChatNodeHost 两宿主共用，行为与旧调用点完全一致。
+ */
+export function buildContextBlocks(
+  node: NodeData,
+  settings: ChatNodeSettings,
+  nodes: NodeData[],
+  edges: EdgeData[],
+  portTypesOf: PortTypesLookup
+): InjectedContextBlock[] {
+  return buildInjectedContextBlocks(
+    node,
+    contextOptionsOf(node, settings, nodes, edges),
+    nodes,
+    edges,
+    portTypesOf
+  );
 }
