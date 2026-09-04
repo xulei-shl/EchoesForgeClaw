@@ -28,7 +28,7 @@ export const BgColorBar: React.FC<BgColorBarProps> = ({
   const isPreset = PRESET_COLORS.some((p) => p.value.toLowerCase() === currentColor.toLowerCase());
 
   return (
-    <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 bg-paper/60 rounded-lg border border-paper-grid/60 text-xs">
+    <div className="flex items-center justify-between gap-2 p-2 bg-paper/60 rounded-xl border border-paper-grid/60 text-xs">
       <div className="flex items-center gap-1 shrink-0 select-none">
         <span className="text-ink-light font-serif">背景底色:</span>
         {!hasResult && (
@@ -45,22 +45,16 @@ export const BgColorBar: React.FC<BgColorBarProps> = ({
               <button
                 type="button"
                 disabled={disabled}
+                aria-label={preset.label}
                 onClick={() => onChangeColor(preset.value)}
-                className={`w-5 h-5 rounded-md border transition flex items-center justify-center shrink-0 ${
+                className={`relative before:absolute before:-inset-2 before:content-[''] w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-[transform,border-color,box-shadow] duration-100 ease-out active:scale-[0.96] ${
                   isSelected
                     ? 'border-accent ring-2 ring-accent/40 scale-110 shadow-2xs z-10'
                     : 'border-paper-grid hover:border-accent/80 hover:scale-105'
-                } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                style={
-                  preset.isTransparent
-                    ? {
-                        backgroundImage:
-                          'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)',
-                        backgroundSize: '8px 8px',
-                        backgroundPosition: '0 0, 0 4px, 4px -4px, -4px 0',
-                      }
-                    : { backgroundColor: preset.value }
-                }
+                } ${preset.isTransparent ? 'sticker-checker-bg' : ''} ${
+                  disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                }`}
+                style={!preset.isTransparent ? { backgroundColor: preset.value } : undefined}
               />
             </Tooltip>
           );
@@ -76,7 +70,8 @@ export const BgColorBar: React.FC<BgColorBarProps> = ({
             <button
               type="button"
               disabled={disabled}
-              className={`w-5 h-5 rounded-md border flex items-center justify-center transition shrink-0 ${
+              aria-label={!isPreset && currentColor ? `自定义颜色 (${currentColor})` : '自定义背景取色'}
+              className={`relative before:absolute before:-inset-2 before:content-[''] w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-[transform,border-color,box-shadow,color] duration-100 ease-out active:scale-[0.96] ${
                 !isPreset && currentColor
                   ? 'border-accent ring-2 ring-accent/40 scale-110 shadow-2xs'
                   : 'border-paper-grid/70 hover:border-accent hover:scale-105 bg-paper/80 text-ink-light hover:text-accent'

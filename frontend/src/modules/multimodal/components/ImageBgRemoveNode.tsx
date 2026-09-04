@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Upload,
   RefreshCw,
@@ -57,6 +58,7 @@ export const ImageBgRemoveNode: React.FC<ImageBgRemoveNodeProps> = ({
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [progress, setProgress] = useState<MattingProgress | null>(null);
+  const [isDraggingFile, setIsDraggingFile] = useState<boolean>(false);
 
   // 有效输入图（本地手动上传优先，其次上游连线输入）
   const activeImageSrc = uploadedImage || upstreamImageUrl || null;
@@ -280,6 +282,36 @@ export const ImageBgRemoveNode: React.FC<ImageBgRemoveNodeProps> = ({
     reader.readAsDataURL(file);
   }, [id, onUpdateState, showToast]);
 
+  // 处理拖拽图片上传交互
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isProcessing) {
+      setIsDraggingFile(true);
+    }
+  }, [isProcessing]);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingFile(false);
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDraggingFile(false);
+      if (isProcessing) return;
+
+      const file = e.dataTransfer.files?.[0];
+      if (file) {
+        handleFileSelect(file);
+      }
+    },
+    [handleFileSelect, isProcessing],
+  );
+
   // 收藏/公开切换辅助函数
   const runToggle = async (
     fn: ((id: string) => Promise<boolean>) | undefined,
@@ -462,15 +494,16 @@ export const ImageBgRemoveNode: React.FC<ImageBgRemoveNodeProps> = ({
         <div className="flex items-center justify-between gap-2 shrink-0">
           <div className="flex items-center gap-1.5 text-xs text-ink-light">
             <ImageIcon size={13} className="text-accent" />
-            <span className="truncate max-w-[140px]">
+            <span className="truncate max-w-[140px]" title={uploadedImage ? '本地上传图片' : upstreamImageUrl ? '连线上游图片' : '未指定图片源'}>
               {uploadedImage ? '本地上传图片' : upstreamImageUrl ? '连线上游图片' : '未指定图片源'}
             </span>
             {uploadedImage && (
               <button
                 type="button"
                 onClick={handleClearUpload}
-                className="text-ink-lighter hover:text-red-500 transition ml-0.5"
+                className="relative -m-1.5 p-1.5 text-ink-lighter hover:text-error rounded-sm ml-0.5 active:scale-[0.96] transition-[transform,color] duration-100 ease-out cursor-pointer flex items-center justify-center"
                 title="清除本地替换图，恢复上级输入"
+                aria-label="清除本地替换图，恢复上级输入"
               >
                 <X size={12} />
               </button>
@@ -482,7 +515,7 @@ export const ImageBgRemoveNode: React.FC<ImageBgRemoveNodeProps> = ({
               <button
                 type="button"
                 onClick={() => setViewOriginal(!viewOriginal)}
-                className={`px-2 py-0.5 text-xs rounded transition flex items-center gap-1 border ${
+                className={`px-2 py-0.5 text-xs rounded-md transition-[transform,border-color,background-color,color] duration-100 ease-out active:scale-[0.96] flex items-center gap-1 border cursor-pointer ${
                   viewOriginal
                     ? 'bg-accent/15 text-accent border-accent/40 font-medium'
                     : 'bg-paper text-ink-light border-paper-grid hover:border-accent/60'
@@ -516,24 +549,16 @@ export const ImageBgRemoveNode: React.FC<ImageBgRemoveNodeProps> = ({
                 backgroundColor: hasResult && !viewOriginal && bgColor ? bgColor : undefined,
               }}
             >
-              {/* 透明棋盘格底纹（仅在看去背景图且背景透明时展示） */}
+              {/* 透明棋盘格底纹（仅在看去背景图且背景透明时展示，复用设计系统 sticker-checker-bg） */}
               {!viewOriginal && !bgColor && hasResult && (
-                <div
-                  className="absolute inset-0 opacity-40 pointer-events-none"
-                  style={{
-                    backgroundImage:
-                      'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)',
-                    backgroundSize: '14px 14px',
-                    backgroundPosition: '0 0, 0 7px, 7px -7px, -7px 0',
-                  }}
-                />
+                <div className="absolute inset-0 sticker-checker-bg pointer-events-none opacity-60" />
               )}
 
-              {/* 图像渲染 */}
+              {/* 图像渲染（移除 transition-all 防止主线程重排卡顿，补充微妙 1px Image Outlines） */}
               <img
                 src={viewOriginal || !hasResult ? activeImageSrc : previewDataUrl || rawCutoutUrl!}
-                alt="Matting Preview"
-                className="max-w-full max-h-full object-contain select-none transition-all drop-shadow-xs"
+                alt="去背景效果预览"
+                className="max-w-full max-h-full object-contain select-none ring-1 ring-black/5 dark:ring-white/10 rounded-xs drop-shadow-xs"
               />
 
               {/* 待去背景状态：原图标记与中心快捷触发按钮 */}
@@ -546,7 +571,7 @@ export const ImageBgRemoveNode: React.FC<ImageBgRemoveNodeProps> = ({
                   <button
                     type="button"
                     onClick={() => handleRemoveBg()}
-                    className="pointer-events-auto px-4 py-2 rounded-xl bg-accent text-paper font-medium text-xs shadow-md hover:bg-accent-light active:scale-[0.97] transition-all flex items-center gap-1.5 cursor-pointer z-10"
+                    className="pointer-events-auto px-4 py-2 rounded-xl bg-accent text-paper font-medium text-xs shadow-md hover:bg-accent-light active:scale-[0.96] transition-[transform,background-color,box-shadow] duration-100 ease-out flex items-center gap-1.5 cursor-pointer z-10"
                   >
                     <Sparkles size={14} />
                     <span>一键智能去背景</span>
@@ -563,41 +588,73 @@ export const ImageBgRemoveNode: React.FC<ImageBgRemoveNodeProps> = ({
             </div>
           ) : (
             <div
+              role="button"
+              tabIndex={0}
+              aria-label="上传待去背景图片"
               onClick={() => fileInputRef.current?.click()}
-              className="flex flex-col items-center justify-center p-6 text-center cursor-pointer hover:bg-paper/40 transition gap-2 text-ink-light"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  fileInputRef.current?.click();
+                }
+              }}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              className={`w-full h-full flex flex-col items-center justify-center p-6 text-center cursor-pointer transition-[background-color,border-color,transform] duration-150 gap-2 text-ink-light outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                isDraggingFile
+                  ? 'bg-accent/10 scale-[0.99] border-2 border-dashed border-accent'
+                  : 'hover:bg-paper/40 border border-transparent'
+              }`}
             >
-              <div className="w-12 h-12 rounded-full bg-paper flex items-center justify-center border border-paper-grid text-ink-lighter">
+              <div className="w-12 h-12 rounded-full bg-paper flex items-center justify-center border border-paper-grid text-ink-lighter transition-transform duration-150 hover:scale-105">
                 <Upload size={20} />
               </div>
-              <p className="text-xs font-serif">点击或拖拽上传图片</p>
-              <p className="text-[11px] text-ink-lighter">或在画布中连入上游图片节点</p>
+              <p className="text-xs font-serif font-medium">点击或拖拽图片至此处</p>
+              <p className="text-[11px] text-ink-lighter">支持常见图像格式，或在画布中连入上游图片节点</p>
             </div>
           )}
 
-          {/* 加载/推理中遮罩层 */}
-          {isProcessing && (
-            <div className="absolute inset-0 bg-paper/85 backdrop-blur-xs flex flex-col items-center justify-center p-4 gap-2.5 z-20">
-              <div className="w-8 h-8 rounded-full border-2 border-accent border-t-transparent animate-spin" />
-              <div className="text-center">
-                <p className="text-xs font-medium text-ink">
-                  {progress?.phase === 'loading'
-                    ? `正在初始化离线模型 (${Math.round(progress.progress ?? 0)}%)`
-                    : '正在利用本地硬件去背景中...'}
-                </p>
-                <p className="text-[11px] text-ink-lighter mt-0.5">
-                  计算纯本地进行，无需服务器 GPU
-                </p>
-              </div>
-              {progress?.phase === 'loading' && typeof progress.progress === 'number' && (
-                <div className="w-40 h-1.5 bg-paper-grid rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-accent transition-all duration-150"
-                    style={{ width: `${Math.min(100, Math.max(0, progress.progress))}%` }}
-                  />
+          {/* 加载/推理中遮罩层：基于 AnimatePresence 实现平滑淡入淡出 */}
+          <AnimatePresence>
+            {isProcessing && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.18, ease: 'easeOut' }}
+                className="absolute inset-0 bg-paper/85 backdrop-blur-xs flex flex-col items-center justify-center p-4 gap-2.5 z-20"
+              >
+                <div className="w-8 h-8 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+                <div className="text-center">
+                  <p className="text-xs font-medium text-ink">
+                    {progress?.phase === 'loading' ? (
+                      <>
+                        正在初始化离线模型 (
+                        <span className="tabular-nums font-mono">
+                          {Math.round(progress.progress ?? 0)}%
+                        </span>
+                        )
+                      </>
+                    ) : (
+                      '正在利用本地硬件去背景中...'
+                    )}
+                  </p>
+                  <p className="text-[11px] text-ink-lighter mt-0.5">
+                    计算纯本地进行，无需服务器 GPU
+                  </p>
                 </div>
-              )}
-            </div>
-          )}
+                {progress?.phase === 'loading' && typeof progress.progress === 'number' && (
+                  <div className="w-40 h-1.5 bg-paper-grid rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-accent transition-[width] duration-150 ease-out"
+                      style={{ width: `${Math.min(100, Math.max(0, progress.progress))}%` }}
+                    />
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* 背景色彩配置条 */}
@@ -608,21 +665,38 @@ export const ImageBgRemoveNode: React.FC<ImageBgRemoveNodeProps> = ({
           hasResult={hasResult}
         />
 
-        {/* 记录删除提示 */}
-        {recordDeleted && hasResult && !isExporting && (
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-amber-50 text-amber-800 text-xs border border-amber-200">
-            <AlertCircle size={13} className="shrink-0 text-amber-600" />
-            <span>该记录已从数据库中删除，可重新点击「保存」再次归档</span>
-          </div>
-        )}
+        {/* 提示信息：使用 AnimatePresence 实现高度与透明度平滑折叠，消除 Layout Shift */}
+        <AnimatePresence>
+          {recordDeleted && hasResult && !isExporting && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+              className="overflow-hidden"
+            >
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-amber-50 text-amber-800 text-xs border border-amber-200">
+                <AlertCircle size={13} className="shrink-0 text-amber-600" />
+                <span>该记录已从数据库中删除，可重新点击「保存」再次归档</span>
+              </div>
+            </motion.div>
+          )}
 
-        {/* 错误提示 */}
-        {data.error && (
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-red-50 text-red-700 text-xs border border-red-200">
-            <AlertCircle size={13} className="shrink-0 text-red-500" />
-            <span className="truncate">{data.error}</span>
-          </div>
-        )}
+          {data.error && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+              className="overflow-hidden"
+            >
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-red-50 text-red-700 text-xs border border-red-200">
+                <AlertCircle size={13} className="shrink-0 text-red-500" />
+                <span className="truncate">{data.error}</span>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </CanvasNode>
   );
