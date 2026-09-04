@@ -365,15 +365,15 @@ export function useImageOutputHandlers(ctx: ImageOutputCtx): ImageOutputHandlers
     historyWarn: '记录邮票到历史数据库失败(不阻断导出):',
   });
 
-  // 图像去背景：与贴纸同流程——手动点击保存 → /save-image 落盘 → generations 记录
+  // 抠图：与贴纸同流程——手动点击保存 → /save-image 落盘 → generations 记录
   const handleExportImageBgRemoveFor = useImageExportHandler(ctx, {
     nodeType: 'image_bg_remove',
     historyNodeType: 'image_bg_remove',
-    promptOf: (state) => `图像去背景 · ${state?.bgColor ? '纯色' : '透明'}`,
+    promptOf: (state) => `抠图 · ${state?.bgColor ? '纯色' : '透明'}`,
     okExtras: () => ({}),
     onHistorySaved: () => {},
     emptyError: '保存去背景图片失败',
-    errLabel: '图像去背景保存',
+    errLabel: '抠图保存',
     historyWarn: '记录去背景图片到历史数据库失败(不阻断导出):',
   });
 

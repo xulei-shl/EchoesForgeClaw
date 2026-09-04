@@ -48,7 +48,7 @@ export const NODE_TYPES = {
   OIL_PAINT: 'oil_paint',
   /** 图片处理（多模态工具）：噪点 / ASCII / 网点 / 抖动等风格化效果 */
   IMAGE_PROCESS: 'image_process',
-  /** 图像去背景（多模态工具）：AI 抠图移除背景，输出透明通道 PNG 或纯色背景图 */
+  /** 抠图（多模态工具）：AI 抠图移除背景，输出透明通道 PNG 或纯色背景图 */
   IMAGE_BG_REMOVE: 'image_bg_remove',
   /** 贴纸制作（多模态工具）：一键抠图移除背景，生成带白边描边与投影的 die-cut 贴纸图片 */
   STICKER_MAKER: 'sticker_maker',
@@ -340,7 +340,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
   },
   {
     type: NODE_TYPES.IMAGE_BG_REMOVE,
-    name: '图像去背景',
+    name: '抠图',
     description: 'AI 抠图移除背景，输出透明通道 PNG 或纯色背景图',
     category: 'multimodal',
     configurable: false,

@@ -239,7 +239,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   },
   {
     type: 'image_bg_remove',
-    name: '图像去背景',
+    name: '抠图',
     description: 'AI 抠图移除背景，输出透明通道 PNG 或纯色背景图',
     category: 'multimodal',
     configurable: false,
@@ -437,7 +437,7 @@ export const NODE_PORT_TYPES: Record<
   book_card: { output: 'image', inputs: ['text', 'image'] },
   // 邮票制作：输出生成的邮票图片；可连线图片或图书元数据作为输入源（连线即输入）
   stamp_cutter: { output: 'image', inputs: ['image', 'text'] },
-  // 图像去背景：输出透明通道或纯色背景图片；可连线图片或图书元数据作为输入源（连线即输入）
+  // 抠图：输出透明通道或纯色背景图片；可连线图片或图书元数据作为输入源（连线即输入）
   image_bg_remove: { output: 'image', inputs: ['image', 'text'] },
   // 贴纸制作：输出生成的贴纸图片；可连线图片或图书元数据作为输入源（连线即输入）
   sticker_maker: { output: 'image', inputs: ['image', 'text'] },

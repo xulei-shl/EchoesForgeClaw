@@ -335,7 +335,7 @@ export const ImageBgRemoveNode: React.FC<ImageBgRemoveNodeProps> = ({
       id={id}
       initialX={initialX}
       initialY={initialY}
-      title={title || '图像去背景'}
+      title={title || '抠图'}
       dotColor={NODE_COLORS.image_bg_remove || 'oklch(0.70 0.16 300)'}
       defaultSize={DEFAULT_SIZES.image_bg_remove}
       resizable

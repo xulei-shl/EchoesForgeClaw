@@ -1,5 +1,5 @@
 /**
- * 图像去背景节点（ImageBgRemoveNode）类型定义
+ * 抠图节点（ImageBgRemoveNode）类型定义
  */
 
 export interface ImageBgRemoveState {

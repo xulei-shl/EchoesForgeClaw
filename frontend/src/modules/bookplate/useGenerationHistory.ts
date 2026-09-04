@@ -58,7 +58,7 @@ export function useGenerationHistory(ctx: GenerationHistoryContext): GenerationH
             : imageNode.type === 'stamp_cutter'
               ? '邮票截图'
               : imageNode.type === 'image_bg_remove'
-                ? '图像去背景'
+                ? '抠图'
                 : imageNode.type === 'sticker_maker'
                 ? '贴纸制作'
                 : imageNode.type === 'journal_maker'
