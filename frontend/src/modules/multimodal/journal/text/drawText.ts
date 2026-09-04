@@ -2,7 +2,7 @@
  * 手账制作文本模块 - Canvas 文本 1:1 精确渲染器
  */
 import type { JournalMakerItem } from '../types';
-import { DEFAULT_FONT_FAMILY, DEFAULT_TEXT_COLOR, loadFontFamily } from './fontRegistry';
+import { DEFAULT_FONT_FAMILY, DEFAULT_TEXT_COLOR, loadFontFamily, formatCanvasFont } from './fontRegistry';
 
 /** 竖排单元：直立字符 / 英文数字单词（整体旋转）/ 空格间隔 */
 type VerticalUnit =
@@ -147,7 +147,7 @@ export function drawTextItemToCanvas(
   if (item.angle) {
     ctx.rotate((item.angle * Math.PI) / 180);
   }
-  ctx.font = `${fontSize}px "${fontFamily}", cursive, sans-serif`;
+  ctx.font = formatCanvasFont(fontSize, fontFamily);
   ctx.textBaseline = 'middle';
 
   const align = item.textAlign || 'center';

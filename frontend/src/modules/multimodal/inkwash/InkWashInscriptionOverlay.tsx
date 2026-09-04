@@ -8,6 +8,7 @@ import { Dices, Stamp, X, Check } from 'lucide-react';
 import type { InkWashInscriptionItem } from './types';
 import { UniversalTextToolbar } from '../journal/text/UniversalTextToolbar';
 import type { TextAlignment } from '../journal/text/FontControls';
+import { formatFontFamily } from '../journal/text/fontRegistry';
 import { Tooltip } from '../../../platform/components/ui/Tooltip';
 import { getRandomSealSrc } from './inscription';
 
@@ -323,7 +324,7 @@ export const InkWashInscriptionOverlay: React.FC<InkWashInscriptionOverlayProps>
               {/* 毛笔书法题款文字 */}
               <div
                 style={{
-                  fontFamily: `"${currentFont}", cursive, sans-serif`,
+                  fontFamily: formatFontFamily(currentFont),
                   fontSize: `${fontSizePx}px`,
                   color: currentColor,
                   lineHeight: 1.35,

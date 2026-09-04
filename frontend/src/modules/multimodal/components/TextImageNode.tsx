@@ -1,6 +1,6 @@
 /**
- * 文本成图节点：输入文字并自由调整字体 / 字号 / 颜色 / 横竖排 / 描边与背景，
- * 浏览器端渲染为 PNG 输出（背景默认无 = 透明）。预览与导出共用同一 Canvas 渲染。
+ * 文本成图节点：支持多文本组件排版，自由调整字体 / 字号 / 颜色 / 横竖排 / 描边 / 旋转与层级，
+ * 浏览器端渲染为高清 PNG 输出（背景默认无 = 透明）。预览与导出共用同一 Canvas 渲染。
  */
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -10,33 +10,36 @@ import {
   Globe,
   Loader2,
   Check,
-  PenLine,
-  Square,
-  ChevronUp,
   SlidersHorizontal,
+  Type,
+  ArrowUp,
+  ArrowDown,
+  ChevronsUp,
+  ChevronsDown,
+  RotateCcw,
+  RotateCw,
+  Trash2,
+  Edit3,
 } from 'lucide-react';
 import { CanvasNode } from '../../../platform/components/node/CanvasNode';
 import { NodeActionBar } from '../../../platform/components/node/NodeActionBar';
 import { Tooltip } from '../../../platform/components/ui/Tooltip';
-import { Slider } from '../../../platform/components/ui/Slider';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
 import { NODE_COLORS } from '../../bookplate/nodeTypes';
 import {
+  type TextImageItem,
   type TextImageState,
-  type TextImageWritingMode,
   TEXT_IMAGE_CANVAS,
   TEXT_IMAGE_DEFAULTS,
+  getTextImageCanvasPreset,
   normalizeTextImageState,
-  paintTextImage,
   composeTextImage,
   downloadTextImage,
+  TextImageStudioPanel,
 } from '../textimage';
-import { loadFontFamily } from '../journal/text/fontRegistry';
-import {
-  FontFamilySelect,
-  TextColorPalette,
-  usePreloadJournalFonts,
-} from '../journal/text/FontControls';
+import { DEFAULT_FONT_FAMILY, DEFAULT_TEXT_COLOR, formatFontFamily } from '../journal/text/fontRegistry';
+import { usePreloadJournalFonts } from '../journal/text/FontControls';
+import { textFontSize } from '../journal/text/drawText';
 
 export interface TextImageNodeProps {
   id: string;
@@ -69,6 +72,29 @@ export interface TextImageNodeProps {
   onExport?: (id: string, dataUrl: string, state: TextImageState) => Promise<void>;
 }
 
+type GestureMode = 'move' | 'resize' | 'rotate';
+
+interface GestureState {
+  mode: GestureMode;
+  itemId: string;
+  startPx: number;
+  startPy: number;
+  startX: number;
+  startY: number;
+  startW: number;
+  startAngle: number;
+  startPointerAngle: number;
+  centerPx: number;
+  centerPy: number;
+}
+
+/** 指针相对中心的方向角（deg，以上方为 0，顺时针为正） */
+const pointerAngleOf = (px: number, py: number, cx: number, cy: number) =>
+  (Math.atan2(px - cx, -(py - cy)) * 180) / Math.PI;
+
+const W_MIN = 2;
+const W_MAX = 50;
+
 /** 透明底棋盘格衬托（PNG alpha 可视化） */
 const checkerStyle: React.CSSProperties = {
   backgroundImage:
@@ -78,83 +104,130 @@ const checkerStyle: React.CSSProperties = {
 };
 
 /**
- * 胶囊式横竖排选择器 (Segmented Control)
+ * 单个文本组件渲染视图（支持拖拽、缩放字号、旋转手柄、描边与高保真排版）
  */
-interface WritingModeToggleProps {
-  value: TextImageWritingMode;
-  onChange: (mode: TextImageWritingMode) => void;
+interface TextImageItemViewProps {
+  item: TextImageItem;
+  selected: boolean;
+  isGesturing: boolean;
+  stageWidth: number;
   disabled?: boolean;
+  onSelect: () => void;
+  onOpenEdit: () => void;
+  onGestureStart: (e: React.PointerEvent<HTMLElement>, item: TextImageItem, mode: GestureMode) => void;
+  onGestureMove: (e: React.PointerEvent<HTMLElement>) => void;
+  onGestureEnd: (e: React.PointerEvent<HTMLElement>) => void;
 }
 
-const WritingModeToggle: React.FC<WritingModeToggleProps> = ({
-  value,
-  onChange,
+const TextImageItemView: React.FC<TextImageItemViewProps> = ({
+  item,
+  selected,
+  isGesturing,
+  stageWidth,
   disabled = false,
+  onSelect,
+  onOpenEdit,
+  onGestureStart,
+  onGestureMove,
+  onGestureEnd,
 }) => {
-  const options: { id: TextImageWritingMode; label: string; tooltip: string }[] = [
-    { id: 'horizontal', label: '横排', tooltip: '横向自然排版' },
-    { id: 'vertical', label: '竖排', tooltip: '纵向传统排版（列自右向左）' },
-  ];
+  const isVertical = item.writingMode === 'vertical';
+  const fontSizePx = textFontSize(item.w, stageWidth || 360);
+  const strokeWidthPx =
+    item.strokeEnabled && item.strokeWidth
+      ? Math.max(1, (item.strokeWidth * (stageWidth || 360)) / TEXT_IMAGE_CANVAS)
+      : 0;
 
   return (
-    <div className="inline-flex items-center p-0.5 rounded-md bg-paper-grid/50 border border-paper-grid/70 select-none shrink-0">
-      {options.map((opt) => {
-        const active = value === opt.id;
-        return (
-          <Tooltip key={opt.id} content={opt.tooltip}>
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={() => onChange(opt.id)}
-              className={`px-1.5 py-0.5 rounded text-[10px] font-sans transition-[transform,background-color,color,box-shadow] duration-150 ease-out active:scale-[0.96] disabled:cursor-not-allowed leading-none ${
-                active
-                  ? 'bg-paper text-accent font-medium shadow-2xs border border-paper-grid/40'
-                  : 'text-ink-faint hover:text-ink'
-              }`}
+    <div
+      data-text-item
+      className={`absolute group/titem touch-none ${
+        isGesturing ? 'will-change-transform select-none' : ''
+      }`}
+      style={{
+        left: `${item.x}%`,
+        top: `${item.y}%`,
+        width: 'max-content',
+        maxWidth: '92%',
+        zIndex: selected ? 800 + item.z : item.z,
+        transform: `translate(-50%, -50%) rotate(${item.angle}deg)`,
+      }}
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelect();
+      }}
+    >
+      {/* 文本内容区域（支持横排/竖排、双击快速编辑、拖动） */}
+      <div
+        onPointerDown={(e) => onGestureStart(e, item, 'move')}
+        onPointerMove={onGestureMove}
+        onPointerUp={onGestureEnd}
+        onPointerCancel={onGestureEnd}
+        onDoubleClick={() => {
+          if (!disabled) onOpenEdit();
+        }}
+        className={`cursor-move select-none transition-[outline,box-shadow] duration-150 ease-out rounded px-2 py-1 ${
+          selected ? 'outline outline-2 outline-accent ring-2 ring-white/80 shadow-md' : ''
+        }`}
+        style={{
+          fontFamily: formatFontFamily(item.fontFamily || DEFAULT_FONT_FAMILY),
+          fontSize: `${fontSizePx}px`,
+          color: item.color || DEFAULT_TEXT_COLOR,
+          lineHeight: 1.35,
+          textShadow: '0 1px 2px rgba(15,23,42,0.08)',
+          WebkitTextStroke: strokeWidthPx > 0 ? `${strokeWidthPx}px ${item.strokeColor || '#ffffff'}` : undefined,
+          ...(isVertical
+            ? {
+                writingMode: 'vertical-rl',
+                textOrientation: 'mixed',
+                letterSpacing: '0.12em',
+                whiteSpace: 'pre-wrap',
+                textAlign: item.textAlign === 'left' ? 'start' : item.textAlign === 'right' ? 'end' : 'center',
+              }
+            : {
+                writingMode: 'horizontal-tb',
+                whiteSpace: 'pre-wrap',
+                textAlign: item.textAlign || 'center',
+              }),
+        }}
+      >
+        {item.text || ''}
+      </div>
+
+      {/* 选中态：右下角缩放手柄与底部旋转手柄 */}
+      {selected && !disabled && (
+        <>
+          {/* 右下角缩放手柄 */}
+          <div
+            onPointerDown={(e) => onGestureStart(e, item, 'resize')}
+            onPointerMove={onGestureMove}
+            onPointerUp={onGestureEnd}
+            onPointerCancel={onGestureEnd}
+            title="拖拽调整字号大小"
+            className="absolute -right-2 -bottom-2 w-4 h-4 rounded-full bg-accent border-2 border-white shadow-md cursor-nwse-resize hover:scale-110 active:scale-[0.96] transition-transform duration-150 ease-out flex items-center justify-center z-20"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-white/80" />
+          </div>
+
+          {/* 底部居中旋转手柄与引线 */}
+          <div className="absolute left-1/2 -bottom-6 -translate-x-1/2 flex flex-col items-center pointer-events-none z-20">
+            <div className="w-px h-2 bg-accent/70" />
+            <div
+              onPointerDown={(e) => onGestureStart(e, item, 'rotate')}
+              onPointerMove={onGestureMove}
+              onPointerUp={onGestureEnd}
+              onPointerCancel={onGestureEnd}
+              title="拖拽旋转角度"
+              className="w-4 h-4 rounded-full bg-accent border-2 border-white shadow-md cursor-grab active:cursor-grabbing hover:scale-110 active:scale-[0.96] transition-transform duration-150 ease-out pointer-events-auto flex items-center justify-center"
             >
-              {opt.label}
-            </button>
-          </Tooltip>
-        );
-      })}
+              <div className="w-1 h-1 rounded-full bg-white/90" />
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };
-
-/**
- * 微型开关组件 (Switch/Toggle)
- */
-interface MiniSwitchProps {
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-  disabled?: boolean;
-  label: string;
-}
-
-const MiniSwitch: React.FC<MiniSwitchProps> = ({
-  checked,
-  onChange,
-  disabled = false,
-  label,
-}) => (
-  <button
-    type="button"
-    role="switch"
-    aria-checked={checked}
-    disabled={disabled}
-    onClick={() => onChange(!checked)}
-    className={`relative inline-flex h-3.5 w-6.5 shrink-0 items-center rounded-full border transition-[background-color,border-color,transform] duration-150 ease-out active:scale-[0.95] disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent ${
-      checked ? 'bg-accent border-accent' : 'bg-paper-grid/60 border-paper-grid'
-    }`}
-    title={label}
-  >
-    <span
-      className={`inline-block h-2.5 w-2.5 transform rounded-full bg-paper shadow-2xs transition-transform duration-150 ease-out ${
-        checked ? 'translate-x-3' : 'translate-x-0.5'
-      }`}
-    />
-  </button>
-);
 
 const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
   id,
@@ -181,60 +254,358 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
 }) => {
   const { showToast } = useFeedback();
 
-  // 受控于 node.data：控件变更即 patch（滑杆仅持久化不记撤销历史，避免拖动刷历史）
+  // 受控于 node.data：补齐默认值与历史数据
   const st = useMemo(() => normalizeTextImageState(data), [data]);
-  const patch = useCallback(
+
+  const commit = useCallback(
     (p: Partial<TextImageState>, undoable = true) => {
       onUpdateState?.(id, p, undoable);
     },
     [id, onUpdateState]
   );
 
+  // 本地文本组件列表
+  const [items, setItems] = useState<TextImageItem[]>(st.items);
+  const itemsRef = useRef(items);
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+
+  // 外部数据变更同步
+  useEffect(() => {
+    setItems(st.items);
+  }, [st.items]);
+
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [editingTextId, setEditingTextId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState('');
+  const [isAddingNewText, setIsAddingNewText] = useState(false);
+  const [activeGestureId, setActiveGestureId] = useState<string | null>(null);
+
   const [isWorking, setIsWorking] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isEditing, setIsEditing] = useState<boolean>(!data?.imageUrl);
-  const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const gestureRef = useRef<GestureState | null>(null);
+  const textInputRef = useRef<HTMLTextAreaElement>(null);
+  const [stageSize, setStageSize] = useState({ w: 0, h: 0 });
 
-  // 预加载全部手账字体预设（与手账共享字体基建）
+  // 预加载全部手账字体预设
   usePreloadJournalFonts();
+
+  // 监听舞台尺寸
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const box =
+        'contentBoxSize' in entry && entry.contentBoxSize?.[0]
+          ? { w: entry.contentBoxSize[0].inlineSize, h: entry.contentBoxSize[0].blockSize }
+          : { w: entry.contentRect.width, h: entry.contentRect.height };
+      setStageSize({ w: Math.round(box.w), h: Math.round(box.h) });
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (data?.imageUrl) setIsEditing(false);
     else setIsEditing(true);
   }, [data?.imageUrl]);
 
-  // 实时渲染：字体就绪后再重绘一次（Google Fonts 异步加载完成即刷新）
+  // 节点失焦时自动清空内部组件选中与编辑态
   useEffect(() => {
-    if (!isEditing) return;
-    let cancelled = false;
-    const repaint = () => {
-      const ctx = canvasRef.current?.getContext('2d');
-      if (ctx && !cancelled) paintTextImage(ctx, st);
-    };
-    repaint();
-    loadFontFamily(st.fontFamily)
-      .then(repaint)
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [st, isEditing]);
+    if (!isSelected) {
+      setSelectedId(null);
+      setEditingTextId(null);
+      setIsAddingNewText(false);
+    }
+  }, [isSelected]);
 
-  // 生成：全分辨率导出 PNG data URL 写入 node.data.imageUrl（下游按图片输出消费）
+  // 当前选中的文本项
+  const selectedItem = useMemo(
+    () => items.find((it) => it.id === selectedId) || null,
+    [items, selectedId]
+  );
+
+  // 点击画板空白区域取消选中
+  const handleCanvasBlankPointerDown = useCallback((e: React.PointerEvent | React.MouseEvent) => {
+    if (!(e.target as HTMLElement).closest('[data-text-item]')) {
+      setSelectedId(null);
+    }
+  }, []);
+
+  // 更新单个文本项
+  const handleUpdateItem = useCallback(
+    (itemId: string, patch: Partial<TextImageItem>, undoable = true) => {
+      setItems((prev) => {
+        const next = prev.map((it) => (it.id === itemId ? { ...it, ...patch } : it));
+        commit({ items: next }, undoable);
+        return next;
+      });
+    },
+    [commit]
+  );
+
+  // 删除单个文本项
+  const handleDeleteItem = useCallback(
+    (itemId: string) => {
+      const next = items.filter((it) => it.id !== itemId);
+      setItems(next);
+      setSelectedId(null);
+      commit({ items: next }, true);
+    },
+    [items, commit]
+  );
+
+  // 图层层级调整
+  const handleBumpLayer = useCallback(
+    (itemId: string, mode: 'up' | 'down' | 'top' | 'bottom') => {
+      setItems((prev) => {
+        const target = prev.find((it) => it.id === itemId);
+        if (!target) return prev;
+        const sorted = [...prev].sort((a, b) => a.z - b.z);
+        const idx = sorted.findIndex((it) => it.id === itemId);
+        if (idx === -1) return prev;
+
+        if (mode === 'up' && idx < sorted.length - 1) {
+          const nextTarget = sorted[idx + 1];
+          const tmp = target.z;
+          target.z = nextTarget.z;
+          nextTarget.z = tmp;
+        } else if (mode === 'down' && idx > 0) {
+          const prevTarget = sorted[idx - 1];
+          const tmp = target.z;
+          target.z = prevTarget.z;
+          prevTarget.z = tmp;
+        } else if (mode === 'top') {
+          const maxZ = sorted[sorted.length - 1].z;
+          target.z = maxZ + 1;
+        } else if (mode === 'bottom') {
+          const minZ = sorted[0].z;
+          target.z = minZ - 1;
+        }
+        const reindexed = [...sorted].sort((a, b) => a.z - b.z).map((it, i) => ({ ...it, z: i + 1 }));
+        commit({ items: reindexed }, true);
+        return reindexed;
+      });
+    },
+    [commit]
+  );
+
+  // 90度步进旋转
+  const handleRotateStep = useCallback(
+    (itemId: string, mode: 'cw' | 'ccw') => {
+      setItems((prev) => {
+        const next = prev.map((it) => {
+          if (it.id !== itemId) return it;
+          const delta = mode === 'cw' ? 90 : -90;
+          const nextAngle = (Math.round((it.angle + delta) / 90) * 90) % 360;
+          return { ...it, angle: nextAngle };
+        });
+        commit({ items: next }, true);
+        return next;
+      });
+    },
+    [commit]
+  );
+
+  // 快捷键：Delete / Backspace 快速删除，Escape 取消选中
+  useEffect(() => {
+    if (!isSelected || !selectedId || editingTextId) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
+        return;
+      }
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        handleDeleteItem(selectedId);
+        showToast('已删除文本组件', { type: 'info' });
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        setSelectedId(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isSelected, selectedId, editingTextId, handleDeleteItem, showToast]);
+
+  // 添加文本：弹出输入框（对齐手账制作交互规范）
+  const handleAddText = useCallback(() => {
+    setIsAddingNewText(true);
+    setEditingTextId('new');
+    setEditingText('');
+    setTimeout(() => textInputRef.current?.focus(), 50);
+  }, []);
+
+  // 取消文本编辑
+  const handleCancelTextEdit = useCallback(() => {
+    setIsAddingNewText(false);
+    setEditingTextId(null);
+    setEditingText('');
+  }, []);
+
+  // 确认文本编辑 / 新增
+  const confirmTextEdit = useCallback(() => {
+    if (!editingTextId) return;
+
+    if (isAddingNewText && editingTextId === 'new') {
+      const textContent = editingText.trim() || '手写文字';
+      const maxZ = items.reduce((m, it) => Math.max(m, it.z), 0);
+      const count = items.length;
+      const newItem: TextImageItem = {
+        id: 'txt_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+        text: textContent,
+        fontFamily: DEFAULT_FONT_FAMILY,
+        w: 9,
+        color: DEFAULT_TEXT_COLOR,
+        writingMode: 'horizontal',
+        textAlign: 'center',
+        x: Math.min(85, Math.max(15, 50 + ((count % 5) - 2) * 6)),
+        y: Math.min(85, Math.max(15, 50 + ((count % 5) - 2) * 6)),
+        angle: 0,
+        z: maxZ + 1,
+        strokeEnabled: false,
+        strokeColor: '#ffffff',
+        strokeWidth: 4,
+      };
+      const nextItems = [...items, newItem];
+      setItems(nextItems);
+      commit({ items: nextItems }, true);
+      setSelectedId(newItem.id);
+      setIsAddingNewText(false);
+      setEditingTextId(null);
+      setEditingText('');
+      showToast('已添加文本组件', { type: 'success' });
+      return;
+    }
+
+    const nextItems = items.map((it) =>
+      it.id === editingTextId ? { ...it, text: editingText.trim() || '手写文字' } : it
+    );
+    setItems(nextItems);
+    commit({ items: nextItems }, true);
+    setIsAddingNewText(false);
+    setEditingTextId(null);
+    setEditingText('');
+  }, [editingTextId, isAddingNewText, editingText, items, commit, showToast]);
+
+  // 文本弹窗快捷键
+  const handleTextKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      handleCancelTextEdit();
+    } else if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      confirmTextEdit();
+    }
+  };
+
+  // ---- 手势：拖移 / 缩放 / 旋转（本地实时更新，pointerup 统一提交）----
+  const beginGesture = (
+    e: React.PointerEvent<HTMLElement>,
+    item: TextImageItem,
+    mode: GestureMode
+  ) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    onSelect?.(id);
+    const stage = stageRef.current;
+    if (!stage) return;
+
+    let centerPx = 0;
+    let centerPy = 0;
+    let startPointerAngle = 0;
+    if (mode === 'rotate') {
+      const el = (e.currentTarget as HTMLElement).closest('[data-text-item]') as HTMLElement | null;
+      const box = el?.getBoundingClientRect();
+      if (box) {
+        centerPx = box.left + box.width / 2;
+        centerPy = box.top + box.height / 2;
+        startPointerAngle = pointerAngleOf(e.clientX, e.clientY, centerPx, centerPy);
+      }
+    }
+
+    gestureRef.current = {
+      mode,
+      itemId: item.id,
+      startPx: e.clientX,
+      startPy: e.clientY,
+      startX: item.x,
+      startY: item.y,
+      startW: item.w,
+      startAngle: item.angle,
+      startPointerAngle,
+      centerPx,
+      centerPy,
+    };
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    setSelectedId(item.id);
+    setActiveGestureId(item.id);
+  };
+
+  const moveGesture = (e: React.PointerEvent<HTMLElement>) => {
+    const g = gestureRef.current;
+    const stage = stageRef.current;
+    if (!g || !stage) return;
+    e.stopPropagation();
+    const rect = stage.getBoundingClientRect();
+
+    setItems((prev) =>
+      prev.map((it) => {
+        if (it.id !== g.itemId) return it;
+        if (g.mode === 'move') {
+          const dx = ((e.clientX - g.startPx) / rect.width) * 100;
+          const dy = ((e.clientY - g.startPy) / rect.height) * 100;
+          return { ...it, x: Math.round((g.startX + dx) * 10) / 10, y: Math.round((g.startY + dy) * 10) / 10 };
+        }
+        if (g.mode === 'resize') {
+          const dw = ((e.clientX - g.startPx) / rect.width) * 100;
+          return { ...it, w: Math.min(W_MAX, Math.max(W_MIN, Math.round((g.startW + dw) * 10) / 10)) };
+        }
+        // 旋转：增量旋转
+        const delta = pointerAngleOf(e.clientX, e.clientY, g.centerPx, g.centerPy) - g.startPointerAngle;
+        return { ...it, angle: Math.round((g.startAngle + delta) * 10) / 10 };
+      })
+    );
+  };
+
+  const endGesture = (e: React.PointerEvent<HTMLElement>) => {
+    const g = gestureRef.current;
+    if (!g) return;
+    e.stopPropagation();
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+    } catch {
+      /* 未捕获时忽略 */
+    }
+    gestureRef.current = null;
+    setActiveGestureId(null);
+    commit({ items: itemsRef.current }, true);
+  };
+
+  // 生成：全分辨率 1080×1080 导出 PNG data URL
   const handleGenerate = useCallback(async () => {
     if (isWorking || isExporting) return;
-    if (!st.text.trim()) {
-      showToast('请先输入文字内容', { type: 'warning' });
+    if (items.length === 0) {
+      showToast('请先添加至少一段文字', { type: 'warning' });
       return;
     }
     setIsWorking(true);
     try {
-      const resultDataUrl = await composeTextImage(st);
+      const resultDataUrl = await composeTextImage({ ...st, items });
       await new Promise((resolve) => setTimeout(resolve, 200));
-      patch({ imageUrl: resultDataUrl, isSaved: false });
+      commit({ imageUrl: resultDataUrl, isSaved: false }, true);
       setIsEditing(false);
+      setSelectedId(null);
       showToast('文本成图已生成（可点击保存按钮写入数据库）', { type: 'success' });
     } catch (err: any) {
       console.error('生成文本图片失败:', err);
@@ -242,16 +613,16 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
     } finally {
       setIsWorking(false);
     }
-  }, [st, isWorking, isExporting, patch, showToast]);
+  }, [items, st, isWorking, isExporting, commit, showToast]);
 
-  // 独立保存到数据库（与手账同链路：落盘 + generations 记录）
+  // 独立保存到数据库
   const handleSaveToDatabase = useCallback(async () => {
     const imgUrl = data?.imageUrl;
     if (!imgUrl || isExporting || !onExport) return;
     setIsExporting(true);
     try {
-      await onExport(id, imgUrl, { ...st, imageUrl: imgUrl, isSaved: true });
-      patch({ isSaved: true }, false);
+      await onExport(id, imgUrl, { ...st, items, imageUrl: imgUrl, isSaved: true });
+      commit({ isSaved: true }, false);
       onSelect?.(id);
       showToast('文本成图已保存到数据库，已解锁公开与收藏', { type: 'success' });
     } catch (err: any) {
@@ -260,7 +631,7 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
     } finally {
       setIsExporting(false);
     }
-  }, [data?.imageUrl, isExporting, onExport, id, st, patch, onSelect, showToast]);
+  }, [data?.imageUrl, isExporting, onExport, id, st, items, commit, onSelect, showToast]);
 
   const handleDownload = useCallback(() => {
     const url = data?.imageUrl;
@@ -271,9 +642,10 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
 
   const handleReset = useCallback(() => {
     setIsEditing(true);
-    patch({ ...TEXT_IMAGE_DEFAULTS, imageUrl: null, isSaved: false });
+    setSelectedId(null);
+    commit({ ...TEXT_IMAGE_DEFAULTS, imageUrl: null, isSaved: false }, true);
     showToast('已重置文字与样式', { type: 'success' });
-  }, [patch, showToast]);
+  }, [commit, showToast]);
 
   const runToggle = async (
     fn: ((id: string) => Promise<boolean>) | undefined,
@@ -315,6 +687,19 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
       onClick={() => onSelect?.(id)}
       footer={footer}
       mismatchBadge={mismatchBadge}
+      sideDrawer={
+        isEditing ? (
+          <TextImageStudioPanel
+            isOpen={isDrawerOpen}
+            onClose={() => setIsDrawerOpen(false)}
+            state={{ ...st, items }}
+            selectedItem={selectedItem}
+            onUpdateState={(p, undoable) => commit(p, undoable)}
+            onUpdateItem={(itemId, patch, undoable) => handleUpdateItem(itemId, patch, undoable)}
+            disabled={locked}
+          />
+        ) : undefined
+      }
       actionBar={
         <NodeActionBar>
           {hasGenerated ? (
@@ -366,8 +751,8 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
               <NodeActionBar.Reset
                 onClick={handleReset}
                 disabled={busy}
-                tooltip="重置文字与结果"
-                aria-label="重置文字与结果"
+                tooltip="重置文本与结果"
+                aria-label="重置文本与结果"
               />
             </>
           ) : (
@@ -383,13 +768,27 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
                 tooltip="生成图片"
                 aria-label="生成图片"
                 onClick={handleGenerate}
+                disabled={busy || locked || items.length === 0}
+              />
+              <NodeActionBar.Custom
+                icon={<Type size={16} strokeWidth={1.5} />}
+                tooltip="添加文本（手账同款弹窗录入）"
+                aria-label="添加文本"
+                onClick={handleAddText}
+                disabled={busy || locked}
+              />
+              <NodeActionBar.Custom
+                icon={<SlidersHorizontal size={16} strokeWidth={1.5} className={isDrawerOpen ? 'text-accent' : ''} />}
+                tooltip={isDrawerOpen ? '收起排版调优抽屉' : '展开文本排版调优抽屉'}
+                aria-label={isDrawerOpen ? '收起排版调优抽屉' : '展开文本排版调优抽屉'}
+                onClick={() => setIsDrawerOpen((prev) => !prev)}
                 disabled={busy || locked}
               />
               <NodeActionBar.Reset
                 onClick={handleReset}
                 disabled={busy}
-                tooltip="重置文字与样式"
-                aria-label="重置文字与样式"
+                tooltip="重置文本与样式"
+                aria-label="重置文本与样式"
               />
             </>
           )}
@@ -397,171 +796,12 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
       }
     >
       <div className="h-full flex flex-col flex-1 min-h-0 gap-2.5">
-        {/* 编辑模式：高密度、紧凑高效的控制面板 */}
-        {isEditing && (
-          <div className="flex flex-col gap-1.5 p-2 rounded-xl bg-paper/95 border border-paper-grid/80 shadow-2xs text-xs font-sans text-ink-light select-none shrink-0">
-            {/* 1. 文字内容输入 + 折叠/展开快捷按钮 */}
-            <div className="relative flex items-center gap-1">
-              <textarea
-                value={st.text}
-                onChange={(e) => patch({ text: e.target.value }, false)}
-                disabled={locked}
-                rows={isPanelCollapsed ? 1 : 2}
-                placeholder="输入文字…（Enter 换行）"
-                className="w-full resize-none rounded-lg border border-paper-grid/80 bg-paper px-2.5 py-1.5 text-xs text-ink leading-relaxed outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 transition-[border-color,box-shadow,height] font-sans placeholder:text-ink-faint/60"
-              />
-              <Tooltip content={isPanelCollapsed ? '展开样式设置' : '收起样式设置，扩大预览画布'}>
-                <button
-                  type="button"
-                  onClick={() => setIsPanelCollapsed(!isPanelCollapsed)}
-                  className="p-1 rounded-md border border-paper-grid/70 text-ink-faint hover:text-accent hover:border-accent/60 bg-paper/60 transition-[color,border-color,transform] active:scale-[0.94] shrink-0"
-                  aria-label={isPanelCollapsed ? '展开面板' : '收起面板'}
-                >
-                  {isPanelCollapsed ? <SlidersHorizontal size={13} /> : <ChevronUp size={13} />}
-                </button>
-              </Tooltip>
-            </div>
-
-            {/* 展开的参数配置区（支持一键平滑收起以释放全部视口） */}
-            <AnimatePresence initial={false}>
-              {!isPanelCollapsed && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-                  className="overflow-hidden flex flex-col gap-1.5"
-                >
-                  {/* 2. 字体选择 + 横竖排 + 字号滑杆整合 */}
-                  <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
-                    {/* 字体下拉 */}
-                    <FontFamilySelect
-                      value={st.fontFamily}
-                      onChange={(family) => patch({ fontFamily: family })}
-                      disabled={locked}
-                    />
-
-                    {/* 横竖排胶囊 */}
-                    <WritingModeToggle
-                      value={st.writingMode}
-                      onChange={(mode) => patch({ writingMode: mode })}
-                      disabled={locked}
-                    />
-
-                    {/* 字号滑杆 */}
-                    <div className="flex items-center gap-1.5 flex-1 min-w-[120px]">
-                      <span className="text-ink-faint text-[10px] shrink-0">字号</span>
-                      <div className="flex-1 min-w-[50px] flex items-center">
-                        <Slider
-                          min={24}
-                          max={240}
-                          step={2}
-                          value={st.fontSize}
-                          disabled={locked}
-                          onChange={(v) => patch({ fontSize: v }, false)}
-                          aria-label="字号大小"
-                          aria-valuetext={`${st.fontSize}px`}
-                        />
-                      </div>
-                      <span className="text-[10px] text-ink-light w-8 text-right tabular-nums font-mono">
-                        {st.fontSize}px
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* 3. 墨色调色盘 */}
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-ink-faint text-[10px] shrink-0 w-6">墨色</span>
-                    <div className="flex-1 min-w-0">
-                      <TextColorPalette
-                        value={st.color}
-                        onChange={(c) => patch({ color: c })}
-                        disabled={locked}
-                        customLabel="自定义墨色"
-                        size="compact"
-                      />
-                    </div>
-                  </div>
-
-                  {/* 4. 描边设置（紧凑行内整合） */}
-                  <div className="flex items-center gap-1.5 pt-1 border-t border-paper-grid/50 min-h-[24px]">
-                    <div className="flex items-center gap-1 shrink-0">
-                      <PenLine size={11} className={st.strokeEnabled ? 'text-accent' : 'text-ink-faint'} />
-                      <span className="text-[10px] text-ink font-medium">描边</span>
-                      <MiniSwitch
-                        checked={st.strokeEnabled}
-                        onChange={(checked) => patch({ strokeEnabled: checked })}
-                        disabled={locked}
-                        label="开启/关闭描边"
-                      />
-                    </div>
-
-                    {st.strokeEnabled ? (
-                      <div className="flex items-center gap-1.5 flex-1 min-w-0 ml-1">
-                        <TextColorPalette
-                          value={st.strokeColor}
-                          onChange={(c) => patch({ strokeColor: c })}
-                          disabled={locked}
-                          customLabel="描边颜色"
-                          size="compact"
-                        />
-                        <div className="w-px h-3 bg-paper-grid/70 mx-0.5 shrink-0" />
-                        <div className="flex-1 min-w-[40px] flex items-center">
-                          <Slider
-                            min={1}
-                            max={24}
-                            step={1}
-                            value={st.strokeWidth}
-                            disabled={locked}
-                            onChange={(v) => patch({ strokeWidth: v }, false)}
-                            aria-label="描边粗细"
-                            aria-valuetext={`${st.strokeWidth}px`}
-                          />
-                        </div>
-                        <span className="text-[10px] text-ink-light w-7 text-right tabular-nums font-mono shrink-0">
-                          {st.strokeWidth}px
-                        </span>
-                      </div>
-                    ) : (
-                      <span className="text-[10px] text-ink-faint/70 ml-1">已关闭</span>
-                    )}
-                  </div>
-
-                  {/* 5. 背景设置（紧凑行内整合） */}
-                  <div className="flex items-center gap-1.5 min-h-[24px]">
-                    <div className="flex items-center gap-1 shrink-0">
-                      <Square size={11} className={st.backgroundEnabled ? 'text-accent' : 'text-ink-faint'} />
-                      <span className="text-[10px] text-ink font-medium">背景</span>
-                      <MiniSwitch
-                        checked={st.backgroundEnabled}
-                        onChange={(checked) => patch({ backgroundEnabled: checked })}
-                        disabled={locked}
-                        label="开启/关闭背景"
-                      />
-                    </div>
-
-                    {st.backgroundEnabled ? (
-                      <div className="flex-1 min-w-0 ml-1">
-                        <TextColorPalette
-                          value={st.backgroundColor}
-                          onChange={(c) => patch({ backgroundColor: c })}
-                          disabled={locked}
-                          customLabel="背景底色"
-                          size="compact"
-                        />
-                      </div>
-                    ) : (
-                      <span className="text-[10px] text-ink-faint/70 ml-1">透明 (PNG Alpha)</span>
-                    )}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        )}
-
-        {/* 预览画布：占据全部剩余大空间，自动弹性撑满（Concentric Radius & Subtle Shadows） */}
-        <div className="relative flex-1 min-h-[260px] w-full overflow-hidden rounded-xl bg-paper-grid/15 border border-paper-grid/60 flex items-center justify-center select-none p-3 sm:p-4">
+        {/* 画布视口区域 */}
+        <div
+          className="relative flex-1 min-h-[260px] w-full overflow-hidden rounded-xl bg-paper-grid/15 border border-paper-grid/60 flex items-center justify-center select-none p-3 sm:p-4"
+          onPointerDown={handleCanvasBlankPointerDown}
+          onClick={handleCanvasBlankPointerDown}
+        >
           <AnimatePresence mode="wait" initial={false}>
             {!hasGenerated ? (
               <motion.div
@@ -570,16 +810,222 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.98 }}
                 transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-                className="w-full h-full flex items-center justify-center"
+                className="w-full h-full flex items-center justify-center overflow-hidden"
+                onPointerDown={handleCanvasBlankPointerDown}
+                onClick={handleCanvasBlankPointerDown}
               >
-                <canvas
-                  ref={canvasRef}
-                  width={TEXT_IMAGE_CANVAS}
-                  height={TEXT_IMAGE_CANVAS}
-                  className="max-w-full max-h-full object-contain rounded-lg shadow-2xs border border-paper-grid/40"
-                  style={checkerStyle}
-                  aria-label="文本成图实时预览"
-                />
+                {/* 自适应卡片舞台 Shell（按选中的比例 1:1, 3:4, 4:3, 9:16, 16:9 动态自适应） */}
+                <div
+                  ref={stageRef}
+                  className="relative max-w-full max-h-full rounded-xl overflow-hidden shadow-2xs border border-paper-grid/50 flex items-center justify-center transition-[aspect-ratio,width,height] duration-200 ease-out"
+                  style={{
+                    aspectRatio: `${getTextImageCanvasPreset(st.aspectRatio).width} / ${getTextImageCanvasPreset(st.aspectRatio).height}`,
+                    width: '100%',
+                    backgroundColor: st.backgroundEnabled ? st.backgroundColor : undefined,
+                    ...(st.backgroundEnabled ? {} : checkerStyle),
+                  }}
+                  onPointerDown={handleCanvasBlankPointerDown}
+                  onClick={handleCanvasBlankPointerDown}
+                >
+                  {/* 空文本提示 */}
+                  {items.length === 0 && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-ink-faint/70 gap-2 p-6 text-center pointer-events-none z-10">
+                      <Type size={32} strokeWidth={1.2} />
+                      <p className="text-xs">点击右下角「添加文本」按钮开始创作</p>
+                    </div>
+                  )}
+
+                  {/* 选中文本组件时的极简微交互悬浮工具栏（仅保留：层级、旋转、删除与编辑） */}
+                  {selectedItem && (
+                    <div
+                      className="absolute top-2 left-1/2 -translate-x-1/2 z-40 pointer-events-auto flex items-center gap-1 px-1.5 py-1 rounded-xl bg-paper/95 backdrop-blur-md shadow-md border border-paper-grid/80 select-none text-xs"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {/* 快速编辑文案 */}
+                      <Tooltip content="编辑文字内容 (或双击文字)">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => {
+                            setIsAddingNewText(false);
+                            setEditingTextId(selectedItem.id);
+                            setEditingText(selectedItem.text || '');
+                            setTimeout(() => textInputRef.current?.select(), 50);
+                          }}
+                          className="w-6.5 h-6.5 rounded-md flex items-center justify-center text-ink-light hover:text-accent hover:bg-paper-grid/40 active:scale-[0.94] transition-[color,background-color,transform] cursor-pointer"
+                          aria-label="编辑文字"
+                        >
+                          <Edit3 size={13} strokeWidth={2} />
+                        </button>
+                      </Tooltip>
+
+                      <div className="w-px h-3 bg-paper-grid/70 my-auto shrink-0" />
+
+                      {/* 图层控制：上移、下移、置顶、置底 */}
+                      <div className="flex items-center gap-0.5">
+                        {(
+                          [
+                            ['up', ArrowUp, '上移一层'],
+                            ['down', ArrowDown, '下移一层'],
+                            ['top', ChevronsUp, '置顶'],
+                            ['bottom', ChevronsDown, '置底'],
+                          ] as const
+                        ).map(([mode, Icon, tip]) => (
+                          <Tooltip key={mode} content={tip}>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => handleBumpLayer(selectedItem.id, mode)}
+                              className="w-6 h-6 rounded-md flex items-center justify-center text-ink-light hover:text-accent hover:bg-paper-grid/40 active:scale-[0.94] transition-[color,background-color,transform] disabled:opacity-40 cursor-pointer"
+                              aria-label={tip}
+                            >
+                              <Icon size={12} strokeWidth={2} />
+                            </button>
+                          </Tooltip>
+                        ))}
+                      </div>
+
+                      <div className="w-px h-3 bg-paper-grid/70 my-auto shrink-0" />
+
+                      {/* 旋转控制：逆时针 90°、顺时针 90° */}
+                      <div className="flex items-center gap-0.5">
+                        <Tooltip content="逆时针旋转 90°">
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => handleRotateStep(selectedItem.id, 'ccw')}
+                            className="w-6 h-6 rounded-md flex items-center justify-center text-ink-light hover:text-accent hover:bg-paper-grid/40 active:scale-[0.94] transition-[color,background-color,transform] disabled:opacity-40 cursor-pointer"
+                            aria-label="逆时针旋转 90°"
+                          >
+                            <RotateCcw size={12} strokeWidth={2} />
+                          </button>
+                        </Tooltip>
+                        <Tooltip content="顺时针旋转 90°">
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => handleRotateStep(selectedItem.id, 'cw')}
+                            className="w-6 h-6 rounded-md flex items-center justify-center text-ink-light hover:text-accent hover:bg-paper-grid/40 active:scale-[0.94] transition-[color,background-color,transform] disabled:opacity-40 cursor-pointer"
+                            aria-label="顺时针旋转 90°"
+                          >
+                            <RotateCw size={12} strokeWidth={2} />
+                          </button>
+                        </Tooltip>
+                      </div>
+
+                      <div className="w-px h-3 bg-paper-grid/70 my-auto shrink-0" />
+
+                      {/* 侧边排版抽屉快捷打开 */}
+                      <Tooltip content={isDrawerOpen ? '收起排版调优抽屉' : '展开文本排版调优抽屉 (字体/字号/颜色/排版/描边)'}>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => setIsDrawerOpen(!isDrawerOpen)}
+                          className={`w-6.5 h-6.5 rounded-md flex items-center justify-center transition-[color,background-color,transform] active:scale-[0.94] cursor-pointer ${
+                            isDrawerOpen
+                              ? 'bg-accent/15 text-accent'
+                              : 'text-ink-light hover:text-accent hover:bg-paper-grid/40'
+                          }`}
+                          aria-label="排版调优抽屉"
+                        >
+                          <SlidersHorizontal size={12} strokeWidth={2} />
+                        </button>
+                      </Tooltip>
+
+                      <div className="w-px h-3 bg-paper-grid/70 my-auto shrink-0" />
+
+                      {/* 删除按钮 */}
+                      <Tooltip content="删除该文字 (Delete)">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => handleDeleteItem(selectedItem.id)}
+                          className="w-6.5 h-6.5 rounded-md flex items-center justify-center text-ink-faint hover:text-error hover:bg-error/15 active:scale-[0.94] transition-[color,background-color,transform] disabled:opacity-40 cursor-pointer"
+                          aria-label="删除该文字"
+                        >
+                          <Trash2 size={13} strokeWidth={2} />
+                        </button>
+                      </Tooltip>
+                    </div>
+                  )}
+
+                  {/* 文本组件列表 */}
+                  {[...items]
+                    .sort((a, b) => a.z - b.z)
+                    .map((item) => (
+                      <TextImageItemView
+                        key={item.id}
+                        item={item}
+                        selected={selectedId === item.id}
+                        isGesturing={activeGestureId === item.id}
+                        stageWidth={stageSize.w}
+                        disabled={busy}
+                        onSelect={() => {
+                          onSelect?.(id);
+                          setSelectedId(item.id);
+                          setIsDrawerOpen(true);
+                        }}
+                        onOpenEdit={() => {
+                          setIsAddingNewText(false);
+                          setEditingTextId(item.id);
+                          setEditingText(item.text || '');
+                          setTimeout(() => textInputRef.current?.select(), 50);
+                        }}
+                        onGestureStart={beginGesture}
+                        onGestureMove={moveGesture}
+                        onGestureEnd={endGesture}
+                      />
+                    ))}
+
+                  {/* 文本添加 / 编辑弹窗浮层 */}
+                  {editingTextId && (
+                    <div
+                      className="absolute z-[1000] flex flex-col gap-2 p-2.5 rounded-xl bg-paper/95 backdrop-blur-md shadow-2xl border border-paper-grid/60"
+                      style={{
+                        top: '50%',
+                        left: '50%',
+                        transform: 'translate(-50%, -50%)',
+                        width: 270,
+                      }}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-center justify-between text-xs text-ink-light px-0.5 select-none">
+                        <span className="font-medium text-ink">
+                          {editingTextId === 'new' ? '添加文本' : '编辑文本'}
+                        </span>
+                        <span className="text-[10px] text-ink-faint">Enter 确认 · Shift+Enter 换行</span>
+                      </div>
+                      <textarea
+                        ref={textInputRef}
+                        value={editingText}
+                        onChange={(e) => setEditingText(e.target.value)}
+                        onKeyDown={handleTextKeyDown}
+                        className="w-full h-20 resize-none rounded-lg border border-paper-grid/60 bg-paper px-2.5 py-1.5 text-xs text-ink leading-relaxed outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 transition font-sans"
+                        autoFocus
+                        placeholder="输入文本内容…"
+                      />
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={handleCancelTextEdit}
+                          className="px-2.5 py-1 text-xs text-ink-light rounded-md hover:bg-paper-grid/30 active:scale-[0.96] transition cursor-pointer"
+                        >
+                          取消
+                        </button>
+                        <button
+                          type="button"
+                          onClick={confirmTextEdit}
+                          className="flex items-center gap-1 px-3 py-1 text-xs text-white font-medium bg-accent rounded-md hover:bg-accent-hover active:scale-[0.96] shadow-sm transition cursor-pointer"
+                        >
+                          <Check size={12} strokeWidth={2.5} />
+                          确认
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </motion.div>
             ) : (
               <motion.div

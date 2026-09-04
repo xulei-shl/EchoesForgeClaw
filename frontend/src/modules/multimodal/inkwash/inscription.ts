@@ -4,7 +4,7 @@
  */
 import type { InkWashInscriptionItem } from './types';
 import { drawVerticalColumns } from '../journal/text/drawText';
-import { loadFontFamily } from '../journal/text/fontRegistry';
+import { loadFontFamily, formatCanvasFont } from '../journal/text/fontRegistry';
 import { getRandomSealSrc } from '../receipt/sealGenerator';
 
 export { getRandomSealSrc };
@@ -110,7 +110,7 @@ export async function composeInkWashArtwork(
       const lines = item.text.split('\n');
 
       ctx.save();
-      ctx.font = `${fontSize}px "${fontFamily}", cursive, sans-serif`;
+      ctx.font = formatCanvasFont(fontSize, fontFamily);
       ctx.fillStyle = item.color || '#16161e';
 
       if (isVertical) {

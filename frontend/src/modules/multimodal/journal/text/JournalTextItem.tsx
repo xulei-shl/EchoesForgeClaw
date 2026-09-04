@@ -3,7 +3,7 @@
  */
 import React from 'react';
 import type { JournalMakerItem } from '../types';
-import { DEFAULT_FONT_FAMILY, DEFAULT_TEXT_COLOR } from './fontRegistry';
+import { DEFAULT_FONT_FAMILY, DEFAULT_TEXT_COLOR, formatFontFamily } from './fontRegistry';
 import { textFontSize } from './drawText';
 
 export type GestureMode = 'move' | 'resize' | 'rotate';
@@ -70,7 +70,7 @@ export const JournalTextItem: React.FC<JournalTextItemProps> = ({
           selected ? 'outline outline-2 outline-accent ring-2 ring-white/80' : ''
         }`}
         style={{
-          fontFamily: `"${currentFont}", cursive, sans-serif`,
+          fontFamily: formatFontFamily(currentFont),
           fontSize: `${fontSizePx}px`,
           color: currentColor,
           lineHeight: 1.35,

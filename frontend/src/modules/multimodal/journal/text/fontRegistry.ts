@@ -61,6 +61,23 @@ export const JOURNAL_TEXT_COLORS: JournalColorPreset[] = [
 
 export const DEFAULT_TEXT_COLOR = JOURNAL_TEXT_COLORS[0].color;
 
+/**
+ * 规范化 Canvas/CSS 使用的 fontFamily 字符串
+ * 针对系统默认等多字体声明，避免因外层多余包裹双引号导致 CSS 解析失败
+ */
+export function formatFontFamily(family: string = DEFAULT_FONT_FAMILY): string {
+  if (!family) return 'sans-serif';
+  const hasCommaOrQuotes = family.includes(',') || family.includes('"') || family.includes("'");
+  return `${hasCommaOrQuotes ? family : `"${family}"`}, cursive, sans-serif`;
+}
+
+/**
+ * 构造符合 CSS 规范的 Canvas ctx.font 字符串（如 `96px MiSans, "PingFang SC", sans-serif, cursive, sans-serif`）
+ */
+export function formatCanvasFont(fontSize: number, family: string = DEFAULT_FONT_FAMILY): string {
+  return `${Math.max(1, fontSize)}px ${formatFontFamily(family)}`;
+}
+
 const loadedFontsCache = new Set<string>();
 
 /**

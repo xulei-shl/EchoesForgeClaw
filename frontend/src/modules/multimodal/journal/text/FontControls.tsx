@@ -268,4 +268,61 @@ export const TextAlignToggle: React.FC<TextAlignToggleProps> = ({
   );
 };
 
+export type WritingMode = 'horizontal' | 'vertical';
+
+export interface WritingModeToggleProps {
+  value?: WritingMode;
+  onChange: (mode: WritingMode) => void;
+  disabled?: boolean;
+  className?: string;
+}
+
+/** 横竖排胶囊切换组件：横排（自然排版）与 竖排（传统直排），高度统一 h-7 (28px) */
+export const WritingModeToggle: React.FC<WritingModeToggleProps> = ({
+  value = 'horizontal',
+  onChange,
+  disabled = false,
+  className,
+}) => {
+  const isVertical = value === 'vertical';
+
+  const options: { id: WritingMode; label: string; tooltip: string }[] = [
+    { id: 'horizontal', label: '横排', tooltip: '横向自然排版' },
+    { id: 'vertical', label: '竖排', tooltip: '纵向传统排版（列自右向左）' },
+  ];
+
+  return (
+    <div
+      className={clsx(
+        'inline-flex items-center h-7 p-0.5 rounded-md bg-paper-grid/30 border border-paper-grid/50 select-none shrink-0',
+        disabled && 'opacity-50 cursor-not-allowed',
+        className
+      )}
+    >
+      {options.map((opt) => {
+        const active = (opt.id === 'vertical' && isVertical) || (opt.id === 'horizontal' && !isVertical);
+        return (
+          <Tooltip key={opt.id} content={opt.tooltip}>
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => onChange(opt.id)}
+              className={clsx(
+                'h-6 px-1.5 rounded text-[11px] font-sans transition-[transform,background-color,color,box-shadow] duration-150 ease-out active:scale-[0.96] disabled:cursor-not-allowed leading-none cursor-pointer',
+                active
+                  ? 'bg-paper text-accent font-medium shadow-2xs border border-paper-grid/40'
+                  : 'text-ink-light hover:text-ink'
+              )}
+              aria-label={opt.label}
+            >
+              {opt.label}
+            </button>
+          </Tooltip>
+        );
+      })}
+    </div>
+  );
+};
+
+
 

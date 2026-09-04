@@ -21,6 +21,7 @@ import {
   FontFamilySelect,
   TextColorPalette,
   TextAlignToggle,
+  WritingModeToggle,
   type TextAlignment,
 } from './FontControls';
 
@@ -64,7 +65,6 @@ export const UniversalTextToolbar: React.FC<UniversalTextToolbarProps> = ({
 }) => {
   const currentFont = item.fontFamily || DEFAULT_FONT_FAMILY;
   const currentColor = item.color || DEFAULT_TEXT_COLOR;
-  const isVertical = item.writingMode === 'vertical';
   const currentAlign: TextAlignment = item.textAlign || 'center';
 
   const isDocked = variant === 'docked';
@@ -106,38 +106,11 @@ export const UniversalTextToolbar: React.FC<UniversalTextToolbarProps> = ({
           />
 
           {/* 横排 / 竖排胶囊切换 */}
-          <div className="inline-flex items-center h-7 p-0.5 rounded-md bg-paper-grid/30 border border-paper-grid/50 select-none shrink-0">
-            <Tooltip content="横向自然排版">
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={() => onUpdate({ writingMode: 'horizontal' })}
-                className={`h-6 px-1.5 rounded text-[11px] font-sans transition-[transform,background-color,color,box-shadow] duration-150 ease-out active:scale-[0.96] disabled:cursor-not-allowed leading-none cursor-pointer ${
-                  !isVertical
-                    ? 'bg-paper text-accent font-medium shadow-2xs border border-paper-grid/40'
-                    : 'text-ink-light hover:text-ink'
-                }`}
-                aria-label="横排"
-              >
-                横排
-              </button>
-            </Tooltip>
-            <Tooltip content="纵向传统排版">
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={() => onUpdate({ writingMode: 'vertical' })}
-                className={`h-6 px-1.5 rounded text-[11px] font-sans transition-[transform,background-color,color,box-shadow] duration-150 ease-out active:scale-[0.96] disabled:cursor-not-allowed leading-none cursor-pointer ${
-                  isVertical
-                    ? 'bg-paper text-accent font-medium shadow-2xs border border-paper-grid/40'
-                    : 'text-ink-light hover:text-ink'
-                }`}
-                aria-label="竖排"
-              >
-                竖排
-              </button>
-            </Tooltip>
-          </div>
+          <WritingModeToggle
+            value={item.writingMode}
+            onChange={(mode) => onUpdate({ writingMode: mode })}
+            disabled={disabled}
+          />
 
           {/* 对齐方式切换（横排：左/中/右；竖排：顶/中/底） */}
           <TextAlignToggle
