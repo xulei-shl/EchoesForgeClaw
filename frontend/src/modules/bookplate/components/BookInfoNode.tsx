@@ -46,6 +46,8 @@ export interface BookInfoNodeProps {
   onDownload?: (id: string) => void;
   /** 强制重新从豆瓣 API 获取数据并覆盖缓存 */
   onForceRefresh?: (id: string) => void;
+  /** 重置图书元数据，回到初始 ISBN 输入界面 */
+  onReset?: (id: string) => void;
   /** 手动上传封面（自动下载失败兜底）：落盘 runtime/covers 并回写 book_cache */
   onUploadCover?: (id: string, file: File) => void;
   onPositionChange?: (id: string, x: number, y: number) => void;
@@ -70,6 +72,7 @@ const BookInfoNodeInner: React.FC<BookInfoNodeProps> = ({
   onFetch,
   onDownload,
   onForceRefresh,
+  onReset,
   onUploadCover,
   onPositionChange,
   onSizeChange,
@@ -159,6 +162,16 @@ const BookInfoNodeInner: React.FC<BookInfoNodeProps> = ({
               tooltip="上传封面（自动下载失败时的兜底）"
               onClick={() => coverInputRef.current?.click()}
               disabled={isGenerating}
+            />
+          )}
+          {(Boolean(data.isbn) || Boolean(error)) && onReset && (
+            <NodeActionBar.Reset
+              onClick={() => {
+                setIsbnInput('');
+                onReset(id);
+              }}
+              disabled={isGenerating}
+              tooltip="重置图书元数据（重新输入 ISBN）"
             />
           )}
           </NodeActionBar>

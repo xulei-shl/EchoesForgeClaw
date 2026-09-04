@@ -139,6 +139,24 @@ export function useNodeHandlers({
     fetchBookInfo(isbn, id, { force: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  /** 图书元数据节点：重置为空态输入框（彻底清空旧图书元数据并记历史） */
+  const handleResetBookFor = useCallback((id: string) => {
+    recordHistory();
+    setNodes((prev) =>
+      prev.map((n) =>
+        n.id === id
+          ? {
+              ...n,
+              data: {
+                isbn: '',
+                isGenerating: false,
+                error: null,
+              },
+            }
+          : n
+      )
+    );
+  }, [recordHistory, setNodes]);
   /** 图书元数据节点：手动上传封面（请求与数据回写由页面 uploadBookCover 实现） */
   const handleUploadCoverFor = useCallback((id: string, file: File) => {
     const node = nodesRef.current.find((n) => n.id === id);
@@ -625,6 +643,7 @@ export function useNodeHandlers({
     handleRetryBookFor,
     handleFetchBookFor,
     handleForceRefreshBookFor,
+    handleResetBookFor,
     handleUploadCoverFor,
     handleDownloadBookData,
     handleDownloadVuFindData,

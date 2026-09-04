@@ -83,6 +83,8 @@ export interface NodeViewHelpers {
   handleRetryBookFor: (id: string) => void;
   handleFetchBookFor: (id: string, isbn: string) => void;
   handleForceRefreshBookFor: (id: string) => void;
+  /** 图书元数据节点：重置图书元数据，回到输入框状态 */
+  handleResetBookFor: (id: string) => void;
   /** 图书元数据节点：手动上传封面兜底（落盘 + 回写 book_cache） */
   handleUploadCoverFor: (id: string, file: File) => void;
   handleDownloadBookData: (id: string) => void;
@@ -366,6 +368,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           onRetry={h.handleRetryBookFor}
           onFetch={h.handleFetchBookFor}
           onForceRefresh={h.handleForceRefreshBookFor}
+          onReset={h.handleResetBookFor}
           onUploadCover={h.handleUploadCoverFor}
           onDownload={h.handleDownloadBookData}
         />
