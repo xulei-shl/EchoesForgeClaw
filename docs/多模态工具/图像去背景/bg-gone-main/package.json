@@ -1,0 +1,21 @@
+{
+  "name": "bg-gone",
+  "version": "1.0.0",
+  "description": "Remove image backgrounds locally, in the browser or from the terminal. Nothing is uploaded.",
+  "type": "module",
+  "bin": { "bg-gone": "./cli.mjs" },
+  "files": ["cli.mjs", "index.html", "README.md", "LICENSE"],
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dev": "python3 -m http.server 4173",
+    "test": "node cli.mjs --help >/dev/null && echo ok"
+  },
+  "keywords": ["background-removal", "remove-bg", "birefnet", "rmbg", "transformers.js", "onnx", "cli"],
+  "author": "Ben Tossell",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/bentossell/bg-gone.git" },
+  "homepage": "https://bentossell.com/bg-gone/",
+  "dependencies": {
+    "@huggingface/transformers": "^4.2.0"
+  }
+}
