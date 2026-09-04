@@ -216,10 +216,16 @@ export interface WorkspaceArtifact extends Omit<ArtifactRecord, 'rel'> {
 }
 
 /**
- * 列出工作区当前产物（差分同口径排除装配物/会话/inputs），并与 manifest 历史
- * 条目合并（文件已被删除的历史产物保留并标 exists=false，维持可追溯）。
+ * 列出工作区当前产物（差分同口径排除装配物/会话），并与 manifest 历史条目合并
+ * （文件已被删除的历史产物保留并标 exists=false，维持可追溯）。
+ * opts.includeInputs 为 true 时把 inputs/ 目录下的用户上传文件一并列出（@ 引用检索与
+ * 工作区文件面板共用同一数据源；inputs 默认不出现在产物列表——上传文件不是 agent 产物）。
  */
-export function listWorkspaceArtifacts(ws: string, workspaceId: string): WorkspaceArtifact[] {
+export function listWorkspaceArtifacts(
+  ws: string,
+  workspaceId: string,
+  opts?: { includeInputs?: boolean }
+): WorkspaceArtifact[] {
   const byRel = new Map<string, WorkspaceArtifact>();
   for (const [rel, stamp] of snapshotWorkspace(ws)) {
     if (isDiffExcluded(rel)) continue;
@@ -232,6 +238,35 @@ export function listWorkspaceArtifacts(ws: string, workspaceId: string): Workspa
       url: skillFileDownloadUrl(rel, workspaceId),
       exists: true,
     });
+  }
+  if (opts?.includeInputs) {
+    const inputsDir = path.join(ws, 'inputs');
+    let entries: string[] = [];
+    try {
+      entries = readdirSync(inputsDir).sort();
+    } catch {
+      /* inputs/ 尚未创建：无上传文件 */
+    }
+    for (const entry of entries) {
+      const full = path.join(inputsDir, entry);
+      let st;
+      try {
+        st = statSync(full);
+      } catch {
+        continue;
+      }
+      if (!st.isFile()) continue;
+      const rel = `inputs/${entry}`;
+      byRel.set(rel, {
+        path: rel,
+        mime: mimeOf(entry),
+        size: st.size,
+        mtimeMs: st.mtimeMs,
+        name: entry,
+        url: skillFileDownloadUrl(rel, workspaceId),
+        exists: true,
+      });
+    }
   }
   for (const rec of readArtifactManifest(ws)) {
     if (!rec.rel || byRel.has(rec.rel)) continue;

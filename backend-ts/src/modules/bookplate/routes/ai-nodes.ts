@@ -1,11 +1,17 @@
 import type { FastifyInstance } from 'fastify';
 import path from 'node:path';
 import { Readable } from 'node:stream';
-import { statSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { getDb } from '../../../config/database.js';
 import { getAppSettingsMap } from '../../../repositories/index.js';
 import { llmService } from '../../../services/llm-service.js';
-import { imageService } from '../../../services/image-service.js';
+import {
+  imageService,
+  userGeneratedDir,
+  userSearchImageDir,
+  userMapPosterDir,
+  userMapArtDir,
+} from '../../../services/image-service.js';
 import {
   fastclawAgentService,
   FastClawAgentError,
@@ -32,7 +38,12 @@ import {
   resolvePiExtensions,
   sendExtensionUiResponse,
 } from '../../../services/pi-agent-service.js';
-import { mimeOf, skillFileDownloadUrl } from '../../../services/file-utils.js';
+import {
+  decodeDataUrlImage,
+  mimeOf,
+  saveInputFile,
+  skillFileDownloadUrl,
+} from '../../../services/file-utils.js';
 import { withWidgetBridge, createWidgetStore } from '../../../services/pi-widgets.js';
 import { hydratePiSession, readSessionImageBlock } from '../../../services/pi-session-hydrate.js';
 import { nodeWorkspace, sanitizeWorkspaceId } from '../../../services/skill-agent-service.js';
@@ -41,7 +52,7 @@ import { chatStreamToResponse, chatStreamToSseResponse, type ChatStreamEvent } f
 import { NODE_TYPES } from '../node-types.js';
 import { ImageGenerationError } from '../../../infrastructure/ai/errors.js';
 import type { ImageModelConfig, TextModelConfig } from '../../../infrastructure/ai/types.js';
-import { fetchCoverBytes } from '../covers.js';
+import { COVERS_DIR, fetchCoverBytes } from '../covers.js';
 import {
   hasSkillAgentBinding,
   agentSessionKey,
@@ -51,11 +62,44 @@ import {
   detectImageExt,
   agentPromptMessage,
   doubanClientConfig,
+  MAX_UPLOAD_FILE_BYTES,
   type ChatRequest,
   type AnalyzeImageRequest,
   type PromptRequest,
   type ImageGenRequest,
 } from '../helpers.js';
+
+/**
+ * 把同源静态图片 URL 解析为本地绝对路径（继承图片 → 工作区 inputs/ 的导入白名单）。
+ * 仅放行服务端受管的公开图片前缀（/static/generated|search-images|map-posters|map-arts/{uid}/{file}
+ * 与 /static/covers/{file}），其余（data URL / 外部 URL / 任意 API 路径）一律返回 null，
+ * 防 SSRF 与目录穿越。返回的路径必须落在对应受管目录内。
+ */
+function resolveStaticImportPath(url: unknown): string | null {
+  const u = String(url ?? '').trim();
+  const coverMatch = /^\/static\/covers\/([^/]+)$/.exec(u);
+  if (coverMatch) {
+    const file = coverMatch[1]!;
+    if (file.includes('..')) return null;
+    return path.join(COVERS_DIR, file);
+  }
+  const m = /^\/static\/(generated|search-images|map-posters|map-arts)\/(\d+)\/([^/]+)$/.exec(u);
+  if (!m) return null;
+  const file = m[3]!;
+  if (!file || file.includes('..')) return null;
+  const root =
+    m[1] === 'generated'
+      ? userGeneratedDir(Number(m[2]))
+      : m[1] === 'search-images'
+        ? userSearchImageDir(Number(m[2]))
+        : m[1] === 'map-posters'
+          ? userMapPosterDir(Number(m[2]))
+          : userMapArtDir(Number(m[2]));
+  const abs = path.join(root, file);
+  // 词法双保险：拼接结果必须落在受管目录内（file 已拒 ..，此处兜底软链/符号等异常）
+  if (abs !== root && !abs.startsWith(root + path.sep)) return null;
+  return abs;
+}
 
 /**
  * 应用「运行设置」的模型覆盖逻辑：
@@ -313,6 +357,122 @@ export async function register(app: FastifyInstance): Promise<void> {
     }
   );
 
+  // ---- 任意格式文件上传：落盘 {ws}/inputs/（Skill Agent 附件通道；消息以路径引用）----
+  // multipart，字段名 file；workspace_id 走查询参数（request.file() 只消费文件 part）。
+  // 文件名清洗 + 同名去重（saveInputFile）；返回工作区相对路径供消息/ @ 引用。
+  app.post(
+    '/api/modules/bookplate/chat/upload',
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const q = (request.query ?? {}) as { workspace_id?: string };
+      const workspaceId = sanitizeWorkspaceId(q.workspace_id ?? '');
+      if (!workspaceId) {
+        return reply.code(400).send({ detail: 'workspace_id 不能为空' });
+      }
+      const ws = nodeWorkspace(request.authUser!.id, workspaceId);
+      let data;
+      try {
+        // 每请求覆盖全局 6MB 限制（@fastify/multipart 的 opts 深合并优先级最高）
+        data = await request.file({ limits: { fileSize: MAX_UPLOAD_FILE_BYTES } });
+      } catch {
+        return reply.code(413).send({ detail: '文件过大，超过 50MB 上限' });
+      }
+      if (!data) return reply.code(400).send({ detail: '缺少上传文件（字段名 file）' });
+      let bytes: Buffer;
+      try {
+        bytes = await data.toBuffer();
+      } catch {
+        return reply.code(413).send({ detail: '文件过大，超过 50MB 上限' });
+      }
+      if (!bytes.length) return reply.code(400).send({ detail: '文件为空' });
+      if (bytes.length > MAX_UPLOAD_FILE_BYTES) {
+        return reply.code(400).send({ detail: '文件大小不能超过 50MB' });
+      }
+      const rel = saveInputFile(ws, data.filename, bytes);
+      const name = rel.slice('inputs/'.length);
+      return { name, path: rel, mime: mimeOf(name), size: bytes.length };
+    }
+  );
+
+  // ---- 继承图片导入：上游节点图片 → 拷入 {ws}/inputs/（消息以路径引用）----
+  // 三类来源：① /static/ 白名单本地文件（resolveStaticImportPath 直接拷贝）；
+  // ② 豆瓣封面代理（/api/modules/bookplate/cover?url=…，fetchCoverBytes 内部限定
+  // doubanio.com，SSRF 面受控）；③ data URL 图片（data_urls，魔数校验）。
+  // 任一非法 → 整体 400，不静默跳过——前端只会上报受支持来源，非法即视为客户端异常。
+  app.post(
+    '/api/modules/bookplate/chat/import',
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const payload = (request.body ?? {}) as {
+        workspace_id?: string;
+        urls?: unknown;
+        data_urls?: unknown;
+      };
+      const workspaceId = sanitizeWorkspaceId(payload.workspace_id ?? '');
+      if (!workspaceId) {
+        return reply.code(400).send({ detail: 'workspace_id 不能为空' });
+      }
+      const ws = nodeWorkspace(request.authUser!.id, workspaceId);
+      const urls = Array.isArray(payload.urls) ? payload.urls : [];
+      const dataUrls = Array.isArray(payload.data_urls) ? payload.data_urls : [];
+      if (!urls.length && !dataUrls.length) return { files: [] };
+      const files: Array<{ name: string; path: string; mime: string; size: number }> = [];
+      const fail = (what: string) =>
+        reply.code(400).send({ detail: `无法导入图片：${what}` });
+      for (const raw of urls) {
+        const u = String(raw ?? '').trim();
+        // ① 本地静态文件（白名单前缀）
+        const abs = resolveStaticImportPath(u);
+        if (abs) {
+          let st;
+          try {
+            st = statSync(abs);
+          } catch {
+            return fail(u);
+          }
+          if (!st.isFile()) return fail(u);
+          const rel = saveInputFile(ws, path.basename(abs), readFileSync(abs));
+          const name = rel.slice('inputs/'.length);
+          files.push({ name, path: rel, mime: mimeOf(name), size: st.size });
+          continue;
+        }
+        // ② 豆瓣封面代理（fetchCoverBytes 限定 doubanio.com 域名）
+        if (u.startsWith('/api/modules/bookplate/cover?')) {
+          const coverTarget = new URLSearchParams(u.slice('/api/modules/bookplate/cover?'.length)).get('url');
+          if (!coverTarget) return fail(u);
+          let bytes: Uint8Array | null = null;
+          try {
+            bytes = await fetchCoverBytes(coverTarget, {
+              proxy: doubanClientConfig().proxy,
+              isDisconnected: async () => requestAbortSignal(request).aborted,
+            });
+          } catch {
+            bytes = null;
+          }
+          if (!bytes) return fail(u);
+          const ext = detectImageExt(bytes.subarray(0, 12));
+          if (!ext) return fail(u);
+          const rel = saveInputFile(ws, `cover-${files.length + 1}${ext}`, bytes);
+          const name = rel.slice('inputs/'.length);
+          files.push({ name, path: rel, mime: mimeOf(name), size: bytes.length });
+          continue;
+        }
+        return fail(u);
+      }
+      // ③ data URL 图片（魔数校验确为图片）
+      for (const raw of dataUrls) {
+        const decoded = decodeDataUrlImage(raw);
+        if (!decoded) return fail(String(raw).slice(0, 60));
+        const magicExt = detectImageExt(decoded.data.subarray(0, 12));
+        if (!magicExt) return fail(String(raw).slice(0, 60));
+        const rel = saveInputFile(ws, `inherit-${files.length + 1}${magicExt}`, decoded.data);
+        const name = rel.slice('inputs/'.length);
+        files.push({ name, path: rel, mime: mimeOf(name), size: decoded.data.length });
+      }
+      return { files };
+    }
+  );
+
   // ---- AI 对话节点：清空会话（Skill Agent 模式删除 pi 会话历史，下次对话从零开始）----
   app.post(
     '/api/modules/bookplate/chat/clear',
@@ -395,14 +555,16 @@ export async function register(app: FastifyInstance): Promise<void> {
   );
 
   // ---- 工作区产物列表（当前快照 ∪ manifest 历史；「工作区文件」面板数据源）----
+  // include_inputs=1 时额外列出 inputs/ 下的用户上传文件（前端 @ 引用检索的数据源）
   app.get(
     '/api/modules/bookplate/chat/files',
     { preHandler: app.authenticate },
     async (request) => {
-      const q = (request.query ?? {}) as { workspace_id?: string };
+      const q = (request.query ?? {}) as { workspace_id?: string; include_inputs?: string };
       const workspaceId = sanitizeWorkspaceId(q.workspace_id ?? '');
       const ws = nodeWorkspace(request.authUser!.id, workspaceId);
-      return { files: listWorkspaceArtifacts(ws, workspaceId) };
+      const includeInputs = q.include_inputs === '1' || q.include_inputs === 'true';
+      return { files: listWorkspaceArtifacts(ws, workspaceId, { includeInputs }) };
     }
   );
 

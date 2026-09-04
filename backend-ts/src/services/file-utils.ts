@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 
 /**
  * 通用文件工具（与 pi agent 无关的中立模块）。
@@ -8,6 +8,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
  * - 扩展名 → MIME 推断（mimeOf）
  * - skill-files 下载/预览 URL（skillFileDownloadUrl）
  * - data URL 图片落盘（saveInputImages）
+ * - 任意格式文件落盘工作区 inputs/（sanitizeUploadFileName / saveInputFile）
  * - 安全工作区路径删除（removePathSafe）
  *
  * 从 pi-agent-service 中拆出，供 skills / fastclaw-artifacts / pi-session-hydrate 等
@@ -53,8 +54,81 @@ export function skillFileDownloadUrl(rel: string, workspaceId: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// 任意格式文件落盘（工作区 inputs/）
+// ---------------------------------------------------------------------------
+
+/**
+ * 上传文件名清洗：去路径成分（只留 basename）、去控制字符、截断超长名（保留扩展名）。
+ * 空结果（或 . / ..）回退 fallback，防止目录穿越与空文件名落盘。
+ */
+export function sanitizeUploadFileName(raw: unknown, fallback = 'file'): string {
+  let name = String(raw ?? '').trim().replace(/\\/g, '/').split('/').pop() ?? '';
+  name = name.replace(/[\u0000-\u001f\u007f]/g, '').trim();
+  if (!name || name === '.' || name === '..') name = fallback;
+  const MAX = 120;
+  if (name.length > MAX) {
+    const dot = name.lastIndexOf('.');
+    const ext = dot > 0 ? name.slice(dot) : '';
+    name = name.slice(0, Math.max(1, MAX - ext.length)) + ext;
+  }
+  return name;
+}
+
+/**
+ * 在 {ws}/inputs/ 下生成不冲突的文件名（同名追加「 (n)」），并确保目录存在。
+ * 返回最终文件名（不含目录前缀）。
+ */
+export function uniqueInputFileName(ws: string, fileName: string): string {
+  const dir = path.join(ws, 'inputs');
+  mkdirSync(dir, { recursive: true });
+  const dot = fileName.lastIndexOf('.');
+  const stem = dot > 0 ? fileName.slice(0, dot) : fileName;
+  const ext = dot > 0 ? fileName.slice(dot) : '';
+  let candidate = fileName;
+  let n = 1;
+  while (existsSync(path.join(dir, candidate))) {
+    candidate = `${stem} (${n})${ext}`;
+    n += 1;
+  }
+  return candidate;
+}
+
+/**
+ * 把任意格式字节写入 {ws}/inputs/（文件名清洗 + 同名去重），返回工作区相对路径
+ * （inputs/<name>，正斜杠口径；与 agent_file 事件 / skill-files 接口的 path 一致）。
+ */
+export function saveInputFile(ws: string, fileName: string, data: Buffer | Uint8Array): string {
+  const name = uniqueInputFileName(ws, sanitizeUploadFileName(fileName));
+  writeFileSync(path.join(ws, 'inputs', name), data);
+  return `inputs/${name}`;
+}
+
+// ---------------------------------------------------------------------------
 // data URL 图片落盘
 // ---------------------------------------------------------------------------
+
+/**
+ * 解析 data URL（仅 image/*，base64 编码）为 Buffer + 扩展名；非法返回 null。
+ * 供 /chat/import 的 data_urls 通道（图片上传节点等 base64 输出）使用；
+ * 调用方应再以魔数校验（detectImageExt）确认字节确为图片。
+ */
+export function decodeDataUrlImage(raw: unknown): { data: Buffer; ext: string } | null {
+  const s = String(raw ?? '').trim();
+  const idx = s.indexOf(',');
+  if (idx < 0 || !s.startsWith('data:')) return null;
+  const mimeMatch = /^data:image\/([a-z0-9.+-]+)/i.exec(s.slice(0, idx));
+  if (!mimeMatch?.[1]) return null;
+  const ext = mimeMatch[1].toLowerCase().replace('jpeg', 'jpg').replace('svg+xml', 'svg');
+  if (!/^[a-z0-9]{1,6}$/.test(ext)) return null;
+  let data: Buffer;
+  try {
+    data = Buffer.from(s.slice(idx + 1), 'base64');
+  } catch {
+    return null;
+  }
+  if (!data.length) return null;
+  return { data, ext };
+}
 
 /** 解析 data URL 图片并落盘到 ws/inputs/img-N.ext；返回供 @file 附加的相对路径。 */
 export function saveInputImages(ws: string, images: string[]): string[] {

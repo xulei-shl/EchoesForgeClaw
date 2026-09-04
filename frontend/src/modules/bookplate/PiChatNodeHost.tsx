@@ -6,6 +6,7 @@ import { buildInjectedContextBlocks } from './contextBlocks';
 import { isBookCoverEnabled } from './execution';
 import { authHeaders, handleUnauthorized } from './authUtils';
 import { makeIdleTimeout } from './idleTimeout';
+import { urlToDataUrl } from './imageUpload';
 import { PROMPT_SSE_IDLE_TIMEOUT_MS } from '../../platform/utils/timeouts';
 import { mismatchBadgeOf, type NodeViewHelpers } from './CanvasNodeViews';
 import { mergeAgentFiles } from './workspaceFiles';
@@ -20,7 +21,7 @@ import {
   MAX_CHAT_IMAGES,
   DEFAULT_CHAT_SETTINGS,
   buildChatContext,
-  buildChatImagesFromBlocks,
+  collectBlockImageUrls,
   collectSkillNames,
   stripInjectedContext,
   type ChatHostDeps,
@@ -151,14 +152,79 @@ async function fetchPiSession(ws: string): Promise<{ messages: ChatMessage[]; wi
 }
 
 async function fetchWorkspaceFiles(ws: string): Promise<AgentFile[]> {
+  // include_inputs=1：面板同时展示用户上传到 inputs/ 的文件（产物 + 上传物统一视图）
   const resp = await fetch(
-    `/api/modules/bookplate/chat/files?workspace_id=${encodeURIComponent(ws)}`,
+    `/api/modules/bookplate/chat/files?workspace_id=${encodeURIComponent(ws)}&include_inputs=1`,
     { headers: authHeaders() }
   );
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const data = (await resp.json()) as { files?: AgentFile[] };
   // 已删除的历史产物不进面板（manifest 可追溯语义由服务端保留）
   return (data.files ?? []).filter((f) => f.exists !== false);
+}
+
+/** 已上传到工作区 inputs/ 的文件信息（/chat/upload 返回体）。 */
+interface UploadedWorkspaceFile {
+  name: string;
+  path: string;
+  mime: string;
+  size: number;
+}
+
+/**
+ * 任意格式文件 → 工作区 inputs/（Skill Agent 附件通道）。
+ * multipart（字段名 file）；workspace_id 走查询参数。返回工作区相对路径供消息引用。
+ */
+async function uploadWorkspaceFile(ws: string, file: File): Promise<UploadedWorkspaceFile> {
+  const body = new FormData();
+  body.append('file', file);
+  const resp = await fetch(`/api/modules/bookplate/chat/upload?workspace_id=${encodeURIComponent(ws)}`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body,
+  });
+  if (resp.status === 401) {
+    handleUnauthorized();
+    throw new Error('401');
+  }
+  if (!resp.ok) {
+    let detail = `HTTP ${resp.status}`;
+    try {
+      const j = (await resp.json()) as { detail?: string };
+      if (j?.detail) detail = j.detail;
+    } catch {
+      /* 非 JSON 错误体：用状态码兜底 */
+    }
+    throw new Error(detail);
+  }
+  return (await resp.json()) as UploadedWorkspaceFile;
+}
+
+/**
+ * 上游继承的图片 → 拷入工作区 inputs/（服务端 /chat/import 白名单拷贝 + data URL 解码），
+ * 返回工作区相对路径列表。失败时抛错（前端在首轮注入处兜底降级为 base64 通道）。
+ */
+async function importInheritedImages(
+  ws: string,
+  req: { urls: string[]; dataUrls?: string[] }
+): Promise<string[]> {
+  if (!req.urls.length && !req.dataUrls?.length) return [];
+  const resp = await fetch('/api/modules/bookplate/chat/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({
+      workspace_id: ws,
+      urls: req.urls,
+      ...(req.dataUrls?.length ? { data_urls: req.dataUrls } : {}),
+    }),
+  });
+  if (resp.status === 401) {
+    handleUnauthorized();
+    throw new Error('401');
+  }
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const data = (await resp.json()) as { files?: { path: string }[] };
+  return (data.files ?? []).map((f) => f.path);
 }
 
 /** 扩展交互作答 → POST /chat/ui-response 写回 RPC 子进程。404（会话已结束）静默。 */
@@ -552,6 +618,22 @@ export function PiChatNodeHost({
           optimisticUserRef.current = { ...optimisticUserRef.current, skills: skillNames };
         }
 
+        // 节点工作区标识：首轮生成并持久化（Skill Agent 产物/文件跨轮保留）。
+        // 在上下文注入之前确定：继承图片需先落盘 inputs/ 才能以路径引用。
+        let ws = typeof cur?.data?.workspaceId === 'string' ? cur.data.workspaceId : '';
+        if (!ws) {
+          ws = `${nodeId}_${Date.now()}`;
+        }
+        // 先写 ref，再异步持久化到节点 store；本轮收尾必须使用同一个工作区。
+        activeRequestWsRef.current = ws;
+        if (cur && cur.data?.workspaceId !== ws) {
+          setNodes((prev) =>
+            prev.map((n) =>
+              n.id === nodeId ? { ...n, data: { ...n.data, workspaceId: ws } } : n
+            )
+          );
+        }
+
         // 首轮上下文注入：仅当本节点尚未发送过上下文时执行一次
         // （contextSentRef 主动标记，避免水合失败后误判 freshSession 导致重复注入）
         const contextBlocksForMeta: InjectedContextBlock[] = [];
@@ -574,8 +656,50 @@ export function PiChatNodeHost({
             )
           );
           const context = buildChatContext(contextBlocksForMeta);
-          contextImages = await buildChatImagesFromBlocks(contextBlocksForMeta);
-          if (context) wireText = `${context}\n\n${text}`;
+          // 继承图片分流：/static/ 本地文件、豆瓣封面代理、data URL（图片上传节点）→ 服务端
+          // 拷入工作区 inputs/ 并以路径引用注入（【继承图片】块置于上下文之前，水合剥离依赖
+          // stripInjectedContext 的通用前缀规则）；仅剩的外部 URL（如豆瓣直链）走 base64 兜底。
+          const allImgUrls = collectBlockImageUrls(contextBlocksForMeta);
+          const staticUrls = allImgUrls.filter((u) => u.startsWith('/static/'));
+          const coverUrls = allImgUrls.filter((u) => u.startsWith('/api/modules/bookplate/cover?'));
+          const dataUrls = allImgUrls.filter((u) => u.startsWith('data:'));
+          const base64Urls = allImgUrls.filter(
+            (u) => !u.startsWith('/static/') && !u.startsWith('/api/modules/bookplate/cover?') && !u.startsWith('data:')
+          );
+          let inheritedPaths: string[] = [];
+          const base64Fallback: string[] = [...base64Urls];
+          if (staticUrls.length || coverUrls.length || dataUrls.length) {
+            try {
+              inheritedPaths = await importInheritedImages(ws, {
+                urls: [...staticUrls, ...coverUrls],
+                dataUrls,
+              });
+            } catch {
+              // 导入失败（接口异常/离线）：这些图降级 base64 通道，不阻断对话
+              base64Fallback.push(...staticUrls, ...coverUrls, ...dataUrls);
+            }
+          }
+          contextImages = [];
+          for (const u of base64Fallback) {
+            if (contextImages.length >= MAX_CHAT_IMAGES) break;
+            if (u.startsWith('data:')) {
+              contextImages.push(u);
+              continue;
+            }
+            try {
+              const dataUrl = await urlToDataUrl(u);
+              if (dataUrl && contextImages.length < MAX_CHAT_IMAGES) contextImages.push(dataUrl);
+            } catch {
+              // 无法访问 / 非图片的 URL 直接跳过，不阻断对话
+            }
+          }
+          const wireParts: string[] = [];
+          if (inheritedPaths.length) {
+            wireParts.push(`【继承图片】\n${inheritedPaths.map((p) => `- ${p}`).join('\n')}`);
+          }
+          if (context) wireParts.push(context);
+          wireParts.push(text);
+          wireText = wireParts.join('\n\n');
           if (contextBlocksForMeta.length && optimisticUserRef.current) {
             optimisticUserRef.current = {
               ...optimisticUserRef.current,
@@ -586,21 +710,6 @@ export function PiChatNodeHost({
         }
 
         const turnImages = [...(images ?? []), ...contextImages].slice(0, MAX_CHAT_IMAGES);
-
-        // 节点工作区标识：首轮生成并持久化（Skill Agent 产物/文件跨轮保留）
-        let ws = typeof cur?.data?.workspaceId === 'string' ? cur.data.workspaceId : '';
-        if (!ws) {
-          ws = `${nodeId}_${Date.now()}`;
-        }
-        // 先写 ref，再异步持久化到节点 store；本轮收尾必须使用同一个工作区。
-        activeRequestWsRef.current = ws;
-        if (cur && cur.data?.workspaceId !== ws) {
-          setNodes((prev) =>
-            prev.map((n) =>
-              n.id === nodeId ? { ...n, data: { ...n.data, workspaceId: ws } } : n
-            )
-          );
-        }
 
         const controller = new AbortController();
         const idle = makeIdleTimeout(controller, PROMPT_SSE_IDLE_TIMEOUT_MS);
@@ -777,6 +886,28 @@ export function PiChatNodeHost({
   );
   sendRef.current = send;
 
+  /**
+   * 任意文件附件：上传到工作区 inputs/（与 send 同款工作区创建/持久化逻辑）。
+   * 附件先于首轮消息落盘——用户选中文件即上传，消息发送时以 inputs/ 路径引用。
+   */
+  const handleUploadFile = useCallback(
+    async (file: File): Promise<UploadedWorkspaceFile> => {
+      const cur = nodesRef.current.find((n) => n.id === nodeId) ?? null;
+      let ws = typeof cur?.data?.workspaceId === 'string' && cur.data.workspaceId ? cur.data.workspaceId : '';
+      if (!ws) {
+        ws = `${nodeId}_${Date.now()}`;
+        activeRequestWsRef.current = ws;
+        if (cur && cur.data?.workspaceId !== ws) {
+          setNodes((prev) =>
+            prev.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, workspaceId: ws } } : n))
+          );
+        }
+      }
+      return uploadWorkspaceFile(ws, file);
+    },
+    [nodeId, setNodes]
+  );
+
   // 自动续发：上一轮自然收尾（水合落地）且队列非空时出队首条发送（effect 中调用最新 send 闭包）
   useEffect(() => {
     if (streamState.isStreaming || !autoNextArmedRef.current) return;
@@ -911,6 +1042,7 @@ export function PiChatNodeHost({
       bookCoverEnabled={isBookCoverEnabled(node, h.nodes, h.edges)}
       onRemove={() => h.handleRemove(node.id)}
       onSend={(_id, text, images) => send(text, images)}
+      onUploadFile={handleUploadFile}
       onUpdateSettings={h.handleUpdateChatSettingsFor}
       onClearChat={h.handleClearChatFor}
       onStop={stop}

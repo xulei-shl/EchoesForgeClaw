@@ -47,16 +47,21 @@ export function buildChatContext(blocks: InjectedContextBlock[]): string {
   return parts.join('\n\n');
 }
 
-/** 收集对话上下文图片：直接父节点的图片输出（受设置开关控制），本地静态路径转 data URL。 */
-export async function buildChatImagesFromBlocks(blocks: InjectedContextBlock[]): Promise<string[]> {
+/** 收集上下文块中的图片引用（原始 URL / data URL，去重、上限内）。 */
+export function collectBlockImageUrls(blocks: InjectedContextBlock[]): string[] {
   const urls: string[] = [];
   for (const b of blocks) {
     for (const u of b.images ?? []) {
-      if (!urls.includes(u)) urls.push(u);
+      if (u && !urls.includes(u)) urls.push(u);
     }
   }
+  return urls;
+}
+
+/** 收集对话上下文图片：直接父节点的图片输出（受设置开关控制），本地静态路径转 data URL。 */
+export async function buildChatImagesFromBlocks(blocks: InjectedContextBlock[]): Promise<string[]> {
   const result: string[] = [];
-  for (const u of urls) {
+  for (const u of collectBlockImageUrls(blocks)) {
     if (result.length >= MAX_CHAT_IMAGES) break;
     if (u.startsWith('data:')) {
       result.push(u);

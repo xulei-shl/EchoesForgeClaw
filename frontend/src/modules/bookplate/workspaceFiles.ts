@@ -158,3 +158,56 @@ export function mergeAgentFiles(a?: AgentFile[], b?: AgentFile[]): AgentFile[] {
   }
   return [...out.values()];
 }
+
+/** 把工作区文件按来源分桶：inputs/ = 用户上传，其余 = agent 产物（含 manifest 历史）。 */
+export function splitWorkspaceFiles(files: AgentFile[] | null | undefined): {
+  artifacts: AgentFile[];
+  uploads: AgentFile[];
+} {
+  const artifacts: AgentFile[] = [];
+  const uploads: AgentFile[] = [];
+  for (const f of files ?? []) {
+    if (f && typeof f.path === 'string' && f.path.startsWith('inputs/')) uploads.push(f);
+    else if (f) artifacts.push(f);
+  }
+  return { artifacts, uploads };
+}
+
+/**
+ * 用户消息中的上传文件引用：inputs/ 前缀的相对路径 token（已知扩展名，可带反引号包裹）。
+ * 文件名含空格/中文标点时不匹配（与正文提取口径一致，属已知边界）。
+ */
+const INPUTS_PATH_RE = new RegExp(
+  `(\`?inputs\\/[^\\s<>"'，。；：、！？\\u3000]+\\.(?:${EXT_ALT})\`?)`,
+  'gi'
+);
+
+/**
+ * 从用户消息正文提取上传文件（inputs/ 相对路径）→ 卡片数据，并返回剔除这些路径后的展示文本。
+ * 发送给模型的原文不变（路径仍随正文送达 pi）；仅展示层把路径替换为可预览/下载的卡片，
+ * 与 assistant 侧的产物卡片对称。
+ */
+export function extractUserUploadRefs(
+  content: string,
+  workspaceId?: string | null
+): { files: AgentFile[]; display: string } {
+  if (!content || !workspaceId) return { files: [], display: content };
+  const files: AgentFile[] = [];
+  const display = content.replace(INPUTS_PATH_RE, (full, token: string) => {
+    const clean = String(token).replace(/^`|`$/g, '');
+    const ref = resolveWorkspaceRef(clean, workspaceId);
+    if (!ref || !ref.rel.startsWith('inputs/')) return full;
+    if (!files.some((f) => f.path === ref.rel)) {
+      files.push({
+        url: skillFileUrl(ref),
+        name: ref.rel.slice(ref.rel.lastIndexOf('/') + 1),
+        mime: mimeOfFileName(ref.rel),
+        size: 0,
+        path: ref.rel,
+      });
+    }
+    return '';
+  });
+  // 路径被替换后留下的连续空格收敛（「请分析 inputs/a.pdf 与 …」→「请分析 与 …」）
+  return { files, display: display.replace(/ {2,}/g, ' ').trim() };
+}

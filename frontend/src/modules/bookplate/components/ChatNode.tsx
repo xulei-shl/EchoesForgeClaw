@@ -1,6 +1,6 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle, Eraser, ImagePlus, MessageSquare, Send, Copy, Check, Loader2, Square, RefreshCw, ChevronUp, ChevronDown, Lock, X, FileText, Download, Brain, FolderOpen, Clock, Bot, Wrench, TerminalSquare } from 'lucide-react';
+import { AlertTriangle, Eraser, ImagePlus, MessageSquare, Send, Copy, Check, Loader2, Square, RefreshCw, ChevronUp, ChevronDown, Lock, X, FileText, Download, Eye, Brain, FolderOpen, Clock, Bot, Wrench, TerminalSquare, Paperclip } from 'lucide-react';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
 import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
@@ -16,12 +16,13 @@ import { ModelOverrideField } from './ModelOverrideField';
 import { ExtensionWidgets } from './ExtensionWidgets';
 import { QuestionAnswerBlock } from './QuestionAnswerBlock';
 import { SubagentRunBlock } from './SubagentRunBlock';
+import { FilePreviewModal, previewKindOf } from './FilePreviewModal';
 import { parseQuestionnaireInteractions } from '../utils/piQuestionnaireParser';
 import { parseSubagentRuns } from '../utils/subagentParser';
 import { getRandomKaomoji } from '../utils/kaomoji';
 import type { ExtensionWidgetItem, PendingUiRequest } from '../piStream';
 import { NODE_COLORS } from '../nodeTypes';
-import { authHeaders } from '../authUtils';
+import { authHeaders, handleUnauthorized } from '../authUtils';
 import {
   RASTER_IMAGE_TYPES,
   MAX_UPLOAD_BYTES,
@@ -29,8 +30,10 @@ import {
   optimizeDataUrl,
 } from '../imageUpload';
 import {
+  extractUserUploadRefs,
   extractWorkspaceFiles,
   mergeAgentFiles,
+  splitWorkspaceFiles,
   stripUnrenderableImages,
 } from '../workspaceFiles';
 import { stripInjectedContext } from '../chatSendHelpers';
@@ -54,12 +57,15 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** 单个工作区产物文件卡片（图片缩略预览 / 文档下载）。 */
+/** 单个工作区产物文件卡片（图片缩略预览 / 文本·PDF 内联预览弹层 / 文档下载）。 */
 const SkillFileCard = memo(({ file }: { file: AgentFile }) => {
   const { showToast } = useFeedback();
   const [downloading, setDownloading] = useState(false);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const isImage = /\.(png|jpe?g|gif|webp|svg)$/i.test(file.name);
+  // 非图片且可内联预览（文本类 / PDF）：点击卡片或预览按钮打开弹层
+  const canPreview = !isImage && previewKindOf(file) !== 'binary';
 
   useEffect(() => {
     if (!isImage) return;
@@ -127,25 +133,95 @@ const SkillFileCard = memo(({ file }: { file: AgentFile }) => {
   }
 
   return (
-    <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-paper-grid bg-paper-grid/20 text-xs font-sans max-w-[260px]">
-      <FileText size={14} className="shrink-0 text-accent" />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-ink font-medium leading-tight" title={file.name}>
-          {file.name}
-        </p>
-        <p className="text-[10px] text-ink-faint mt-0.5">{formatFileSize(file.size)}</p>
-      </div>
-      <button
-        onClick={handleDownload}
-        title={`下载 ${file.name}`}
-        className="p-1 rounded text-ink-faint hover:text-accent transition"
+    <>
+      <div
+        className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-paper-grid bg-paper-grid/20 text-xs font-sans max-w-[260px] ${
+          canPreview ? 'cursor-pointer hover:border-accent/40 hover:bg-accent/5 transition' : ''
+        }`}
+        onClick={canPreview ? () => setPreviewOpen(true) : undefined}
+        title={canPreview ? `预览 ${file.name}` : undefined}
       >
-        {downloading ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
-      </button>
-    </div>
+        <FileText size={14} className="shrink-0 text-accent" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-ink font-medium leading-tight" title={file.name}>
+            {file.name}
+          </p>
+          <p className="text-[10px] text-ink-faint mt-0.5">{formatFileSize(file.size)}</p>
+        </div>
+        {canPreview && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setPreviewOpen(true);
+            }}
+            title={`预览 ${file.name}`}
+            className="p-1 rounded text-ink-faint hover:text-accent transition"
+          >
+            <Eye size={12} />
+          </button>
+        )}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            void handleDownload();
+          }}
+          title={`下载 ${file.name}`}
+          className="p-1 rounded text-ink-faint hover:text-accent transition"
+        >
+          {downloading ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+        </button>
+      </div>
+      {previewOpen && (
+        <FilePreviewModal
+          file={file}
+          onClose={() => setPreviewOpen(false)}
+          onDownload={handleDownload}
+        />
+      )}
+    </>
   );
 });
 SkillFileCard.displayName = 'SkillFileCard';
+
+/** 可折叠的工作区文件分组（Agent 产物 / 我的上传），共享卡片渲染；空组整组隐藏。 */
+const WorkspaceFileGroup: React.FC<{
+  title: string;
+  files: AgentFile[];
+  /** 展开态（产物默认开、上传默认收） */
+  defaultOpen?: boolean;
+  /** 来源微区分：上传组用 accent 圆点，产物组用中性圆点（分组本身已表达来源，颜色仅作辅助） */
+  tone?: 'artifact' | 'upload';
+}> = memo(({ title, files, defaultOpen = true, tone = 'artifact' }) => {
+  const [open, setOpen] = useState(defaultOpen);
+  if (files.length === 0) return null;
+  return (
+    <div>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1 text-[10px] font-sans text-ink-faint hover:text-accent transition-colors select-none"
+      >
+        <span
+          className={`w-1.5 h-1.5 rounded-full ${
+            tone === 'upload' ? 'bg-accent/70' : 'bg-ink-faint/40'
+          }`}
+        />
+        <span>{title}</span>
+        <span className="text-[9px] text-ink-faint/80">({files.length})</span>
+        <ChevronDown size={10} strokeWidth={2} className={open ? 'rotate-180' : ''} />
+      </button>
+      {open && (
+        <div className="mt-1 flex flex-wrap gap-2">
+          <PhotoProvider maskOpacity={0.8} bannerVisible={false}>
+            {files.map((f) => (
+              <SkillFileCard key={f.url || f.path} file={f} />
+            ))}
+          </PhotoProvider>
+        </div>
+      )}
+    </div>
+  );
+});
+WorkspaceFileGroup.displayName = 'WorkspaceFileGroup';
 
 /** 工作区文件列表侧滑抽屉面板（skill_agent 模式下展示所有服务端生成的文件）。 */
 const WorkspaceFilesDrawer: React.FC<{
@@ -581,7 +657,9 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
   // 正文直接透传：SSE text-delta 增量到达即随消息内容增长，Streamdown 以 streaming 模式
   // （parseIncompleteMarkdown / block 级 memo / caret）负责流式渲染，无需再叠加打字机节流。
   if (msg.role === 'user') {
-    const userContent = idx === 0 ? stripInjectedContext(msg.content, contextBlocks) : msg.content;
+    const rawContent = idx === 0 ? stripInjectedContext(msg.content, contextBlocks) : msg.content;
+    // 展示层把正文中的 inputs/ 上传路径提取为可预览/下载卡片（发送给模型的原文不变）
+    const { files: userFiles, display: userContent } = extractUserUploadRefs(rawContent, workspaceId);
     return (
       <div className="flex flex-col items-end gap-0.5 msg-enter-anim">
         {msg.images && msg.images.length > 0 && (
@@ -595,6 +673,13 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
                   loading="lazy"
                 />
               </PhotoView>
+            ))}
+          </div>
+        )}
+        {userFiles.length > 0 && (
+          <div className="flex flex-wrap justify-end gap-1.5 max-w-[85%]">
+            {userFiles.map((f) => (
+              <SkillFileCard key={f.url} file={f} />
             ))}
           </div>
         )}
@@ -797,6 +882,11 @@ export interface ChatNodeProps {
   onRemove?: (id: string) => void;
   /** 发送一条用户消息（多轮对话），images 为本轮附带图片（data URL） */
   onSend?: (id: string, text: string, images?: string[]) => void;
+  /**
+   * Skill Agent 模式：任意格式文件上传到工作区 inputs/ 的回调（返回工作区相对路径）。
+   * 缺省 = 不启用文件附件（图片-only base64 行为）。
+   */
+  onUploadFile?: (file: File) => Promise<{ name: string; path: string; mime: string; size: number }>;
   /** 停止当前生成（点击后中止本次调用） */
   onStop?: (id: string) => void;
   /** 重试最后一轮（失败 / 中断后重新发送调用） */
@@ -854,6 +944,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
   bookCoverEnabled = true,
   onRemove,
   onSend,
+  onUploadFile,
   onStop,
   onRetry,
   onUpdateSettings,
@@ -876,6 +967,21 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
   const [draft, setDraft] = useState('');
   // 本轮待发送的图片附件（data URL），随消息发送后在气泡内展示
   const [attachments, setAttachments] = useState<string[]>([]);
+  // Skill Agent 模式已上传的文件 chips（路径已插入草稿文本；chips 仅展示/移除用）
+  const [fileAttachments, setFileAttachments] = useState<{ name: string; path: string }[]>([]);
+  // @ 文件引用检索状态（Skill Agent 模式；见 handleDraftChange / handleKeyDown）
+  const [mention, setMention] = useState<{
+    start: number;
+    query: string;
+    index: number;
+    files: AgentFile[];
+    loading: boolean;
+    failed: boolean;
+  } | null>(null);
+  /** @ 检索文件列表缓存（key = workspaceId；上传新文件后失效） */
+  const mentionFileCacheRef = useRef<Map<string, AgentFile[]>>(new Map());
+  /** Skill Agent 模式：启用任意文件上传 + @ 引用（其他模式保持图片 base64 行为） */
+  const skillAgentFiles = mode === 'skill_agent' && !!onUploadFile;
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsBtnRef = useRef<HTMLButtonElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
@@ -891,10 +997,26 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
   const scrollRafRef = useRef<number | null>(null);
 
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  // 拖拽上传：文件拖入输入区高亮；dragenter/leave 成对计数防闪烁
+  const [dragOver, setDragOver] = useState(false);
+  const dragDepthRef = useRef(0);
 
   useEffect(() => {
     return () => {
       if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current);
+    };
+  }, []);
+
+  // 窗口级拦截：拖拽文件到节点/画布任意位置时不触发浏览器默认行为（打开/导航到文件）
+  useEffect(() => {
+    const preventFileNav = (e: DragEvent) => {
+      if (Array.from(e.dataTransfer?.types ?? []).includes('Files')) e.preventDefault();
+    };
+    window.addEventListener('dragover', preventFileNav);
+    window.addEventListener('drop', preventFileNav);
+    return () => {
+      window.removeEventListener('dragover', preventFileNav);
+      window.removeEventListener('drop', preventFileNav);
     };
   }, []);
 
@@ -1044,11 +1166,94 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
     }
   };
 
+  /** 把一段文本插入草稿的光标位置（焦点留在插入末尾；用于文件路径补全）。
+   *  函数式更新 + 实时读取光标：连续多文件选中时避免陈旧闭包互相覆盖。 */
+  const insertIntoDraft = (insert: string) => {
+    const ta = textareaRef.current;
+    const cursor = ta?.selectionStart ?? draft.length;
+    setDraft((d) => d.slice(0, cursor) + insert + ' ' + d.slice(cursor));
+    requestAnimationFrame(() => {
+      if (!ta) return;
+      ta.focus();
+      const pos = cursor + insert.length + 1;
+      ta.setSelectionRange(pos, pos);
+    });
+  };
+
+  /** Skill Agent 模式：上传任意文件到工作区 inputs/，路径插入草稿并展示 chip */
+  const pickUploadFile = async (file: File) => {
+    if (!onUploadFile) return;
+    try {
+      const info = await onUploadFile(file);
+      if (!info || !info.path) return;
+      setFileAttachments((prev) =>
+        prev.some((a) => a.path === info.path) ? prev : [...prev, { name: info.name, path: info.path }]
+      );
+      if (workspaceId) mentionFileCacheRef.current.delete(workspaceId);
+      insertIntoDraft(info.path);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : '文件上传失败，请重试', { type: 'error' });
+    }
+  };
+
   const handlePick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     e.target.value = ''; // 允许重复选择同一文件
     if (files.length === 0) return;
+    if (skillAgentFiles) {
+      files.forEach((f) => void pickUploadFile(f));
+      return;
+    }
     files.slice(0, MAX_ATTACHMENTS - attachments.length).forEach((f) => void handleAttachFile(f));
+  };
+
+  /** 拖入的文件统一走与「选择文件」相同的通道（skill_agent = 任意格式上传，其他 = 图片校验） */
+  const ingestFiles = (files: File[]) => {
+    if (isGenerating) {
+      showToast('回复生成中，请稍后再上传', { type: 'error' });
+      return;
+    }
+    if (skillAgentFiles) {
+      files.forEach((f) => void pickUploadFile(f));
+      return;
+    }
+    files.slice(0, MAX_ATTACHMENTS - attachments.length).forEach((f) => void handleAttachFile(f));
+  };
+
+  const isFileDrag = (e: React.DragEvent): boolean =>
+    Array.from(e.dataTransfer?.types ?? []).includes('Files');
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepthRef.current += 1;
+    setDragOver(true);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'copy';
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepthRef.current = 0;
+    setDragOver(false);
+    const files = Array.from(e.dataTransfer.files ?? []);
+    if (files.length) ingestFiles(files);
   };
 
   const handleSend = () => {
@@ -1058,9 +1263,157 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
     onSend?.(id, text, attachments.length ? attachments : undefined);
     setDraft('');
     setAttachments([]);
+    setFileAttachments([]);
+    setMention(null);
+  };
+
+  /** 移除已上传文件 chip，同时从草稿文本删除对应的路径片段 */
+  const removeFileAttachment = (path: string) => {
+    setFileAttachments((prev) => prev.filter((a) => a.path !== path));
+    setDraft((d) => {
+      const idx = d.indexOf(path);
+      if (idx < 0) return d;
+      let end = idx + path.length;
+      if (d[end] === ' ' || d[end] === '\n') end += 1;
+      return d.slice(0, idx) + d.slice(end);
+    });
+  };
+
+  /** 拉取当前工作区文件列表（含 inputs/ 上传文件）供 @ 引用检索；结果按工作区缓存 */
+  const loadMentionFiles = useCallback(async (ws: string) => {
+    const cached = mentionFileCacheRef.current.get(ws);
+    if (cached) {
+      setMention((m) => (m ? { ...m, files: cached, loading: false, failed: false, index: 0 } : m));
+      return;
+    }
+    setMention((m) => (m ? { ...m, loading: true, failed: false } : m));
+    try {
+      const resp = await fetch(
+        `/api/modules/bookplate/chat/files?workspace_id=${encodeURIComponent(ws)}&include_inputs=1`,
+        { headers: authHeaders() }
+      );
+      if (resp.status === 401) {
+        handleUnauthorized();
+        throw new Error('401');
+      }
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = (await resp.json()) as { files?: AgentFile[] };
+      const files = (data.files ?? []).filter((f) => f.exists !== false);
+      mentionFileCacheRef.current.set(ws, files);
+      setMention((m) => (m ? { ...m, files, loading: false, failed: false, index: 0 } : m));
+    } catch {
+      setMention((m) => (m ? { ...m, loading: false, failed: true } : m));
+    }
+  }, []);
+
+  /** 草稿变化时探测 @ 触发：最近一个 @ 后无空白 → 打开检索，query = @ 后已输入内容 */
+  const handleDraftChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    setDraft(value);
+    if (!skillAgentFiles || !workspaceId || isGenerating) {
+      setMention(null);
+      return;
+    }
+    const cursor = e.target.selectionStart;
+    const before = value.slice(0, cursor);
+    const atIdx = before.lastIndexOf('@');
+    if (atIdx < 0 || /\s/.test(before.slice(atIdx + 1))) {
+      setMention(null);
+      return;
+    }
+    const query = before.slice(atIdx + 1);
+    if (mention && mention.start === atIdx) {
+      setMention((m) => (m ? { ...m, query, index: 0 } : m));
+    } else {
+      setMention({ start: atIdx, query, index: 0, files: [], loading: true, failed: false });
+      void loadMentionFiles(workspaceId);
+    }
+  };
+
+  // 模糊匹配（子序列 + 连续/前缀加分）后的 @ 候选列表
+  const mentionMatches = useMemo(() => {
+    if (!mention) return [];
+    const q = mention.query.trim().toLowerCase();
+    const scorePath = (p: string): number => {
+      if (!q) return 0;
+      const t = p.toLowerCase();
+      let qi = 0;
+      let score = 0;
+      let last = -1;
+      for (let ti = 0; ti < t.length && qi < q.length; ti++) {
+        if (t[ti] === q[qi]) {
+          score += last !== -1 && ti - last === 1 ? 3 : 1;
+          if (ti === 0) score += 5;
+          last = ti;
+          qi += 1;
+        }
+      }
+      if (qi < q.length) return -1;
+      return score - last * 0.01;
+    };
+    return mention.files
+      .map((f) => ({ f, s: scorePath(f.path) }))
+      .filter((x) => x.s >= 0)
+      .sort((a, b) => b.s - a.s || a.f.path.localeCompare(b.f.path))
+      .map((x) => x.f);
+  }, [mention]);
+
+  /** 以候选列表第 idx 项补全（替换 @ 及其后已输入内容） */
+  const completeMentionAt = (idx: number) => {
+    if (!mention) return;
+    const pick = mentionMatches[idx];
+    if (!pick) {
+      setMention(null);
+      return;
+    }
+    const ta = textareaRef.current;
+    const cursor = ta?.selectionStart ?? draft.length;
+    const next = draft.slice(0, mention.start) + pick.path + ' ' + draft.slice(cursor);
+    setDraft(next);
+    setMention(null);
+    requestAnimationFrame(() => {
+      if (!ta) return;
+      ta.focus();
+      const pos = mention.start + pick.path.length + 1;
+      ta.setSelectionRange(pos, pos);
+    });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // @ 检索打开时：方向键切换、Enter/Tab 补全、Esc 关闭（Enter 不再发送）
+    if (mention) {
+      if (mentionMatches.length > 0) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          setMention({ ...mention, index: (mention.index + 1) % mentionMatches.length });
+          return;
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          setMention({
+            ...mention,
+            index: (mention.index - 1 + mentionMatches.length) % mentionMatches.length,
+          });
+          return;
+        }
+        if (e.key === 'Enter' || e.key === 'Tab') {
+          e.preventDefault();
+          completeMentionAt(Math.min(mention.index, mentionMatches.length - 1));
+          return;
+        }
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setMention(null);
+        return;
+      }
+      if (e.key === 'Enter' && !e.shiftKey) {
+        // 无候选（加载中/无匹配）：关闭提示并继续发送
+        setMention(null);
+        handleSend();
+        return;
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -1089,6 +1442,16 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
       </NodeActionBar>
     );
   };
+
+  // @ 检索弹层锚点：textarea 上方（portal 到 body，避免被节点滚动容器裁剪）
+  const mentionAnchor = useMemo(() => {
+    if (!mention) return null;
+    const ta = textareaRef.current;
+    if (!ta) return null;
+    const r = ta.getBoundingClientRect();
+    return { left: r.left, top: r.top - 6, width: r.width };
+  }, [mention]);
+  const effMentionIndex = mention ? Math.min(mention.index, Math.max(0, mentionMatches.length - 1)) : 0;
 
   return (
     <CanvasNode
@@ -1248,7 +1611,8 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
           </div>
         </div>
 
-        {/* 工作区产物面板（skill_agent）：服务端 outputs/ 快照 ∪ manifest 历史 */}
+        {/* 工作区文件面板（skill_agent）：服务端 outputs/ 快照 ∪ manifest 历史 ∪ inputs/ 上传，
+            按来源分两组折叠展示（Agent 产物默认展开、我的上传默认收起） */}
         {workspaceFiles && (
           <div className="shrink-0 mt-1.5">
             <div className="flex items-center gap-1.5">
@@ -1271,30 +1635,37 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                 <button
                   onClick={() => workspaceFiles.onRefresh()}
                   disabled={workspaceFiles.loading}
-                  title="刷新产物列表"
+                  title="刷新文件列表"
                   className="flex items-center justify-center w-5 h-5 rounded-md text-ink-faint hover:text-accent hover:bg-accent/10 active:scale-95 transition disabled:opacity-40"
                 >
                   <RefreshCw size={10} strokeWidth={2} className={workspaceFiles.loading ? 'animate-spin' : ''} />
                 </button>
               )}
             </div>
-            {workspaceFiles.open && (
-              <div className="mt-1.5 max-h-40 overflow-y-auto flex flex-wrap gap-2 pr-0.5">
-                {workspaceFiles.loading && !workspaceFiles.files.length ? (
-                  <div className="flex items-center gap-1.5 text-[10px] font-sans text-ink-faint py-1">
-                    <Loader2 size={11} className="animate-spin" /> 加载中…
-                  </div>
-                ) : workspaceFiles.files.length === 0 ? (
-                  <p className="text-[10px] font-sans text-ink-faint py-1">暂无产物文件</p>
-                ) : (
-                  <PhotoProvider maskOpacity={0.8} bannerVisible={false}>
-                    {workspaceFiles.files.map((f) => (
-                      <SkillFileCard key={f.url || f.path} file={f} />
-                    ))}
-                  </PhotoProvider>
-                )}
-              </div>
-            )}
+            {workspaceFiles.open && (() => {
+              const { artifacts, uploads } = splitWorkspaceFiles(workspaceFiles.files);
+              return (
+                <div className="mt-1.5 max-h-40 overflow-y-auto flex flex-col gap-1.5 pr-0.5 custom-scrollbar">
+                  {workspaceFiles.loading && !workspaceFiles.files.length ? (
+                    <div className="flex items-center gap-1.5 text-[10px] font-sans text-ink-faint py-1">
+                      <Loader2 size={11} className="animate-spin" /> 加载中…
+                    </div>
+                  ) : workspaceFiles.files.length === 0 ? (
+                    <p className="text-[10px] font-sans text-ink-faint py-1">暂无文件</p>
+                  ) : (
+                    <>
+                      <WorkspaceFileGroup title="Agent 产物" files={artifacts} />
+                      <WorkspaceFileGroup
+                        title="我的上传"
+                        files={uploads}
+                        defaultOpen={false}
+                        tone="upload"
+                      />
+                    </>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -1322,61 +1693,165 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
           </div>
         )}
 
-        {/* 输入区：文本 + 图片附件 */}
-        <div className="shrink-0 mt-2 pt-2 border-t border-solid border-black/5 dark:border-white/5">
-          {attachments.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-1.5">
-              {attachments.map((img, i) => (
-                <div
-                  key={i}
-                  className="relative group w-11 h-11 rounded-md overflow-hidden border border-paper-grid bg-paper"
-                >
-                  <img
-                    src={img}
-                    alt={`附件 ${i + 1}`}
-                    className="w-full h-full object-cover"
-                  />
-                  <button
-                    onClick={() => setAttachments((prev) => prev.filter((_, j) => j !== i))}
-                    disabled={isGenerating}
-                    title="移除图片"
-                    className="absolute -top-1.5 -right-1.5 flex items-center justify-center w-4 h-4 rounded-full bg-paper border border-paper-grid shadow-sm text-ink-faint hover:text-error hover:border-error/40 transition disabled:opacity-40"
-                  >
-                    <X size={9} strokeWidth={2.5} />
-                  </button>
-                </div>
-              ))}
+        {/* 输入区：文本 + 附件（Skill Agent 模式为任意格式文件 → 工作区 inputs/，其他模式为图片 base64）
+            支持拖拽文件到输入区（skill_agent = 任意格式，其他 = 图片校验） */}
+        <div
+          onDragEnter={handleDragEnter}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          className={`relative shrink-0 mt-2 pt-2 border-t border-solid transition-colors ${
+            dragOver
+              ? 'border-accent/60 bg-accent/5 rounded-lg'
+              : 'border-black/5 dark:border-white/5'
+          }`}
+        >
+          {dragOver && (
+            <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center rounded-lg border-2 border-dashed border-accent bg-paper/85 backdrop-blur-sm text-accent text-xs font-sans font-medium">
+              {skillAgentFiles ? '松开以上传文件（任意格式）' : '松开以附带图片'}
             </div>
           )}
-          <div className="flex items-end gap-1.5">
+          {skillAgentFiles ? (
+            fileAttachments.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-1.5">
+                {fileAttachments.map((a) => (
+                  <div
+                    key={a.path}
+                    className="group flex items-center gap-1 max-w-[190px] rounded-md border border-paper-grid bg-paper-grid/20 pl-2 pr-1 py-0.5"
+                  >
+                    <FileText size={11} strokeWidth={1.75} className="shrink-0 text-accent" />
+                    <span
+                      className="truncate text-[10.5px] font-sans text-ink-light"
+                      title={`${a.path}（已写入输入框）`}
+                    >
+                      {a.name}
+                    </span>
+                    <button
+                      onClick={() => removeFileAttachment(a.path)}
+                      disabled={isGenerating}
+                      title="移除文件"
+                      className="shrink-0 flex items-center justify-center w-4 h-4 rounded text-ink-faint hover:text-error hover:bg-error/10 transition disabled:opacity-40"
+                    >
+                      <X size={10} strokeWidth={2.5} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )
+          ) : (
+            attachments.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-1.5">
+                {attachments.map((img, i) => (
+                  <div
+                    key={i}
+                    className="relative group w-11 h-11 rounded-md overflow-hidden border border-paper-grid bg-paper"
+                  >
+                    <img
+                      src={img}
+                      alt={`附件 ${i + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                    <button
+                      onClick={() => setAttachments((prev) => prev.filter((_, j) => j !== i))}
+                      disabled={isGenerating}
+                      title="移除图片"
+                      className="absolute -top-1.5 -right-1.5 flex items-center justify-center w-4 h-4 rounded-full bg-paper border border-paper-grid shadow-sm text-ink-faint hover:text-error hover:border-error/40 transition disabled:opacity-40"
+                    >
+                      <X size={9} strokeWidth={2.5} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )
+          )}
+          {/* @ 工作区文件引用检索弹层（portal 到 body，锚定在输入框上方） */}
+          {mention && mentionAnchor && typeof document !== 'undefined' &&
+            createPortal(
+              <div className="fixed z-[9999]" style={{ left: mentionAnchor.left, top: mentionAnchor.top, width: mentionAnchor.width }}>
+                <div className="pop-enter-anim overflow-hidden rounded-lg border border-paper-grid bg-paper shadow-xl">
+                  <div className="max-h-56 overflow-y-auto custom-scrollbar py-1">
+                    {mention.loading && mentionMatches.length === 0 ? (
+                      <div className="flex items-center gap-1.5 px-3 py-2 text-[11px] font-sans text-ink-faint">
+                        <Loader2 size={12} className="animate-spin" /> 加载工作区文件…
+                      </div>
+                    ) : mention.failed && mentionMatches.length === 0 ? (
+                      <div className="px-3 py-2 text-[11px] font-sans text-error">工作区文件加载失败</div>
+                    ) : mentionMatches.length === 0 ? (
+                      <div className="px-3 py-2 text-[11px] font-sans text-ink-faint">无匹配文件</div>
+                    ) : (
+                      mentionMatches.map((f, i) => (
+                        <button
+                          key={f.path}
+                          type="button"
+                          onMouseDown={(ev) => ev.preventDefault()}
+                          onClick={() => completeMentionAt(i)}
+                          onMouseEnter={() => setMention((m) => (m ? { ...m, index: i } : m))}
+                          className={`w-full flex items-center gap-2 px-3 py-1.5 text-left transition-colors ${
+                            i === effMentionIndex ? 'bg-accent/10' : 'hover:bg-paper-grid/40'
+                          }`}
+                        >
+                          <FileText size={12} strokeWidth={1.75} className="shrink-0 text-accent" />
+                          <span className="flex-1 min-w-0">
+                            <span
+                              className={`block truncate text-[11.5px] font-sans leading-tight ${
+                                i === effMentionIndex ? 'text-accent' : 'text-ink'
+                              }`}
+                            >
+                              {f.name}
+                            </span>
+                            <span className="block truncate text-[9.5px] font-mono text-ink-faint leading-tight mt-0.5">
+                              {f.path}
+                            </span>
+                          </span>
+                          {i === effMentionIndex && <ChevronDown size={10} strokeWidth={2} className="shrink-0 text-accent rotate-180" />}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                  <div className="border-t border-dashed border-paper-grid/50 px-3 py-1 text-[9px] font-sans text-ink-faint">
+                    Tab / Enter 补全 · ↑↓ 选择 · Esc 关闭
+                  </div>
+                </div>
+              </div>,
+              document.body
+            )}
+          <div className="relative flex items-end gap-1.5">
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
+              accept={skillAgentFiles ? undefined : 'image/png,image/jpeg,image/webp,image/gif'}
               multiple
               className="hidden"
               onChange={handlePick}
             />
             <button
               onClick={() => fileInputRef.current?.click()}
-              disabled={isGenerating || attachments.length >= MAX_ATTACHMENTS}
+              disabled={isGenerating}
               title={
-                attachments.length >= MAX_ATTACHMENTS
-                  ? `最多附带 ${MAX_ATTACHMENTS} 张图片`
-                  : '附带图片'
+                skillAgentFiles
+                  ? '上传文件到工作区（任意格式）'
+                  : attachments.length >= MAX_ATTACHMENTS
+                    ? `最多附带 ${MAX_ATTACHMENTS} 张图片`
+                    : '附带图片'
               }
               className="flex shrink-0 items-center justify-center w-9 h-9 rounded-lg border border-dashed border-paper-grid text-ink-faint hover:text-accent hover:border-accent/40 hover:bg-accent/5 active:scale-[0.96] transition disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
-              <ImagePlus size={15} strokeWidth={2} />
+              {skillAgentFiles ? <Paperclip size={15} strokeWidth={2} /> : <ImagePlus size={15} strokeWidth={2} />}
             </button>
             <textarea
               ref={textareaRef}
               value={draft}
-              onChange={(e) => setDraft(e.target.value)}
+              onChange={handleDraftChange}
               onKeyDown={handleKeyDown}
               disabled={isGenerating}
               rows={1}
-              placeholder={isGenerating ? '回复生成中…' : '输入消息，Enter 发送，Shift+Enter 换行'}
+              placeholder={
+                isGenerating
+                  ? '回复生成中…'
+                  : skillAgentFiles
+                    ? '输入消息，@ 引用工作区文件，Enter 发送'
+                    : '输入消息，Enter 发送，Shift+Enter 换行'
+              }
               className="flex-1 min-w-0 min-h-[36px] max-h-32 overflow-y-auto resize-none rounded-lg border border-dashed border-paper-grid bg-node-bg px-3 py-1.5 text-sm font-sans text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors disabled:opacity-60"
             />
             {isGenerating ? (

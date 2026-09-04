@@ -85,6 +85,9 @@ export interface ImageGenRequest {
 
 export const MAX_UPLOAD_IMAGE_BYTES = 8 * 1024 * 1024;
 
+/** 任意格式附件上传体积上限（Skill Agent 模式落盘工作区 inputs/；与 server.ts bodyLimit 对齐）。 */
+export const MAX_UPLOAD_FILE_BYTES = 50 * 1024 * 1024;
+
 export const _IMAGE_MAGIC_PREFIXES: Array<[number[], string]> = [
   [[0xff, 0xd8, 0xff], '.jpg'],
   [[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], '.png'],
