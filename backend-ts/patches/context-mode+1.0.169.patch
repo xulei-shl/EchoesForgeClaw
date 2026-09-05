@@ -1,0 +1,30 @@
+diff --git a/node_modules/context-mode/build/adapters/pi/extension.js b/node_modules/context-mode/build/adapters/pi/extension.js
+index 5dd3eae..f3f872a 100644
+--- a/node_modules/context-mode/build/adapters/pi/extension.js
++++ b/node_modules/context-mode/build/adapters/pi/extension.js
+@@ -477,8 +477,23 @@ export default function piExtension(pi) {
+             if (/^context_mode_/.test(rawToolName)) {
+                 mappedToolName = rawToolName.replace(/^context_mode_/, "mcp__context_mode__");
+             }
+-            // Normalize result to string
+-            const rawResult = event?.result ?? event?.output;
++            // Normalize result to string. Pi >= 0.84 surfaces tool output as
++            // content: [{ type: "text", text }] on tool_result; older forks use
++            // result/output. Prefer result/output, fall back to joining text parts
++            // so file/rule reads capture their content into session events.
++            // Local patch (bookforge §5.1): content[] mapping.
++            let rawResult = event?.result ?? event?.output;
++            if (rawResult === undefined && Array.isArray(event?.content)) {
++                const textParts = [];
++                for (const part of event.content) {
++                    if (part && typeof part === "object" && part.type === "text" && typeof part.text === "string") {
++                        textParts.push(part.text);
++                    }
++                }
++                if (textParts.length > 0) {
++                    rawResult = textParts.join("\n");
++                }
++            }
+             const resultStr = typeof rawResult === "string"
+                 ? rawResult
+                 : rawResult != null

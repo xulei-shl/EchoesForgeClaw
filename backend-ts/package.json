@@ -15,7 +15,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:pull": "drizzle-kit pull",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "3.0.30",
@@ -30,6 +31,7 @@
     "ai": "7.0.66",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.11.1",
+    "context-mode": "1.0.169",
     "drizzle-orm": "0.45.2",
     "fastify": "5.12.0",
     "playwright-core": "^1.62.1",
@@ -42,6 +44,7 @@
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^24.13.3",
     "drizzle-kit": "^0.31.2",
+    "patch-package": "^8.0.1",
     "tsx": "^4.20.0",
     "typescript": "^5.9.3",
     "vitest": "4.1.10"

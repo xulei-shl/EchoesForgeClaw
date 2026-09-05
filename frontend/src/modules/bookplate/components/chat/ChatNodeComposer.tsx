@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, FileText, ImagePlus, Loader2, Paperclip, Send, Square, X } from 'lucide-react';
+import { FileText, ImagePlus, Loader2, Paperclip, Send, Square, X } from 'lucide-react';
 import { useFeedback } from '../../../../platform/components/ui/FeedbackProvider';
 import { authHeaders, handleUnauthorized } from '../../authUtils';
 import { rankMentionFiles } from '../../utils/mentionMatch';
@@ -14,6 +14,119 @@ import type { AgentFile } from '../../../../platform/types';
 
 // 单轮最多附带的图片数（与后端透传上限保持一致）
 const MAX_ATTACHMENTS = 4;
+
+/** @ 检索弹层定位数据（优先底对齐向上弹出，视口上方空间不足时自适应翻转） */
+interface MentionAnchor {
+  left: number;
+  width: number;
+  top?: number;
+  bottom?: number;
+  maxHeight: number;
+  placement: 'top' | 'bottom';
+}
+
+interface TextSegment {
+  text: string;
+  isMention: boolean;
+}
+
+/**
+ * 将输入框文本分词为普通文本与 @ 引用文件片段
+ */
+function parseMentionSegments(draft: string, referencedPaths: string[]): TextSegment[] {
+  if (!draft) return [];
+
+  // 收集有效的文件路径候选，按长度降序优先匹配长路径
+  const validPaths = referencedPaths
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+
+  let regex: RegExp;
+  if (validPaths.length > 0) {
+    const escaped = validPaths.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+    // 匹配可选 @ 前缀后跟已知文件名，或通用的 @文件名.扩展名
+    regex = new RegExp(`(@?(?:${escaped})|@[a-zA-Z0-9_\\-\\./]+\\.[a-zA-Z0-9]+)`, 'g');
+  } else {
+    regex = /(@[a-zA-Z0-9_\\-\\./]+\\.[a-zA-Z0-9]+)/g;
+  }
+
+  const result: TextSegment[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(draft)) !== null) {
+    if (match.index > lastIndex) {
+      result.push({ text: draft.slice(lastIndex, match.index), isMention: false });
+    }
+    result.push({ text: match[0], isMention: true });
+    lastIndex = regex.lastIndex;
+  }
+
+  if (lastIndex < draft.length) {
+    result.push({ text: draft.slice(lastIndex), isMention: false });
+  }
+
+  return result;
+}
+
+interface MentionRange {
+  start: number;
+  end: number;
+  path: string;
+}
+
+/**
+ * 获取当前光标命中的 @ 引用文件整体删除区间（原子删除）
+ */
+function getMentionDeletionRange(
+  draft: string,
+  cursor: number,
+  referencedPaths: string[],
+  isDeleteKey: boolean = false
+): MentionRange | null {
+  if (!draft || cursor < 0) return null;
+
+  const validPaths = referencedPaths
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+
+  let regex: RegExp;
+  if (validPaths.length > 0) {
+    const escaped = validPaths.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+    regex = new RegExp(`(@?(?:${escaped})|@[a-zA-Z0-9_\\-\\./]+\\.[a-zA-Z0-9]+)`, 'g');
+  } else {
+    regex = /(@[a-zA-Z0-9_\\-\\./]+\\.[a-zA-Z0-9]+)/g;
+  }
+
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(draft)) !== null) {
+    const tokenStart = match.index;
+    const tokenEnd = tokenStart + match[0].length;
+    const pathText = match[0].startsWith('@') ? match[0].slice(1) : match[0];
+
+    // 若后方紧邻单个空格，则把尾随空格也纳入整体删除，保持输入框整洁
+    const hasTrailingSpace = draft[tokenEnd] === ' ';
+    const fullEnd = hasTrailingSpace ? tokenEnd + 1 : tokenEnd;
+
+    if (isDeleteKey) {
+      if (cursor === tokenStart) {
+        return { start: tokenStart, end: fullEnd, path: pathText };
+      }
+    } else {
+      // Backspace：光标在尾随空格之后、在文件名尾部、或落在文件名内部时，均整块删除
+      if (
+        (hasTrailingSpace && cursor === tokenEnd + 1) ||
+        (cursor > tokenStart && cursor <= tokenEnd)
+      ) {
+        return { start: tokenStart, end: fullEnd, path: pathText };
+      }
+    }
+  }
+
+  return null;
+}
 
 interface ChatNodeComposerProps {
   /** 节点执行模式：skill_agent + onUploadFile 时启用任意文件上传与 @ 引用 */
@@ -45,6 +158,8 @@ export const ChatNodeComposer: React.FC<ChatNodeComposerProps> = ({
   const [attachments, setAttachments] = useState<string[]>([]);
   // Skill Agent 模式已上传的文件 chips（路径已插入草稿文本；chips 仅展示/移除用）
   const [fileAttachments, setFileAttachments] = useState<{ name: string; path: string }[]>([]);
+  // 已引用的文件路径列表（驱动输入框高亮底衬渲染）
+  const [referencedPaths, setReferencedPaths] = useState<string[]>([]);
   // @ 文件引用检索状态（Skill Agent 模式；见 handleDraftChange / handleKeyDown）
   const [mention, setMention] = useState<{
     start: number;
@@ -60,10 +175,24 @@ export const ChatNodeComposer: React.FC<ChatNodeComposerProps> = ({
   const skillAgentFiles = mode === 'skill_agent' && !!onUploadFile;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const backdropRef = useRef<HTMLDivElement>(null);
   const { showToast } = useFeedback();
   // 拖拽上传：文件拖入输入区高亮；dragenter/leave 成对计数防闪烁
   const [dragOver, setDragOver] = useState(false);
   const dragDepthRef = useRef(0);
+
+  // 解析输入框草稿中的常规文本与引用文件片段
+  const mentionSegments = useMemo(
+    () => parseMentionSegments(draft, referencedPaths),
+    [draft, referencedPaths]
+  );
+
+  // 输入框滚动时，像素级同步背后的高亮底衬滚动
+  const handleTextareaScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
+    if (backdropRef.current) {
+      backdropRef.current.scrollTop = e.currentTarget.scrollTop;
+    }
+  };
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -116,8 +245,9 @@ export const ChatNodeComposer: React.FC<ChatNodeComposerProps> = ({
       setFileAttachments((prev) =>
         prev.some((a) => a.path === info.path) ? prev : [...prev, { name: info.name, path: info.path }]
       );
+      setReferencedPaths((prev) => (prev.includes(info.path) ? prev : [...prev, info.path]));
       if (workspaceId) mentionFileCacheRef.current.delete(workspaceId);
-      insertIntoDraft(info.path);
+      insertIntoDraft(`@${info.path}`);
     } catch (e) {
       showToast(e instanceof Error ? e.message : '文件上传失败，请重试', { type: 'error' });
     }
@@ -190,16 +320,19 @@ export const ChatNodeComposer: React.FC<ChatNodeComposerProps> = ({
     setDraft('');
     setAttachments([]);
     setFileAttachments([]);
+    setReferencedPaths([]);
     setMention(null);
   };
 
   /** 移除已上传文件 chip，同时从草稿文本删除对应的路径片段 */
   const removeFileAttachment = (path: string) => {
     setFileAttachments((prev) => prev.filter((a) => a.path !== path));
+    setReferencedPaths((prev) => prev.filter((p) => p !== path));
     setDraft((d) => {
-      const idx = d.indexOf(path);
+      const target = d.includes(`@${path}`) ? `@${path}` : path;
+      const idx = d.indexOf(target);
       if (idx < 0) return d;
-      let end = idx + path.length;
+      let end = idx + target.length;
       if (d[end] === ' ' || d[end] === '\n') end += 1;
       return d.slice(0, idx) + d.slice(end);
     });
@@ -262,7 +395,7 @@ export const ChatNodeComposer: React.FC<ChatNodeComposerProps> = ({
     return rankMentionFiles(mention.files, mention.query);
   }, [mention]);
 
-  /** 以候选列表第 idx 项补全（替换 @ 及其后已输入内容） */
+  /** 以候选列表第 idx 项补全（插入 @path 并保留 @ 前缀标识） */
   const completeMentionAt = (idx: number) => {
     if (!mention) return;
     const pick = mentionMatches[idx];
@@ -272,13 +405,15 @@ export const ChatNodeComposer: React.FC<ChatNodeComposerProps> = ({
     }
     const ta = textareaRef.current;
     const cursor = ta?.selectionStart ?? draft.length;
-    const next = draft.slice(0, mention.start) + pick.path + ' ' + draft.slice(cursor);
+    const insert = `@${pick.path}`;
+    const next = draft.slice(0, mention.start) + insert + ' ' + draft.slice(cursor);
     setDraft(next);
+    setReferencedPaths((prev) => (prev.includes(pick.path) ? prev : [...prev, pick.path]));
     setMention(null);
     requestAnimationFrame(() => {
       if (!ta) return;
       ta.focus();
-      const pos = mention.start + pick.path.length + 1;
+      const pos = mention.start + insert.length + 1;
       ta.setSelectionRange(pos, pos);
     });
   };
@@ -318,21 +453,122 @@ export const ChatNodeComposer: React.FC<ChatNodeComposerProps> = ({
         return;
       }
     }
+
+    // 引用文件原子删除：按 Backspace 或 Delete 时，若光标紧贴或处于引用文件名内部，整体删除整个文件名
+    if (
+      (e.key === 'Backspace' || e.key === 'Delete') &&
+      !e.shiftKey &&
+      !e.altKey &&
+      !e.ctrlKey &&
+      !e.metaKey
+    ) {
+      const ta = textareaRef.current;
+      if (ta && ta.selectionStart === ta.selectionEnd) {
+        const cursor = ta.selectionStart;
+        const target = getMentionDeletionRange(draft, cursor, referencedPaths, e.key === 'Delete');
+        if (target) {
+          e.preventDefault();
+          const nextDraft = draft.slice(0, target.start) + draft.slice(target.end);
+          setDraft(nextDraft);
+          requestAnimationFrame(() => {
+            if (!ta) return;
+            ta.focus();
+            ta.setSelectionRange(target.start, target.start);
+          });
+          if (!nextDraft.includes(target.path)) {
+            setReferencedPaths((prev) => prev.filter((p) => p !== target.path));
+          }
+          return;
+        }
+      }
+    }
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
   };
 
-  // @ 检索弹层锚点：textarea 上方（portal 到 body，避免被节点滚动容器裁剪）
-  const mentionAnchor = useMemo(() => {
-    if (!mention) return null;
+  const mentionMenuRef = useRef<HTMLDivElement>(null);
+  const activeItemRef = useRef<HTMLButtonElement | null>(null);
+
+  // 计算 @ 检索弹层锚点：优先底对齐在输入框上方展开，视口上方空间不足时自适应翻转到下方
+  const calcMentionAnchor = useCallback((): MentionAnchor | null => {
     const ta = textareaRef.current;
-    if (!ta) return null;
+    if (!ta || typeof window === 'undefined') return null;
     const r = ta.getBoundingClientRect();
-    return { left: r.left, top: r.top - 6, width: r.width };
+    // 弹层最小宽度 280px，防止在窄节点下内容折叠拥挤，同时不超过视口边界
+    const width = Math.min(Math.max(r.width, 280), Math.max(280, window.innerWidth - 24));
+    // 保证横向对齐输入框且不超出视口左右安全距离
+    const left = Math.max(12, Math.min(r.left, window.innerWidth - width - 12));
+    const spaceAbove = r.top;
+    const spaceBelow = window.innerHeight - r.bottom;
+
+    // 优先底对齐向上弹出；若视口上方空间不足（< 160px）且下方空间更充裕，则翻转到输入框下方
+    if (spaceAbove < 160 && spaceBelow > spaceAbove) {
+      return {
+        left,
+        width,
+        top: r.bottom + 8,
+        maxHeight: Math.max(120, Math.min(224, spaceBelow - 24)),
+        placement: 'bottom',
+      };
+    }
+
+    return {
+      left,
+      width,
+      bottom: window.innerHeight - r.top + 8,
+      maxHeight: Math.max(120, Math.min(224, spaceAbove - 24)),
+      placement: 'top',
+    };
+  }, []);
+
+  const [mentionAnchor, setMentionAnchor] = useState<MentionAnchor | null>(null);
+
+  // 监听输入高度变动、视口缩放与画布滚动，实时对齐弹层位置
+  useEffect(() => {
+    if (!mention) {
+      setMentionAnchor(null);
+      return;
+    }
+    const update = () => {
+      setMentionAnchor(calcMentionAnchor());
+    };
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, [mention, draft, calcMentionAnchor]);
+
+  // 点击输入框及弹层外部时关闭 @ 检索
+  useEffect(() => {
+    if (!mention) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as Node | null;
+      if (!target) return;
+      if (mentionMenuRef.current?.contains(target) || textareaRef.current?.contains(target)) {
+        return;
+      }
+      setMention(null);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+    };
   }, [mention]);
+
   const effMentionIndex = mention ? Math.min(mention.index, Math.max(0, mentionMatches.length - 1)) : 0;
+
+  // 键盘切换高亮项时，自动将当前选项滚动到可视区域内
+  useEffect(() => {
+    if (activeItemRef.current) {
+      activeItemRef.current.scrollIntoView({ block: 'nearest' });
+    }
+  }, [effMentionIndex]);
 
   return (
     <div
@@ -408,12 +644,30 @@ export const ChatNodeComposer: React.FC<ChatNodeComposerProps> = ({
           </div>
         )
       )}
-      {/* @ 工作区文件引用检索弹层（portal 到 body，锚定在输入框上方） */}
+      {/* @ 工作区文件引用检索弹层（portal 到 body，优先底对齐在输入框上方展开） */}
       {mention && mentionAnchor && typeof document !== 'undefined' &&
         createPortal(
-          <div className="fixed z-[9999]" style={{ left: mentionAnchor.left, top: mentionAnchor.top, width: mentionAnchor.width }}>
-            <div className="pop-enter-anim overflow-hidden rounded-lg border border-paper-grid bg-paper shadow-xl">
-              <div className="max-h-56 overflow-y-auto custom-scrollbar py-1">
+          <div
+            ref={mentionMenuRef}
+            className="fixed z-[9999]"
+            style={{
+              left: mentionAnchor.left,
+              width: mentionAnchor.width,
+              top: mentionAnchor.top,
+              bottom: mentionAnchor.bottom,
+              ['--pop-origin' as any]: mentionAnchor.placement === 'bottom' ? 'top left' : 'bottom left',
+            }}
+          >
+            <div
+              role="listbox"
+              id="mention-file-listbox"
+              aria-label="工作区文件建议"
+              className="pop-enter-anim overflow-hidden rounded-xl border border-paper-grid bg-paper shadow-xl"
+            >
+              <div
+                className="overflow-y-auto custom-scrollbar py-1"
+                style={{ maxHeight: mentionAnchor.maxHeight }}
+              >
                 {mention.loading && mentionMatches.length === 0 ? (
                   <div className="flex items-center gap-1.5 px-3 py-2 text-[11px] font-sans text-ink-faint">
                     <Loader2 size={12} className="animate-spin" /> 加载工作区文件…
@@ -426,6 +680,10 @@ export const ChatNodeComposer: React.FC<ChatNodeComposerProps> = ({
                   mentionMatches.map((f, i) => (
                     <button
                       key={f.path}
+                      ref={i === effMentionIndex ? activeItemRef : undefined}
+                      id={`mention-option-${i}`}
+                      role="option"
+                      aria-selected={i === effMentionIndex}
                       type="button"
                       onMouseDown={(ev) => ev.preventDefault()}
                       onClick={() => completeMentionAt(i)}
@@ -438,7 +696,7 @@ export const ChatNodeComposer: React.FC<ChatNodeComposerProps> = ({
                       <span className="flex-1 min-w-0">
                         <span
                           className={`block truncate text-[11.5px] font-sans leading-tight ${
-                            i === effMentionIndex ? 'text-accent' : 'text-ink'
+                            i === effMentionIndex ? 'text-accent font-medium' : 'text-ink'
                           }`}
                         >
                           {f.name}
@@ -447,13 +705,18 @@ export const ChatNodeComposer: React.FC<ChatNodeComposerProps> = ({
                           {f.path}
                         </span>
                       </span>
-                      {i === effMentionIndex && <ChevronDown size={10} strokeWidth={2} className="shrink-0 text-accent rotate-180" />}
+                      {i === effMentionIndex && (
+                        <span className="shrink-0 flex items-center gap-0.5 text-[9.5px] font-sans font-medium text-accent bg-accent/15 px-1.5 py-0.5 rounded border border-accent/25">
+                          <span className="font-mono text-[10px] leading-none">↵</span> 补全
+                        </span>
+                      )}
                     </button>
                   ))
                 )}
               </div>
-              <div className="border-t border-dashed border-paper-grid/50 px-3 py-1 text-[9px] font-sans text-ink-faint">
-                Tab / Enter 补全 · ↑↓ 选择 · Esc 关闭
+              <div className="border-t border-paper-grid/40 bg-paper-grid/10 px-3 py-1.5 text-[9.5px] font-sans text-ink-faint flex items-center justify-between">
+                <span>Tab / Enter 补全 · ↑↓ 选择</span>
+                <span>Esc 关闭</span>
               </div>
             </div>
           </div>,
@@ -490,22 +753,58 @@ export const ChatNodeComposer: React.FC<ChatNodeComposerProps> = ({
         >
           {skillAgentFiles ? <Paperclip size={15} strokeWidth={2} /> : <ImagePlus size={15} strokeWidth={2} />}
         </button>
-        <textarea
-          ref={textareaRef}
-          value={draft}
-          onChange={handleDraftChange}
-          onKeyDown={handleKeyDown}
-          disabled={isGenerating}
-          rows={1}
-          placeholder={
-            isGenerating
-              ? '回复生成中…'
-              : skillAgentFiles
-                ? '输入消息，@ 引用工作区文件，Enter 发送'
-                : '输入消息，Enter 发送，Shift+Enter 换行'
-          }
-          className="flex-1 min-w-0 min-h-[36px] max-h-32 overflow-y-auto resize-none rounded-lg border border-paper-grid/70 bg-node-bg px-3 py-1.5 text-sm font-sans text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-[border-color,box-shadow] duration-150 disabled:opacity-60 [text-wrap:pretty]"
-        />
+        {/* 输入框容器：底层为引用文件高亮底衬，顶层为原生 textarea */}
+        <div className="relative flex-1 min-w-0 rounded-lg bg-node-bg">
+          {/* 高亮底衬镜像层（像素级与 textarea 对齐） */}
+          <div
+            ref={backdropRef}
+            aria-hidden="true"
+            className="pointer-events-none select-none absolute inset-0 overflow-y-auto custom-scrollbar resize-none rounded-lg border border-transparent px-3 py-1.5 text-sm font-sans whitespace-pre-wrap break-words [text-wrap:pretty]"
+            style={{
+              wordBreak: 'break-word',
+              overflowWrap: 'anywhere',
+            }}
+          >
+            {mentionSegments.map((seg, i) =>
+              seg.isMention ? (
+                <mark
+                  key={i}
+                  className="rounded-sm bg-accent/20 ring-1 ring-accent/35 text-transparent font-sans"
+                >
+                  {seg.text}
+                </mark>
+              ) : (
+                <span key={i} className="text-transparent font-sans">
+                  {seg.text}
+                </span>
+              )
+            )}
+            {draft.endsWith('\n') ? ' ' : null}
+          </div>
+
+          <textarea
+            ref={textareaRef}
+            value={draft}
+            onChange={handleDraftChange}
+            onKeyDown={handleKeyDown}
+            onScroll={handleTextareaScroll}
+            disabled={isGenerating}
+            rows={1}
+            role="combobox"
+            aria-expanded={Boolean(mention)}
+            aria-haspopup="listbox"
+            aria-controls={mention ? 'mention-file-listbox' : undefined}
+            aria-activedescendant={mention && mentionMatches.length > 0 ? `mention-option-${effMentionIndex}` : undefined}
+            placeholder={
+              isGenerating
+                ? '回复生成中…'
+                : skillAgentFiles
+                  ? '输入消息，@ 引用工作区文件，Enter 发送'
+                  : '输入消息，Enter 发送，Shift+Enter 换行'
+            }
+            className="relative z-10 block w-full min-h-[36px] max-h-32 overflow-y-auto resize-none rounded-lg border border-paper-grid/70 bg-transparent px-3 py-1.5 text-sm font-sans text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-[border-color,box-shadow] duration-150 disabled:opacity-60 [text-wrap:pretty]"
+          />
+        </div>
         {isGenerating ? (
           <button
             type="button"
