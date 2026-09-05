@@ -95,10 +95,14 @@ const BookplatePage: React.FC = () => {
   /** 多选节点集合（普通点击单选也在集合内；空集 = 无选中） */
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
-  /** 普通点击选中：替换整个选择集并设主选中节点；null 清空 */
+  /** 普通点击选中：替换整个选择集并设主选中节点；null 清空（已选守卫，避免同一节点重复选中触发全板重绘） */
   const selectNode = useCallback((id: string | null) => {
-    setActiveNodeId(id);
-    setSelectedIds(id ? new Set([id]) : new Set());
+    setActiveNodeId((prev) => (prev === id ? prev : id));
+    setSelectedIds((prev) => {
+      if (id && prev.size === 1 && prev.has(id)) return prev;
+      if (!id && prev.size === 0) return prev;
+      return id ? new Set([id]) : new Set();
+    });
   }, []);
 
   /** Ctrl/Cmd+点击：切换多选成员资格（并将其设为主选中节点） */

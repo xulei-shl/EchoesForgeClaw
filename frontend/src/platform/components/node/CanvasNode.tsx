@@ -99,8 +99,12 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
   /** 激活/选中：普通点击替换单选，Ctrl/Cmd+点击切换多选成员（旧接入方回退 setActiveNodeId） */
   const handleActivate = useCallback(
     (e?: React.PointerEvent<HTMLDivElement> | React.FocusEvent<HTMLDivElement>) => {
-      bringToFront();
       const mod = e ? 'ctrlKey' in e && (e.ctrlKey || e.metaKey) : false;
+      if (!mod && isActive) {
+        // 节点已被单选激活时，避免重复刷新 state 触发全板重绘
+        return;
+      }
+      bringToFront();
       if (mod) {
         if (toggleNodeSelection) toggleNodeSelection(id);
         else setActiveNodeId?.(id);
@@ -109,7 +113,7 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
         else setActiveNodeId?.(id);
       }
     },
-    [bringToFront, id, selectNode, toggleNodeSelection, setActiveNodeId]
+    [bringToFront, id, isActive, selectNode, toggleNodeSelection, setActiveNodeId]
   );
 
   const [position, setPosition] = useState({ x: initialX, y: initialY });
@@ -174,14 +178,16 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
     return () => observer.disconnect();
   }, [id, onSizeChange]);
 
-  /** 将实时位置应用到 DOM（GPU 合成）并通知父级更新连线 */
+  /** 将实时位置应用到 DOM（GPU 合成）并通知父级更新连线（整数像素对齐，杜绝亚像素文本抗锯齿微抖动） */
   const applyTransform = useCallback(() => {
     rafId.current = null;
     const el = rootRef.current;
     if (!el) return;
     const { x, y } = dragPos.current;
-    el.style.transform = `translate3d(${x}px, ${y}px, 0)`;
-    onDrag?.(id, x, y);
+    const rx = Math.round(x);
+    const ry = Math.round(y);
+    el.style.transform = `translate3d(${rx}px, ${ry}px, 0)`;
+    onDrag?.(id, rx, ry);
   }, [id, onDrag]);
 
   /** 将实时尺寸应用到 DOM 并通知父级更新连线（0 React 渲染开销） */
@@ -204,20 +210,24 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
       nodeY: dragPos.current.y,
     };
     rootRef.current?.classList.add('node-dragging');
+    document.body.classList.add('canvas-node-dragging-active');
   };
 
   const endDrag = () => {
     if (!draggingRef.current) return;
     draggingRef.current = false;
     rootRef.current?.classList.remove('node-dragging');
+    document.body.classList.remove('canvas-node-dragging-active');
     if (rafId.current !== null) {
       cancelAnimationFrame(rafId.current);
       rafId.current = null;
     }
     applyTransform();
     const { x, y } = dragPos.current;
-    setPosition({ x, y });
-    onPositionChange?.(id, x, y);
+    const rx = Math.round(x);
+    const ry = Math.round(y);
+    setPosition({ x: rx, y: ry });
+    onPositionChange?.(id, rx, ry);
   };
 
   const endResize = (pointerId?: number, currentTarget?: HTMLElement) => {
@@ -264,6 +274,8 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
     e.stopPropagation(); // 防止画布拖拽
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     pointerDown.current = { x: e.clientX, y: e.clientY };
+    // 按下瞬间预热 GPU 合成层，消除跨过 3px 阈值瞬间的纹理升层卡顿
+    if (rootRef.current) rootRef.current.style.willChange = 'transform';
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -298,6 +310,7 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (rootRef.current) rootRef.current.style.willChange = 'auto';
     // 结束 resize
     if (resizingRef.current) {
       endResize(e.pointerId, e.currentTarget as HTMLElement);
@@ -313,11 +326,12 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
     endDrag();
   };
 
-  // 卸载时清理未执行的 rAF
+  // 卸载时清理未执行的 rAF 与全局拖拽标记
   useEffect(() => {
     return () => {
       if (rafId.current !== null) cancelAnimationFrame(rafId.current);
       if (resizeRafId.current !== null) cancelAnimationFrame(resizeRafId.current);
+      document.body.classList.remove('canvas-node-dragging-active');
     };
   }, []);
 
@@ -366,8 +380,18 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
           transition: none !important;
           user-select: none !important;
         }
-        .node-resizing * {
+        .node-resizing *,
+        .node-dragging * {
           pointer-events: none !important;
+        }
+        .node-dragging,
+        .node-dragging * {
+          cursor: grabbing !important;
+        }
+        body.canvas-node-dragging-active,
+        body.canvas-node-dragging-active * {
+          cursor: grabbing !important;
+          user-select: none !important;
         }
       `}</style>
 
@@ -401,9 +425,9 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
       {/* 根层级覆盖层，如光束动效 */}
       {glowOverlay}
 
-      {/* 头部拖拽区 */}
+      {/* 头部拖拽区（悬停预热合成层，消除初次拖动丢帧） */}
       <div
-        className="relative z-10 node-drag-handle h-8 bg-paper border-b border-dashed border-paper-grid flex items-center justify-between px-3 cursor-grab active:cursor-grabbing rounded-t-xl select-none"
+        className="relative z-10 node-drag-handle h-8 bg-paper border-b border-dashed border-paper-grid flex items-center justify-between px-3 cursor-grab active:cursor-grabbing hover:will-change-transform rounded-t-xl select-none"
         style={{ touchAction: 'none' }}
       >
         <div className="flex gap-1.5 items-center min-w-0">

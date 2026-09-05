@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { nodesRef, edgesRef } from '../../platform/stores/useCanvasState';
 import { ChatNode } from './components/ChatNode';
 import { getNodeTitle } from './nodeTypes';
@@ -86,7 +86,7 @@ const MAX_QUEUE = 10;
 /**
  * Skill Agent 节点宿主（mode==='skill_agent' 的 chat 节点由此渲染）。
  */
-export function PiChatNodeHost({
+function PiChatNodeHostInner({
   node,
   h,
   deps,
@@ -807,15 +807,49 @@ export function PiChatNodeHost({
   const config = h.configOf(node);
   const settings: ChatNodeSettings = node.data?.settings ?? DEFAULT_CHAT_SETTINGS;
 
-  // 上下文块展示：始终实时根据画布连线与配置动态重算，上级重新生成时折叠卡片同步更新。
-  // 仅展示层实时；首轮发送仍按当时快照注入会话（服务端真相源），清空对话后重新注入最新。
-  const contextBlocks = buildContextBlocks(
-    node,
-    settings,
-    h.nodes,
-    h.edges,
-    portTypesRef.current
+  // 上下文块展示：使用 useMemo 缓存，仅在依赖实际变化时重算，避免画布交互时反复重绘
+  const contextBlocks = useMemo(
+    () =>
+      buildContextBlocks(
+        node,
+        settings,
+        h.nodes,
+        h.edges,
+        portTypesRef.current
+      ),
+    [node, settings, h.nodes, h.edges, portTypesRef]
   );
+
+  const handleRemove = useCallback(() => h.handleRemove(node.id), [h, node.id]);
+  const handleSend = useCallback((_id: string, text: string, images?: string[]) => send(text, images), [send]);
+  const handleContextMenu = useCallback((e: React.MouseEvent<HTMLDivElement>) => h.handleNodeContextMenu(e, node.id), [h, node.id]);
+
+  const workspaceFilesProp = useMemo(() => ({
+    open: panel.open,
+    loading: panel.loading,
+    files: panel.files,
+    onToggle: () => panel.setOpen((v) => !v),
+    onRefresh: panel.refresh,
+  }), [panel.open, panel.loading, panel.files, panel.setOpen, panel.refresh]);
+
+  const messageQueueProp = useMemo(() => (
+    msgQueue.length > 0
+      ? {
+          items: msgQueue,
+          onRecall: recallQueued,
+          onSendNow: sendQueuedNow,
+        }
+      : null
+  ), [msgQueue, recallQueued, sendQueuedNow]);
+
+  const extensionDialogProp = useMemo(() => (
+    streamState.pendingUi
+      ? {
+          request: streamState.pendingUi,
+          onAnswer: answerUi,
+        }
+      : null
+  ), [streamState.pendingUi, answerUi]);
 
   return (
     <ChatNode
@@ -836,8 +870,8 @@ export function PiChatNodeHost({
       error={node.data?.error ?? null}
       settings={settings}
       bookCoverEnabled={isBookCoverEnabled(node, h.nodes, h.edges)}
-      onRemove={() => h.handleRemove(node.id)}
-      onSend={(_id, text, images) => send(text, images)}
+      onRemove={handleRemove}
+      onSend={handleSend}
       onUploadFile={handleUploadFile}
       onUpdateSettings={h.handleUpdateChatSettingsFor}
       onClearChat={h.handleClearChatFor}
@@ -846,26 +880,17 @@ export function PiChatNodeHost({
       onPositionChange={h.handlePositionChange}
       onSizeChange={h.handleSizeChange}
       onDrag={h.handleNodeDrag}
+      onResizeLive={h.handleNodeResizeLive}
       footer={h.renderFooter(node)}
-      onContextMenu={(e) => h.handleNodeContextMenu(e, node.id)}
-      workspaceFiles={{
-        open: panel.open,
-        loading: panel.loading,
-        files: panel.files,
-        onToggle: () => panel.setOpen((v) => !v),
-        onRefresh: panel.refresh,
-      }}
+      onContextMenu={handleContextMenu}
+      workspaceFiles={workspaceFilesProp}
       retryNotice={retryNotice}
-      messageQueue={{
-        items: msgQueue,
-        onRecall: recallQueued,
-        onSendNow: sendQueuedNow,
-      }}
+      messageQueue={messageQueueProp}
       widgets={streamState.widgets}
-      extensionDialog={{
-        request: streamState.pendingUi,
-        onAnswer: answerUi,
-      }}
+      extensionDialog={extensionDialogProp}
     />
   );
 }
+
+export const PiChatNodeHost = memo(PiChatNodeHostInner);
+PiChatNodeHost.displayName = 'PiChatNodeHost';

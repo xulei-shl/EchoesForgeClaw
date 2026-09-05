@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import { nodesRef, edgesRef } from '../../platform/stores/useCanvasState';
@@ -70,7 +70,7 @@ async function fetchFastClawWorkspaceFiles(params: {
  * - 外部变更（清空对话 / 撤销 / 恢复）经「store 与镜像不一致且非流式中」检测恢复进 useChat；
  * - 上下文注入 / agent 步骤 / 文件 / 重试 / 中断语义与旧 useChatExecution 逐项对齐。
  */
-export function ChatNodeHost({
+function ChatNodeHostInner({
   node,
   h,
   deps,
@@ -615,16 +615,34 @@ export function ChatNodeHost({
         : stored;
   }
 
-  // 计算上下文块：始终实时根据画布连线与配置动态重算，上级重新生成时折叠卡片同步更新。
-  // 仅展示层实时；发送时首轮仍按当时快照注入并持久化到首条 user 消息（对话历史不可追溯
-  // 改写），清空对话后下一轮自然注入最新上下文。
-  const contextBlocks: InjectedContextBlock[] = buildContextBlocks(
-    node,
-    settings,
-    h.nodes,
-    h.edges,
-    portTypesRef.current
+  // 计算上下文块：使用 useMemo 缓存，仅在依赖实际变化时重算，避免画布交互时反复重绘
+  const contextBlocks: InjectedContextBlock[] = useMemo(
+    () =>
+      buildContextBlocks(
+        node,
+        settings,
+        h.nodes,
+        h.edges,
+        portTypesRef.current
+      ),
+    [node, settings, h.nodes, h.edges, portTypesRef]
   );
+
+  const handleRemove = useCallback(() => h.handleRemove(node.id), [h, node.id]);
+  const handleSend = useCallback((_id: string, text: string, images?: string[]) => send(text, images), [send]);
+  const handleContextMenu = useCallback((e: React.MouseEvent<HTMLDivElement>) => h.handleNodeContextMenu(e, node.id), [h, node.id]);
+
+  const workspaceFilesProp = useMemo(() => (
+    isFastClawAgent
+      ? {
+          open: panel.open,
+          loading: panel.loading,
+          files: panel.files,
+          onToggle: () => panel.setOpen((v) => !v),
+          onRefresh: panel.refresh,
+        }
+      : undefined
+  ), [isFastClawAgent, panel.open, panel.loading, panel.files, panel.setOpen, panel.refresh]);
 
   return (
     <ChatNode
@@ -651,8 +669,8 @@ export function ChatNodeHost({
       error={node.data?.error ?? null}
       settings={settings}
       bookCoverEnabled={isBookCoverEnabled(node, h.nodes, h.edges)}
-      onRemove={() => h.handleRemove(node.id)}
-      onSend={(_id, text, images) => send(text, images)}
+      onRemove={handleRemove}
+      onSend={handleSend}
       onUpdateSettings={h.handleUpdateChatSettingsFor}
       onClearChat={h.handleClearChatFor}
       onStop={stop}
@@ -660,19 +678,13 @@ export function ChatNodeHost({
       onPositionChange={h.handlePositionChange}
       onSizeChange={h.handleSizeChange}
       onDrag={h.handleNodeDrag}
+      onResizeLive={h.handleNodeResizeLive}
       footer={h.renderFooter(node)}
-      onContextMenu={(e) => h.handleNodeContextMenu(e, node.id)}
-      workspaceFiles={
-        isFastClawAgent
-          ? {
-              open: panel.open,
-              loading: panel.loading,
-              files: panel.files,
-              onToggle: () => panel.setOpen((v) => !v),
-              onRefresh: panel.refresh,
-            }
-          : undefined
-      }
+      onContextMenu={handleContextMenu}
+      workspaceFiles={workspaceFilesProp}
     />
   );
 }
+
+export const ChatNodeHost = memo(ChatNodeHostInner);
+ChatNodeHost.displayName = 'ChatNodeHost';

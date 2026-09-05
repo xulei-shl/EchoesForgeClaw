@@ -76,6 +76,8 @@ export interface ChatNodeProps {
   onPositionChange?: (id: string, x: number, y: number) => void;
   onSizeChange?: (id: string, width: number, height: number) => void;
   onDrag?: (id: string, x: number, y: number) => void;
+  /** 调整尺寸中（每帧）实时回调，供父级命令式更新连线，不触发 React 渲染 */
+  onResizeLive?: (id: string, width: number, height: number) => void;
   /** 卡片底部「+」插槽 */
   footer?: React.ReactNode;
   /** 根节点右键菜单回调 */
@@ -130,6 +132,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
   onPositionChange,
   onSizeChange,
   onDrag,
+  onResizeLive,
   footer,
   onContextMenu,
   group,
@@ -315,10 +318,11 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
       onPositionChange={onPositionChange}
       onSizeChange={onSizeChange}
       onDrag={onDrag}
+      onResizeLive={onResizeLive}
       onContextMenu={onContextMenu}
       resizable
       defaultSize={{ width: 420, height: 560 }}
-      className={`transition-[box-shadow,border-color,opacity] duration-200 ${isGenerating && messages.length === 0 ? 'border-transparent' : ''}`}
+      className={`transition-[border-color,opacity] duration-150 ${isGenerating && messages.length === 0 ? 'border-transparent' : ''}`}
       showLeftAnchor={true}
       showRightAnchor={true}
       footer={footer}
