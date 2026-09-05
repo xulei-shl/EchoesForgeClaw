@@ -197,30 +197,34 @@ const TextImageItemView: React.FC<TextImageItemViewProps> = ({
       {/* 选中态：右下角缩放手柄与底部旋转手柄 */}
       {selected && !disabled && (
         <>
-          {/* 右下角缩放手柄 */}
+          {/* 右下角缩放手柄：利用 before 伪元素扩展至 36px 隐形触控热区，外观保持 16px 精致尺寸 */}
           <div
+            role="button"
+            aria-label="拖拽调整字号大小"
             onPointerDown={(e) => onGestureStart(e, item, 'resize')}
             onPointerMove={onGestureMove}
             onPointerUp={onGestureEnd}
             onPointerCancel={onGestureEnd}
             title="拖拽调整字号大小"
-            className="absolute -right-2 -bottom-2 w-4 h-4 rounded-full bg-accent border-2 border-white shadow-md cursor-nwse-resize hover:scale-110 active:scale-[0.96] transition-transform duration-150 ease-out flex items-center justify-center z-20"
+            className="absolute -right-2 -bottom-2 w-4 h-4 rounded-full bg-accent border-2 border-white shadow-md cursor-nwse-resize hover:scale-110 active:scale-[0.96] transition-transform duration-150 ease-out flex items-center justify-center z-20 before:absolute before:-inset-2.5 before:content-['']"
           >
-            <span className="w-1.5 h-1.5 rounded-full bg-white/80" />
+            <span className="w-1.5 h-1.5 rounded-full bg-white/80 pointer-events-none" />
           </div>
 
-          {/* 底部居中旋转手柄与引线 */}
+          {/* 底部居中旋转手柄与引线：利用 before 伪元素扩展至 36px 隐形触控热区 */}
           <div className="absolute left-1/2 -bottom-6 -translate-x-1/2 flex flex-col items-center pointer-events-none z-20">
             <div className="w-px h-2 bg-accent/70" />
             <div
+              role="button"
+              aria-label="拖拽旋转角度（Shift 键 15° 步进，支持 90° 软吸附）"
               onPointerDown={(e) => onGestureStart(e, item, 'rotate')}
               onPointerMove={onGestureMove}
               onPointerUp={onGestureEnd}
               onPointerCancel={onGestureEnd}
-              title="拖拽旋转角度"
-              className="w-4 h-4 rounded-full bg-accent border-2 border-white shadow-md cursor-grab active:cursor-grabbing hover:scale-110 active:scale-[0.96] transition-transform duration-150 ease-out pointer-events-auto flex items-center justify-center"
+              title="拖拽旋转角度 (按住 Shift 可 15° 步进，接近正向自动吸附)"
+              className="w-4 h-4 rounded-full bg-accent border-2 border-white shadow-md cursor-grab active:cursor-grabbing hover:scale-110 active:scale-[0.96] transition-transform duration-150 ease-out pointer-events-auto flex items-center justify-center before:absolute before:-inset-2.5 before:content-['']"
             >
-              <div className="w-1 h-1 rounded-full bg-white/90" />
+              <div className="w-1 h-1 rounded-full bg-white/90 pointer-events-none" />
             </div>
           </div>
         </>
@@ -291,6 +295,17 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
   const gestureRef = useRef<GestureState | null>(null);
   const textInputRef = useRef<HTMLTextAreaElement>(null);
   const [stageSize, setStageSize] = useState({ w: 0, h: 0 });
+  const rafIdRef = useRef<number | null>(null);
+  const latestPointerRef = useRef<{ clientX: number; clientY: number; shiftKey: boolean } | null>(null);
+
+  // 清理可能未执行的手势 rAF 调度
+  useEffect(() => {
+    return () => {
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+      }
+    };
+  }, []);
 
   // 预加载全部手账字体预设
   usePreloadJournalFonts();
@@ -557,31 +572,84 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
     const stage = stageRef.current;
     if (!g || !stage) return;
     e.stopPropagation();
-    const rect = stage.getBoundingClientRect();
 
-    setItems((prev) =>
-      prev.map((it) => {
-        if (it.id !== g.itemId) return it;
-        if (g.mode === 'move') {
-          const dx = ((e.clientX - g.startPx) / rect.width) * 100;
-          const dy = ((e.clientY - g.startPy) / rect.height) * 100;
-          return { ...it, x: Math.round((g.startX + dx) * 10) / 10, y: Math.round((g.startY + dy) * 10) / 10 };
-        }
-        if (g.mode === 'resize') {
-          const dw = ((e.clientX - g.startPx) / rect.width) * 100;
-          return { ...it, w: Math.min(W_MAX, Math.max(W_MIN, Math.round((g.startW + dw) * 10) / 10)) };
-        }
-        // 旋转：增量旋转
-        const delta = pointerAngleOf(e.clientX, e.clientY, g.centerPx, g.centerPy) - g.startPointerAngle;
-        return { ...it, angle: Math.round((g.startAngle + delta) * 10) / 10 };
-      })
-    );
+    // 记录最新一帧的指针位置与按键状态
+    latestPointerRef.current = {
+      clientX: e.clientX,
+      clientY: e.clientY,
+      shiftKey: e.shiftKey,
+    };
+
+    // 已有 rAF 正在等待渲染周期，则无需重复注册，直接等待下一帧绘制
+    if (rafIdRef.current !== null) return;
+
+    rafIdRef.current = requestAnimationFrame(() => {
+      rafIdRef.current = null;
+      const ptr = latestPointerRef.current;
+      const currentG = gestureRef.current;
+      const currentStage = stageRef.current;
+      if (!ptr || !currentG || !currentStage) return;
+
+      const rect = currentStage.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+
+      setItems((prev) =>
+        prev.map((it) => {
+          if (it.id !== currentG.itemId) return it;
+          if (currentG.mode === 'move') {
+            const dx = ((ptr.clientX - currentG.startPx) / rect.width) * 100;
+            const dy = ((ptr.clientY - currentG.startPy) / rect.height) * 100;
+            return {
+              ...it,
+              x: Math.round((currentG.startX + dx) * 10) / 10,
+              y: Math.round((currentG.startY + dy) * 10) / 10,
+            };
+          }
+          if (currentG.mode === 'resize') {
+            const dw = ((ptr.clientX - currentG.startPx) / rect.width) * 100;
+            return {
+              ...it,
+              w: Math.min(W_MAX, Math.max(W_MIN, Math.round((currentG.startW + dw) * 10) / 10)),
+            };
+          }
+          // 旋转：增量旋转 + 磁吸 / Shift 步进
+          const delta =
+            pointerAngleOf(ptr.clientX, ptr.clientY, currentG.centerPx, currentG.centerPy) -
+            currentG.startPointerAngle;
+          const rawAngle = (currentG.startAngle + delta) % 360;
+          let normalizedAngle = rawAngle < 0 ? rawAngle + 360 : rawAngle;
+
+          if (ptr.shiftKey) {
+            // 按住 Shift 键按 15° 步进约束
+            normalizedAngle = Math.round(normalizedAngle / 15) * 15;
+          } else {
+            // 磁性软吸附：接近 0°/90°/180°/270°/360° (±3° 以内) 自动平滑归正
+            const snapAngles = [0, 90, 180, 270, 360];
+            for (const snap of snapAngles) {
+              if (Math.abs(normalizedAngle - snap) <= 3) {
+                normalizedAngle = snap === 360 ? 0 : snap;
+                break;
+              }
+            }
+          }
+          return { ...it, angle: Math.round(normalizedAngle * 10) / 10 };
+        })
+      );
+    });
   };
 
   const endGesture = (e: React.PointerEvent<HTMLElement>) => {
     const g = gestureRef.current;
     if (!g) return;
     e.stopPropagation();
+
+    // 取消尚未派发的下一帧 rAF
+    if (rafIdRef.current !== null) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
+    latestPointerRef.current = null;
+
     try {
       (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
     } catch {
@@ -602,7 +670,6 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
     setIsWorking(true);
     try {
       const resultDataUrl = await composeTextImage({ ...st, items });
-      await new Promise((resolve) => setTimeout(resolve, 200));
       commit({ imageUrl: resultDataUrl, isSaved: false }, true);
       setIsEditing(false);
       setSelectedId(null);
@@ -796,28 +863,28 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
       }
     >
       <div className="h-full flex flex-col flex-1 min-h-0 gap-2.5">
-        {/* 画布视口区域 */}
+        {/* 画布视口区域：外层升级为 rounded-2xl，符合 Concentric Border Radius 同心圆角法则 */}
         <div
-          className="relative flex-1 min-h-[260px] w-full overflow-hidden rounded-xl bg-paper-grid/15 border border-paper-grid/60 flex items-center justify-center select-none p-3 sm:p-4"
+          className="relative flex-1 min-h-[260px] w-full overflow-hidden rounded-2xl bg-paper-grid/15 border border-paper-grid/60 flex items-center justify-center select-none p-3 sm:p-4"
           onPointerDown={handleCanvasBlankPointerDown}
           onClick={handleCanvasBlankPointerDown}
         >
-          <AnimatePresence mode="wait" initial={false}>
+          <AnimatePresence initial={false}>
             {!hasGenerated ? (
               <motion.div
                 key="editor"
                 initial={{ opacity: 0, scale: 0.98 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.98 }}
-                transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                transition={{ duration: 0.14, ease: [0.16, 1, 0.3, 1] }}
                 className="w-full h-full flex items-center justify-center overflow-hidden"
                 onPointerDown={handleCanvasBlankPointerDown}
                 onClick={handleCanvasBlankPointerDown}
               >
-                {/* 自适应卡片舞台 Shell（按选中的比例 1:1, 3:4, 4:3, 9:16, 16:9 动态自适应） */}
+                {/* 自适应卡片舞台 Shell（按选中的比例 1:1, 3:4, 4:3, 9:16, 16:9 即时自适应，移除昂贵的尺寸动画以避免重排） */}
                 <div
                   ref={stageRef}
-                  className="relative max-w-full max-h-full rounded-xl overflow-hidden shadow-2xs border border-paper-grid/50 flex items-center justify-center transition-[aspect-ratio,width,height] duration-200 ease-out"
+                  className="relative max-w-full max-h-full rounded-xl overflow-hidden shadow-2xs border border-paper-grid/50 flex items-center justify-center"
                   style={{
                     aspectRatio: `${getTextImageCanvasPreset(st.aspectRatio).width} / ${getTextImageCanvasPreset(st.aspectRatio).height}`,
                     width: '100%',
@@ -827,18 +894,20 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
                   onPointerDown={handleCanvasBlankPointerDown}
                   onClick={handleCanvasBlankPointerDown}
                 >
-                  {/* 空文本提示 */}
+                  {/* 空文本提示（纠正方向指引至右上角 NodeActionBar） */}
                   {items.length === 0 && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center text-ink-faint/70 gap-2 p-6 text-center pointer-events-none z-10">
                       <Type size={32} strokeWidth={1.2} />
-                      <p className="text-xs">点击右下角「添加文本」按钮开始创作</p>
+                      <p className="text-xs">点击右上角「添加文本」按钮开始创作</p>
                     </div>
                   )}
 
-                  {/* 选中文本组件时的极简微交互悬浮工具栏（仅保留：层级、旋转、删除与编辑） */}
+                  {/* 选中文本组件时的极简微交互悬浮工具栏（智能上下避让：文字靠顶时切换至底端） */}
                   {selectedItem && (
                     <div
-                      className="absolute top-2 left-1/2 -translate-x-1/2 z-40 pointer-events-auto flex items-center gap-1 px-1.5 py-1 rounded-xl bg-paper/95 backdrop-blur-md shadow-md border border-paper-grid/80 select-none text-xs"
+                      className={`absolute left-1/2 -translate-x-1/2 z-40 pointer-events-auto flex items-center gap-1 px-1.5 py-1 rounded-xl bg-paper/95 backdrop-blur-md shadow-md border border-paper-grid/80 select-none text-xs transition-[top,bottom,opacity] duration-150 ease-out ${
+                        selectedItem.y < 22 ? 'bottom-2' : 'top-2'
+                      }`}
                       onPointerDown={(e) => e.stopPropagation()}
                       onClick={(e) => e.stopPropagation()}
                     >
@@ -853,7 +922,7 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
                             setEditingText(selectedItem.text || '');
                             setTimeout(() => textInputRef.current?.select(), 50);
                           }}
-                          className="w-6.5 h-6.5 rounded-md flex items-center justify-center text-ink-light hover:text-accent hover:bg-paper-grid/40 active:scale-[0.94] transition-[color,background-color,transform] cursor-pointer"
+                          className="w-6.5 h-6.5 rounded-md flex items-center justify-center text-ink-light hover:text-accent hover:bg-paper-grid/40 active:scale-[0.96] transition-transform duration-150 ease-out cursor-pointer"
                           aria-label="编辑文字"
                         >
                           <Edit3 size={13} strokeWidth={2} />
@@ -877,7 +946,7 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
                               type="button"
                               disabled={busy}
                               onClick={() => handleBumpLayer(selectedItem.id, mode)}
-                              className="w-6 h-6 rounded-md flex items-center justify-center text-ink-light hover:text-accent hover:bg-paper-grid/40 active:scale-[0.94] transition-[color,background-color,transform] disabled:opacity-40 cursor-pointer"
+                              className="w-6 h-6 rounded-md flex items-center justify-center text-ink-light hover:text-accent hover:bg-paper-grid/40 active:scale-[0.96] transition-transform duration-150 ease-out disabled:opacity-40 cursor-pointer"
                               aria-label={tip}
                             >
                               <Icon size={12} strokeWidth={2} />
@@ -895,7 +964,7 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
                             type="button"
                             disabled={busy}
                             onClick={() => handleRotateStep(selectedItem.id, 'ccw')}
-                            className="w-6 h-6 rounded-md flex items-center justify-center text-ink-light hover:text-accent hover:bg-paper-grid/40 active:scale-[0.94] transition-[color,background-color,transform] disabled:opacity-40 cursor-pointer"
+                            className="w-6 h-6 rounded-md flex items-center justify-center text-ink-light hover:text-accent hover:bg-paper-grid/40 active:scale-[0.96] transition-transform duration-150 ease-out disabled:opacity-40 cursor-pointer"
                             aria-label="逆时针旋转 90°"
                           >
                             <RotateCcw size={12} strokeWidth={2} />
@@ -906,7 +975,7 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
                             type="button"
                             disabled={busy}
                             onClick={() => handleRotateStep(selectedItem.id, 'cw')}
-                            className="w-6 h-6 rounded-md flex items-center justify-center text-ink-light hover:text-accent hover:bg-paper-grid/40 active:scale-[0.94] transition-[color,background-color,transform] disabled:opacity-40 cursor-pointer"
+                            className="w-6 h-6 rounded-md flex items-center justify-center text-ink-light hover:text-accent hover:bg-paper-grid/40 active:scale-[0.96] transition-transform duration-150 ease-out disabled:opacity-40 cursor-pointer"
                             aria-label="顺时针旋转 90°"
                           >
                             <RotateCw size={12} strokeWidth={2} />
@@ -922,7 +991,7 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
                           type="button"
                           disabled={busy}
                           onClick={() => setIsDrawerOpen(!isDrawerOpen)}
-                          className={`w-6.5 h-6.5 rounded-md flex items-center justify-center transition-[color,background-color,transform] active:scale-[0.94] cursor-pointer ${
+                          className={`w-6.5 h-6.5 rounded-md flex items-center justify-center active:scale-[0.96] transition-transform duration-150 ease-out cursor-pointer ${
                             isDrawerOpen
                               ? 'bg-accent/15 text-accent'
                               : 'text-ink-light hover:text-accent hover:bg-paper-grid/40'
@@ -941,7 +1010,7 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
                           type="button"
                           disabled={busy}
                           onClick={() => handleDeleteItem(selectedItem.id)}
-                          className="w-6.5 h-6.5 rounded-md flex items-center justify-center text-ink-faint hover:text-error hover:bg-error/15 active:scale-[0.94] transition-[color,background-color,transform] disabled:opacity-40 cursor-pointer"
+                          className="w-6.5 h-6.5 rounded-md flex items-center justify-center text-ink-faint hover:text-error hover:bg-error/15 active:scale-[0.96] transition-transform duration-150 ease-out disabled:opacity-40 cursor-pointer"
                           aria-label="删除该文字"
                         >
                           <Trash2 size={13} strokeWidth={2} />
@@ -1030,10 +1099,10 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
             ) : (
               <motion.div
                 key="preview"
-                initial={{ opacity: 0, scale: 0.97 }}
+                initial={{ opacity: 0, scale: 0.98 }}
                 animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.97 }}
-                transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.14, ease: [0.16, 1, 0.3, 1] }}
                 className="relative w-full h-full flex items-center justify-center"
               >
                 {st.imageUrl ? (
