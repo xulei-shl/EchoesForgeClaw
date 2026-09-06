@@ -878,6 +878,61 @@ function PiChatNodeHostInner({
     [panel.refresh]
   );
 
+  /**
+   * 批量删除会话（对话历史 Tab 多选 / 清空）：串行复用单删接口，仅结束后 bump 一次；
+   * 当前会话在删除集合内时，删除完成把节点重置为全新工作区（与单删口径一致）。
+   */
+  const handleBatchDeleteSessions = useCallback(
+    async (workspaceIds: string[]) => {
+      const ids = [...new Set(workspaceIds.filter((id): id is string => !!id))];
+      let ok = 0;
+      let failed = 0;
+      for (const workspaceId of ids) {
+        try {
+          await deleteConversationSession(workspaceId);
+          evictSessionCache(workspaceId);
+          ok += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+      const curWs = wsIdRef.current;
+      if (curWs && ids.includes(curWs)) {
+        h.handleResetChatWorkspaceFor(node.id);
+      }
+      convPanel.bump();
+      return { ok, failed };
+    },
+    [h, node.id, convPanel.bump]
+  );
+
+  /**
+   * 批量删除当前工作区文件（AI 产物 / 我的上传 Tab 多选 / 清空）：
+   * 串行复用单删接口，删除结束只刷新一次列表。
+   */
+  const handleBatchDeleteFiles = useCallback(
+    async (files: AgentFile[]) => {
+      const ws = wsIdRef.current;
+      const targets = [
+        ...new Map(files.filter((f) => !!f.path).map((f) => [f.path, f] as const)).values(),
+      ];
+      if (!ws) return { ok: 0, failed: targets.length };
+      let ok = 0;
+      let failed = 0;
+      for (const file of targets) {
+        try {
+          await deleteWorkspaceFile(ws, file.path);
+          ok += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+      panel.refresh();
+      return { ok, failed };
+    },
+    [panel.refresh]
+  );
+
   // ---------- 渲染 ----------
   const config = h.configOf(node);
   const settings: ChatNodeSettings = node.data?.settings ?? DEFAULT_CHAT_SETTINGS;
@@ -931,6 +986,8 @@ function PiChatNodeHostInner({
     onRenameSession: handleRenameConversation,
     onDeleteSession: handleDeleteConversation,
     onDeleteFile: handleDeleteFile,
+    onBatchDeleteSessions: handleBatchDeleteSessions,
+    onBatchDeleteFiles: handleBatchDeleteFiles,
     sourceNodeOf,
   }), [
     sideOpen,
@@ -946,6 +1003,8 @@ function PiChatNodeHostInner({
     handleRenameConversation,
     handleDeleteConversation,
     handleDeleteFile,
+    handleBatchDeleteSessions,
+    handleBatchDeleteFiles,
     sourceNodeOf,
   ]);
 

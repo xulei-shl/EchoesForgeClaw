@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Check,
   ChevronDown,
   FileText,
   Image as ImageIcon,
+  ListChecks,
   Loader2,
   PanelRight,
   Pencil,
@@ -48,6 +49,18 @@ export interface ChatSidePanel {
   onDeleteSession?: (workspaceId: string) => Promise<void>;
   /** 文件行删除（AI 产物 / 我的上传；缺省 = 不展示删除按钮，FastClaw 模式等外部存储不可删） */
   onDeleteFile?: (file: AgentFile) => Promise<void>;
+  /**
+   * 批量删除文件（多选删除 / 全部清空共用；AI 产物 / 我的上传 Tab）。
+   * 宿主内串行复用单删接口、删除结束只刷新一次；返回成功 / 失败计数。
+   * 缺省 = 不展示文件 Tab 的批量入口（FastClaw 模式等外部存储不可删）。
+   */
+  onBatchDeleteFiles?: (files: AgentFile[]) => Promise<{ ok: number; failed: number }>;
+  /**
+   * 批量删除会话（多选删除 / 全部清空共用；对话历史 Tab，作用于该模式全局列表）。
+   * 宿主内串行复用单删接口、删除结束只刷新一次；返回成功 / 失败计数。
+   * 缺省 = 不展示对话历史 Tab 的批量入口。
+   */
+  onBatchDeleteSessions?: (workspaceIds: string[]) => Promise<{ ok: number; failed: number }>;
   /** 来源节点解析（全局列表时按 workspaceId 前缀找画布节点标题；缺省 = 不标注） */
   sourceNodeOf?: (workspaceId: string) => { title: string } | null;
 }
@@ -171,6 +184,12 @@ export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel 
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deletingPath, setDeletingPath] = useState<string | null>(null);
+  /** 批量管理选择态：进入后行点击 = 勾选切换，行内操作 / 预览 / 载入暂停 */
+  const [selectMode, setSelectMode] = useState(false);
+  /** 批量勾选集合：文件行键 = path（兜底 url）；会话行键 = workspaceId */
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  /** 批量删除进行中（工具条按钮禁用 + 加载态） */
+  const [batchBusy, setBatchBusy] = useState(false);
 
   const sessions = panel.sessions;
   const hasHistory = !!sessions;
@@ -188,6 +207,19 @@ export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel 
     if (firstNonEmpty) return firstNonEmpty.category.id;
     return hasHistory ? 'history' : 'artifacts';
   })();
+  // 当前激活内容的行集与批量能力（工具条随激活内容展示，见 BatchDeleteToolbar）
+  const activeFileTab = resolvedTab !== 'history' ? fileTabs.find((t) => t.category.id === resolvedTab) : undefined;
+  const fileRows = activeFileTab ? sortWorkspaceFilesByTime(activeFileTab.files) : [];
+  const sessionsAll = sessions ?? [];
+  const showFileBatchBar = !!activeFileTab && !!panel.onBatchDeleteFiles && fileRows.length > 0;
+  const showHistoryBatchBar = resolvedTab === 'history' && !!panel.onBatchDeleteSessions && sessionsAll.length > 0;
+
+  // 切换 Tab / 收起抽屉：退出批量选择态并清空勾选
+  useEffect(() => {
+    setSelectMode(false);
+    setSelectedKeys(new Set());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolvedTab, panel.open]);
 
   const handleTogglePin = async (s: ConversationSessionSummary) => {
     if (!panel.onTogglePin) return;
@@ -267,6 +299,87 @@ export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel 
     }
   };
 
+  // ---------- 批量删除（多选 / 清空；宿主批量回调复用单删接口，删后只刷新一次） ----------
+  const fileKeyOf = (f: AgentFile) => f.path || f.url;
+  const exitBatchSelect = () => {
+    setSelectMode(false);
+    setSelectedKeys(new Set());
+  };
+  const toggleBatchKey = (key: string) =>
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
+  const runFileBatchDelete = async (files: AgentFile[], all: boolean) => {
+    if (!files.length || !panel.onBatchDeleteFiles) return;
+    const label = activeFileTab?.category.label ?? '文件';
+    const ok = await dialog.confirm({
+      title: all ? '清空文件' : '删除文件',
+      message: all
+        ? `将清空当前工作区的「${label}」全部 ${files.length} 个文件。删除后将从工作区永久移除，无法恢复。`
+        : `将删除选中的 ${files.length} 个「${label}」文件。删除后将永久移除，无法恢复。`,
+      confirmText: '删除',
+      danger: true,
+    });
+    if (!ok) return;
+    setBatchBusy(true);
+    try {
+      const res = await panel.onBatchDeleteFiles(files);
+      showToast(
+        res.failed > 0 ? `已删除 ${res.ok} 个，${res.failed} 个失败` : `已删除 ${res.ok} 个文件`,
+        { type: res.failed > 0 ? (res.ok > 0 ? 'warning' : 'error') : 'success' }
+      );
+    } catch {
+      showToast('批量删除失败，请重试', { type: 'error' });
+    } finally {
+      setBatchBusy(false);
+      exitBatchSelect();
+    }
+  };
+
+  const runSessionBatchDelete = async (workspaceIds: string[], all: boolean) => {
+    const ids = workspaceIds.filter(Boolean);
+    if (!ids.length || !panel.onBatchDeleteSessions) return;
+    const ok = await dialog.confirm({
+      title: all ? '清空对话历史' : '删除对话',
+      message: all
+        ? `将清空「对话历史」中的全部 ${ids.length} 个对话（含其它画布节点与当前节点的对话）。每个对话的完整数据（会话历史、产物文件与上传附件）将被永久删除，无法恢复；若其中存在正在进行的对话，其进程将被终止。`
+        : `将删除选中的 ${ids.length} 个对话（含其它画布节点的对话）。每个对话的完整数据（会话历史、产物文件与上传附件）将被永久删除，无法恢复。`,
+      confirmText: '删除',
+      danger: true,
+    });
+    if (!ok) return;
+    setBatchBusy(true);
+    try {
+      const res = await panel.onBatchDeleteSessions(ids);
+      showToast(
+        res.failed > 0 ? `已删除 ${res.ok} 个，${res.failed} 个失败` : `已删除 ${res.ok} 个对话`,
+        { type: res.failed > 0 ? (res.ok > 0 ? 'warning' : 'error') : 'success' }
+      );
+    } catch {
+      showToast('批量删除失败，请重试', { type: 'error' });
+    } finally {
+      setBatchBusy(false);
+      exitBatchSelect();
+    }
+  };
+
+  const deleteSelectedFiles = () =>
+    void runFileBatchDelete(fileRows.filter((f) => selectedKeys.has(fileKeyOf(f))), false);
+  const clearAllFiles = () => void runFileBatchDelete(fileRows, true);
+  const deleteSelectedSessions = () =>
+    void runSessionBatchDelete(
+      sessionsAll.filter((s) => selectedKeys.has(s.workspaceId)).map((s) => s.workspaceId),
+      false
+    );
+  const clearAllSessions = () => void runSessionBatchDelete(sessionsAll.map((s) => s.workspaceId), true);
+  const batchSelectedCount = showHistoryBatchBar
+    ? sessionsAll.filter((s) => selectedKeys.has(s.workspaceId)).length
+    : fileRows.filter((f) => selectedKeys.has(fileKeyOf(f))).length;
+
   const loading = panel.filesLoading || !!panel.sessionsLoading;
   const headerExtra = (
     <button
@@ -335,6 +448,46 @@ export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel 
             )}
           </div>
 
+          {/* 批量删除工具条（仅激活内容具备批量能力且非空时；选择态下切换为全选 / 删除选中） */}
+          {showFileBatchBar && (
+            <BatchDeleteToolbar
+              scopeLabel={activeFileTab!.category.label}
+              count={fileRows.length}
+              busy={batchBusy}
+              selectMode={selectMode}
+              selectedCount={batchSelectedCount}
+              onEnterSelect={() => setSelectMode(true)}
+              onClearAll={clearAllFiles}
+              onDeleteSelected={deleteSelectedFiles}
+              onToggleAll={() => {
+                const keys = fileRows.map(fileKeyOf);
+                setSelectedKeys(
+                  keys.length && keys.every((k) => selectedKeys.has(k)) ? new Set() : new Set(keys)
+                );
+              }}
+              onExitSelect={exitBatchSelect}
+            />
+          )}
+          {showHistoryBatchBar && (
+            <BatchDeleteToolbar
+              scopeLabel="对话历史"
+              count={sessionsAll.length}
+              busy={batchBusy}
+              selectMode={selectMode}
+              selectedCount={batchSelectedCount}
+              onEnterSelect={() => setSelectMode(true)}
+              onClearAll={clearAllSessions}
+              onDeleteSelected={deleteSelectedSessions}
+              onToggleAll={() => {
+                const keys = sessionsAll.map((s) => s.workspaceId);
+                setSelectedKeys(
+                  keys.length && keys.every((k) => selectedKeys.has(k)) ? new Set() : new Set(keys)
+                );
+              }}
+              onExitSelect={exitBatchSelect}
+            />
+          )}
+
           {/* 列表主体：加载 / 空态 / 行列表 */}
           {resolvedTab === 'history' ? (
             <HistoryBody
@@ -349,6 +502,10 @@ export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel 
               onTogglePin={handleTogglePin}
               onRename={panel.onRenameSession ? handleRename : undefined}
               onDelete={handleDelete}
+              selectMode={selectMode}
+              selectedKeys={selectedKeys}
+              busy={batchBusy}
+              onToggleSelect={(id) => toggleBatchKey(id)}
             />
           ) : (
             <FilesBody
@@ -357,6 +514,10 @@ export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel 
               deletingPath={deletingPath}
               onDelete={panel.onDeleteFile ? handleDeleteFile : undefined}
               onPreview={setPreviewFile}
+              selectMode={selectMode}
+              selectedKeys={selectedKeys}
+              busy={batchBusy}
+              onToggleSelect={(file) => toggleBatchKey(fileKeyOf(file))}
             />
           )}
         </div>
@@ -374,6 +535,97 @@ export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel 
   );
 };
 
+/** 列表上方批量删除工具条：常规态 = 「多选删除 / 全部清空」；选择态 = 「全选 / 已选 / 删除选中 / 取消」。 */
+const BatchDeleteToolbar: React.FC<{
+  scopeLabel: string;
+  count: number;
+  busy: boolean;
+  selectMode: boolean;
+  selectedCount: number;
+  onEnterSelect: () => void;
+  onClearAll: () => void;
+  onDeleteSelected: () => void;
+  onToggleAll: () => void;
+  onExitSelect: () => void;
+}> = ({
+  scopeLabel,
+  count,
+  busy,
+  selectMode,
+  selectedCount,
+  onEnterSelect,
+  onClearAll,
+  onDeleteSelected,
+  onToggleAll,
+  onExitSelect,
+}) => {
+  const btnBase =
+    'flex items-center gap-1 text-[11px] font-sans transition select-none cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent rounded-md px-1.5 py-1';
+  if (selectMode) {
+    const allSelected = count > 0 && selectedCount === count;
+    return (
+      <div className="shrink-0 flex flex-wrap items-center gap-x-2 gap-y-1 mb-1.5 px-1.5 py-1 rounded-md border border-accent/25 bg-accent/5">
+        <button
+          type="button"
+          onClick={onToggleAll}
+          disabled={busy || count === 0}
+          className={`${btnBase} text-accent hover:bg-accent/10`}
+        >
+          <Check size={11} strokeWidth={2.5} />
+          {allSelected ? '取消全选' : '全选'}
+        </button>
+        <span className="text-[10px] font-sans text-ink-light tabular-nums">
+          已选 {selectedCount} / {count}
+        </span>
+        <button
+          type="button"
+          onClick={onDeleteSelected}
+          disabled={busy || selectedCount === 0}
+          title="删除已勾选条目"
+          className={`${btnBase} text-error hover:bg-error/10 ml-auto`}
+        >
+          <Trash2 size={11} strokeWidth={2} />
+          删除选中 ({selectedCount})
+        </button>
+        <button
+          type="button"
+          onClick={onExitSelect}
+          disabled={busy}
+          title="退出多选"
+          className={`${btnBase} text-ink-faint hover:text-ink hover:bg-ink/10`}
+        >
+          <X size={11} strokeWidth={2} />
+          取消
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="shrink-0 flex items-center justify-between gap-1 mb-1.5">
+      <button
+        type="button"
+        onClick={onEnterSelect}
+        disabled={busy}
+        title={`多选${scopeLabel}后批量删除`}
+        className={`${btnBase} text-ink-light hover:text-accent hover:bg-accent/10`}
+      >
+        <ListChecks size={12} strokeWidth={2} />
+        多选删除
+      </button>
+      <button
+        type="button"
+        onClick={onClearAll}
+        disabled={busy}
+        title={`清空「${scopeLabel}」全部 ${count} 项`}
+        className={`${btnBase} text-ink-faint hover:text-error hover:bg-error/10`}
+      >
+        <Trash2 size={12} strokeWidth={2} />
+        全部清空 ({count})
+      </button>
+    </div>
+  );
+};
+
 /** 文件类别 Tab 主体：加载 / 空态 / 按时间倒序的行列表。 */
 const FilesBody: React.FC<{
   fileTab: { category: { id: string; label: string }; files: AgentFile[] } | undefined;
@@ -381,7 +633,22 @@ const FilesBody: React.FC<{
   deletingPath: string | null;
   onDelete?: (file: AgentFile) => void;
   onPreview: (file: AgentFile) => void;
-}> = ({ fileTab, loading, deletingPath, onDelete, onPreview }) => {
+  /** 批量选择态：行点击 = 勾选切换，暂停预览 / 行内删除 */
+  selectMode?: boolean;
+  selectedKeys?: ReadonlySet<string>;
+  busy?: boolean;
+  onToggleSelect?: (file: AgentFile) => void;
+}> = ({
+  fileTab,
+  loading,
+  deletingPath,
+  onDelete,
+  onPreview,
+  selectMode = false,
+  selectedKeys,
+  busy = false,
+  onToggleSelect,
+}) => {
   if (loading && !fileTab?.files.length) {
     return (
       <div className="flex items-center gap-1.5 text-[11px] font-sans text-ink-faint py-3">
@@ -401,35 +668,68 @@ const FilesBody: React.FC<{
           deleting={deletingPath === f.path}
           onDelete={onDelete}
           onPreview={onPreview}
+          selectable={selectMode}
+          selected={!!selectedKeys?.has(f.path || f.url)}
+          busy={busy}
+          onToggleSelect={onToggleSelect ? () => onToggleSelect(f) : undefined}
         />
       ))}
     </div>
   );
 };
 
-/** 单个文件列表行：图标 + 文件名 + 元信息（大小 · 时间）；点击整行打开预览，行内可删除。 */
+/** 单个文件列表行：图标 + 文件名 + 元信息（大小 · 时间）；点击整行打开预览，行内可删除。
+ *  批量选择态（selectable）：行点击 = 勾选切换，暂停预览 / 行内删除，行首展示勾选框。 */
 const WorkspaceFileRow: React.FC<{
   file: AgentFile;
   deleting: boolean;
   onDelete?: (file: AgentFile) => void;
   onPreview: (file: AgentFile) => void;
-}> = ({ file, deleting, onDelete, onPreview }) => {
+  selectable?: boolean;
+  selected?: boolean;
+  busy?: boolean;
+  onToggleSelect?: () => void;
+}> = ({ file, deleting, onDelete, onPreview, selectable = false, selected = false, busy = false, onToggleSelect }) => {
   const isImage = IMAGE_EXT_RE.test(file.name);
   const meta = fileMetaLine(file);
+  const handleRowActivate = () => {
+    if (busy) return;
+    if (selectable) onToggleSelect?.();
+    else onPreview(file);
+  };
   return (
     <div
       role="button"
       tabIndex={0}
-      onClick={() => onPreview(file)}
+      aria-pressed={selectable ? selected : undefined}
+      onClick={handleRowActivate}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          onPreview(file);
+          handleRowActivate();
         }
       }}
-      title={`预览 ${file.name}`}
-      className="group flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-paper-grid/60 bg-paper-grid/20 text-xs font-sans cursor-pointer hover:border-accent/40 hover:bg-accent/5 transition select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+      title={
+        selectable ? (selected ? '已选，点击取消勾选' : '点击勾选') : `预览 ${file.name}`
+      }
+      className={`group flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs font-sans transition select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent ${
+        selectable
+          ? selected
+            ? 'border-accent/60 bg-accent/10 cursor-pointer hover:border-accent/60'
+            : 'border-paper-grid/60 bg-paper-grid/20 cursor-pointer hover:border-accent/40 hover:bg-accent/5'
+          : 'border-paper-grid/60 bg-paper-grid/20 cursor-pointer hover:border-accent/40 hover:bg-accent/5'
+      }`}
     >
+      {selectable && (
+        <span
+          aria-hidden
+          className={`shrink-0 flex items-center justify-center w-3.5 h-3.5 rounded border transition ${
+            selected ? 'bg-accent border-accent text-paper' : 'border-ink-light/50 bg-paper'
+          }`}
+        >
+          {selected && <Check size={10} strokeWidth={3} />}
+        </span>
+      )}
       {isImage ? (
         <ImageIcon size={14} className="shrink-0 text-accent" />
       ) : (
@@ -444,8 +744,8 @@ const WorkspaceFileRow: React.FC<{
         )}
       </span>
 
-      {/* 行内删除（stopPropagation：不触发行点击预览） */}
-      {onDelete && (
+      {/* 行内删除（stopPropagation：不触发行点击预览）；批量选择态下隐藏 */}
+      {onDelete && !selectable && (
         <button
           type="button"
           disabled={deleting}
@@ -481,6 +781,11 @@ const HistoryBody: React.FC<{
   onTogglePin: (s: ConversationSessionSummary) => void;
   onRename?: (s: ConversationSessionSummary, title: string) => Promise<void>;
   onDelete: (s: ConversationSessionSummary) => void;
+  /** 批量选择态：行点击 = 勾选切换，暂停载入 / 置顶 / 重命名 / 行内删除 */
+  selectMode?: boolean;
+  selectedKeys?: ReadonlySet<string>;
+  busy?: boolean;
+  onToggleSelect?: (workspaceId: string) => void;
 }> = ({
   sessions,
   loading,
@@ -493,6 +798,10 @@ const HistoryBody: React.FC<{
   onTogglePin,
   onRename,
   onDelete,
+  selectMode = false,
+  selectedKeys,
+  busy = false,
+  onToggleSelect,
 }) => {
   if (loading && !sessions.length) {
     return (
@@ -523,6 +832,12 @@ const HistoryBody: React.FC<{
           onTogglePin={onTogglePin}
           onRename={onRename}
           onDelete={onDelete}
+          selectable={selectMode}
+          selected={!!selectedKeys?.has(s.workspaceId)}
+          busy={busy}
+          onToggleSelect={
+            onToggleSelect ? () => onToggleSelect(s.workspaceId) : undefined
+          }
         />
       ))}
     </div>
@@ -544,6 +859,11 @@ const ConversationRow: React.FC<{
   onTogglePin: (s: ConversationSessionSummary) => void;
   onRename?: (s: ConversationSessionSummary, title: string) => Promise<void>;
   onDelete: (s: ConversationSessionSummary) => void;
+  /** 批量选择态：行点击 = 勾选切换，暂停载入 / 行内操作 */
+  selectable?: boolean;
+  selected?: boolean;
+  busy?: boolean;
+  onToggleSelect?: () => void;
 }> = ({
   session,
   isCurrent,
@@ -555,6 +875,10 @@ const ConversationRow: React.FC<{
   onTogglePin,
   onRename,
   onDelete,
+  selectable = false,
+  selected = false,
+  busy = false,
+  onToggleSelect,
 }) => {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(session.title);
@@ -581,30 +905,58 @@ const ConversationRow: React.FC<{
     }
   };
 
+  const activate = () => {
+    if (busy) return;
+    if (selectable) {
+      onToggleSelect?.();
+      return;
+    }
+    if (!editing) onSelect(session); // 编辑态下行点击不触发载入
+  };
+
   return (
     <div
       role="button"
       tabIndex={0}
-      onClick={() => {
-        if (editing) return; // 编辑态下行点击不触发载入
-        onSelect(session);
-      }}
+      aria-pressed={selectable ? selected : undefined}
+      onClick={activate}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          if (editing) return;
-          onSelect(session);
+          activate();
         }
       }}
-      title={isCurrent ? '当前对话' : `载入「${session.title}」到节点`}
+      title={
+        selectable
+          ? selected
+            ? '已选，点击取消勾选'
+            : '点击勾选'
+          : isCurrent
+            ? '当前对话'
+            : `载入「${session.title}」到节点`
+      }
       className={`group flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs font-sans transition select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent ${
-        isCurrent
-          ? 'border-accent/40 bg-accent/10 cursor-default'
-          : 'border-paper-grid/60 bg-paper-grid/20 cursor-pointer hover:border-accent/40 hover:bg-accent/5'
+        selectable
+          ? selected
+            ? 'border-accent/60 bg-accent/10 cursor-pointer hover:border-accent/60'
+            : 'border-paper-grid/60 bg-paper-grid/20 cursor-pointer hover:border-accent/40 hover:bg-accent/5'
+          : isCurrent
+            ? 'border-accent/40 bg-accent/10 cursor-default'
+            : 'border-paper-grid/60 bg-paper-grid/20 cursor-pointer hover:border-accent/40 hover:bg-accent/5'
       }`}
     >
+      {selectable && (
+        <span
+          aria-hidden
+          className={`shrink-0 flex items-center justify-center w-3.5 h-3.5 rounded border transition ${
+            selected ? 'bg-accent border-accent text-paper' : 'border-ink-light/50 bg-paper'
+          }`}
+        >
+          {selected && <Check size={10} strokeWidth={3} />}
+        </span>
+      )}
       <span className="flex flex-col min-w-0 flex-1 leading-tight">
-        {editing ? (
+        {editing && !selectable ? (
           <input
             autoFocus
             value={draft}
@@ -642,15 +994,16 @@ const ConversationRow: React.FC<{
             )}
           </span>
         )}
-        {meta && !editing && (
+        {meta && !(editing && !selectable) && (
           <span className="truncate text-[10px] text-ink-faint tabular-nums font-mono">{meta}</span>
         )}
-        {sourceTitle && !editing && (
+        {sourceTitle && !(editing && !selectable) && (
           <span className="truncate text-[10px] text-ink-faint">来自「{sourceTitle}」</span>
         )}
       </span>
 
-      {/* 行内操作（stopPropagation：不触发行点击载入）；编辑态替换为确认 / 取消 */}
+      {/* 行内操作（stopPropagation：不触发行点击载入）；编辑态替换为确认 / 取消；批量选择态整体隐藏 */}
+      {!selectable && (
       <span className="shrink-0 flex items-center gap-0.5">
         {editing ? (
           <>
@@ -742,6 +1095,7 @@ const ConversationRow: React.FC<{
           </>
         )}
       </span>
+      )}
     </div>
   );
 };

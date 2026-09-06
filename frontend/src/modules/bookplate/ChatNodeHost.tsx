@@ -791,6 +791,34 @@ function ChatNodeHostInner({
   );
 
   /**
+   * 批量删除会话（对话历史 Tab 多选 / 清空）：串行复用单删接口，仅结束后 bump 一次；
+   * 当前会话在删除集合内时，删除完成把节点重置为全新工作区（与单删口径一致）。
+   */
+  const handleBatchDeleteSessions = useCallback(
+    async (workspaceIds: string[]) => {
+      const ids = [...new Set(workspaceIds.filter((id): id is string => !!id))];
+      let ok = 0;
+      let failed = 0;
+      for (const workspaceId of ids) {
+        try {
+          await deleteConversationSession(workspaceId);
+          evictSessionCache(workspaceId);
+          ok += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+      const curWs = wsIdRef.current;
+      if (curWs && ids.includes(curWs)) {
+        h.handleResetChatWorkspaceFor(node.id);
+      }
+      convPanel.bump();
+      return { ok, failed };
+    },
+    [h, node.id, convPanel.bump]
+  );
+
+  /**
    * 来源节点解析（全局对话列表用）：workspaceId 遵循 `{nodeId}_{ts}` 命名约定，前缀即创建
    * 节点 id；本节点自身的历史不标注（默认归属），节点已从画布删除时也返回 null 不标注。
    */
@@ -823,6 +851,7 @@ function ChatNodeHostInner({
       onTogglePin: handleToggleConversationPin,
       onRenameSession: handleRenameConversation,
       onDeleteSession: handleDeleteConversation,
+      onBatchDeleteSessions: handleBatchDeleteSessions,
       sourceNodeOf,
     }),
     [
@@ -838,6 +867,7 @@ function ChatNodeHostInner({
       handleToggleConversationPin,
       handleRenameConversation,
       handleDeleteConversation,
+      handleBatchDeleteSessions,
       sourceNodeOf,
     ]
   );
