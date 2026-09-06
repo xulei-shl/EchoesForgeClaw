@@ -35,8 +35,18 @@ const MIME_BY_EXT: Record<string, string> = {
   '.zip': 'application/zip',
   '.mp3': 'audio/mpeg',
   '.wav': 'audio/wav',
+  '.ogg': 'audio/ogg',
+  '.oga': 'audio/ogg',
+  '.m4a': 'audio/mp4',
+  '.aac': 'audio/aac',
+  '.flac': 'audio/flac',
+  '.opus': 'audio/opus',
+  '.weba': 'audio/webm',
   '.mp4': 'video/mp4',
   '.mov': 'video/quicktime',
+  '.webm': 'video/webm',
+  '.m4v': 'video/x-m4v',
+  '.ogv': 'video/ogg',
 };
 
 /** 按扩展名返回 MIME（未知扩展名按二进制处理）；供 skill-files 接口与 agent_file 事件共用。 */

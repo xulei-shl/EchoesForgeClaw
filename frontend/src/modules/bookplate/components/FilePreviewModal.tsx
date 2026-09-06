@@ -1,26 +1,34 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { FileText, Loader2, X, Download } from 'lucide-react';
+import { FileText, Image as ImageIcon, Loader2, Music, Video, X, Download } from 'lucide-react';
+import { Streamdown, cjk, code } from '../../../platform/utils/markdown';
+import { normalizeMarkdown } from '../../../platform/utils/normalizeMarkdown';
 import type { AgentFile } from '../../../platform/types';
 import { authHeaders } from '../authUtils';
 
 /**
  * 工作区文件内联预览弹层（portal 到 body）：
- * - 文本类（txt/md/json/csv/代码等）→ fetch → 文本截断渲染（React 转义，无 HTML 注入面）
+ * - markdown（md/markdown）→ fetch → streamdown 渲染（React 渲染 + shiki 高亮，无 HTML 注入面）
+ * - 文本类（txt/json/csv/代码等）→ fetch → 文本截断渲染（React 转义）
  * - PDF → fetch → blob URL → <iframe> 走浏览器原生查看器
  * - 图片类 → fetch → blob URL → <img> 居中预览
+ * - 音频 / 视频 → fetch → blob URL → <audio>/<video> 原生播放器（超大体积累退化为下载卡）
  * - 其余格式 → 提示不支持预览（保留下载按钮）
- * skill-files 接口需要鉴权头，<img>/<iframe src> 无法携带，统一 fetch → blob → objectURL。
+ * skill-files 接口需要鉴权头，<img>/<iframe>/<audio>/<video> 无法携带，统一 fetch → blob → objectURL。
  */
 
 /** 图片类可预览扩展名（走 fetch → blob → <img> 预览） */
 const IMAGE_PREVIEW_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg']);
 
+/** 音频类可预览扩展名（走 fetch → blob → <audio controls>；浏览器原生播放） */
+const AUDIO_PREVIEW_EXTS = new Set(['mp3', 'wav', 'ogg', 'oga', 'm4a', 'aac', 'flac', 'opus', 'weba']);
+
+/** 视频类可预览扩展名（走 fetch → blob → <video controls>；浏览器原生播放） */
+const VIDEO_PREVIEW_EXTS = new Set(['mp4', 'webm', 'm4v', 'ogv', 'mov']);
+
 /** 文本类可预览扩展名（其余按二进制处理） */
 const TEXT_PREVIEW_EXTS = new Set([
   'txt',
-  'md',
-  'markdown',
   'json',
   'csv',
   'tsv',
@@ -53,11 +61,22 @@ const TEXT_PREVIEW_EXTS = new Set([
 /** 预览展示的文本上限（字符）；超出截断并提示（避免大文件整读进渲染） */
 const MAX_PREVIEW_CHARS = 100_000;
 
-export function previewKindOf(file: AgentFile): 'text' | 'pdf' | 'image' | 'binary' {
+/** 媒体内联预览体积上限：blob 全量缓冲（objectURL 无 HTTP Range 流式），超大音视频退化为下载卡 */
+const MAX_MEDIA_PREVIEW_BYTES = 50 * 1024 * 1024;
+
+export type PreviewKind = 'markdown' | 'text' | 'pdf' | 'image' | 'audio' | 'video' | 'binary';
+
+export function previewKindOf(file: AgentFile): PreviewKind {
   const dot = file.name.lastIndexOf('.');
   const ext = dot >= 0 ? file.name.slice(dot + 1).toLowerCase() : '';
   if (ext === 'pdf') return 'pdf';
   if (IMAGE_PREVIEW_EXTS.has(ext)) return 'image';
+  if (ext === 'md' || ext === 'markdown') return 'markdown';
+  if (AUDIO_PREVIEW_EXTS.has(ext) || VIDEO_PREVIEW_EXTS.has(ext)) {
+    // 已知 size 超过阈值（正文提取来源 size=0 视为未知，走预览）→ 退化下载卡
+    if (file.size > MAX_MEDIA_PREVIEW_BYTES) return 'binary';
+    return AUDIO_PREVIEW_EXTS.has(ext) ? 'audio' : 'video';
+  }
   if (TEXT_PREVIEW_EXTS.has(ext)) return 'text';
   return 'binary';
 }
@@ -89,7 +108,7 @@ export const FilePreviewModal: React.FC<{
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const blob = await resp.blob();
         if (!active) return;
-        if (kind === 'pdf' || kind === 'image') {
+        if (kind === 'pdf' || kind === 'image' || kind === 'audio' || kind === 'video') {
           createdUrl = URL.createObjectURL(blob);
           setBlobUrl(createdUrl);
         } else {
@@ -118,7 +137,7 @@ export const FilePreviewModal: React.FC<{
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const truncated = kind === 'text' && text.length >= MAX_PREVIEW_CHARS;
+  const truncated = (kind === 'text' || kind === 'markdown') && text.length >= MAX_PREVIEW_CHARS;
   const fileSizeLabel = file.size > 0 ? formatFileSize(file.size) : '';
 
   const handleDownload = async () => {
@@ -131,6 +150,10 @@ export const FilePreviewModal: React.FC<{
     }
   };
 
+  // 头部图标随预览类型区分（image/audio/video/markdown 各用专属图标，其余回落 FileText）
+  const HeaderIcon =
+    kind === 'image' ? ImageIcon : kind === 'audio' ? Music : kind === 'video' ? Video : FileText;
+
   return createPortal(
     <div
       className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
@@ -141,7 +164,7 @@ export const FilePreviewModal: React.FC<{
       <div className="pop-enter-anim flex flex-col w-full max-w-[720px] h-[80vh] rounded-xl border border-paper-grid bg-paper shadow-2xl overflow-hidden">
         {/* 头部：文件名 + 大小 + 下载/关闭 */}
         <div className="flex items-center gap-2 px-3 py-2 border-b border-paper-grid bg-paper-grid/20 shrink-0">
-          <FileText size={14} strokeWidth={1.75} className="shrink-0 text-accent" />
+          <HeaderIcon size={14} strokeWidth={1.75} className="shrink-0 text-accent" />
           <div className="flex-1 min-w-0">
             <p className="truncate text-xs font-sans font-medium text-ink" title={file.path}>
               {file.name}
@@ -202,6 +225,42 @@ export const FilePreviewModal: React.FC<{
               title={file.name}
               className="w-full h-full bg-paper"
             />
+          ) : kind === 'audio' && blobUrl ? (
+            <div className="h-full flex flex-col items-center justify-center gap-4 p-6 bg-paper-grid/10">
+              <Music size={36} strokeWidth={1.25} className="text-ink-faint" />
+              <audio controls src={blobUrl} className="w-full max-w-md" preload="metadata">
+                您的浏览器不支持音频播放，请下载后查看
+              </audio>
+            </div>
+          ) : kind === 'video' && blobUrl ? (
+            <div className="h-full flex items-center justify-center p-4 bg-paper-grid/10">
+              <video
+                controls
+                src={blobUrl}
+                className="max-h-full max-w-full object-contain rounded-lg select-none"
+                preload="metadata"
+              >
+                您的浏览器不支持视频播放，请下载后查看
+              </video>
+            </div>
+          ) : kind === 'markdown' ? (
+            <div className="h-full overflow-y-auto custom-scrollbar">
+              <div className="p-3 text-sm leading-relaxed font-sans text-ink select-text min-h-full">
+                <Streamdown
+                  plugins={{ cjk, code }}
+                  isAnimating={false}
+                  caret="block"
+                  linkSafety={{ enabled: false }}
+                >
+                  {normalizeMarkdown(text)}
+                </Streamdown>
+                {truncated && (
+                  <span className="block mt-2 text-[10px] text-ink-faint border-t border-dashed border-paper-grid pt-2">
+                    内容过长，仅展示前 {MAX_PREVIEW_CHARS.toLocaleString()} 字符，请下载查看完整文件
+                  </span>
+                )}
+              </div>
+            </div>
           ) : kind === 'text' ? (
             <div className="h-full overflow-y-auto custom-scrollbar">
               <pre className="p-3 text-[11.5px] leading-relaxed font-mono text-ink whitespace-pre-wrap break-words select-text min-h-full">

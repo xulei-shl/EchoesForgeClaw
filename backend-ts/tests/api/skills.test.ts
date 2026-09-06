@@ -318,6 +318,25 @@ describe('skill-files 下载', () => {
     expect(img.statusCode).toBe(200);
     expect(img.headers['content-type']).toContain('image/png');
     expect(img.headers['content-disposition']).toContain(`filename*=UTF-8''${encodeURIComponent('藏书票.png')}`);
+
+    // 音频/视频产物：按扩展名返回对应 Content-Type（前端内联预览依赖正确类型）
+    writeFileSync(`${ws}/outputs/audio.mp3`, Buffer.from([0xff, 0xfb, 0x90, 0x00]));
+    const audio = await app.inject({
+      method: 'GET',
+      url: '/api/modules/bookplate/skill-files?path=outputs/audio.mp3&workspace_id=ws_test_1',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(audio.statusCode).toBe(200);
+    expect(audio.headers['content-type']).toContain('audio/mpeg');
+
+    writeFileSync(`${ws}/outputs/video.mp4`, Buffer.from([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70]));
+    const video = await app.inject({
+      method: 'GET',
+      url: '/api/modules/bookplate/skill-files?path=outputs/video.mp4&workspace_id=ws_test_1',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(video.statusCode).toBe(200);
+    expect(video.headers['content-type']).toContain('video/mp4');
     rmSync(`${ws}/outputs`, { recursive: true, force: true });
 
     // 未装配的路径（仅存在于登记目录，不在工作区）→ 404
