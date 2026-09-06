@@ -137,6 +137,9 @@ export interface WatercolorBrushState {
   imageUrl: string | null;
   isSaved?: boolean;
   error?: string | null;
+  /** 用户已开始创作（选择模板/调整参数后置 true，持久化）：编辑态据此决定是否建立实时预览会话。
+   *  新建节点默认空白不立即渲染，避免创建即触发物理水彩渲染造成卡顿 */
+  previewStarted?: boolean;
 }
 
 /** 12 款完全差异化精选美学配方模板字典（零同质化，各具代表性） */

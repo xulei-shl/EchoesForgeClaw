@@ -136,6 +136,8 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
   const [isEditing, setIsEditing] = useState<boolean>(!data?.imageUrl);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isRollingDice, setIsRollingDice] = useState(false);
+  // 用户是否已开始创作（选择模板/调整参数等）：未开始时保持空白，不建立渲染会话
+  const [hasStarted, setHasStarted] = useState<boolean>(() => Boolean(data?.previewStarted));
 
   const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null);
   const sessionRef = useRef<WatercolorSession | null>(null);
@@ -205,9 +207,16 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
     containerEl.appendChild(canvas);
   }, [containerEl, sessionStatus]);
 
-  // 会话建立：编辑态时打开离屏 Canvas，离开编辑态 / 卸载时释放
+  // 会话建立：编辑态时打开离屏 Canvas，离开编辑态 / 卸载时释放。
+  // 新节点未选择模板前（hasStarted = false）不建立会话，保持空白，避免创建即渲染卡顿
   useEffect(() => {
     if (!isEditing) {
+      sessionRef.current?.dispose();
+      sessionRef.current = null;
+      setSessionStatus('idle');
+      return;
+    }
+    if (!hasStarted) {
       sessionRef.current?.dispose();
       sessionRef.current = null;
       setSessionStatus('idle');
@@ -245,7 +254,7 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
       sessionRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEditing, aspectRatio]);
+  }, [isEditing, aspectRatio, hasStarted]);
 
   // 参数更新实时响应（极速防抖 60ms，兼顾帧率与物理模拟性能）
   useEffect(() => {
@@ -274,7 +283,10 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
 
   const patchParam = useCallback(
     (patch: Partial<WatercolorBrushState>) => {
-      onUpdateState?.(id, patch);
+      // 用户第一次交互（选模板 / 改参数 / 洗牌 / 重置）即视为开始创作：
+      // 置位并持久化 previewStarted，此后编辑态建立实时预览会话
+      setHasStarted(true);
+      onUpdateState?.(id, { ...patch, previewStarted: true });
     },
     [id, onUpdateState]
   );
@@ -369,6 +381,8 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
   // 生成：执行高清物理水彩渲染导出
   const handleGenerate = useCallback(async () => {
     if (isGenerating) return;
+    // 已进入创作流程：之后重新进入编辑态时恢复实时预览
+    setHasStarted(true);
     setIsGenerating(true);
     try {
       const { renderWatercolorArt } = await import('../watercolor');
@@ -382,6 +396,7 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
         ...currentState,
         imageUrl: dataUrl,
         isSaved: false,
+        previewStarted: true,
       });
       showToast(
         `水彩手绘生成完成 (${result.width}×${result.height}${currentState.transparentBackground ? '·透明底' : ''})`,
@@ -667,32 +682,42 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
         >
           {!hasGenerated ? (
             <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
-              {/* Canvas 挂载容器 */}
-              <div ref={setContainerEl} className="w-full h-full flex items-center justify-center" />
-
-              {/* 加载动效遮罩：严格居中覆盖整个视口 */}
-              {sessionStatus === 'loading' && (
-                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2.5 bg-paper/80 backdrop-blur-[2px] text-ink-light pointer-events-none">
-                  <Loader2 size={26} className="animate-spin motion-reduce:animate-none text-accent" />
-                  <span className="text-xs font-sans text-ink-light font-medium">正在渲染物理水彩…</span>
+              {!hasStarted ? (
+                /* 空白起始态：未选择模板前不建立渲染会话 */
+                <div className="flex flex-col items-center justify-center gap-2 text-ink-faint select-none">
+                  <Palette size={22} strokeWidth={1.5} className="opacity-60" />
+                  <span className="text-xs font-sans">选择上方模板开始创作</span>
                 </div>
-              )}
+              ) : (
+                <>
+                  {/* Canvas 挂载容器 */}
+                  <div ref={setContainerEl} className="w-full h-full flex items-center justify-center" />
 
-              {/* 错误提示遮罩 */}
-              {sessionStatus === 'error' && (
-                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-paper/90 backdrop-blur-sm text-ink-faint p-4 text-center">
-                  <span className="text-xs">无法建立 WebGL 渲染会话</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSessionStatus('idle');
-                      patchParam({ seed: Date.now() % 100000 });
-                    }}
-                    className="px-2.5 py-1 rounded text-xs bg-paper-grid/40 hover:bg-paper-grid/70 active:scale-[0.96] transition-colors duration-150"
-                  >
-                    重试
-                  </button>
-                </div>
+                  {/* 加载动效遮罩：严格居中覆盖整个视口 */}
+                  {sessionStatus === 'loading' && (
+                    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2.5 bg-paper/80 backdrop-blur-[2px] text-ink-light pointer-events-none">
+                      <Loader2 size={26} className="animate-spin motion-reduce:animate-none text-accent" />
+                      <span className="text-xs font-sans text-ink-light font-medium">正在渲染物理水彩…</span>
+                    </div>
+                  )}
+
+                  {/* 错误提示遮罩 */}
+                  {sessionStatus === 'error' && (
+                    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-paper/90 backdrop-blur-sm text-ink-faint p-4 text-center">
+                      <span className="text-xs">无法建立 WebGL 渲染会话</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSessionStatus('idle');
+                          patchParam({ seed: Date.now() % 100000 });
+                        }}
+                        className="px-2.5 py-1 rounded text-xs bg-paper-grid/40 hover:bg-paper-grid/70 active:scale-[0.96] transition-colors duration-150"
+                      >
+                        重试
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           ) : (
