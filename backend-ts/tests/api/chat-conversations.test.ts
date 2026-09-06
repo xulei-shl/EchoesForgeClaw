@@ -1,0 +1,430 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { hashSync } from 'bcryptjs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { initDb, setDb, type DB } from '../../src/config/database.js';
+import { buildApp } from '../../src/server.js';
+import {
+  startMockOpenAIServer,
+  sseChunk,
+  type MockOpenAIServer,
+} from '../helpers/mock-openai-server.js';
+
+/**
+ * LLM / FastClaw 会话 transcript 契约测试（chat-conversations.ts + /chat 路由写入侧）：
+ * - LLM 模式：多轮对话逐轮落盘 {ws}/conversation.jsonl（user/assistant 成对累积）；重试不重复 user 行；
+ *   GET /chat/session 水合、GET /chat/sessions 列表（标题 = 首条 user 消息）、/chat/files 产物差分排除、
+ *   DELETE /chat/session 整目录删除
+ * - FastClaw 模式：会话 key 一对话一 key（含 workspaceId）；transcript 落盘含工具步骤；水合带步骤
+ * - 置顶 / 重命名对 transcript 会话同样生效（meta.json 存储无关）
+ */
+
+const RUNTIME_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../runtime');
+/** 本文件独占的节点前缀（清理时只删本文件创建的目录，避免误删其它测试文件数据）。 */
+const NODE_ID = `chat-transcript-test-${Date.now()}`;
+const openServers: MockOpenAIServer[] = [];
+
+let db: DB;
+let app: Awaited<ReturnType<typeof buildApp>>;
+let token = '';
+let uid = 1;
+
+/** 造 chat 节点配置（LLM / FastClaw 二选一）。 */
+async function seedChat(opts: {
+  llmConfig?: { baseUrl: string; modelName: string };
+  agentConfig?: { baseUrl: string; agentId: string };
+}): Promise<number> {
+  const schema = await import('../../src/db/schema.js');
+  let llmId: number | null = null;
+  if (opts.llmConfig) {
+    const row = db
+      .insert(schema.llmConfigs)
+      .values({
+        name: `llm-${Math.random().toString(36).slice(2, 8)}`,
+        kind: 'text',
+        apiKey: 'sk-test',
+        baseUrl: opts.llmConfig.baseUrl,
+        modelName: opts.llmConfig.modelName,
+        isActive: true,
+      })
+      .returning({ id: schema.llmConfigs.id })
+      .get();
+    llmId = row.id;
+  }
+  let agentId: number | null = null;
+  if (opts.agentConfig) {
+    const row = db
+      .insert(schema.fastclawAgentConfigs)
+      .values({
+        name: `fc-${Math.random().toString(36).slice(2, 8)}`,
+        baseUrl: opts.agentConfig.baseUrl,
+        apiKey: 'sk-fc',
+        agentId: opts.agentConfig.agentId,
+        isActive: true,
+      })
+      .returning({ id: schema.fastclawAgentConfigs.id })
+      .get();
+    agentId = row.id;
+  }
+  const row = db
+    .insert(schema.nodeConfigs)
+    .values({ nodeType: 'chat', name: 'node-t', llmConfigId: llmId, agentConfigId: agentId, isActive: true })
+    .returning({ id: schema.nodeConfigs.id })
+    .get();
+  return row.id;
+}
+
+/** 读取 transcript 全部行（已 JSON 解析）。 */
+function readTranscript(wsId: string): Array<Record<string, any>> {
+  const file = path.join(RUNTIME_ROOT, String(uid), 'workspace', wsId, 'conversation.jsonl');
+  return readFileSync(file, 'utf-8')
+    .trim()
+    .split('\n')
+    .filter((l) => l.trim())
+    .map((l) => JSON.parse(l));
+}
+
+const auth = () => ({ authorization: `Bearer ${token}` });
+
+beforeAll(async () => {
+  db = initDb(':memory:');
+  setDb(db);
+  const schema = await import('../../src/db/schema.js');
+  db.insert(schema.users)
+    .values({ username: 'admin', passwordHash: hashSync('admin123', 10), role: 'admin', isActive: true })
+    .run();
+  app = await buildApp();
+  const login = await app.inject({
+    method: 'POST',
+    url: '/api/auth/login',
+    payload: { username: 'admin', password: 'admin123' },
+  });
+  const loginBody = login.json() as { token: string; user: { id: number } };
+  token = loginBody.token;
+  uid = loginBody.user.id;
+});
+
+afterAll(async () => {
+  await app.close();
+  await Promise.all(openServers.splice(0).map((s) => s.close()));
+  setDb(null);
+  // 仅清理本文件创建的会话目录（{NODE_ID}_ 前缀）
+  const root = path.join(RUNTIME_ROOT, String(uid), 'workspace');
+  try {
+    for (const entry of readdirSync(root)) {
+      if (entry.startsWith(`${NODE_ID}_`)) {
+        rmSync(path.join(root, entry), { recursive: true, force: true });
+      }
+    }
+  } catch {
+    /* 目录不存在则忽略 */
+  }
+});
+
+describe('LLM 模式 transcript', () => {
+  it('多轮对话逐轮落盘；水合 / 列表 / 产物排除 / 删除闭环', async () => {
+    const srv = await startMockOpenAIServer((_req, send) => {
+      const base = { id: 'chatcmpl-x', object: 'chat.completion.chunk', created: 0, model: 'mock-model' };
+      send(sseChunk({ ...base, choices: [{ index: 0, delta: { content: '回答A' }, finish_reason: null }] }));
+      send(sseChunk({ ...base, choices: [], usage: { total_tokens: 5 } }));
+    });
+    openServers.push(srv);
+    const configId = await seedChat({ llmConfig: { baseUrl: srv.baseURL, modelName: 'mock-model' } });
+    const wsId = `${NODE_ID}_llm1`;
+
+    // 第 1 轮：仅 user
+    const r1 = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/chat',
+      headers: auth(),
+      payload: {
+        messages: [{ role: 'user', content: '第一轮问题' }],
+        config_id: configId,
+        node_id: NODE_ID,
+        workspace_id: wsId,
+      },
+    });
+    expect(r1.statusCode).toBe(200);
+    // 第 2 轮：携带完整历史（useChat 每轮重发）
+    const r2 = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/chat',
+      headers: auth(),
+      payload: {
+        messages: [
+          { role: 'user', content: '第一轮问题' },
+          { role: 'assistant', content: '回答A' },
+          { role: 'user', content: '第二轮问题' },
+        ],
+        config_id: configId,
+        node_id: NODE_ID,
+        workspace_id: wsId,
+      },
+    });
+    expect(r2.statusCode).toBe(200);
+
+    // transcript：user/assistant 成对累积，首轮历史不丢；每行标注来源模式 llm
+    const lines = readTranscript(wsId);
+    expect(lines.map((l) => l.role)).toEqual(['user', 'assistant', 'user', 'assistant']);
+    expect(lines[0]!.content).toBe('第一轮问题');
+    expect(lines[1]!.content).toBe('回答A');
+    expect(lines[2]!.content).toBe('第二轮问题');
+    expect(lines.every((l) => l.mode === 'llm')).toBe(true);
+
+    // 水合：GET /chat/session 返回全部消息
+    const h = await app.inject({
+      method: 'GET',
+      url: `/api/modules/bookplate/chat/session?workspace_id=${encodeURIComponent(wsId)}`,
+      headers: auth(),
+    });
+    expect(h.statusCode).toBe(200);
+    const hydrated = h.json() as { exists: boolean; messages: Array<{ role: string; content: string }> };
+    expect(hydrated.exists).toBe(true);
+    expect(hydrated.messages).toHaveLength(4);
+    expect(hydrated.messages[0]).toMatchObject({ role: 'user', content: '第一轮问题' });
+    expect(hydrated.messages[1]).toMatchObject({ role: 'assistant', content: '回答A' });
+
+    // 列表：标题 = 首条 user 消息，轮次计数正确（LLM 模式）
+    const list = await app.inject({
+      method: 'GET',
+      url: `/api/modules/bookplate/chat/sessions?node_id=${NODE_ID}&mode=llm`,
+      headers: auth(),
+    });
+    const sessions = (list.json() as { sessions: Array<{ workspaceId: string; title: string; messageCount: number }> }).sessions;
+    const s = sessions.find((x) => x.workspaceId === wsId);
+    expect(s?.title).toBe('第一轮问题');
+    expect(s?.messageCount).toBe(2);
+
+    // 产物列表：transcript 被差分排除，不得作为「AI 产物」出现
+    const files = await app.inject({
+      method: 'GET',
+      url: `/api/modules/bookplate/chat/files?workspace_id=${encodeURIComponent(wsId)}`,
+      headers: auth(),
+    });
+    const listFiles = (files.json() as { files: Array<{ path: string }> }).files;
+    expect(listFiles.some((f) => f.path === 'conversation.jsonl')).toBe(false);
+
+    // 删除：整目录删除（会话 / transcript 一并清除）
+    const del = await app.inject({
+      method: 'DELETE',
+      url: '/api/modules/bookplate/chat/session',
+      headers: auth(),
+      payload: { workspace_id: wsId },
+    });
+    expect((del.json() as { deleted: boolean }).deleted).toBe(true);
+    expect(existsSync(path.join(RUNTIME_ROOT, String(uid), 'workspace', wsId))).toBe(false);
+  });
+
+  it('重试（regenerate，无新增 user 消息）不重复落盘 user 行', async () => {
+    const srv = await startMockOpenAIServer((_req, send) => {
+      const base = { id: 'chatcmpl-x', object: 'chat.completion.chunk', created: 0, model: 'mock-model' };
+      send(sseChunk({ ...base, choices: [{ index: 0, delta: { content: '回答B' }, finish_reason: null }] }));
+      send(sseChunk({ ...base, choices: [], usage: { total_tokens: 5 } }));
+    });
+    openServers.push(srv);
+    const configId = await seedChat({ llmConfig: { baseUrl: srv.baseURL, modelName: 'mock-model' } });
+    const wsId = `${NODE_ID}_llm2`;
+
+    const post = () =>
+      app.inject({
+        method: 'POST',
+        url: '/api/modules/bookplate/chat',
+        headers: auth(),
+        payload: {
+          messages: [{ role: 'user', content: '同一个问题' }],
+          config_id: configId,
+          node_id: NODE_ID,
+          workspace_id: wsId,
+        },
+      });
+    expect((await post()).statusCode).toBe(200);
+    expect((await post()).statusCode).toBe(200); // 重试：同一 user 消息重发
+
+    const lines = readTranscript(wsId);
+    expect(lines.filter((l) => l.role === 'user')).toHaveLength(1);
+    expect(lines.filter((l) => l.role === 'assistant')).toHaveLength(2);
+  });
+
+  it('置顶 / 重命名对 transcript 会话同样生效（meta.json 存储无关）', async () => {
+    const wsId = `${NODE_ID}_llm3`;
+    // 手工造 transcript 会话（绕开 mock，验证列表元数据链路）
+    const wsDir = path.join(RUNTIME_ROOT, String(uid), 'workspace', wsId);
+    mkdirSync(wsDir, { recursive: true });
+    writeFileSync(
+      path.join(wsDir, 'conversation.jsonl'),
+      JSON.stringify({ type: 'message', id: 'u1', role: 'user', content: '置顶测试消息', ts: Date.now() }) + '\n',
+      'utf-8'
+    );
+
+    const pin = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/chat/session/pin',
+      headers: auth(),
+      payload: { workspace_id: wsId, pinned: true },
+    });
+    expect((pin.json() as { ok: boolean }).ok).toBe(true);
+
+    const rename = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/chat/session/rename',
+      headers: auth(),
+      payload: { workspace_id: wsId, title: '自定义标题' },
+    });
+    expect((rename.json() as { ok: boolean }).ok).toBe(true);
+
+    const list = await app.inject({
+      method: 'GET',
+      url: `/api/modules/bookplate/chat/sessions?node_id=${NODE_ID}&mode=llm`,
+      headers: auth(),
+    });
+    const s = (list.json() as { sessions: Array<{ workspaceId: string; title: string; pinned: boolean }> }).sessions.find(
+      (x) => x.workspaceId === wsId
+    );
+    expect(s?.title).toBe('自定义标题');
+    expect(s?.pinned).toBe(true);
+  });
+
+  it('对话历史三模式严格隔离：pi / LLM / FastClaw 互不混显', async () => {
+    const ts = Date.now();
+    // LLM 会话（transcript 行带 mode='llm'）
+    const llmWs = `${NODE_ID}_iso-llm`;
+    const llmDir = path.join(RUNTIME_ROOT, String(uid), 'workspace', llmWs);
+    mkdirSync(llmDir, { recursive: true });
+    writeFileSync(
+      path.join(llmDir, 'conversation.jsonl'),
+      JSON.stringify({ type: 'message', id: 'u1', role: 'user', content: 'llm 会话', mode: 'llm', ts }) + '\n',
+      'utf-8'
+    );
+    // FastClaw 会话（transcript 行带 mode='agent' + 工具步骤）
+    const agtWs = `${NODE_ID}_iso-agent`;
+    const agtDir = path.join(RUNTIME_ROOT, String(uid), 'workspace', agtWs);
+    mkdirSync(agtDir, { recursive: true });
+    writeFileSync(
+      path.join(agtDir, 'conversation.jsonl'),
+      JSON.stringify({ type: 'message', id: 'u1', role: 'user', content: 'agent 会话', mode: 'agent', ts }) +
+        '\n' +
+        JSON.stringify({
+          type: 'message',
+          id: 'a1',
+          role: 'assistant',
+          content: 'agent 回答',
+          mode: 'agent',
+          agentSteps: [{ type: 'agent_tool_call', id: 't1', name: 'search', arguments: '{}' }],
+          ts: ts + 1,
+        }) +
+        '\n',
+      'utf-8'
+    );
+    // pi 会话（.pi-agent/run/chat.jsonl）
+    const piWs = `${NODE_ID}_iso-pi`;
+    const piDir = path.join(RUNTIME_ROOT, String(uid), 'workspace', piWs);
+    mkdirSync(path.join(piDir, '.pi-agent', 'run'), { recursive: true });
+    writeFileSync(
+      path.join(piDir, '.pi-agent', 'run', 'chat.jsonl'),
+      '{"type":"message","role":"user","content":"pi 会话","ts":' + ts + '}\n',
+      'utf-8'
+    );
+
+    const ids = async (mode?: string) =>
+      (
+        await app.inject({
+          method: 'GET',
+          url: `/api/modules/bookplate/chat/sessions?node_id=${NODE_ID}${mode ? `&mode=${mode}` : ''}`,
+          headers: auth(),
+        })
+      ).json() as { sessions: Array<{ workspaceId: string }> };
+
+    const pi = (await ids()).sessions.map((s) => s.workspaceId);
+    expect(pi).toContain(piWs);
+    expect(pi).not.toContain(llmWs);
+    expect(pi).not.toContain(agtWs);
+
+    const llm = (await ids('llm')).sessions.map((s) => s.workspaceId);
+    expect(llm).toContain(llmWs);
+    expect(llm).not.toContain(agtWs);
+    expect(llm).not.toContain(piWs);
+
+    const agt = (await ids('agent')).sessions.map((s) => s.workspaceId);
+    expect(agt).toContain(agtWs);
+    expect(agt).not.toContain(llmWs);
+    expect(agt).not.toContain(piWs);
+  });
+});
+
+describe('FastClaw 模式 transcript', () => {
+  it('会话 key 一对话一 key（含 workspaceId）；transcript 落盘含工具步骤；水合带步骤', async () => {
+    let sessionId = '';
+    const srv = await startMockOpenAIServer((req, send) => {
+      sessionId = req.body?.sessionId ?? '';
+      const base = { id: 'evt', type: 'x' };
+      send(sseChunk({ ...base, type: 'tool_call', data: { id: 't1', name: 'search', arguments: '{}' } }));
+      send(sseChunk({ ...base, type: 'tool_result', data: { id: 't1', name: 'search', result: '结果X' } }));
+      send(sseChunk({ ...base, type: 'content_delta', data: { delta: '最终回答' } }));
+      send(sseChunk({ ...base, type: 'done', data: {} }));
+    });
+    openServers.push(srv);
+    const configId = await seedChat({ agentConfig: { baseUrl: srv.rootURL, agentId: 'agt_1' } });
+    const wsId = `${NODE_ID}_fc1`;
+
+    const r = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/chat',
+      headers: auth(),
+      payload: { message: '帮我查一下', config_id: configId, node_id: NODE_ID, workspace_id: wsId },
+    });
+    expect(r.statusCode).toBe(200);
+
+    // 会话 key：一对话一 key（与载入历史后继续对话的隔离粒度一致）
+    expect(sessionId).toBe(`bookplate-${uid}-${wsId}`);
+
+    const lines = readTranscript(wsId);
+    expect(lines.map((l) => l.role)).toEqual(['user', 'assistant']);
+    expect(lines[0]!.content).toBe('帮我查一下');
+    expect(lines[1]!.content).toBe('最终回答');
+    expect(lines.every((l) => l.mode === 'agent')).toBe(true);
+    expect(lines[1]!.agentSteps.map((s: { type: string }) => s.type)).toEqual([
+      'agent_tool_call',
+      'agent_tool_result',
+    ]);
+
+    // 水合带工具步骤
+    const h = await app.inject({
+      method: 'GET',
+      url: `/api/modules/bookplate/chat/session?workspace_id=${encodeURIComponent(wsId)}`,
+      headers: auth(),
+    });
+    const hydrated = h.json() as {
+      exists: boolean;
+      messages: Array<{ role: string; content: string; agentSteps?: unknown[] }>;
+    };
+    expect(hydrated.exists).toBe(true);
+    expect(hydrated.messages).toHaveLength(2);
+    expect(hydrated.messages[1]!.agentSteps).toHaveLength(2);
+
+    // 对话历史列表（FastClaw 节点视角 mode=agent）：真实落盘的会话必须可见，且不进 llm / pi 列表
+    const listAgent = await app.inject({
+      method: 'GET',
+      url: `/api/modules/bookplate/chat/sessions?node_id=${NODE_ID}&mode=agent`,
+      headers: auth(),
+    });
+    const agentList = (listAgent.json() as { sessions: Array<{ workspaceId: string }> }).sessions;
+    expect(agentList.some((x) => x.workspaceId === wsId)).toBe(true);
+
+    const listLlm = await app.inject({
+      method: 'GET',
+      url: `/api/modules/bookplate/chat/sessions?node_id=${NODE_ID}&mode=llm`,
+      headers: auth(),
+    });
+    const llmList = (listLlm.json() as { sessions: Array<{ workspaceId: string }> }).sessions;
+    expect(llmList.some((x) => x.workspaceId === wsId)).toBe(false);
+
+    const listPi = await app.inject({
+      method: 'GET',
+      url: `/api/modules/bookplate/chat/sessions?node_id=${NODE_ID}`,
+      headers: auth(),
+    });
+    const piList = (listPi.json() as { sessions: Array<{ workspaceId: string }> }).sessions;
+    expect(piList.some((x) => x.workspaceId === wsId)).toBe(false);
+  });
+});

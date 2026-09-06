@@ -13,6 +13,7 @@ import {
   userMapArtDir,
 } from '../../../services/image-service.js';
 import {
+  clearSessionFilesCache,
   fastclawAgentService,
   FastClawAgentError,
   extractImageUrl,
@@ -32,8 +33,6 @@ import {
   buildWebSearchConfig,
   clearPiSession,
   computeWorkspaceGeneration,
-  deletePiConversation,
-  listPiConversations,
   listWorkspaceArtifacts,
   preparePiWorkspace,
   runPiAgent,
@@ -43,6 +42,13 @@ import {
   setConversationTitle,
 } from '../../../services/pi-agent-service.js';
 import {
+  deleteChatConversation,
+  hydrateChatTranscript,
+  listChatConversations,
+  persistTranscriptAssistant,
+  persistTranscriptUser,
+} from '../../../services/chat-conversations.js';
+import {
   decodeDataUrlImage,
   deleteWorkspaceFileSafe,
   mimeOf,
@@ -50,7 +56,12 @@ import {
   skillFileDownloadUrl,
 } from '../../../services/file-utils.js';
 import { withWidgetBridge, createWidgetStore } from '../../../services/pi-widgets.js';
-import { hydratePiSession, readSessionImageBlock } from '../../../services/pi-session-hydrate.js';
+import {
+  hydratePiSession,
+  readSessionImageBlock,
+  type HydratedFile,
+  type HydratedStep,
+} from '../../../services/pi-session-hydrate.js';
 import {
   nodeWorkspace,
   sanitizeWorkspaceId,
@@ -272,16 +283,35 @@ export async function register(app: FastifyInstance): Promise<void> {
       );
       const textConfig = textConfigFrom(configId, NODE_TYPES.CHAT);
 
-      // FastClaw Agent 模式：SSE 客户端 → 归一化事件 → UI Message Stream
+      // FastClaw Agent 模式：SSE 客户端 → 归一化事件 → UI Message Stream。
+      // 会话 key 以 workspaceId 为一对话一 key（载入历史会话后继续对话上下文连续，见 agentSessionKey）；
+      // 会话 transcript（{ws}/conversation.jsonl）：每轮落盘「当前消息 + 助手回复（工具步骤 / 桥接产物）」，
+      // 供对话历史列表 / 水合；写路径 best-effort，绝不阻断流。
       if (agentConfig) {
         const cfg = agentConfig;
-        const sessionKey = agentSessionKey(request.authUser!.id, payload.node_id, payload.epoch ?? 0);
-        // 节点工作区（FastClaw 产物桥接的落盘目标；workspace_id 由前端首轮生成并持久化）
+        const sessionKey = agentSessionKey(
+          request.authUser!.id,
+          payload.node_id,
+          payload.epoch ?? 0,
+          payload.workspace_id
+        );
+        // 节点工作区（FastClaw 产物桥接的落盘目标 + transcript；workspace_id 由前端首轮生成并持久化）
         const ws = nodeWorkspace(request.authUser!.id, payload.workspace_id ?? `${payload.node_id ?? 'node'}_${Date.now()}`);
         // 收集本轮 tool_result 与最终正文，供流结束后做产物路径收割
         const turnTexts: string[] = [];
+        const signal = requestAbortSignal(request);
         async function* agentEvents(): AsyncGenerator<ChatStreamEvent, void, unknown> {
           let finalText = '';
+          const steps: HydratedStep[] = [];
+          const files: HydratedFile[] = [];
+          persistTranscriptUser(
+            ws,
+            {
+              content: payload.message ?? '',
+              images: payload.images?.length ? payload.images : undefined,
+            },
+            'agent'
+          );
           try {
             for await (const evt of fastclawAgentService.runAgent(
               cfg,
@@ -289,13 +319,42 @@ export async function register(app: FastifyInstance): Promise<void> {
               sessionKey,
               payload.images?.length ? payload.images : undefined,
               { module: 'bookplate', node_type: NODE_TYPES.CHAT },
-              requestAbortSignal(request)
+              signal
             )) {
-              if (evt.type === 'tool_result') turnTexts.push(evt.data.result);
-              else if (evt.type === 'content_delta' || evt.type === 'content') finalText += evt.data.delta;
+              if (evt.type === 'tool_result') {
+                turnTexts.push(evt.data.result);
+                steps.push({
+                  type: 'agent_tool_result',
+                  id: evt.data.id,
+                  name: evt.data.name,
+                  result: evt.data.result,
+                });
+              } else if (evt.type === 'tool_call') {
+                steps.push({
+                  type: 'agent_tool_call',
+                  id: evt.data.id,
+                  name: evt.data.name,
+                  arguments: evt.data.arguments,
+                });
+              } else if (evt.type === 'status') {
+                steps.push({ type: 'agent_status', message: evt.data.message });
+              } else if (evt.type === 'content_delta' || evt.type === 'content') {
+                finalText += evt.data.delta;
+              }
               yield* agentEventToStream(evt);
             }
           } catch (err) {
+            // 已流出部分（含被中断）仍落盘
+            persistTranscriptAssistant(
+              ws,
+              {
+                content: finalText,
+                agentSteps: steps,
+                interrupted: signal.aborted,
+              },
+              'agent'
+            );
+            clearSessionFilesCache(sessionKey);
             yield { type: 'error', message: err instanceof FastClawAgentError ? err.message : String(err) };
             return;
           }
@@ -321,27 +380,64 @@ export async function register(app: FastifyInstance): Promise<void> {
                 appendArtifactManifest(ws, [
                   { rel: art.rel, mime: mimeOf(art.rel), size: art.size, mtimeMs },
                 ]);
-                yield {
-                  type: 'agent_file',
-                  file: {
-                    url: skillFileDownloadUrl(art.rel, path.basename(ws)),
-                    name: art.rel.slice(art.rel.lastIndexOf('/') + 1),
-                    mime: mimeOf(art.rel),
-                    size: art.size,
-                    path: art.rel,
-                  },
+                const file: HydratedFile = {
+                  url: skillFileDownloadUrl(art.rel, path.basename(ws)),
+                  name: art.rel.slice(art.rel.lastIndexOf('/') + 1),
+                  mime: mimeOf(art.rel),
+                  size: art.size,
+                  path: art.rel,
                 };
+                files.push(file);
+                yield { type: 'agent_file', file };
               }
             } catch (err) {
               yield { type: 'status', message: `产物文件桥接失败: ${err instanceof Error ? err.message : String(err)}` };
             }
           }
+          persistTranscriptAssistant(
+            ws,
+            {
+              content: finalText,
+              agentSteps: steps,
+              files,
+              interrupted: signal.aborted,
+            },
+            'agent'
+          );
+          // 本轮运行结束：会话文件列表缓存失效，下次列表立即反映新产物
+          clearSessionFilesCache(sessionKey);
         }
         return reply.send(chatStreamToResponse(agentEvents()));
       }
 
-      // LLM 模式：AI SDK streamText → 归一化事件 → UI Message Stream
+      // LLM 模式：AI SDK streamText → 归一化事件 → UI Message Stream。
+      // 会话 transcript（{ws}/conversation.jsonl）：每轮落盘「新 user 消息 + 助手回复」，
+      // 供对话历史列表 / 水合（服务端真相源）；写路径 best-effort，绝不阻断流。
       async function* llmEvents(): AsyncGenerator<ChatStreamEvent, void, unknown> {
+        const ws = payload.workspace_id
+          ? nodeWorkspace(request.authUser!.id, payload.workspace_id)
+          : null;
+        if (ws) {
+          const msgs = Array.isArray(payload.messages) ? payload.messages : [];
+          const lastUser = [...msgs].reverse().find(
+            (m): m is { role: 'user'; content?: unknown; images?: unknown } =>
+              !!m && typeof m === 'object' && (m as { role?: unknown }).role === 'user'
+          );
+          if (lastUser) {
+            persistTranscriptUser(
+              ws,
+              {
+                content: String(lastUser.content ?? ''),
+                images: Array.isArray(lastUser.images)
+                  ? lastUser.images.filter((i): i is string => typeof i === 'string')
+                  : undefined,
+              },
+              'llm'
+            );
+          }
+        }
+        let content = '';
+        let reasoning = '';
         try {
           // 节点内手动选择的模型名 / Base URL / API Key 覆盖默认配置
           const config = applyModelOverride(textConfig, payload);
@@ -350,11 +446,16 @@ export async function register(app: FastifyInstance): Promise<void> {
             config,
             requestAbortSignal(request)
           )) {
+            if (chunk.type === 'reasoning') reasoning += chunk.delta;
+            else content += chunk.delta;
             yield chunk.type === 'reasoning'
               ? { type: 'reasoning_delta', delta: chunk.delta }
               : { type: 'content_delta', delta: chunk.delta };
           }
+          if (ws) persistTranscriptAssistant(ws, { content, reasoning }, 'llm');
         } catch (err) {
+          // 已流出部分（含被中断）仍落盘，与 pi 会话「现场保留」语义一致
+          if (ws && (content || reasoning)) persistTranscriptAssistant(ws, { content, reasoning }, 'llm');
           request.log.error(
             { err, model: payload.model_name ?? textConfig?.model_name, nodeId: payload.node_id },
             'LLM 对话流式执行失败'
@@ -496,15 +597,18 @@ export async function register(app: FastifyInstance): Promise<void> {
     }
   );
 
-  // ---- Skill Agent 对话历史列表（侧边抽屉数据源）：扫描该用户含 pi 会话的工作区 ----
+  // ---- 对话历史列表（侧边抽屉数据源）----
+  // 按模式严格隔离：mode='pi'（默认，pi 节点）仅 pi 会话；mode='llm' 仅 LLM API 会话；
+  // mode='agent' 仅 FastClaw Agent 会话——三类互斥，任何抽屉都看不到其它模式的对话。
   // node_id 可选：提供时按 `{nodeId}_` 前缀过滤（chat 节点工作区命名约定），仅返回该节点的历史
   app.get(
     '/api/modules/bookplate/chat/sessions',
     { preHandler: app.authenticate },
     async (request) => {
-      const q = (request.query ?? {}) as { node_id?: string };
+      const q = (request.query ?? {}) as { node_id?: string; mode?: string };
       const nodeId = q.node_id ? String(q.node_id) : undefined;
-      return { sessions: listPiConversations(request.authUser!.id, nodeId) };
+      const mode = q.mode === 'llm' || q.mode === 'agent' ? q.mode : 'pi';
+      return { sessions: listChatConversations(request.authUser!.id, nodeId, mode) };
     }
   );
 
@@ -533,7 +637,8 @@ export async function register(app: FastifyInstance): Promise<void> {
       if (!workspaceId) {
         return reply.code(400).send({ detail: 'workspace_id 不能为空' });
       }
-      return { deleted: await deletePiConversation(request.authUser!.id, workspaceId) };
+      // pi 会话走原删除链路（杀 RPC 进程 + 清理 + 删目录）；LLM/FastClaw transcript 会话直接删目录
+      return { deleted: await deleteChatConversation(request.authUser!.id, workspaceId) };
     }
   );
 
@@ -599,8 +704,10 @@ export async function register(app: FastifyInstance): Promise<void> {
       // 只读水合：用不创建目录的路径解析——对不存在（或已删除 / 尚未开始对话）的工作区
       // 返回空会话即可，绝不能因此落下空 chatid 文件夹
       const ws = workspacePath(request.authUser!.id, workspaceId);
-      // 扩展 widget 快照（per-workspace 真相源）随会话一并下发，前端 widget_set_all 对齐
-      const hydrated = hydratePiSession(ws, workspaceId);
+      // 扩展 widget 快照（per-workspace 真相源）随会话一并下发，前端 widget_set_all 对齐。
+      // 水合：优先 pi 会话文件（chat.jsonl），否则回退 LLM/FastClaw transcript（conversation.jsonl）
+      const piHydrated = hydratePiSession(ws, workspaceId);
+      const hydrated = piHydrated.exists ? piHydrated : hydrateChatTranscript(ws);
       return { ...hydrated, widgets: createWidgetStore(ws).snapshot() };
     }
   );
@@ -666,7 +773,8 @@ export async function register(app: FastifyInstance): Promise<void> {
 
   // ---- FastClaw 工作区文件（当前会话）：列表 ----
   // 走 FastClaw 自家的文件 API（GET /api/agents/{id}/files?sessionId=），不依赖同机磁盘布局；
-  // 会话 key 由鉴权 userId + node_id + epoch 复算，FastClaw 端 + 本端双重 scoping。
+  // 会话 key 由鉴权 userId + workspace_id（chat 节点，一对话一 key）复算，FastClaw 端 + 本端双重 scoping；
+  // workspace_id 缺省时回退 node_id + epoch（历史兼容），与 /chat 流式分支的 agentSessionKey 同参。
   app.get(
     '/api/modules/bookplate/chat/fastclaw-files',
     { preHandler: app.authenticate },
@@ -676,6 +784,7 @@ export async function register(app: FastifyInstance): Promise<void> {
         epoch?: string;
         config_id?: string;
         agent_config_id?: string;
+        workspace_id?: string;
       };
       const config = agentConfigFromWithOverride(
         q.config_id ? Number(q.config_id) : null,
@@ -687,7 +796,8 @@ export async function register(app: FastifyInstance): Promise<void> {
       const sessionId = agentSessionKey(
         request.authUser!.id,
         q.node_id ?? null,
-        Number(q.epoch) || 0
+        Number(q.epoch) || 0,
+        q.workspace_id
       );
       let list;
       try {
@@ -700,7 +810,7 @@ export async function register(app: FastifyInstance): Promise<void> {
       const files = list.map((f) => {
         const name = f.path.slice(f.path.lastIndexOf('/') + 1);
         return {
-          url: `/api/modules/bookplate/chat/fastclaw-files/download?config_id=${encodeURIComponent(q.config_id ?? '')}&agent_config_id=${encodeURIComponent(q.agent_config_id ?? '')}&node_id=${encodeURIComponent(q.node_id ?? '')}&epoch=${Number(q.epoch) || 0}&path=${encodeURIComponent(f.path)}`,
+          url: `/api/modules/bookplate/chat/fastclaw-files/download?config_id=${encodeURIComponent(q.config_id ?? '')}&agent_config_id=${encodeURIComponent(q.agent_config_id ?? '')}&node_id=${encodeURIComponent(q.node_id ?? '')}&epoch=${Number(q.epoch) || 0}&workspace_id=${encodeURIComponent(q.workspace_id ?? '')}&path=${encodeURIComponent(f.path)}`,
           name,
           mime: mimeOf(name),
           size: f.size,
@@ -722,6 +832,7 @@ export async function register(app: FastifyInstance): Promise<void> {
         epoch?: string;
         config_id?: string;
         agent_config_id?: string;
+        workspace_id?: string;
         path?: string;
       };
       const filePath = String(q.path ?? '');
@@ -736,7 +847,8 @@ export async function register(app: FastifyInstance): Promise<void> {
       const sessionId = agentSessionKey(
         request.authUser!.id,
         q.node_id ?? null,
-        Number(q.epoch) || 0
+        Number(q.epoch) || 0,
+        q.workspace_id
       );
       let upstream: Response | null;
       try {

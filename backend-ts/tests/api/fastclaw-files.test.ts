@@ -8,6 +8,7 @@
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
+  clearSessionFilesCache,
   FastClawAgentError,
   FastClawAgentService,
   type FastClawRuntimeConfig,
@@ -33,6 +34,9 @@ const makeResponse = (body: unknown, ok = true, status = 200, headers?: Record<s
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  // 清理模块级会话文件缓存，避免用例间相互污染（同一 sessionId 命中缓存）
+  clearSessionFilesCache('bookplate-1-a-0');
+  clearSessionFilesCache('bookplate-1-a-1');
 });
 
 describe('sessionFilePath', () => {
@@ -92,6 +96,31 @@ describe('listSessionFiles', () => {
     await expect(
       new FastClawAgentService().listSessionFiles(cfg, 'bookplate-1-a-0')
     ).rejects.toBeInstanceOf(FastClawAgentError);
+  });
+
+  it('TTL 内重复调用命中缓存不重复打上游；clearSessionFilesCache 后重新拉取', async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(
+        makeResponse({ files: [{ path: 'sessions/bookplate-1-a-1/a.png', size: 1 }] })
+      )
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const s = new FastClawAgentService();
+
+    const first = await s.listSessionFiles(cfg, 'bookplate-1-a-1');
+    expect(first.map((f) => f.path)).toEqual(['sessions/bookplate-1-a-1/a.png']);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // TTL 内：命中缓存，不再请求上游
+    const second = await s.listSessionFiles(cfg, 'bookplate-1-a-1');
+    expect(second).toEqual(first);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // 显式失效后：重新请求上游
+    clearSessionFilesCache('bookplate-1-a-1');
+    const third = await s.listSessionFiles(cfg, 'bookplate-1-a-1');
+    expect(third).toEqual(first);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
 

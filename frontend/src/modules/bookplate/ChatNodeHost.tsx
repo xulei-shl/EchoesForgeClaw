@@ -1,7 +1,16 @@
-import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import { nodesRef, edgesRef } from '../../platform/stores/useCanvasState';
+import { useConversationHistoryPanel } from './useConversationHistoryPanel';
+import {
+  deleteConversationSession,
+  evictSessionCache,
+  fetchPiSession,
+  fetchWorkspaceFiles,
+  renameConversation,
+  setConversationPinned,
+} from './piSessionApi';
 import { ChatNode } from './components/ChatNode';
 import { getNodeTitle } from './nodeTypes';
 import { buildContextBlocks } from './contextBlocks';
@@ -28,6 +37,7 @@ import {
   buildChatImagesFromBlocks,
   collectSkillNames,
   capWireImages,
+  stripInjectedContext,
   type ChatHostDeps,
 } from './chatSendHelpers';
 import type { AgentFile, ChatMessage, ChatNodeSettings, InjectedContextBlock } from '../../platform/types';
@@ -48,12 +58,15 @@ async function fetchFastClawWorkspaceFiles(params: {
   epoch: number;
   configId: number | null;
   agentConfigId: number | null;
+  /** 当前会话工作区（FastClaw 会话 key 一对话一 key，与服务端 /chat 同参） */
+  workspaceId: string | null;
 }): Promise<AgentFile[]> {
   const qs = new URLSearchParams({
     node_id: params.nodeId,
     epoch: String(params.epoch),
     config_id: params.configId != null ? String(params.configId) : '',
     agent_config_id: params.agentConfigId != null ? String(params.agentConfigId) : '',
+    workspace_id: params.workspaceId ?? '',
   });
   const resp = await fetch(`/api/modules/bookplate/chat/fastclaw-files?${qs.toString()}`, {
     headers: authHeaders(),
@@ -91,20 +104,52 @@ function ChatNodeHostInner({
   // 流结束后一次性并入最后一条 assistant 消息（metadata + store 镜像）
   const pendingFilesRef = useRef<Map<string, AgentFile>>(new Map());
 
-  // ---------- FastClaw（Agent 模式）工作区文件面板 ----------
-  // 数据源是 FastClaw 服务端当前会话目录（跨轮保留），与 Skill Agent 的本节点工作区面板对齐；
-  // 状态机复用 useWorkspaceFilesPanel（展开时加载 / 收尾自动刷新），loader 返回 null 表示跳过
+  // 当前会话工作区（首轮发送时生成并持久化；清空对话 / 载入历史会话时切换）
+  const wsId =
+    typeof node.data?.workspaceId === 'string' && node.data.workspaceId
+      ? node.data.workspaceId
+      : null;
+  const wsIdRef = useRef(wsId);
+  wsIdRef.current = wsId;
+  // 在途请求实际使用的工作区（首轮发送自生成 workspaceId 属 self-assigned，不得触发水合 / 中断）
+  const activeWsRef = useRef<string | null>(wsId);
+
+  // ---------- 侧边面板（工作区文件 + 对话历史合并为单一右侧抽屉，Tab 切换） ----------
+  // 单一展开态 sideOpen 统一驱动两个面板状态机（openOverride 受控模式，与 PiChatNodeHost 同构）：
+  // - 文件面板：FastClaw 走服务端会话文件 API；LLM 走工作区本地产物（transcript 已被服务端差分排除）；
+  // - 对话历史面板：该用户全部 LLM/FastClaw transcript 会话（与 pi 会话按存储族隔离），
+  //   点击载入 / 置顶 / 重命名 / 删除
+  const [sideOpen, setSideOpen] = useState(false);
   const panel = useWorkspaceFilesPanel(async () => {
     const cur = nodesRef.current.find((n) => n.id === nodeId) ?? null;
     if (!cur || cur.type !== 'chat') return null;
     const settings: ChatNodeSettings = cur.data?.settings ?? DEFAULT_CHAT_SETTINGS;
-    return fetchFastClawWorkspaceFiles({
-      nodeId,
-      epoch: cur.data?.epoch ?? 0,
-      configId: cur.configId ?? null,
-      agentConfigId: settings.agentOverride ?? null,
-    });
-  });
+    const cfg = h.configOf(cur);
+    const curWs =
+      typeof cur.data?.workspaceId === 'string' && cur.data.workspaceId
+        ? cur.data.workspaceId
+        : null;
+    if (cfg?.mode === 'agent') {
+      // FastClaw：数据源是 FastClaw 服务端当前会话目录（跨轮保留），与 Skill Agent 面板对齐；
+      // loader 返回 null 表示跳过本次刷新（工作区未就绪时不触碰已有列表）
+      return fetchFastClawWorkspaceFiles({
+        nodeId,
+        epoch: cur.data?.epoch ?? 0,
+        configId: cur.configId ?? null,
+        agentConfigId: settings.agentOverride ?? null,
+        workspaceId: curWs,
+      });
+    }
+    // LLM：工作区本地产物 / inputs（LLM 模式无产物桥接，通常为空列表）
+    if (!curWs) return null;
+    return fetchWorkspaceFiles(curWs);
+  }, sideOpen);
+  // LLM / FastClaw 共用 transcript 存储族：历史抽屉只显示该存储族的会话（不含 pi 会话）
+  // 历史抽屉按节点实际模式过滤：LLM 节点只看 LLM 会话，FastClaw 节点只看 Agent 会话（互不混显）
+  const convPanel = useConversationHistoryPanel(
+    sideOpen,
+    h.configOf(node)?.mode === 'agent' ? 'agent' : 'llm'
+  );
 
   const chat = useChat({
     id: nodeId,
@@ -171,7 +216,8 @@ function ChatNodeHostInner({
           MAX_CHAT_IMAGES
         );
 
-        // 节点工作区标识：首轮生成并持久化（Skill Agent 产物/文件跨轮保留）
+        // 节点工作区标识：首轮生成并持久化（Skill Agent 产物/文件跨轮保留；
+        // LLM/FastClaw 会话 transcript 与 FastClaw 会话 key 均以它为会话标识）
         const workspaceId =
           typeof cur?.data?.workspaceId === 'string' && cur.data.workspaceId
             ? cur.data.workspaceId
@@ -183,6 +229,8 @@ function ChatNodeHostInner({
             )
           );
         }
+        // 记录在途请求的工作区：首轮生成 workspaceId 属 self-assigned（水合 effect 据此跳过）
+        activeWsRef.current = workspaceId;
 
         return {
           body: {
@@ -231,6 +279,8 @@ function ChatNodeHostInner({
     onFinish: () => {
       idleRef.current?.idle.clear();
       idleRef.current = null;
+      // 本轮收尾：对话历史列表在展开状态下同步刷新（新会话 / 新轮次进入列表）
+      convPanel.bump();
     },
     onError: (err) => {
       const msg = err?.message ?? '';
@@ -511,6 +561,77 @@ function ChatNodeHostInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [node.data?.messages, node.data?.workspaceId, status, nodeId, setMessages, setNodes]);
 
+  // ---------- 会话水合：workspaceId 变化（载入历史 / 挂载恢复）→ 服务端真相源 ----------
+  // LLM/FastClaw 模式的会话历史由后端落盘（{ws}/conversation.jsonl，见 chat-conversations.ts）；
+  // 载入历史 = 切换 workspaceId（handleLoadChatSessionFor），此处拉取服务端 transcript 水合进 useChat。
+  // - 首轮发送自生成 workspaceId（self-assigned）不得当作「切换」触发水合/中断；
+  // - 服务端无该会话记录（改造前的存量对话无 transcript）：保留本地 store，不采纳空历史；
+  // - 水合消息首条 user 剥离注入上下文（与 PiChatNodeHost 同口径），避免与顶部折叠卡片重复、
+  //   也避免续聊时把旧上下文再次喂给模型（hasContextInStore 判定依赖 context 字段而非正文）。
+  const hydrateSeqRef = useRef(0);
+  useEffect(() => {
+    if (!wsId) {
+      activeWsRef.current = null;
+      panel.reset();
+      return;
+    }
+    const selfAssigned =
+      activeWsRef.current === wsId &&
+      (statusRef.current === 'submitted' || statusRef.current === 'streaming');
+    activeWsRef.current = wsId;
+    if (selfAssigned) return;
+    // 外部切换（载入历史 / 挂载）：文件面板同步重置并拉取**新工作区**的文件列表
+    // （与 PiChatNodeHost 同口径），否则「AI 产物」会停留在旧会话列表直到手动刷新。
+    // refreshIfOpen 读 openRef：面板展开才拉取（loader 内部读最新 workspaceId），关闭时跳过。
+    panel.reset();
+    panel.refreshIfOpen();
+    // 先中止在途流，避免水合结果与旧流写入竞态
+    if (statusRef.current === 'submitted' || statusRef.current === 'streaming') {
+      void chatStop();
+    }
+    idleRef.current?.idle.clear();
+    idleRef.current = null;
+    const seq = ++hydrateSeqRef.current;
+    void fetchPiSession(wsId)
+      .then(({ messages }) => {
+        if (seq !== hydrateSeqRef.current || wsIdRef.current !== wsId) return;
+        if (!messages.length) return; // 服务端无记录：保留本地 store（存量会话 / 空会话）
+        // 首条 user 消息剥离注入上下文（以当前画布上下文块为准，与发送侧 buildChatContext 同口径）
+        const cur = nodesRef.current.find((n) => n.id === nodeId);
+        const settings: ChatNodeSettings = cur?.data?.settings ?? DEFAULT_CHAT_SETTINGS;
+        const blocks = cur
+          ? buildContextBlocks(
+              cur,
+              settings,
+              nodesRef.current,
+              edgesRef.current,
+              portTypesRef.current
+            )
+          : [];
+        const sanitized = messages.map((m, idx) => {
+          if (m.role !== 'user' || idx !== 0 || !m.content) return m;
+          const stripped = stripInjectedContext(m.content, blocks);
+          return stripped ? { ...m, content: stripped } : m;
+        });
+        const ui = storeToUI(sanitized);
+        const storeForm = uiToStore(ui);
+        // 以服务端水合结果为新的镜像基线：先更新基线再写 store，避免被外部变更检测误判回灌
+        lastMirroredRef.current = JSON.stringify(storeForm);
+        lastFlushedCountRef.current = storeForm.length;
+        mirroredWsRef.current = wsId;
+        setMessages(ui);
+        setNodes((prev) =>
+          prev.map((n) =>
+            n.id === nodeId ? { ...n, data: { ...n.data, messages: storeForm } } : n
+          )
+        );
+      })
+      .catch(() => {
+        /* 水合失败：保留当前展示（下次挂载 / 切换再对齐服务端） */
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wsId, nodeId, setNodes, setMessages, chatStop, panel.reset, panel.refreshIfOpen]);
+
   // 卸载清理：空闲计时器与节流定时器（立即 flush 待提交数据）
   useEffect(
     () => () => {
@@ -574,8 +695,6 @@ function ChatNodeHostInner({
 
   // ---------- 渲染 ----------
   const config = h.configOf(node);
-  // FastClaw Agent 模式：接上与服务端会话目录同构的「工作区文件」面板
-  const isFastClawAgent = config?.mode === 'agent';
   const settings: ChatNodeSettings =
     node.data?.settings ?? DEFAULT_CHAT_SETTINGS;
   const isStreaming = status === 'submitted' || status === 'streaming';
@@ -633,19 +752,94 @@ function ChatNodeHostInner({
   const handleSend = useCallback((_id: string, text: string, images?: string[]) => send(text, images), [send]);
   const handleContextMenu = useCallback((e: React.MouseEvent<HTMLDivElement>) => h.handleNodeContextMenu(e, node.id), [h, node.id]);
 
-  // 侧边面板（FastClaw Agent 模式：仅文件区两个 Tab——AI 产物 / 我的上传；无对话历史）
+  // ---------- 对话历史操作（载入 / 置顶 / 重命名 / 删除，LLM + FastClaw 共用） ----------
+  /** 载入历史会话：切换 workspaceId（宿主水合 effect 自动从服务端拉取会话） */
+  const handleSelectConversation = useCallback(
+    (workspaceId: string) => h.handleLoadChatSessionFor(node.id, workspaceId),
+    [h, node.id]
+  );
+
+  /** 置顶 / 取消置顶：后端写 .pi-agent/meta.json，成功后刷新列表（展开状态下自动生效） */
+  const handleToggleConversationPin = useCallback(
+    async (workspaceId: string, pinned: boolean) => {
+      await setConversationPinned(workspaceId, pinned);
+      convPanel.bump();
+    },
+    [convPanel.bump]
+  );
+
+  /** 重命名会话：后端写 meta.json 的 title（空白 = 恢复自动标题），成功后刷新列表 */
+  const handleRenameConversation = useCallback(
+    async (workspaceId: string, title: string) => {
+      await renameConversation(workspaceId, title);
+      convPanel.bump();
+    },
+    [convPanel.bump]
+  );
+
+  /** 删除会话：后端整目录删除；若删的是当前会话，同步把节点重置为全新工作区 */
+  const handleDeleteConversation = useCallback(
+    async (workspaceId: string) => {
+      await deleteConversationSession(workspaceId);
+      evictSessionCache(workspaceId);
+      if (workspaceId === wsIdRef.current) {
+        h.handleResetChatWorkspaceFor(node.id);
+      }
+      convPanel.bump();
+    },
+    [h, node.id, convPanel.bump]
+  );
+
+  /**
+   * 来源节点解析（全局对话列表用）：workspaceId 遵循 `{nodeId}_{ts}` 命名约定，前缀即创建
+   * 节点 id；本节点自身的历史不标注（默认归属），节点已从画布删除时也返回 null 不标注。
+   */
+  const sourceNodeOf = useCallback(
+    (workspaceId: string) => {
+      const sep = workspaceId.lastIndexOf('_');
+      if (sep <= 0) return null;
+      const srcNodeId = workspaceId.slice(0, sep);
+      if (srcNodeId === node.id) return null;
+      const srcNode = h.nodes.find((n) => n.id === srcNodeId);
+      if (!srcNode) return null;
+      return { title: getNodeTitle(srcNode) };
+    },
+    [h.nodes, node.id]
+  );
+
+  // 侧边面板：文件区两个 Tab（AI 产物 / 我的上传）+ 对话历史 Tab（LLM + FastClaw 均提供）
   const sidePanelProp = useMemo<ChatSidePanel | undefined>(
-    () =>
-      isFastClawAgent
-        ? {
-            open: panel.open,
-            onToggle: () => panel.setOpen((v) => !v),
-            filesLoading: panel.loading,
-            files: panel.files,
-            onRefreshFiles: panel.refresh,
-          }
-        : undefined,
-    [isFastClawAgent, panel.open, panel.setOpen, panel.loading, panel.files, panel.refresh]
+    () => ({
+      open: sideOpen,
+      onToggle: () => setSideOpen((v) => !v),
+      filesLoading: panel.loading,
+      files: panel.files,
+      onRefreshFiles: panel.refresh,
+      sessions: convPanel.sessions,
+      sessionsLoading: convPanel.loading,
+      currentWorkspaceId: wsId,
+      onRefreshSessions: convPanel.refresh,
+      onSelectSession: handleSelectConversation,
+      onTogglePin: handleToggleConversationPin,
+      onRenameSession: handleRenameConversation,
+      onDeleteSession: handleDeleteConversation,
+      sourceNodeOf,
+    }),
+    [
+      sideOpen,
+      panel.loading,
+      panel.files,
+      panel.refresh,
+      convPanel.sessions,
+      convPanel.loading,
+      convPanel.refresh,
+      wsId,
+      handleSelectConversation,
+      handleToggleConversationPin,
+      handleRenameConversation,
+      handleDeleteConversation,
+      sourceNodeOf,
+    ]
   );
 
   return (

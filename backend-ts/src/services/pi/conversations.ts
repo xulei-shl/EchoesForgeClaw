@@ -108,7 +108,7 @@ export function setConversationTitle(ws: string, title: string): boolean {
 }
 
 /** 用户消息文本 → 列表标题：剥离注入上下文前缀（与前端 stripInjectedContext 通用口径一致），单行化 + 截断。 */
-function titleFromUserText(text: string): string {
+export function titleFromUserText(text: string): string {
   let title = text.trim();
   if (title.startsWith('【')) {
     const lastSep = title.lastIndexOf('\n\n');
@@ -123,7 +123,7 @@ function titleFromUserText(text: string): string {
 }
 
 /** 兜底标题时间格式：MM-DD HH:mm（跨年带年份）。 */
-function formatFallbackTime(ts: number): string {
+export function formatFallbackTime(ts: number): string {
   const d = new Date(ts);
   const pad = (n: number) => String(n).padStart(2, '0');
   const now = new Date();

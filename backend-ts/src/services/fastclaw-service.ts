@@ -43,6 +43,19 @@ export class FastClawAgentError extends Error {
 /** 连接阶段超时 15s（读阶段不设上限，由调用方按空闲超时中止）。 */
 const CONNECT_TIMEOUT_MS = 15_000;
 
+/** 会话文件列表短缓存：同一会话短时间内重复打开抽屉 / 刷新免重复打 FastClaw 网关（TTL 秒级，
+ * 会话文件仅在 agent 运行期间变化，运行结束由 /chat 分支 clearSessionFilesCache 即时失效）。 */
+const SESSION_FILES_TTL_MS = 5_000;
+const sessionFilesCache = new Map<
+  string,
+  { files: FastClawWorkspaceFile[]; ts: number }
+>();
+
+/** 使某会话的文件列表缓存失效（FastClaw 一轮运行结束后调用，保证新产物立即可见）。 */
+export function clearSessionFilesCache(sessionId: string): void {
+  sessionFilesCache.delete(sessionId);
+}
+
 /** agent 名字解析 TTL：成功 5 分钟 / 失败 30 秒（对应 Python _AGENT_NAME_CACHE_TTL / _AGENT_NAME_FAIL_TTL）。 */
 const AGENT_NAME_CACHE_TTL_MS = 5 * 60 * 1000;
 const AGENT_NAME_FAIL_TTL_MS = 30 * 1000;
@@ -254,6 +267,10 @@ export class FastClawAgentService {
     sessionId: string
   ): Promise<FastClawWorkspaceFile[]> {
     if (!config.base_url || !config.api_key || !config.agent_id || !sessionId) return [];
+    // 会话 id（bookplate-{uid}-{workspaceId}）全局唯一，直接作为缓存键
+    const cacheKey = sessionId;
+    const cached = sessionFilesCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < SESSION_FILES_TTL_MS) return cached.files;
     const base = config.base_url.replace(/\/+$/, '');
     const url = `${base}/api/agents/${encodeURIComponent(config.agent_id)}/files?sessionId=${encodeURIComponent(sessionId)}`;
     const headers: Record<string, string> = {
@@ -286,6 +303,14 @@ export class FastClawAgentService {
         mtimeMs: typeof f.modTime === 'number' && Number.isFinite(f.modTime) ? f.modTime * 1000 : undefined,
       });
     }
+    // 防缓存无限增长：写入时顺带清理过期项（正常规模下 Map 保持极小）
+    if (sessionFilesCache.size > 64) {
+      const now = Date.now();
+      for (const [k, v] of sessionFilesCache) {
+        if (now - v.ts >= SESSION_FILES_TTL_MS) sessionFilesCache.delete(k);
+      }
+    }
+    sessionFilesCache.set(cacheKey, { files: out, ts: Date.now() });
     return out;
   }
 

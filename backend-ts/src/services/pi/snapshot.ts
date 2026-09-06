@@ -26,9 +26,11 @@ export interface FileStamp {
   mtimeMs: number;
 }
 
-/** 差分排除前缀/文件：装配物与会话配置不算「agent 产物」。 */
+/** 差分排除前缀/文件：装配物与会话配置不算「agent 产物」。
+ *  conversation.jsonl：LLM / FastClaw 模式的会话 transcript（后端写入，见 chat-conversations.ts），
+ *  非 agent 产物，不得出现在「AI 产物」列表。 */
 const DIFF_EXCLUDED_PREFIXES = ['.agents/', '.pi/', '.pi-agent/', 'inputs/'];
-const DIFF_EXCLUDED_FILES = new Set(['AGENTS.md']);
+const DIFF_EXCLUDED_FILES = new Set(['AGENTS.md', 'conversation.jsonl']);
 
 export function isDiffExcluded(rel: string): boolean {
   if (DIFF_EXCLUDED_FILES.has(rel)) return true;

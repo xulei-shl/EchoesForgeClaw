@@ -179,8 +179,19 @@ export function decodeUploadedImage(dataUrl: string): Uint8Array | null {
   }
 }
 
-/** FastClaw 会话 key（同用户同节点重试共享上下文；epoch 清空对话后递增）。 */
-export function agentSessionKey(userId: number, nodeId?: string | null, epoch = 0): string {
+/**
+ * FastClaw 会话 key：
+ * - chat 节点传 workspaceId 时以一对话一 key（会话历史 / 记忆 / 用量分组按对话隔离，
+ *   与前端 workspaceId 切换载入历史对齐；旧 key 格式不再产生，无需向后兼容）；
+ * - 其余节点类型（analyze-image / generate-text / generate-image）沿用 nodeId + epoch。
+ */
+export function agentSessionKey(
+  userId: number,
+  nodeId?: string | null,
+  epoch = 0,
+  workspaceId?: string | null
+): string {
+  if (workspaceId) return `bookplate-${userId}-${workspaceId}`;
   return `bookplate-${userId}-${nodeId || 'anon'}-${epoch}`;
 }
 

@@ -195,11 +195,13 @@ async function postUiResponse(
 }
 
 /**
- * 对话历史列表（GET /chat/sessions）：返回该用户 runtime/{userId}/workspace/ 下**全部**
- * pi 会话（跨节点全局列表，不传 node_id 即不过滤；来源节点由前端按 workspaceId 前缀标注）。
+ * 对话历史列表（GET /chat/sessions）：按模式严格隔离——mode='pi' 仅 pi 会话，
+ * mode='llm' 仅 LLM API 会话，mode='agent' 仅 FastClaw Agent 会话，互不混显。
+ * 跨节点全局列表（不传 node_id 即不过滤；来源节点由前端按 workspaceId 前缀标注）。
  */
-async function fetchConversationSessions(): Promise<ConversationSessionSummary[]> {
-  const resp = await fetch('/api/modules/bookplate/chat/sessions', {
+async function fetchConversationSessions(mode?: 'pi' | 'llm' | 'agent'): Promise<ConversationSessionSummary[]> {
+  const qs = mode ? `?mode=${mode}` : '';
+  const resp = await fetch(`/api/modules/bookplate/chat/sessions${qs}`, {
     headers: authHeaders(),
   });
   if (resp.status === 401) {
