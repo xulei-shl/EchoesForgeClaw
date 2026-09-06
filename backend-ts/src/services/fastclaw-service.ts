@@ -80,7 +80,8 @@ export class FastClawAgentService {
     sessionKey: string,
     images?: string[],
     params?: Record<string, unknown>,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    attachments?: Array<{ url: string; name?: string }>
   ): AsyncGenerator<FastClawEvent, void, unknown> {
     if (!config.base_url || !config.api_key || !config.agent_id) {
       throw new FastClawAgentError('FastClaw Agent 配置不完整（base_url / api_key / agent_id）');
@@ -93,6 +94,7 @@ export class FastClawAgentService {
       message,
     };
     if (images?.length) body.imageUrls = images;
+    if (attachments?.length) body.attachments = attachments;
     if (params) body.params = params;
 
     const headers: Record<string, string> = {

@@ -298,7 +298,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
           onClick={toggleSettings}
           disabled={isGenerating}
           active={messages.length > 0}
-          tooltip={messages.length > 0 ? "运行设置 (已锁定)" : "运行设置"}
+          tooltip={messages.length > 0 ? "运行设置 (模型可切换；上下文与 Agent 已锁定)" : "运行设置"}
         />
         {messages.length > 0 && (
           <NodeActionBar.Eraser

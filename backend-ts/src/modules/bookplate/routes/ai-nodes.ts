@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import path from 'node:path';
 import { Readable } from 'node:stream';
-import { readFileSync, statSync } from 'node:fs';
+import { createReadStream, readFileSync, statSync } from 'node:fs';
 import { getDb } from '../../../config/database.js';
 import { getAppSettingsMap } from '../../../repositories/index.js';
 import { llmService } from '../../../services/llm-service.js';
@@ -42,8 +42,10 @@ import {
   setConversationTitle,
 } from '../../../services/pi-agent-service.js';
 import {
+  buildTranscriptFoldText,
   deleteChatConversation,
   hydrateChatTranscript,
+  lastTranscriptAgentKey,
   listChatConversations,
   persistTranscriptAssistant,
   persistTranscriptUser,
@@ -67,7 +69,13 @@ import {
   sanitizeWorkspaceId,
   workspacePath,
 } from '../../../services/skill-agent-service.js';
-import { fastclawDataRoot, harvestFastclawArtifacts } from '../../../services/fastclaw-artifacts.js';
+import {
+  buildInheritAttachments,
+  fastclawDataRoot,
+  harvestFastclawArtifacts,
+  inheritFilePath,
+  verifyInheritFileRequest,
+} from '../../../services/fastclaw-artifacts.js';
 import { chatStreamToResponse, chatStreamToSseResponse, type ChatStreamEvent } from '../stream.js';
 import { NODE_TYPES } from '../node-types.js';
 import { ImageGenerationError } from '../../../infrastructure/ai/errors.js';
@@ -297,6 +305,10 @@ export async function register(app: FastifyInstance): Promise<void> {
         );
         // 节点工作区（FastClaw 产物桥接的落盘目标 + transcript；workspace_id 由前端首轮生成并持久化）
         const ws = nodeWorkspace(request.authUser!.id, payload.workspace_id ?? `${payload.node_id ?? 'node'}_${Date.now()}`);
+        // FastClaw Agent 运行时身份（transcript 每行标注；跨 Agent 折叠判定用）。
+        // 会话 key 本身不区分 Agent（FastClaw 服务端按 (agent, sessionKey) 隔离会话），
+        // 因此同 workspaceId 换 Agent = FastClaw 新会话 → 需把旧 transcript 文本折叠进首条消息。
+        const agentKey = cfg.base_url && cfg.agent_id ? `${cfg.agent_id}@${cfg.base_url}` : '';
         // 收集本轮 tool_result 与最终正文，供流结束后做产物路径收割
         const turnTexts: string[] = [];
         const signal = requestAbortSignal(request);
@@ -304,22 +316,43 @@ export async function register(app: FastifyInstance): Promise<void> {
           let finalText = '';
           const steps: HydratedStep[] = [];
           const files: HydratedFile[] = [];
+          // 跨 Agent 文本折中：transcript 末行由不同 Agent 写入（旧会话载入 + 换 Agent 续聊）
+          // → FastClaw 侧是新会话，把旧 transcript 折叠进本轮 message 保证文本层连续。
+          // 折叠发生在落盘前（读取的是本轮之前的 transcript），且只在「上个 Agent ≠ 当前
+          // Agent」这一轮生效——本轮落盘后末行 agentKey 即当前 Agent，后续轮次不再折叠。
+          const prevAgentKey = lastTranscriptAgentKey(ws);
+          const isCrossAgent = Boolean(prevAgentKey && agentKey && prevAgentKey !== agentKey);
+          const foldText = isCrossAgent ? buildTranscriptFoldText(ws) : '';
+          // 跨 Agent 首轮：历史产物（outputs/ 清单）以签名 URL 附件传给 FastClaw，由其物化进
+          // 新会话 /workspace（B 工具可读 + 面板可见 + 一行 breadcrumb，不占上下文窗口）；
+          // 超限 / 已删文件不进附件，降级为文件名清单拼进消息（至少告知 B 存在）。
+          const inherited = isCrossAgent
+            ? buildInheritAttachments(ws, path.basename(ws), request.authUser!.id)
+            : { attachments: [], skipped: [] as string[] };
+          const skippedNote = inherited.skipped.length
+            ? `\n\n【历史产物文件（超出附带限制，仅列出文件名供参考）】\n- ${inherited.skipped.join('\n- ')}`
+            : '';
+          const outboundMessage = foldText
+            ? `${foldText}${skippedNote}\n\n${payload.message ?? ''}`
+            : payload.message ?? '';
           persistTranscriptUser(
             ws,
             {
               content: payload.message ?? '',
               images: payload.images?.length ? payload.images : undefined,
             },
-            'agent'
+            'agent',
+            agentKey || undefined
           );
           try {
             for await (const evt of fastclawAgentService.runAgent(
               cfg,
-              payload.message ?? '',
+              outboundMessage,
               sessionKey,
               payload.images?.length ? payload.images : undefined,
               { module: 'bookplate', node_type: NODE_TYPES.CHAT },
-              signal
+              signal,
+              inherited.attachments.length ? inherited.attachments : undefined
             )) {
               if (evt.type === 'tool_result') {
                 turnTexts.push(evt.data.result);
@@ -352,7 +385,8 @@ export async function register(app: FastifyInstance): Promise<void> {
                 agentSteps: steps,
                 interrupted: signal.aborted,
               },
-              'agent'
+              'agent',
+              agentKey || undefined
             );
             clearSessionFilesCache(sessionKey);
             yield { type: 'error', message: err instanceof FastClawAgentError ? err.message : String(err) };
@@ -402,7 +436,8 @@ export async function register(app: FastifyInstance): Promise<void> {
               files,
               interrupted: signal.aborted,
             },
-            'agent'
+            'agent',
+            agentKey || undefined
           );
           // 本轮运行结束：会话文件列表缓存失效，下次列表立即反映新产物
           clearSessionFilesCache(sessionKey);
@@ -872,6 +907,34 @@ export async function register(app: FastifyInstance): Promise<void> {
       if (!upstream.body) return reply.code(502).send({ detail: 'FastClaw 未返回文件内容' });
       // 流式转发上游字节，避免大文件整读进内存
       return reply.send(Readable.fromWeb(upstream.body as import('node:stream/web').ReadableStream));
+    }
+  );
+
+  // ---- 跨 Agent 产物继承：签名 URL 下载端点（无鉴权；HMAC + 短 TTL 即鉴权）----
+  // FastClaw 端 fetch 不带调用方凭据，故不能走 authenticate；签名 URL 由 buildInheritAttachments
+  // 生成（继承附件专用），端点仅放行该用户工作区 outputs/ 下的普通文件，防止任意文件读取。
+  app.get(
+    '/api/modules/bookplate/chat/inherit-file',
+    async (request, reply) => {
+      const q = (request.query ?? {}) as { uid?: string; ws?: string; rel?: string; exp?: string; sig?: string };
+      const verified = verifyInheritFileRequest(q);
+      if (!verified) return reply.code(403).send({ detail: '继承文件链接无效或已过期' });
+      // 继承请求来自 FastClaw 进程（无登录态）：uid / workspaceId 已由 HMAC 签名绑定，签名即授权
+      const { uid, workspaceId, rel } = verified;
+      // 只读下载：workspacePath 不建目录（避免引用不存在的工作区 id 留下空目录）
+      const ws = workspacePath(uid, workspaceId);
+      const full = inheritFilePath(ws, rel);
+      let st;
+      try {
+        st = statSync(full);
+      } catch {
+        return reply.code(404).send({ detail: '文件不存在' });
+      }
+      if (!st.isFile()) return reply.code(404).send({ detail: '文件不存在' });
+      reply.type(mimeOf(rel));
+      reply.header('Content-Length', st.size);
+      reply.header('Cache-Control', 'private, max-age=0, must-revalidate');
+      return reply.send(createReadStream(full));
     }
   );
 

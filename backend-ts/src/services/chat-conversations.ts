@@ -48,6 +48,8 @@ const MAX_SCAN_BYTES = 256 * 1024;
 const MAX_FIELD_CHARS = 20_000;
 /** 水合全部消息正文字符总量软上限（超出即停止并标记 truncated）。 */
 const MAX_TOTAL_CHARS = 600_000;
+/** 跨 Agent 文本折中：折叠进 message 的旧 transcript 文本上限（超出保留最近轮次并标注省略）。 */
+const FOLD_MAX_CHARS = 200_000;
 
 /** transcript 行条目（append-only；id 仅作行标识，水合前端自行重建展示 id）。 */
 export interface TranscriptMessage {
@@ -57,6 +59,13 @@ export interface TranscriptMessage {
   content: string;
   /** 写入时来源模式：'llm'（LLM API）或 'agent'（FastClaw Agent），列表按此隔离 */
   mode?: 'llm' | 'agent';
+  /**
+   * 写入该行的 FastClaw Agent 运行时身份（`{agent_id}@{base_url}`；仅 mode='agent'）。
+   * 跨 Agent 文本折中的判定依据：FastClaw 会话按 (agent, sessionKey) 隔离，
+   * 同 workspaceId 换 Agent = FastClaw 新会话，靠此字段识别「上个 Agent 是谁」
+   * 来决定首条消息是否需要把旧 transcript 折叠进 message。
+   */
+  agentKey?: string;
   /** LLM 模式的图片（base64 / 静态 URL，随历史重发） */
   images?: string[];
   reasoning?: string;
@@ -113,6 +122,63 @@ function lastTranscriptMessage(ws: string, role?: 'user' | 'assistant'): Transcr
 }
 
 /**
+ * 读取 transcript 末尾最后一条消息行写入的 agentKey（FastClaw Agent 运行时身份）。
+ * 用于跨 Agent 续聊判定：同 workspaceId 下当前请求的 Agent 与历史 transcript 末行的
+ * Agent 不同 → 前者是 FastClaw 新会话（会话按 (agent, sessionKey) 隔离），首条消息需折叠旧 transcript。
+ * 文件缺失 / 无消息 / 旧行未写 agentKey（无该字段）均返回 null（无法判定 = 不折中）。
+ */
+export function lastTranscriptAgentKey(ws: string): string | null {
+  const last = lastTranscriptMessage(ws);
+  return last && typeof last.agentKey === 'string' && last.agentKey ? last.agentKey : null;
+}
+
+/**
+ * 把 transcript 前序轮次折叠为一段纯文本（跨 Agent 文本层折中：FastClaw 新会话不带旧
+ * transcript，首条消息需把旧历史作为背景上下文喂进去）。user / assistant 正文按轮次拼接；
+ * 工具步骤 / 产物不做结构化还原（文本层折中，内部状态不重建）。超出 FOLD_MAX_CHARS 时
+ * 保留最近轮次（更贴近续聊上下文）并在头部标注省略。文件缺失 / 无消息返回 ''。
+ */
+export function buildTranscriptFoldText(ws: string, maxChars = FOLD_MAX_CHARS): string {
+  const file = path.join(ws, CONVERSATION_REL);
+  let raw: string;
+  try {
+    raw = readFileSync(file, 'utf-8');
+  } catch {
+    return '';
+  }
+  const lines: string[] = [];
+  let total = 0;
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('{')) continue;
+    let entry: TranscriptMessage;
+    try {
+      entry = JSON.parse(trimmed) as TranscriptMessage;
+    } catch {
+      continue;
+    }
+    if (entry.type !== 'message' || (entry.role !== 'user' && entry.role !== 'assistant')) continue;
+    const content = clip(String(entry.content ?? ''), MAX_FIELD_CHARS).trim();
+    if (!content) continue;
+    const roleLabel = entry.role === 'user' ? '用户' : '助手';
+    const piece = `${roleLabel}：${content}`;
+    lines.push(piece);
+    total += piece.length + 1;
+  }
+  if (!lines.length) return '';
+  let out = lines.join('\n');
+  if (out.length <= maxChars) return out;
+  // 超限：从头部丢弃早期轮次，保留最近内容（续聊上下文优先），标注省略
+  let kept = '';
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const next = lines[i]!;
+    if (kept.length + next.length + 1 > maxChars) break;
+    kept = kept ? `${next}\n${kept}` : next;
+  }
+  return kept ? `（对话历史过长，已省略早期部分，仅保留最近内容）\n${kept}` : out.slice(0, maxChars);
+}
+
+/**
  * 追加一条 user 消息。去重守卫：末行已是同内容同图片的 user 消息则跳过
  * （重试 / regenerate 不新增 user 消息，避免 transcript 重复）。mode 标注写入来源
  * （'llm' / 'agent'），供对话历史列表按模式隔离。
@@ -120,7 +186,8 @@ function lastTranscriptMessage(ws: string, role?: 'user' | 'assistant'): Transcr
 export function persistTranscriptUser(
   ws: string,
   msg: { content: string; images?: string[] },
-  mode: 'llm' | 'agent'
+  mode: 'llm' | 'agent',
+  agentKey?: string
 ): void {
   const content = String(msg.content ?? '');
   const images = msg.images?.length ? msg.images : undefined;
@@ -143,6 +210,7 @@ export function persistTranscriptUser(
       role: 'user',
       content,
       mode,
+      ...(agentKey ? { agentKey } : {}),
       ...(images?.length ? { images } : {}),
       ts: Date.now(),
     });
@@ -164,7 +232,8 @@ export function persistTranscriptAssistant(
     files?: HydratedFile[];
     interrupted?: boolean;
   },
-  mode: 'llm' | 'agent'
+  mode: 'llm' | 'agent',
+  agentKey?: string
 ): void {
   const content = String(msg.content ?? '');
   const reasoning = msg.reasoning ? String(msg.reasoning) : undefined;
@@ -183,6 +252,7 @@ export function persistTranscriptAssistant(
       role: 'assistant',
       content,
       mode,
+      ...(agentKey ? { agentKey } : {}),
       ...(reasoning ? { reasoning } : {}),
       ...(msg.agentSteps?.length ? { agentSteps: msg.agentSteps } : {}),
       ...(msg.files?.length ? { files: msg.files } : {}),

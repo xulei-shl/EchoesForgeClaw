@@ -102,12 +102,14 @@ export const ChatNodeSettingsPopover: React.FC<ChatNodeSettingsPopoverProps> = (
                     onUpdateSettings({ ...settings, modelOverride: v })
                   }
                   configId={configId}
-                  disabled={hasMessages}
+                  // 允许对话中切换模型：每轮全量重发 payload.messages（含注入上下文），
+                  // 新模型天然接续完整历史，无需先清空对话（区别于 Agent/上下文，见下方说明）
                 />
               </div>
             )}
             {/* Agent 选择：仅 Agent 模式（全部启用 FastClaw Agent，留空 = 节点绑定 Agent；
-                对话开始后锁定，需先清空对话才能切换，避免 FastClaw 服务端会话串台） */}
+                对话开始后锁定，需先清空对话才能切换：换 Agent = FastClaw 新会话，
+                历史将按文本层折中续聊，详见路由层跨 Agent 折叠逻辑） */}
             {mode === 'agent' && configId != null && (
               <div className="space-y-1.5">
                 <div>
@@ -155,7 +157,7 @@ export const ChatNodeSettingsPopover: React.FC<ChatNodeSettingsPopoverProps> = (
               <div className="flex items-start gap-1.5 p-2 rounded-md bg-paper-grid/40 border border-paper-grid text-ink-light">
                 <Lock size={12} strokeWidth={1.5} className="shrink-0 mt-0.5" />
                 <p className="text-[10px] font-sans leading-snug flex-1">
-                  对话已开始，上下文配置已锁定。
+                  对话已开始：模型可在下方随时切换（历史自动续传）；上下文 / Agent 配置已锁定，切换需先清空对话。
                 </p>
               </div>
             ) : (

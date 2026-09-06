@@ -427,4 +427,159 @@ describe('FastClaw 模式 transcript', () => {
     const piList = (listPi.json() as { sessions: Array<{ workspaceId: string }> }).sessions;
     expect(piList.some((x) => x.workspaceId === wsId)).toBe(false);
   });
+
+  it('跨 Agent 续聊（同 workspaceId 换 Agent）：首条消息折叠旧 transcript，并以签名 URL 附件继承历史产物', async () => {
+    const srv = await startMockOpenAIServer((_req, send) => {
+      const base = { id: 'evt', type: 'x' };
+      send(sseChunk({ ...base, type: 'content_delta', data: { delta: 'Agent 答复' } }));
+      send(sseChunk({ ...base, type: 'done', data: {} }));
+    });
+    openServers.push(srv);
+    const streamBodies = () =>
+      srv.requests
+        .filter((r) => r.path.endsWith('/api/chat/stream'))
+        .map((r) => r.body as { message?: string; attachments?: Array<{ url: string; name: string }> });
+
+    // 同一节点同一工作区：先 Agent A（agt_foldA@同 rootURL），再切 Agent B
+    const cfgA = await seedChat({ agentConfig: { baseUrl: srv.rootURL, agentId: 'agt_foldA' } });
+    const cfgB = await seedChat({ agentConfig: { baseUrl: srv.rootURL, agentId: 'agt_foldB' } });
+    const wsId = `${NODE_ID}_fc-fold`;
+
+    const turn1 = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/chat',
+      headers: auth(),
+      payload: { message: '旧问题（Agent A）', config_id: cfgA, node_id: NODE_ID, workspace_id: wsId },
+    });
+    expect(turn1.statusCode).toBe(200);
+
+    // 造历史产物：正常文件（进附件）+ 已删文件（进降级清单）+ 超限大文件（进降级清单）
+    const wsDir = path.join(RUNTIME_ROOT, String(uid), 'workspace', wsId);
+    const outputsDir = path.join(wsDir, 'outputs');
+    mkdirSync(outputsDir, { recursive: true });
+    const pdfBytes = Buffer.from('%PDF-1.4 mock report bytes', 'utf-8');
+    writeFileSync(path.join(outputsDir, 'report.pdf'), pdfBytes);
+    writeFileSync(path.join(outputsDir, 'huge.bin'), Buffer.alloc(8 * 1024 * 1024 + 1, 7)); // 超 INHERIT_MAX_BYTES_PER_FILE
+    const artifactsDir = path.join(wsDir, '.pi-agent');
+    mkdirSync(artifactsDir, { recursive: true });
+    const ts = Date.now();
+    writeFileSync(
+      path.join(artifactsDir, 'artifacts.jsonl'),
+      [
+        { rel: 'outputs/report.pdf', mime: 'application/pdf', size: pdfBytes.length, mtimeMs: ts, ts },
+        { rel: 'outputs/gone.png', mime: 'image/png', size: 100, mtimeMs: ts, ts }, // 磁盘不存在
+        { rel: 'outputs/huge.bin', mime: 'application/octet-stream', size: 8 * 1024 * 1024 + 1, mtimeMs: ts, ts },
+      ]
+        .map((r) => JSON.stringify(r))
+        .join('\n') + '\n',
+      'utf-8'
+    );
+
+    const turn2 = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/chat',
+      headers: auth(),
+      payload: {
+        message: '换 Agent B 续聊：按历史继续',
+        config_id: cfgB,
+        node_id: NODE_ID,
+        workspace_id: wsId,
+      },
+    });
+    expect(turn2.statusCode).toBe(200);
+
+    const bodies = streamBodies();
+    expect(bodies).toHaveLength(2);
+    // 首条 = 折叠历史 + 降级清单 + 新消息；原文照常落盘
+    expect(bodies[0]!.message).toBe('旧问题（Agent A）');
+    expect(bodies[1]!.message).toContain('用户：旧问题（Agent A）');
+    expect(bodies[1]!.message).toContain('助手：Agent 答复');
+    expect(bodies[1]!.message).toContain('【历史产物文件（超出附带限制，仅列出文件名供参考）】');
+    expect(bodies[1]!.message).toContain('gone.png');
+    expect(bodies[1]!.message).toContain('huge.bin');
+    expect(bodies[1]!.message!.endsWith('换 Agent B 续聊：按历史继续')).toBe(true);
+    // 历史产物以签名 URL 附件传给 FastClaw（仅限内的真实文件）
+    const atts = bodies[1]!.attachments ?? [];
+    expect(atts).toHaveLength(1);
+    expect(atts[0]!.name).toBe('report.pdf');
+    const u = new URL(atts[0]!.url);
+    expect(u.pathname).toBe('/api/modules/bookplate/chat/inherit-file');
+    // 签名 URL 可实际取回文件字节（无鉴权端点，签名即鉴权）
+    const dl = await app.inject({ method: 'GET', url: u.pathname + u.search });
+    expect(dl.statusCode).toBe(200);
+    expect(dl.rawPayload.equals(pdfBytes)).toBe(true);
+    // 篡改签名 / 越权 rel 均被拒
+    const tampered = new URL(atts[0]!.url);
+    tampered.searchParams.set('sig', 'deadbeef');
+    const bad = await app.inject({ method: 'GET', url: tampered.pathname + tampered.search });
+    expect(bad.statusCode).toBe(403);
+    const escape = new URL(atts[0]!.url);
+    escape.searchParams.set('rel', '../conversation.jsonl');
+    const esc = await app.inject({ method: 'GET', url: escape.pathname + escape.search });
+    expect(esc.statusCode).toBe(403);
+
+    // transcript 逐行标注该轮实际 Agent（agentKey = agent_id@base_url）；原文未被折叠/清单污染
+    const lines = readTranscript(wsId);
+    expect(lines.map((l) => l.content)).toEqual([
+      '旧问题（Agent A）',
+      'Agent 答复',
+      '换 Agent B 续聊：按历史继续',
+      'Agent 答复',
+    ]);
+    expect(lines.map((l) => l.agentKey)).toEqual([`agt_foldA@${srv.rootURL}`, `agt_foldA@${srv.rootURL}`, `agt_foldB@${srv.rootURL}`, `agt_foldB@${srv.rootURL}`]);
+    // 折叠 + 附件继承仅首轮生效：第三轮仍用 Agent B（同 workspaceId）不再折叠、不再带附件
+    const turn3 = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/chat',
+      headers: auth(),
+      payload: { message: '继续（仍是 Agent B）', config_id: cfgB, node_id: NODE_ID, workspace_id: wsId },
+    });
+    expect(turn3.statusCode).toBe(200);
+    const b3 = streamBodies()[2]!;
+    expect(b3.message).toBe('继续（仍是 Agent B）');
+    expect(b3.attachments ?? []).toHaveLength(0);
+  });
+
+  it('同 Agent 同 workspaceId 续聊：不回折叠历史，只发最新消息', async () => {
+    const srv = await startMockOpenAIServer((_req, send) => {
+      const base = { id: 'evt', type: 'x' };
+      send(sseChunk({ ...base, type: 'content_delta', data: { delta: '同 Agent 答复' } }));
+      send(sseChunk({ ...base, type: 'done', data: {} }));
+    });
+    openServers.push(srv);
+    const streamMsgs = () =>
+      srv.requests
+        .filter((r) => r.path.endsWith('/api/chat/stream'))
+        .map((r) => (r.body as { message?: string }).message ?? '');
+    const streamBodies = () =>
+      srv.requests
+        .filter((r) => r.path.endsWith('/api/chat/stream'))
+        .map((r) => r.body as { message?: string; attachments?: Array<{ url: string; name: string }> });
+    const cfg = await seedChat({ agentConfig: { baseUrl: srv.rootURL, agentId: 'agt_same' } });
+    const wsId = `${NODE_ID}_fc-same`;
+
+    const turn1 = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/chat',
+      headers: auth(),
+      payload: { message: '问题一', config_id: cfg, node_id: NODE_ID, workspace_id: wsId },
+    });
+    expect(turn1.statusCode).toBe(200);
+    const turn2 = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/chat',
+      headers: auth(),
+      payload: { message: '问题二', config_id: cfg, node_id: NODE_ID, workspace_id: wsId },
+    });
+    expect(turn2.statusCode).toBe(200);
+
+    // 同 Agent：sessionKey 相同 = FastClaw 服务端会话自动连续，只发最新消息
+    const msgs = streamMsgs();
+    expect(msgs).toHaveLength(2);
+    expect(msgs[0]).toBe('问题一');
+    expect(msgs[1]).toBe('问题二');
+    // 同 Agent 续聊不触发跨 Agent 折中：不折叠、不带继承附件
+    const atts = streamBodies().map((b) => b.attachments ?? []);
+    expect(atts).toEqual([[], []]);
+  });
 });

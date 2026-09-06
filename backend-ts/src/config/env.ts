@@ -25,6 +25,12 @@ export interface EnvConfig {
   zhihuAccessSecret: string;
   /** 前端 CORS 来源（逗号分隔，默认本地开发端口 5173/5180） */
   corsOrigins: string[];
+  /**
+   * FastClaw 同机可达的本端服务地址（跨 Agent 产物继承：签名 URL 附件由
+   * FastClaw 服务端主动 fetch；留空默认 http://127.0.0.1:{PORT}，容器部署需
+   * 指向宿主可达地址）。
+   */
+  inheritAttachBaseUrl: string;
 }
 
 export const env: EnvConfig = {
@@ -47,4 +53,7 @@ export const env: EnvConfig = {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean),
+  inheritAttachBaseUrl:
+    process.env.INHERIT_ATTACH_BASE_URL ??
+    `http://127.0.0.1:${process.env.PORT ?? 8000}`,
 };

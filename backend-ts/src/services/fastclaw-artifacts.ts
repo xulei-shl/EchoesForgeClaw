@@ -12,8 +12,11 @@
  */
 
 import { copyFileSync, mkdirSync, realpathSync, statSync } from 'node:fs';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import path from 'node:path';
+import { env } from '../config/env.js';
 import { mimeOf } from './file-utils.js';
+import { readArtifactManifest } from './pi/snapshot.js';
 
 /** FastClaw 数据根目录：env 可覆盖，默认官方安装布局（gateway cwd）。 */
 const FASTCLAW_DATA_ROOT_ENV = 'FASTCLAW_DATA_ROOT';
@@ -121,4 +124,131 @@ export function harvestFastclawArtifacts(opts: {
     }
   }
   return harvested;
+}
+
+// ---------------------------------------------------------------------------
+// 跨 Agent 产物继承（签名 URL 附件）
+// ---------------------------------------------------------------------------
+//
+// FastClaw 会话按 (agent, sessionKey) 隔离：同 workspaceId 换 Agent = FastClaw 新会话，
+// 新 Agent 的工具只能读自己会话 /workspace，读不到历史产物（本端 outputs/ 或旧 Agent
+// 的会话目录都超出其 sandbox 边界）。跨 Agent 首轮把历史产物作为 chat attachments
+// （http(s) URL）传给 FastClaw，由其官方物化逻辑写入新会话 /workspace（宿主 + Store +
+// 沙箱三写一致）——B 工具用相对路径即可读取、文件面板自动列出、LLM 只见一行
+// [Attached: /workspace/<name>] breadcrumb（不占上下文窗口）。
+//
+// URL 用 HMAC 签名 + 短 TTL（无鉴权端点，FastClaw fetch 不带调用方凭据；签名即鉴权），
+// 仅放行本工作区 outputs/ 下的普通文件。
+
+/** 跨 Agent 继承附件：单文件上限（远低于 FastClaw 端 25MB 硬上限，防大文件拖垮请求/下载）。 */
+const INHERIT_MAX_BYTES_PER_FILE = 8 * 1024 * 1024;
+/** 跨 Agent 继承附件：单轮数量上限（对齐收割上限，防一次折叠塞入大量文件）。 */
+const INHERIT_MAX_FILES = 12;
+/** 签名 URL 有效期（秒）：FastClaw 下载超时 30s，留足余量。 */
+const INHERIT_URL_TTL_SECONDS = 90;
+
+/** 生成继承文件下载 URL（HMAC 签名，无鉴权端点的鉴权凭证；uid 绑定防跨用户）。 */
+export function inheritFileUrl(
+  rel: string,
+  workspaceId: string,
+  uid: number,
+  now = Date.now()
+): string {
+  const exp = Math.floor(now / 1000) + INHERIT_URL_TTL_SECONDS;
+  const sig = createHmac('sha256', env.secretKey)
+    .update(`${uid}|${workspaceId}|${rel}|${exp}`)
+    .digest('hex');
+  const qs = new URLSearchParams({
+    uid: String(uid),
+    ws: workspaceId,
+    rel,
+    exp: String(exp),
+    sig,
+  });
+  return `${env.inheritAttachBaseUrl.replace(/\/+$/, '')}/api/modules/bookplate/chat/inherit-file?${qs.toString()}`;
+}
+
+/** 校验继承文件下载 URL（HMAC + 过期 + outputs/ 前缀与词法越界）。 */
+export function verifyInheritFileRequest(params: {
+  uid?: string;
+  ws?: string;
+  rel?: string;
+  exp?: string;
+  sig?: string;
+}): { uid: number; workspaceId: string; rel: string } | null {
+  const uid = Number(params.uid);
+  const ws = String(params.ws ?? '');
+  const rel = String(params.rel ?? '');
+  const exp = Number(params.exp);
+  const sig = String(params.sig ?? '');
+  if (!Number.isInteger(uid) || uid <= 0 || !ws || !rel || !Number.isFinite(exp) || !sig) return null;
+  if (exp <= Math.floor(Date.now() / 1000)) return null; // 过期
+  const expect = createHmac('sha256', env.secretKey)
+    .update(`${uid}|${ws}|${rel}|${exp}`)
+    .digest('hex');
+  if (!/^[0-9a-f]+$/.test(sig) || sig.length !== expect.length) return null;
+  // 常量时间比较，防时序侧信道
+  const a = Buffer.from(sig, 'hex');
+  const b = Buffer.from(expect, 'hex');
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  // 仅放行本工作区 outputs/ 下的普通文件（词法越界拒绝）
+  const clean = path.normalize(rel).replace(/\\/g, '/');
+  if (!clean.startsWith('outputs/')) return null;
+  return { uid, workspaceId: ws, rel: clean };
+}
+
+/**
+ * 跨 Agent 产物继承：读产物清单 → 过滤仍存在、尺寸/数量在限内的 outputs/ 文件 →
+ * 生成签名 URL 附件列表（供 runAgent 的 attachments 字段）。超限 / 已删文件不进附件，
+ * 返回文件名清单（调用方拼进折叠文本，至少告知新 Agent 存在哪些历史产物）。
+ */
+export function buildInheritAttachments(
+  ws: string,
+  workspaceId: string,
+  uid: number
+): { attachments: Array<{ url: string; name: string }>; skipped: string[] } {
+  const attachments: Array<{ url: string; name: string }> = [];
+  const skipped: string[] = [];
+  const seen = new Set<string>();
+  // manifest append-only 且同名按覆盖语义多次记录：按 rel 取最新（列表按写入序，尾部即最新）
+  const byRel = new Map<string, { rel: string; size: number }>();
+  for (const rec of readArtifactManifest(ws)) {
+    if (!rec.rel || !rec.rel.startsWith('outputs/')) continue;
+    byRel.set(rec.rel, { rel: rec.rel, size: rec.size });
+  }
+  for (const { rel, size } of byRel.values()) {
+    if (attachments.length >= INHERIT_MAX_FILES) {
+      if (!seen.has(rel)) {
+        seen.add(rel);
+        skipped.push(path.basename(rel));
+      }
+      continue;
+    }
+    const full = path.join(ws, rel);
+    let st;
+    try {
+      st = statSync(full);
+    } catch {
+      if (!seen.has(rel)) {
+        seen.add(rel);
+        skipped.push(path.basename(rel)); // 已删除/不存在：仅留文件名
+      }
+      continue;
+    }
+    if (!st.isFile()) continue;
+    if (st.size > INHERIT_MAX_BYTES_PER_FILE) {
+      if (!seen.has(rel)) {
+        seen.add(rel);
+        skipped.push(path.basename(rel));
+      }
+      continue;
+    }
+    attachments.push({ url: inheritFileUrl(rel, workspaceId, uid), name: path.basename(rel) });
+  }
+  return { attachments, skipped };
+}
+
+/** 继承文件在磁盘上的绝对路径（调用方已过签名校验；越界由 verifyInheritFileRequest 拦截）。 */
+export function inheritFilePath(ws: string, rel: string): string {
+  return path.join(ws, rel);
 }
