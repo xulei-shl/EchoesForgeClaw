@@ -15,6 +15,8 @@ interface HydratedMessageDto {
   reasoning?: string;
   agentSteps?: AgentStep[];
   files?: AgentFile[];
+  /** 用户消息携带的图片（data URL；LLM / FastClaw transcript 会话由后端水合回填，pi 会话无此字段） */
+  images?: string[];
   interrupted?: boolean;
 }
 
@@ -76,6 +78,9 @@ function dtoToChatMessage(m: HydratedMessageDto): ChatMessage {
     ...(m.reasoning ? { reasoning: m.reasoning } : {}),
     ...(m.agentSteps?.length ? { agentSteps: m.agentSteps } : {}),
     ...(m.files?.length ? { files: m.files } : {}),
+    ...(m.images?.length
+      ? { images: m.images.filter((i): i is string => typeof i === 'string' && i.length > 0) }
+      : {}),
     ...(m.interrupted ? { interrupted: true } : {}),
   };
 }

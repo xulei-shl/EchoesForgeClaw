@@ -121,6 +121,10 @@ chatnode（AI 对话节点）有三种模式，由两个前端宿主承载：
 - **`mode`**（'llm' | 'agent'）：每行标注写入来源，列表按此**三模式严格隔离**；旧数据（无 mode 字段）回退启发式——assistant 行含 `agentSteps` → 'agent'，否则 'llm'（`readTranscriptHead`）。
 - 与 pi 的 `chat.jsonl` 互斥：同一工作区目录二选一（`listChatConversations` 按 `resolvePiSessionFile` 跳过 pi 工作区）。
 - 字段上限：水合单字段截断 `MAX_FIELD_CHARS=20_000`，总量软上限 `MAX_TOTAL_CHARS=600_000`（超出截断并标记 `truncated`）。
+- **用户消息图片（水合闭环）**：user 行的 `images`（data URL）在落盘与水合时走同一口径
+  （`sanitizeImages`：仅放行 base64 data URL / http(s)，单条消息 ≤4 张、单张 ≤8MB）；水合恢复进
+  `HydratedMessage.images`，前端 `dtoToChatMessage` 透传 → 历史气泡重新展示 + 模型续聊随完整历史重发。
+  图片总量另有软上限（>12MB 时丢弃最早轮次图片、保留最近），防止超大 transcript 撑爆水合响应体（独立于正文截断）。
 
 ### 6.2 后端关键函数与路由
 
@@ -197,12 +201,14 @@ export function agentSessionKey(userId, nodeId?, epoch = 0, workspaceId?): strin
 - **`fastclaw-artifacts.test.ts` 在 Windows 失败（pre-existing，与本次改动无关）**：3 个用例（`resolveFastclawArtifact` 根内真实文件放行、`harvestFastclawArtifacts` 两个）在 Windows 上失败——测试用 `os.tmpdir()`（`E:\Temp\...`）构造根目录，而 `resolveFastclawArtifact` 契约只认 `/` 开头的 POSIX 绝对路径（FastClaw 部署环境为 Linux）。已用 `git stash` 验证改动前后失败一致。修复需让测试在 Windows 构造 POSIX 风格路径或跳过，未处理。
 - **多租户安全**：列表/水合/删除/文件接口一律按 `authUser.id` 收敛 + `sanitizeWorkspaceId` + 目录穿越双保险（沿用既有模式）。
 - **写路径 best-effort**：transcript 落盘失败静默跳过，绝不阻断对话流——因此列表可能短暂缺失某轮，刷新（抽屉刷新按钮 / 版本递增）自愈。
+- **历史图片恢复（2026-09 修复）**：LLM / FastClaw transcript 会话「刷新 / 载入历史继续对话」时，历史 user 消息图片此前无法还原（transcript 有写入但水合不读回，模型续聊丢视觉上下文）。已修复：水合按落盘同口径回填 `images`（数量 / 单图 / 总量三层上限，超限保留最近轮次），前端展示与模型续聊重发均可用；pi 会话图片本就经 chat.jsonl 图像块 + 鉴权端点还原，不受影响。
+- **跨 Agent 折叠的传输失败补折（2026-09 修复）**：换 Agent 后首条消息若因传输层失败（HTTP 5xx / 连接失败）从未被 FastClaw 处理，transcript 只落 user 行、无 assistant 回执——此前重试 / 续发会因「末行已是当前 Agent」而跳过折叠，丢掉跨 Agent 上下文。已修复：`foldDecisionFor`（单次尾部扫描）在主判据之外补判「尾部连续当前 Agent 行无 assistant 回执、其前是其它 Agent 的行」，命中则重新折叠历史 + 重新继承产物附件；K 段已有产出（哪怕中断）不补折，避免折叠文本重复进入 FastClaw 会话。
 
 ---
 
 ## 9. 测试与回归防线
 
-- `backend-ts/tests/api/chat-conversations.test.ts`：LLM / FastClaw transcript 落盘（含行内 mode 断言）、重试不重复 user 行、水合（含工具步骤）、列表标题/轮次、**三模式隔离**（pi / llm / agent 互不混显）、置顶/重命名、产物差分排除、删除闭环、FastClaw 会话 key（`bookplate-{uid}-{workspaceId}`）。
+- `backend-ts/tests/api/chat-conversations.test.ts`：LLM / FastClaw transcript 落盘（含行内 mode 断言）、**用户图片落盘 → 水合恢复闭环（LLM / agent 各一）**、重试不重复 user 行、图片落盘/水合边界（超长 / 非白名单丢弃、超数量截断、总量预算保留最近）、水合（含工具步骤）、列表标题/轮次、**三模式隔离**（pi / llm / agent 互不混显）、置顶/重命名、产物差分排除、删除闭环、FastClaw 会话 key（`bookplate-{uid}-{workspaceId}`）。
 - `backend-ts/tests/api/fastclaw-files.test.ts`：会话文件列表过滤 / 路径越界守卫 / 下载代理 URL；**TTL 缓存命中与 `clearSessionFilesCache` 失效**（用例间在 `afterEach` 清缓存防污染）。
 - 回归命令（项目约束）：
   ```bash

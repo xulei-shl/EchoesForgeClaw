@@ -1,4 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import {
+  hydrateChatTranscript,
+  persistTranscriptUser,
+} from '../../src/services/chat-conversations.js';
 import { hashSync } from 'bcryptjs';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -216,6 +220,72 @@ describe('LLM 模式 transcript', () => {
     expect(existsSync(path.join(RUNTIME_ROOT, String(uid), 'workspace', wsId))).toBe(false);
   });
 
+  it('用户附带图片持久化并在水合时恢复（LLM 模式，含多轮历史）', async () => {
+    const srv = await startMockOpenAIServer((_req, send) => {
+      const base = { id: 'chatcmpl-x', object: 'chat.completion.chunk', created: 0, model: 'mock-model' };
+      send(sseChunk({ ...base, choices: [{ index: 0, delta: { content: '看图回答' }, finish_reason: null }] }));
+      send(sseChunk({ ...base, choices: [], usage: { total_tokens: 5 } }));
+    });
+    openServers.push(srv);
+    const configId = await seedChat({ llmConfig: { baseUrl: srv.baseURL, modelName: 'mock-model' } });
+    const wsId = `${NODE_ID}_llm-img`;
+    const img = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+    // 第 1 轮：user 消息携带图片
+    const r1 = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/chat',
+      headers: auth(),
+      payload: {
+        messages: [{ role: 'user', content: '看这张图', images: [img] }],
+        config_id: configId,
+        node_id: NODE_ID,
+        workspace_id: wsId,
+      },
+    });
+    expect(r1.statusCode).toBe(200);
+    // 第 2 轮：携带完整历史（useChat 每轮重发），确认旧轮图片随历史保留不重复落盘
+    const r2 = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/chat',
+      headers: auth(),
+      payload: {
+        messages: [
+          { role: 'user', content: '看这张图', images: [img] },
+          { role: 'assistant', content: '看图回答' },
+          { role: 'user', content: '再分析一下' },
+        ],
+        config_id: configId,
+        node_id: NODE_ID,
+        workspace_id: wsId,
+      },
+    });
+    expect(r2.statusCode).toBe(200);
+
+    // transcript：首轮 user 行带图片，后续轮不重复携带旧图
+    const lines = readTranscript(wsId);
+    expect(lines.map((l) => l.role)).toEqual(['user', 'assistant', 'user', 'assistant']);
+    expect(lines[0]!.images).toEqual([img]);
+    expect(lines[2]!.images ?? []).toEqual([]);
+
+    // 水合：历史 user 消息图片完整恢复（供展示与模型续聊重发）
+    const h = await app.inject({
+      method: 'GET',
+      url: `/api/modules/bookplate/chat/session?workspace_id=${encodeURIComponent(wsId)}`,
+      headers: auth(),
+    });
+    const hydrated = h.json() as {
+      exists: boolean;
+      messages: Array<{ role: string; content: string; images?: string[] }>;
+    };
+    expect(hydrated.exists).toBe(true);
+    expect(hydrated.messages).toHaveLength(4);
+    expect(hydrated.messages[0]).toMatchObject({ role: 'user', content: '看这张图', images: [img] });
+    expect(hydrated.messages[1]).toMatchObject({ role: 'assistant', content: '看图回答' });
+    expect(hydrated.messages[2]).toMatchObject({ role: 'user', content: '再分析一下' });
+    expect(hydrated.messages[2]!.images ?? []).toEqual([]);
+  });
+
   it('重试（regenerate，无新增 user 消息）不重复落盘 user 行', async () => {
     const srv = await startMockOpenAIServer((_req, send) => {
       const base = { id: 'chatcmpl-x', object: 'chat.completion.chunk', created: 0, model: 'mock-model' };
@@ -352,6 +422,48 @@ describe('LLM 模式 transcript', () => {
   });
 });
 
+describe('transcript 图片落盘/水合边界（服务层直测）', () => {
+  const big = (mb: number) => `data:image/png;base64,${'A'.repeat(mb * 1024 * 1024)}`;
+
+  it('异常图片在落盘时被丢弃（超长 / 非白名单协议 / 非字符串 / 超数量），正文不受影响', () => {
+    const wsId = `${NODE_ID}_img-sanitize`;
+    const wsDir = path.join(RUNTIME_ROOT, String(uid), 'workspace', wsId);
+    mkdirSync(wsDir, { recursive: true });
+    const huge = big(9); // 超单图上限（8MB）
+    const ok = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    persistTranscriptUser(
+      wsDir,
+      { content: '正文1', images: [huge, 'ftp://not-an-image', ok, ok, ok, ok, ok] }, // 5 张合法但超 4 上限
+      'llm'
+    );
+    const lines = readTranscript(wsId);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!.content).toBe('正文1');
+    // 仅保留 ≤4 张合法 data URL：huge 与 ftp 被丢弃
+    expect(lines[0]!.images).toHaveLength(4);
+    expect(lines[0]!.images!.every((i: string) => i === ok)).toBe(true);
+
+    // 纯正文消息不受影响
+    persistTranscriptUser(wsDir, { content: '正文2' }, 'llm');
+    expect(readTranscript(wsId).map((l) => l.content)).toEqual(['正文1', '正文2']);
+  });
+
+  it('水合图片总量超限：丢弃最早轮次图片、保留最近（正文不丢）', () => {
+    const wsId = `${NODE_ID}_img-budget`;
+    const wsDir = path.join(RUNTIME_ROOT, String(uid), 'workspace', wsId);
+    mkdirSync(wsDir, { recursive: true });
+    // 两条 user 消息各 7MB 图片，合计 14MB > 12MB 总量预算；最近一条必须保留
+    persistTranscriptUser(wsDir, { content: '旧轮', images: [big(7)] }, 'llm');
+    persistTranscriptUser(wsDir, { content: '新轮', images: [big(7)] }, 'llm');
+
+    const hydrated = hydrateChatTranscript(wsDir);
+    expect(hydrated.messages.map((m) => m.content)).toEqual(['旧轮', '新轮']);
+    expect(hydrated.messages[0]!.images ?? []).toEqual([]); // 最早轮被截断
+    expect(hydrated.messages[1]!.images).toHaveLength(1);
+    expect(hydrated.messages[1]!.images![0]!.startsWith('data:image/png;base64,')).toBe(true);
+  });
+});
+
 describe('FastClaw 模式 transcript', () => {
   it('会话 key 一对话一 key（含 workspaceId）；transcript 落盘含工具步骤；水合带步骤', async () => {
     let sessionId = '';
@@ -426,6 +538,136 @@ describe('FastClaw 模式 transcript', () => {
     });
     const piList = (listPi.json() as { sessions: Array<{ workspaceId: string }> }).sessions;
     expect(piList.some((x) => x.workspaceId === wsId)).toBe(false);
+  });
+
+  it('用户附带图片持久化并在水合时恢复（FastClaw / agent 模式）', async () => {
+    const srv = await startMockOpenAIServer((_req, send) => {
+      const base = { id: 'evt', type: 'x' };
+      send(sseChunk({ ...base, type: 'content_delta', data: { delta: '看到了图' } }));
+      send(sseChunk({ ...base, type: 'done', data: {} }));
+    });
+    openServers.push(srv);
+    const configId = await seedChat({ agentConfig: { baseUrl: srv.rootURL, agentId: 'agt_img' } });
+    const wsId = `${NODE_ID}_fc-img`;
+    const img = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+    const r = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/chat',
+      headers: auth(),
+      payload: { message: '帮我看这张图', images: [img], config_id: configId, node_id: NODE_ID, workspace_id: wsId },
+    });
+    expect(r.statusCode).toBe(200);
+
+    const lines = readTranscript(wsId);
+    expect(lines.map((l) => l.role)).toEqual(['user', 'assistant']);
+    expect(lines[0]!.content).toBe('帮我看这张图');
+    expect(lines[0]!.images).toEqual([img]);
+    expect(lines.every((l) => l.mode === 'agent')).toBe(true);
+
+    const h = await app.inject({
+      method: 'GET',
+      url: `/api/modules/bookplate/chat/session?workspace_id=${encodeURIComponent(wsId)}`,
+      headers: auth(),
+    });
+    const hydrated = h.json() as { messages: Array<{ content: string; images?: string[] }> };
+    expect(hydrated.messages[0]!.content).toBe('帮我看这张图');
+    expect(hydrated.messages[0]!.images).toEqual([img]);
+  });
+
+  it('跨 Agent 首条消息传输失败后重试：重新折叠历史 + 重新继承产物（不丢上下文、不重复落盘 user 行）', async () => {
+    let bAttempts = 0;
+    const srv = await startMockOpenAIServer((req, send) => {
+      if (req.body?.agentId === 'agt_retryB' && bAttempts++ === 0) {
+        // 首次调用 Agent B：FastClaw 传输层 500（消息从未被处理）
+        return { raw: 'Internal Server Error', status: 500, contentType: 'text/plain' };
+      }
+      const base = { id: 'evt', type: 'x' };
+      const reply = req.body?.agentId === 'agt_retryA' ? 'Agent A 答复' : 'B 最终答复';
+      send(sseChunk({ ...base, type: 'content_delta', data: { delta: reply } }));
+      send(sseChunk({ ...base, type: 'done', data: {} }));
+    });
+    openServers.push(srv);
+    const cfgA = await seedChat({ agentConfig: { baseUrl: srv.rootURL, agentId: 'agt_retryA' } });
+    const cfgB = await seedChat({ agentConfig: { baseUrl: srv.rootURL, agentId: 'agt_retryB' } });
+    const wsId = `${NODE_ID}_fc-retry-fold`;
+    const streamBodies = () =>
+      srv.requests
+        .filter((r) => r.path.endsWith('/api/chat/stream'))
+        .map((r) => r.body as { message?: string; attachments?: Array<{ name: string }> });
+
+    // 造历史产物（换 Agent 继承附件用）
+    const wsDir = path.join(RUNTIME_ROOT, String(uid), 'workspace', wsId);
+    mkdirSync(path.join(wsDir, 'outputs'), { recursive: true });
+    const pdfBytes = Buffer.from('%PDF-1.4 mock', 'utf-8');
+    writeFileSync(path.join(wsDir, 'outputs', 'report.pdf'), pdfBytes);
+    const ts = Date.now();
+    mkdirSync(path.join(wsDir, '.pi-agent'), { recursive: true });
+    writeFileSync(
+      path.join(wsDir, '.pi-agent', 'artifacts.jsonl'),
+      JSON.stringify({ rel: 'outputs/report.pdf', mime: 'application/pdf', size: pdfBytes.length, mtimeMs: ts, ts }) + '\n',
+      'utf-8'
+    );
+
+    // 轮 1：Agent A 正常回答
+    const turn1 = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/chat',
+      headers: auth(),
+      payload: { message: '旧问题（Agent A）', config_id: cfgA, node_id: NODE_ID, workspace_id: wsId },
+    });
+    expect(turn1.statusCode).toBe(200);
+    // 轮 2：切 Agent B，首条消息传输失败（500）
+    const turn2 = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/chat',
+      headers: auth(),
+      payload: { message: '换 Agent B 续聊', config_id: cfgB, node_id: NODE_ID, workspace_id: wsId },
+    });
+    expect(turn2.statusCode).toBe(200);
+    // 轮 3：用户重试同一消息（regenerate）→ 必须重新折叠 + 重新带附件
+    const turn3 = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/chat',
+      headers: auth(),
+      payload: { message: '换 Agent B 续聊', config_id: cfgB, node_id: NODE_ID, workspace_id: wsId },
+    });
+    expect(turn3.statusCode).toBe(200);
+
+    const bodies = streamBodies();
+    expect(bodies).toHaveLength(3);
+    expect(bodies[0]!.message).toBe('旧问题（Agent A）');
+    // 首次切 B 已折叠（原语义）
+    expect(bodies[1]!.message).toContain('用户：旧问题（Agent A）');
+    expect(bodies[1]!.message).toContain('助手：Agent A 答复');
+    expect(bodies[1]!.attachments ?? []).toHaveLength(1);
+    // 修复点：失败后重试同样携带折叠历史与产物附件（FastClaw 会话仍是空的）
+    expect(bodies[2]!.message).toContain('用户：旧问题（Agent A）');
+    expect(bodies[2]!.message).toContain('助手：Agent A 答复');
+    expect((bodies[2]!.message ?? '').endsWith('换 Agent B 续聊')).toBe(true);
+    expect(bodies[2]!.attachments ?? []).toHaveLength(1);
+
+    // transcript：user 行不因重试重复（去重守卫仍生效），重试成功后落 assistant 行
+    const lines = readTranscript(wsId);
+    expect(lines.map((l) => l.content)).toEqual(['旧问题（Agent A）', 'Agent A 答复', '换 Agent B 续聊', 'B 最终答复']);
+    expect(lines.map((l) => l.agentKey)).toEqual([
+      `agt_retryA@${srv.rootURL}`,
+      `agt_retryA@${srv.rootURL}`,
+      `agt_retryB@${srv.rootURL}`,
+      `agt_retryB@${srv.rootURL}`,
+    ]);
+
+    // 轮 4：B 已确认（有 assistant 回执）→ 同 Agent 续发不再折叠、不再带附件
+    const turn4 = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/chat',
+      headers: auth(),
+      payload: { message: '继续（仍是 Agent B）', config_id: cfgB, node_id: NODE_ID, workspace_id: wsId },
+    });
+    expect(turn4.statusCode).toBe(200);
+    const b4 = streamBodies()[3]!;
+    expect(b4.message).toBe('继续（仍是 Agent B）');
+    expect(b4.attachments ?? []).toHaveLength(0);
   });
 
   it('跨 Agent 续聊（同 workspaceId 换 Agent）：首条消息折叠旧 transcript，并以签名 URL 附件继承历史产物', async () => {

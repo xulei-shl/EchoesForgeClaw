@@ -55,6 +55,8 @@ export interface HydratedMessage {
   reasoning?: string;
   agentSteps?: HydratedStep[];
   files?: HydratedFile[];
+  /** 用户消息携带的图片（data URL；仅 LLM / FastClaw transcript 水合回填，pi 会话走 files 卡片） */
+  images?: string[];
   interrupted?: boolean;
   ts?: number;
 }

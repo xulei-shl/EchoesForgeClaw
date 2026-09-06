@@ -44,8 +44,8 @@ import {
 import {
   buildTranscriptFoldText,
   deleteChatConversation,
+  foldDecisionFor,
   hydrateChatTranscript,
-  lastTranscriptAgentKey,
   listChatConversations,
   persistTranscriptAssistant,
   persistTranscriptUser,
@@ -316,17 +316,18 @@ export async function register(app: FastifyInstance): Promise<void> {
           let finalText = '';
           const steps: HydratedStep[] = [];
           const files: HydratedFile[] = [];
-          // 跨 Agent 文本折中：transcript 末行由不同 Agent 写入（旧会话载入 + 换 Agent 续聊）
-          // → FastClaw 侧是新会话，把旧 transcript 折叠进本轮 message 保证文本层连续。
-          // 折叠发生在落盘前（读取的是本轮之前的 transcript），且只在「上个 Agent ≠ 当前
-          // Agent」这一轮生效——本轮落盘后末行 agentKey 即当前 Agent，后续轮次不再折叠。
-          const prevAgentKey = lastTranscriptAgentKey(ws);
-          const isCrossAgent = Boolean(prevAgentKey && agentKey && prevAgentKey !== agentKey);
-          const foldText = isCrossAgent ? buildTranscriptFoldText(ws) : '';
-          // 跨 Agent 首轮：历史产物（outputs/ 清单）以签名 URL 附件传给 FastClaw，由其物化进
-          // 新会话 /workspace（B 工具可读 + 面板可见 + 一行 breadcrumb，不占上下文窗口）；
+          // 跨 Agent 文本折中：折叠发生在落盘前（读取的是本轮之前的 transcript）。两类触发场景：
+          // 1) 换 Agent 首轮（末行是其它 Agent → FastClaw 新会话）；
+          // 2) 换 Agent 首条消息传输失败后重试 / 续发（末行已是当前 Agent，但尾部无 assistant
+          //    回执、其前是其它 Agent 的行 → FastClaw 会话仍空，需补折 + 重新继承产物）。
+          // 判定单次尾部扫描完成（foldDecisionFor）；折叠只在本轮生效——本轮成功后落盘 assistant
+          // 行，后续同 Agent 轮次不再折叠。
+          const shouldFold = foldDecisionFor(ws, agentKey).fold;
+          const foldText = shouldFold ? buildTranscriptFoldText(ws) : '';
+          // 跨 Agent（或未确认重试）首轮：历史产物（outputs/ 清单）以签名 URL 附件传给 FastClaw，
+          // 由其物化进新会话 /workspace（B 工具可读 + 面板可见 + 一行 breadcrumb，不占上下文窗口）；
           // 超限 / 已删文件不进附件，降级为文件名清单拼进消息（至少告知 B 存在）。
-          const inherited = isCrossAgent
+          const inherited = shouldFold
             ? buildInheritAttachments(ws, path.basename(ws), request.authUser!.id)
             : { attachments: [], skipped: [] as string[] };
           const skippedNote = inherited.skipped.length

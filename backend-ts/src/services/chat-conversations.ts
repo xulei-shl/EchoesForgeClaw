@@ -50,6 +50,30 @@ const MAX_FIELD_CHARS = 20_000;
 const MAX_TOTAL_CHARS = 600_000;
 /** 跨 Agent 文本折中：折叠进 message 的旧 transcript 文本上限（超出保留最近轮次并标注省略）。 */
 const FOLD_MAX_CHARS = 200_000;
+/** 单条 user 消息持久化 / 水合恢复的图片数上限（对齐前端 MAX_CHAT_IMAGES=4，防调用方绕过计数）。 */
+const MAX_IMAGES_PER_MESSAGE = 4;
+/** 单张图片 data URL 字符上限（超过视为异常输入，落盘与水合一致丢弃；前端已压缩优化图片远小于此值）。 */
+const MAX_IMAGE_CHARS = 8 * 1024 * 1024;
+/** 水合恢复图片的总字符软上限（超出丢弃较早轮次图片、保留最近，防止超大 transcript 撑爆水合响应体）。 */
+const MAX_TOTAL_IMAGE_CHARS = 12 * 1024 * 1024;
+
+/**
+ * 图片 data URL 白名单过滤 + 数量 / 单图长度上限（落盘与水合同一口径，保证写读对称）：
+ * 仅放行 base64 data URL 与 http(s) URL（前端发送侧统一转为 data URL，http(s) 为历史兼容）；
+ * 空 / 非字符串 / 超长 / 未知协议一律丢弃。返回 undefined 表示无合法图片。
+ */
+function sanitizeImages(images: unknown): string[] | undefined {
+  if (!Array.isArray(images)) return undefined;
+  const out: string[] = [];
+  for (const raw of images) {
+    if (out.length >= MAX_IMAGES_PER_MESSAGE) break;
+    const s = typeof raw === 'string' ? raw : '';
+    if (!s || s.length > MAX_IMAGE_CHARS) continue;
+    if (!/^(data:image\/[a-z0-9.+-]+;base64,|https?:\/\/)/i.test(s)) continue;
+    out.push(s);
+  }
+  return out.length ? out : undefined;
+}
 
 /** transcript 行条目（append-only；id 仅作行标识，水合前端自行重建展示 id）。 */
 export interface TranscriptMessage {
@@ -80,18 +104,21 @@ function appendLine(ws: string, msg: TranscriptMessage): void {
   appendFileSync(path.join(ws, CONVERSATION_REL), JSON.stringify(msg) + '\n', 'utf-8');
 }
 
-/** 从文件尾部找最后一条指定角色的合法 message 条目（用于 user 去重；坏行跳过）。 */
-function lastTranscriptMessage(ws: string, role?: 'user' | 'assistant'): TranscriptMessage | null {
+/**
+ * 从文件尾部解析最近的合法 message 行（倒序：新 → 旧，上限 MAX_SCAN_BYTES；坏行跳过）。
+ * 供 user 去重 / 跨 Agent 折叠判定等尾部扫描共用（只读尾部，避免整读大文件）。
+ */
+function tailTranscriptMessages(ws: string): TranscriptMessage[] {
   const file = path.join(ws, CONVERSATION_REL);
   let fd: number;
   try {
     fd = openSync(file, 'r');
   } catch {
-    return null;
+    return [];
   }
   try {
     const st = statSync(file);
-    if (!st.isFile() || st.size <= 0) return null;
+    if (!st.isFile() || st.size <= 0) return [];
     const tailBytes = Math.min(st.size, MAX_SCAN_BYTES);
     const buf = Buffer.alloc(tailBytes);
     readSync(fd, buf, 0, tailBytes, st.size - tailBytes);
@@ -100,36 +127,78 @@ function lastTranscriptMessage(ws: string, role?: 'user' | 'assistant'): Transcr
       .split('\n')
       .map((l) => l.trim())
       .filter((l) => l.startsWith('{'));
+    const out: TranscriptMessage[] = [];
     for (let i = lines.length - 1; i >= 0; i--) {
       try {
         const parsed = JSON.parse(lines[i]!) as TranscriptMessage;
         if (
           parsed &&
           parsed.type === 'message' &&
-          (parsed.role === 'user' || parsed.role === 'assistant') &&
-          (!role || parsed.role === role)
+          (parsed.role === 'user' || parsed.role === 'assistant')
         ) {
-          return parsed;
+          out.push(parsed);
         }
       } catch {
         /* 坏行：跳过 */
       }
     }
-    return null;
+    return out;
   } finally {
     closeSync(fd);
   }
 }
 
+/** 从文件尾部找最后一条指定角色的合法 message 条目（用于 user 去重；坏行跳过）。 */
+function lastTranscriptMessage(ws: string, role?: 'user' | 'assistant'): TranscriptMessage | null {
+  for (const m of tailTranscriptMessages(ws)) {
+    if (!role || m.role === role) return m;
+  }
+  return null;
+}
+
+/** 跨 Agent 折叠判定结果。 */
+export interface FoldDecision {
+  /** 是否折叠历史文本 + 继承产物附件（跨 Agent 首轮，或未确认段的补折） */
+  fold: boolean;
+  /** transcript 末行的 Agent（无消息 / 未标注 → null；供调用方诊断） */
+  lastAgentKey: string | null;
+}
+
 /**
- * 读取 transcript 末尾最后一条消息行写入的 agentKey（FastClaw Agent 运行时身份）。
- * 用于跨 Agent 续聊判定：同 workspaceId 下当前请求的 Agent 与历史 transcript 末行的
- * Agent 不同 → 前者是 FastClaw 新会话（会话按 (agent, sessionKey) 隔离），首条消息需折叠旧 transcript。
- * 文件缺失 / 无消息 / 旧行未写 agentKey（无该字段）均返回 null（无法判定 = 不折中）。
+ * 跨 Agent 折叠判定（单次尾部扫描，同 Agent 常见路径不额外读盘）。
+ *
+ * FastClaw 会话按 (agent, sessionKey) 隔离：换 Agent = FastClaw 新会话，首条消息需把旧
+ * transcript 折叠进 message + 继承历史产物附件，保证文本层连续。两类触发场景：
+ *
+ * 1. **换 Agent 首轮（主判据）**：末行 agentKey ≠ 当前 Agent K → 本轮消息是 K 的新会话首条。
+ * 2. **未确认段补折**：末行 agentKey === K，但从末行回扫尾部窗口，连续 K 行全是 user、
+ *    没有任何 assistant 回执，且越过该段后遇到其它 Agent 的行 → 说明切到 K 后的首条消息
+ *    因传输层失败从未被 FastClaw 处理（如 HTTP 5xx / 连接失败，失败轮不会落 assistant 行），
+ *    用户重试 / 续发时 K 会话仍是空的——重新折叠 + 重新带附件，否则裸消息会丢跨 Agent 上下文。
+ *
+ * 不折叠的情形（避免把折叠文本重复送进 FastClaw 会话）：
+ * - K 段内已有 assistant 行（FastClaw 已处理过该段首条消息，哪怕被中断）→ 重发裸消息即续聊；
+ * - 尾部整段都是 K（无跨 Agent 边界）→ 无历史可折叠（如首条消息失败后重试，无可折内容）；
+ * - transcript 为空 / 末行未标注 agentKey。
+ *
+ * 注：扫描窗口上限 MAX_SCAN_BYTES；一段内未确认的连续失败消息通常只有几条，远在窗口内。
  */
-export function lastTranscriptAgentKey(ws: string): string | null {
-  const last = lastTranscriptMessage(ws);
-  return last && typeof last.agentKey === 'string' && last.agentKey ? last.agentKey : null;
+export function foldDecisionFor(ws: string, agentKey: string): FoldDecision {
+  const tail = tailTranscriptMessages(ws);
+  const last = tail[0] ?? null;
+  const lastAgentKey =
+    last && typeof last.agentKey === 'string' && last.agentKey ? last.agentKey : null;
+  if (!agentKey) return { fold: false, lastAgentKey };
+  // 主判据：末行是其它 Agent → 换 Agent 新会话首轮，折叠
+  if (lastAgentKey && lastAgentKey !== agentKey) return { fold: true, lastAgentKey };
+  // 末行属当前 Agent：回扫判断是否存在「未确认的跨 Agent 新段」（补折）
+  if (lastAgentKey === agentKey) {
+    for (const m of tail) {
+      if (m.agentKey !== agentKey) return { fold: true, lastAgentKey }; // 越过 K 段边界
+      if (m.role === 'assistant') break; // K 段已有产出：FastClaw 已确认，不折叠
+    }
+  }
+  return { fold: false, lastAgentKey };
 }
 
 /**
@@ -190,7 +259,7 @@ export function persistTranscriptUser(
   agentKey?: string
 ): void {
   const content = String(msg.content ?? '');
-  const images = msg.images?.length ? msg.images : undefined;
+  const images = sanitizeImages(msg.images);
   if (!content.trim() && !images?.length) return;
   try {
     // 去重守卫：transcript 末尾最近一条 user 消息已含同内容同图片 → 跳过。
@@ -285,6 +354,7 @@ export function hydrateChatTranscript(ws: string): HydratedSession {
   }
   const messages: HydratedMessage[] = [];
   let totalChars = 0;
+  let totalImageChars = 0;
   let truncated = false;
   for (const line of raw.split('\n')) {
     const trimmed = line.trim();
@@ -308,6 +378,15 @@ export function hydrateChatTranscript(ws: string): HydratedSession {
       ...(typeof entry.ts === 'number' && entry.ts > 0 ? { ts: entry.ts } : {}),
     };
     totalChars += content.length;
+    // 用户消息历史图片：以与落盘同口径（sanitizeImages）恢复，模型续聊 / 展示均可见；
+    // 仅记入独立的图片总量预算（见下方截断），避免与正文 MAX_TOTAL_CHARS 互相挤兑
+    if (entry.role === 'user') {
+      const images = sanitizeImages(entry.images);
+      if (images?.length) {
+        msg.images = images;
+        for (const img of images) totalImageChars += img.length;
+      }
+    }
     if (entry.reasoning) {
       const reasoning = clip(String(entry.reasoning), MAX_FIELD_CHARS);
       msg.reasoning = reasoning;
@@ -317,6 +396,18 @@ export function hydrateChatTranscript(ws: string): HydratedSession {
     if (Array.isArray(entry.files) && entry.files.length) msg.files = entry.files;
     if (entry.interrupted) msg.interrupted = true;
     messages.push(msg);
+  }
+  // 图片总量超限：从最早的消息起丢弃图片（保留最近轮次），防止超大 transcript 撑爆水合响应体。
+  // 截断只影响图片、不影响正文 / 步骤（与文本总量截断的 truncated 语义独立）。
+  if (totalImageChars > MAX_TOTAL_IMAGE_CHARS) {
+    for (const m of messages) {
+      if (totalImageChars <= MAX_TOTAL_IMAGE_CHARS) break;
+      const imgs = m.images;
+      if (imgs?.length) {
+        totalImageChars -= imgs.reduce((sum, s) => sum + s.length, 0);
+        delete m.images;
+      }
+    }
   }
   return { exists: messages.length > 0, messages, truncated };
 }
