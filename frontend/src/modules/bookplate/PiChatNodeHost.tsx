@@ -256,6 +256,10 @@ function PiChatNodeHostInner({
       dispatchStream({ type: 'end' });
       dispatchStream({ type: 'widget_set_all', widgets: [] });
       panel.reset();
+      // 载入历史会话 / 清空对话再生后，文件面板需按**新工作区**重新拉取：reset 只清空列表，
+      // 若此处不触发刷新，「我的上传 / AI 产物」会一直停留在旧会话（或空）状态。
+      // refreshIfOpen 读 openRef：面板展开才拉取（loader 内部读最新 wsIdRef），关闭时跳过。
+      panel.refreshIfOpen();
       forcedErrorRef.current = null;
       pendingFilesRef.current.clear();
       contextSentRef.current = false;
@@ -263,7 +267,7 @@ function PiChatNodeHostInner({
       statusRef.current = 'ready';
     }
     activeRequestWsRef.current = wsId;
-  }, [wsId]);
+  }, [wsId, panel.refreshIfOpen]);
 
   // ---------- 水合：挂载 / workspaceId 变化（清空对话再生）时拉取服务端会话 ----------
   useEffect(() => {
