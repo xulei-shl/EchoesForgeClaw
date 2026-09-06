@@ -32,6 +32,17 @@ export interface UploadedWorkspaceFile {
   size: number;
 }
 
+/** 对话历史列表条目（/chat/sessions 返回体，与后端 pi/conversations.ts 对齐）。 */
+export interface ConversationSessionSummary {
+  workspaceId: string;
+  title: string;
+  pinned: boolean;
+  pinnedAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+  messageCount: number;
+}
+
 const SESSION_CACHE_MAX = 8;
 /** 模块级 LRU：key = workspaceId（含节点创建时间戳，跨账号碰撞概率可忽略）；缓存消息 + widget 快照。 */
 const sessionCache = new Map<string, { messages: ChatMessage[]; widgets: ExtensionWidgetItem[] }>();
@@ -183,7 +194,67 @@ async function postUiResponse(
   }
 }
 
+/**
+ * 对话历史列表（GET /chat/sessions）：返回该用户全部 pi 会话，node_id 提供时按
+ * `{nodeId}_` 前缀过滤（chat 节点工作区命名约定），仅返回该节点的历史。
+ */
+async function fetchConversationSessions(nodeId: string): Promise<ConversationSessionSummary[]> {
+  const resp = await fetch(
+    `/api/modules/bookplate/chat/sessions?node_id=${encodeURIComponent(nodeId)}`,
+    { headers: authHeaders() }
+  );
+  if (resp.status === 401) {
+    handleUnauthorized();
+    throw new Error('401');
+  }
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const data = (await resp.json()) as { sessions?: ConversationSessionSummary[] };
+  return data.sessions ?? [];
+}
+
+/** 置顶 / 取消置顶一条对话（POST /chat/session/pin）。 */
+async function setConversationPinned(ws: string, pinned: boolean): Promise<void> {
+  const resp = await fetch('/api/modules/bookplate/chat/session/pin', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ workspace_id: ws, pinned }),
+  });
+  if (resp.status === 401) {
+    handleUnauthorized();
+    throw new Error('401');
+  }
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+}
+
+/** 完整删除一条对话（DELETE /chat/session：会话历史 / 产物 / 上传附件一并删除）。 */
+async function deleteConversationSession(ws: string): Promise<void> {
+  const resp = await fetch('/api/modules/bookplate/chat/session', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ workspace_id: ws }),
+  });
+  if (resp.status === 401) {
+    handleUnauthorized();
+    throw new Error('401');
+  }
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+}
+
+/** 从会话快照缓存移除指定工作区（删除对话后调用，防止残留缓存被再次水合）。 */
+function evictSessionCache(ws: string): void {
+  sessionCache.delete(ws);
+}
+
 /** 会话快照缓存（挂载时先渲染缓存再拉服务端，消除首屏闪空）。 */
-export { cachedSessionOf, putSessionCache };
-/** 服务端会话 / 文件 / 上传 / 导入 / UI 作答接口。 */
-export { fetchPiSession, fetchWorkspaceFiles, uploadWorkspaceFile, importInheritedImages, postUiResponse };
+export { cachedSessionOf, putSessionCache, evictSessionCache };
+/** 服务端会话 / 文件 / 上传 / 导入 / UI 作答 / 历史列表 / 置顶 / 删除接口。 */
+export {
+  fetchPiSession,
+  fetchWorkspaceFiles,
+  uploadWorkspaceFile,
+  importInheritedImages,
+  postUiResponse,
+  fetchConversationSessions,
+  setConversationPinned,
+  deleteConversationSession,
+};

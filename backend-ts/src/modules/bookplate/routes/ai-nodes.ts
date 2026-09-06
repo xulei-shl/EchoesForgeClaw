@@ -32,11 +32,14 @@ import {
   buildWebSearchConfig,
   clearPiSession,
   computeWorkspaceGeneration,
+  deletePiConversation,
+  listPiConversations,
   listWorkspaceArtifacts,
   preparePiWorkspace,
   runPiAgent,
   resolvePiExtensions,
   sendExtensionUiResponse,
+  setConversationPinned,
 } from '../../../services/pi-agent-service.js';
 import {
   decodeDataUrlImage,
@@ -484,6 +487,47 @@ export async function register(app: FastifyInstance): Promise<void> {
         return reply.code(400).send({ detail: 'workspace_id 不能为空' });
       }
       return { cleared: await clearPiSession(request.authUser!.id, workspaceId) };
+    }
+  );
+
+  // ---- Skill Agent 对话历史列表（侧边抽屉数据源）：扫描该用户含 pi 会话的工作区 ----
+  // node_id 可选：提供时按 `{nodeId}_` 前缀过滤（chat 节点工作区命名约定），仅返回该节点的历史
+  app.get(
+    '/api/modules/bookplate/chat/sessions',
+    { preHandler: app.authenticate },
+    async (request) => {
+      const q = (request.query ?? {}) as { node_id?: string };
+      const nodeId = q.node_id ? String(q.node_id) : undefined;
+      return { sessions: listPiConversations(request.authUser!.id, nodeId) };
+    }
+  );
+
+  // ---- Skill Agent 对话置顶 / 取消置顶（元数据写 {ws}/.pi-agent/meta.json）----
+  app.post(
+    '/api/modules/bookplate/chat/session/pin',
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const payload = (request.body ?? {}) as { workspace_id?: string; pinned?: boolean };
+      const workspaceId = sanitizeWorkspaceId(payload.workspace_id ?? '');
+      if (!workspaceId) {
+        return reply.code(400).send({ detail: 'workspace_id 不能为空' });
+      }
+      setConversationPinned(nodeWorkspace(request.authUser!.id, workspaceId), !!payload.pinned);
+      return { ok: true };
+    }
+  );
+
+  // ---- Skill Agent 对话删除：完整删除该对话的 workspace 目录（会话历史 / 产物 / 上传附件）----
+  app.delete(
+    '/api/modules/bookplate/chat/session',
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const payload = (request.body ?? {}) as { workspace_id?: string };
+      const workspaceId = sanitizeWorkspaceId(payload.workspace_id ?? '');
+      if (!workspaceId) {
+        return reply.code(400).send({ detail: 'workspace_id 不能为空' });
+      }
+      return { deleted: await deletePiConversation(request.authUser!.id, workspaceId) };
     }
   );
 

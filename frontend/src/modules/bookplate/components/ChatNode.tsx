@@ -28,10 +28,16 @@ import {
   WorkspaceFilesTrigger,
   type ChatWorkspaceFilesPanel,
 } from './chat/WorkspaceFilesPanel';
+import {
+  ChatHistoryDrawer,
+  ChatHistoryTrigger,
+  type ChatConversationsPanel,
+} from './chat/ChatHistoryPanel';
 import { CHAT_STYLE_INJECTIONS } from './chatStyles';
 
 export type { ChatRetryNotice, ChatMessageQueue } from './chat/ChatStatusBanners';
 export type { ChatWorkspaceFilesPanel } from './chat/WorkspaceFilesPanel';
+export type { ChatConversationsPanel } from './chat/ChatHistoryPanel';
 
 export interface ChatNodeProps {
   id: string;
@@ -92,6 +98,8 @@ export interface ChatNodeProps {
   configId?: number | null;
   /** 工作区产物面板（skill_agent 模式：服务端 outputs/ ∪ manifest 历史） */
   workspaceFiles?: ChatWorkspaceFilesPanel | null;
+  /** 对话历史面板（skill_agent 模式：该节点 pi 会话列表，点击载入 / 置顶 / 删除） */
+  conversations?: ChatConversationsPanel | null;
   /** 自动重试横幅（skill_agent 模式；null = 无） */
   retryNotice?: ChatRetryNotice | null;
   /** 排队消息（skill_agent 模式；不传 = 不启用排队） */
@@ -140,6 +148,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
   mode,
   configId,
   workspaceFiles,
+  conversations,
   retryNotice,
   messageQueue,
   widgets = [],
@@ -328,10 +337,16 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
       footer={footer}
       groupBadge={group}
       mismatchBadge={mismatchBadge}
-      // 工作区文件抽屉必须挂在 sideDrawer 根级插槽（渲染在内容区 overflow 之外，见
-      // docs/节点侧边吸附抽屉使用指南.md 2.1：写进 children 会被 overflow-x-hidden 裁切）
+      // 抽屉必须挂在 sideDrawer 根级插槽（渲染在内容区 overflow 之外，见
+      // docs/节点侧边吸附抽屉使用指南.md 2.1：写进 children 会被 overflow-x-hidden 裁切）。
+      // 工作区文件占右侧，对话历史固定左侧（side="left"），两者可同时展开互不遮挡。
       sideDrawer={
-        workspaceFiles ? <WorkspaceFilesDrawer panel={workspaceFiles} /> : undefined
+        workspaceFiles || conversations ? (
+          <>
+            {workspaceFiles && <WorkspaceFilesDrawer panel={workspaceFiles} />}
+            {conversations && <ChatHistoryDrawer panel={conversations} />}
+          </>
+        ) : undefined
       }
       actionBar={renderActionBar()}
     >
@@ -467,9 +482,14 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
           }}
         />
 
-        {/* 工作区文件入口条（skill_agent / FastClaw agent）：点击展开右侧吸附抽屉
-            （分类 Tab + 时间倒序文件名列表，见 WorkspaceFilesDrawer） */}
-        {workspaceFiles && <WorkspaceFilesTrigger panel={workspaceFiles} />}
+        {/* 工作区文件入口条（skill_agent / FastClaw agent）+ 对话历史入口条（skill_agent）：
+            点击展开侧边吸附抽屉（见 WorkspaceFilesDrawer / ChatHistoryDrawer） */}
+        {(workspaceFiles || conversations) && (
+          <div className="shrink-0 mt-1.5 flex items-center gap-3">
+            {workspaceFiles && <WorkspaceFilesTrigger panel={workspaceFiles} />}
+            {conversations && <ChatHistoryTrigger panel={conversations} />}
+          </div>
+        )}
 
         {/* 排队消息（skill_agent）：流式中发送的消息先入队，当前轮结束后自动依次发出 */}
         {messageQueue && messageQueue.items.length > 0 && (

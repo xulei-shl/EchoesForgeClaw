@@ -234,6 +234,10 @@ export interface NodeViewHelpers {
   handleRenameAggregatePlaceholderFor: (id: string, parentId: string, alias: string) => void;
   handleUpdateChatSettingsFor: (id: string, settings: ChatNodeSettings) => void;
   handleClearChatFor: (id: string) => void;
+  /** AI 对话节点（Skill Agent）：从历史列表载入指定会话（切换 workspaceId，宿主自动水合） */
+  handleLoadChatSessionFor: (id: string, workspaceId: string) => void;
+  /** AI 对话节点（Skill Agent）：删除当前会话后重置为全新工作区 */
+  handleResetChatWorkspaceFor: (id: string) => void;
   handleNodeContextMenu: (e: React.MouseEvent, nodeId: string) => void;
   handlePositionChange: (id: string, x: number, y: number) => void;
   handleSizeChange: (id: string, width: number, height: number) => void;

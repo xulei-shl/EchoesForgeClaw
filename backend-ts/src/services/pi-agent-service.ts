@@ -32,6 +32,12 @@ export {
   buildWebSearchConfig,
 } from './pi/workspace.js';
 export {
+  type ConversationSummary,
+  listPiConversations,
+  setConversationPinned,
+  deletePiConversation,
+} from './pi/conversations.js';
+export {
   PI_ARTIFACTS_REL,
   type ArtifactRecord,
   type WorkspaceArtifact,

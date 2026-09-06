@@ -336,6 +336,37 @@ export function useNodeHandlers({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  /** AI 对话节点（Skill Agent）：从历史列表载入指定会话（切换 workspaceId，宿主 effect 自动水合） */
+  const handleLoadChatSessionFor = useCallback((id: string, workspaceId: string) => {
+    const node = nodesRef.current.find((n) => n.id === id);
+    if (!node || node.type !== 'chat') return;
+    if ((node.data?.workspaceId ?? '') === workspaceId) return;
+    recordHistory();
+    // 清空展示态：宿主「workspaceId 变化」effect 会作废旧轮、复位流状态并从服务端水合新会话
+    updateNodeData(id, {
+      messages: [],
+      output: '',
+      agentSteps: [],
+      error: null,
+      workspaceId,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  /** AI 对话节点（Skill Agent）：删除当前会话后重置为全新工作区（与 handleClearChatFor 同口径，无消息守卫） */
+  const handleResetChatWorkspaceFor = useCallback((id: string) => {
+    const node = nodesRef.current.find((n) => n.id === id);
+    if (!node || node.type !== 'chat') return;
+    recordHistory();
+    updateNodeData(id, {
+      messages: [],
+      output: '',
+      agentSteps: [],
+      error: null,
+      epoch: (node.data?.epoch ?? 0) + 1,
+      workspaceId: `${id}_${Date.now()}`,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   /** 图片上传节点上传 / 替换 / 移除图片（imageUrl 为 null 表示移除；未变化不记历史） */
   const handleImageChangeFor = useCallback(
     (id: string, imageUrl: string | null, imageName: string) => {
@@ -659,6 +690,8 @@ export function useNodeHandlers({
     handleEditTextFor,
     handleUpdateChatSettingsFor,
     handleClearChatFor,
+    handleLoadChatSessionFor,
+    handleResetChatWorkspaceFor,
     handleImageChangeFor,
     handleSelectImage,
     handleRunFor,

@@ -1,6 +1,8 @@
 import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { nodesRef, edgesRef } from '../../platform/stores/useCanvasState';
 import { ChatNode } from './components/ChatNode';
+import type { ChatConversationsPanel } from './components/chat/ChatHistoryPanel';
+import { useConversationHistoryPanel } from './useConversationHistoryPanel';
 import { getNodeTitle } from './nodeTypes';
 import { buildContextBlocks } from './contextBlocks';
 import { isBookCoverEnabled } from './execution';
@@ -14,11 +16,14 @@ import { useWorkspaceFilesPanel } from './useWorkspaceFilesPanel';
 import {
   cachedSessionOf,
   putSessionCache,
+  evictSessionCache,
   fetchPiSession,
   fetchWorkspaceFiles,
   uploadWorkspaceFile,
   importInheritedImages,
   postUiResponse,
+  setConversationPinned,
+  deleteConversationSession,
   type UploadedWorkspaceFile,
 } from './piSessionApi';
 import {
@@ -145,6 +150,9 @@ function PiChatNodeHostInner({
     return fetchWorkspaceFiles(ws);
   });
 
+  // ---------- 对话历史面板（该节点名下 pi 会话列表；展开时加载 / 收尾自动刷新） ----------
+  const convPanel = useConversationHistoryPanel(node.id);
+
   // ---------- 排队消息 / 重试横幅 ----------
   const [msgQueue, setMsgQueue] = useState<QueuedMessage[]>([]);
   const msgQueueRef = useRef(msgQueue);
@@ -213,6 +221,8 @@ function PiChatNodeHostInner({
         setSettledSeq((v) => v + 1);
         panel.bump();
         panel.refreshIfOpen();
+        // 对话历史列表在展开状态下同步刷新（新会话 / 新轮次进入列表）
+        convPanel.bump();
         // 自然收尾（非用户停止/出错中断）才自动续发排队消息
         autoNextArmedRef.current =
           !interruptedByUserRef.current && !runErroredRef.current && msgQueueRef.current.length > 0;
@@ -220,7 +230,7 @@ function PiChatNodeHostInner({
       .catch(() => {
         /* 水合失败：保留 live 展示（下次挂载/收尾再对齐服务端） */
       });
-  }, [panel.refreshIfOpen, sanitizeHydrated]);
+  }, [panel.refreshIfOpen, sanitizeHydrated, convPanel.bump]);
   finishRunRef.current = finishRun;
 
   // workspaceId 变化（含清空对话再生）：作废旧轮（SSE/水合）、复位 live 状态与缓存。
@@ -803,6 +813,35 @@ function PiChatNodeHostInner({
     [wsId]
   );
 
+  // ---------- 对话历史操作（载入 / 置顶 / 删除） ----------
+  /** 载入历史会话：切换 workspaceId（宿主 effect 作废旧轮并自动水合服务端历史） */
+  const handleSelectConversation = useCallback(
+    (workspaceId: string) => h.handleLoadChatSessionFor(node.id, workspaceId),
+    [h, node.id]
+  );
+
+  /** 置顶 / 取消置顶：后端写 .pi-agent/meta.json，成功后刷新列表（展开状态下自动生效） */
+  const handleToggleConversationPin = useCallback(
+    async (workspaceId: string, pinned: boolean) => {
+      await setConversationPinned(workspaceId, pinned);
+      convPanel.bump();
+    },
+    [convPanel.bump]
+  );
+
+  /** 删除会话：后端整目录删除；若删的是当前会话，同步把节点重置为全新工作区 */
+  const handleDeleteConversation = useCallback(
+    async (workspaceId: string) => {
+      await deleteConversationSession(workspaceId);
+      evictSessionCache(workspaceId);
+      if (workspaceId === wsIdRef.current) {
+        h.handleResetChatWorkspaceFor(node.id);
+      }
+      convPanel.bump();
+    },
+    [h, node.id, convPanel.bump]
+  );
+
   // ---------- 渲染 ----------
   const config = h.configOf(node);
   const settings: ChatNodeSettings = node.data?.settings ?? DEFAULT_CHAT_SETTINGS;
@@ -831,6 +870,28 @@ function PiChatNodeHostInner({
     onToggle: () => panel.setOpen((v) => !v),
     onRefresh: panel.refresh,
   }), [panel.open, panel.loading, panel.files, panel.setOpen, panel.refresh]);
+
+  const conversationPanelProp = useMemo<ChatConversationsPanel>(() => ({
+    open: convPanel.open,
+    loading: convPanel.loading,
+    sessions: convPanel.sessions,
+    currentWorkspaceId: wsId,
+    onToggle: () => convPanel.setOpen((v) => !v),
+    onRefresh: convPanel.refresh,
+    onSelect: handleSelectConversation,
+    onTogglePin: handleToggleConversationPin,
+    onDelete: handleDeleteConversation,
+  }), [
+    convPanel.open,
+    convPanel.loading,
+    convPanel.sessions,
+    convPanel.setOpen,
+    convPanel.refresh,
+    wsId,
+    handleSelectConversation,
+    handleToggleConversationPin,
+    handleDeleteConversation,
+  ]);
 
   const messageQueueProp = useMemo(() => (
     msgQueue.length > 0
@@ -884,6 +945,7 @@ function PiChatNodeHostInner({
       footer={h.renderFooter(node)}
       onContextMenu={handleContextMenu}
       workspaceFiles={workspaceFilesProp}
+      conversations={conversationPanelProp}
       retryNotice={retryNotice}
       messageQueue={messageQueueProp}
       widgets={streamState.widgets}
