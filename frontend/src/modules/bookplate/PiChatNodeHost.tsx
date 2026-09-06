@@ -706,6 +706,7 @@ function PiChatNodeHostInner({
    * 任意文件附件：上传到工作区 inputs/（与 send 同款工作区创建/持久化逻辑）。
    * 附件先于首轮消息落盘——用户选中文件即上传，消息发送时以 inputs/ 路径引用。
    */
+  const refreshFilesIfOpen = panel.refreshIfOpen;
   const handleUploadFile = useCallback(
     async (file: File): Promise<UploadedWorkspaceFile> => {
       const cur = nodesRef.current.find((n) => n.id === nodeId) ?? null;
@@ -719,9 +720,14 @@ function PiChatNodeHostInner({
           );
         }
       }
-      return uploadWorkspaceFile(ws, file);
+      const info = await uploadWorkspaceFile(ws, file);
+      // 上传成功即刷新文件面板（仅展开时）：文件已落盘 inputs/，「我的上传」无需手动刷新即实时可见。
+      // 首传（本函数刚生成 workspaceId）场景：uploadWorkspaceFile 的网络往返足以让 setNodes 触发的
+      // 重渲染完成，此时 loader 已读到新 wsIdRef；若面板未展开则跳过，避免空闲上传触发无谓请求。
+      refreshFilesIfOpen();
+      return info;
     },
-    [nodeId, setNodes]
+    [nodeId, setNodes, refreshFilesIfOpen]
   );
 
   // 自动续发：上一轮自然收尾（水合落地）且队列非空时出队首条发送（effect 中调用最新 send 闭包）
