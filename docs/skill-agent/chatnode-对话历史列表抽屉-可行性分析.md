@@ -11,6 +11,10 @@
 > - **`chat.jsonl` 不需要、也不建议迁入 DB**。它是 pi 子进程原生 append-only 协议直接写入的文件，
 >   现有全部消费方都读它。真正缺的只是**会话目录级元信息**（名称、时间、节点归属），
 >   这部分可以放一张小 DB 表，或放工作区内 meta 文件——与对话内容本身无关。
+>
+> **实施进度（2026-09 复核）**：抽屉 UI、列表接口（`GET /chat/sessions`）、置顶
+> （`POST /chat/session/pin`）、删除（`DELETE /chat/session`）均已落地；**重命名是唯一未实现项**，
+> 且其存储侧（meta.json `title` 字段）已存在——只缺写路径与 UI，见 §3.3。
 
 ---
 
@@ -54,6 +58,9 @@
 
 ## 3. 需要新增的能力与方案
 
+> **实施进度**：3.1（列表接口）、3.2（重新进入对话）均已落地
+> （`listPiConversations` / `handleLoadChatSessionFor`），本节仅 **3.3 重命名**尚未实现；3.4 结论依然成立。
+
 ### 3.1 会话列表接口（新）
 
 当前没有任何接口能列出某用户/某节点的历史会话。两种做法：
@@ -75,17 +82,31 @@
 - `contextSentRef` 在水合到「含 ≥1 条 assistant 消息」的会话后正确置位，重新进入**不会重复注入**
   上游上下文，行为正确。新建对话 = 生成新 `workspaceId`（与清空对话同一代码路径，去掉删除动作即可）。
 
-### 3.3 重命名（会话名）
+### 3.3 重命名（会话名）—— 唯一未实现项，存储侧已就绪
 
-当前任何地方都没有会话 name 字段。两个可行落点：
+**当前状态（已核实）**：列表数据模型与**读路径**已经存在——
 
-- **方案 A：DB 表** `chat_sessions(user_id, node_id, workspace_id, name, created_at, updated_at)`
-  —— 查询可索引、前端丢失快照后名称仍存、将来扩展「删除会话/跨端同步」都方便。**推荐**。
-- **方案 B：工作区 meta 文件**（如 `.pi-agent/run/session-meta.json`）
-  —— 与「工作区即真相源」架构一致、零迁移、随工作区删除而消失。可作最小 v1。
+- `ConversationMeta`（`backend-ts/src/services/pi/conversations.ts`）已含 `title` 字段：
+  `readConversationMeta` 读取，`listPiConversations` 按 `meta.title?.trim() || 首条用户消息 || 时间兜底`
+  出标题；`pi-conversations.test.ts` 已有断言「meta 标题优先于自动标题」。
+- 前端 `ConversationSessionSummary` 已含 `title`，抽屉 `ConversationRow`（`ChatSidePanel.tsx`）已渲染该字段。
 
-方案 A 更稳（列表与节点归属不依赖前端是否还持有快照），方案 B 可作为最小实现。
-**两者都不需要动 `chat.jsonl`。**
+**缺的只是写路径 + UI**，全部照抄置顶（pin）的现成链路即可：
+
+1. 后端函数：`setConversationTitle(ws, title)` —— 镜像 `setConversationPinned`
+   （read → 改 `meta.title` → `writeConversationMeta`），约 10 行。
+2. 路由：`POST /chat/session/rename`（或 `PATCH /chat/session`）—— 镜像 pin 路由
+   （`sanitizeWorkspaceId` + 鉴权 + 空名校验），约 10–15 行。
+3. 前端 API：`piSessionApi.ts` 加 `renameConversation(ws, title)`，约 10 行。
+4. 宿主接线：`PiChatNodeHost` 加 `handleRenameConversation`（调 API + `convPanel.bump()` 刷新列表）。
+5. UI：`ConversationRow` 加「铅笔 → 行内输入」编辑态（复用现有行内按钮 stopPropagation
+   模式与 `useFeedback` toast），约 60–80 行。
+
+**方案取舍**：原方案 A（DB 表）已无需考虑——置顶落地时已实际采用**方案 B**（`.pi-agent/meta.json`），
+重命名沿用同一文件、同一 merge 语义即可，**零迁移**。清空重命名（纯空白）自然回退自动标题
+（`meta.title?.trim() ||` 语义），可当「恢复默认名」用。建议路由层做 trim + 长度上限
+（自动标题 `MAX_TITLE_CHARS = 40` 可参考，或放宽到 60–100）。
+**不需要动 `chat.jsonl`。**
 
 ### 3.4 `chat.jsonl` 是否必须迁入 DB？
 
@@ -120,18 +141,19 @@
 
 ---
 
-## 5. 工作量估算
+## 5. 工作量估算（当前仅剩重命名未实现）
 
 | 部分 | 工作量 |
 | --- | --- |
-| 后端：`GET /chat/sessions`（扫描 + 元信息）+ `PATCH /chat/session`（重命名）+ 可选 `DELETE` | 约 150–250 行 + 测试 |
-| DB 迁移（可选，方案 A） | 1 张表，微不足道 |
-| 前端：抽屉组件 + 宿主接线 + 切换/重命名/新建对话动作 | 中型，纯 UI |
-| **合计** | 小到中型功能，**无需强制 schema 迁移** |
+| 后端：`setConversationTitle` + `POST /chat/session/rename`（列表/置顶/删除已落地） | 约 20–30 行 + 测试 |
+| DB 迁移 | 不需要（沿用 `.pi-agent/meta.json`，方案 B） |
+| 前端：行内重命名 UI + 宿主接线 + API 函数 | 约 80–110 行，纯 UI |
+| **合计** | **小**，无 schema 迁移 |
 
 ---
 
 ## 6. 一句话结论
 
-> 需求可行：抽屉 UI、会话水合、workspaceId 切换三块地基都已存在，缺口是「会话列表接口 + 会话名存储」；
+> 需求可行：抽屉 UI、会话列表、置顶、删除、workspaceId 切换均已落地；**重命名是唯一缺口**，
+> 且 meta.json 的 `title` 读路径已存在，只需补写路径 + 行内编辑 UI（方案 B，零迁移）。
 > `chat.jsonl` 继续留在磁盘做唯一真相源即可，不需要（也不应该）迁入 DB。

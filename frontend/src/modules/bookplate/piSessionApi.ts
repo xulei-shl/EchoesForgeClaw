@@ -225,6 +225,20 @@ async function setConversationPinned(ws: string, pinned: boolean): Promise<void>
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 }
 
+/** 重命名一条对话（POST /chat/session/rename：写 meta.json 的 title；空白标题 = 恢复自动标题）。 */
+async function renameConversation(ws: string, title: string): Promise<void> {
+  const resp = await fetch('/api/modules/bookplate/chat/session/rename', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ workspace_id: ws, title }),
+  });
+  if (resp.status === 401) {
+    handleUnauthorized();
+    throw new Error('401');
+  }
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+}
+
 /** 完整删除一条对话（DELETE /chat/session：会话历史 / 产物 / 上传附件一并删除）。 */
 async function deleteConversationSession(ws: string): Promise<void> {
   const resp = await fetch('/api/modules/bookplate/chat/session', {
@@ -269,6 +283,7 @@ export {
   postUiResponse,
   fetchConversationSessions,
   setConversationPinned,
+  renameConversation,
   deleteConversationSession,
   deleteWorkspaceFile,
 };

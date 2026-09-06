@@ -5,8 +5,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { initDb, setDb, type DB } from '../../src/config/database.js';
 import { buildApp } from '../../src/server.js';
-import { nodeWorkspace } from '../../src/services/skill-agent-service.js';
-import { deletePiConversation, listPiConversations, setConversationPinned } from '../../src/services/pi/conversations.js';
+import { nodeWorkspace, workspacePath, workspaceRoot } from '../../src/services/skill-agent-service.js';
+import {
+  deletePiConversation,
+  listPiConversations,
+  setConversationPinned,
+  setConversationTitle,
+} from '../../src/services/pi/conversations.js';
 
 /**
  * pi 对话历史列表 / 置顶 / 删除契约测试：
@@ -144,6 +149,45 @@ describe('listPiConversations（服务端列表）', () => {
   });
 });
 
+describe('setConversationTitle（重命名）', () => {
+  it('写入 title 后列表使用自定义标题；置顶状态不受影响；超长标题按码点截断', () => {
+    const id = `${NODE_ID}_4501`;
+    seedWorkspace(id, ['原始消息']);
+    setConversationPinned(ws(id), true);
+    expect(setConversationTitle(ws(id), '  我的新标题  ')).toBe(true);
+
+    const s = listPiConversations(uid, NODE_ID).find((x) => x.workspaceId === id)!;
+    expect(s.title).toBe('我的新标题');
+    expect(s.pinned).toBe(true);
+
+    // 超长标题按码点截断到 100 字符
+    const longId = `${NODE_ID}_4504`;
+    seedWorkspace(longId, ['长标题']);
+    setConversationTitle(ws(longId), 'x'.repeat(500));
+    const long = listPiConversations(uid, NODE_ID).find((x) => x.workspaceId === longId)!;
+    expect(long.title.length).toBe(100);
+  });
+
+  it('空白标题清除自定义标题，回退自动标题', () => {
+    const id = `${NODE_ID}_4502`;
+    seedWorkspace(id, ['自动标题消息']);
+    setConversationTitle(ws(id), '临时标题');
+    expect(listPiConversations(uid, NODE_ID).find((x) => x.workspaceId === id)!.title).toBe('临时标题');
+
+    setConversationTitle(ws(id), '   ');
+    expect(listPiConversations(uid, NODE_ID).find((x) => x.workspaceId === id)!.title).toBe('自动标题消息');
+  });
+
+  it('工作区不存在返回 false，且不落空目录', () => {
+    const missing = `${NODE_ID}_4503`;
+    const before = readdirSync(workspaceRoot(uid));
+    expect(setConversationTitle(workspacePath(uid, missing), 'x')).toBe(false);
+    // 只读路径解析（workspacePath）不应创建目录
+    expect(existsSync(path.join(workspaceRoot(uid), missing))).toBe(false);
+    expect(readdirSync(workspaceRoot(uid))).toEqual(before);
+  });
+});
+
 describe('deletePiConversation', () => {
   it('完整删除工作区目录；不存在的会话返回 false', async () => {
     const id = `${NODE_ID}_5001`;
@@ -163,6 +207,86 @@ describe('deletePiConversation', () => {
     // 消毒后与 victim 相同的 id 才可能命中；带穿越字符的输入不会越界
     await deletePiConversation(uid, `${NODE_ID}_6001/../../x`);
     expect(existsSync(ws(victim))).toBe(true);
+  });
+});
+
+describe('chat 会话列表 / 置顶 / 重命名 / 删除路由（鉴权）', () => {
+  it('未登录访问返回 401', async () => {
+    const rename = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/chat/session/rename',
+      payload: { workspace_id: `${NODE_ID}_4501`, title: 'x' },
+    });
+    expect(rename.statusCode).toBe(401);
+  });
+
+  it('POST /chat/session/rename 重命名并反映到列表；空白恢复自动标题；缺失会话 404；非法参数 400', async () => {
+    const id = `${NODE_ID}_7501`;
+    seedWorkspace(id, ['重命名路由消息']);
+
+    // 重命名
+    const renameRes = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/chat/session/rename',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { workspace_id: id, title: '  路由新标题  ' },
+    });
+    expect(renameRes.statusCode).toBe(200);
+    expect((renameRes.json() as { ok: boolean }).ok).toBe(true);
+
+    const listRes = await app.inject({
+      method: 'GET',
+      url: `/api/modules/bookplate/chat/sessions?node_id=${NODE_ID}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const mine = (listRes.json() as { sessions: { workspaceId: string; title: string }[] }).sessions.find(
+      (s) => s.workspaceId === id
+    );
+    expect(mine?.title).toBe('路由新标题');
+
+    // 空白标题 → 恢复自动标题
+    await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/chat/session/rename',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { workspace_id: id, title: '   ' },
+    });
+    const afterReset = await app.inject({
+      method: 'GET',
+      url: `/api/modules/bookplate/chat/sessions?node_id=${NODE_ID}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const reset = (afterReset.json() as { sessions: { workspaceId: string; title: string }[] }).sessions.find(
+      (s) => s.workspaceId === id
+    );
+    expect(reset?.title).toBe('重命名路由消息');
+
+    // 会话不存在 → 404（且不落空目录）
+    const missing = `${NODE_ID}_nope`;
+    const missingRes = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/chat/session/rename',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { workspace_id: missing, title: 'x' },
+    });
+    expect(missingRes.statusCode).toBe(404);
+    expect(existsSync(path.join(RUNTIME_ROOT, String(uid), 'workspace', missing))).toBe(false);
+
+    // 非法参数 → 400
+    const badWs = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/chat/session/rename',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { workspace_id: '', title: 'x' },
+    });
+    expect(badWs.statusCode).toBe(400);
+    const badTitle = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/chat/session/rename',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { workspace_id: id, title: 123 },
+    });
+    expect(badTitle.statusCode).toBe(400);
   });
 });
 

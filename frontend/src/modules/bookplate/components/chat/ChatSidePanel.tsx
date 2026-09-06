@@ -1,14 +1,17 @@
 import { useState } from 'react';
 import {
+  Check,
   ChevronDown,
   FileText,
   Image as ImageIcon,
   Loader2,
   PanelRight,
+  Pencil,
   Pin,
   PinOff,
   RefreshCw,
   Trash2,
+  X,
 } from 'lucide-react';
 import { NodeSideDrawer } from '../../../../platform/components/node/NodeSideDrawer';
 import { useFeedback } from '../../../../platform/components/ui/FeedbackProvider';
@@ -41,6 +44,7 @@ export interface ChatSidePanel {
   onRefreshSessions?: () => void;
   onSelectSession?: (workspaceId: string) => void;
   onTogglePin?: (workspaceId: string, pinned: boolean) => Promise<void>;
+  onRenameSession?: (workspaceId: string, title: string) => Promise<void>;
   onDeleteSession?: (workspaceId: string) => Promise<void>;
   /** 文件行删除（AI 产物 / 我的上传；缺省 = 不展示删除按钮，FastClaw 模式等外部存储不可删） */
   onDeleteFile?: (file: AgentFile) => Promise<void>;
@@ -164,6 +168,7 @@ export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel 
   const [activeTab, setActiveTab] = useState<SideTabId>('artifacts');
   const [previewFile, setPreviewFile] = useState<AgentFile | null>(null);
   const [pinningId, setPinningId] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deletingPath, setDeletingPath] = useState<string | null>(null);
 
@@ -193,6 +198,19 @@ export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel 
       showToast('置顶操作失败，请重试', { type: 'error' });
     } finally {
       setPinningId(null);
+    }
+  };
+
+  const handleRename = async (s: ConversationSessionSummary, title: string) => {
+    if (!panel.onRenameSession) return;
+    setRenamingId(s.workspaceId);
+    try {
+      await panel.onRenameSession(s.workspaceId, title);
+      showToast('对话已重命名', { type: 'success' });
+    } catch {
+      showToast('重命名失败，请重试', { type: 'error' });
+    } finally {
+      setRenamingId(null);
     }
   };
 
@@ -325,9 +343,11 @@ export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel 
               currentWorkspaceId={panel.currentWorkspaceId ?? null}
               sourceNodeOf={panel.sourceNodeOf}
               pinningId={pinningId}
+              renamingId={renamingId}
               deletingId={deletingId}
               onSelect={handleSelect}
               onTogglePin={handleTogglePin}
+              onRename={panel.onRenameSession ? handleRename : undefined}
               onDelete={handleDelete}
             />
           ) : (
@@ -455,9 +475,11 @@ const HistoryBody: React.FC<{
   currentWorkspaceId: string | null;
   sourceNodeOf?: (workspaceId: string) => { title: string } | null;
   pinningId: string | null;
+  renamingId: string | null;
   deletingId: string | null;
   onSelect: (s: ConversationSessionSummary) => void;
   onTogglePin: (s: ConversationSessionSummary) => void;
+  onRename?: (s: ConversationSessionSummary, title: string) => Promise<void>;
   onDelete: (s: ConversationSessionSummary) => void;
 }> = ({
   sessions,
@@ -465,9 +487,11 @@ const HistoryBody: React.FC<{
   currentWorkspaceId,
   sourceNodeOf,
   pinningId,
+  renamingId,
   deletingId,
   onSelect,
   onTogglePin,
+  onRename,
   onDelete,
 }) => {
   if (loading && !sessions.length) {
@@ -493,9 +517,11 @@ const HistoryBody: React.FC<{
           isCurrent={s.workspaceId === currentWorkspaceId}
           sourceTitle={sourceNodeOf ? (sourceNodeOf(s.workspaceId)?.title ?? null) : null}
           pinning={pinningId === s.workspaceId}
+          renaming={renamingId === s.workspaceId}
           deleting={deletingId === s.workspaceId}
           onSelect={onSelect}
           onTogglePin={onTogglePin}
+          onRename={onRename}
           onDelete={onDelete}
         />
       ))}
@@ -503,26 +529,70 @@ const HistoryBody: React.FC<{
   );
 };
 
-/** 单个会话行：标题 + 元信息（时间 · 轮次 · 来源节点）；行点击载入，行内提供置顶与删除。 */
+/**
+ * 单个会话行：标题 + 元信息（时间 · 轮次 · 来源节点）；行点击载入，行内提供重命名 / 置顶 / 删除。
+ * 重命名为行内编辑态：铅笔进入，输入框回车 / 勾确认（空白 = 恢复自动标题），Esc / 取消退出。
+ */
 const ConversationRow: React.FC<{
   session: ConversationSessionSummary;
   isCurrent: boolean;
   sourceTitle?: string | null;
   pinning: boolean;
+  renaming: boolean;
   deleting: boolean;
   onSelect: (s: ConversationSessionSummary) => void;
   onTogglePin: (s: ConversationSessionSummary) => void;
+  onRename?: (s: ConversationSessionSummary, title: string) => Promise<void>;
   onDelete: (s: ConversationSessionSummary) => void;
-}> = ({ session, isCurrent, sourceTitle, pinning, deleting, onSelect, onTogglePin, onDelete }) => {
+}> = ({
+  session,
+  isCurrent,
+  sourceTitle,
+  pinning,
+  renaming,
+  deleting,
+  onSelect,
+  onTogglePin,
+  onRename,
+  onDelete,
+}) => {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(session.title);
+  const [saving, setSaving] = useState(false);
   const meta = sessionMetaLine(session);
+
+  const startEdit = () => {
+    setDraft(session.title);
+    setEditing(true);
+  };
+  const commit = async () => {
+    if (saving || !onRename) return;
+    const trimmed = draft.trim();
+    if (trimmed === session.title) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    try {
+      await onRename(session, trimmed);
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div
       role="button"
       tabIndex={0}
-      onClick={() => onSelect(session)}
+      onClick={() => {
+        if (editing) return; // 编辑态下行点击不触发载入
+        onSelect(session);
+      }}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
+          if (editing) return;
           onSelect(session);
         }
       }}
@@ -534,67 +604,143 @@ const ConversationRow: React.FC<{
       }`}
     >
       <span className="flex flex-col min-w-0 flex-1 leading-tight">
-        <span className="flex items-center gap-1 min-w-0">
-          <span
-            className={`truncate ${isCurrent ? 'text-accent font-medium' : 'text-ink font-medium'}`}
-          >
-            {session.title}
-          </span>
-          {isCurrent && (
-            <span className="shrink-0 text-[9px] font-sans text-accent border border-accent/30 rounded-pill px-1 py-px">
-              当前
+        {editing ? (
+          <input
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                void commit();
+              } else if (e.key === 'Escape') {
+                setEditing(false);
+              }
+            }}
+            onBlur={() => {
+              if (!saving) setEditing(false);
+            }}
+            placeholder="留空恢复自动标题"
+            title="编辑标题（回车保存，Esc 取消，留空恢复自动标题）"
+            className="w-full min-w-0 bg-paper border border-accent/50 rounded px-1.5 py-0.5 text-xs text-ink font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+          />
+        ) : (
+          <span className="flex items-center gap-1 min-w-0">
+            <span
+              className={`truncate ${isCurrent ? 'text-accent font-medium' : 'text-ink font-medium'}`}
+            >
+              {session.title}
             </span>
-          )}
-          {session.pinned && (
-            <Pin size={10} strokeWidth={2.25} className="shrink-0 text-accent" fill="currentColor" />
-          )}
-        </span>
-        {meta && (
+            {isCurrent && (
+              <span className="shrink-0 text-[9px] font-sans text-accent border border-accent/30 rounded-pill px-1 py-px">
+                当前
+              </span>
+            )}
+            {session.pinned && (
+              <Pin size={10} strokeWidth={2.25} className="shrink-0 text-accent" fill="currentColor" />
+            )}
+          </span>
+        )}
+        {meta && !editing && (
           <span className="truncate text-[10px] text-ink-faint tabular-nums font-mono">{meta}</span>
         )}
-        {sourceTitle && (
+        {sourceTitle && !editing && (
           <span className="truncate text-[10px] text-ink-faint">来自「{sourceTitle}」</span>
         )}
       </span>
 
-      {/* 行内操作（stopPropagation：不触发行点击载入） */}
+      {/* 行内操作（stopPropagation：不触发行点击载入）；编辑态替换为确认 / 取消 */}
       <span className="shrink-0 flex items-center gap-0.5">
-        <button
-          type="button"
-          disabled={pinning || deleting}
-          onClick={(e) => {
-            e.stopPropagation();
-            onTogglePin(session);
-          }}
-          title={session.pinned ? '取消置顶' : '置顶'}
-          aria-label={session.pinned ? '取消置顶' : '置顶'}
-          className="flex items-center justify-center w-6 h-6 rounded-md text-ink-faint hover:text-accent hover:bg-accent/10 active:scale-[0.96] transition disabled:opacity-40 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
-        >
-          {pinning ? (
-            <Loader2 size={12} className="animate-spin" />
-          ) : session.pinned ? (
-            <Pin size={12} strokeWidth={2} className="text-accent" fill="currentColor" />
-          ) : (
-            <PinOff size={12} strokeWidth={2} />
-          )}
-        </button>
-        <button
-          type="button"
-          disabled={pinning || deleting}
-          onClick={(e) => {
-            e.stopPropagation();
-            void onDelete(session);
-          }}
-          title="删除对话"
-          aria-label="删除对话"
-          className="flex items-center justify-center w-6 h-6 rounded-md text-ink-faint hover:text-error hover:bg-error/10 active:scale-[0.96] transition disabled:opacity-40 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-error"
-        >
-          {deleting ? (
-            <Loader2 size={12} className="animate-spin" />
-          ) : (
-            <Trash2 size={12} strokeWidth={2} />
-          )}
-        </button>
+        {editing ? (
+          <>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={(e) => {
+                e.stopPropagation();
+                void commit();
+              }}
+              onMouseDown={(e) => e.preventDefault()} // 防失焦先于点击触发 onBlur 取消编辑
+              title="保存标题"
+              aria-label="保存标题"
+              className="flex items-center justify-center w-6 h-6 rounded-md text-accent hover:bg-accent/10 active:scale-[0.96] transition disabled:opacity-40 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+            >
+              {saving ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <Check size={12} strokeWidth={2.25} />
+              )}
+            </button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditing(false);
+              }}
+              title="取消"
+              aria-label="取消编辑"
+              className="flex items-center justify-center w-6 h-6 rounded-md text-ink-faint hover:text-ink hover:bg-ink/10 active:scale-[0.96] transition disabled:opacity-40 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ink"
+            >
+              <X size={12} strokeWidth={2} />
+            </button>
+          </>
+        ) : (
+          <>
+            {onRename && (
+              <button
+                type="button"
+                disabled={pinning || renaming || deleting}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  startEdit();
+                }}
+                title="重命名对话"
+                aria-label="重命名对话"
+                className="flex items-center justify-center w-6 h-6 rounded-md text-ink-faint hover:text-accent hover:bg-accent/10 active:scale-[0.96] transition disabled:opacity-40 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+              >
+                <Pencil size={12} strokeWidth={2} />
+              </button>
+            )}
+            <button
+              type="button"
+              disabled={pinning || renaming || deleting}
+              onClick={(e) => {
+                e.stopPropagation();
+                onTogglePin(session);
+              }}
+              title={session.pinned ? '取消置顶' : '置顶'}
+              aria-label={session.pinned ? '取消置顶' : '置顶'}
+              className="flex items-center justify-center w-6 h-6 rounded-md text-ink-faint hover:text-accent hover:bg-accent/10 active:scale-[0.96] transition disabled:opacity-40 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+            >
+              {pinning ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : session.pinned ? (
+                <Pin size={12} strokeWidth={2} className="text-accent" fill="currentColor" />
+              ) : (
+                <PinOff size={12} strokeWidth={2} />
+              )}
+            </button>
+            <button
+              type="button"
+              disabled={pinning || renaming || deleting}
+              onClick={(e) => {
+                e.stopPropagation();
+                void onDelete(session);
+              }}
+              title="删除对话"
+              aria-label="删除对话"
+              className="flex items-center justify-center w-6 h-6 rounded-md text-ink-faint hover:text-error hover:bg-error/10 active:scale-[0.96] transition disabled:opacity-40 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-error"
+            >
+              {deleting ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <Trash2 size={12} strokeWidth={2} />
+              )}
+            </button>
+          </>
+        )}
       </span>
     </div>
   );

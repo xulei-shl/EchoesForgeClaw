@@ -40,6 +40,7 @@ import {
   resolvePiExtensions,
   sendExtensionUiResponse,
   setConversationPinned,
+  setConversationTitle,
 } from '../../../services/pi-agent-service.js';
 import {
   decodeDataUrlImage,
@@ -533,6 +534,27 @@ export async function register(app: FastifyInstance): Promise<void> {
         return reply.code(400).send({ detail: 'workspace_id 不能为空' });
       }
       return { deleted: await deletePiConversation(request.authUser!.id, workspaceId) };
+    }
+  );
+
+  // ---- Skill Agent 对话重命名：写 {ws}/.pi-agent/meta.json 的 title（空白 = 恢复自动标题）----
+  // 只读路径解析（workspacePath 不建目录）：会话不存在时返回 404，不留空目录
+  app.post(
+    '/api/modules/bookplate/chat/session/rename',
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const payload = (request.body ?? {}) as { workspace_id?: string; title?: unknown };
+      const workspaceId = sanitizeWorkspaceId(payload.workspace_id ?? '');
+      if (!workspaceId) {
+        return reply.code(400).send({ detail: 'workspace_id 不能为空' });
+      }
+      if (typeof payload.title !== 'string') {
+        return reply.code(400).send({ detail: 'title 必须为字符串' });
+      }
+      const ws = workspacePath(request.authUser!.id, workspaceId);
+      const renamed = setConversationTitle(ws, payload.title);
+      if (!renamed) return reply.code(404).send({ detail: '会话不存在' });
+      return { ok: true };
     }
   );
 

@@ -23,6 +23,7 @@ import {
   importInheritedImages,
   postUiResponse,
   setConversationPinned,
+  renameConversation,
   deleteConversationSession,
   deleteWorkspaceFile,
   type UploadedWorkspaceFile,
@@ -853,6 +854,15 @@ function PiChatNodeHostInner({
     [h, node.id, convPanel.bump]
   );
 
+  /** 重命名会话：后端写 meta.json 的 title（空白 = 恢复自动标题），成功后刷新列表 */
+  const handleRenameConversation = useCallback(
+    async (workspaceId: string, title: string) => {
+      await renameConversation(workspaceId, title);
+      convPanel.bump();
+    },
+    [convPanel.bump]
+  );
+
   /** 删除单个工作区文件（AI 产物 / inputs/ 上传）：成功后刷新面板（已删文件不再列出） */
   const handleDeleteFile = useCallback(
     async (file: AgentFile) => {
@@ -914,6 +924,7 @@ function PiChatNodeHostInner({
     onRefreshSessions: convPanel.refresh,
     onSelectSession: handleSelectConversation,
     onTogglePin: handleToggleConversationPin,
+    onRenameSession: handleRenameConversation,
     onDeleteSession: handleDeleteConversation,
     onDeleteFile: handleDeleteFile,
     sourceNodeOf,
@@ -928,6 +939,7 @@ function PiChatNodeHostInner({
     wsId,
     handleSelectConversation,
     handleToggleConversationPin,
+    handleRenameConversation,
     handleDeleteConversation,
     handleDeleteFile,
     sourceNodeOf,

@@ -35,6 +35,7 @@ export {
   type ConversationSummary,
   listPiConversations,
   setConversationPinned,
+  setConversationTitle,
   deletePiConversation,
 } from './pi/conversations.js';
 export {

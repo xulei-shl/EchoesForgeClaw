@@ -87,6 +87,26 @@ export function setConversationPinned(ws: string, pinned: boolean): void {
   writeConversationMeta(ws, meta);
 }
 
+/** 手动标题最长字符数（按码点截断；自动标题 MAX_TITLE_CHARS=40，手动放宽到 100）。 */
+const MAX_MANUAL_TITLE_CHARS = 100;
+
+/**
+ * 重命名会话：写入/清除 {ws}/.pi-agent/meta.json 的 title 字段（与置顶同一元数据文件）。
+ * - 空白标题 = 清除自定义标题，列表回退自动标题（「恢复默认名」）；
+ * - 工作区不存在返回 false（用只读路径解析，不落空目录——与 pin 的 nodeWorkspace 建目录语义区分）。
+ */
+export function setConversationTitle(ws: string, title: string): boolean {
+  if (!existsSync(ws)) return false;
+  const meta = readConversationMeta(ws);
+  const normalized = [...String(title ?? '').replace(/\s+/g, ' ').trim()]
+    .slice(0, MAX_MANUAL_TITLE_CHARS)
+    .join('');
+  if (normalized) meta.title = normalized;
+  else delete meta.title;
+  writeConversationMeta(ws, meta);
+  return true;
+}
+
 /** 用户消息文本 → 列表标题：剥离注入上下文前缀（与前端 stripInjectedContext 通用口径一致），单行化 + 截断。 */
 function titleFromUserText(text: string): string {
   let title = text.trim();
