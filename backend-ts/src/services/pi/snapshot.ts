@@ -141,11 +141,11 @@ export function writeWorkspaceBaseline(ws: string, stamps: Map<string, FileStamp
 }
 
 // ---------------------------------------------------------------------------
-// 产物清单（manifest）与工作区产物列表
+// 产物清单（manifest）与AI 产物列表
 // ---------------------------------------------------------------------------
 
 /**
- * 工作区产物清单落点（相对工作区根）。放 .pi-agent/ 下可复用差分排除前缀，
+ * AI 产物清单落点（相对工作区根）。放 .pi-agent/ 下可复用差分排除前缀，
  * 清单不会自报自录；append-only JSONL，读取端按 rel 去重取最新。
  */
 export const PI_ARTIFACTS_REL = path.join('.pi-agent', 'artifacts.jsonl');

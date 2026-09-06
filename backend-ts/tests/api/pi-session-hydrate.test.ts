@@ -13,7 +13,7 @@ import { hydratePiSession, resolvePiSessionFile } from '../../src/services/pi-se
  * - hydratePiSession：jsonl v3 条目 → UI 历史（文本/推理/工具卡/中断/压缩/坏行/截断）
  * - GET /chat/session：水合端点（鉴权）
  * - GET /chat/session/image：内联图片块鉴权取图
- * - GET /chat/files：工作区产物快照 ∪ manifest（删除标记）
+ * - GET /chat/files：AI 产物快照 ∪ manifest（删除标记）
  */
 
 const RUNTIME_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../runtime');
@@ -205,7 +205,7 @@ describe('hydratePiSession（jsonl → UI 历史）', () => {
     expect(result.messages[3]!.agentSteps![0]!.message).toContain('429');
   });
 
-  it('write 工具调用推导工作区产物文件卡（越界/装配目录排除）', () => {
+  it('write 工具调用推导AI 产物文件卡（越界/装配目录排除）', () => {
     seedSession([
       {
         type: 'message',

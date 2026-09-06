@@ -109,6 +109,6 @@ const PREVIEW_RENDERERS: Array<[(mime: string) => boolean, React.FC<{ file: Agen
 
 - **流中禁写消息状态**：曾在 `onData` 里直接 `setMessages/setNodes`，与 AI SDK 事件处理竞态 —— 多个背靠背 `agent_file` 会丢事件、metadata 流结束被清空（症状即"只有文本没有卡片"）。现行为缓冲到 `pendingFilesRef`，流结束后一次性并入。
 - **transient 事件不持久化**：刷新后消失；正文提取是兜底重建通道。pi-image-gen 工具会指示模型原样内联 markdown 图片，是最可靠来源；FastClaw 模式下正文里是本机绝对路径，卡片完全依赖事件桥接。
-- **裂图清洗范围**：`stripUnrenderableImages` 剔除「本工作区产物 + 其它本机绝对路径（非 /api/、/static/）」两类图片语法；网页图与 data URL 正常渲染。
+- **裂图清洗范围**：`stripUnrenderableImages` 剔除「本AI 产物 + 其它本机绝对路径（非 /api/、/static/）」两类图片语法；网页图与 data URL 正常渲染。
 - **差分排除目录**：`.agents/`、`.pi/`、`.pi-agent/`、`inputs/` 与 `AGENTS.md` 不算产物（`DIFF_EXCLUDED_*`）。
 - **中文名**：接口用 RFC 5987 `filename*=UTF-8''…` + ASCII 兜底；前端下载统一 blob + `a.download`。

@@ -195,14 +195,13 @@ async function postUiResponse(
 }
 
 /**
- * 对话历史列表（GET /chat/sessions）：返回该用户全部 pi 会话，node_id 提供时按
- * `{nodeId}_` 前缀过滤（chat 节点工作区命名约定），仅返回该节点的历史。
+ * 对话历史列表（GET /chat/sessions）：返回该用户 runtime/{userId}/workspace/ 下**全部**
+ * pi 会话（跨节点全局列表，不传 node_id 即不过滤；来源节点由前端按 workspaceId 前缀标注）。
  */
-async function fetchConversationSessions(nodeId: string): Promise<ConversationSessionSummary[]> {
-  const resp = await fetch(
-    `/api/modules/bookplate/chat/sessions?node_id=${encodeURIComponent(nodeId)}`,
-    { headers: authHeaders() }
-  );
+async function fetchConversationSessions(): Promise<ConversationSessionSummary[]> {
+  const resp = await fetch('/api/modules/bookplate/chat/sessions', {
+    headers: authHeaders(),
+  });
   if (resp.status === 401) {
     handleUnauthorized();
     throw new Error('401');

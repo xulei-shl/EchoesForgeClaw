@@ -22,7 +22,7 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** 单个工作区产物文件卡片（图片缩略预览 / 文本·PDF 内联预览弹层 / 文档下载）。 */
+/** 单个AI 产物文件卡片（图片缩略预览 / 文本·PDF 内联预览弹层 / 文档下载）。 */
 export const SkillFileCard = memo(({ file }: { file: AgentFile }) => {
   const { showToast } = useFeedback();
   const [downloading, setDownloading] = useState(false);

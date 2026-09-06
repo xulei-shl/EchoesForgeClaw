@@ -49,7 +49,11 @@ import {
 } from '../../../services/file-utils.js';
 import { withWidgetBridge, createWidgetStore } from '../../../services/pi-widgets.js';
 import { hydratePiSession, readSessionImageBlock } from '../../../services/pi-session-hydrate.js';
-import { nodeWorkspace, sanitizeWorkspaceId } from '../../../services/skill-agent-service.js';
+import {
+  nodeWorkspace,
+  sanitizeWorkspaceId,
+  workspacePath,
+} from '../../../services/skill-agent-service.js';
 import { fastclawDataRoot, harvestFastclawArtifacts } from '../../../services/fastclaw-artifacts.js';
 import { chatStreamToResponse, chatStreamToSseResponse, type ChatStreamEvent } from '../stream.js';
 import { NODE_TYPES } from '../node-types.js';
@@ -569,7 +573,9 @@ export async function register(app: FastifyInstance): Promise<void> {
     async (request) => {
       const q = (request.query ?? {}) as { workspace_id?: string };
       const workspaceId = sanitizeWorkspaceId(q.workspace_id ?? '');
-      const ws = nodeWorkspace(request.authUser!.id, workspaceId);
+      // 只读水合：用不创建目录的路径解析——对不存在（或已删除 / 尚未开始对话）的工作区
+      // 返回空会话即可，绝不能因此落下空 chatid 文件夹
+      const ws = workspacePath(request.authUser!.id, workspaceId);
       // 扩展 widget 快照（per-workspace 真相源）随会话一并下发，前端 widget_set_all 对齐
       const hydrated = hydratePiSession(ws, workspaceId);
       return { ...hydrated, widgets: createWidgetStore(ws).snapshot() };
@@ -590,7 +596,8 @@ export async function register(app: FastifyInstance): Promise<void> {
       if (!q.entry || !Number.isInteger(block)) {
         return reply.code(400).send({ detail: 'entry 与 block 参数不能为空' });
       }
-      const ws = nodeWorkspace(request.authUser!.id, sanitizeWorkspaceId(q.workspace_id ?? ''));
+      // 只读取图：路径解析不创建目录（会话不存在时直接 404，不留空目录）
+      const ws = workspacePath(request.authUser!.id, sanitizeWorkspaceId(q.workspace_id ?? ''));
       const img = readSessionImageBlock(ws, q.entry, block);
       if (!img) return reply.code(404).send({ detail: '图片不存在' });
       reply.type(img.mime);
@@ -598,7 +605,7 @@ export async function register(app: FastifyInstance): Promise<void> {
     }
   );
 
-  // ---- 工作区产物列表（当前快照 ∪ manifest 历史；「工作区文件」面板数据源）----
+  // ---- AI 产物列表（当前快照 ∪ manifest 历史；「工作区文件」面板数据源）----
   // include_inputs=1 时额外列出 inputs/ 下的用户上传文件（前端 @ 引用检索的数据源）
   app.get(
     '/api/modules/bookplate/chat/files',
@@ -606,7 +613,8 @@ export async function register(app: FastifyInstance): Promise<void> {
     async (request) => {
       const q = (request.query ?? {}) as { workspace_id?: string; include_inputs?: string };
       const workspaceId = sanitizeWorkspaceId(q.workspace_id ?? '');
-      const ws = nodeWorkspace(request.authUser!.id, workspaceId);
+      // 只读文件列表：路径解析不创建目录（无产物的工作区返回空列表，不留空目录）
+      const ws = workspacePath(request.authUser!.id, workspaceId);
       const includeInputs = q.include_inputs === '1' || q.include_inputs === 'true';
       return { files: listWorkspaceArtifacts(ws, workspaceId, { includeInputs }) };
     }

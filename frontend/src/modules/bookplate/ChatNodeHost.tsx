@@ -19,6 +19,7 @@ import {
   uiToStore,
 } from './chatMessages';
 import { mismatchBadgeOf, type NodeViewHelpers } from './CanvasNodeViews';
+import type { ChatSidePanel } from './components/chat/ChatSidePanel';
 import { mergeAgentFiles } from './workspaceFiles';
 import {
   MAX_CHAT_IMAGES,
@@ -632,17 +633,20 @@ function ChatNodeHostInner({
   const handleSend = useCallback((_id: string, text: string, images?: string[]) => send(text, images), [send]);
   const handleContextMenu = useCallback((e: React.MouseEvent<HTMLDivElement>) => h.handleNodeContextMenu(e, node.id), [h, node.id]);
 
-  const workspaceFilesProp = useMemo(() => (
-    isFastClawAgent
-      ? {
-          open: panel.open,
-          loading: panel.loading,
-          files: panel.files,
-          onToggle: () => panel.setOpen((v) => !v),
-          onRefresh: panel.refresh,
-        }
-      : undefined
-  ), [isFastClawAgent, panel.open, panel.loading, panel.files, panel.setOpen, panel.refresh]);
+  // 侧边面板（FastClaw Agent 模式：仅文件区两个 Tab——AI 产物 / 我的上传；无对话历史）
+  const sidePanelProp = useMemo<ChatSidePanel | undefined>(
+    () =>
+      isFastClawAgent
+        ? {
+            open: panel.open,
+            onToggle: () => panel.setOpen((v) => !v),
+            filesLoading: panel.loading,
+            files: panel.files,
+            onRefreshFiles: panel.refresh,
+          }
+        : undefined,
+    [isFastClawAgent, panel.open, panel.setOpen, panel.loading, panel.files, panel.refresh]
+  );
 
   return (
     <ChatNode
@@ -681,7 +685,7 @@ function ChatNodeHostInner({
       onResizeLive={h.handleNodeResizeLive}
       footer={h.renderFooter(node)}
       onContextMenu={handleContextMenu}
-      workspaceFiles={workspaceFilesProp}
+      sidePanel={sidePanelProp}
     />
   );
 }

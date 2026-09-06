@@ -656,12 +656,12 @@ export interface AgentFile {
   size: number;
   path: string;
   /**
-   * 服务端文件是否仍存在（仅 /chat/files 工作区产物列表携带；
+   * 服务端文件是否仍存在（仅 /chat/files AI 产物列表携带；
    * manifest 历史条目对应文件被删除时为 false，面板侧过滤不展示）
    */
   exists?: boolean;
   /**
-   * 文件修改时间（unix 毫秒；仅 /chat/files 工作区产物列表携带，
+   * 文件修改时间（unix 毫秒；仅 /chat/files AI 产物列表携带，
    * agent_file 事件与 FastClaw 会话文件列表不带；工作区文件抽屉按此倒序展示）
    */
   mtimeMs?: number;

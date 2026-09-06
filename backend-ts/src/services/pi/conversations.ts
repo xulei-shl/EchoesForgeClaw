@@ -1,13 +1,17 @@
 import {
+  closeSync,
   existsSync,
   mkdirSync,
+  openSync,
   readFileSync,
   readdirSync,
+  readSync,
   rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
+import { StringDecoder } from 'node:string_decoder';
 import { sanitizeWorkspaceId, workspaceRoot } from '../skill-agent-service.js';
 import { resolvePiSessionFile } from '../pi-session-hydrate.js';
 import { killPiProcess } from './registry.js';
@@ -25,8 +29,11 @@ import { cleanupSubagentAsyncRuns } from './subagents/cleanup.js';
 
 /** 会话级元数据（置顶 / 标题等）落点（相对工作区根）。 */
 export const PI_SESSION_META_REL = path.join('.pi-agent', 'meta.json');
-/** 单会话扫描行数上限（防止超大 jsonl 拖垮列表响应）。 */
-const MAX_SCAN_LINES = 200_000;
+/**
+ * 单会话扫描字节上限：只读文件头（会话起点 + 首条用户消息均在头部），
+ * 避免超大 jsonl 每次列表请求整读整解析拖垮响应；头部内的轮次计数为近似值。
+ */
+const MAX_SCAN_BYTES = 256 * 1024;
 /** 自动标题最长字符数（按码点截断）。 */
 const MAX_TITLE_CHARS = 40;
 
@@ -107,60 +114,72 @@ function formatFallbackTime(ts: number): string {
   return `${date} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-/** 会话文件扫描：会话起始时间（首行 session 条目 ISO 时间戳）+ 首条用户消息文本 + 用户轮次计数。 */
+/**
+ * 会话文件头部扫描（最多读 MAX_SCAN_BYTES 字节，不整读全文件）：
+ * - 会话起始时间（首行 session 条目 ISO 时间戳）+ 首条用户消息文本（列表标题源）；
+ * - 用户轮次计数：仅统计头部内可见部分（超大会话为近似值，与旧 MAX_SCAN_LINES 语义一致）；
+ * - 截断处由 StringDecoder 收尾，不残留半个多字节 UTF-8 字符；坏行（含截断半行）逐条跳过。
+ */
 function readSessionMeta(
   file: string
 ): { createdAt: number | null; firstUserText: string; userTurns: number } {
-  let raw = '';
+  const empty = { createdAt: null, firstUserText: '', userTurns: 0 };
+  let fd: number;
   try {
-    raw = readFileSync(file, 'utf-8');
+    fd = openSync(file, 'r');
   } catch {
-    return { createdAt: null, firstUserText: '', userTurns: 0 };
+    return empty;
   }
-  let createdAt: number | null = null;
-  let firstUserText = '';
-  let userTurns = 0;
-  let lines = 0;
-  for (const line of raw.split('\n')) {
-    lines += 1;
-    if (lines > MAX_SCAN_LINES) break;
-    const trimmed = line.trim();
-    if (!trimmed.startsWith('{')) continue;
-    if (createdAt === null && trimmed.startsWith('{"type":"session"')) {
+  try {
+    const buf = Buffer.alloc(MAX_SCAN_BYTES);
+    const bytesRead = readSync(fd, buf, 0, MAX_SCAN_BYTES, 0);
+    if (bytesRead <= 0) return empty;
+    // StringDecoder.end 丢弃截断处的残缺字节序列（不会在末尾产生 U+FFFD 替换符污染标题）
+    const text = new StringDecoder('utf-8').end(buf.subarray(0, bytesRead));
+    let createdAt: number | null = null;
+    let firstUserText = '';
+    let userTurns = 0;
+    for (const line of text.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('{')) continue;
+      if (createdAt === null && trimmed.startsWith('{"type":"session"')) {
+        try {
+          const entry = JSON.parse(trimmed) as { timestamp?: string };
+          if (entry.timestamp) {
+            const t = Date.parse(entry.timestamp);
+            if (Number.isFinite(t)) createdAt = t;
+          }
+        } catch {
+          /* 坏行：跳过 */
+        }
+        continue;
+      }
+      if (!trimmed.includes('"type":"message"') || !trimmed.includes('"role":"user"')) continue;
+      userTurns += 1;
+      if (firstUserText) continue;
       try {
-        const entry = JSON.parse(trimmed) as { timestamp?: string };
-        if (entry.timestamp) {
-          const t = Date.parse(entry.timestamp);
-          if (Number.isFinite(t)) createdAt = t;
+        const entry = JSON.parse(trimmed) as { message?: { content?: unknown } };
+        const content = entry.message?.content;
+        if (typeof content === 'string') {
+          firstUserText = content;
+        } else if (Array.isArray(content)) {
+          const textBlock = content.find(
+            (b): b is { type: string; text: string } =>
+              !!b &&
+              typeof b === 'object' &&
+              (b as { type?: unknown }).type === 'text' &&
+              typeof (b as { text?: unknown }).text === 'string'
+          );
+          if (textBlock) firstUserText = textBlock.text;
         }
       } catch {
         /* 坏行：跳过 */
       }
-      continue;
     }
-    if (!trimmed.includes('"type":"message"') || !trimmed.includes('"role":"user"')) continue;
-    userTurns += 1;
-    if (firstUserText) continue;
-    try {
-      const entry = JSON.parse(trimmed) as { message?: { content?: unknown } };
-      const content = entry.message?.content;
-      if (typeof content === 'string') {
-        firstUserText = content;
-      } else if (Array.isArray(content)) {
-        const textBlock = content.find(
-          (b): b is { type: string; text: string } =>
-            !!b &&
-            typeof b === 'object' &&
-            (b as { type?: unknown }).type === 'text' &&
-            typeof (b as { text?: unknown }).text === 'string'
-        );
-        if (textBlock) firstUserText = textBlock.text;
-      }
-    } catch {
-      /* 坏行：跳过 */
-    }
+    return { createdAt, firstUserText, userTurns };
+  } finally {
+    closeSync(fd);
   }
-  return { createdAt, firstUserText, userTurns };
 }
 
 /**

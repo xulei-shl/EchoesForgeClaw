@@ -331,8 +331,10 @@ export function useNodeHandlers({
       agentSteps: [],
       error: null,
       epoch: (node.data?.epoch ?? 0) + 1,
-      // 干净对话 -> 干净工作区：重新生成 workspaceId，后端以新目录装配（Skill Agent 产物不残留）
-      workspaceId: `${id}_${Date.now()}`,
+      // 干净对话 -> 延迟分配工作区：置空 workspaceId，与「新建节点」同口径——首个发送 / 上传
+      // 附件时才生成 `${id}_${Date.now()}` 并创建目录；避免「清空后未开新对话（如直接载入
+      // 历史会话）」就留下空 chatid 文件夹（水合 GET 会以该 id 建目录）。
+      workspaceId: '',
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -352,7 +354,8 @@ export function useNodeHandlers({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  /** AI 对话节点（Skill Agent）：删除当前会话后重置为全新工作区（与 handleClearChatFor 同口径，无消息守卫） */
+  /** AI 对话节点（Skill Agent）：删除当前会话后重置为全新工作区（与 handleClearChatFor 同口径：
+   *  置空 workspaceId，首个发送 / 上传时才生成并创建目录，无消息守卫） */
   const handleResetChatWorkspaceFor = useCallback((id: string) => {
     const node = nodesRef.current.find((n) => n.id === id);
     if (!node || node.type !== 'chat') return;
@@ -363,7 +366,7 @@ export function useNodeHandlers({
       agentSteps: [],
       error: null,
       epoch: (node.data?.epoch ?? 0) + 1,
-      workspaceId: `${id}_${Date.now()}`,
+      workspaceId: '',
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

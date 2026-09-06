@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { nodesRef, edgesRef } from '../../platform/stores/useCanvasState';
 import { ChatNode } from './components/ChatNode';
-import type { ChatConversationsPanel } from './components/chat/ChatHistoryPanel';
+import type { ChatSidePanel } from './components/chat/ChatSidePanel';
 import { useConversationHistoryPanel } from './useConversationHistoryPanel';
 import { getNodeTitle } from './nodeTypes';
 import { buildContextBlocks } from './contextBlocks';
@@ -142,16 +142,20 @@ function PiChatNodeHostInner({
   /** 当前 live 请求实际使用的工作区，避免 setNodes 异步更新导致收尾读取旧值 */
   const activeRequestWsRef = useRef<string | null>(wsId);
 
-  // ---------- 工作区文件面板 ----------
-  // 状态机复用 useWorkspaceFilesPanel（展开时加载 / 收尾自动刷新）；loader 返回 null 表示跳过
-  const panel = useWorkspaceFilesPanel(async () => {
-    const ws = wsIdRef.current;
-    if (!ws) return null;
-    return fetchWorkspaceFiles(ws);
-  });
-
-  // ---------- 对话历史面板（该节点名下 pi 会话列表；展开时加载 / 收尾自动刷新） ----------
-  const convPanel = useConversationHistoryPanel(node.id);
+  // ---------- 侧边面板（工作区文件 + 对话历史合并为单一右侧抽屉，Tab 切换） ----------
+  // 单一展开态 sideOpen 统一驱动两个面板状态机（openOverride 受控模式）；
+  // 文件面板：展开时加载 / 收尾自动刷新，loader 返回 null 表示跳过；
+  // 对话历史面板：展开时加载该节点名下 pi 会话列表 / 收尾自动刷新。
+  const [sideOpen, setSideOpen] = useState(false);
+  const panel = useWorkspaceFilesPanel(
+    async () => {
+      const ws = wsIdRef.current;
+      if (!ws) return null;
+      return fetchWorkspaceFiles(ws);
+    },
+    sideOpen
+  );
+  const convPanel = useConversationHistoryPanel(sideOpen);
 
   // ---------- 排队消息 / 重试横幅 ----------
   const [msgQueue, setMsgQueue] = useState<QueuedMessage[]>([]);
@@ -863,34 +867,50 @@ function PiChatNodeHostInner({
   const handleSend = useCallback((_id: string, text: string, images?: string[]) => send(text, images), [send]);
   const handleContextMenu = useCallback((e: React.MouseEvent<HTMLDivElement>) => h.handleNodeContextMenu(e, node.id), [h, node.id]);
 
-  const workspaceFilesProp = useMemo(() => ({
-    open: panel.open,
-    loading: panel.loading,
-    files: panel.files,
-    onToggle: () => panel.setOpen((v) => !v),
-    onRefresh: panel.refresh,
-  }), [panel.open, panel.loading, panel.files, panel.setOpen, panel.refresh]);
+  /**
+   * 来源节点解析（全局对话列表用）：workspaceId 遵循 `{nodeId}_{ts}` 命名约定，前缀即创建
+   * 节点 id；本节点自身的历史不标注（默认归属），节点已从画布删除时也返回 null 不标注。
+   */
+  const sourceNodeOf = useCallback(
+    (workspaceId: string) => {
+      const sep = workspaceId.lastIndexOf('_');
+      if (sep <= 0) return null;
+      const srcNodeId = workspaceId.slice(0, sep);
+      if (srcNodeId === node.id) return null;
+      const srcNode = h.nodes.find((n) => n.id === srcNodeId);
+      if (!srcNode) return null;
+      return { title: getNodeTitle(srcNode) };
+    },
+    [h.nodes, node.id]
+  );
 
-  const conversationPanelProp = useMemo<ChatConversationsPanel>(() => ({
-    open: convPanel.open,
-    loading: convPanel.loading,
+  const sidePanelProp = useMemo<ChatSidePanel>(() => ({
+    open: sideOpen,
+    onToggle: () => setSideOpen((v) => !v),
+    filesLoading: panel.loading,
+    files: panel.files,
+    onRefreshFiles: panel.refresh,
     sessions: convPanel.sessions,
+    sessionsLoading: convPanel.loading,
     currentWorkspaceId: wsId,
-    onToggle: () => convPanel.setOpen((v) => !v),
-    onRefresh: convPanel.refresh,
-    onSelect: handleSelectConversation,
+    onRefreshSessions: convPanel.refresh,
+    onSelectSession: handleSelectConversation,
     onTogglePin: handleToggleConversationPin,
-    onDelete: handleDeleteConversation,
+    onDeleteSession: handleDeleteConversation,
+    sourceNodeOf,
   }), [
-    convPanel.open,
-    convPanel.loading,
+    sideOpen,
+    panel.loading,
+    panel.files,
+    panel.refresh,
     convPanel.sessions,
-    convPanel.setOpen,
+    convPanel.loading,
     convPanel.refresh,
     wsId,
     handleSelectConversation,
     handleToggleConversationPin,
     handleDeleteConversation,
+    sourceNodeOf,
   ]);
 
   const messageQueueProp = useMemo(() => (
@@ -944,8 +964,7 @@ function PiChatNodeHostInner({
       onResizeLive={h.handleNodeResizeLive}
       footer={h.renderFooter(node)}
       onContextMenu={handleContextMenu}
-      workspaceFiles={workspaceFilesProp}
-      conversations={conversationPanelProp}
+      sidePanel={sidePanelProp}
       retryNotice={retryNotice}
       messageQueue={messageQueueProp}
       widgets={streamState.widgets}

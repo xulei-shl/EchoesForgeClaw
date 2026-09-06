@@ -85,7 +85,7 @@ export interface HarvestedArtifact {
 /**
  * 收割本轮文本中引用的 FastClaw 产物 → 拷贝进节点工作区 destDir（outputs/）。
  * 同名冲突（不同来源）自动加序号后缀；同名新内容直接覆盖（最新胜出，
- * 与工作区产物「按名寻址」语义一致）。任何单个文件的失败只跳过该项，不中断整体。
+ * 与AI 产物「按名寻址」语义一致）。任何单个文件的失败只跳过该项，不中断整体。
  */
 export function harvestFastclawArtifacts(opts: {
   root: string;

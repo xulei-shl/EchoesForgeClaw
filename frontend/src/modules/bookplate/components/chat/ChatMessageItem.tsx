@@ -26,7 +26,7 @@ interface ChatMessageItemProps {
   stepNumber?: number;
   isLast: boolean;
   agentName?: string;
-  /** 当前节点工作区 id（从正文提取工作区产物文件时用于换算接口 URL） */
+  /** 当前节点工作区 id（从正文提取AI 产物文件时用于换算接口 URL） */
   workspaceId?: string | null;
   /** 上下文注入块（首条 user 消息渲染时用于精准剥离上下文前缀） */
   contextBlocks?: InjectedContextBlock[];
@@ -126,7 +126,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
   );
   // 是否应该渲染正文气泡：有正文、处于初次等待首字阶段、或已被用户中断
   const shouldRenderBubble = hasContent || isWaitingInitialToken || Boolean(msg.interrupted);
-  // 正文引用的工作区产物（渲染时提取，与事件上报的 msg.files 合并去重）→ 文件卡片
+  // 正文引用的AI 产物（渲染时提取，与事件上报的 msg.files 合并去重）→ 文件卡片
   const cardFiles = mergeAgentFiles(
     Array.isArray(msg.files) ? msg.files : [],
     extractWorkspaceFiles(msg.content, workspaceId)

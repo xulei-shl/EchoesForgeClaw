@@ -24,20 +24,14 @@ import { ChatNodeComposer } from './chat/ChatNodeComposer';
 import { ChatNodeSettingsPopover } from './chat/ChatNodeSettingsPopover';
 import { ScrollButtons } from './chat/ScrollButtons';
 import {
-  WorkspaceFilesDrawer,
-  WorkspaceFilesTrigger,
-  type ChatWorkspaceFilesPanel,
-} from './chat/WorkspaceFilesPanel';
-import {
-  ChatHistoryDrawer,
-  ChatHistoryTrigger,
-  type ChatConversationsPanel,
-} from './chat/ChatHistoryPanel';
+  ChatSidePanelDrawer,
+  ChatSidePanelTrigger,
+  type ChatSidePanel,
+} from './chat/ChatSidePanel';
 import { CHAT_STYLE_INJECTIONS } from './chatStyles';
 
 export type { ChatRetryNotice, ChatMessageQueue } from './chat/ChatStatusBanners';
-export type { ChatWorkspaceFilesPanel } from './chat/WorkspaceFilesPanel';
-export type { ChatConversationsPanel } from './chat/ChatHistoryPanel';
+export type { ChatSidePanel } from './chat/ChatSidePanel';
 
 export interface ChatNodeProps {
   id: string;
@@ -96,10 +90,11 @@ export interface ChatNodeProps {
   mode?: 'llm' | 'agent' | 'skill_agent';
   /** 绑定的节点配置 id（拉取服务商模型列表用） */
   configId?: number | null;
-  /** 工作区产物面板（skill_agent 模式：服务端 outputs/ ∪ manifest 历史） */
-  workspaceFiles?: ChatWorkspaceFilesPanel | null;
-  /** 对话历史面板（skill_agent 模式：该节点 pi 会话列表，点击载入 / 置顶 / 删除） */
-  conversations?: ChatConversationsPanel | null;
+  /**
+   * 侧边面板（单一右侧吸附抽屉，Tab 切换）：AI 产物 / 我的上传（skill_agent +
+   * FastClaw agent）+ 对话历史（skill_agent 模式：该节点 pi 会话列表，点击载入 / 置顶 / 删除）
+   */
+  sidePanel?: ChatSidePanel | null;
   /** 自动重试横幅（skill_agent 模式；null = 无） */
   retryNotice?: ChatRetryNotice | null;
   /** 排队消息（skill_agent 模式；不传 = 不启用排队） */
@@ -147,8 +142,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
   mismatchBadge,
   mode,
   configId,
-  workspaceFiles,
-  conversations,
+  sidePanel,
   retryNotice,
   messageQueue,
   widgets = [],
@@ -339,15 +333,8 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
       mismatchBadge={mismatchBadge}
       // 抽屉必须挂在 sideDrawer 根级插槽（渲染在内容区 overflow 之外，见
       // docs/节点侧边吸附抽屉使用指南.md 2.1：写进 children 会被 overflow-x-hidden 裁切）。
-      // 工作区文件占右侧，对话历史固定左侧（side="left"），两者可同时展开互不遮挡。
-      sideDrawer={
-        workspaceFiles || conversations ? (
-          <>
-            {workspaceFiles && <WorkspaceFilesDrawer panel={workspaceFiles} />}
-            {conversations && <ChatHistoryDrawer panel={conversations} />}
-          </>
-        ) : undefined
-      }
+      // 单一右侧吸附抽屉，工作区文件与对话历史经 Tab 切换（见 ChatSidePanel）。
+      sideDrawer={sidePanel ? <ChatSidePanelDrawer panel={sidePanel} /> : undefined}
       actionBar={renderActionBar()}
     >
       <style dangerouslySetInnerHTML={{ __html: CHAT_STYLE_INJECTIONS }} />
@@ -482,12 +469,11 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
           }}
         />
 
-        {/* 工作区文件入口条（skill_agent / FastClaw agent）+ 对话历史入口条（skill_agent）：
-            点击展开侧边吸附抽屉（见 WorkspaceFilesDrawer / ChatHistoryDrawer） */}
-        {(workspaceFiles || conversations) && (
+        {/* 侧边面板入口条（skill_agent / FastClaw agent）：单一通用按钮，点击展开右侧
+            吸附抽屉（AI 产物 / 我的上传 / 对话历史 Tab 切换，见 ChatSidePanel） */}
+        {sidePanel && (
           <div className="shrink-0 mt-1.5 flex items-center gap-3">
-            {workspaceFiles && <WorkspaceFilesTrigger panel={workspaceFiles} />}
-            {conversations && <ChatHistoryTrigger panel={conversations} />}
+            <ChatSidePanelTrigger panel={sidePanel} />
           </div>
         )}
 

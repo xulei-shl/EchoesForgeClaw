@@ -1,7 +1,7 @@
 /**
  * Skill Agent 产物文件的正文提取与展示辅助。
  *
- * pi（skill agent）的回复正文会以内联 markdown 图片 / 路径引用工作区产物
+ * pi（skill agent）的回复正文会以内联 markdown 图片 / 路径引用AI 产物
  * （如 `![x](/opt/…/runtime/1/workspace/{wsId}/outputs/x.png)`），这些是服务器本地路径，
  * 浏览器无法直接加载。这里把正文中的文件引用换算为 skill-files 鉴权接口 URL，
  * 交由 ChatNode 的文件卡片组件（fetch→blob）渲染预览与下载；同时提供剔除
@@ -92,7 +92,7 @@ export function skillFileUrl(ref: WorkspaceRef): string {
 }
 
 /**
- * 从助手正文中提取工作区产物文件（去重）：
+ * 从助手正文中提取AI 产物文件（去重）：
  * - markdown 图片 / 链接引用（模型被指示原样内联图片语法）
  * - 反引号包裹或裸露的工作区路径（如 「文件保存于 `outputs/foo.md`」）
  * 返回可直接交给文件卡片渲染的 AgentFile[]（size 未知记 0，卡片自动隐藏大小）。
@@ -129,7 +129,7 @@ export function extractWorkspaceFiles(
 
 /**
  * 剔除正文中无法在浏览器加载的图片语法：
- * - 本工作区产物路径（绝对 / 相对，见 resolveWorkspaceRef）
+ * - 本AI 产物路径（绝对 / 相对，见 resolveWorkspaceRef）
  * - 其它本机绝对路径（如 FastClaw 等外部 agent 引用的服务器路径，/api/、/static/ 除外）
  * 保留网页图片与 data URL；随后收敛多余空行。文件本体由消息下方的文件卡片展示。
  */
@@ -162,7 +162,7 @@ export function mergeAgentFiles(a?: AgentFile[], b?: AgentFile[]): AgentFile[] {
 /**
  * 工作区文件类别（侧边抽屉 tab 的注册表数据源）：
  * - 各类别 matches 判定需互斥（每个文件恰好命中一个类别），注册表顺序即抽屉 Tab 顺序；
- *   「工作区产物」为兜底（承接所有非 inputs/ 文件）；
+ *   「AI 产物」为兜底（承接所有非 inputs/ 文件）；
  * - 未来新增类别（如输出快照 / 共享素材等）= 在此追加一条描述 + 互斥判定即可，
  *   抽屉 Tab 与列表会自动扩展，无需改动组件逻辑。
  */
@@ -171,7 +171,7 @@ export interface WorkspaceFileCategory<ID extends string = string> {
   id: ID;
   /** tab 展示名 */
   label: string;
-  /** 文件归属判定（inputs/ = 我的上传；其余兜底 = 工作区产物） */
+  /** 文件归属判定（inputs/ = 我的上传；其余兜底 = AI 产物） */
   matches: (file: AgentFile) => boolean;
 }
 
@@ -180,11 +180,11 @@ function isUploadedPath(path: unknown): path is string {
   return typeof path === 'string' && path.startsWith('inputs/');
 }
 
-/** 当前内置类别：工作区产物 / 我的上传（顺序即抽屉 Tab 默认顺序）。 */
+/** 当前内置类别：AI 产物 / 我的上传（顺序即抽屉 Tab 默认顺序）。 */
 export const WORKSPACE_FILE_CATEGORIES: WorkspaceFileCategory<'artifacts' | 'uploads'>[] = [
   {
     id: 'artifacts',
-    label: '工作区产物',
+    label: 'AI 产物',
     matches: (f) => !isUploadedPath(f.path),
   },
   {

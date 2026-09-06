@@ -69,11 +69,20 @@ export function sanitizeWorkspaceId(workspaceId: string): string {
   return (workspaceId ?? '').replace(WORKSPACE_ID_PATTERN, '').slice(0, MAX_WORKSPACE_ID_LEN);
 }
 
-/** 创建并返回单个 chat 节点的工作区：runtime/{user_id}/workspace/{workspace_id}。 */
-export function nodeWorkspace(userId: number, workspaceId: string): string {
+/**
+ * 计算单个 chat 节点的工作区路径：runtime/{user_id}/workspace/{workspace_id}。
+ * 只做路径解析，不创建目录——只读场景（会话水合 / 文件列表 / 置顶前判定）用它
+ * 可避免「引用一个不存在的工作区 id」就落下一个空目录；写场景用 nodeWorkspace。
+ */
+export function workspacePath(userId: number, workspaceId: string): string {
   let ws = sanitizeWorkspaceId(workspaceId);
   if (!ws) ws = `node_${Date.now()}`;
-  const d = path.join(RUNTIME_ROOT, String(userId), 'workspace', ws);
+  return path.join(RUNTIME_ROOT, String(userId), 'workspace', ws);
+}
+
+/** 创建并返回单个 chat 节点的工作区：runtime/{user_id}/workspace/{workspace_id}。 */
+export function nodeWorkspace(userId: number, workspaceId: string): string {
+  const d = workspacePath(userId, workspaceId);
   mkdirSync(d, { recursive: true });
   return d;
 }

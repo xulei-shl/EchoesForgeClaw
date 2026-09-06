@@ -126,7 +126,7 @@ function imageCard(entryId: string, blockIndex: number, mime: string, workspaceI
   return { url, name: `会话图片-${entryId}-${blockIndex}`, mime, size: 0, path: url };
 }
 
-/** write/edit 类工具调用的目标路径 → 工作区产物文件卡（仅接受落在工作区内的路径）。 */
+/** write/edit 类工具调用的目标路径 → AI 产物文件卡（仅接受落在工作区内的路径）。 */
 function writeFileCard(
   args: Record<string, unknown>,
   ws: string,
