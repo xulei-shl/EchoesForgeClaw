@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 
 /**
  * 通用文件工具（与 pi agent 无关的中立模块）。
@@ -166,5 +166,55 @@ export function removePathSafe(p: string): void {
     rmSync(p, { force: true });
   } catch {
     /* 目录残留或不存在：忽略 */
+  }
+}
+
+/** 工作区文件删除保护的相对路径前缀：装配物与会话配置（.pi-agent/ 内含 chat.jsonl、
+ * artifacts.jsonl、snapshot.json、meta.json 等），删除列表（/chat/files）永不展示它们。 */
+const DELETION_PROTECTED_PREFIXES = ['.agents/', '.pi/', '.pi-agent/'];
+
+/** 工作区根级受保护文件（AGENTS.md 软链指向共享 agent 配置，误删影响后续装配）。 */
+const DELETION_PROTECTED_FILES = new Set(['AGENTS.md']);
+
+/**
+ * 安全工作区文件删除（产物 / inputs/ 上传文件）：
+ * - 词法层：拼接结果必须落在工作区根内（拒绝 ../ 越界与绝对路径）；
+ * - 保护层：拒绝装配物 / 会话路径（.agents/ .pi/ .pi-agent/ AGENTS.md）；
+ * - 符号层：realpath 穿透后必须仍落在工作区 realpath 内（防软链目录指向工作区外）；
+ * - 只删文件 / 软链本身（目录整删风险大，拒绝；软链 unlink 只移除链接不穿透目标）。
+ * 文件不存在或不可删除返回 false。
+ */
+export function deleteWorkspaceFileSafe(ws: string, rel: string): boolean {
+  const cleaned = String(rel ?? '').replace(/\\/g, '/').replace(/^\/+/g, '');
+  if (!cleaned || cleaned === '.' || cleaned === '..') return false;
+  if (
+    DELETION_PROTECTED_FILES.has(cleaned) ||
+    DELETION_PROTECTED_PREFIXES.some((p) => cleaned.startsWith(p))
+  ) {
+    return false;
+  }
+  const target = path.resolve(ws, cleaned);
+  if (target !== ws && !target.startsWith(ws + path.sep)) return false;
+  let wsReal: string;
+  let targetReal: string;
+  try {
+    wsReal = realpathSync(ws);
+    targetReal = realpathSync(target);
+  } catch {
+    return false;
+  }
+  if (targetReal !== wsReal && !targetReal.startsWith(wsReal + path.sep)) return false;
+  let st;
+  try {
+    st = lstatSync(target);
+  } catch {
+    return false;
+  }
+  if (st.isDirectory()) return false; // 只删文件，目录（含产物子目录）不整删
+  try {
+    unlinkSync(target);
+    return true;
+  } catch {
+    return false; // 文件被占用（如 Windows 锁定）等：调用方提示重试
   }
 }

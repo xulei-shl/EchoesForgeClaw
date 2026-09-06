@@ -24,6 +24,7 @@ import {
   postUiResponse,
   setConversationPinned,
   deleteConversationSession,
+  deleteWorkspaceFile,
   type UploadedWorkspaceFile,
 } from './piSessionApi';
 import {
@@ -852,6 +853,17 @@ function PiChatNodeHostInner({
     [h, node.id, convPanel.bump]
   );
 
+  /** 删除单个工作区文件（AI 产物 / inputs/ 上传）：成功后刷新面板（已删文件不再列出） */
+  const handleDeleteFile = useCallback(
+    async (file: AgentFile) => {
+      const ws = wsIdRef.current;
+      if (!ws) throw new Error('工作区未就绪');
+      await deleteWorkspaceFile(ws, file.path);
+      panel.refresh();
+    },
+    [panel.refresh]
+  );
+
   // ---------- 渲染 ----------
   const config = h.configOf(node);
   const settings: ChatNodeSettings = node.data?.settings ?? DEFAULT_CHAT_SETTINGS;
@@ -903,6 +915,7 @@ function PiChatNodeHostInner({
     onSelectSession: handleSelectConversation,
     onTogglePin: handleToggleConversationPin,
     onDeleteSession: handleDeleteConversation,
+    onDeleteFile: handleDeleteFile,
     sourceNodeOf,
   }), [
     sideOpen,
@@ -916,6 +929,7 @@ function PiChatNodeHostInner({
     handleSelectConversation,
     handleToggleConversationPin,
     handleDeleteConversation,
+    handleDeleteFile,
     sourceNodeOf,
   ]);
 

@@ -43,6 +43,7 @@ import {
 } from '../../../services/pi-agent-service.js';
 import {
   decodeDataUrlImage,
+  deleteWorkspaceFileSafe,
   mimeOf,
   saveInputFile,
   skillFileDownloadUrl,
@@ -617,6 +618,27 @@ export async function register(app: FastifyInstance): Promise<void> {
       const ws = workspacePath(request.authUser!.id, workspaceId);
       const includeInputs = q.include_inputs === '1' || q.include_inputs === 'true';
       return { files: listWorkspaceArtifacts(ws, workspaceId, { includeInputs }) };
+    }
+  );
+
+  // ---- Skill Agent 工作区文件删除：AI 产物 / inputs/ 上传文件（「文件面板」行内删除）----
+  // 与列表同口径：仅放行工作区内普通产物与 inputs/ 上传文件；装配物 / 会话路径
+  // （.agents/ .pi/ .pi-agent/ AGENTS.md）与越界 / 软链穿透由 deleteWorkspaceFileSafe 拒绝。
+  // 只读路径解析（workspacePath 不建目录）：目录不存在 / 文件不存在 → 404。
+  app.delete(
+    '/api/modules/bookplate/chat/file',
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const payload = (request.body ?? {}) as { workspace_id?: string; path?: string };
+      const workspaceId = sanitizeWorkspaceId(payload.workspace_id ?? '');
+      const rel = String(payload.path ?? '').trim();
+      if (!workspaceId || !rel) {
+        return reply.code(400).send({ detail: 'workspace_id 与 path 不能为空' });
+      }
+      const ws = workspacePath(request.authUser!.id, workspaceId);
+      const deleted = deleteWorkspaceFileSafe(ws, rel);
+      if (!deleted) return reply.code(404).send({ detail: '文件不存在或不可删除' });
+      return { deleted: true };
     }
   );
 

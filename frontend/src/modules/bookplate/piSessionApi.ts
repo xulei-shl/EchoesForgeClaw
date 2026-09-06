@@ -239,6 +239,20 @@ async function deleteConversationSession(ws: string): Promise<void> {
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 }
 
+/** 删除工作区内单个文件（DELETE /chat/file：AI 产物 / inputs/ 上传文件；装配物与会话受保护）。 */
+async function deleteWorkspaceFile(ws: string, relPath: string): Promise<void> {
+  const resp = await fetch('/api/modules/bookplate/chat/file', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ workspace_id: ws, path: relPath }),
+  });
+  if (resp.status === 401) {
+    handleUnauthorized();
+    throw new Error('401');
+  }
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+}
+
 /** 从会话快照缓存移除指定工作区（删除对话后调用，防止残留缓存被再次水合）。 */
 function evictSessionCache(ws: string): void {
   sessionCache.delete(ws);
@@ -256,4 +270,5 @@ export {
   fetchConversationSessions,
   setConversationPinned,
   deleteConversationSession,
+  deleteWorkspaceFile,
 };

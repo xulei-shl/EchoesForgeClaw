@@ -270,3 +270,98 @@ describe('GET /chat/files（include_inputs 控制 inputs/ 是否可检索）', (
     expect((res.json() as { files: unknown[] }).files).toEqual([]);
   });
 });
+
+describe('DELETE /chat/file（工作区文件删除：AI 产物 / inputs/ 上传）', () => {
+  function del(pathArg: string, workspaceId = WS_ID) {
+    return app.inject({
+      method: 'DELETE',
+      url: '/api/modules/bookplate/chat/file',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      payload: { workspace_id: workspaceId, path: pathArg },
+    });
+  }
+
+  it('删除 inputs/ 上传文件 → 200 且磁盘文件移除，/chat/files 不再列出', async () => {
+    const res = await del('inputs/report.pdf');
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { deleted: boolean }).deleted).toBe(true);
+    const ws = nodeWorkspace(uid, WS_ID);
+    expect(existsSync(path.join(ws, 'inputs', 'report.pdf'))).toBe(false);
+    const files = await app.inject({
+      method: 'GET',
+      url: `/api/modules/bookplate/chat/files?workspace_id=${WS_ID}&include_inputs=1`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const list = (files.json() as { files: { path: string }[] }).files;
+    expect(list.some((f) => f.path === 'inputs/report.pdf')).toBe(false);
+  });
+
+  it('删除 AI 产物（非 inputs/ 工作区文件）→ 200 且磁盘移除', async () => {
+    const ws = nodeWorkspace(uid, WS_ID);
+    mkdirSync(path.join(ws, 'outputs'), { recursive: true });
+    writeFileSync(path.join(ws, 'outputs', 'art.txt'), 'artifact');
+    expect(existsSync(path.join(ws, 'outputs', 'art.txt'))).toBe(true);
+    const res = await del('outputs/art.txt');
+    expect(res.statusCode).toBe(200);
+    expect(existsSync(path.join(ws, 'outputs', 'art.txt'))).toBe(false);
+  });
+
+  it('会话 / 装配物受保护：.pi-agent 与 AGENTS.md 拒绝删除且文件保留', async () => {
+    const ws = nodeWorkspace(uid, WS_ID);
+    const sessionFile = path.join(ws, '.pi-agent', 'run', 'chat.jsonl');
+    mkdirSync(path.dirname(sessionFile), { recursive: true });
+    writeFileSync(sessionFile, '{"type":"session"}\n');
+    writeFileSync(path.join(ws, 'AGENTS.md'), '# agents');
+    for (const rel of ['.pi-agent/run/chat.jsonl', 'AGENTS.md']) {
+      const res = await del(rel);
+      expect(res.statusCode).toBe(404);
+      expect((res.json() as { detail: string }).detail).toContain('不可删除');
+    }
+    expect(existsSync(sessionFile)).toBe(true);
+    expect(existsSync(path.join(ws, 'AGENTS.md'))).toBe(true);
+  });
+
+  it('目录穿越拒绝：../ 越界 404，外部文件不受影响', async () => {
+    const outside = path.join(RUNTIME_ROOT, String(uid), 'workspace', '..', '..', 'escape.txt');
+    writeFileSync(outside, 'x');
+    try {
+      const res = await del('../escape.txt');
+      expect(res.statusCode).toBe(404);
+      expect(existsSync(outside)).toBe(true);
+    } finally {
+      rmSync(outside, { force: true });
+    }
+  });
+
+  it('文件不存在 / 目录目标 → 404（只删文件，不整删目录）', async () => {
+    expect((await del('inputs/nope.txt')).statusCode).toBe(404);
+    expect((await del('inputs')).statusCode).toBe(404);
+  });
+
+  it('缺少 workspace_id / path → 400', async () => {
+    const missingPath = await app.inject({
+      method: 'DELETE',
+      url: '/api/modules/bookplate/chat/file',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      payload: { workspace_id: WS_ID, path: '' },
+    });
+    expect(missingPath.statusCode).toBe(400);
+    const missingWs = await app.inject({
+      method: 'DELETE',
+      url: '/api/modules/bookplate/chat/file',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      payload: { workspace_id: '', path: 'inputs/x.txt' },
+    });
+    expect(missingWs.statusCode).toBe(400);
+  });
+
+  it('未登录 → 401', async () => {
+    const res = await app.inject({
+      method: 'DELETE',
+      url: '/api/modules/bookplate/chat/file',
+      headers: { 'content-type': 'application/json' },
+      payload: { workspace_id: WS_ID, path: 'inputs/x.txt' },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+});

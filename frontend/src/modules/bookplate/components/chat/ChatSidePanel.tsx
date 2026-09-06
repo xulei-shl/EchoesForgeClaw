@@ -42,6 +42,8 @@ export interface ChatSidePanel {
   onSelectSession?: (workspaceId: string) => void;
   onTogglePin?: (workspaceId: string, pinned: boolean) => Promise<void>;
   onDeleteSession?: (workspaceId: string) => Promise<void>;
+  /** 文件行删除（AI 产物 / 我的上传；缺省 = 不展示删除按钮，FastClaw 模式等外部存储不可删） */
+  onDeleteFile?: (file: AgentFile) => Promise<void>;
   /** 来源节点解析（全局列表时按 workspaceId 前缀找画布节点标题；缺省 = 不标注） */
   sourceNodeOf?: (workspaceId: string) => { title: string } | null;
 }
@@ -163,6 +165,7 @@ export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel 
   const [previewFile, setPreviewFile] = useState<AgentFile | null>(null);
   const [pinningId, setPinningId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deletingPath, setDeletingPath] = useState<string | null>(null);
 
   const sessions = panel.sessions;
   const hasHistory = !!sessions;
@@ -216,6 +219,26 @@ export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel 
   const handleSelect = (s: ConversationSessionSummary) => {
     // 只载入会话到节点，不自动收起抽屉——抽屉仅由用户手动关闭（Esc / 关闭按钮 / 底部入口条）
     panel.onSelectSession?.(s.workspaceId);
+  };
+
+  const handleDeleteFile = async (file: AgentFile) => {
+    if (!panel.onDeleteFile) return;
+    const ok = await dialog.confirm({
+      title: '删除文件',
+      message: `确定删除「${file.name}」吗？该文件将从工作区中永久删除，无法恢复。`,
+      confirmText: '删除',
+      danger: true,
+    });
+    if (!ok) return;
+    setDeletingPath(file.path);
+    try {
+      await panel.onDeleteFile(file);
+      showToast('文件已删除', { type: 'success' });
+    } catch {
+      showToast('删除失败，请重试', { type: 'error' });
+    } finally {
+      setDeletingPath(null);
+    }
   };
 
   const handleDownload = async (file: AgentFile) => {
@@ -311,6 +334,8 @@ export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel 
             <FilesBody
               fileTab={fileTabs.find((t) => t.category.id === resolvedTab)}
               loading={panel.filesLoading}
+              deletingPath={deletingPath}
+              onDelete={panel.onDeleteFile ? handleDeleteFile : undefined}
               onPreview={setPreviewFile}
             />
           )}
@@ -333,8 +358,10 @@ export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel 
 const FilesBody: React.FC<{
   fileTab: { category: { id: string; label: string }; files: AgentFile[] } | undefined;
   loading: boolean;
+  deletingPath: string | null;
+  onDelete?: (file: AgentFile) => void;
   onPreview: (file: AgentFile) => void;
-}> = ({ fileTab, loading, onPreview }) => {
+}> = ({ fileTab, loading, deletingPath, onDelete, onPreview }) => {
   if (loading && !fileTab?.files.length) {
     return (
       <div className="flex items-center gap-1.5 text-[11px] font-sans text-ink-faint py-3">
@@ -348,17 +375,25 @@ const FilesBody: React.FC<{
   return (
     <div className="flex flex-col gap-1">
       {sortWorkspaceFilesByTime(fileTab.files).map((f) => (
-        <WorkspaceFileRow key={f.url || f.path} file={f} onPreview={onPreview} />
+        <WorkspaceFileRow
+          key={f.url || f.path}
+          file={f}
+          deleting={deletingPath === f.path}
+          onDelete={onDelete}
+          onPreview={onPreview}
+        />
       ))}
     </div>
   );
 };
 
-/** 单个文件列表行：图标 + 文件名 + 元信息（大小 · 时间）；点击整行打开预览。 */
+/** 单个文件列表行：图标 + 文件名 + 元信息（大小 · 时间）；点击整行打开预览，行内可删除。 */
 const WorkspaceFileRow: React.FC<{
   file: AgentFile;
+  deleting: boolean;
+  onDelete?: (file: AgentFile) => void;
   onPreview: (file: AgentFile) => void;
-}> = ({ file, onPreview }) => {
+}> = ({ file, deleting, onDelete, onPreview }) => {
   const isImage = IMAGE_EXT_RE.test(file.name);
   const meta = fileMetaLine(file);
   return (
@@ -373,7 +408,7 @@ const WorkspaceFileRow: React.FC<{
         }
       }}
       title={`预览 ${file.name}`}
-      className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-paper-grid/60 bg-paper-grid/20 text-xs font-sans cursor-pointer hover:border-accent/40 hover:bg-accent/5 transition select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+      className="group flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-paper-grid/60 bg-paper-grid/20 text-xs font-sans cursor-pointer hover:border-accent/40 hover:bg-accent/5 transition select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
     >
       {isImage ? (
         <ImageIcon size={14} className="shrink-0 text-accent" />
@@ -388,6 +423,27 @@ const WorkspaceFileRow: React.FC<{
           <span className="truncate text-[10px] text-ink-faint tabular-nums font-mono">{meta}</span>
         )}
       </span>
+
+      {/* 行内删除（stopPropagation：不触发行点击预览） */}
+      {onDelete && (
+        <button
+          type="button"
+          disabled={deleting}
+          onClick={(e) => {
+            e.stopPropagation();
+            void onDelete(file);
+          }}
+          title="删除文件"
+          aria-label={`删除 ${file.name}`}
+          className="flex items-center justify-center w-6 h-6 rounded-md text-ink-faint hover:text-error hover:bg-error/10 active:scale-[0.96] transition disabled:opacity-40 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-error"
+        >
+          {deleting ? (
+            <Loader2 size={12} className="animate-spin" />
+          ) : (
+            <Trash2 size={12} strokeWidth={2} />
+          )}
+        </button>
+      )}
     </div>
   );
 };
