@@ -665,4 +665,14 @@ export interface AgentFile {
    * agent_file 事件与 FastClaw 会话文件列表不带；工作区文件抽屉按此倒序展示）
    */
   mtimeMs?: number;
+  /**
+   * 是否可点击预览/下载（缺省 true）。false = 密钥/装配敏感文件（.env*、.pi-agent 下的
+   * models.json/settings.json/web-search.json/auth.json 等）：在「全部文件」树中
+   * 仅展示文件名与目录结构，skill-files 下载层同样拒绝。
+   */
+  previewable?: boolean;
+  /** true = 目录软链占位节点（「全部文件」完整清单：仅展示目录名，不穿透目标内容） */
+  isDir?: boolean;
+  /** true = 条目本身是符号链接（指向工作区外的文件软链 / 悬空软链仅展示名字） */
+  link?: boolean;
 }

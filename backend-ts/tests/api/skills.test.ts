@@ -361,6 +361,57 @@ describe('skill-files 下载', () => {
     });
     expect(res.statusCode).toBe(404);
   });
+
+  it('密钥文件与装配配置直连下载被拦截（.env* / .pi-agent 非白名单子树 → 404；skills 白名单子树仍放行）', async () => {
+    const ws = nodeWorkspace(uid, 'ws_test_1');
+    mkdirSync(`${ws}/outputs`, { recursive: true });
+    mkdirSync(`${ws}/.pi-agent`, { recursive: true });
+    writeFileSync(`${ws}/.env`, 'SECRET=1');
+    writeFileSync(`${ws}/outputs/.env.local`, 'NESTED=1');
+    writeFileSync(`${ws}/.pi-agent/models.json`, '{"providers":{"bookforge":{"apiKey":"real-secret"}}}');
+
+    const blocked = ['.env', encodeURIComponent('outputs/.env.local'), '.pi-agent/models.json'];
+    for (const p of blocked) {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/modules/bookplate/skill-files?path=${p}&workspace_id=ws_test_1`,
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(res.statusCode).toBe(404);
+    }
+
+    // 装配资源白名单子树（.pi-agent/skills/）不受影响
+    mkdirSync(`${ws}/.pi-agent/skills`, { recursive: true });
+    writeFileSync(`${ws}/.pi-agent/skills/readme.md`, 'skill resource');
+    const ok = await app.inject({
+      method: 'GET',
+      url: '/api/modules/bookplate/skill-files?path=.pi-agent/skills/readme.md&workspace_id=ws_test_1',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.body).toContain('skill resource');
+
+    // 非敏感装配文件（snapshot.json）可下载；运行态会话 jsonl（run/）拒绝
+    writeFileSync(`${ws}/.pi-agent/snapshot.json`, '{}');
+    const snap = await app.inject({
+      method: 'GET',
+      url: '/api/modules/bookplate/skill-files?path=.pi-agent/snapshot.json&workspace_id=ws_test_1',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(snap.statusCode).toBe(200);
+    mkdirSync(`${ws}/.pi-agent/run`, { recursive: true });
+    writeFileSync(`${ws}/.pi-agent/run/chat.jsonl`, '{}');
+    const run = await app.inject({
+      method: 'GET',
+      url: '/api/modules/bookplate/skill-files?path=.pi-agent/run/chat.jsonl&workspace_id=ws_test_1',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(run.statusCode).toBe(404);
+
+    rmSync(`${ws}/.env`, { force: true });
+    rmSync(`${ws}/outputs/.env.local`, { force: true });
+    rmSync(`${ws}/.pi-agent`, { recursive: true, force: true });
+  });
 });
 
 describe('admin bifrost-skills 管理', () => {

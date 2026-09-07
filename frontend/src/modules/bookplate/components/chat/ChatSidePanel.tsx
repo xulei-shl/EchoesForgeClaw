@@ -1,11 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Check,
   ChevronDown,
-  FileText,
-  Image as ImageIcon,
   ListChecks,
   Loader2,
+  MoreVertical,
   PanelRight,
   Pencil,
   Pin,
@@ -17,20 +16,23 @@ import {
 import { NodeSideDrawer } from '../../../../platform/components/node/NodeSideDrawer';
 import { useFeedback } from '../../../../platform/components/ui/FeedbackProvider';
 import { FilePreviewModal } from '../FilePreviewModal';
+import { WorkspaceFileTree } from './WorkspaceFileTree';
 import { authHeaders } from '../../authUtils';
-import { sortWorkspaceFilesByTime, WORKSPACE_FILE_CATEGORIES } from '../../workspaceFiles';
+import { WORKSPACE_FILE_CATEGORIES } from '../../workspaceFiles';
 import type { AgentFile } from '../../../../platform/types';
 import type { ConversationSessionSummary } from '../../piSessionApi';
 
 /**
  * 节点侧边面板（单一右侧吸附抽屉，Tab 切换内容）：
  *
- * - Tab 1/2 AI 产物 / 我的上传：服务端工作区文件（skill_agent + FastClaw agent 共用）；
- * - Tab 3 对话历史：该用户**全部** pi 会话（跨节点全局列表），点击载入节点 / 置顶 / 删除
- *   （仅 skill_agent 模式提供）；来源节点由宿主按 workspaceId 前缀解析并标注。
+ * - 顶部三个常驻 Tab 与旧版一致：AI 产物 / 我的上传（树形、可删除）/ 对话历史（载入 / 置顶 / 删除）；
+ * - 「全部文件」折叠在「⋮」溢出下拉：工作区完整清单（含 .pi-agent 配置与任意深度 .env* 的名字与目录结构，
+ *   敏感文件带锁图标仅可看名字，预览/下载被 skill-files 拒绝；非敏感文件可预览），只读总览；
+ * - 文件叶子点击打开统一预览弹层；对话历史 Tab 来源节点由宿主按 workspaceId 前缀解析并标注；
+ * - 未来新增 Tab：追加 SideTabId 分支 + tabDescs 条目（primary=false 即落「⋮」溢出），渲染逻辑零改动。
  *
  * 替代旧的双抽屉方案（左侧对话历史 + 右侧工作区文件）：节点底部只保留一个通用入口按钮
- * （「侧边面板」），点击展开同一右侧抽屉，三个 Tab 互斥切换。
+ * （「侧边面板」），点击展开同一右侧抽屉，Tab 互斥切换。
  */
 export interface ChatSidePanel {
   open: boolean;
@@ -47,12 +49,11 @@ export interface ChatSidePanel {
   onTogglePin?: (workspaceId: string, pinned: boolean) => Promise<void>;
   onRenameSession?: (workspaceId: string, title: string) => Promise<void>;
   onDeleteSession?: (workspaceId: string) => Promise<void>;
-  /** 文件行删除（AI 产物 / 我的上传；缺省 = 不展示删除按钮，FastClaw 模式等外部存储不可删） */
+  /** 文件行删除（AI 产物 / 我的上传 Tab；「全部文件」Tab 恒只读，不展示删除入口） */
   onDeleteFile?: (file: AgentFile) => Promise<void>;
   /**
    * 批量删除文件（多选删除 / 全部清空共用；AI 产物 / 我的上传 Tab）。
    * 宿主内串行复用单删接口、删除结束只刷新一次；返回成功 / 失败计数。
-   * 缺省 = 不展示文件 Tab 的批量入口（FastClaw 模式等外部存储不可删）。
    */
   onBatchDeleteFiles?: (files: AgentFile[]) => Promise<{ ok: number; failed: number }>;
   /**
@@ -65,39 +66,7 @@ export interface ChatSidePanel {
   sourceNodeOf?: (workspaceId: string) => { title: string } | null;
 }
 
-/** 图片扩展名（行首图标区分；预览统一走 FilePreviewModal） */
-const IMAGE_EXT_RE = /\\.(png|jpe?g|gif|webp|svg)$/i;
-
-/** 文件大小人类可读格式（B / KB / MB） */
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-/** 文件修改时间展示（本年省略年份：MM-DD HH:mm；跨年带年份），无时间戳返回空 */
-function formatFileTime(mtimeMs?: number): string {
-  if (!mtimeMs || !(mtimeMs > 0) || !Number.isFinite(mtimeMs)) return '';
-  const d = new Date(mtimeMs);
-  const now = new Date();
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const date =
-    d.getFullYear() === now.getFullYear()
-      ? `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-      : `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  return `${date} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-/** 文件行元信息：大小 · 时间（任一缺失时只展示另一项） */
-function fileMetaLine(file: AgentFile): string {
-  const parts: string[] = [];
-  if (file.size > 0) parts.push(formatFileSize(file.size));
-  const time = formatFileTime(file.mtimeMs);
-  if (time) parts.push(time);
-  return parts.join(' · ');
-}
-
-/** 带鉴权下载文件（skill-files / fastclaw-files 接口要求登录鉴权，统一 fetch → blob → 触发保存）。 */
+/** 文件下载（skill-files / fastclaw-files 接口要求登录鉴权，统一 fetch → blob → 触发保存）。 */
 async function downloadAgentFile(file: AgentFile): Promise<void> {
   const resp = await fetch(file.url, { headers: authHeaders() });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -164,17 +133,30 @@ export const ChatSidePanelTrigger: React.FC<{ panel: ChatSidePanel }> = ({ panel
   );
 };
 
-/** 抽屉 Tab：前两个为文件类别（WORKSPACE_FILE_CATEGORIES 注册表），第三个为对话历史。 */
-type SideTabId = 'artifacts' | 'uploads' | 'history';
+/** 抽屉 Tab：全部文件 / 两个文件类别（WORKSPACE_FILE_CATEGORIES 注册表）/ 对话历史。
+ *  未来新增 Tab：追加 SideTabId 分支 + tabDescs 条目（primary=false 时自动落入「…」溢出下拉），
+ *  无需改动 Tab 栏渲染逻辑。 */
+type SideTabId = 'all' | 'artifacts' | 'uploads' | 'history';
+
+interface SideTabDesc {
+  id: SideTabId;
+  label: string;
+  /** Tab 计数（文件类别 = 文件数；对话历史 = 会话数） */
+  badge: number;
+  /** 空桶置灰（文件类别无文件时不可点） */
+  disabled?: boolean;
+  /** 常驻 Tab 栏；false = 折叠进「…」溢出下拉 */
+  primary: boolean;
+}
 
 /**
  * 侧边面板抽屉（挂在 CanvasNode 的 sideDrawer 根级插槽，见 docs/节点侧边吸附抽屉使用指南.md）：
- * - Tab 常驻展示（计数含 0）：文件类别空桶置灰不可点（沿用旧工作区文件抽屉设计，让
- *   「上传 / 产物」归属一目了然）；对话历史 Tab 始终可点（空态有引导文案）；
- * - 列表按文件修改时间倒序（最新在前），无时间戳来源（FastClaw）保持原相对顺序；
- * - 图片与其它文件一律以「文件名行」展示，点击行打开统一预览弹层（FilePreviewModal，
- *   图片 / 文本 / PDF 内联预览，二进制给下载引导）；
- * - 对话历史行：点击载入会话到节点，行内置顶 / 删除（带危险确认框）。
+ * - 顶部 = 三个常驻主 Tab（文件类别空桶置灰不可点 / 对话历史始终可点）+ 「⋮」溢出下拉
+ *   （「全部文件」只读总览初始落折叠；未来新增 Tab 追加 tabDescs 的 primary=false 条目即可）；
+ * - 文件 Tab：按 path 构建目录树（目录在前、文件在后，默认全展开）；
+ *   AI 产物 / 我的上传 Tab 行内删除 + 批量删除；「全部文件」Tab 只读（敏感文件带锁图标仅看名字）；
+ *   叶子点击打开统一预览弹层（FilePreviewModal，图片 / 文本 / PDF 内联预览，二进制给下载引导）；
+ * - 对话历史行：点击载入会话到节点，行内置顶 / 重命名 / 删除（带危险确认框）。
  */
 export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel }) => {
   const { dialog, showToast } = useFeedback();
@@ -190,29 +172,85 @@ export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel 
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   /** 批量删除进行中（工具条按钮禁用 + 加载态） */
   const [batchBusy, setBatchBusy] = useState(false);
+  /** 「…」溢出下拉展开态（未来非 primary Tab 的收纳菜单） */
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  const overflowRef = useRef<HTMLDivElement>(null);
+
+  // 溢出下拉点击外部关闭：NodeSideDrawer 在冒泡阶段 stopPropagation，需用捕获阶段监听才能收到抽屉内点击
+  useEffect(() => {
+    if (!overflowOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (overflowRef.current && !overflowRef.current.contains(e.target as Node)) setOverflowOpen(false);
+    };
+    document.addEventListener('click', onDocClick, true);
+    return () => document.removeEventListener('click', onDocClick, true);
+  }, [overflowOpen]);
 
   const sessions = panel.sessions;
   const hasHistory = !!sessions;
-  // 全量类别分桶（含空桶）：Tab 常驻展示全部类别（计数含 0）
+  // 文件数据源（单请求 include_agent_runtime=1）：
+  // - allFiles = 完整清单（含 .pi-agent 配置名与 .env* 名字，敏感文件 previewable=false）；「全部文件」Tab 用全量；
+  // - regularFiles = 排除 .pi-agent 与不可预览密钥文件的可预览常规文件；AI 产物 / 我的上传 分桶用。
+  const allFiles = panel.files;
+  const regularFiles = allFiles.filter(
+    (f) => !f.path.startsWith('.pi-agent/') && f.previewable !== false
+  );
   const fileTabs = WORKSPACE_FILE_CATEGORIES.map((category) => ({
     category,
-    files: panel.files.filter(category.matches),
+    files: regularFiles.filter(category.matches),
   }));
-  // 激活 Tab = 用户所选且仍有效（文件类别非空 / 对话历史可用），否则回退到第一个非空
-  // 文件类别（全空时回退到对话历史），避免选中 Tab 随列表刷新后悬空
+  // 激活 Tab = 用户所选且仍有效（全部文件非空 / 文件类别非空 / 对话历史可用），
+  // 否则回退：全部文件 → 第一个非空类别 → 对话历史，避免选中 Tab 随列表刷新后悬空
   const resolvedTab: SideTabId = (() => {
-    if (activeTab === 'history' && hasHistory) return 'history';
-    if (fileTabs.some((t) => t.category.id === activeTab && t.files.length > 0)) return activeTab;
+    const activeValid =
+      (activeTab === 'all' && allFiles.length > 0) ||
+      (activeTab === 'history' && hasHistory) ||
+      (activeTab !== 'all' &&
+        activeTab !== 'history' &&
+        fileTabs.some((t) => t.category.id === activeTab && t.files.length > 0));
+    if (activeValid) return activeTab;
+    if (allFiles.length > 0) return 'all';
     const firstNonEmpty = fileTabs.find((t) => t.files.length > 0);
     if (firstNonEmpty) return firstNonEmpty.category.id;
-    return hasHistory ? 'history' : 'artifacts';
+    return hasHistory ? 'history' : 'all';
   })();
-  // 当前激活内容的行集与批量能力（工具条随激活内容展示，见 BatchDeleteToolbar）
-  const activeFileTab = resolvedTab !== 'history' ? fileTabs.find((t) => t.category.id === resolvedTab) : undefined;
-  const fileRows = activeFileTab ? sortWorkspaceFilesByTime(activeFileTab.files) : [];
+  // 激活文件 Tab 的叶子集（全部 / 类别分桶）
+  const activeFiles =
+    resolvedTab === 'all'
+      ? allFiles
+      : (fileTabs.find((t) => t.category.id === resolvedTab)?.files ?? []);
+  // 批量工具条：文件 Tab（AI 产物 / 我的上传，缺省「全部文件」只读无批量）与对话历史 Tab
   const sessionsAll = sessions ?? [];
-  const showFileBatchBar = !!activeFileTab && !!panel.onBatchDeleteFiles && fileRows.length > 0;
+  const isFileTab = resolvedTab !== 'all' && resolvedTab !== 'history';
+  const showFileBatchBar = isFileTab && !!panel.onBatchDeleteFiles && activeFiles.length > 0;
   const showHistoryBatchBar = resolvedTab === 'history' && !!panel.onBatchDeleteSessions && sessionsAll.length > 0;
+  const canDeleteFiles = isFileTab && !!panel.onDeleteFile;
+
+  // Tab 注册表：顶部三个常驻主 Tab（AI 产物 / 我的上传 / 对话历史）+ 「全部文件」折叠进「…」溢出下拉
+  // （用户视角：默认看到与旧版一致的三个 Tab；「全部文件」只读总览走竖向三点菜单）。
+  // 未来新增 Tab：追加条目（primary=false 即落溢出），无需改动 Tab 栏渲染逻辑。
+  const tabDescs: SideTabDesc[] = [
+    ...fileTabs.map(({ category, files }) => ({
+      id: category.id as SideTabId,
+      label: category.label,
+      badge: files.length,
+      disabled: files.length === 0,
+      primary: true,
+    })),
+    ...(hasHistory
+      ? [{ id: 'history' as const, label: '对话历史', badge: sessions!.length, primary: true }]
+      : []),
+    {
+      id: 'all' as const,
+      label: '全部文件',
+      badge: allFiles.length,
+      disabled: allFiles.length === 0,
+      primary: false,
+    },
+  ];
+  const primaryTabs = tabDescs.filter((t) => t.primary);
+  const overflowTabs = tabDescs.filter((t) => !t.primary);
+  const activeInOverflow = overflowTabs.some((t) => t.id === resolvedTab);
 
   // 切换 Tab / 收起抽屉：退出批量选择态并清空勾选
   useEffect(() => {
@@ -271,6 +309,7 @@ export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel 
     panel.onSelectSession?.(s.workspaceId);
   };
 
+  /** AI 产物 / 我的上传 Tab 单删（「全部文件」Tab 只读，不回调） */
   const handleDeleteFile = async (file: AgentFile) => {
     if (!panel.onDeleteFile) return;
     const ok = await dialog.confirm({
@@ -299,7 +338,7 @@ export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel 
     }
   };
 
-  // ---------- 批量删除（多选 / 清空；宿主批量回调复用单删接口，删后只刷新一次） ----------
+  // ---------- 批量删除（多选 / 清空；文件 Tab（AI 产物 / 我的上传）与对话历史 Tab；宿主批量回调复用单删接口，删后只刷新一次） ----------
   const fileKeyOf = (f: AgentFile) => f.path || f.url;
   const exitBatchSelect = () => {
     setSelectMode(false);
@@ -315,7 +354,7 @@ export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel 
 
   const runFileBatchDelete = async (files: AgentFile[], all: boolean) => {
     if (!files.length || !panel.onBatchDeleteFiles) return;
-    const label = activeFileTab?.category.label ?? '文件';
+    const label = resolvedTab === 'uploads' ? '我的上传' : 'AI 产物';
     const ok = await dialog.confirm({
       title: all ? '清空文件' : '删除文件',
       message: all
@@ -368,8 +407,8 @@ export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel 
   };
 
   const deleteSelectedFiles = () =>
-    void runFileBatchDelete(fileRows.filter((f) => selectedKeys.has(fileKeyOf(f))), false);
-  const clearAllFiles = () => void runFileBatchDelete(fileRows, true);
+    void runFileBatchDelete(activeFiles.filter((f) => selectedKeys.has(fileKeyOf(f))), false);
+  const clearAllFiles = () => void runFileBatchDelete(activeFiles, true);
   const deleteSelectedSessions = () =>
     void runSessionBatchDelete(
       sessionsAll.filter((s) => selectedKeys.has(s.workspaceId)).map((s) => s.workspaceId),
@@ -378,7 +417,7 @@ export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel 
   const clearAllSessions = () => void runSessionBatchDelete(sessionsAll.map((s) => s.workspaceId), true);
   const batchSelectedCount = showHistoryBatchBar
     ? sessionsAll.filter((s) => selectedKeys.has(s.workspaceId)).length
-    : fileRows.filter((f) => selectedKeys.has(fileKeyOf(f))).length;
+    : activeFiles.filter((f) => selectedKeys.has(fileKeyOf(f))).length;
 
   const loading = panel.filesLoading || !!panel.sessionsLoading;
   const headerExtra = (
@@ -409,50 +448,77 @@ export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel 
         width={300}
       >
         <div className="flex flex-col min-h-0">
-          {/* Tab 栏：文件类别（空桶置灰禁用）+ 对话历史（始终可点） */}
+          {/* Tab 栏：常驻主 Tab（文件类别空桶置灰禁用 / 对话历史始终可点）+ 「…」溢出下拉承载未来新增 Tab */}
           <div className="shrink-0 flex items-center gap-1 p-0.5 rounded-lg bg-paper-grid/30 border border-paper-grid/50 mb-2">
-            {fileTabs.map(({ category, files }) => {
-              const disabled = files.length === 0;
-              const isActive = category.id === resolvedTab;
+            {primaryTabs.map((tab) => {
+              const isActive = tab.id === resolvedTab;
               return (
                 <button
-                  key={category.id}
+                  key={tab.id}
                   type="button"
-                  disabled={disabled}
-                  onClick={() => setActiveTab(category.id)}
-                  title={disabled ? `${category.label}暂无文件` : undefined}
+                  disabled={tab.disabled}
+                  onClick={() => setActiveTab(tab.id)}
+                  title={tab.disabled ? `${tab.label}暂无文件` : undefined}
                   className={`flex-1 px-2 py-1 rounded-md text-[11px] font-sans transition select-none ${
                     isActive
                       ? 'bg-paper text-accent shadow-2xs font-medium'
-                      : disabled
+                      : tab.disabled
                         ? 'text-ink-faint/60 cursor-not-allowed'
                         : 'text-ink-light hover:text-ink cursor-pointer'
                   }`}
                 >
-                  {category.label} ({files.length})
+                  {tab.label} ({tab.badge})
                 </button>
               );
             })}
-            {hasHistory && (
-              <button
-                type="button"
-                onClick={() => setActiveTab('history')}
-                className={`flex-1 px-2 py-1 rounded-md text-[11px] font-sans transition select-none ${
-                  'history' === resolvedTab
-                    ? 'bg-paper text-accent shadow-2xs font-medium'
-                    : 'text-ink-light hover:text-ink cursor-pointer'
-                }`}
-              >
-                对话历史 ({sessions!.length})
-              </button>
+            {overflowTabs.length > 0 && (
+              <div className="relative shrink-0" ref={overflowRef}>
+                <button
+                  type="button"
+                  onClick={() => setOverflowOpen((v) => !v)}
+                  aria-expanded={overflowOpen}
+                  aria-label="更多面板"
+                  title="更多面板"
+                  className={`flex items-center justify-center w-7 h-6 rounded-md transition select-none cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent ${
+                    activeInOverflow
+                      ? 'bg-paper text-accent shadow-2xs font-medium'
+                      : 'text-ink-light hover:text-ink hover:bg-paper-grid/40'
+                  }`}
+                >
+                  <MoreVertical size={13} strokeWidth={2.25} />
+                </button>
+                {overflowOpen && (
+                  <div className="absolute right-0 top-full mt-1 z-10 min-w-[150px] rounded-lg border border-paper-grid bg-paper shadow-xl p-1 flex flex-col gap-0.5">
+                    {overflowTabs.map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => {
+                          setActiveTab(tab.id);
+                          setOverflowOpen(false);
+                        }}
+                        className={`flex items-center justify-between gap-2 px-2 py-1 rounded-md text-[11px] font-sans transition select-none cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent ${
+                          tab.id === resolvedTab
+                            ? 'bg-accent/10 text-accent font-medium'
+                            : 'text-ink-light hover:text-ink hover:bg-paper-grid/40'
+                        }`}
+                      >
+                        <span className="truncate">{tab.label}</span>
+                        <span className="text-[10px] text-ink-faint tabular-nums font-mono">({tab.badge})</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
-          {/* 批量删除工具条（仅激活内容具备批量能力且非空时；选择态下切换为全选 / 删除选中） */}
+          {/* 批量删除工具条：文件 Tab（AI 产物 / 我的上传；「全部文件」只读无批量）与对话历史 Tab；
+              选择态下切换为全选 / 删除选中 */}
           {showFileBatchBar && (
             <BatchDeleteToolbar
-              scopeLabel={activeFileTab!.category.label}
-              count={fileRows.length}
+              scopeLabel={resolvedTab === 'uploads' ? '我的上传' : 'AI 产物'}
+              count={activeFiles.length}
               busy={batchBusy}
               selectMode={selectMode}
               selectedCount={batchSelectedCount}
@@ -460,7 +526,7 @@ export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel 
               onClearAll={clearAllFiles}
               onDeleteSelected={deleteSelectedFiles}
               onToggleAll={() => {
-                const keys = fileRows.map(fileKeyOf);
+                const keys = activeFiles.map(fileKeyOf);
                 setSelectedKeys(
                   keys.length && keys.every((k) => selectedKeys.has(k)) ? new Set() : new Set(keys)
                 );
@@ -488,7 +554,7 @@ export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel 
             />
           )}
 
-          {/* 列表主体：加载 / 空态 / 行列表 */}
+          {/* 列表主体：加载 / 空态 / 文件树 / 会话行列表 */}
           {resolvedTab === 'history' ? (
             <HistoryBody
               sessions={sessions!}
@@ -509,14 +575,14 @@ export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel 
             />
           ) : (
             <FilesBody
-              fileTab={fileTabs.find((t) => t.category.id === resolvedTab)}
+              files={activeFiles}
               loading={panel.filesLoading}
-              deletingPath={deletingPath}
-              onDelete={panel.onDeleteFile ? handleDeleteFile : undefined}
               onPreview={setPreviewFile}
+              onDelete={canDeleteFiles ? handleDeleteFile : undefined}
               selectMode={selectMode}
               selectedKeys={selectedKeys}
               busy={batchBusy}
+              deletingPath={deletingPath}
               onToggleSelect={(file) => toggleBatchKey(fileKeyOf(file))}
             />
           )}
@@ -626,145 +692,50 @@ const BatchDeleteToolbar: React.FC<{
   );
 };
 
-/** 文件类别 Tab 主体：加载 / 空态 / 按时间倒序的行列表。 */
+/** 文件类别 Tab 主体：加载 / 空态 / 工作区文件树（「全部文件」只读，AI 产物 / 我的上传 可删除）。 */
 const FilesBody: React.FC<{
-  fileTab: { category: { id: string; label: string }; files: AgentFile[] } | undefined;
+  files: AgentFile[];
   loading: boolean;
-  deletingPath: string | null;
-  onDelete?: (file: AgentFile) => void;
   onPreview: (file: AgentFile) => void;
-  /** 批量选择态：行点击 = 勾选切换，暂停预览 / 行内删除 */
+  /** AI 产物 / 我的上传 Tab 传删除回调；「全部文件」Tab 不传 = 只读树 */
+  onDelete?: (file: AgentFile) => void;
   selectMode?: boolean;
   selectedKeys?: ReadonlySet<string>;
   busy?: boolean;
+  deletingPath?: string | null;
   onToggleSelect?: (file: AgentFile) => void;
 }> = ({
-  fileTab,
+  files,
   loading,
-  deletingPath,
-  onDelete,
   onPreview,
+  onDelete,
   selectMode = false,
   selectedKeys,
   busy = false,
+  deletingPath = null,
   onToggleSelect,
 }) => {
-  if (loading && !fileTab?.files.length) {
+  if (loading && files.length === 0) {
     return (
       <div className="flex items-center gap-1.5 text-[11px] font-sans text-ink-faint py-3">
         <Loader2 size={12} className="animate-spin" /> 加载中…
       </div>
     );
   }
-  if (!fileTab?.files.length) {
+  if (files.length === 0) {
     return <p className="text-[11px] font-sans text-ink-faint py-3">暂无文件</p>;
   }
   return (
-    <div className="flex flex-col gap-1">
-      {sortWorkspaceFilesByTime(fileTab.files).map((f) => (
-        <WorkspaceFileRow
-          key={f.url || f.path}
-          file={f}
-          deleting={deletingPath === f.path}
-          onDelete={onDelete}
-          onPreview={onPreview}
-          selectable={selectMode}
-          selected={!!selectedKeys?.has(f.path || f.url)}
-          busy={busy}
-          onToggleSelect={onToggleSelect ? () => onToggleSelect(f) : undefined}
-        />
-      ))}
-    </div>
-  );
-};
-
-/** 单个文件列表行：图标 + 文件名 + 元信息（大小 · 时间）；点击整行打开预览，行内可删除。
- *  批量选择态（selectable）：行点击 = 勾选切换，暂停预览 / 行内删除，行首展示勾选框。 */
-const WorkspaceFileRow: React.FC<{
-  file: AgentFile;
-  deleting: boolean;
-  onDelete?: (file: AgentFile) => void;
-  onPreview: (file: AgentFile) => void;
-  selectable?: boolean;
-  selected?: boolean;
-  busy?: boolean;
-  onToggleSelect?: () => void;
-}> = ({ file, deleting, onDelete, onPreview, selectable = false, selected = false, busy = false, onToggleSelect }) => {
-  const isImage = IMAGE_EXT_RE.test(file.name);
-  const meta = fileMetaLine(file);
-  const handleRowActivate = () => {
-    if (busy) return;
-    if (selectable) onToggleSelect?.();
-    else onPreview(file);
-  };
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      aria-pressed={selectable ? selected : undefined}
-      onClick={handleRowActivate}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          handleRowActivate();
-        }
-      }}
-      title={
-        selectable ? (selected ? '已选，点击取消勾选' : '点击勾选') : `预览 ${file.name}`
-      }
-      className={`group flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs font-sans transition select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent ${
-        selectable
-          ? selected
-            ? 'border-accent/60 bg-accent/10 cursor-pointer hover:border-accent/60'
-            : 'border-paper-grid/60 bg-paper-grid/20 cursor-pointer hover:border-accent/40 hover:bg-accent/5'
-          : 'border-paper-grid/60 bg-paper-grid/20 cursor-pointer hover:border-accent/40 hover:bg-accent/5'
-      }`}
-    >
-      {selectable && (
-        <span
-          aria-hidden
-          className={`shrink-0 flex items-center justify-center w-3.5 h-3.5 rounded border transition ${
-            selected ? 'bg-accent border-accent text-paper' : 'border-ink-light/50 bg-paper'
-          }`}
-        >
-          {selected && <Check size={10} strokeWidth={3} />}
-        </span>
-      )}
-      {isImage ? (
-        <ImageIcon size={14} className="shrink-0 text-accent" />
-      ) : (
-        <FileText size={14} className="shrink-0 text-accent" />
-      )}
-      <span className="flex flex-col min-w-0 flex-1 leading-tight">
-        <span className="truncate text-ink font-medium" title={file.path || file.name}>
-          {file.name}
-        </span>
-        {meta && (
-          <span className="truncate text-[10px] text-ink-faint tabular-nums font-mono">{meta}</span>
-        )}
-      </span>
-
-      {/* 行内删除（stopPropagation：不触发行点击预览）；批量选择态下隐藏 */}
-      {onDelete && !selectable && (
-        <button
-          type="button"
-          disabled={deleting}
-          onClick={(e) => {
-            e.stopPropagation();
-            void onDelete(file);
-          }}
-          title="删除文件"
-          aria-label={`删除 ${file.name}`}
-          className="flex items-center justify-center w-6 h-6 rounded-md text-ink-faint hover:text-error hover:bg-error/10 active:scale-[0.96] transition disabled:opacity-40 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-error"
-        >
-          {deleting ? (
-            <Loader2 size={12} className="animate-spin" />
-          ) : (
-            <Trash2 size={12} strokeWidth={2} />
-          )}
-        </button>
-      )}
-    </div>
+    <WorkspaceFileTree
+      files={files}
+      onPreview={onPreview}
+      onDelete={onDelete}
+      selectable={selectMode}
+      selectedKeys={selectedKeys}
+      busy={busy}
+      deletingPath={deletingPath}
+      onToggleSelect={onToggleSelect}
+    />
   );
 };
 

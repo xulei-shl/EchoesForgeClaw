@@ -6,6 +6,7 @@ import {
   lstatSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -21,6 +22,7 @@ import {
 import {
   buildWebSearchConfig,
   clearPiSession,
+  listWorkspaceArtifacts,
   preparePiWorkspace,
   resolveImageGenExtension,
   resolvePiBin,
@@ -28,6 +30,8 @@ import {
   resolveThinkingArgs,
   saveInputImages,
 } from '../../src/services/pi-agent-service.js';
+import { isDiffExcluded } from '../../src/services/pi/snapshot.js';
+import { isSecretFileRel } from '../../src/services/file-utils.js';
 
 // runtime/ 在仓库根目录下（与 skill-agent-service.ts 的 RUNTIME_ROOT 口径一致），测试文件位于 backend-ts/tests/api/，向上三层
 const RUNTIME_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../runtime');
@@ -502,5 +506,135 @@ describe('saveInputImages', () => {
     expect(rels).toEqual(['inputs/img-1.png', 'inputs/img-2.jpg']);
     expect(existsSync(path.join(ws, 'inputs', 'img-1.png'))).toBe(true);
     expect(existsSync(path.join(ws, 'inputs', 'img-2.jpg'))).toBe(true);
+  });
+});
+
+describe('listWorkspaceArtifacts 排除口径（.env* 密钥文件任意深度）', () => {
+  beforeEach(() => {
+    const ws = wsPath();
+    mkdirSync(path.join(ws, 'outputs', 'sub'), { recursive: true });
+    mkdirSync(path.join(ws, 'inputs'), { recursive: true });
+    mkdirSync(path.join(ws, '.pi-agent'), { recursive: true });
+    writeFileSync(path.join(ws, 'outputs', 'art.png'), 'png');
+    writeFileSync(path.join(ws, 'outputs', 'sub', 'deep.txt'), 'deep');
+    writeFileSync(path.join(ws, '.env'), 'ROOT_KEY=1');
+    writeFileSync(path.join(ws, 'outputs', '.env.local'), 'NESTED_KEY=1');
+    writeFileSync(path.join(ws, '.pi-agent', 'models.json'), '{"providers":{}}');
+    writeFileSync(path.join(ws, 'inputs', 'up.txt'), 'up');
+    writeFileSync(path.join(ws, 'inputs', '.env'), 'INPUT_KEY=1');
+  });
+
+  it('默认列表：产物与子目录文件保留，.env* 与 .pi-agent 密钥排除', () => {
+    const rels = listWorkspaceArtifacts(wsPath(), WS_ID).map((f) => f.path).sort();
+    expect(rels).toEqual(['outputs/art.png', 'outputs/sub/deep.txt']);
+  });
+
+  it('includeInputs=1：inputs/ 文件列出，但 inputs/.env 仍排除', () => {
+    const rels = listWorkspaceArtifacts(wsPath(), WS_ID, { includeInputs: true })
+      .map((f) => f.path)
+      .sort();
+    expect(rels).toContain('inputs/up.txt');
+    expect(rels).toContain('outputs/art.png');
+    expect(rels).not.toContain('inputs/.env');
+  });
+
+  it('isDiffExcluded / isSecretFileRel：任意深度 .env* 命中，正常产物不误伤', () => {
+    expect(isDiffExcluded('.env')).toBe(true);
+    expect(isDiffExcluded('outputs/.env.local')).toBe(true);
+    expect(isDiffExcluded('deep/sub/.env.production')).toBe(true);
+    expect(isDiffExcluded('.pi-agent/models.json')).toBe(true);
+    expect(isDiffExcluded('outputs/art.png')).toBe(false);
+    expect(isSecretFileRel('.env')).toBe(true);
+    expect(isSecretFileRel('a/b/.env.example')).toBe(true);
+    expect(isSecretFileRel('a/b/notes.env')).toBe(false);
+  });
+});
+
+describe('listWorkspaceArtifacts includeAgentRuntime（「全部文件」完整清单 + previewable 标记）', () => {
+  beforeEach(() => {
+    const ws = wsPath();
+    mkdirSync(path.join(ws, 'outputs'), { recursive: true });
+    mkdirSync(path.join(ws, 'inputs'), { recursive: true });
+    mkdirSync(path.join(ws, '.pi-agent', 'skills'), { recursive: true });
+    mkdirSync(path.join(ws, '.pi-agent', 'run'), { recursive: true });
+    writeFileSync(path.join(ws, 'outputs', 'art.png'), 'png');
+    writeFileSync(path.join(ws, '.env'), 'ROOT_KEY=1');
+    writeFileSync(path.join(ws, 'outputs', '.env.local'), 'NESTED=1');
+    writeFileSync(path.join(ws, '.pi-agent', 'models.json'), '{"apiKey":"x"}');
+    writeFileSync(path.join(ws, '.pi-agent', 'settings.json'), '{"apiKey":"y"}');
+    writeFileSync(path.join(ws, '.pi-agent', 'snapshot.json'), '{}');
+    writeFileSync(path.join(ws, '.pi-agent', 'skills', 'sk.txt'), 'res');
+    writeFileSync(path.join(ws, '.pi-agent', 'run', 'chat.jsonl'), '{}');
+    writeFileSync(path.join(ws, 'inputs', 'up.txt'), 'up');
+    writeFileSync(path.join(ws, 'inputs', '.env'), 'INPUT_KEY=1');
+  });
+
+  it('完整清单：含 .pi-agent 配置名与任意深度 .env* 名字；敏感文件标 previewable=false', () => {
+    const files = listWorkspaceArtifacts(wsPath(), WS_ID, {
+      includeInputs: true,
+      includeAgentRuntime: true,
+    });
+    const byPath = new Map(files.map((f) => [f.path, f]));
+    // 密钥文件：名字与目录结构可见，previewable=false
+    expect(byPath.has('.pi-agent/models.json')).toBe(true);
+    expect(byPath.get('.pi-agent/models.json')!.previewable).toBe(false);
+    expect(byPath.get('.pi-agent/settings.json')!.previewable).toBe(false);
+    expect(byPath.get('.env')!.previewable).toBe(false);
+    expect(byPath.get('outputs/.env.local')!.previewable).toBe(false);
+    expect(byPath.get('inputs/.env')!.previewable).toBe(false);
+    // 非敏感文件：可预览（字段缺省 = true）
+    expect(byPath.get('outputs/art.png')!.previewable).toBeUndefined();
+    expect(byPath.get('.pi-agent/snapshot.json')!.previewable).toBeUndefined();
+    expect(byPath.get('.pi-agent/skills/sk.txt')!.previewable).toBeUndefined();
+    expect(byPath.get('inputs/up.txt')!.previewable).toBeUndefined();
+    // 运行态会话 jsonl（run/）不进入「全部文件」清单
+    expect(byPath.has('.pi-agent/run/chat.jsonl')).toBe(false);
+  });
+
+  it('默认模式（不传 includeAgentRuntime）：.pi-agent 与 .env* 仍整体隐藏（AI 产物 / 我的上传 视图不变）', () => {
+    const files = listWorkspaceArtifacts(wsPath(), WS_ID, { includeInputs: true });
+    const rels = files.map((f) => f.path);
+    expect(rels.some((r) => r.startsWith('.pi-agent/'))).toBe(false);
+    expect(rels).not.toContain('.env');
+    expect(rels).not.toContain('outputs/.env.local');
+    expect(rels).toContain('inputs/up.txt');
+  });
+
+  it('完整清单识别符号链接：文件软链/目录软链占位/悬空软链（无软链权限时降级仅断言名字可见）', () => {
+    const ws = wsPath();
+    const ext = mkdtempSync(path.join(tmpdir(), 'pi-link-'));
+    let madeLinks = false;
+    try {
+      writeFileSync(path.join(ext, 'notes.txt'), 'outside');
+      mkdirSync(path.join(ext, 'd'), { recursive: true });
+      writeFileSync(path.join(ext, 'd', 'x.txt'), 'x');
+      symlinkSync(path.join(ext, 'notes.txt'), path.join(ws, 'link-out.txt'), 'file');
+      symlinkSync(path.join(ext, 'd'), path.join(ws, 'link-dir'), 'dir');
+      symlinkSync(path.join(ws, 'missing.txt'), path.join(ws, 'link-dangling.txt'), 'file');
+      madeLinks = true;
+    } catch {
+      // Windows 无软链权限：用真实文件兜底，仅断言名字可见
+      writeFileSync(path.join(ws, 'link-out.txt'), 'outside');
+    }
+    try {
+      const files = listWorkspaceArtifacts(ws, WS_ID, { includeInputs: true, includeAgentRuntime: true });
+      const byPath = new Map(files.map((f) => [f.path, f]));
+      if (madeLinks) {
+        // 文件软链指向工作区外：名字可见、不可预览
+        expect(byPath.get('link-out.txt')).toMatchObject({ link: true, previewable: false });
+        // 目录软链：占位节点，不穿透目标内容
+        expect(byPath.get('link-dir')).toMatchObject({ isDir: true, link: true, previewable: false });
+        expect(byPath.has('link-dir/x.txt')).toBe(false);
+        // 悬空软链：名字可见、不可预览
+        expect(byPath.get('link-dangling.txt')).toMatchObject({ link: true, previewable: false });
+      } else {
+        expect(byPath.has('link-out.txt')).toBe(true);
+      }
+      // 常规文件不误标
+      expect(byPath.get('outputs/art.png')!.link).toBeUndefined();
+      expect(byPath.get('outputs/art.png')!.previewable).toBeUndefined();
+    } finally {
+      rmSync(ext, { recursive: true, force: true });
+    }
   });
 });

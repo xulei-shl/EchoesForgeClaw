@@ -179,6 +179,56 @@ export function removePathSafe(p: string): void {
   }
 }
 
+/** 密钥文件判定：任何深度的 .env / .env.*（.env.local / .env.production 等）一律不可预览/下载。 */
+export function isSecretFileRel(rel: string): boolean {
+  const base = rel.slice(rel.lastIndexOf('/') + 1);
+  return base === '.env' || base.startsWith('.env.');
+}
+
+/** .pi-agent/ 下装配的真实密钥/凭据文件（basename）：API Key 与认证令牌经装配明文写入。 */
+const AGENT_RUNTIME_SECRET_BASENAMES = new Set([
+  'models.json',
+  'settings.json',
+  'web-search.json',
+  'auth.json',
+  'models-store.json',
+]);
+
+/**
+ * 工作区敏感文件判定（「全部文件」列表只展示名字，预览/下载双端拒绝）：
+ * - 任意深度 .env*（isSecretFileRel）；
+ * - .pi-agent/ 下装配的密钥/凭据 json（API Key / 认证令牌）。
+ */
+export function isSecretWorkspaceFile(rel: string): boolean {
+  if (isSecretFileRel(rel)) return true;
+  const cleaned = String(rel ?? '').replace(/\\/g, '/');
+  if (!cleaned.startsWith('.pi-agent/')) return false;
+  return AGENT_RUNTIME_SECRET_BASENAMES.has(cleaned.slice(cleaned.lastIndexOf('/') + 1));
+}
+
+/** 预览/下载双端不暴露的 agent 运行时目录前缀（.agents/ .pi/ 装配目录；.pi-agent 运行态/软链子树）。 */
+const NON_SERVE_PREFIXES = ['.agents/', '.pi/'];
+const NON_SERVE_AGENT_RUNTIME_PREFIXES = [
+  '.pi-agent/run/',
+  '.pi-agent/sessions/',
+  '.pi-agent/extensions/',
+];
+
+/**
+ * 工作区文件是否可预览/下载（skill-files 下载层守卫，与「全部文件」列表的 previewable 标记同口径）：
+ * - 敏感文件（.env* / .pi-agent 密钥 json）任意深度拒绝；
+ * - .agents/ .pi/ 装配目录整体拒绝；
+ * - .pi-agent/run|sessions|extensions 运行态 / 软链接包子树拒绝（chat.jsonl 走会话水合，extensions 不穿透）；
+ * - 其余（outputs/ inputs/ 根级与 .pi-agent/skills|prompts|snapshot.json 等装配资源）放行。
+ */
+export function isWorkspaceFileServable(rel: string): boolean {
+  const cleaned = String(rel ?? '').replace(/\\/g, '/');
+  if (isSecretWorkspaceFile(cleaned)) return false;
+  if (NON_SERVE_PREFIXES.some((p) => cleaned.startsWith(p))) return false;
+  if (NON_SERVE_AGENT_RUNTIME_PREFIXES.some((p) => cleaned.startsWith(p))) return false;
+  return true;
+}
+
 /** 工作区文件删除保护的相对路径前缀：装配物与会话配置（.pi-agent/ 内含 chat.jsonl、
  * artifacts.jsonl、snapshot.json、meta.json 等），删除列表（/chat/files）永不展示它们。 */
 const DELETION_PROTECTED_PREFIXES = ['.agents/', '.pi/', '.pi-agent/'];

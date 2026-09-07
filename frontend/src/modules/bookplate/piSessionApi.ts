@@ -110,9 +110,11 @@ async function fetchPiSession(ws: string): Promise<{ messages: ChatMessage[]; wi
 }
 
 async function fetchWorkspaceFiles(ws: string): Promise<AgentFile[]> {
-  // include_inputs=1：面板同时展示用户上传到 inputs/ 的文件（产物 + 上传物统一视图）
+  // include_inputs=1：面板同时展示用户上传到 inputs/ 的文件（产物 + 上传物统一视图）；
+  // include_agent_runtime=1：「全部文件」Tab 需要完整清单（.pi-agent 配置名 + 任意深度 .env*），
+  // 敏感文件带 previewable=false，名字可见但预览/下载被 skill-files 拒绝。
   const resp = await fetch(
-    `/api/modules/bookplate/chat/files?workspace_id=${encodeURIComponent(ws)}&include_inputs=1`,
+    `/api/modules/bookplate/chat/files?workspace_id=${encodeURIComponent(ws)}&include_inputs=1&include_agent_runtime=1`,
     { headers: authHeaders() }
   );
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -260,7 +262,8 @@ async function deleteConversationSession(ws: string): Promise<void> {
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 }
 
-/** 删除工作区内单个文件（DELETE /chat/file：AI 产物 / inputs/ 上传文件；装配物与会话受保护）。 */
+/** 删除工作区内单个文件（DELETE /chat/file：AI 产物 / inputs/ 上传文件；装配物与会话受保护）。
+ *  前端侧边抽屉「AI 产物 / 我的上传」Tab 行内/批量删除共用；「全部文件」Tab 只读不调用。 */
 async function deleteWorkspaceFile(ws: string, relPath: string): Promise<void> {
   const resp = await fetch('/api/modules/bookplate/chat/file', {
     method: 'DELETE',

@@ -1,7 +1,8 @@
-import { mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { ChatStreamEvent } from '../../modules/bookplate/stream.js';
-import { mimeOf, skillFileDownloadUrl } from '../file-utils.js';
+import { isSecretFileRel, isSecretWorkspaceFile, mimeOf, skillFileDownloadUrl } from '../file-utils.js';
+import { REAL_AGENTS_ROOT, REAL_SKILLS_ROOT } from '../skill-agent-service.js';
 
 /**
  * 工作区快照差分（产物探测）与产物清单（manifest）。
@@ -15,7 +16,9 @@ import { mimeOf, skillFileDownloadUrl } from '../file-utils.js';
  * - appendArtifactManifest：本轮差分产物追加进 append-only JSONL 清单；
  * - readArtifactManifest：读取清单（水合产物绑定 / 产物列表共用）；
  * - listWorkspaceArtifacts：当前快照与 manifest 历史合并（已删文件保留 exists=false）；
- *   includeAgentResources 时穿透列出 .pi-agent 装配资源（skills/prompts，@ 引用检索用）。
+ *   includeAgentResources 时穿透列出 .pi-agent 装配资源（skills/prompts，@ 引用检索用）；
+ *   includeAgentRuntime 时补列「全部文件」完整清单（.pi-agent 运行态配置与任意深度 .env*，
+ *   敏感文件标 previewable=false：名字可见但预览/下载拒）。
  */
 
 // ---------------------------------------------------------------------------
@@ -29,13 +32,15 @@ export interface FileStamp {
 
 /** 差分排除前缀/文件：装配物与会话配置不算「agent 产物」。
  *  conversation.jsonl：LLM / FastClaw 模式的会话 transcript（后端写入，见 chat-conversations.ts），
- *  非 agent 产物，不得出现在「AI 产物」列表。 */
+ *  非 agent 产物，不得出现在「AI 产物」列表。
+ *  密钥文件（.env*，任意深度）经 isSecretFileRel 一并排除（与 skill-files 下载守卫同口径）。 */
 const DIFF_EXCLUDED_PREFIXES = ['.agents/', '.pi/', '.pi-agent/', 'inputs/'];
 const DIFF_EXCLUDED_FILES = new Set(['AGENTS.md', 'conversation.jsonl']);
 
 export function isDiffExcluded(rel: string): boolean {
   if (DIFF_EXCLUDED_FILES.has(rel)) return true;
-  return DIFF_EXCLUDED_PREFIXES.some((p) => rel.startsWith(p));
+  if (DIFF_EXCLUDED_PREFIXES.some((p) => rel.startsWith(p))) return true;
+  return isSecretFileRel(rel);
 }
 
 function walkWorkspace(root: string, out: Map<string, FileStamp>, dir = root, prefix = ''): void {
@@ -48,18 +53,29 @@ function walkWorkspace(root: string, out: Map<string, FileStamp>, dir = root, pr
   for (const entry of entries) {
     const full = path.join(dir, entry);
     const rel = prefix ? `${prefix}/${entry}` : entry;
-    let st;
+    let lst;
     try {
-      st = statSync(full); // statSync 跟随软链（目录软链按目标目录统计）
+      lst = lstatSync(full);
     } catch {
       continue;
     }
-    if (st.isDirectory()) {
+    if (lst.isSymbolicLink()) {
+      // 软链不递归（防目录软链穿透到工作区外/成环/膨胀）；指向文件的软链按目标 stat 列出
+      let st;
+      try {
+        st = statSync(full);
+      } catch {
+        continue;
+      }
+      if (st.isFile()) out.set(rel, { size: st.size, mtimeMs: st.mtimeMs });
+      continue;
+    }
+    if (lst.isDirectory()) {
       // 排除目录不递归：.pi-agent（会话 jsonl / artifacts / 基线 / skills 软链目标）与
       // inputs/ 等不产出且体积大，跳过遍历；与 diff/列表侧 isDiffExcluded 口径一致
       if (isDiffExcluded(`${rel}/`)) continue;
       walkWorkspace(root, out, full, rel);
-    } else if (st.isFile()) out.set(rel, { size: st.size, mtimeMs: st.mtimeMs });
+    } else if (lst.isFile()) out.set(rel, { size: lst.size, mtimeMs: lst.mtimeMs });
   }
 }
 
@@ -216,6 +232,12 @@ export interface WorkspaceArtifact extends Omit<ArtifactRecord, 'rel'> {
   name: string;
   url: string;
   exists: boolean;
+  /** false = 密钥/装配敏感文件（「全部文件」列表仅展示名字与目录结构，预览/下载被 skill-files 拒绝） */
+  previewable?: boolean;
+  /** true = 目录软链占位（「全部文件」完整清单：仅展示目录节点，不穿透目标） */
+  isDir?: boolean;
+  /** true = 条目本身是符号链接（指向工作区外的文件软链仅展示名字） */
+  link?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -260,6 +282,7 @@ function walkAgentResources(root: string, out: Map<string, FileStamp>): void {
         visited.add(real);
         walk(full, rel);
       } else if (st.isFile()) {
+        if (isSecretFileRel(rel)) continue;
         out.set(rel, { size: st.size, mtimeMs: st.mtimeMs });
       }
     }
@@ -278,6 +301,167 @@ function walkAgentResources(root: string, out: Map<string, FileStamp>): void {
   }
 }
 
+/** .pi-agent/ 顶层不逐目录遍历的子树：装配资源（skills/prompts 由 walkAgentResources 覆盖）与运行态/软链包子树。 */
+const PI_AGENT_SKIP_DIRS = new Set(['skills', 'prompts', 'run', 'sessions', 'extensions']);
+
+/**
+ * 递归盘点 .pi-agent/ 的运行态配置与装配文件（「全部文件」完整清单用）：
+ * - 不跟随软链目录（skills 指向共享区等，防穿透/成环/膨胀）；指向文件的软链按目标 stat 列出；
+ * - skills/ prompts/ 跳过（装配资源内容由 walkAgentResources 覆盖）；
+ * - run/ sessions/ extensions/ 跳过（会话 jsonl 走会话水合；extensions 为软链扩展包子树）。
+ */
+function walkPiAgentFiles(root: string, out: Map<string, FileStamp>): void {
+  const walk = (dir: string, prefix: string, topLevel: boolean): void => {
+    let entries: string[] = [];
+    try {
+      entries = readdirSync(dir).sort();
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = path.join(dir, entry);
+      const rel = prefix ? `${prefix}/${entry}` : entry;
+      let lst;
+      try {
+        lst = lstatSync(full);
+      } catch {
+        continue;
+      }
+      if (lst.isSymbolicLink()) {
+        // 目录软链不递归（防穿透）；指向文件的软链按目标 stat 列出
+        let st;
+        try {
+          st = statSync(full);
+        } catch {
+          continue;
+        }
+        if (st.isFile()) out.set(rel, { size: st.size, mtimeMs: st.mtimeMs });
+        continue;
+      }
+      if (lst.isDirectory()) {
+        if (topLevel && PI_AGENT_SKIP_DIRS.has(entry)) continue;
+        walk(full, rel, false);
+      } else if (lst.isFile()) {
+        out.set(rel, { size: lst.size, mtimeMs: lst.mtimeMs });
+      }
+    }
+  };
+  walk(root, '.pi-agent', true);
+}
+
+// ---------------------------------------------------------------------------
+// 「全部文件」完整清单 walk（软链接识别）
+// ---------------------------------------------------------------------------
+
+/** 「全部文件」完整 walk 的排除前缀：装配/运行态目录（.pi-agent 由 walkPiAgentFiles + walkAgentResources 覆盖）。 */
+const EVERYTHING_PRUNE_PREFIXES = ['.agents/', '.pi/', '.pi-agent/', 'inputs/'];
+
+/** 目录 rel（无尾斜杠）是否命中排除前缀。 */
+function isEverythingPrune(rel: string): boolean {
+  return EVERYTHING_PRUNE_PREFIXES.some((p) => rel === p.slice(0, -1) || rel.startsWith(p));
+}
+
+/**
+ * 真实路径是否落在工作区内或装配共享根内（REAL_SKILLS_ROOT / REAL_AGENTS_ROOT）：
+ * 决定文件软链是否可预览——指向共享提示词（AGENTS.md）等允许根内链接可预览，
+ * 指向工作区外任意路径的软链仅展示名字（previewable=false），下载层 resolveSkillAbs 亦会拒绝。
+ */
+function isRealpathWithinWorkspaceRoots(ws: string, full: string): boolean {
+  let rp: string;
+  try {
+    rp = realpathSync(full);
+  } catch {
+    return false;
+  }
+  const bases: string[] = [ws];
+  for (const root of [REAL_SKILLS_ROOT, REAL_AGENTS_ROOT]) {
+    try {
+      bases.push(realpathSync(root));
+    } catch {
+      /* 共享根不存在 */
+    }
+  }
+  return bases.some((b) => rp === b || rp.startsWith(b + path.sep));
+}
+
+export interface EverythingEntry extends FileStamp {
+  /** 目录软链占位：仅展示目录节点，不穿透目标（防越界/成环/膨胀） */
+  isDir?: boolean;
+  /** 条目本身是符号链接 */
+  isLink?: boolean;
+  /** false = 仅展示名字，不可预览/下载 */
+  previewable?: boolean;
+}
+
+/**
+ * 递归盘点工作区根与各子目录的完整文件（含符号链接），供「全部文件」清单：
+ * - 基于 lstat（不跟随）：文件软链 / 悬空软链 / 目录软链都能被识别并展示；
+ * - 文件软链 / 悬空软链：按名字展示（previewable 取决于 realpath 是否落在允许根内）；
+ * - 目录软链：仅展示目录占位（isDir），不递归目标；
+ * - 排除装配/运行态/上传目录（.agents/ .pi/ .pi-agent/ inputs/，后两者由专门 walk 覆盖）；
+ * - 保留 .env*、AGENTS.md、conversation.jsonl 等常规视图隐藏的文件（全部文件要看到名字）。
+ */
+function walkEverything(
+  ws: string,
+  out: Map<string, EverythingEntry>,
+  dir = ws,
+  prefix = ''
+): void {
+  let entries: string[] = [];
+  try {
+    entries = readdirSync(dir).sort();
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    const full = path.join(dir, entry);
+    const rel = prefix ? `${prefix}/${entry}` : entry;
+    let lst;
+    try {
+      lst = lstatSync(full);
+    } catch {
+      continue;
+    }
+    if (lst.isSymbolicLink()) {
+      let st;
+      try {
+        st = statSync(full);
+      } catch {
+        st = null;
+      }
+      if (!st) {
+        // 悬空软链：名字可见、不可预览
+        out.set(rel, { size: 0, mtimeMs: lst.mtimeMs, isLink: true, previewable: false });
+        continue;
+      }
+      if (st.isDirectory()) {
+        // 目录软链：占位节点，不穿透目标
+        out.set(rel, { size: 0, mtimeMs: lst.mtimeMs, isDir: true, isLink: true, previewable: false });
+        continue;
+      }
+      out.set(rel, {
+        size: st.size,
+        mtimeMs: st.mtimeMs,
+        isLink: true,
+        ...(isSecretWorkspaceFile(rel) || !isRealpathWithinWorkspaceRoots(ws, full)
+          ? { previewable: false }
+          : {}),
+      });
+      continue;
+    }
+    if (lst.isDirectory()) {
+      if (isEverythingPrune(rel)) continue;
+      walkEverything(ws, out, full, rel);
+    } else if (lst.isFile()) {
+      out.set(rel, {
+        size: lst.size,
+        mtimeMs: lst.mtimeMs,
+        ...(isSecretWorkspaceFile(rel) ? { previewable: false } : {}),
+      });
+    }
+  }
+}
+
 /**
  * 列出工作区当前产物（差分同口径排除装配物/会话），并与 manifest 历史条目合并
  * （文件已被删除的历史产物保留并标 exists=false，维持可追溯）。
@@ -286,39 +470,50 @@ function walkAgentResources(root: string, out: Map<string, FileStamp>): void {
  * opts.includeAgentResources 为 true 时额外穿透列出 .pi-agent 装配资源（skills/prompts，
  * 含子目录；会话/配置/扩展仍排除）供 @ 引用检索。产物差分不受影响——snapshotWorkspace
  * 对 .pi-agent 整体剪枝，此处为列表侧独立补列，不写 manifest。
+ * opts.includeAgentRuntime 为 true 时补列「全部文件」完整清单：.pi-agent 运行态配置（不穿软链
+ * 目录、剪 run/sessions/extensions）与任意深度 .env*、AGENTS.md 等常规视图排除的文件；
+ * 所有敏感文件（.pi-agent 密钥 json / .env*）标 previewable=false——名字与目录结构可见，
+ * 预览/下载由 skill-files 的 isWorkspaceFileServable 拒绝。
  */
 export function listWorkspaceArtifacts(
   ws: string,
   workspaceId: string,
-  opts?: { includeInputs?: boolean; includeAgentResources?: boolean }
+  opts?: {
+    includeInputs?: boolean;
+    includeAgentResources?: boolean;
+    includeAgentRuntime?: boolean;
+  }
 ): WorkspaceArtifact[] {
   const byRel = new Map<string, WorkspaceArtifact>();
-  for (const [rel, stamp] of snapshotWorkspace(ws)) {
-    if (isDiffExcluded(rel)) continue;
+  const put = (
+    rel: string,
+    stamp: FileStamp,
+    extra?: { previewable?: boolean; isDir?: boolean; isLink?: boolean }
+  ): void => {
     byRel.set(rel, {
       path: rel,
-      mime: mimeOf(rel),
+      mime: extra?.isDir ? '' : mimeOf(rel),
       size: stamp.size,
       mtimeMs: stamp.mtimeMs,
       name: path.basename(rel),
-      url: skillFileDownloadUrl(rel, workspaceId),
+      url: extra?.isDir ? '' : skillFileDownloadUrl(rel, workspaceId),
       exists: true,
+      ...(extra?.previewable !== undefined ? { previewable: extra.previewable } : {}),
+      ...(extra?.isDir ? { isDir: true } : {}),
+      ...(extra?.isLink ? { link: true } : {}),
     });
+  };
+
+  // 常规产物（差分同口径：排除装配物/会话/密钥文件）
+  for (const [rel, stamp] of snapshotWorkspace(ws)) {
+    if (isDiffExcluded(rel)) continue;
+    put(rel, stamp);
   }
-  if (opts?.includeAgentResources) {
+  // 装配资源子树（skills/prompts，含子目录穿透）
+  if (opts?.includeAgentResources || opts?.includeAgentRuntime) {
     const resources = new Map<string, FileStamp>();
     walkAgentResources(ws, resources);
-    for (const [rel, stamp] of resources) {
-      byRel.set(rel, {
-        path: rel,
-        mime: mimeOf(rel),
-        size: stamp.size,
-        mtimeMs: stamp.mtimeMs,
-        name: path.basename(rel),
-        url: skillFileDownloadUrl(rel, workspaceId),
-        exists: true,
-      });
-    }
+    for (const [rel, stamp] of resources) put(rel, stamp);
   }
   if (opts?.includeInputs) {
     const inputsDir = path.join(ws, 'inputs');
@@ -338,19 +533,31 @@ export function listWorkspaceArtifacts(
       }
       if (!st.isFile()) continue;
       const rel = `inputs/${entry}`;
-      byRel.set(rel, {
-        path: rel,
-        mime: mimeOf(entry),
-        size: st.size,
-        mtimeMs: st.mtimeMs,
-        name: entry,
-        url: skillFileDownloadUrl(rel, workspaceId),
-        exists: true,
+      const secret = isSecretFileRel(rel);
+      if (secret && !opts?.includeAgentRuntime) continue; // 常规视图隐藏密钥；完整清单保留名字
+      put(rel, st, secret ? { previewable: false } : undefined);
+    }
+  }
+  // 「全部文件」完整清单：.pi-agent 运行态配置 + 根与子目录完整文件（含符号链接识别）
+  if (opts?.includeAgentRuntime) {
+    const piFiles = new Map<string, FileStamp>();
+    walkPiAgentFiles(path.join(ws, '.pi-agent'), piFiles);
+    for (const [rel, stamp] of piFiles) {
+      put(rel, stamp, isSecretWorkspaceFile(rel) ? { previewable: false } : undefined);
+    }
+    const everything = new Map<string, EverythingEntry>();
+    walkEverything(ws, everything);
+    for (const [rel, e] of everything) {
+      // 覆盖而非跳过：完整清单的软链识别标记（link/isDir/previewable）优先于默认视图的普通条目
+      put(rel, e, {
+        ...(e.isDir ? { isDir: true, previewable: false } : {}),
+        ...(e.isLink ? { isLink: true } : {}),
+        ...(e.previewable === false ? { previewable: false } : {}),
       });
     }
   }
   for (const rec of readArtifactManifest(ws)) {
-    if (!rec.rel || byRel.has(rec.rel)) continue;
+    if (!rec.rel || isSecretFileRel(rec.rel) || byRel.has(rec.rel)) continue;
     byRel.set(rec.rel, {
       path: rec.rel,
       mime: rec.mime,

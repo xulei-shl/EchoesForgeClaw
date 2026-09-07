@@ -867,17 +867,6 @@ function PiChatNodeHostInner({
     [convPanel.bump]
   );
 
-  /** 删除单个工作区文件（AI 产物 / inputs/ 上传）：成功后刷新面板（已删文件不再列出） */
-  const handleDeleteFile = useCallback(
-    async (file: AgentFile) => {
-      const ws = wsIdRef.current;
-      if (!ws) throw new Error('工作区未就绪');
-      await deleteWorkspaceFile(ws, file.path);
-      panel.refresh();
-    },
-    [panel.refresh]
-  );
-
   /**
    * 批量删除会话（对话历史 Tab 多选 / 清空）：串行复用单删接口，仅结束后 bump 一次；
    * 当前会话在删除集合内时，删除完成把节点重置为全新工作区（与单删口径一致）。
@@ -904,6 +893,17 @@ function PiChatNodeHostInner({
       return { ok, failed };
     },
     [h, node.id, convPanel.bump]
+  );
+
+  /** 删除单个工作区文件（AI 产物 / inputs/ 上传；「全部文件」Tab 只读不触发）：成功后刷新面板。 */
+  const handleDeleteFile = useCallback(
+    async (file: AgentFile) => {
+      const ws = wsIdRef.current;
+      if (!ws) throw new Error('工作区未就绪');
+      await deleteWorkspaceFile(ws, file.path);
+      panel.refresh();
+    },
+    [panel.refresh]
   );
 
   /**

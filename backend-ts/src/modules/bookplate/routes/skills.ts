@@ -24,7 +24,7 @@ import {
   removeSkill,
   resolveSkillAbs,
 } from '../../../services/skill-agent-service.js';
-import { mimeOf } from '../../../services/file-utils.js';
+import { isWorkspaceFileServable, mimeOf } from '../../../services/file-utils.js';
 
 export async function register(app: FastifyInstance): Promise<void> {
   // ---- Skill 工作区（Skill Agent 的 skill 来源） ----
@@ -141,8 +141,14 @@ export async function register(app: FastifyInstance): Promise<void> {
     async (request, reply) => {
       const q = (request.query ?? {}) as { path?: string; workspace_id?: string };
       const workspaceId = q.workspace_id ?? '';
+      // 下载层守卫（与 /chat/files 列表同口径的纵深防御）：密钥文件（.env*）与
+      // .pi-agent/ 非白名单子树（models.json / settings.json / web-search.json 等真实密钥）直连 URL 一律 404。
+      const relPath = String(q.path ?? '');
+      if (!isWorkspaceFileServable(relPath)) {
+        return reply.code(404).send({ detail: '文件不存在' });
+      }
       const workspace = workspaceId ? nodeWorkspace(request.authUser!.id, workspaceId) : undefined;
-      const target = resolveSkillAbs(request.authUser!.id, q.path ?? '', workspace);
+      const target = resolveSkillAbs(request.authUser!.id, relPath, workspace);
       if (!target || !existsSync(target) || !statSync(target).isFile()) {
         return reply.code(404).send({ detail: '文件不存在' });
       }

@@ -774,7 +774,9 @@ export async function register(app: FastifyInstance): Promise<void> {
   // ---- AI 产物列表（当前快照 ∪ manifest 历史；「工作区文件」面板数据源）----
   // include_inputs=1 时额外列出 inputs/ 下的用户上传文件；
   // include_agent_resources=1 时额外穿透列出 .pi-agent 装配资源（skills/prompts）——
-  // 两者均为前端 @ 引用检索的数据源扩展口径。
+  // 两者均为前端 @ 引用检索的数据源扩展口径；
+  // include_agent_runtime=1 时补列「全部文件」完整清单（.pi-agent 运行态配置 + 任意深度 .env*，
+  // 敏感文件标 previewable=false：名字可见但预览/下载被 skill-files 拒绝）。
   app.get(
     '/api/modules/bookplate/chat/files',
     { preHandler: app.authenticate },
@@ -783,13 +785,21 @@ export async function register(app: FastifyInstance): Promise<void> {
         workspace_id?: string;
         include_inputs?: string;
         include_agent_resources?: string;
+        include_agent_runtime?: string;
       };
       const workspaceId = sanitizeWorkspaceId(q.workspace_id ?? '');
       // 只读文件列表：路径解析不创建目录（无产物的工作区返回空列表，不留空目录）
       const ws = workspacePath(request.authUser!.id, workspaceId);
       const includeInputs = q.include_inputs === '1' || q.include_inputs === 'true';
       const includeAgentResources = q.include_agent_resources === '1' || q.include_agent_resources === 'true';
-      return { files: listWorkspaceArtifacts(ws, workspaceId, { includeInputs, includeAgentResources }) };
+      const includeAgentRuntime = q.include_agent_runtime === '1' || q.include_agent_runtime === 'true';
+      return {
+        files: listWorkspaceArtifacts(ws, workspaceId, {
+          includeInputs,
+          includeAgentResources,
+          includeAgentRuntime,
+        }),
+      };
     }
   );
 
