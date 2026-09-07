@@ -18,6 +18,8 @@ export interface PiJsonEvent {
 /** 事件映射的跨事件状态（message_end 捕获的最新模型错误，供 auto_retry_end / 收尾判定）。 */
 export interface PiEventMapperState {
   lastError: string | null;
+  /** 当前模型上下文窗口大小（token；缺省 128000） */
+  contextWindow?: number | null;
 }
 
 const COMPACTION_REASON_TEXT: Record<string, string> = {
@@ -126,13 +128,43 @@ export function* mapPiJsonEvent(
       break;
     }
     case 'message_end': {
-      const msg = evt.message as { role?: string; errorMessage?: string } | undefined;
+      const msg = evt.message as {
+        role?: string;
+        errorMessage?: string;
+        usage?: { input?: unknown; output?: unknown; totalTokens?: unknown };
+      } | undefined;
       if (msg?.role !== 'assistant') break;
       // 每条 assistant message_end 视为最新结果：auto-retry 恢复后的成功消息必须
       // 覆盖此前失败尝试的 errorMessage，否则进程正常结束后仍会误报
       // 「执行失败」——前端会在收尾 error chunk 上回滚整轮已流出的内容。
       // 见 docs/skill-agent/rpc-invariants.md #2。
       state.lastError = msg.errorMessage ?? null;
+
+      // 提取本轮 Token 用量并结合模型 contextWindow 计算上下文窗口占比
+      if (msg.usage && typeof msg.usage === 'object') {
+        const u = msg.usage as Record<string, unknown>;
+        const input = typeof u.input === 'number' && Number.isFinite(u.input) ? u.input : 0;
+        const output = typeof u.output === 'number' && Number.isFinite(u.output) ? u.output : 0;
+        const totalTokens =
+          typeof u.totalTokens === 'number' && Number.isFinite(u.totalTokens)
+            ? u.totalTokens
+            : input + output;
+        const contextWindow =
+          typeof state.contextWindow === 'number' && state.contextWindow > 0
+            ? state.contextWindow
+            : 128000;
+        const percent = Number(((totalTokens / contextWindow) * 100).toFixed(1));
+        if (totalTokens > 0) {
+          yield {
+            type: 'token_usage',
+            input,
+            output,
+            totalTokens,
+            contextWindow,
+            percent,
+          };
+        }
+      }
       break;
     }
     case 'auto_retry_start': {

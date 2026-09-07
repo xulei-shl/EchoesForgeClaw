@@ -20,6 +20,13 @@ import { stripInjectedContext } from '../../chatSendHelpers';
 import type { ChatMessage, InjectedContextBlock } from '../../../../platform/types';
 import type { PendingUiRequest } from '../../piStream';
 
+/** 格式化 token 数量展示（≥1M 带 M，≥1k 带 k，其余原样展示） */
+function formatTokenCount(num: number): string {
+  if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M`;
+  if (num >= 1_000) return `${(num / 1_000).toFixed(1)}k`;
+  return String(num);
+}
+
 interface ChatMessageItemProps {
   msg: ChatMessage;
   idx: number;
@@ -218,6 +225,33 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
           {cardFiles.map((f) => (
             <SkillFileCard key={f.url} file={f} />
           ))}
+        </div>
+      )}
+      {/* 6. Token 用量与上下文窗口占比（非流式且有 tokenUsage 时展示） */}
+      {!msg.streaming && msg.tokenUsage && (
+        <div className="flex items-center gap-1.5 text-[10px] font-mono text-ink-faint/60 pl-1 mt-0.5 select-none">
+          <span>
+            {formatTokenCount(msg.tokenUsage.totalTokens)} tokens
+            {msg.tokenUsage.input != null && msg.tokenUsage.output != null && (
+              <span className="opacity-75 font-sans ml-1">
+                (↑{formatTokenCount(msg.tokenUsage.input)} ↓{formatTokenCount(msg.tokenUsage.output)})
+              </span>
+            )}
+          </span>
+          {msg.tokenUsage.percent != null && (
+            <>
+              <span>·</span>
+              <span
+                title={
+                  msg.tokenUsage.contextWindow
+                    ? `模型上下文窗口：${formatTokenCount(msg.tokenUsage.contextWindow)} tokens`
+                    : undefined
+                }
+              >
+                {msg.tokenUsage.percent}% 窗口
+              </span>
+            </>
+          )}
         </div>
       )}
       {/* 被用户停止的回复：展示「重试」入口（仅当该消息是最后一条时，重试目标 = 本轮） */}

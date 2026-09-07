@@ -269,6 +269,7 @@ export async function register(app: FastifyInstance): Promise<void> {
                 thinkingLevel: payload.thinking ?? null,
                 signal: requestAbortSignal(request),
                 generation,
+                contextWindow: saCfg.chat.contextWindow,
               }),
               { ws: prepared.ws, store: createWidgetStore(prepared.ws) }
             );

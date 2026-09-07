@@ -336,6 +336,30 @@ describe('hydratePiSession（jsonl → UI 历史）', () => {
     expect(result.messages[0]!.content.length).toBeLessThan(30_000);
     expect(result.messages[0]!.content.endsWith('…[已截断]')).toBe(true);
   });
+
+  it('assistant 消息携带 usage 时反向水合出 tokenUsage 字段', () => {
+    seedSession([
+      {
+        type: 'message',
+        id: 'a-usage',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: '带有 token 使用量' }],
+          stopReason: 'stop',
+          usage: { input: 1500, output: 500, totalTokens: 2000 },
+        },
+      },
+    ]);
+    const ws = nodeWorkspace(uid, WS_ID);
+    const result = hydratePiSession(ws, WS_ID);
+    expect(result.messages[0]!.tokenUsage).toEqual({
+      input: 1500,
+      output: 500,
+      totalTokens: 2000,
+      contextWindow: 128000,
+      percent: 1.6,
+    });
+  });
 });
 
 describe('chat 会话/图片/文件路由（鉴权）', () => {

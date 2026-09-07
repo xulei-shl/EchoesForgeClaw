@@ -343,6 +343,7 @@ function PiChatNodeHostInner({
         ...(s.agentSteps.length ? { agentSteps: s.agentSteps } : {}),
         streaming: streamState.isStreaming && isActive,
         ...(files?.length ? { files } : {}),
+        ...(s.tokenUsage ? { tokenUsage: s.tokenUsage } : {}),
       });
     });
     return out;
@@ -607,6 +608,16 @@ function PiChatNodeHostInner({
                 break;
               case 'heartbeat':
                 // 心跳仅保持连接活跃（idle 计时已在上方统一 reset），无渲染
+                break;
+              case 'token_usage':
+                dispatchStream({
+                  type: 'token_usage',
+                  input: evt.input,
+                  output: evt.output,
+                  totalTokens: evt.totalTokens,
+                  contextWindow: evt.contextWindow,
+                  percent: evt.percent,
+                });
                 break;
               case 'status':
                 // 自动重试成功恢复：立即撤下倒计时横幅（步骤日志仍保留该状态）

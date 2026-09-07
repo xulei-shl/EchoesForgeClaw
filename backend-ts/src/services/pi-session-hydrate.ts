@@ -59,6 +59,14 @@ export interface HydratedMessage {
   images?: string[];
   interrupted?: boolean;
   ts?: number;
+  /** 本轮 Token 用量与上下文窗口占比 */
+  tokenUsage?: {
+    input: number;
+    output: number;
+    totalTokens: number;
+    contextWindow: number;
+    percent: number;
+  };
 }
 
 export interface HydratedSession {
@@ -75,6 +83,23 @@ export function resolvePiSessionFile(ws: string): string | null {
   if (existsSync(runLevel)) return runLevel;
   const legacyRoot = path.join(ws, '.pi-agent', 'chat.jsonl');
   return existsSync(legacyRoot) ? legacyRoot : null;
+}
+
+/** 读取工作区装配的模型上下文窗口大小（token；缺省 128000）。 */
+export function resolveWorkspaceContextWindow(ws: string): number {
+  try {
+    const modelsPath = path.join(ws, '.pi-agent', 'models.json');
+    if (existsSync(modelsPath)) {
+      const parsed = JSON.parse(readFileSync(modelsPath, 'utf-8'));
+      const models = parsed?.providers?.bookforge?.models;
+      if (Array.isArray(models) && typeof models[0]?.contextWindow === 'number') {
+        return models[0].contextWindow;
+      }
+    }
+  } catch {
+    /* 容错：文件损坏/不存在时走兜底 */
+  }
+  return 128000;
 }
 
 interface PiContentBlock {
@@ -94,6 +119,11 @@ interface PiMessage {
   stopReason?: string;
   errorMessage?: string;
   timestamp?: number;
+  usage?: {
+    input?: unknown;
+    output?: unknown;
+    totalTokens?: unknown;
+  };
   // ToolResultMessage 字段（都在 message 内层）
   toolCallId?: string;
   toolName?: string;
@@ -168,6 +198,7 @@ export function hydratePiSession(ws: string, workspaceId: string): HydratedSessi
     return { exists: false, messages: [], truncated: false };
   }
 
+  const contextWindow = resolveWorkspaceContextWindow(ws);
   const messages: HydratedMessage[] = [];
   // toolCallId → 所属 assistant 消息（toolResult 条目到达时归并结果步骤）
   const callOwner = new Map<string, HydratedMessage>();
@@ -256,6 +287,27 @@ export function hydratePiSession(ws: string, workspaceId: string): HydratedSessi
       const interrupted = msg.stopReason === 'aborted';
       // 全空消息（无正文/推理/步骤且非中断）不入列，避免空气泡脏历史
       if (!content && !reasoning && !steps.length && !interrupted) continue;
+
+      let tokenUsage: HydratedMessage['tokenUsage'];
+      if (msg.usage && typeof msg.usage === 'object') {
+        const u = msg.usage as Record<string, unknown>;
+        const input = typeof u.input === 'number' && Number.isFinite(u.input) ? u.input : 0;
+        const output = typeof u.output === 'number' && Number.isFinite(u.output) ? u.output : 0;
+        const totalTokens =
+          typeof u.totalTokens === 'number' && Number.isFinite(u.totalTokens)
+            ? u.totalTokens
+            : input + output;
+        if (totalTokens > 0) {
+          tokenUsage = {
+            input,
+            output,
+            totalTokens,
+            contextWindow,
+            percent: Number(((totalTokens / contextWindow) * 100).toFixed(1)),
+          };
+        }
+      }
+
       const out: HydratedMessage = {
         id: entryId,
         role: 'assistant',
@@ -264,6 +316,7 @@ export function hydratePiSession(ws: string, workspaceId: string): HydratedSessi
         ...(steps.length ? { agentSteps: steps } : {}),
         ...(interrupted ? { interrupted: true } : {}),
         ...(typeof msg.timestamp === 'number' ? { ts: msg.timestamp } : {}),
+        ...(tokenUsage ? { tokenUsage } : {})
       };
       messages.push(out);
       for (const s of callSteps) if (s.id) callOwner.set(s.id, out);

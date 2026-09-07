@@ -99,6 +99,15 @@ export type ChatStreamEvent =
   | { type: 'turn_start' }
   /** 空闲监听期心跳（保持前端 SSE 连接活跃；前端仅重置 idle 计时，不渲染） */
   | { type: 'heartbeat' }
+  /** 本轮 Token 使用量及上下文窗口占比（Skill Agent 模式；由 pi/events.ts message_end 产出） */
+  | {
+      type: 'token_usage';
+      input: number;
+      output: number;
+      totalTokens: number;
+      contextWindow: number;
+      percent: number;
+    }
   | { type: 'error'; message: string };
 
 /** 把归一化事件流映射为 AI SDK UI Message Stream 的 Response。 */

@@ -73,6 +73,53 @@ describe('mapPiJsonEvent（pi json 事件 → ChatStreamEvent）', () => {
     expect(tools[0]).toMatchObject({ type: 'tool_call', id: 'c1', name: 'read' });
   });
 
+  it('message_end 携带 usage 时正确产出 token_usage 事件与上下文占比', () => {
+    const state: PiEventMapperState = { lastError: null, contextWindow: 200_000 };
+    const events = collect(
+      {
+        type: 'message_end',
+        message: {
+          role: 'assistant',
+          usage: { input: 3000, output: 1000, totalTokens: 4000 },
+        },
+      },
+      state
+    );
+    expect(events).toEqual([
+      {
+        type: 'token_usage',
+        input: 3000,
+        output: 1000,
+        totalTokens: 4000,
+        contextWindow: 200_000,
+        percent: 2.0, // 4000 / 200000 * 100 = 2.0
+      },
+    ]);
+
+    // 缺省 contextWindow 时回退 128000
+    const defaultState: PiEventMapperState = { lastError: null };
+    const defaultEvents = collect(
+      {
+        type: 'message_end',
+        message: {
+          role: 'assistant',
+          usage: { input: 1280, output: 0, totalTokens: 1280 },
+        },
+      },
+      defaultState
+    );
+    expect(defaultEvents).toEqual([
+      {
+        type: 'token_usage',
+        input: 1280,
+        output: 0,
+        totalTokens: 1280,
+        contextWindow: 128000,
+        percent: 1.0, // 1280 / 128000 * 100 = 1.0
+      },
+    ]);
+  });
+
   it('extension_ui_request：四类 dialog 透传白名单字段；非 dialog 方法静默', () => {
     const state: PiEventMapperState = { lastError: null };
     expect(

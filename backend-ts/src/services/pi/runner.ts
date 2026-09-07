@@ -63,6 +63,8 @@ export interface RunPiAgentOptions {
   /** 进程复用判据：preparePiWorkspace 装配物的配置代数（computeWorkspaceGeneration）。
    *  相同 → 复用存活进程；不同/缺省空 → 重拉。 */
   generation?: string | null;
+  /** 当前模型上下文窗口大小（token；空 = 缺省 128000） */
+  contextWindow?: number | null;
 }
 
 /** 组装 pi 启动参数（spawn 时一次性固化；复用的进程不重建）。 */
@@ -226,7 +228,7 @@ function spawnPiProcess(opts: RunPiAgentOptions): PiProcessEntry {
     generation: opts.generation ?? null,
     lastUsed: Date.now(),
     round: null,
-    mapper: { lastError: null },
+    mapper: { lastError: null, contextWindow: opts.contextWindow ?? null },
     lineBuf: '',
     stderrTail: '',
     stdoutEnded: false,
@@ -285,6 +287,7 @@ async function* streamRound(
   const round = createPiRoundState();
   entry.round = round;
   entry.mapper.lastError = null;
+  entry.mapper.contextWindow = opts.contextWindow ?? null;
 
   // RPC 模式图片经 prompt 命令 images 字段直传（data URL → {type:"image",data,mimeType}），
   // 不落盘 inputs/（RPC 禁 @file argv；saveInputImages 留给 json 兼容路径不复用）。

@@ -57,7 +57,16 @@ export type PiStreamEvent =
   /** 空闲监听续轮起始（后台子代理完成后 pi 自动触发的新一轮；前端据此开新步骤气泡） */
   | { type: 'turn_start' }
   /** 空闲监听期心跳（保持 SSE 连接活跃；前端仅重置 idle 计时，不渲染） */
-  | { type: 'heartbeat' };
+  | { type: 'heartbeat' }
+  /** 本轮 Token 用量与上下文窗口占比（由后端 message_end 产出） */
+  | {
+      type: 'token_usage';
+      input: number;
+      output: number;
+      totalTokens: number;
+      contextWindow: number;
+      percent: number;
+    };
 
 /** 扩展 widget 展示项（服务端快照 / SSE 事件归约后的纯展示形态）。 */
 export interface ExtensionWidgetItem {
@@ -88,6 +97,14 @@ export interface LiveAssistantStep {
   content: string;
   /** 工具步骤（tool_call / tool_result / status，与 pi-session-hydrate 的 agentSteps 同构） */
   agentSteps: AgentStep[];
+  /** 本轮 Token 用量与上下文窗口占比 */
+  tokenUsage?: {
+    input?: number;
+    output?: number;
+    totalTokens: number;
+    contextWindow?: number;
+    percent?: number;
+  };
   /**
    * 已收到本条消息的 tool_result（服务端侧该消息已完结）。sealed 后到达的
    * content/reasoning/status 增量开启下一条消息（步骤边界）；工具增量继续归并回本条。
@@ -154,7 +171,16 @@ export type PiStreamAction =
   /** 空闲监听续轮起始（后台子代理完成自动续轮）：强制开启一条新的消息步骤 */
   | { type: 'turn_start' }
   /** 空闲监听期心跳（仅保持连接活跃，reducer 忽略） */
-  | { type: 'heartbeat' };
+  | { type: 'heartbeat' }
+  /** 本轮 Token 用量与上下文窗口占比 */
+  | {
+      type: 'token_usage';
+      input: number;
+      output: number;
+      totalTokens: number;
+      contextWindow: number;
+      percent: number;
+    };
 
 function emptyLiveStep(): LiveAssistantStep {
   return { reasoning: '', content: '', agentSteps: [], sealed: false };
@@ -219,6 +245,17 @@ export function piStreamReducer(state: PiStreamState, action: PiStreamAction): P
       return withLastStep(openStepIfSealed(state), (step) => ({
         ...step,
         agentSteps: [...step.agentSteps, { type: 'agent_status', message: action.message }],
+      }));
+    case 'token_usage':
+      return withLastStep(state, (step) => ({
+        ...step,
+        tokenUsage: {
+          input: action.input,
+          output: action.output,
+          totalTokens: action.totalTokens,
+          contextWindow: action.contextWindow,
+          percent: action.percent,
+        },
       }));
     case 'error':
       return { ...state, isStreaming: false, error: action.message };
