@@ -18,6 +18,13 @@ interface HydratedMessageDto {
   /** 用户消息携带的图片（data URL；LLM / FastClaw transcript 会话由后端水合回填，pi 会话无此字段） */
   images?: string[];
   interrupted?: boolean;
+  tokenUsage?: {
+    input?: number;
+    output?: number;
+    totalTokens: number;
+    contextWindow?: number;
+    percent?: number;
+  };
 }
 
 /** GET /chat/session 返回体（消息 DTO + 扩展 widget 快照）。 */
@@ -82,6 +89,7 @@ function dtoToChatMessage(m: HydratedMessageDto): ChatMessage {
       ? { images: m.images.filter((i): i is string => typeof i === 'string' && i.length > 0) }
       : {}),
     ...(m.interrupted ? { interrupted: true } : {}),
+    ...(m.tokenUsage ? { tokenUsage: m.tokenUsage } : {}),
   };
 }
 
