@@ -315,6 +315,14 @@ export interface ChatMessage {
   files?: AgentFile[];
   /** 本轮装配的 Skill 名（发送时记录，用户气泡下方展示 chips；历史水合轮无此信息） */
   skills?: string[];
+  /** 本轮 Token 用量与上下文窗口占比（Skill Agent 模式） */
+  tokenUsage?: {
+    input?: number;
+    output?: number;
+    totalTokens: number;
+    contextWindow?: number;
+    percent?: number;
+  };
 }
 
 /** 注入 AI 对话节点的单项上下文块（由各上级节点或图书元数据生成） */

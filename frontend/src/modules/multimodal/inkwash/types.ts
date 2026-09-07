@@ -27,7 +27,8 @@ export type InkWashPaperStyle =
   | 'sized_xuan'    // 熟宣：墨色收敛，质地细腻，清雅澄净 (柔和米白)
   | 'antique_silk'  // 仿古绢本：微赭微黄，古画风雅，绢丝质感 (绢本古金)
   | 'pure_white'    // 澄心雪白：明亮爽脆，黑白对比鲜明
-  | 'transparent';  // 透明背景：无底色，导出透明 PNG 供下游拼贴/图层合成
+  | 'transparent'   // 透明背景：无底色，导出透明 PNG 供下游拼贴/图层合成
+  | 'image';        // 背景图：继承上游连线输入或图书封面，带有透明度蒙版，配合水墨正片叠底拓印
 
 /** 4. 画幅比例 */
 export type InkWashAspectRatio = '1:1' | '3:4' | '4:3' | '9:16' | '16:9';
@@ -118,6 +119,10 @@ export interface InkWashState {
   error?: string | null;
   /** 外部输入/上传的参考底稿图片 */
   uploadedImage?: string | null;
+  /** 画底背景图 URL（继承上游连线图片、图书封面或手动上传） */
+  bgImageUrl?: string | null;
+  /** 画底背景图浓度蒙版 (0.1 ~ 1.0，默认 0.35) */
+  bgImageOpacity?: number;
   /** 书画题款与真迹印章列表（支持多段题款组件） */
   inscriptions?: InkWashInscriptionItem[];
   /** 单个题款兼容字段 */
@@ -238,6 +243,8 @@ export const INKWASH_DEFAULT_PARAMS: InkWashState = {
   isSaved: false,
   error: null,
   uploadedImage: null,
+  bgImageUrl: null,
+  bgImageOpacity: 0.35,
   inscriptions: [
     {
       id: 'insc_default',

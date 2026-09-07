@@ -42,6 +42,7 @@ import {
   extractInscriptionFromUpstream,
   getRandomSealSrc,
   InkWashInscriptionOverlay,
+  compositeInkWashWithBackground,
 } from '../inkwash';
 
 const PRESET_SELECT_OPTIONS: SelectOption[] = [
@@ -129,6 +130,10 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
   const seed = data.seed ?? INKWASH_DEFAULT_PARAMS.seed;
   const traceConfig: InkWashTraceConfig = data.traceConfig ?? DEFAULT_INKWASH_TRACE_CONFIG;
 
+  // 有效画底背景图（优先使用上游连线输入或图书封面，其次为节点保存的历史数据或上传底稿）
+  const effectiveBgImageUrl = upstreamImageUrl || data.bgImageUrl || data.uploadedImage || null;
+  const bgImageOpacity: number = data.bgImageOpacity ?? 0.35;
+
   const [isGenerating, setIsGenerating] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [sessionStatus, setSessionStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
@@ -198,6 +203,8 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
       isSaved: data.isSaved,
       error: null,
       uploadedImage: data.uploadedImage || upstreamImageUrl || null,
+      bgImageUrl: effectiveBgImageUrl,
+      bgImageOpacity,
       inscriptions,
       inscription: inscriptions[0],
       traceConfig,
@@ -213,6 +220,8 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
       bink,
       inkColor,
       paperStyle,
+      bgImageOpacity,
+      effectiveBgImageUrl,
       aspectRatio,
       resolution,
       seed,
@@ -230,9 +239,10 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
     if (!containerEl || !sessionRef.current || sessionStatus !== 'ready') return;
     containerEl.replaceChildren();
     const canvas = sessionRef.current.canvas;
-    canvas.className = 'max-w-full max-h-full object-contain cursor-crosshair';
+    canvas.className = 'w-full h-full object-contain cursor-crosshair';
+    canvas.style.mixBlendMode = paperStyle === 'image' ? 'multiply' : '';
     containerEl.appendChild(canvas);
-  }, [containerEl, sessionStatus]);
+  }, [containerEl, sessionStatus, paperStyle]);
 
   // 会话建立：进入编辑态时创建 WebGL2 渲染目标
   useEffect(() => {
@@ -567,6 +577,18 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
 
       // 诗书画印：执行高清书法题款与朱砂真迹印章离屏多图层批量合成
       const dims = getInkWashDimensions(aspectRatio, resolution);
+
+      // 若为背景图模式且存在有效背景图片，执行双层 Canvas 正片叠底合成
+      if (paperStyle === 'image' && effectiveBgImageUrl) {
+        dataUrl = await compositeInkWashWithBackground(
+          dataUrl,
+          effectiveBgImageUrl,
+          bgImageOpacity,
+          dims.width,
+          dims.height
+        );
+      }
+
       dataUrl = await composeInkWashArtwork(dataUrl, inscriptions, dims.width, dims.height);
 
       setIsEditing(false);
@@ -577,7 +599,7 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
         isSaved: false,
       });
 
-      showToast(`水墨写意生成完成 (${resolution}p·${paperStyle === 'transparent' ? '透明底' : '宣纸底'})`, {
+      showToast(`水墨写意生成完成 (${resolution}p·${paperStyle === 'transparent' ? '透明底' : paperStyle === 'image' ? '背景图' : '宣纸底'})`, {
         type: 'success',
       });
     } catch (err: any) {
@@ -586,7 +608,22 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
     } finally {
       setIsGenerating(false);
     }
-  }, [isGenerating, sessionStatus, currentState, id, mode, seed, aspectRatio, resolution, paperStyle, inscriptions, onUpdateState, showToast]);
+  }, [
+    isGenerating,
+    sessionStatus,
+    currentState,
+    id,
+    mode,
+    seed,
+    aspectRatio,
+    resolution,
+    paperStyle,
+    effectiveBgImageUrl,
+    bgImageOpacity,
+    inscriptions,
+    onUpdateState,
+    showToast,
+  ]);
 
   /** 独立保存到数据库 */
   const handleSaveToDatabase = useCallback(async () => {
@@ -691,6 +728,7 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
             bink={bink}
             inkColor={inkColor}
             paperStyle={paperStyle}
+            bgImageOpacity={bgImageOpacity}
             aspectRatio={aspectRatio}
             resolution={resolution}
             upstreamText={upstreamText}
@@ -938,25 +976,56 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
         >
           {!hasGenerated ? (
             <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
-              {/* Canvas 挂载容器 */}
-              <div ref={setContainerEl} className="w-full h-full flex items-center justify-center" />
+              {/* 宣纸画框容器：受当前画幅比例 (aspectRatio) 严格约束，底图与水墨 Canvas 1:1 贴合 */}
+              <div
+                className="relative flex items-center justify-center overflow-hidden rounded shadow-sm select-none"
+                style={{
+                  aspectRatio: (aspectRatio || '1:1').replace(':', ' / '),
+                  width: '100%',
+                  height: 'auto',
+                  maxWidth: '100%',
+                  maxHeight: '100%',
+                  backgroundColor: paperStyle === 'transparent' ? 'transparent' : '#F5F3ED',
+                }}
+              >
+                {/* 背景底图（仅在背景图模式且有有效底图时展示，居中 cover 裁剪并应用透明度蒙版） */}
+                {paperStyle === 'image' && effectiveBgImageUrl && (
+                  <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none select-none">
+                    <img
+                      src={effectiveBgImageUrl}
+                      alt="宣纸画底背景图"
+                      className="w-full h-full object-cover transition-opacity duration-150"
+                      style={{ opacity: bgImageOpacity }}
+                    />
+                  </div>
+                )}
 
-              {/* 诗书画印：所见即所得多段书画题款与真迹印章浮动层 */}
-              {sessionStatus === 'ready' && !hasGenerated && (
-                <InkWashInscriptionOverlay
-                  inscriptions={inscriptions}
-                  selectedId={selectedInscriptionId}
-                  onSelectId={setSelectedInscriptionId}
-                  containerWidth={containerEl?.clientWidth || 400}
-                  containerHeight={containerEl?.clientHeight || 400}
-                  disabled={isGenerating}
-                  isAddingNew={isAddingNewInscription}
-                  onConfirmAdd={handleConfirmAddInscription}
-                  onCancelAdd={handleCancelAddInscription}
-                  onUpdateItem={handleUpdateInscriptionItem}
-                  onDeleteItem={handleDeleteInscriptionItem}
+                {/* Canvas 挂载容器（在背景图模式下启用正片叠底 multiply，使纯白底完全透明，水墨笔触与白描自然浸润底图） */}
+                <div
+                  ref={setContainerEl}
+                  className="relative z-10 w-full h-full flex items-center justify-center"
+                  style={{
+                    mixBlendMode: paperStyle === 'image' ? 'multiply' : undefined,
+                  }}
                 />
-              )}
+
+                {/* 诗书画印：所见即所得多段书画题款与真迹印章浮动层 */}
+                {sessionStatus === 'ready' && !hasGenerated && (
+                  <InkWashInscriptionOverlay
+                    inscriptions={inscriptions}
+                    selectedId={selectedInscriptionId}
+                    onSelectId={setSelectedInscriptionId}
+                    containerWidth={containerEl?.clientWidth || 400}
+                    containerHeight={containerEl?.clientHeight || 400}
+                    disabled={isGenerating}
+                    isAddingNew={isAddingNewInscription}
+                    onConfirmAdd={handleConfirmAddInscription}
+                    onCancelAdd={handleCancelAddInscription}
+                    onUpdateItem={handleUpdateInscriptionItem}
+                    onDeleteItem={handleDeleteInscriptionItem}
+                  />
+                )}
+              </div>
 
 
               {/* 加载动效遮罩 */}

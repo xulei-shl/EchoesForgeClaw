@@ -10,6 +10,7 @@ import type {
   InkWashToolMode,
 } from './types';
 import { INKWASH_PRESET_INKS } from './types';
+import { loadSafeImage } from '../matting';
 
 export interface InkWashRenderResult {
   dataUrl: string;
@@ -996,6 +997,8 @@ export class InkWashSession {
         return [0.885, 0.825, 0.72]; // 仿古绢金
       case 'pure_white':
         return [0.995, 0.995, 0.995]; // 澄心雪白
+      case 'image':
+        return [1.0, 1.0, 1.0]; // 背景图模式：基底设为纯白，正片叠底中为恒等元，完全透出底图
       case 'transparent':
       default:
         return [0.962, 0.954, 0.93];
@@ -1127,12 +1130,84 @@ export async function renderInkWashArt(
   }
 
   session.render();
-  const dataUrl = session.toDataUrl();
+  let dataUrl = session.toDataUrl();
   session.dispose();
+
+  const effectiveBgUrl = params.bgImageUrl || params.uploadedImage;
+  if (params.paperStyle === 'image' && effectiveBgUrl) {
+    dataUrl = await compositeInkWashWithBackground(
+      dataUrl,
+      effectiveBgUrl,
+      params.bgImageOpacity ?? 0.35,
+      w,
+      h
+    );
+  }
 
   return {
     dataUrl,
     width: w,
     height: h,
   };
+}
+
+/**
+ * 将水墨画作与背景图片执行双层 Canvas 正片叠底合成
+ * 衬底采用温润典雅的生宣暖白 (#F5F3ED)，背景图等比居中 Cover 裁剪，顶层水墨图层以 Multiply 模式自然浸润
+ */
+export async function compositeInkWashWithBackground(
+  inkDataUrl: string,
+  bgImageUrl: string,
+  bgImageOpacity = 0.35,
+  width?: number,
+  height?: number
+): Promise<string> {
+  try {
+    const inkImg = await loadSafeImage(inkDataUrl);
+    const w = width || inkImg.naturalWidth || inkImg.width || 1024;
+    const h = height || inkImg.naturalHeight || inkImg.height || 1024;
+
+    const finalCanvas = document.createElement('canvas');
+    finalCanvas.width = w;
+    finalCanvas.height = h;
+    const ctx = finalCanvas.getContext('2d');
+    if (!ctx) return inkDataUrl;
+
+    // 1. 底层生宣暖白纸底色（#F5F3ED），为半透明底图提供真实宣纸衬底
+    ctx.fillStyle = '#F5F3ED';
+    ctx.fillRect(0, 0, w, h);
+
+    // 2. 绘制背景图（等比居中 Cover 裁剪，并应用透明度蒙版）
+    try {
+      const bgImg = await loadSafeImage(bgImageUrl);
+      const imgW = bgImg.naturalWidth || bgImg.width;
+      const imgH = bgImg.naturalHeight || bgImg.height;
+      if (imgW > 0 && imgH > 0) {
+        const scale = Math.max(w / imgW, h / imgH);
+        const sw = w / scale;
+        const sh = h / scale;
+        const sx = (imgW - sw) / 2;
+        const sy = (imgH - sh) / 2;
+
+        ctx.globalAlpha = Math.min(Math.max(bgImageOpacity, 0.05), 1.0);
+        ctx.drawImage(bgImg, sx, sy, sw, sh, 0, 0, w, h);
+        ctx.globalAlpha = 1.0;
+      }
+    } catch (e) {
+      console.warn('加载水墨手绘背景图失败，降级为纯宣纸底:', e);
+    }
+
+    // 3. 顶层叠加水墨图层（采用正片叠底 Multiply 物理混合，白底完全透明透出底图，墨色自然浸润）
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.drawImage(inkImg, 0, 0, w, h);
+    ctx.globalCompositeOperation = 'source-over';
+
+    const compositedUrl = finalCanvas.toDataURL('image/png');
+    finalCanvas.width = 1;
+    finalCanvas.height = 1;
+    return compositedUrl;
+  } catch (err) {
+    console.error('水墨双层正片叠底合成失败:', err);
+    return inkDataUrl;
+  }
 }

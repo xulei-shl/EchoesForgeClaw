@@ -43,6 +43,7 @@ export interface InkWashStudioPanelProps {
   bink: number;
   inkColor: string;
   paperStyle: InkWashPaperStyle;
+  bgImageOpacity?: number;
   aspectRatio: InkWashAspectRatio;
   resolution: InkWashResolution;
   upstreamText?: string | null;
@@ -64,6 +65,7 @@ const PAPER_STYLE_OPTIONS: SelectOption[] = [
   { value: 'antique_silk', label: '仿古绢本·古雅金黄', title: '微赭微黄、绢本重彩、文人画风' },
   { value: 'pure_white', label: '澄心雪白·极简黑白', title: '爽脆明朗、黑白分明' },
   { value: 'transparent', label: '透明底·便于合成', title: '仅输出墨色笔触，背景透明' },
+  { value: 'image', label: '背景图·上游/封面', title: '继承上游节点或封面图片作为底衬，配合水墨正片叠底拓印' },
 ];
 
 const ASPECT_RATIO_OPTIONS: SelectOption[] = [
@@ -91,6 +93,7 @@ export const InkWashStudioPanel: React.FC<InkWashStudioPanelProps> = ({
   bink,
   inkColor,
   paperStyle,
+  bgImageOpacity = 0.35,
   aspectRatio,
   resolution,
   upstreamText,
@@ -781,6 +784,28 @@ export const InkWashStudioPanel: React.FC<InkWashStudioPanelProps> = ({
                 生宣洇漫润泽，熟宣骨感聚墨，仿古绢本带金黄古色
               </span>
             </div>
+
+            {/* 背景图模式专属：底图浓度步进器 */}
+            {paperStyle === 'image' && (
+              <div className="flex flex-col gap-1.5 p-2 rounded-xl bg-paper/60 border border-paper-grid">
+                <NumberStepperRow
+                  label="底图浓度"
+                  value={Math.round((bgImageOpacity ?? 0.35) * 100)}
+                  min={10}
+                  max={100}
+                  step={5}
+                  unit="%"
+                  labelWidth="w-16"
+                  disabled={disabled}
+                  onChange={(val) =>
+                    onUpdate({ bgImageOpacity: Number((val / 100).toFixed(2)) })
+                  }
+                />
+                <span className="text-[10px] text-ink-faint leading-relaxed">
+                  调节继承底图的透出强度，水墨笔触与白描线条将以正片叠底方式与底图自然浸润融合
+                </span>
+              </div>
+            )}
 
             {/* 画幅比例 */}
             <div className="flex flex-col gap-1">
