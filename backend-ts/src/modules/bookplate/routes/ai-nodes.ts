@@ -772,17 +772,24 @@ export async function register(app: FastifyInstance): Promise<void> {
   );
 
   // ---- AI 产物列表（当前快照 ∪ manifest 历史；「工作区文件」面板数据源）----
-  // include_inputs=1 时额外列出 inputs/ 下的用户上传文件（前端 @ 引用检索的数据源）
+  // include_inputs=1 时额外列出 inputs/ 下的用户上传文件；
+  // include_agent_resources=1 时额外穿透列出 .pi-agent 装配资源（skills/prompts）——
+  // 两者均为前端 @ 引用检索的数据源扩展口径。
   app.get(
     '/api/modules/bookplate/chat/files',
     { preHandler: app.authenticate },
     async (request) => {
-      const q = (request.query ?? {}) as { workspace_id?: string; include_inputs?: string };
+      const q = (request.query ?? {}) as {
+        workspace_id?: string;
+        include_inputs?: string;
+        include_agent_resources?: string;
+      };
       const workspaceId = sanitizeWorkspaceId(q.workspace_id ?? '');
       // 只读文件列表：路径解析不创建目录（无产物的工作区返回空列表，不留空目录）
       const ws = workspacePath(request.authUser!.id, workspaceId);
       const includeInputs = q.include_inputs === '1' || q.include_inputs === 'true';
-      return { files: listWorkspaceArtifacts(ws, workspaceId, { includeInputs }) };
+      const includeAgentResources = q.include_agent_resources === '1' || q.include_agent_resources === 'true';
+      return { files: listWorkspaceArtifacts(ws, workspaceId, { includeInputs, includeAgentResources }) };
     }
   );
 

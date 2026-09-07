@@ -347,8 +347,9 @@ export const ChatNodeComposer: React.FC<ChatNodeComposerProps> = ({
     }
     setMention((m) => (m ? { ...m, loading: true, failed: false } : m));
     try {
+      // include_agent_resources=1：装配资源（.pi-agent/skills、prompts，含子目录穿透）一并可检索
       const resp = await fetch(
-        `/api/modules/bookplate/chat/files?workspace_id=${encodeURIComponent(ws)}&include_inputs=1`,
+        `/api/modules/bookplate/chat/files?workspace_id=${encodeURIComponent(ws)}&include_inputs=1&include_agent_resources=1`,
         { headers: authHeaders() }
       );
       if (resp.status === 401) {

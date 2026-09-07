@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { hashSync } from 'bcryptjs';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { initDb, setDb, type DB } from '../../src/config/database.js';
@@ -13,6 +13,7 @@ import { nodeWorkspace } from '../../src/services/skill-agent-service.js';
  * - POST /chat/upload：任意格式文件 → {ws}/inputs/（文件名清洗 + 同名去重）
  * - POST /chat/import：上游静态图片 URL → 拷入 {ws}/inputs/（白名单 + 越界拒绝）
  * - GET /chat/files?include_inputs=1：inputs/ 上传文件可检索（@ 引用数据源）
+ * - GET /chat/files?include_agent_resources=1：.pi-agent 装配资源（skills/prompts）穿透可检索
  */
 
 const RUNTIME_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../runtime');
@@ -268,6 +269,62 @@ describe('GET /chat/files（include_inputs 控制 inputs/ 是否可检索）', (
     });
     expect(res.statusCode).toBe(200);
     expect((res.json() as { files: unknown[] }).files).toEqual([]);
+  });
+});
+
+describe('GET /chat/files（include_agent_resources 控制 .pi-agent 装配资源是否可检索）', () => {
+  function listFiles(query: string) {
+    return app.inject({
+      method: 'GET',
+      url: `/api/modules/bookplate/chat/files?workspace_id=${WS_ID}${query}`,
+      headers: { authorization: `Bearer ${token}` },
+    }).then((res) => {
+      expect(res.statusCode).toBe(200);
+      return (res.json() as { files: { path: string; exists?: boolean }[] }).files.map((f) => f.path);
+    });
+  }
+
+  it('include_agent_resources=1：skills/prompts 穿透列出（含子目录），会话/配置/扩展不出现', async () => {
+    const ws = nodeWorkspace(uid, WS_ID);
+    // 装配资源（含子目录穿透）
+    mkdirSync(path.join(ws, '.pi-agent', 'skills', 'demo-skill', 'sub'), { recursive: true });
+    writeFileSync(path.join(ws, '.pi-agent', 'skills', 'demo-skill', 'SKILL.md'), '# demo');
+    writeFileSync(path.join(ws, '.pi-agent', 'skills', 'demo-skill', 'sub', 'nested.md'), 'nested');
+    mkdirSync(path.join(ws, '.pi-agent', 'prompts'), { recursive: true });
+    writeFileSync(path.join(ws, '.pi-agent', 'prompts', 'review.md'), 'review');
+    // 会话与配置：白名单外，不得出现在检索列表
+    mkdirSync(path.join(ws, '.pi-agent', 'run'), { recursive: true });
+    writeFileSync(path.join(ws, '.pi-agent', 'run', 'chat.jsonl'), '{"type":"session"}\n');
+    writeFileSync(path.join(ws, '.pi-agent', 'models.json'), '{}');
+    writeFileSync(path.join(ws, '.pi-agent', 'settings.json'), '{}');
+    mkdirSync(path.join(ws, '.pi-agent', 'extensions', 'ctx'), { recursive: true });
+    writeFileSync(path.join(ws, '.pi-agent', 'extensions', 'ctx', 'index.js'), 'export {};');
+
+    const paths = await listFiles('&include_agent_resources=1');
+    expect(paths).toContain('.pi-agent/skills/demo-skill/SKILL.md');
+    expect(paths).toContain('.pi-agent/skills/demo-skill/sub/nested.md');
+    expect(paths).toContain('.pi-agent/prompts/review.md');
+    expect(paths.some((p) => p.startsWith('.pi-agent/run/'))).toBe(false);
+    expect(paths.some((p) => p.startsWith('.pi-agent/extensions/'))).toBe(false);
+    expect(paths).not.toContain('.pi-agent/models.json');
+    expect(paths).not.toContain('.pi-agent/settings.json');
+  });
+
+  it('include_agent_resources=1：skills 软链装配（Bifrost 共享包）目标内容一并盘点', async () => {
+    const ws = nodeWorkspace(uid, WS_ID);
+    const shared = path.join(ws, '..', 'shared-skills-src', 'linked-skill');
+    mkdirSync(shared, { recursive: true });
+    writeFileSync(path.join(shared, 'SKILL.md'), '# shared');
+    rmSync(path.join(ws, '.pi-agent', 'skills', 'linked-skill'), { force: true, recursive: true });
+    symlinkSync(shared, path.join(ws, '.pi-agent', 'skills', 'linked-skill'), 'dir');
+
+    const paths = await listFiles('&include_agent_resources=1');
+    expect(paths).toContain('.pi-agent/skills/linked-skill/SKILL.md');
+  });
+
+  it('不带 include_agent_resources：.pi-agent 路径一律不出现（默认口径不变）', async () => {
+    const paths = await listFiles('&include_inputs=1');
+    expect(paths.some((p) => p.startsWith('.pi-agent/'))).toBe(false);
   });
 });
 

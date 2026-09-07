@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { ChatStreamEvent } from '../../modules/bookplate/stream.js';
 import { mimeOf, skillFileDownloadUrl } from '../file-utils.js';
@@ -14,7 +14,8 @@ import { mimeOf, skillFileDownloadUrl } from '../file-utils.js';
  * - diffWorkspace：前后快照差分 → agent_file 事件 + manifest 记录（runner.ts 调用）；
  * - appendArtifactManifest：本轮差分产物追加进 append-only JSONL 清单；
  * - readArtifactManifest：读取清单（水合产物绑定 / 产物列表共用）；
- * - listWorkspaceArtifacts：当前快照与 manifest 历史合并（已删文件保留 exists=false）。
+ * - listWorkspaceArtifacts：当前快照与 manifest 历史合并（已删文件保留 exists=false）；
+ *   includeAgentResources 时穿透列出 .pi-agent 装配资源（skills/prompts，@ 引用检索用）。
  */
 
 // ---------------------------------------------------------------------------
@@ -217,16 +218,79 @@ export interface WorkspaceArtifact extends Omit<ArtifactRecord, 'rel'> {
   exists: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// .pi-agent 装配资源（@ 引用穿透检索）
+// ---------------------------------------------------------------------------
+
+/** 装配资源白名单子目录：.pi-agent 下仅这两棵树可被 @ 引用检索（含子目录穿透）。 */
+const AGENT_RESOURCE_DIRS = ['skills', 'prompts'] as const;
+
+/**
+ * 递归盘点 .pi-agent 装配资源（skills/ prompts/，含子目录穿透）。
+ * 只遍历白名单子树：会话/配置/扩展（chat.jsonl、run/、sessions/、extensions/、
+ * models.json 等）天然不进入列表。visited 按 realpath 防软链成环——装配的 skills
+ * 可能是指向共享区的目录软链，穿透遍历时目标内容一并盘点。
+ */
+function walkAgentResources(root: string, out: Map<string, FileStamp>): void {
+  const visited = new Set<string>();
+  const walk = (dir: string, prefix: string): void => {
+    let entries: string[] = [];
+    try {
+      entries = readdirSync(dir).sort();
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = path.join(dir, entry);
+      const rel = `${prefix}/${entry}`;
+      let st;
+      try {
+        st = statSync(full); // 跟随软链（目录软链按目标内容盘点，与 walkWorkspace 一致）
+      } catch {
+        continue;
+      }
+      if (st.isDirectory()) {
+        let real: string;
+        try {
+          real = realpathSync(full);
+        } catch {
+          real = full;
+        }
+        if (visited.has(real)) continue; // 软链成环防护
+        visited.add(real);
+        walk(full, rel);
+      } else if (st.isFile()) {
+        out.set(rel, { size: st.size, mtimeMs: st.mtimeMs });
+      }
+    }
+  };
+  for (const sub of AGENT_RESOURCE_DIRS) {
+    const dir = path.join(root, '.pi-agent', sub);
+    let real: string;
+    try {
+      real = realpathSync(dir);
+    } catch {
+      continue; // 目录不存在：无装配资源
+    }
+    if (visited.has(real)) continue;
+    visited.add(real);
+    walk(dir, `.pi-agent/${sub}`);
+  }
+}
+
 /**
  * 列出工作区当前产物（差分同口径排除装配物/会话），并与 manifest 历史条目合并
  * （文件已被删除的历史产物保留并标 exists=false，维持可追溯）。
  * opts.includeInputs 为 true 时把 inputs/ 目录下的用户上传文件一并列出（@ 引用检索与
  * 工作区文件面板共用同一数据源；inputs 默认不出现在产物列表——上传文件不是 agent 产物）。
+ * opts.includeAgentResources 为 true 时额外穿透列出 .pi-agent 装配资源（skills/prompts，
+ * 含子目录；会话/配置/扩展仍排除）供 @ 引用检索。产物差分不受影响——snapshotWorkspace
+ * 对 .pi-agent 整体剪枝，此处为列表侧独立补列，不写 manifest。
  */
 export function listWorkspaceArtifacts(
   ws: string,
   workspaceId: string,
-  opts?: { includeInputs?: boolean }
+  opts?: { includeInputs?: boolean; includeAgentResources?: boolean }
 ): WorkspaceArtifact[] {
   const byRel = new Map<string, WorkspaceArtifact>();
   for (const [rel, stamp] of snapshotWorkspace(ws)) {
@@ -240,6 +304,21 @@ export function listWorkspaceArtifacts(
       url: skillFileDownloadUrl(rel, workspaceId),
       exists: true,
     });
+  }
+  if (opts?.includeAgentResources) {
+    const resources = new Map<string, FileStamp>();
+    walkAgentResources(ws, resources);
+    for (const [rel, stamp] of resources) {
+      byRel.set(rel, {
+        path: rel,
+        mime: mimeOf(rel),
+        size: stamp.size,
+        mtimeMs: stamp.mtimeMs,
+        name: path.basename(rel),
+        url: skillFileDownloadUrl(rel, workspaceId),
+        exists: true,
+      });
+    }
   }
   if (opts?.includeInputs) {
     const inputsDir = path.join(ws, 'inputs');
