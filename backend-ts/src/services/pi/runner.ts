@@ -15,6 +15,7 @@ import { resolveImageGenExtension, resolvePiBin } from './resolve.js';
 import {
   createPiRoundState,
   countActivePiProcesses,
+  ensurePiProcessKilled,
   evictLeastRecentlyUsedPiProcess,
   getPiProcess,
   killPiProcess,
@@ -295,10 +296,13 @@ async function* streamRound(
 
   const onAbort = () => {
     round.aborted = true;
+    // 立即触发 killPiProcess（注销注册表、杀树并挂载退出等待），
+    // 杜绝客户端快速发起新请求时误把未退出的旧进程当成空闲健康进程复用
+    void killPiProcess(opts.userId, opts.workspaceId);
     try {
       entry.stdin.write(JSON.stringify({ type: 'abort', id: 'abort-current' }) + '\n');
     } catch {
-      /* stdin 已关：直接杀树 */
+      /* stdin 已关：已由 killPiProcess 杀树 */
     }
     killTree(entry.child!);
     wakeRound(entry);
@@ -495,12 +499,18 @@ async function* streamRound(
   } finally {
     clearTimeout(runTimeout);
     opts.signal?.removeEventListener('abort', onAbort);
+    if (round.aborted || opts.signal?.aborted || timedOut || round.emittedError || round.writeFailed) {
+      void killPiProcess(opts.userId, opts.workspaceId);
+    }
     entry.round = null;
   }
 }
 
 export async function* runPiAgent(opts: RunPiAgentOptions): AsyncGenerator<ChatStreamEvent> {
   const generation = opts.generation ?? null;
+  // 若此前有被中断/退出的旧进程正在关闭中，先确保其彻底退出，
+  // 防双写会话文件、文件锁冲突及已忙（already processing）报错
+  await ensurePiProcessKilled(opts.userId, opts.workspaceId);
   let entry = getPiProcess(opts.userId, opts.workspaceId);
   // 复用进程必须空闲（无活跃轮）。中断/abort 的 kill 是异步的：上一轮 streamRound 尚未
   // 收尾时 entry.round 仍活跃，直接把新 prompt 写到忙进程会被 pi 以

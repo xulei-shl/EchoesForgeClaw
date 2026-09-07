@@ -57,6 +57,7 @@ export {
   registerPiProcess,
   getPiProcess,
   killPiProcess,
+  ensurePiProcessKilled,
   killAllPiProcesses,
   countActivePiProcesses,
   reapIdlePiProcesses,

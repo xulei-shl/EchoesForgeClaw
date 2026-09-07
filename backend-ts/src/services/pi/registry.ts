@@ -210,6 +210,17 @@ export function evictLeastRecentlyUsedPiProcess(): boolean {
   return true;
 }
 
+const exitingProcesses = new Map<string, Promise<void>>();
+
+/**
+ * 等待某工作区正在退出的旧进程彻底退出（保证新拉起的进程不与正在退出的旧进程产生文件锁冲突/双写竞态）。
+ */
+export async function ensurePiProcessKilled(userId: number, workspaceId: string): Promise<void> {
+  const key = piProcessKey(userId, workspaceId);
+  const pending = exitingProcesses.get(key);
+  if (pending) await pending;
+}
+
 /** 等待条目子进程真正退出（taskkill /F 异步；供 killPiProcess 后续 rmSync 不撞文件锁）。 */
 function waitForPiExit(entry: PiProcessEntry): Promise<void> {
   const child = entry.child;
@@ -228,11 +239,22 @@ function waitForPiExit(entry: PiProcessEntry): Promise<void> {
  * 并等待子进程真正退出（Windows taskkill 异步，保证后续删除工作区不撞文件锁）。
  */
 export async function killPiProcess(userId: number, workspaceId: string): Promise<boolean> {
-  const entry = piProcessRegistry.get(piProcessKey(userId, workspaceId));
-  if (!entry || entry.ended) return false;
-  piProcessRegistry.delete(piProcessKey(userId, workspaceId));
+  const key = piProcessKey(userId, workspaceId);
+  const entry = piProcessRegistry.get(key);
+  if (!entry || entry.ended) {
+    const pending = exitingProcesses.get(key);
+    if (pending) await pending;
+    return false;
+  }
+  piProcessRegistry.delete(key);
   markKilled(entry);
-  await waitForPiExit(entry);
+  const exitPromise = waitForPiExit(entry).finally(() => {
+    if (exitingProcesses.get(key) === exitPromise) {
+      exitingProcesses.delete(key);
+    }
+  });
+  exitingProcesses.set(key, exitPromise);
+  await exitPromise;
   return true;
 }
 

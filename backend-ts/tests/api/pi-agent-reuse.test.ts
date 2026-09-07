@@ -67,6 +67,7 @@ async function runTurn(opts: {
   port: number;
   generation: string;
   message: string;
+  signal?: AbortSignal;
 }): Promise<{ procId: number | null; events: { type: string }[] }> {
   const prepared = preparePiWorkspace(UID, WS_ID, {
     agentId: 1,
@@ -84,6 +85,7 @@ async function runTurn(opts: {
     imageGenEnabled: false,
     message: opts.message,
     generation: opts.generation,
+    signal: opts.signal,
   })) {
     events.push(evt);
   }
@@ -265,6 +267,56 @@ describe('runPiAgent 进程复用（配置代数 + 常驻 RPC）', () => {
       expect(t2.events.some((e) => e.type === 'content_delta')).toBe(true);
       expect(t2.events.some((e) => e.type === 'error')).toBe(false);
       // 会话历史仍延续：第 2 轮模型收到 2 条 user（首轮 + 继续）
+      expect(mock.userCounts).toEqual([1, 2]);
+    },
+    120_000
+  );
+
+  it(
+    '手动暂停（signal abort）后发送新消息：旧进程注销退出，新轮重拉不报错且上下文延续',
+    async () => {
+      const generation = computeWorkspaceGeneration({
+        userId: UID,
+        agentId: 1,
+        skillNames: [],
+        chatModel: chatModel(mock.port),
+        imageModel: null,
+        extensionNames: [],
+      });
+      // 第 1 轮：流式中途中断（模拟用户点击停止/暂停按钮）
+      const controller = new AbortController();
+      const prepared = preparePiWorkspace(UID, WS_ID, {
+        agentId: 1,
+        chatModel: chatModel(mock.port),
+        imageModel: null,
+        skillNames: [],
+      });
+      const t1Events: { type: string }[] = [];
+      for await (const evt of runPiAgent({
+        userId: UID,
+        workspaceId: WS_ID,
+        ws: prepared.ws,
+        hasPrompt: prepared.hasPrompt,
+        chatModelName: 'test-model',
+        imageGenEnabled: false,
+        message: '第一问（中途中断）',
+        generation,
+        signal: controller.signal,
+      })) {
+        t1Events.push(evt);
+        if (evt.type === 'content_delta') {
+          controller.abort();
+          break;
+        }
+      }
+
+      // 第 2 轮：用户暂停后立即发送新消息
+      const t2 = await runTurn({ port: mock.port, generation, message: '第二问（继续输出）' });
+      // 关键断言：绝不报「Agent is already processing」
+      expect(t2.events.some((e) => e.type === 'error')).toBe(false);
+      expect(t2.events.some((e) => e.type === 'content_delta')).toBe(true);
+      expect(t2.procId).toBeTruthy();
+      // 上下文延续：模型收到了第 1 轮（未丢失）+ 第 2 轮
       expect(mock.userCounts).toEqual([1, 2]);
     },
     120_000
