@@ -25,7 +25,6 @@ import { ChatNodeSettingsPopover } from './chat/ChatNodeSettingsPopover';
 import { ScrollButtons } from './chat/ScrollButtons';
 import {
   ChatSidePanelDrawer,
-  ChatSidePanelTrigger,
   type ChatSidePanel,
 } from './chat/ChatSidePanel';
 import { CHAT_STYLE_INJECTIONS } from './chatStyles';
@@ -290,6 +289,14 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
   const renderActionBar = () => {
     return (
       <NodeActionBar>
+        {sidePanel && (
+          <NodeActionBar.SidePanel
+            open={sidePanel.open}
+            loading={sidePanel.filesLoading || !!sidePanel.sessionsLoading}
+            onClick={sidePanel.onToggle}
+            tooltip={sidePanel.open ? '收起侧边面板 (Esc)' : '侧边面板（产物 / 文件 / 历史）'}
+          />
+        )}
         {messages.length > 0 && (
           <NodeActionBar.Download onClick={handleDownload} disabled={isGenerating} />
         )}
@@ -469,13 +476,6 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
           }}
         />
 
-        {/* 侧边面板入口条（skill_agent / FastClaw agent）：单一通用按钮，点击展开右侧
-            吸附抽屉（AI 产物 / 我的上传 / 对话历史 Tab 切换，见 ChatSidePanel） */}
-        {sidePanel && (
-          <div className="shrink-0 mt-1.5 flex items-center gap-3">
-            <ChatSidePanelTrigger panel={sidePanel} />
-          </div>
-        )}
 
         {/* 排队消息（skill_agent）：流式中发送的消息先入队，当前轮结束后自动依次发出 */}
         {messageQueue && messageQueue.items.length > 0 && (

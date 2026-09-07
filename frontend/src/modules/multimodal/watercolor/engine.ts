@@ -3,6 +3,7 @@
  */
 
 import * as brush from './lib/brush.esm.js';
+import { loadSafeImage } from '../matting';
 import type { WatercolorAspectRatio, WatercolorBrushState } from './types';
 import { executeWatercolorGeneration } from './generators';
 
@@ -114,6 +115,60 @@ export async function renderWatercolorArt(
   brush.load(canvas);
   brush.scaleBrushes(3.5);
   executeWatercolorGeneration(w, h, params);
+
+  const bgType =
+    params.backgroundType ?? (params.transparentBackground ? 'transparent' : 'paper');
+
+  // 若为背景图模式且存在有效背景图片 URL，执行双层 Canvas 复合渲染
+  if (bgType === 'image' && params.bgImageUrl) {
+    const finalCanvas = document.createElement('canvas');
+    finalCanvas.width = w;
+    finalCanvas.height = h;
+    const ctx = finalCanvas.getContext('2d');
+    if (ctx) {
+      // 1. 底层象牙白纸底色（#FAF6EC），为半透明底图提供真实水彩画纸衬底
+      ctx.fillStyle = '#FAF6EC';
+      ctx.fillRect(0, 0, w, h);
+
+      // 2. 绘制背景图（等比居中 Cover 裁剪，并应用透明度蒙版）
+      try {
+        const bgImg = await loadSafeImage(params.bgImageUrl);
+        const imgW = bgImg.naturalWidth || bgImg.width;
+        const imgH = bgImg.naturalHeight || bgImg.height;
+        if (imgW > 0 && imgH > 0) {
+          const scale = Math.max(w / imgW, h / imgH);
+          const sw = w / scale;
+          const sh = h / scale;
+          const sx = (imgW - sw) / 2;
+          const sy = (imgH - sh) / 2;
+
+          ctx.globalAlpha = Math.min(Math.max(params.bgImageOpacity ?? 0.35, 0.05), 1.0);
+          ctx.drawImage(bgImg, sx, sy, sw, sh, 0, 0, w, h);
+          ctx.globalAlpha = 1.0;
+        }
+      } catch (e) {
+        console.warn('加载水彩手绘背景图失败，降级为纯白纸底:', e);
+      }
+
+      // 3. 顶层叠加 WebGL 水彩图层（采用正片叠底 Multiply 物理混合，白底完全透明透出底图，水彩颜料自然浸润）
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.drawImage(canvas, 0, 0);
+      ctx.globalCompositeOperation = 'source-over';
+
+      const dataUrl = finalCanvas.toDataURL('image/png');
+
+      finalCanvas.width = 1;
+      finalCanvas.height = 1;
+      canvas.width = 1;
+      canvas.height = 1;
+
+      return {
+        dataUrl,
+        width: w,
+        height: h,
+      };
+    }
+  }
 
   const dataUrl = canvas.toDataURL('image/png');
 

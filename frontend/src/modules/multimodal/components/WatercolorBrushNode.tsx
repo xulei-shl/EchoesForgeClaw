@@ -18,6 +18,7 @@ import { Tooltip } from '../../../platform/components/ui/Tooltip';
 import { useFeedback } from '../../../platform/components/ui/FeedbackProvider';
 import { NODE_COLORS } from '../../bookplate/nodeTypes';
 import {
+  type WatercolorBackgroundType,
   type WatercolorBrushState,
   type WatercolorCompositionMode,
   type WatercolorLayoutMode,
@@ -38,15 +39,15 @@ const PRESET_SELECT_OPTIONS: SelectOption[] = [
   { value: 'spiral_vortex', label: '螺线律动', title: '连续曲线笔触、流光彩带与漩涡星云' },
   { value: 'woven_grid', label: '浮水织锦', title: '海床流场波动经纬、水彩光斑与交错排线' },
   { value: 'watercolor_clouds', label: '云阶水彩', title: '纯净多层水彩有机云团，无杂乱直线' },
-  { value: 'topographic_strata', label: '山川层峦', title: '东方青绿等高线山川地貌' },
-  { value: 'matisse_cutouts', label: '剪纸留白', title: '马蒂斯现代几何剪纸造型与负空间' },
-  { value: 'botanical_bloom', label: '绽放花轮', title: '纯植物花瓣多层展开与色彩渗透' },
-  { value: 'bauhaus_grid', label: '包豪斯', title: '现代主义几何色块与贯穿一体排线' },
+  { value: 'topographic_strata', label: '山川层峦', title: '东方青绿山水等高线层峦叠嶂' },
+  { value: 'matisse_cutouts', label: '剪纸留白', title: '马蒂斯现代几何剪纸与负空间镂空' },
+  { value: 'botanical_bloom', label: '绽放花轮', title: '纯粹植物花瓣层次渐变，无机械射线' },
+  { value: 'bauhaus_grid', label: '包豪斯', title: '现代主义包豪斯色块与贯穿一体排线' },
   { value: 'zen_splash', label: '破墨飞白', title: '东方水墨书法粗重圆相与写意渗透' },
   { value: 'abstract_sketch', label: '表现手绘', title: '纯粹向量流场速写与飞线动势' },
-  { value: 'ukiyo_wave', label: '浮世浪涌', title: '卷曲翻滚的浮世绘巨浪浪峰' },
-  { value: 'aerosol_spray', label: '气溶胶', title: '喷枪微粒、街头艺术与气溶胶晕染' },
-  { value: 'mineral_rubbing', label: '拓印岩彩', title: '干画粉彩涂抹与粗粝矿物岩石' },
+  { value: 'ukiyo_wave', label: '浮世浪涌', title: '浮世绘巨浪浪峰翻滚卷曲与密实排线' },
+  { value: 'aerosol_spray', label: '气溶胶', title: '喷枪微粒、街头气溶胶晕染与星云散点' },
+  { value: 'mineral_rubbing', label: '拓印岩彩', title: '干画粉彩多层涂抹与粗粝矿物岩石截面' },
 ];
 export interface WatercolorBrushNodeProps {
   id: string;
@@ -59,6 +60,7 @@ export interface WatercolorBrushNodeProps {
     error?: string | null;
   };
   upstreamColors?: string[] | null;
+  upstreamImageUrl?: string | null;
   isFavorited?: boolean;
   isPublic?: boolean;
   isSelected?: boolean;
@@ -84,6 +86,7 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
   title,
   data = {},
   upstreamColors,
+  upstreamImageUrl,
   isFavorited = false,
   isPublic = false,
   isSelected = false,
@@ -110,6 +113,12 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
     return preset?.colors || WATERCOLOR_PRESET_PALETTES[0].colors;
   }, [upstreamColors, data?.paletteId]);
 
+  // 有效画底背景图（优先使用上游连线输入或图书封面，其次为节点保存的历史数据）
+  const effectiveBgImageUrl = upstreamImageUrl || data.bgImageUrl || null;
+  const backgroundType: WatercolorBackgroundType =
+    data.backgroundType ?? (data.transparentBackground ? 'transparent' : 'paper');
+  const bgImageOpacity: number = data.bgImageOpacity ?? 0.35;
+
   // 核心参数（持久化在 node.data）
   const mode: WatercolorCompositionMode = data.mode ?? WATERCOLOR_DEFAULT_PARAMS.mode;
   const layoutMode: WatercolorLayoutMode = data.layoutMode ?? WATERCOLOR_DEFAULT_PARAMS.layoutMode;
@@ -126,7 +135,7 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
   const hatchDist = data.hatchDist ?? WATERCOLOR_DEFAULT_PARAMS.hatchDist;
   const grain = data.grain ?? WATERCOLOR_DEFAULT_PARAMS.grain;
   const seed = data.seed ?? WATERCOLOR_DEFAULT_PARAMS.seed;
-  const transparentBackground = data.transparentBackground ?? WATERCOLOR_DEFAULT_PARAMS.transparentBackground ?? false;
+  const transparentBackground = backgroundType === 'transparent';
   const aspectRatio: WatercolorAspectRatio = data.aspectRatio ?? WATERCOLOR_DEFAULT_PARAMS.aspectRatio ?? '1:1';
   const resolution: WatercolorResolution = data.resolution ?? WATERCOLOR_DEFAULT_PARAMS.resolution ?? 1024;
 
@@ -167,6 +176,9 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
       grain,
       seed,
       transparentBackground,
+      backgroundType,
+      bgImageOpacity,
+      bgImageUrl: effectiveBgImageUrl,
       aspectRatio,
       resolution,
       imageUrl: data.imageUrl || null,
@@ -191,6 +203,9 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
       grain,
       seed,
       transparentBackground,
+      backgroundType,
+      bgImageOpacity,
+      effectiveBgImageUrl,
       aspectRatio,
       resolution,
       data.imageUrl,
@@ -203,9 +218,10 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
     if (!containerEl || !sessionRef.current || sessionStatus !== 'ready') return;
     containerEl.replaceChildren();
     const canvas = sessionRef.current.canvas;
-    canvas.className = 'max-w-full max-h-full object-contain';
+    canvas.className = 'w-full h-full object-contain';
+    canvas.style.mixBlendMode = backgroundType === 'image' ? 'multiply' : '';
     containerEl.appendChild(canvas);
-  }, [containerEl, sessionStatus]);
+  }, [containerEl, sessionStatus, backgroundType]);
 
   // 会话建立：编辑态时打开离屏 Canvas，离开编辑态 / 卸载时释放。
   // 新节点未选择模板前（hasStarted = false）不建立会话，保持空白，避免创建即渲染卡顿
@@ -399,7 +415,13 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
         previewStarted: true,
       });
       showToast(
-        `水彩手绘生成完成 (${result.width}×${result.height}${currentState.transparentBackground ? '·透明底' : ''})`,
+        `水彩手绘生成完成 (${result.width}×${result.height}${
+          currentState.backgroundType === 'transparent'
+            ? '·透明底'
+            : currentState.backgroundType === 'image'
+              ? '·背景图'
+              : ''
+        })`,
         { type: 'success' }
       );
     } catch (err: any) {
@@ -460,21 +482,26 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
   const hasGenerated = Boolean(data?.imageUrl && !isEditing);
   const isSaved = Boolean(data?.isSaved);
 
-  const checkerboardStyle: React.CSSProperties = transparentBackground
-    ? {
-        backgroundImage: `
-          linear-gradient(45deg, rgba(0, 0, 0, 0.06) 25%, transparent 25%),
-          linear-gradient(-45deg, rgba(0, 0, 0, 0.06) 25%, transparent 25%),
-          linear-gradient(45deg, transparent 75%, rgba(0, 0, 0, 0.06) 75%),
-          linear-gradient(-45deg, transparent 75%, rgba(0, 0, 0, 0.06) 75%)
-        `,
-        backgroundSize: '16px 16px',
-        backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0px',
-        backgroundColor: '#f8f8fa',
-      }
-    : {
-        backgroundColor: '#FCFAF2',
-      };
+  const checkerboardStyle: React.CSSProperties =
+    backgroundType === 'transparent'
+      ? {
+          backgroundImage: `
+            linear-gradient(45deg, rgba(0, 0, 0, 0.06) 25%, transparent 25%),
+            linear-gradient(-45deg, rgba(0, 0, 0, 0.06) 25%, transparent 25%),
+            linear-gradient(45deg, transparent 75%, rgba(0, 0, 0, 0.06) 75%),
+            linear-gradient(-45deg, transparent 75%, rgba(0, 0, 0, 0.06) 75%)
+          `,
+          backgroundSize: '16px 16px',
+          backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0px',
+          backgroundColor: '#f8f8fa',
+        }
+      : backgroundType === 'image' && effectiveBgImageUrl
+        ? {
+            backgroundColor: '#FAF6EC',
+          }
+        : {
+            backgroundColor: '#FCFAF2',
+          };
 
   return (
     <CanvasNode
@@ -514,6 +541,9 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
             hatchDist={hatchDist}
             paletteId={paletteId}
             transparentBackground={transparentBackground}
+            backgroundType={backgroundType}
+            bgImageOpacity={bgImageOpacity}
+            upstreamImageUrl={effectiveBgImageUrl}
             aspectRatio={aspectRatio}
             resolution={resolution}
             upstreamColors={upstreamColors}
@@ -690,8 +720,39 @@ const WatercolorBrushNodeInner: React.FC<WatercolorBrushNodeProps> = ({
                 </div>
               ) : (
                 <>
-                  {/* Canvas 挂载容器 */}
-                  <div ref={setContainerEl} className="w-full h-full flex items-center justify-center" />
+                  {/* 水彩画框容器：受当前画幅比例 (aspectRatio) 严格约束，底图与水彩 Canvas 1:1 贴合 */}
+                  <div
+                    className="relative flex items-center justify-center overflow-hidden rounded shadow-sm select-none"
+                    style={{
+                      aspectRatio: (aspectRatio || '1:1').replace(':', ' / '),
+                      width: '100%',
+                      height: 'auto',
+                      maxWidth: '100%',
+                      maxHeight: '100%',
+                      backgroundColor: backgroundType === 'transparent' ? 'transparent' : '#FAF6EC',
+                    }}
+                  >
+                    {/* 背景底图（仅在背景图模式且有有效底图时展示，居中 cover 裁剪并应用透明度蒙版） */}
+                    {backgroundType === 'image' && effectiveBgImageUrl && (
+                      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none select-none">
+                        <img
+                          src={effectiveBgImageUrl}
+                          alt="画底背景图"
+                          className="w-full h-full object-cover transition-opacity duration-150"
+                          style={{ opacity: bgImageOpacity }}
+                        />
+                      </div>
+                    )}
+
+                    {/* Canvas 挂载容器（在背景图模式下启用正片叠底 multiply，使白纸底完全透明，水彩颜料自然浸润底图） */}
+                    <div
+                      ref={setContainerEl}
+                      className="relative z-10 w-full h-full flex items-center justify-center"
+                      style={{
+                        mixBlendMode: backgroundType === 'image' ? 'multiply' : undefined,
+                      }}
+                    />
+                  </div>
 
                   {/* 加载动效遮罩：严格居中覆盖整个视口 */}
                   {sessionStatus === 'loading' && (

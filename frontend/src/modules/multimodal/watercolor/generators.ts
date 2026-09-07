@@ -725,7 +725,9 @@ function renderCutoutsLayout(
         hPts.push([hx + hr * Math.cos(a), hy + hr * Math.sin(a)]);
       }
       brush.push();
-      if (!params.transparentBackground) {
+      const isPaperBg =
+        (params.backgroundType ?? (params.transparentBackground ? 'transparent' : 'paper')) === 'paper';
+      if (isPaperBg) {
         brush.fillBleed(0);
         brush.fill('#FAF6EC', 255);
         brush.polygon(hPts);
@@ -918,10 +920,17 @@ export function executeWatercolorGeneration(
 
   // 1. 设置角度与底色 (温暖高雅的象牙纸白)
   brush.angleMode(brush.DEGREES);
-  if (params.transparentBackground) {
-    brush.clear();
-  } else {
+  const bgType =
+    params.backgroundType ?? (params.transparentBackground ? 'transparent' : 'paper');
+  if (bgType === 'paper') {
     brush.clear(250, 246, 236, 255);
+  } else if (bgType === 'image') {
+    // 背景图模式：清空为纯白色底 (255, 255, 255, 255)，配合正片叠底 (multiply) 物理融合
+    // 纯白在正片叠底中完全透明透出底图，水彩颜料与线条自然浸润底图
+    brush.clear(255, 255, 255, 255);
+  } else {
+    // transparent 时清空为完全透明底 [0, 0, 0, 0]
+    brush.clear();
   }
   brush.seed(params.seed || 42);
 

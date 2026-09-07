@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Tooltip } from '../ui/Tooltip';
 import { useFeedback } from '../ui/FeedbackProvider';
-import { Play, RefreshCw, Pencil, Check, X, Download, Eraser, Settings2, Copy, RotateCcw, ExternalLink } from 'lucide-react';
+import { Play, RefreshCw, Pencil, Check, X, Download, Eraser, Settings2, Copy, RotateCcw, ExternalLink, PanelRight, Loader2 } from 'lucide-react';
 
 export const ACTION_BTN_CLASS =
   'flex items-center justify-center w-7 h-7 rounded-full ' +
@@ -118,6 +118,31 @@ NodeActionBar.Reset = (props: Omit<BaseButtonProps, 'icon' | 'tooltip'> & { tool
   <BaseButton
     icon={<RotateCcw size={16} strokeWidth={1.5} />}
     tooltip={props.tooltip || "重置为默认"}
+    {...props}
+  />
+);
+
+NodeActionBar.SidePanel = ({
+  open,
+  loading,
+  tooltip,
+  className = '',
+  ...props
+}: Omit<BaseButtonProps, 'icon' | 'tooltip'> & {
+  open?: boolean;
+  loading?: boolean;
+  tooltip?: string;
+}) => (
+  <BaseButton
+    icon={
+      loading ? (
+        <Loader2 size={16} strokeWidth={1.5} className="animate-spin text-accent" />
+      ) : (
+        <PanelRight size={16} strokeWidth={1.5} />
+      )
+    }
+    tooltip={tooltip || (open ? '收起侧边面板 (Esc)' : '侧边面板（产物 / 文件 / 历史）')}
+    className={`${open ? 'text-accent bg-accent/10 hover:bg-accent/15' : ''} ${className}`}
     {...props}
   />
 );

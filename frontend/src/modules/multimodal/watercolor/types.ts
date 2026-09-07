@@ -113,6 +113,12 @@ export type WatercolorAspectRatio =
 
 export type WatercolorResolution = 1024 | 2048;
 
+/** 6. 画底质感类型 */
+export type WatercolorBackgroundType =
+  | 'paper'        // 象牙白纸
+  | 'transparent'  // 透明底
+  | 'image';        // 背景图 (上游/封面)
+
 /** 完整状态模型 */
 export interface WatercolorBrushState {
   mode: WatercolorCompositionMode;      // 当前选中的配方或自由创想
@@ -131,7 +137,10 @@ export interface WatercolorBrushState {
   hatchDist: number;                    // 排线间距 (3 ~ 24)
   grain: number;                        // 碳粉颗粒感 (0.1 ~ 1.0)
   seed: number;                         // 随机数种子
-  transparentBackground?: boolean;      // 是否使用透明背景
+  transparentBackground?: boolean;      // （兼容过渡）是否使用透明背景
+  backgroundType?: WatercolorBackgroundType; // 画底质感：象牙白纸 / 透明底 / 背景图
+  bgImageOpacity?: number;              // 背景图浓度蒙版 (0.1 ~ 1.0，默认 0.35)
+  bgImageUrl?: string | null;           // 背景图 URL（由上游图片或图书封面解析）
   aspectRatio?: WatercolorAspectRatio;  // 画幅比例
   resolution?: WatercolorResolution;    // 导出分辨率基准
   imageUrl: string | null;
@@ -359,6 +368,9 @@ export const WATERCOLOR_DEFAULT_PARAMS: WatercolorBrushState = {
   grain: 0.7,
   seed: 42,
   transparentBackground: false,
+  backgroundType: 'paper',
+  bgImageOpacity: 0.35,
+  bgImageUrl: null,
   aspectRatio: '1:1',
   resolution: 1024,
   imageUrl: null,

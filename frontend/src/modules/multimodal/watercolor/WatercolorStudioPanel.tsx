@@ -5,11 +5,14 @@ import {
   Gauge,
   Sliders,
   Link,
+  Image as ImageIcon,
+  AlertCircle,
 } from 'lucide-react';
 import { NodeSideDrawer } from '../../../platform/components/node/NodeSideDrawer';
 import { NumberStepperRow } from '../../../platform/components/ui/NumberStepper';
 import { Select, type SelectOption } from '../../../platform/components/ui/Select';
 import {
+  type WatercolorBackgroundType,
   type WatercolorBrushState,
   type WatercolorCompositionMode,
   type WatercolorLayoutMode,
@@ -35,7 +38,10 @@ export interface WatercolorStudioPanelProps {
   textureStrength: number;
   hatchDist: number;
   paletteId: string;
-  transparentBackground: boolean;
+  transparentBackground?: boolean;
+  backgroundType?: WatercolorBackgroundType;
+  bgImageOpacity?: number;
+  upstreamImageUrl?: string | null;
   aspectRatio: WatercolorAspectRatio;
   resolution: WatercolorResolution;
   upstreamColors?: string[] | null;
@@ -116,6 +122,7 @@ const RESOLUTION_OPTIONS: SelectOption[] = [
 const BACKGROUND_OPTIONS: SelectOption[] = [
   { value: 'paper', label: '象牙白纸' },
   { value: 'transparent', label: '透明底' },
+  { value: 'image', label: '背景图 (上游/封面)' },
 ];
 
 const PRESET_NAME_MAP: Record<string, string> = {
@@ -153,6 +160,9 @@ export const WatercolorStudioPanel: React.FC<WatercolorStudioPanelProps> = ({
   hatchDist,
   paletteId,
   transparentBackground,
+  backgroundType,
+  bgImageOpacity = 0.35,
+  upstreamImageUrl,
   aspectRatio,
   resolution,
   upstreamColors,
@@ -161,6 +171,9 @@ export const WatercolorStudioPanel: React.FC<WatercolorStudioPanelProps> = ({
   onClose,
 }) => {
   const [activeTab, setActiveTab] = useState<PanelTab>('brush');
+
+  const effectiveBgType: WatercolorBackgroundType =
+    backgroundType ?? (transparentBackground ? 'transparent' : 'paper');
 
   // 当前调色板颜色预览
   const currentPalette = useMemo(() => {
@@ -418,17 +431,63 @@ export const WatercolorStudioPanel: React.FC<WatercolorStudioPanelProps> = ({
             </div>
 
             {/* 画底质感 */}
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-ink-light">画底质感</label>
               <Select
-                value={transparentBackground ? 'transparent' : 'paper'}
-                onChange={(val) => onUpdate({ transparentBackground: val === 'transparent', mode: 'custom' })}
+                value={effectiveBgType}
+                onChange={(val) => {
+                  const newType = val as WatercolorBackgroundType;
+                  onUpdate({
+                    backgroundType: newType,
+                    transparentBackground: newType === 'transparent',
+                    mode: 'custom',
+                  });
+                }}
                 options={BACKGROUND_OPTIONS}
                 disabled={disabled}
                 size="sm"
                 className="w-full"
               />
-              <span className="text-[10px] text-ink-faint">透明底方便作为免抠贴纸叠加至其他手账</span>
+
+              {effectiveBgType === 'transparent' && (
+                <span className="text-[10px] text-ink-faint">透明底方便作为免抠贴纸叠加至其他手账</span>
+              )}
+
+              {effectiveBgType === 'image' && (
+                <div className="flex flex-col gap-2 p-2 rounded-lg bg-paper-grid/20 border border-paper-grid text-xs mt-0.5">
+                  {upstreamImageUrl ? (
+                    <div className="flex items-center gap-1.5 text-accent text-[11px] font-medium">
+                      <ImageIcon size={13} className="shrink-0" />
+                      <span>已继承上游图片 / 图书封面</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 text-[11px]">
+                      <AlertCircle size={13} className="shrink-0" />
+                      <span>未检测到上游图片，暂以白纸显示</span>
+                    </div>
+                  )}
+
+                  <NumberStepperRow
+                    label="底图浓度"
+                    value={Math.round((bgImageOpacity ?? 0.35) * 100)}
+                    min={10}
+                    max={100}
+                    step={5}
+                    unit="%"
+                    labelWidth="w-16"
+                    disabled={disabled}
+                    onChange={(v) =>
+                      onUpdate({
+                        bgImageOpacity: Number((v / 100).toFixed(2)),
+                        mode: 'custom',
+                      })
+                    }
+                  />
+                  <span className="text-[10px] text-ink-faint leading-tight">
+                    象牙白衬底蒙版，降低原图反差以衬托水彩物理流体细节
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* 画幅比例 */}

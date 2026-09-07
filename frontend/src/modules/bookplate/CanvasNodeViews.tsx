@@ -1136,6 +1136,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           // 非 JSON 则忽略
         }
       }
+      const { upstreamImageUrl } = resolveUpstreamImage(node, h);
 
       return (
         <WatercolorBrushNode
@@ -1143,6 +1144,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           {...common}
           data={d}
           upstreamColors={upstreamColors}
+          upstreamImageUrl={upstreamImageUrl}
           isFavorited={!!h.favoritedState[node.id]}
           isPublic={!!h.publishedState[node.id]}
           isSelected={node.id === h.activeImage?.id}
