@@ -131,7 +131,7 @@ describe('LLM 模式 transcript', () => {
     const srv = await startMockOpenAIServer((_req, send) => {
       const base = { id: 'chatcmpl-x', object: 'chat.completion.chunk', created: 0, model: 'mock-model' };
       send(sseChunk({ ...base, choices: [{ index: 0, delta: { content: '回答A' }, finish_reason: null }] }));
-      send(sseChunk({ ...base, choices: [], usage: { total_tokens: 5 } }));
+      send(sseChunk({ ...base, choices: [{ index: 0, delta: {}, finish_reason: 'stop' }], usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 } }));
     });
     openServers.push(srv);
     const configId = await seedChat({ llmConfig: { baseUrl: srv.baseURL, modelName: 'mock-model' } });
@@ -150,6 +150,7 @@ describe('LLM 模式 transcript', () => {
       },
     });
     expect(r1.statusCode).toBe(200);
+    expect(r1.body).toContain('data-agent_token_usage');
     // 第 2 轮：携带完整历史（useChat 每轮重发）
     const r2 = await app.inject({
       method: 'POST',
@@ -173,7 +174,9 @@ describe('LLM 模式 transcript', () => {
     expect(lines.map((l) => l.role)).toEqual(['user', 'assistant', 'user', 'assistant']);
     expect(lines[0]!.content).toBe('第一轮问题');
     expect(lines[1]!.content).toBe('回答A');
+    expect(lines[1]!.tokenUsage).toMatchObject({ totalTokens: 5 });
     expect(lines[2]!.content).toBe('第二轮问题');
+    expect(lines[3]!.tokenUsage).toMatchObject({ totalTokens: 5 });
     expect(lines.every((l) => l.mode === 'llm')).toBe(true);
 
     // 水合：GET /chat/session 返回全部消息
@@ -183,11 +186,15 @@ describe('LLM 模式 transcript', () => {
       headers: auth(),
     });
     expect(h.statusCode).toBe(200);
-    const hydrated = h.json() as { exists: boolean; messages: Array<{ role: string; content: string }> };
+    const hydrated = h.json() as {
+      exists: boolean;
+      messages: Array<{ role: string; content: string; tokenUsage?: { totalTokens: number } }>;
+    };
     expect(hydrated.exists).toBe(true);
     expect(hydrated.messages).toHaveLength(4);
     expect(hydrated.messages[0]).toMatchObject({ role: 'user', content: '第一轮问题' });
     expect(hydrated.messages[1]).toMatchObject({ role: 'assistant', content: '回答A' });
+    expect(hydrated.messages[1]?.tokenUsage).toMatchObject({ totalTokens: 5 });
 
     // 列表：标题 = 首条 user 消息，轮次计数正确（LLM 模式）
     const list = await app.inject({

@@ -14,7 +14,7 @@ import {
 import { ChatNode } from './components/ChatNode';
 import { getNodeTitle } from './nodeTypes';
 import { buildContextBlocks } from './contextBlocks';
-import { isBookCoverEnabled } from './execution';
+import { isBookCoverEnabled, isBookMetadataEnabled } from './execution';
 import { toWireChatMessages } from './graphTypes';
 import { useWorkspaceFilesPanel } from './useWorkspaceFilesPanel';
 import { handleAgentSseMessage } from './agentSteps';
@@ -103,6 +103,8 @@ function ChatNodeHostInner({
   // 本轮 skill 产物文件缓冲：流中只入队（流中写状态会与事件处理竞态丢失），
   // 流结束后一次性并入最后一条 assistant 消息（metadata + store 镜像）
   const pendingFilesRef = useRef<Map<string, AgentFile>>(new Map());
+  // 本轮 token 用量缓冲（LLM 模式）：流式结束时并入最后一条 assistant 消息 metadata
+  const pendingTokenUsageRef = useRef<ChatMessage['tokenUsage'] | null>(null);
 
   // 当前会话工作区（首轮发送时生成并持久化；清空对话 / 载入历史会话时切换）
   const wsId =
@@ -157,6 +159,7 @@ function ChatNodeHostInner({
     transport: new DefaultChatTransport({
       api: '/api/modules/bookplate/chat',
       prepareSendMessagesRequest: async ({ messages, requestMetadata }) => {
+        pendingTokenUsageRef.current = null;
         const cur = nodesRef.current.find((n) => n.id === nodeId) ?? null;
         let chatMsgs = uiToStore(messages);
 
@@ -267,6 +270,13 @@ function ChatNodeHostInner({
       idleRef.current?.idle.arm();
       const name = part.type.startsWith('data-') ? part.type.slice('data-'.length) : part.type;
       if (!name.startsWith('agent_')) return;
+      if (name === 'agent_token_usage') {
+        const usage = (part.data ?? {}) as NonNullable<ChatMessage['tokenUsage']>;
+        if (usage && typeof usage.totalTokens === 'number') {
+          pendingTokenUsageRef.current = usage;
+        }
+        return;
+      }
       if (name === 'agent_file') {
         const file = (part.data ?? {}) as AgentFile;
         if (file && typeof file.url === 'string' && file.url) {
@@ -389,7 +399,35 @@ function ChatNodeHostInner({
       }
     }
 
+    // 流已结束：把缓冲的本轮 Token 用量一次性并入最后一条 assistant 消息 metadata。
+    let consumedUsage: ChatMessage['tokenUsage'] | null = null;
+    if (!streaming && pendingTokenUsageRef.current && uiMessages.length) {
+      const lastUi = uiMessages[uiMessages.length - 1];
+      if (lastUi.role === 'assistant') {
+        consumedUsage = pendingTokenUsageRef.current;
+        pendingTokenUsageRef.current = null;
+        setMessages((prev) => {
+          const idx = prev.length - 1;
+          if (idx < 0 || prev[idx].role !== 'assistant') return prev;
+          const bookplate = {
+            ...((prev[idx].metadata as { bookplate?: Record<string, unknown> } | undefined)
+              ?.bookplate ?? {}),
+            tokenUsage: consumedUsage!,
+          };
+          const copy = [...prev];
+          copy[idx] = { ...prev[idx], metadata: { bookplate } };
+          return copy;
+        });
+      }
+    }
+
     let next = uiToStore(uiMessages);
+    if (!streaming && consumedUsage && next.length) {
+      const i = next.length - 1;
+      if (next[i].role === 'assistant' && !next[i].tokenUsage) {
+        next[i] = { ...next[i], tokenUsage: consumedUsage };
+      }
+    }
 
     // 流式中：最后一条 assistant 标记 streaming（打字光标 / 思考中...）
     if (streaming && next.length) {
@@ -896,6 +934,7 @@ function ChatNodeHostInner({
       isGenerating={!!node.data?.isGenerating}
       error={node.data?.error ?? null}
       settings={settings}
+      bookMetadataEnabled={isBookMetadataEnabled(node, h.nodes, h.edges)}
       bookCoverEnabled={isBookCoverEnabled(node, h.nodes, h.edges)}
       onRemove={handleRemove}
       onSend={handleSend}

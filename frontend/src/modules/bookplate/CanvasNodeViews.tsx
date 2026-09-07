@@ -54,6 +54,7 @@ import {
   firstExtraJsonUpstreamText,
   firstUpstreamText,
   isBookCoverEnabled,
+  isBookMetadataEnabled,
   resolveReferenceImage,
   type PortTypesLookup,
 } from './execution';
@@ -392,7 +393,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       const contextBlocks = buildInjectedContextBlocks(
         node,
         {
-          includeBook: settings.includeBook,
+          includeBook: isBookMetadataEnabled(node, h.nodes, h.edges),
           includeBookCover: isBookCoverEnabled(node, h.nodes, h.edges),
           includeUpstreamText: true,
           includeUpstreamImages: true,
@@ -418,6 +419,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           onUpdateSettings={h.handleUpdateRunSettingsFor}
           hasBookInfo={h.hasBookInfo}
           showBookCoverOption
+          bookMetadataEnabled={isBookMetadataEnabled(node, h.nodes, h.edges)}
           bookCoverEnabled={isBookCoverEnabled(node, h.nodes, h.edges)}
           mode={config?.mode}
           configId={node.configId ?? null}
@@ -488,7 +490,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       const contextBlocks = buildInjectedContextBlocks(
         node,
         {
-          includeBook: settings.includeBook,
+          includeBook: isBookMetadataEnabled(node, h.nodes, h.edges),
           includeBookCover: isBookCoverEnabled(node, h.nodes, h.edges),
           includeUpstreamText: true,
           includeUpstreamImages: true,
@@ -528,6 +530,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           onUpdateSettings={h.handleUpdateRunSettingsFor}
           showImageParams
           showBookCoverOption
+          bookMetadataEnabled={isBookMetadataEnabled(node, h.nodes, h.edges)}
           bookCoverEnabled={isBookCoverEnabled(node, h.nodes, h.edges)}
           hasBookInfo={h.hasBookInfo}
           mode={config?.mode}

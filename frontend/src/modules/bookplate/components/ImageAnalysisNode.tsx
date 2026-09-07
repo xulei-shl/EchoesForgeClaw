@@ -60,6 +60,8 @@ export interface ImageAnalysisNodeProps {
   showBookCoverOption?: boolean;
   /** 封面开关当前生效状态（显式设置或按 book_info 连通性的默认值），驱动开关展示 */
   bookCoverEnabled?: boolean;
+  /** 图书元数据开关当前生效状态（显式设置或按 book_info 连通性的默认值），驱动开关展示 */
+  bookMetadataEnabled?: boolean;
   /** 标题旁的类型不匹配提示 */
   mismatchBadge?: string | null;
   /** 节点执行模式：仅 LLM 模式展示「模型」下拉（Agent 模式由 Agent 侧决定模型） */
@@ -85,13 +87,14 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
   onDrag,
   footer,
   onContextMenu,
-   group,
-   settings,
-   contextBlocks,
+  group,
+  settings,
+  contextBlocks,
   onUpdateSettings,
   hasBookInfo,
   showBookCoverOption,
   bookCoverEnabled,
+  bookMetadataEnabled,
   mismatchBadge,
   mode,
   configId,
@@ -160,6 +163,7 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
             showModelOption
             showBookCoverOption={showBookCoverOption}
             bookCoverEnabled={bookCoverEnabled}
+            bookMetadataEnabled={bookMetadataEnabled}
             mode={mode}
             configId={configId}
           />

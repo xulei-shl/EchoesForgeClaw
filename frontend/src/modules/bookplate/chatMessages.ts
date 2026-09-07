@@ -26,6 +26,8 @@ export interface BookplateMeta {
   streaming?: boolean;
   /** 本轮装配的 Skill 名（Skill Agent 模式，用户气泡下方 chips 展示） */
   skills?: string[];
+  /** 本轮 Token 用量与上下文窗口占比 */
+  tokenUsage?: ChatMessage['tokenUsage'];
 }
 
 const metaOf = (m: UIMessage): BookplateMeta =>
@@ -63,6 +65,7 @@ export function storeToUI(msgs: ChatMessage[]): UIMessage[] {
     if (m.skills?.length) meta.skills = m.skills;
     if (m.interrupted) meta.interrupted = true;
     if (m.streaming) meta.streaming = true;
+    if (m.tokenUsage) meta.tokenUsage = m.tokenUsage;
     return {
       id: `bookplate-${i}-${m.role}`,
       role: m.role,
@@ -91,6 +94,7 @@ export function uiToStore(ui: UIMessage[]): ChatMessage[] {
     if (meta.skills?.length) msg.skills = meta.skills as ChatMessage['skills'];
     if (meta.interrupted) msg.interrupted = true;
     if (meta.streaming) msg.streaming = true;
+    if (meta.tokenUsage) msg.tokenUsage = meta.tokenUsage as ChatMessage['tokenUsage'];
     return msg;
   });
 }

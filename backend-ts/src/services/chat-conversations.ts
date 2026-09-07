@@ -19,6 +19,7 @@ import {
   type HydratedSession,
   type HydratedStep,
 } from './pi-session-hydrate.js';
+export type { HydratedMessage };
 import {
   deletePiConversation,
   formatFallbackTime,
@@ -96,6 +97,7 @@ export interface TranscriptMessage {
   agentSteps?: HydratedStep[];
   files?: HydratedFile[];
   interrupted?: boolean;
+  tokenUsage?: HydratedMessage['tokenUsage'];
   ts: number;
 }
 
@@ -300,6 +302,7 @@ export function persistTranscriptAssistant(
     agentSteps?: HydratedStep[];
     files?: HydratedFile[];
     interrupted?: boolean;
+    tokenUsage?: HydratedMessage['tokenUsage'];
   },
   mode: 'llm' | 'agent',
   agentKey?: string
@@ -326,6 +329,7 @@ export function persistTranscriptAssistant(
       ...(msg.agentSteps?.length ? { agentSteps: msg.agentSteps } : {}),
       ...(msg.files?.length ? { files: msg.files } : {}),
       ...(msg.interrupted ? { interrupted: true } : {}),
+      ...(msg.tokenUsage ? { tokenUsage: msg.tokenUsage } : {}),
       ts: Date.now(),
     });
   } catch {
@@ -395,6 +399,27 @@ export function hydrateChatTranscript(ws: string): HydratedSession {
     if (Array.isArray(entry.agentSteps) && entry.agentSteps.length) msg.agentSteps = entry.agentSteps;
     if (Array.isArray(entry.files) && entry.files.length) msg.files = entry.files;
     if (entry.interrupted) msg.interrupted = true;
+    if (entry.tokenUsage && typeof entry.tokenUsage === 'object') {
+      const u = entry.tokenUsage as Record<string, unknown>;
+      if (typeof u.totalTokens === 'number') {
+        const input = typeof u.input === 'number' ? u.input : 0;
+        const output = typeof u.output === 'number' ? u.output : 0;
+        const totalTokens = u.totalTokens;
+        const contextWindow =
+          typeof u.contextWindow === 'number' && u.contextWindow > 0 ? u.contextWindow : 128000;
+        const percent =
+          typeof u.percent === 'number'
+            ? u.percent
+            : Number(((totalTokens / contextWindow) * 100).toFixed(1));
+        msg.tokenUsage = {
+          input,
+          output,
+          totalTokens,
+          contextWindow,
+          percent,
+        };
+      }
+    }
     messages.push(msg);
   }
   // 图片总量超限：从最早的消息起丢弃图片（保留最近轮次），防止超大 transcript 撑爆水合响应体。

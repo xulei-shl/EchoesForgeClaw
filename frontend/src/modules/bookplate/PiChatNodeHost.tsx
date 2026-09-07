@@ -5,7 +5,7 @@ import type { ChatSidePanel } from './components/chat/ChatSidePanel';
 import { useConversationHistoryPanel } from './useConversationHistoryPanel';
 import { getNodeTitle } from './nodeTypes';
 import { buildContextBlocks } from './contextBlocks';
-import { isBookCoverEnabled } from './execution';
+import { isBookCoverEnabled, isBookMetadataEnabled } from './execution';
 import { authHeaders, handleUnauthorized } from './authUtils';
 import { makeIdleTimeout } from './idleTimeout';
 import { urlToDataUrl } from './imageUpload';
@@ -1056,6 +1056,7 @@ function PiChatNodeHostInner({
       isGenerating={!!node.data?.isGenerating}
       error={node.data?.error ?? null}
       settings={settings}
+      bookMetadataEnabled={isBookMetadataEnabled(node, h.nodes, h.edges)}
       bookCoverEnabled={isBookCoverEnabled(node, h.nodes, h.edges)}
       onRemove={handleRemove}
       onSend={handleSend}

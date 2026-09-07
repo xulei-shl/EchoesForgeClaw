@@ -190,12 +190,17 @@ function isUploadedPath(path: unknown): path is string {
   return typeof path === 'string' && path.startsWith('inputs/');
 }
 
+/** 工作区根级装配/会话文件（如 AGENTS.md 系统提示词软链、conversation.jsonl 会话记录）：非 agent 产物。 */
+export function isNonArtifactPath(path: unknown): boolean {
+  return typeof path === 'string' && (path === 'AGENTS.md' || path === 'conversation.jsonl');
+}
+
 /** 当前内置类别：AI 产物 / 我的上传（顺序即抽屉 Tab 默认顺序）。 */
 export const WORKSPACE_FILE_CATEGORIES: WorkspaceFileCategory<'artifacts' | 'uploads'>[] = [
   {
     id: 'artifacts',
     label: 'AI 产物',
-    matches: (f) => !isUploadedPath(f.path),
+    matches: (f) => !isUploadedPath(f.path) && !isNonArtifactPath(f.path),
   },
   {
     id: 'uploads',

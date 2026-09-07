@@ -54,6 +54,8 @@ export interface ChatNodeProps {
   error?: string | null;
   /** 上下文加载设置 */
   settings: ChatNodeSettings;
+  /** 图书元数据开关当前生效状态（显式设置或按 book_info 连通性的默认值），驱动设置弹层开关展示 */
+  bookMetadataEnabled?: boolean;
   /** 封面开关当前生效状态（显式设置或按 book_info 连通性的默认值），驱动设置弹层开关展示 */
   bookCoverEnabled?: boolean;
   onRemove?: (id: string) => void;
@@ -123,6 +125,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
   isGenerating,
   error,
   settings,
+  bookMetadataEnabled = false,
   bookCoverEnabled = true,
   onRemove,
   onSend,
@@ -521,6 +524,7 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
         coords={coords}
         popupRef={popupRef}
         settings={settings}
+        bookMetadataEnabled={bookMetadataEnabled}
         bookCoverEnabled={bookCoverEnabled}
         mode={mode}
         configId={configId}

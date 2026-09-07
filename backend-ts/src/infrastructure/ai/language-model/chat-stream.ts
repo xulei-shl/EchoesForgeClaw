@@ -1,4 +1,4 @@
-import { generateText, streamText } from 'ai';
+import { generateText, streamText, type LanguageModelUsage } from 'ai';
 import type { TextModelConfig } from '../types.js';
 import { LLM_REQUEST_TIMEOUT_MS } from '../types.js';
 import { createAIProvider } from '../provider.js';
@@ -28,15 +28,27 @@ export interface ChatDelta {
   delta: string;
 }
 
+export interface ChatStreamOptions {
+  abortSignal?: AbortSignal;
+  onUsage?: (usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number }) => void;
+}
+
 export async function* chatStream(
   messages: unknown[],
   config?: TextModelConfig | null,
-  abortSignal?: AbortSignal
+  optionsOrSignal?: AbortSignal | ChatStreamOptions
 ): AsyncGenerator<ChatDelta, void, unknown> {
+  const abortSignal =
+    optionsOrSignal instanceof AbortSignal ? optionsOrSignal : optionsOrSignal?.abortSignal;
+  const onUsage =
+    optionsOrSignal && !(optionsOrSignal instanceof AbortSignal)
+      ? optionsOrSignal.onUsage
+      : undefined;
+
   const apiKey = config?.apiKey ?? '';
   if (!apiKey) {
     // 无 API Key：Mock 打字机流（与 Python 行为一致，含回复引导文案）
-    yield* mockChatStream(messages);
+    yield* mockChatStream(messages, onUsage);
     return;
   }
 
@@ -79,6 +91,7 @@ export async function* chatStream(
   }
 
   const startedAt = performance.now();
+  let finalUsage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | undefined;
   try {
     const result = streamText({
       model: provider(modelName),
@@ -89,6 +102,7 @@ export async function* chatStream(
       ...(abortSignal ? { abortSignal } : {}),
       onFinish: (evt) => {
         const u = normalizeUsage(evt.usage);
+        finalUsage = u;
         logUsage({
           model: modelName,
           provider: 'openai-compatible',
@@ -105,10 +119,25 @@ export async function* chatStream(
       } else if (part.type === 'reasoning-delta') {
         const text = (part as { text?: string; textDelta?: string }).text ?? (part as { textDelta?: string }).textDelta ?? '';
         if (text) yield { type: 'reasoning', delta: text };
+      } else if (part.type === 'finish') {
+        const u = (part as { totalUsage?: LanguageModelUsage }).totalUsage;
+        if (u) finalUsage = normalizeUsage(u);
       } else if (part.type === 'error') {
         throw (part as { error: unknown }).error;
       }
       // 其余 part（finish / tool 等）本轮不使用：LLM 模式无工具
+    }
+
+    if (!finalUsage) {
+      try {
+        const u = await result.usage;
+        finalUsage = normalizeUsage(u);
+      } catch {
+        /* best-effort：获取 usage 失败不影响对话正文 */
+      }
+    }
+    if (finalUsage && onUsage) {
+      onUsage(finalUsage);
     }
   } catch (err) {
     // AI SDK 错误 → 项目错误体系（LLMGenerationError），不泄漏 SDK 类型；
@@ -119,7 +148,10 @@ export async function* chatStream(
 }
 
 /** 无 API Key 时的 Mock 流式回复（与 Python chat_stream Mock 分支逐字一致）。 */
-async function* mockChatStream(messages: unknown[]): AsyncGenerator<ChatDelta, void, unknown> {
+async function* mockChatStream(
+  messages: unknown[],
+  onUsage?: (usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number }) => void
+): AsyncGenerator<ChatDelta, void, unknown> {
   let lastUser = '';
   for (const m of [...(messages ?? [])].reverse()) {
     if (typeof m === 'object' && m !== null && (m as { role?: string }).role === 'user') {
@@ -139,6 +171,14 @@ async function* mockChatStream(messages: unknown[]): AsyncGenerator<ChatDelta, v
       '在管理后台「节点管理」为 AI 对话节点绑定模型（+提示词）或 FastClaw Agent 后，' +
       '即可获得真实的多轮对话回复。\n',
   };
+  if (onUsage) {
+    const mockInput = Math.max(1, Math.round(lastUser.length / 2));
+    onUsage({
+      inputTokens: mockInput,
+      outputTokens: 50,
+      totalTokens: mockInput + 50,
+    });
+  }
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

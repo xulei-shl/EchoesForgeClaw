@@ -19,12 +19,11 @@ import type { PortTypesLookup } from './execution';
 export const MAX_CHAT_IMAGES = 4;
 
 /**
- * 运行设置兜底（旧节点持久化的 settings 缺少 includeUpstreamImages / includeBookCover：
- * includeUpstreamImages undefined 视为开启；includeBookCover undefined 视为按 book_info
- * 连通性默认——有连通开启、无连通（仅根节点兜底）关闭，见 execution.ts isBookCoverEnabled）
+ * 运行设置兜底（旧节点持久化的 settings 缺少 includeUpstreamImages / includeBookCover / includeBook：
+ * includeUpstreamImages undefined 视为开启；includeBook / includeBookCover undefined 视为按 book_info
+ * 连通性默认——有连通开启、无连通（仅根节点兜底）关闭，见 execution.ts isBookMetadataEnabled / isBookCoverEnabled）
  */
 export const DEFAULT_CHAT_SETTINGS: ChatNodeSettings = {
-  includeBook: false,
   includeUpstream: true,
   includeUpstreamImages: true,
 };

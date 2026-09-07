@@ -49,6 +49,7 @@ import {
   listChatConversations,
   persistTranscriptAssistant,
   persistTranscriptUser,
+  type HydratedMessage,
 } from '../../../services/chat-conversations.js';
 import {
   decodeDataUrlImage,
@@ -475,21 +476,61 @@ export async function register(app: FastifyInstance): Promise<void> {
         }
         let content = '';
         let reasoning = '';
+        let usageData: { input?: number; output?: number; totalTokens?: number } | undefined;
         try {
           // 节点内手动选择的模型名 / Base URL / API Key 覆盖默认配置
           const config = applyModelOverride(textConfig, payload);
           for await (const chunk of llmService.chatStream(
             payload.messages ?? [],
             config,
-            requestAbortSignal(request)
+            {
+              abortSignal: requestAbortSignal(request),
+              onUsage: (u) => {
+                usageData = {
+                  input: u.inputTokens,
+                  output: u.outputTokens,
+                  totalTokens: u.totalTokens,
+                };
+              },
+            }
           )) {
-            if (chunk.type === 'reasoning') reasoning += chunk.delta;
-            else content += chunk.delta;
-            yield chunk.type === 'reasoning'
-              ? { type: 'reasoning_delta', delta: chunk.delta }
-              : { type: 'content_delta', delta: chunk.delta };
+            if (chunk.type === 'reasoning') {
+              reasoning += chunk.delta;
+              yield { type: 'reasoning_delta', delta: chunk.delta };
+            } else {
+              content += chunk.delta;
+              yield { type: 'content_delta', delta: chunk.delta };
+            }
           }
-          if (ws) persistTranscriptAssistant(ws, { content, reasoning }, 'llm');
+
+          let tokenUsagePayload: HydratedMessage['tokenUsage'] | undefined;
+          if (usageData && typeof usageData.totalTokens === 'number' && usageData.totalTokens > 0) {
+            const input = usageData.input ?? 0;
+            const output = usageData.output ?? 0;
+            const totalTokens = usageData.totalTokens;
+            const contextWindow =
+              typeof config?.contextWindow === 'number' && config.contextWindow > 0
+                ? config.contextWindow
+                : 128000;
+            const percent = Number(((totalTokens / contextWindow) * 100).toFixed(1));
+            tokenUsagePayload = {
+              input,
+              output,
+              totalTokens,
+              contextWindow,
+              percent,
+            };
+            yield {
+              type: 'token_usage',
+              input,
+              output,
+              totalTokens,
+              contextWindow,
+              percent,
+            };
+          }
+
+          if (ws) persistTranscriptAssistant(ws, { content, reasoning, tokenUsage: tokenUsagePayload }, 'llm');
         } catch (err) {
           // 已流出部分（含被中断）仍落盘，与 pi 会话「现场保留」语义一致
           if (ws && (content || reasoning)) persistTranscriptAssistant(ws, { content, reasoning }, 'llm');

@@ -24,6 +24,8 @@ interface ChatNodeSettingsPopoverProps {
   coords: { x: number; y: number };
   popupRef: React.RefObject<HTMLDivElement | null>;
   settings: ChatNodeSettings;
+  /** 图书元数据开关当前生效状态（显式设置或按 book_info 连通性的默认值），驱动设置弹层开关展示 */
+  bookMetadataEnabled: boolean;
   /** 封面开关当前生效状态（显式设置或按 book_info 连通性的默认值），驱动设置弹层开关展示 */
   bookCoverEnabled: boolean;
   /** 节点执行模式：LLM 模式展示「模型」下拉、Agent 模式展示「Agent」下拉、skill_agent 展示思考模式 */
@@ -42,6 +44,7 @@ export const ChatNodeSettingsPopover: React.FC<ChatNodeSettingsPopoverProps> = (
   coords,
   popupRef,
   settings,
+  bookMetadataEnabled,
   bookCoverEnabled,
   mode,
   configId,
@@ -62,7 +65,7 @@ export const ChatNodeSettingsPopover: React.FC<ChatNodeSettingsPopoverProps> = (
             <SettingsToggleRow
               label="继承图书元数据"
               description="上游穿透的图书节点或兜底的图书节点"
-              checked={settings.includeBook}
+              checked={bookMetadataEnabled}
               onChange={(v) => onUpdateSettings({ ...settings, includeBook: v })}
               disabled={hasMessages}
             />

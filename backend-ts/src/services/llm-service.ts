@@ -5,7 +5,7 @@ import { streamText } from 'ai';
 import type { TextModelConfig, VisionModelConfig } from '../infrastructure/ai/types.js';
 import { LLM_REQUEST_TIMEOUT_MS } from '../infrastructure/ai/types.js';
 import { createAIProvider } from '../infrastructure/ai/provider.js';
-import { chatStream, type ChatDelta } from '../infrastructure/ai/language-model/chat-stream.js';
+import { chatStream, type ChatDelta, type ChatStreamOptions } from '../infrastructure/ai/language-model/chat-stream.js';
 import { analyzeCover } from '../infrastructure/ai/language-model/text.js';
 import { LLMGenerationError, classifyAIError } from '../infrastructure/ai/errors.js';
 import { logUsage, normalizeUsage } from '../infrastructure/ai/usage.js';
@@ -118,7 +118,7 @@ export class LLMService {
   async *chatStream(
     messages: unknown[],
     config?: TextModelConfig | null,
-    abortSignal?: AbortSignal
+    optionsOrSignal?: AbortSignal | ChatStreamOptions
   ): AsyncGenerator<ChatDelta, void, unknown> {
     const apiKey = (config?.apiKey ?? '') || envApiKey();
     const resolved: TextModelConfig | null = apiKey
@@ -129,7 +129,7 @@ export class LLMService {
           system_prompt: config?.system_prompt ?? '',
         }
       : null;
-    yield* chatStream(messages, resolved, abortSignal);
+    yield* chatStream(messages, resolved, optionsOrSignal);
   }
 }
 

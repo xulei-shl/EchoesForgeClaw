@@ -5,7 +5,7 @@ import {
   nodeOutputImages,
   nodeOutputText,
 } from './nodeTypes';
-import { collectNodeInputs, isBookCoverEnabled, resolveNodeRunInputs, type PortTypesLookup } from './execution';
+import { collectNodeInputs, isBookCoverEnabled, isBookMetadataEnabled, resolveNodeRunInputs, type PortTypesLookup } from './execution';
 import type { EdgeData, NodeData } from './graphTypes';
 import type { CanvasNodeType, ChatNodeSettings, InjectedContextBlock } from '../../platform/types';
 
@@ -144,7 +144,7 @@ export function buildInjectedContextBlocks(
 
 /**
  * 按 chat 节点运行设置推导上下文注入开关（ChatNodeHost / PiChatNodeHost 两宿主共用，
- * 消除各调用点重复构造同一组开关）。封面开关默认值跟随 book_info 连通性（见 isBookCoverEnabled）。
+ * 消除各调用点重复构造同一组开关）。元数据与封面开关默认值均跟随 book_info 连通性（见 isBookMetadataEnabled / isBookCoverEnabled）。
  */
 export function contextOptionsOf(
   node: NodeData,
@@ -153,7 +153,7 @@ export function contextOptionsOf(
   edges: EdgeData[]
 ): ContextBlocksOptions {
   return {
-    includeBook: settings.includeBook,
+    includeBook: isBookMetadataEnabled(node, nodes, edges),
     includeBookCover: isBookCoverEnabled(node, nodes, edges),
     includeUpstreamText: settings.includeUpstream !== false,
     includeUpstreamImages: settings.includeUpstreamImages !== false,

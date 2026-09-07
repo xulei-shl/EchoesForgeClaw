@@ -16,8 +16,8 @@ import type { EdgeData, NodeData } from './graphTypes';
 // 此处再导出以保持既有调用方的 import 路径不变
 export type { PortTypesLookup } from './nodeTypes';
 
-/** 可执行节点的运行设置默认值（破坏性更新：默认手动运行、不注入图书元数据） */
-export const DEFAULT_RUN_SETTINGS: NodeRunSettings = { includeBook: false };
+/** 可执行节点的运行设置默认值（默认不写死元数据/封面，跟随连通性动态推导） */
+export const DEFAULT_RUN_SETTINGS: NodeRunSettings = {};
 
 /**
  * 用 Markdown 结构拼接输入：每类来源用 `## 标题` 标注，块间用 `---` 分隔线隔离。
@@ -83,18 +83,20 @@ export function resolveNodeRunInputs(
   // 图书元数据：文本与封面两个开关独立控制——「包含图书元数据」只注入元数据文本，
   // 「加载图书封面图片」只注入封面；任一开启即解析图书（直接连线的 book_info 优先，
   // 未直接连线时沿连线向上追溯实际连通的 book_info，无连通者才回退画布根节点），
-  // 两者都未启用时为 undefined。封面开关默认值跟随连通性（见 isBookCoverEnabled）：
+  // 两者都未启用时为 undefined。开关默认值跟随连通性（见 isBookMetadataEnabled / isBookCoverEnabled）：
   // 未显式设置时，有实际连通的 book_info 默认开启，无连通（仅根节点兜底）默认关闭，
-  // 需用户手动开启「加载图书封面图片」才会经根节点兜底注入封面。
+  // 需用户手动开启才会经根节点兜底注入。
   // 注：历史记录（useGenerationHistory / useImageOutputHandlers）无条件记录图书元数据，不受此开关影响。
+  const metadataEnabled = isBookMetadataEnabled(node, nodes, edges);
+  const coverEnabled = isBookCoverEnabled(node, nodes, edges);
   const book =
-    settings.includeBook || isBookCoverEnabled(node, nodes, edges)
+    metadataEnabled || coverEnabled
       ? parents.find((p) => p.type === 'book_info') ??
         findConnectedBookInfoUpstream(node.id, nodes, edges) ??
         findRootBookInfo(nodes, edges)
       : undefined;
   // 元数据文本仅受「包含图书元数据」控制（封面开关开启时解析的 book 不注入文本）
-  const metadataText = settings.includeBook ? bookMetadataText(book?.data) : '';
+  const metadataText = metadataEnabled ? bookMetadataText(book?.data) : '';
   // 文本输出上级按角色配置表（TEXT_ROLE）分桶：book 走图书元数据通道（不并入文本上下文）；
   // prompt = 主提示词来源；analysis = 图片分析；其余文本输出节点（含后续新增类型）默认
   // 并入「文本上下文」——无需逐个枚举节点类型。
@@ -151,9 +153,19 @@ export function hasConnectedBookInfo(node: NodeData, nodes: NodeData[], edges: E
 }
 
 /**
+ * 图书元数据开关是否生效：显式设置优先；未显式设置时默认值跟随 book_info 连通性——
+ * 有实际连通的 book_info（直连或连线上游）默认开启，无连通（仅画布根节点兜底）默认关闭。
+ */
+export function isBookMetadataEnabled(node: NodeData, nodes: NodeData[], edges: EdgeData[]): boolean {
+  const v = node.data?.settings?.includeBook;
+  if (v !== undefined) return v;
+  return hasConnectedBookInfo(node, nodes, edges);
+}
+
+/**
  * 封面开关是否生效：显式设置优先；未显式设置时默认值跟随 book_info 连通性——
  * 有实际连通的 book_info（直连或连线上游）默认开启，无连通（仅画布根节点兜底）默认关闭，
- * 与「包含图书元数据」的默认语义对齐（无连线时默认都不注入，需手动开启）。
+ * 与「包含图书元数据」的默认语义对齐。
  */
 export function isBookCoverEnabled(node: NodeData, nodes: NodeData[], edges: EdgeData[]): boolean {
   const v = node.data?.settings?.includeBookCover;

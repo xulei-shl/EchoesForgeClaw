@@ -18,7 +18,7 @@ import { useFeedback } from '../../../../platform/components/ui/FeedbackProvider
 import { FilePreviewModal } from '../FilePreviewModal';
 import { WorkspaceFileTree } from './WorkspaceFileTree';
 import { authHeaders } from '../../authUtils';
-import { WORKSPACE_FILE_CATEGORIES } from '../../workspaceFiles';
+import { isNonArtifactPath, WORKSPACE_FILE_CATEGORIES } from '../../workspaceFiles';
 import type { AgentFile } from '../../../../platform/types';
 import type { ConversationSessionSummary } from '../../piSessionApi';
 
@@ -190,10 +190,13 @@ export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel 
   const hasHistory = !!sessions;
   // 文件数据源（单请求 include_agent_runtime=1）：
   // - allFiles = 完整清单（含 .pi-agent 配置名与 .env* 名字，敏感文件 previewable=false）；「全部文件」Tab 用全量；
-  // - regularFiles = 排除 .pi-agent 与不可预览密钥文件的可预览常规文件；AI 产物 / 我的上传 分桶用。
+  // - regularFiles = 排除 .pi-agent、根级装配/会话文件（AGENTS.md、conversation.jsonl）与不可预览密钥文件的可预览常规文件；AI 产物 / 我的上传 分桶用。
   const allFiles = panel.files;
   const regularFiles = allFiles.filter(
-    (f) => !f.path.startsWith('.pi-agent/') && f.previewable !== false
+    (f) =>
+      !f.path.startsWith('.pi-agent/') &&
+      !isNonArtifactPath(f.path) &&
+      f.previewable !== false
   );
   const fileTabs = WORKSPACE_FILE_CATEGORIES.map((category) => ({
     category,

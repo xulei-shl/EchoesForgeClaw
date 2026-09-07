@@ -179,6 +179,13 @@ export function chatStreamToResponse(
                 transient: true,
               });
               break;
+            case 'token_usage':
+              writer.write({
+                type: 'data-agent_token_usage',
+                data: evt,
+                transient: true,
+              });
+              break;
             case 'error':
               throw new AICapabilityError(evt.message);
           }

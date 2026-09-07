@@ -6,14 +6,13 @@ import {
   IMAGE_GENERATION_TIMEOUT_MS,
 } from '../../platform/utils/timeouts';
 import {
-  DEFAULT_RUN_SETTINGS,
   collectMismatchParents,
   isBookCoverEnabled,
+  isBookMetadataEnabled,
   resolveNodeRunInputs,
   withMismatchHint,
   type PortTypesLookup,
 } from './execution';
-import type { NodeRunSettings } from '../../platform/types';
 import type { EdgeData, NodeData } from './graphTypes';
 import { handleAgentSseMessage } from './agentSteps';
 import { makeIdleTimeout } from './idleTimeout';
@@ -433,9 +432,13 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
           ctx.portTypesRef.current
         );
         // 元数据文本仅受「包含图书元数据」控制：封面开关开启时 book 可能已被解析，
-        // 但文本生成不使用封面，仍按 includeBook 决定是否注入元数据。
-        const settings: NodeRunSettings = node.data?.settings ?? DEFAULT_RUN_SETTINGS;
-        const hasBookMeta = settings.includeBook && !!inputs.book?.data?.isbn;
+        // 但文本生成不使用封面，仍按图书元数据开关决定是否注入元数据。
+        const includeBookMeta = isBookMetadataEnabled(
+          node,
+          ctx.nodesRef.current,
+          ctx.edgesRef.current
+        );
+        const hasBookMeta = includeBookMeta && !!inputs.book?.data?.isbn;
         if (!hasBookMeta && !inputs.analysis && !inputs.text) {
           return pendingReason(
             node,
@@ -443,7 +446,7 @@ export function useNodeExecution(ctx: NodeExecutionContext): NodeExecution {
           );
         }
         runPromptGeneration(node, {
-          metadata: settings.includeBook ? inputs.book?.data ?? {} : {},
+          metadata: includeBookMeta ? inputs.book?.data ?? {} : {},
           analysis: inputs.analysis,
           text: inputs.text,
         });
