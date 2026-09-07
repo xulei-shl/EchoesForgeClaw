@@ -116,7 +116,7 @@ export const ChatSidePanelTrigger: React.FC<{ panel: ChatSidePanel }> = ({ panel
         onClick={panel.onToggle}
         aria-expanded={panel.open}
         title={panel.open ? '收起侧边面板' : '展开侧边面板（工作区文件 / 对话历史）'}
-        className={`flex items-center gap-1.5 text-[11px] font-sans transition-[color] duration-150 cursor-pointer select-none active:scale-[0.98] ${
+        className={`flex items-center gap-1.5 text-[11px] font-sans transition-[color,transform] duration-150 ease-out motion-reduce:transition-none cursor-pointer select-none active:scale-[0.97] ${
           panel.open ? 'text-accent font-medium' : 'text-ink-faint hover:text-accent'
         }`}
       >
@@ -125,7 +125,7 @@ export const ChatSidePanelTrigger: React.FC<{ panel: ChatSidePanel }> = ({ panel
         <ChevronDown
           size={11}
           strokeWidth={2}
-          className={`transition-transform duration-200 ease-out ${panel.open ? 'rotate-180' : ''}`}
+          className={`transition-transform duration-200 ease-out motion-reduce:transition-none ${panel.open ? 'rotate-180' : ''}`}
         />
       </button>
       {loading && <Loader2 size={10} className="animate-spin text-ink-faint" />}
@@ -445,11 +445,11 @@ export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel 
         subtitle={hasHistory ? 'AI 产物 · 我的上传 · 对话历史' : 'AI 产物 · 我的上传'}
         icon={<PanelRight size={14} strokeWidth={1.75} />}
         headerExtra={headerExtra}
-        width={300}
+        width={320}
       >
         <div className="flex flex-col min-h-0">
           {/* Tab 栏：常驻主 Tab（文件类别空桶置灰禁用 / 对话历史始终可点）+ 「…」溢出下拉承载未来新增 Tab */}
-          <div className="shrink-0 flex items-center gap-1 p-0.5 rounded-lg bg-paper-grid/30 border border-paper-grid/50 mb-2">
+          <div className="shrink-0 flex items-center gap-1 p-0.5 rounded-lg bg-paper-grid/30 border border-paper-grid/50 mb-2.5">
             {primaryTabs.map((tab) => {
               const isActive = tab.id === resolvedTab;
               return (
@@ -459,15 +459,26 @@ export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel 
                   disabled={tab.disabled}
                   onClick={() => setActiveTab(tab.id)}
                   title={tab.disabled ? `${tab.label}暂无文件` : undefined}
-                  className={`flex-1 px-2 py-1 rounded-md text-[11px] font-sans transition select-none ${
+                  className={`group flex-1 min-w-0 px-2 py-1 rounded-md text-[11px] font-sans select-none flex items-center justify-center gap-1 whitespace-nowrap transition-[color,background-color,box-shadow,transform] duration-150 ease-out motion-reduce:transition-none ${
                     isActive
                       ? 'bg-paper text-accent shadow-2xs font-medium'
                       : tab.disabled
-                        ? 'text-ink-faint/60 cursor-not-allowed'
-                        : 'text-ink-light hover:text-ink cursor-pointer'
+                        ? 'text-ink-faint/50 cursor-not-allowed'
+                        : 'text-ink-light hover:text-ink hover:bg-paper-grid/30 active:scale-[0.98] cursor-pointer'
                   }`}
                 >
-                  {tab.label} ({tab.badge})
+                  <span className="truncate">{tab.label}</span>
+                  <span
+                    className={`inline-flex items-center justify-center px-1 min-w-[14px] h-[14px] rounded-full text-[10px] font-mono tabular-nums leading-none transition-colors duration-150 ${
+                      isActive
+                        ? 'bg-accent/12 text-accent font-semibold'
+                        : tab.disabled
+                          ? 'bg-transparent text-ink-faint/40'
+                          : 'bg-paper-grid/60 text-ink-faint group-hover:text-ink-light'
+                    }`}
+                  >
+                    {tab.badge}
+                  </span>
                 </button>
               );
             })}
@@ -479,16 +490,16 @@ export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel 
                   aria-expanded={overflowOpen}
                   aria-label="更多面板"
                   title="更多面板"
-                  className={`flex items-center justify-center w-7 h-6 rounded-md transition select-none cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent ${
+                  className={`flex items-center justify-center w-6 h-6 rounded-md select-none cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent transition-[color,background-color,transform] duration-150 ease-out motion-reduce:transition-none active:scale-[0.96] ${
                     activeInOverflow
                       ? 'bg-paper text-accent shadow-2xs font-medium'
-                      : 'text-ink-light hover:text-ink hover:bg-paper-grid/40'
+                      : 'text-ink-faint hover:text-ink hover:bg-paper-grid/40'
                   }`}
                 >
                   <MoreVertical size={13} strokeWidth={2.25} />
                 </button>
                 {overflowOpen && (
-                  <div className="absolute right-0 top-full mt-1 z-10 min-w-[150px] rounded-lg border border-paper-grid bg-paper shadow-xl p-1 flex flex-col gap-0.5">
+                  <div className="absolute right-0 top-full mt-1.5 z-20 min-w-[150px] rounded-lg border border-paper-grid/80 bg-paper/95 backdrop-blur-md shadow-xl p-1 flex flex-col gap-0.5">
                     {overflowTabs.map((tab) => (
                       <button
                         key={tab.id}
@@ -497,7 +508,7 @@ export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel 
                           setActiveTab(tab.id);
                           setOverflowOpen(false);
                         }}
-                        className={`flex items-center justify-between gap-2 px-2 py-1 rounded-md text-[11px] font-sans transition select-none cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent ${
+                        className={`flex items-center justify-between gap-2 px-2 py-1.5 rounded-md text-[11px] font-sans select-none cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent transition-[color,background-color] duration-150 ease-out motion-reduce:transition-none active:scale-[0.98] ${
                           tab.id === resolvedTab
                             ? 'bg-accent/10 text-accent font-medium'
                             : 'text-ink-light hover:text-ink hover:bg-paper-grid/40'
@@ -555,37 +566,42 @@ export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel 
           )}
 
           {/* 列表主体：加载 / 空态 / 文件树 / 会话行列表 */}
-          {resolvedTab === 'history' ? (
-            <HistoryBody
-              sessions={sessions!}
-              loading={!!panel.sessionsLoading}
-              currentWorkspaceId={panel.currentWorkspaceId ?? null}
-              sourceNodeOf={panel.sourceNodeOf}
-              pinningId={pinningId}
-              renamingId={renamingId}
-              deletingId={deletingId}
-              onSelect={handleSelect}
-              onTogglePin={handleTogglePin}
-              onRename={panel.onRenameSession ? handleRename : undefined}
-              onDelete={handleDelete}
-              selectMode={selectMode}
-              selectedKeys={selectedKeys}
-              busy={batchBusy}
-              onToggleSelect={(id) => toggleBatchKey(id)}
-            />
-          ) : (
-            <FilesBody
-              files={activeFiles}
-              loading={panel.filesLoading}
-              onPreview={setPreviewFile}
-              onDelete={canDeleteFiles ? handleDeleteFile : undefined}
-              selectMode={selectMode}
-              selectedKeys={selectedKeys}
-              busy={batchBusy}
-              deletingPath={deletingPath}
-              onToggleSelect={(file) => toggleBatchKey(fileKeyOf(file))}
-            />
-          )}
+          <div
+            key={resolvedTab}
+            className="flex-1 min-h-0 transition-opacity duration-150 ease-out motion-reduce:transition-none"
+          >
+            {resolvedTab === 'history' ? (
+              <HistoryBody
+                sessions={sessions!}
+                loading={!!panel.sessionsLoading}
+                currentWorkspaceId={panel.currentWorkspaceId ?? null}
+                sourceNodeOf={panel.sourceNodeOf}
+                pinningId={pinningId}
+                renamingId={renamingId}
+                deletingId={deletingId}
+                onSelect={handleSelect}
+                onTogglePin={handleTogglePin}
+                onRename={panel.onRenameSession ? handleRename : undefined}
+                onDelete={handleDelete}
+                selectMode={selectMode}
+                selectedKeys={selectedKeys}
+                busy={batchBusy}
+                onToggleSelect={(id) => toggleBatchKey(id)}
+              />
+            ) : (
+              <FilesBody
+                files={activeFiles}
+                loading={panel.filesLoading}
+                onPreview={setPreviewFile}
+                onDelete={canDeleteFiles ? handleDeleteFile : undefined}
+                selectMode={selectMode}
+                selectedKeys={selectedKeys}
+                busy={batchBusy}
+                deletingPath={deletingPath}
+                onToggleSelect={(file) => toggleBatchKey(fileKeyOf(file))}
+              />
+            )}
+          </div>
         </div>
       </NodeSideDrawer>
 
@@ -626,48 +642,51 @@ const BatchDeleteToolbar: React.FC<{
   onExitSelect,
 }) => {
   const btnBase =
-    'flex items-center gap-1 text-[11px] font-sans transition select-none cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent rounded-md px-1.5 py-1';
+    'flex items-center gap-1 text-[11px] font-sans transition-[color,background-color,transform] duration-150 ease-out motion-reduce:transition-none select-none cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent rounded-md px-1.5 py-0.5 active:scale-[0.97]';
   if (selectMode) {
     const allSelected = count > 0 && selectedCount === count;
     return (
-      <div className="shrink-0 flex flex-wrap items-center gap-x-2 gap-y-1 mb-1.5 px-1.5 py-1 rounded-md border border-accent/25 bg-accent/5">
-        <button
-          type="button"
-          onClick={onToggleAll}
-          disabled={busy || count === 0}
-          className={`${btnBase} text-accent hover:bg-accent/10`}
-        >
-          <Check size={11} strokeWidth={2.5} />
-          {allSelected ? '取消全选' : '全选'}
-        </button>
-        <span className="text-[10px] font-sans text-ink-light tabular-nums">
-          已选 {selectedCount} / {count}
-        </span>
-        <button
-          type="button"
-          onClick={onDeleteSelected}
-          disabled={busy || selectedCount === 0}
-          title="删除已勾选条目"
-          className={`${btnBase} text-error hover:bg-error/10 ml-auto`}
-        >
-          <Trash2 size={11} strokeWidth={2} />
-          删除选中 ({selectedCount})
-        </button>
-        <button
-          type="button"
-          onClick={onExitSelect}
-          disabled={busy}
-          title="退出多选"
-          className={`${btnBase} text-ink-faint hover:text-ink hover:bg-ink/10`}
-        >
-          <X size={11} strokeWidth={2} />
-          取消
-        </button>
+      <div className="shrink-0 flex items-center justify-between gap-1 mb-2 px-2 py-1 rounded-lg border border-accent/25 bg-accent/5">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <button
+            type="button"
+            onClick={onToggleAll}
+            disabled={busy || count === 0}
+            className={`${btnBase} text-accent hover:bg-accent/10 font-medium`}
+          >
+            <Check size={11} strokeWidth={2.5} />
+            {allSelected ? '取消全选' : '全选'}
+          </button>
+          <span className="text-[10px] font-mono text-ink-faint tabular-nums truncate">
+            {selectedCount} / {count}
+          </span>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={onDeleteSelected}
+            disabled={busy || selectedCount === 0}
+            title="删除已勾选条目"
+            className={`${btnBase} text-error hover:bg-error/10 font-medium`}
+          >
+            <Trash2 size={11} strokeWidth={2} />
+            删除选中
+          </button>
+          <button
+            type="button"
+            onClick={onExitSelect}
+            disabled={busy}
+            title="退出多选"
+            className={`${btnBase} text-ink-faint hover:text-ink hover:bg-ink/10`}
+          >
+            <X size={11} strokeWidth={2} />
+          </button>
+        </div>
       </div>
     );
   }
   return (
-    <div className="shrink-0 flex items-center justify-between gap-1 mb-1.5">
+    <div className="shrink-0 flex items-center justify-between gap-1 mb-2 px-0.5">
       <button
         type="button"
         onClick={onEnterSelect}
@@ -717,13 +736,18 @@ const FilesBody: React.FC<{
 }) => {
   if (loading && files.length === 0) {
     return (
-      <div className="flex items-center gap-1.5 text-[11px] font-sans text-ink-faint py-3">
-        <Loader2 size={12} className="animate-spin" /> 加载中…
+      <div className="flex items-center justify-center gap-2 text-[11px] font-sans text-ink-faint py-6">
+        <Loader2 size={13} className="animate-spin text-accent" />
+        <span>加载文件中…</span>
       </div>
     );
   }
   if (files.length === 0) {
-    return <p className="text-[11px] font-sans text-ink-faint py-3">暂无文件</p>;
+    return (
+      <div className="flex flex-col items-center justify-center text-center py-6 px-3">
+        <p className="text-[11px] font-sans text-ink-faint">暂无文件</p>
+      </div>
+    );
   }
   return (
     <WorkspaceFileTree
@@ -776,20 +800,26 @@ const HistoryBody: React.FC<{
 }) => {
   if (loading && !sessions.length) {
     return (
-      <div className="flex items-center gap-1.5 text-[11px] font-sans text-ink-faint py-3">
-        <Loader2 size={12} className="animate-spin" /> 加载中…
+      <div className="flex items-center justify-center gap-2 text-[11px] font-sans text-ink-faint py-6">
+        <Loader2 size={13} className="animate-spin text-accent" />
+        <span>加载对话历史…</span>
       </div>
     );
   }
   if (!sessions.length) {
     return (
-      <p className="text-[11px] font-sans text-ink-faint py-3">
-        暂无对话历史。发送消息后将在此列出可回看的会话。
-      </p>
+      <div className="flex flex-col items-center justify-center text-center py-6 px-3">
+        <p className="text-[11px] font-sans text-ink-faint leading-relaxed">
+          暂无对话历史
+        </p>
+        <span className="text-[10px] text-ink-faint/70 mt-1">
+          发送消息后在此列出可回看会话
+        </span>
+      </div>
     );
   }
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1.5">
       {sessions.map((s) => (
         <ConversationRow
           key={s.workspaceId}
@@ -906,20 +936,20 @@ const ConversationRow: React.FC<{
             ? '当前对话'
             : `载入「${session.title}」到节点`
       }
-      className={`group flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs font-sans transition select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent ${
+      className={`group relative flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs font-sans select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent transition-[color,background-color,border-color,box-shadow] duration-150 ease-out motion-reduce:transition-none ${
         selectable
           ? selected
-            ? 'border-accent/60 bg-accent/10 cursor-pointer hover:border-accent/60'
+            ? 'border-accent/60 bg-accent/10 cursor-pointer shadow-2xs'
             : 'border-paper-grid/60 bg-paper-grid/20 cursor-pointer hover:border-accent/40 hover:bg-accent/5'
           : isCurrent
-            ? 'border-accent/40 bg-accent/10 cursor-default'
-            : 'border-paper-grid/60 bg-paper-grid/20 cursor-pointer hover:border-accent/40 hover:bg-accent/5'
+            ? 'border-accent/40 bg-accent/8 cursor-default shadow-2xs before:absolute before:left-0 before:top-2 before:bottom-2 before:w-1 before:rounded-r-full before:bg-accent'
+            : 'border-paper-grid/50 bg-paper-grid/15 cursor-pointer hover:border-paper-grid/80 hover:bg-paper-grid/30 hover:shadow-2xs'
       }`}
     >
       {selectable && (
         <span
           aria-hidden
-          className={`shrink-0 flex items-center justify-center w-3.5 h-3.5 rounded border transition ${
+          className={`shrink-0 flex items-center justify-center w-3.5 h-3.5 rounded border transition-[background-color,border-color,transform] duration-150 ease-out motion-reduce:transition-none ${
             selected ? 'bg-accent border-accent text-paper' : 'border-ink-light/50 bg-paper'
           }`}
         >
@@ -949,123 +979,141 @@ const ConversationRow: React.FC<{
             className="w-full min-w-0 bg-paper border border-accent/50 rounded px-1.5 py-0.5 text-xs text-ink font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
           />
         ) : (
-          <span className="flex items-center gap-1 min-w-0">
+          <span className="flex items-center gap-1.5 min-w-0">
             <span
               className={`truncate ${isCurrent ? 'text-accent font-medium' : 'text-ink font-medium'}`}
             >
               {session.title}
             </span>
             {isCurrent && (
-              <span className="shrink-0 text-[9px] font-sans text-accent border border-accent/30 rounded-pill px-1 py-px">
+              <span className="shrink-0 text-[9px] font-sans text-accent bg-accent/10 border border-accent/25 rounded-full px-1.5 py-px leading-none">
                 当前
               </span>
             )}
             {session.pinned && (
-              <Pin size={10} strokeWidth={2.25} className="shrink-0 text-accent" fill="currentColor" />
+              <span title="已置顶" className="shrink-0 flex items-center">
+                <Pin
+                  size={10}
+                  strokeWidth={2.25}
+                  className="text-accent rotate-45"
+                  fill="currentColor"
+                  aria-label="已置顶"
+                />
+              </span>
             )}
           </span>
         )}
         {meta && !(editing && !selectable) && (
-          <span className="truncate text-[10px] text-ink-faint tabular-nums font-mono">{meta}</span>
+          <span className="truncate text-[10px] text-ink-faint tabular-nums font-mono mt-0.5">{meta}</span>
         )}
         {sourceTitle && !(editing && !selectable) && (
-          <span className="truncate text-[10px] text-ink-faint">来自「{sourceTitle}」</span>
+          <span className="truncate text-[10px] text-ink-faint/80 mt-0.5">来自「{sourceTitle}」</span>
         )}
       </span>
 
       {/* 行内操作（stopPropagation：不触发行点击载入）；编辑态替换为确认 / 取消；批量选择态整体隐藏 */}
       {!selectable && (
-      <span className="shrink-0 flex items-center gap-0.5">
-        {editing ? (
-          <>
-            <button
-              type="button"
-              disabled={saving}
-              onClick={(e) => {
-                e.stopPropagation();
-                void commit();
-              }}
-              onMouseDown={(e) => e.preventDefault()} // 防失焦先于点击触发 onBlur 取消编辑
-              title="保存标题"
-              aria-label="保存标题"
-              className="flex items-center justify-center w-6 h-6 rounded-md text-accent hover:bg-accent/10 active:scale-[0.96] transition disabled:opacity-40 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
-            >
-              {saving ? (
-                <Loader2 size={12} className="animate-spin" />
-              ) : (
-                <Check size={12} strokeWidth={2.25} />
+        <span
+          className={`shrink-0 flex items-center gap-0.5 transition-opacity duration-150 ease-out motion-reduce:transition-none ${
+            editing || pinning || renaming || deleting
+              ? 'opacity-100'
+              : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 max-sm:opacity-100'
+          }`}
+        >
+          {editing ? (
+            <>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void commit();
+                }}
+                onMouseDown={(e) => e.preventDefault()} // 防失焦先于点击触发 onBlur 取消编辑
+                title="保存标题"
+                aria-label="保存标题"
+                className="flex items-center justify-center w-6 h-6 rounded-md text-accent hover:bg-accent/10 active:scale-[0.96] transition-[color,background-color,transform] duration-150 ease-out motion-reduce:transition-none disabled:opacity-40 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+              >
+                {saving ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <Check size={12} strokeWidth={2.25} />
+                )}
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditing(false);
+                }}
+                title="取消"
+                aria-label="取消编辑"
+                className="flex items-center justify-center w-6 h-6 rounded-md text-ink-faint hover:text-ink hover:bg-ink/10 active:scale-[0.96] transition-[color,background-color,transform] duration-150 ease-out motion-reduce:transition-none disabled:opacity-40 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ink"
+              >
+                <X size={12} strokeWidth={2} />
+              </button>
+            </>
+          ) : (
+            <>
+              {onRename && (
+                <button
+                  type="button"
+                  disabled={pinning || renaming || deleting}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    startEdit();
+                  }}
+                  title="重命名对话"
+                  aria-label="重命名对话"
+                  className="flex items-center justify-center w-6 h-6 rounded-md text-ink-faint hover:text-accent hover:bg-accent/10 active:scale-[0.96] transition-[color,background-color,transform] duration-150 ease-out motion-reduce:transition-none disabled:opacity-40 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+                >
+                  <Pencil size={12} strokeWidth={2} />
+                </button>
               )}
-            </button>
-            <button
-              type="button"
-              disabled={saving}
-              onClick={(e) => {
-                e.stopPropagation();
-                setEditing(false);
-              }}
-              title="取消"
-              aria-label="取消编辑"
-              className="flex items-center justify-center w-6 h-6 rounded-md text-ink-faint hover:text-ink hover:bg-ink/10 active:scale-[0.96] transition disabled:opacity-40 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ink"
-            >
-              <X size={12} strokeWidth={2} />
-            </button>
-          </>
-        ) : (
-          <>
-            {onRename && (
               <button
                 type="button"
                 disabled={pinning || renaming || deleting}
                 onClick={(e) => {
                   e.stopPropagation();
-                  startEdit();
+                  onTogglePin(session);
                 }}
-                title="重命名对话"
-                aria-label="重命名对话"
-                className="flex items-center justify-center w-6 h-6 rounded-md text-ink-faint hover:text-accent hover:bg-accent/10 active:scale-[0.96] transition disabled:opacity-40 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+                title={session.pinned ? '取消置顶' : '置顶'}
+                aria-label={session.pinned ? '取消置顶' : '置顶'}
+                className={`flex items-center justify-center w-6 h-6 rounded-md active:scale-[0.96] transition-[color,background-color,transform] duration-150 ease-out motion-reduce:transition-none disabled:opacity-40 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent ${
+                  session.pinned
+                    ? 'text-accent hover:bg-accent/10'
+                    : 'text-ink-faint hover:text-accent hover:bg-accent/10'
+                }`}
               >
-                <Pencil size={12} strokeWidth={2} />
+                {pinning ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : session.pinned ? (
+                  <PinOff size={12} strokeWidth={2} />
+                ) : (
+                  <Pin size={12} strokeWidth={2} />
+                )}
               </button>
-            )}
-            <button
-              type="button"
-              disabled={pinning || renaming || deleting}
-              onClick={(e) => {
-                e.stopPropagation();
-                onTogglePin(session);
-              }}
-              title={session.pinned ? '取消置顶' : '置顶'}
-              aria-label={session.pinned ? '取消置顶' : '置顶'}
-              className="flex items-center justify-center w-6 h-6 rounded-md text-ink-faint hover:text-accent hover:bg-accent/10 active:scale-[0.96] transition disabled:opacity-40 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
-            >
-              {pinning ? (
-                <Loader2 size={12} className="animate-spin" />
-              ) : session.pinned ? (
-                <Pin size={12} strokeWidth={2} className="text-accent" fill="currentColor" />
-              ) : (
-                <PinOff size={12} strokeWidth={2} />
-              )}
-            </button>
-            <button
-              type="button"
-              disabled={pinning || renaming || deleting}
-              onClick={(e) => {
-                e.stopPropagation();
-                void onDelete(session);
-              }}
-              title="删除对话"
-              aria-label="删除对话"
-              className="flex items-center justify-center w-6 h-6 rounded-md text-ink-faint hover:text-error hover:bg-error/10 active:scale-[0.96] transition disabled:opacity-40 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-error"
-            >
-              {deleting ? (
-                <Loader2 size={12} className="animate-spin" />
-              ) : (
-                <Trash2 size={12} strokeWidth={2} />
-              )}
-            </button>
-          </>
-        )}
-      </span>
+              <button
+                type="button"
+                disabled={pinning || renaming || deleting}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void onDelete(session);
+                }}
+                title="删除对话"
+                aria-label="删除对话"
+                className="flex items-center justify-center w-6 h-6 rounded-md text-ink-faint hover:text-error hover:bg-error/10 active:scale-[0.96] transition-[color,background-color,transform] duration-150 ease-out motion-reduce:transition-none disabled:opacity-40 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-error"
+              >
+                {deleting ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <Trash2 size={12} strokeWidth={2} />
+                )}
+              </button>
+            </>
+          )}
+        </span>
       )}
     </div>
   );

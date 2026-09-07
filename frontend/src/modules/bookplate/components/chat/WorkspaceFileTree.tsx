@@ -174,13 +174,13 @@ export const WorkspaceFileTree: React.FC<{
                 ? `展开 ${node.name}`
                 : `收起 ${node.name}`
           }
-          className="group flex items-center gap-1 w-full py-1 pr-2 rounded-md text-[11px] font-sans transition select-none cursor-pointer hover:bg-accent/5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+          className="group flex items-center gap-1 w-full py-1 pr-2 rounded-md text-[11px] font-sans transition-[background-color,color] duration-150 ease-out motion-reduce:transition-none select-none cursor-pointer hover:bg-accent/5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
           style={pad}
         >
           {isCollapsed ? (
-            <ChevronRight size={11} strokeWidth={2.25} className="shrink-0 text-ink-faint transition-transform" />
+            <ChevronRight size={11} strokeWidth={2.25} className="shrink-0 text-ink-faint transition-transform duration-150 ease-out motion-reduce:transition-none" />
           ) : (
-            <ChevronDown size={11} strokeWidth={2.25} className="shrink-0 text-ink-faint transition-transform" />
+            <ChevronDown size={11} strokeWidth={2.25} className="shrink-0 text-ink-faint transition-transform duration-150 ease-out motion-reduce:transition-none" />
           )}
           {isCollapsed ? (
             <Folder size={13} className="shrink-0 text-ink-faint" />
@@ -232,7 +232,7 @@ export const WorkspaceFileTree: React.FC<{
               ? `预览 ${file.path}`
               : '密钥文件，仅展示名称与目录结构，内容不可预览'
         }
-        className={`group flex items-center gap-1.5 w-full py-1 pr-2 rounded-md text-[11px] font-sans transition select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent ${
+        className={`group flex items-center gap-1.5 w-full py-1 pr-2 rounded-md text-[11px] font-sans select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent transition-[background-color,color] duration-150 ease-out motion-reduce:transition-none ${
           selectable && selected
             ? 'bg-paper-grid/40 hover:bg-paper-grid/40 cursor-pointer'
             : canPreview || selectable
@@ -244,7 +244,7 @@ export const WorkspaceFileTree: React.FC<{
         {selectable && (
           <span
             aria-hidden
-            className={`shrink-0 flex items-center justify-center w-3.5 h-3.5 rounded border transition ${
+            className={`shrink-0 flex items-center justify-center w-3.5 h-3.5 rounded border transition-[background-color,border-color,transform] duration-150 ease-out motion-reduce:transition-none ${
               selected ? 'bg-accent border-accent text-paper' : 'border-ink-light/50 bg-paper'
             }`}
           >
@@ -270,7 +270,7 @@ export const WorkspaceFileTree: React.FC<{
           )}
         </span>
 
-        {/* 行内删除（stopPropagation：不触发行点击预览 / 勾选）；批量选择态与不可预览叶子下隐藏 */}
+        {/* 行内删除（stopPropagation：不触发行点击预览 / 勾选）；批量选择态与不可预览叶子下隐藏；桌面端 hover 显现 */}
         {onDelete && !selectable && canPreview && (
           <button
             type="button"
@@ -281,7 +281,11 @@ export const WorkspaceFileTree: React.FC<{
             }}
             title="删除文件"
             aria-label={`删除 ${file.name}`}
-            className="shrink-0 flex items-center justify-center w-6 h-6 rounded-md text-ink-faint hover:text-error hover:bg-error/10 active:scale-[0.96] transition disabled:opacity-40 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-error"
+            className={`shrink-0 flex items-center justify-center w-6 h-6 rounded-md text-ink-faint hover:text-error hover:bg-error/10 active:scale-[0.96] transition-[color,background-color,transform,opacity] duration-150 ease-out motion-reduce:transition-none disabled:opacity-40 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-error ${
+              deleting
+                ? 'opacity-100'
+                : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 max-sm:opacity-100'
+            }`}
           >
             {deleting ? (
               <Loader2 size={12} className="animate-spin" />
