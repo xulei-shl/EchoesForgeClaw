@@ -203,6 +203,14 @@ export const ChatNodeComposer: React.FC<ChatNodeComposerProps> = ({
     }
   }, [draft]);
 
+  // @ 检索文件缓存随运行周期失效：agent 运行结束（isGenerating true→false）后产物已落盘，
+  // 旧缓存（不含新 AI 产物）会掩盖新文件；在 isGenerating / workspaceId 变化时清掉该工作区
+  // 缓存，下次 @ 重新拉取（生成期间 @ 检索本就被禁用，不存在并发读）。
+  useEffect(() => {
+    if (!workspaceId) return;
+    mentionFileCacheRef.current.delete(workspaceId);
+  }, [workspaceId, isGenerating]);
+
   /** 选择并处理附件图片（格式 / 体积校验 + 压缩），追加到附件列表 */
   const handleAttachFile = async (file: File) => {
     if (!RASTER_IMAGE_TYPES.includes(file.type)) {
