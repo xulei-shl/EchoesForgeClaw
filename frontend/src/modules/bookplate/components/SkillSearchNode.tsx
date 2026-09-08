@@ -346,7 +346,8 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
           const noteText = s.user_note || s.note;
           return (
             <div
-              key={s.id}
+              // skill 唯一标识是 name（本地缓存元数据无 id，远端才有）；选择/安装/去重均按 name
+              key={s.name}
               className={`flex items-start gap-3 p-2.5 rounded-md border cursor-pointer active:scale-[0.96] transition-transform duration-100 ease-out ${
                 isSelected
                   ? 'border-accent/50 bg-accent-surface/60'

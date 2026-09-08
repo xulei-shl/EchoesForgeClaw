@@ -16,7 +16,7 @@ import type { AgentFile } from '../../../../platform/types';
 /**
  * 工作区文件树（侧边抽屉文件 Tab 主体）：
  * - 输入 AgentFile[]（path 为工作区相对路径，正斜杠口径），按路径段构建目录树；
- * - 目录行可展开/收起（默认全展开）；排序：目录在前、文件在后，同级按名称字典序（zh-CN），
+ * - 目录行可展开/收起（默认全展开；defaultCollapsed = 初始收起全部目录）；排序：目录在前、文件在后，同级按名称字典序（zh-CN），
  *  无 mtime 来源（FastClaw）同样稳定；
  * - 叶子行点击 → FilePreviewModal 预览；可选项：
  *   - onDelete：行内删除按钮（stopPropagation，不触发行点击）；批量选择态/删除中隐藏
@@ -137,6 +137,8 @@ export const WorkspaceFileTree: React.FC<{
   busy?: boolean;
   /** 单个文件删除进行中（path 命中时行内删除按钮转加载态） */
   deletingPath?: string | null;
+  /** 初始全折叠：初始收起全部目录（「全部文件」Tab 只读总览用；缺省 = 全展开） */
+  defaultCollapsed?: boolean;
   onToggleSelect?: (file: AgentFile) => void;
 }> = ({
   files,
@@ -146,10 +148,23 @@ export const WorkspaceFileTree: React.FC<{
   selectedKeys,
   busy = false,
   deletingPath = null,
+  defaultCollapsed = false,
   onToggleSelect,
 }) => {
-  /** 已收起的目录路径集合（默认全展开：工作区树通常不大，展开让产物结构一眼可见） */
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  /** 已收起的目录路径集合；defaultCollapsed = 初始收起全部目录（「全部文件」总览），否则默认全展开 */
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+    if (!defaultCollapsed) return new Set();
+    const all = new Set<string>();
+    const walk = (nodes: TreeNode[]) => {
+      for (const n of nodes) {
+        if (!n.isDir) continue;
+        all.add(n.path);
+        if (n.children) walk(n.children);
+      }
+    };
+    walk(buildTree(files));
+    return all;
+  });
   const toggle = (path: string) =>
     setCollapsed((prev) => {
       const next = new Set(prev);

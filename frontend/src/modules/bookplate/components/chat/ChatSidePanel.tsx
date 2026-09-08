@@ -153,7 +153,8 @@ interface SideTabDesc {
  * 侧边面板抽屉（挂在 CanvasNode 的 sideDrawer 根级插槽，见 docs/节点侧边吸附抽屉使用指南.md）：
  * - 顶部 = 三个常驻主 Tab（文件类别空桶置灰不可点 / 对话历史始终可点）+ 「⋮」溢出下拉
  *   （「全部文件」只读总览初始落折叠；未来新增 Tab 追加 tabDescs 的 primary=false 条目即可）；
- * - 文件 Tab：按 path 构建目录树（目录在前、文件在后，默认全展开）；
+ * - 文件 Tab：按 path 构建目录树（目录在前、文件在后；「全部文件」只读总览初始全折叠，
+ *   AI 产物 / 我的上传 默认全展开）；
  *   AI 产物 / 我的上传 Tab 行内删除 + 批量删除；「全部文件」Tab 只读（敏感文件带锁图标仅看名字）；
  *   叶子点击打开统一预览弹层（FilePreviewModal，图片 / 文本 / PDF 内联预览，二进制给下载引导）；
  * - 对话历史行：点击载入会话到节点，行内置顶 / 重命名 / 删除（带危险确认框）。
@@ -597,6 +598,7 @@ export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel 
                 loading={panel.filesLoading}
                 onPreview={setPreviewFile}
                 onDelete={canDeleteFiles ? handleDeleteFile : undefined}
+                defaultCollapsed={resolvedTab === 'all'}
                 selectMode={selectMode}
                 selectedKeys={selectedKeys}
                 busy={batchBusy}
@@ -721,6 +723,8 @@ const FilesBody: React.FC<{
   onPreview: (file: AgentFile) => void;
   /** AI 产物 / 我的上传 Tab 传删除回调；「全部文件」Tab 不传 = 只读树 */
   onDelete?: (file: AgentFile) => void;
+  /** 「全部文件」Tab：初始收起全部目录（缺省 = 全展开） */
+  defaultCollapsed?: boolean;
   selectMode?: boolean;
   selectedKeys?: ReadonlySet<string>;
   busy?: boolean;
@@ -731,6 +735,7 @@ const FilesBody: React.FC<{
   loading,
   onPreview,
   onDelete,
+  defaultCollapsed = false,
   selectMode = false,
   selectedKeys,
   busy = false,
@@ -757,6 +762,7 @@ const FilesBody: React.FC<{
       files={files}
       onPreview={onPreview}
       onDelete={onDelete}
+      defaultCollapsed={defaultCollapsed}
       selectable={selectMode}
       selectedKeys={selectedKeys}
       busy={busy}
