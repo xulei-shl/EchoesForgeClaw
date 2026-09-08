@@ -2,16 +2,17 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { REAL_AGENTS_ROOT, userSkillsRoot } from '../skill-agent-service.js';
+import type { GuardrailsConfigOverrides } from './guardrails.js';
 import type { PiChatModelConfig, PiImageModelConfig } from './workspace.js';
 
 /**
  * pi 进程「配置代数」（generation）：决定 RPC 进程能否复用。
  *
  * 代数 = 影响 pi 行为的工作区装配物哈希（提示词 AGENTS.md、选中技能、对话/绘图模型、
- * 扩展白名单）。pi 进程在 spawn 时把这些固化到启动参数/启动扫描里，之后不会热读。
- * 因此：
+ * 扩展白名单、guardrails 管理员覆盖项）。pi 进程在 spawn 时把这些固化到启动参数/启动扫描里，
+ * 之后不会热读。因此：
  * - 代数相同 → 复用已存活的进程（跳过重装与冷启动）；
- * - 代数不同（上游节点改接提示词/skill/模型/扩展）→ 必须杀旧进程重拉。
+ * - 代数不同（上游节点改接提示词/skill/模型/扩展/安全护栏配置）→ 必须杀旧进程重拉。
  *
  * 只比较「配置」，不比较对话内容——多轮上下文始终以会话文件为真相源，不随代数变化。
  */
@@ -24,6 +25,8 @@ export interface WorkspaceGenerationInput {
   imageModel: PiImageModelConfig | null;
   /** 扩展白名单解析后的有序包名（resolvePiExtensions → name）。 */
   extensionNames: string[];
+  /** guardrails 安全护栏管理员覆盖项（guardrailsOverridesFromSettings 解析；变更必须重拉）。 */
+  guardrailsOverrides?: GuardrailsConfigOverrides;
 }
 
 function sha256(s: string): string {
@@ -88,6 +91,9 @@ export function computeWorkspaceGeneration(input: WorkspaceGenerationInput): str
 
   // 5) 扩展白名单（有序包名）
   parts.push(`ext:${stableJson(input.extensionNames)}`);
+
+  // 6) guardrails 管理员覆盖项（装配到 {ws}/.pi-agent/extensions/guardrails.json；变更 → 重拉）
+  parts.push(`guardrails:${stableJson(input.guardrailsOverrides ?? null)}`);
 
   return sha256(parts.join('\u0000'));
 }

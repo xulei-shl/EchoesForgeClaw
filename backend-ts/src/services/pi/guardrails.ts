@@ -34,21 +34,103 @@ export const GUARDRAILS_PACKAGE_NAME = '@aliou/pi-guardrails';
 /** guardrails 全局配置落点（相对 {ws}/.pi-agent，即 PI_CODING_AGENT_DIR）。 */
 export const GUARDRAILS_CONFIG_REL = path.join('extensions', 'guardrails.json');
 
-/** 装配期固定 pathAccess 策略：完全自动执行（无交互），越界一律拒绝。 */
+/** 默认 pathAccess 策略：完全自动执行（无交互），越界一律拒绝。管理员可在 admin/settings 的 Pi Agent 分类覆盖。 */
 export const GUARDRAILS_PATH_ACCESS_MODE = 'block' as const;
+
+/** pathAccess 越界允许路径条目（对应扩展 AllowedPath：file 精确匹配 / directory 目录及其后代）。 */
+export interface GuardrailsAllowedPath {
+  kind: 'file' | 'directory';
+  path: string;
+}
+
+/**
+ * admin/settings 的 Pi Agent 分类下、guardrails 配置键的固定前缀。
+ * 后端 preparePiWorkspace 装配期从 app_settings（pi.guardrails.*）读取这些键，
+ * 映射为 guardrails.json 的配置——管理员可维护、普通 web 用户直接加载。
+ */
+export const GUARDRAILS_SETTING_PREFIX = 'pi.guardrails.';
+
+/** guardrails 可选配置键（值均为字符串：布尔用 'true'/'false'，mode 用 block/ask/allow，allowedPaths 用 JSON 数组）。 */
+export const GUARDRAILS_SETTING_KEYS = {
+  enabled: `${GUARDRAILS_SETTING_PREFIX}enabled`,
+  featuresPolicies: `${GUARDRAILS_SETTING_PREFIX}features.policies`,
+  featuresPermissionGate: `${GUARDRAILS_SETTING_PREFIX}features.permission_gate`,
+  featuresPathAccess: `${GUARDRAILS_SETTING_PREFIX}features.path_access`,
+  pathAccessMode: `${GUARDRAILS_SETTING_PREFIX}path_access.mode`,
+  pathAccessAllowedPaths: `${GUARDRAILS_SETTING_PREFIX}path_access.allowed_paths`,
+} as const;
+
+/**
+ * 管理员可覆盖的 guardrails 配置（缺省 = 跟随内置安全默认；字段与 schema.json / GuardrailsAutoConfig 对齐）。
+ */
+export interface GuardrailsConfigOverrides {
+  enabled?: boolean;
+  features?: { policies?: boolean; permissionGate?: boolean; pathAccess?: boolean };
+  pathAccessMode?: 'block' | 'ask' | 'allow';
+  allowedPaths?: GuardrailsAllowedPath[];
+}
+
+/**
+ * 从 app_settings（admin/settings Pi Agent 分类）解析 guardrails 覆盖项。
+ * 未配置 / 非法值一律忽略（undefined），保持内置默认，绝不让脏数据弱化安全。
+ */
+export function guardrailsOverridesFromSettings(settings: Record<string, string>): GuardrailsConfigOverrides {
+  const bool = (v: string | undefined): boolean | undefined =>
+    v === 'true' ? true : v === 'false' ? false : undefined;
+
+  const overrides: GuardrailsConfigOverrides = {};
+  const enabled = bool(settings[GUARDRAILS_SETTING_KEYS.enabled]);
+  if (enabled !== undefined) overrides.enabled = enabled;
+
+  const policies = bool(settings[GUARDRAILS_SETTING_KEYS.featuresPolicies]);
+  const permissionGate = bool(settings[GUARDRAILS_SETTING_KEYS.featuresPermissionGate]);
+  const pathAccess = bool(settings[GUARDRAILS_SETTING_KEYS.featuresPathAccess]);
+  if (policies !== undefined || permissionGate !== undefined || pathAccess !== undefined) {
+    overrides.features = {};
+    if (policies !== undefined) overrides.features.policies = policies;
+    if (permissionGate !== undefined) overrides.features.permissionGate = permissionGate;
+    if (pathAccess !== undefined) overrides.features.pathAccess = pathAccess;
+  }
+
+  const mode = (settings[GUARDRAILS_SETTING_KEYS.pathAccessMode] ?? '').trim();
+  if (mode === 'block' || mode === 'ask' || mode === 'allow') overrides.pathAccessMode = mode;
+
+  const raw = (settings[GUARDRAILS_SETTING_KEYS.pathAccessAllowedPaths] ?? '').trim();
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsed)) {
+        const paths = parsed
+          .filter(
+            (p): p is { kind: unknown; path: unknown } =>
+              typeof p === 'object' && p !== null && 'kind' in p && 'path' in p
+          )
+          .map((p) => ({ kind: p.kind as GuardrailsAllowedPath['kind'], path: String(p.path) }))
+          .filter(
+            (p): p is GuardrailsAllowedPath =>
+              (p.kind === 'file' || p.kind === 'directory') && p.path.length > 0
+          );
+        if (paths.length) overrides.allowedPaths = paths;
+      }
+    } catch {
+      /* 非法 JSON：忽略，保持默认 */
+    }
+  }
+  return overrides;
+}
 
 /**
  * 装配期写入的 guardrails 配置（与扩展 schema.json 对齐；字段白名单见
- * GuardrailsConfig：除已用字段外一律不写，未覆盖项跟随扩展内置默认值）。
+ * GuardrailsAutoConfig：除已用字段外一律不写，未覆盖项跟随扩展内置默认值）。
  */
 export interface GuardrailsAutoConfig {
   $schema: string;
   version: string;
-  enabled: true;
+  enabled: boolean;
   applyBuiltinDefaults: true;
   onboarding: { completed: true; version: string };
-  features: { policies: true; permissionGate: true; pathAccess: true };
-  pathAccess: { mode: typeof GUARDRAILS_PATH_ACCESS_MODE; allowedPaths: [{ kind: 'file'; path: '/dev/null' }] };
+  features: { policies: boolean; permissionGate: boolean; pathAccess: boolean };
+  pathAccess: { mode: 'block' | 'ask' | 'allow'; allowedPaths: GuardrailsAllowedPath[] };
   policies: { rules: GuardrailsAgentRuntimeRule[] };
 }
 
@@ -83,20 +165,38 @@ export function guardrailsPolicyRules(): GuardrailsAgentRuntimeRule[] {
 }
 
 /**
+ * 默认 pathAccess 越界允许路径：既有 `/dev/null` 占位条目（保持向后兼容，不额外放行真实路径）。
+ */
+const GUARDRAILS_DEFAULT_ALLOWED_PATHS: GuardrailsAllowedPath[] = [
+  { kind: 'file', path: '/dev/null' },
+];
+
+/**
  * 构建自动装配的 guardrails 全局配置。version 应为已安装包版本（如 '0.17.1'），
  * 高于所有内置迁移版本（≤0.16.2），写入后扩展加载不会触发迁移改写。
+ * overrides 来自 admin/settings 的 Pi Agent 分类（guardrailsOverridesFromSettings），
+ * 缺省 = 内置安全默认：全功能开启 / pathAccess 仅放行占位路径。
  */
-export function buildGuardrailsConfig(version: string): GuardrailsAutoConfig {
+export function buildGuardrailsConfig(
+  version: string,
+  overrides: GuardrailsConfigOverrides = {}
+): GuardrailsAutoConfig {
   return {
     $schema: `https://unpkg.com/${GUARDRAILS_PACKAGE_NAME}@${version}/schema.json`,
     version,
-    enabled: true,
+    enabled: overrides.enabled ?? true,
     applyBuiltinDefaults: true,
     onboarding: { completed: true, version },
-    features: { policies: true, permissionGate: true, pathAccess: true },
+    features: {
+      policies: overrides.features?.policies ?? true,
+      permissionGate: overrides.features?.permissionGate ?? true,
+      pathAccess: overrides.features?.pathAccess ?? true,
+    },
     pathAccess: {
-      mode: GUARDRAILS_PATH_ACCESS_MODE,
-      allowedPaths: [{ kind: 'file', path: '/dev/null' }],
+      mode: overrides.pathAccessMode ?? GUARDRAILS_PATH_ACCESS_MODE,
+      allowedPaths: overrides.allowedPaths?.length
+        ? overrides.allowedPaths
+        : GUARDRAILS_DEFAULT_ALLOWED_PATHS,
     },
     policies: { rules: guardrailsPolicyRules() },
   };

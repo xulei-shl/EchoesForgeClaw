@@ -150,6 +150,36 @@ const DEFAULT_SETTINGS: Array<[string, string, string]> = [
     'http://127.0.0.1:8103',
     '中国传统配色 FastAPI 基础地址（对应 services/zhongguo-traditional-colors，色卡与 5 色调色板生成）',
   ],
+  [
+    'pi.guardrails.enabled',
+    'true',
+    'Pi Agent 安全护栏总开关（false = 关闭全部 Guardrails 检查，不建议）',
+  ],
+  [
+    'pi.guardrails.features.policies',
+    'true',
+    'Pi Agent 文件保护策略（.env / 私钥等敏感文件禁止 Agent 读取与修改）',
+  ],
+  [
+    'pi.guardrails.features.permission_gate',
+    'true',
+    'Pi Agent 危险命令确认（递归删除 / 提权 / 格式化等危险命令触发确认）',
+  ],
+  [
+    'pi.guardrails.features.path_access',
+    'true',
+    'Pi Agent 越界路径访问控制（工作区外的文件访问拦截）',
+  ],
+  [
+    'pi.guardrails.path_access.mode',
+    'block',
+    'Pi Agent 越界路径访问模式：block = 一律拒绝（默认、自动）；ask = 询问用户（RPC 下退化为拒绝，不推荐）；allow = 放行并记录',
+  ],
+  [
+    'pi.guardrails.path_access.allowed_paths',
+    '[]',
+    'Pi Agent 越界路径放行白名单（JSON 数组，如 [{"kind":"file","path":"/data/x.txt"},{"kind":"directory","path":"/data/y"}]；仅 mode=allow 时有意义；留空 = 不放行任何越界路径）',
+  ],
 ];
 
 /** 废弃/已删除的系统设置键（启动时自动彻底清理存量历史数据） */

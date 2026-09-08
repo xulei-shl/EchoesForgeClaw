@@ -32,6 +32,12 @@ import {
 } from '../../src/services/pi-agent-service.js';
 import { isDiffExcluded } from '../../src/services/pi/snapshot.js';
 import { isSecretFileRel } from '../../src/services/file-utils.js';
+import {
+  buildGuardrailsConfig,
+  guardrailsOverridesFromSettings,
+  GUARDRAILS_PACKAGE_NAME,
+  GUARDRAILS_SETTING_KEYS,
+} from '../../src/services/pi/guardrails.js';
 
 // runtime/ 在仓库根目录下（与 skill-agent-service.ts 的 RUNTIME_ROOT 口径一致），测试文件位于 backend-ts/tests/api/，向上三层
 const RUNTIME_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../runtime');
@@ -521,6 +527,97 @@ describe('pi-guardrails 自动配置装配（{ws}/.pi-agent/extensions/guardrail
           skillNames: [],
         });
         expect(existsSync(path.join(agentDir, 'extensions', 'guardrails.json'))).toBe(false);
+      });
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('pi-guardrails 管理员设置映射（admin/settings Pi Agent 分类 → guardrails.json）', () => {
+  it('DEFAULT（无配置键）= 内置安全默认；preparePiWorkspace 接受 guardrailsOverrides', () => {
+    // 未配置任何 pi.guardrails.* 键 → 全部跟随内置默认（与旧行为逐字节一致）
+    expect(guardrailsOverridesFromSettings({})).toEqual({});
+  });
+
+  it('布尔键 / mode / allowedPaths 映射为显式覆盖项（非法值忽略）', () => {
+    const overrides = guardrailsOverridesFromSettings({
+      [GUARDRAILS_SETTING_KEYS.enabled]: 'false',
+      [GUARDRAILS_SETTING_KEYS.featuresPolicies]: 'false',
+      [GUARDRAILS_SETTING_KEYS.featuresPermissionGate]: 'true',
+      [GUARDRAILS_SETTING_KEYS.featuresPathAccess]: 'not-a-bool', // 非法 → 忽略
+      [GUARDRAILS_SETTING_KEYS.pathAccessMode]: 'ask',
+      [GUARDRAILS_SETTING_KEYS.pathAccessAllowedPaths]:
+        '[{"kind":"directory","path":"/data/export"},{"kind":"file","path":"/tmp/x.txt"}]',
+    });
+    expect(overrides).toEqual({
+      enabled: false,
+      features: { policies: false, permissionGate: true },
+      pathAccessMode: 'ask',
+      allowedPaths: [
+        { kind: 'directory', path: '/data/export' },
+        { kind: 'file', path: '/tmp/x.txt' },
+      ],
+    });
+  });
+
+  it('allowedPaths 非法 JSON / 非法条目整体忽略（不弱化安全）', () => {
+    expect(
+      guardrailsOverridesFromSettings({ [GUARDRAILS_SETTING_KEYS.pathAccessAllowedPaths]: 'not-json' })
+    ).toEqual({});
+    expect(
+      guardrailsOverridesFromSettings({
+        [GUARDRAILS_SETTING_KEYS.pathAccessAllowedPaths]:
+          '[{"kind":"evil","path":"/x"},{"kind":"file","path":""}]',
+      })
+    ).toEqual({});
+  });
+
+  it('buildGuardrailsConfig 合并覆盖项：mode / features / allowedPaths 生效且保留 agent-runtime 规则', () => {
+    const cfg = buildGuardrailsConfig('0.17.1', {
+      enabled: true,
+      features: { permissionGate: false },
+      pathAccessMode: 'allow',
+      allowedPaths: [{ kind: 'directory', path: '/data/export' }],
+    });
+    expect(cfg.$schema).toBe(
+      `https://unpkg.com/${GUARDRAILS_PACKAGE_NAME}@0.17.1/schema.json`
+    );
+    expect(cfg.features).toEqual({ policies: true, permissionGate: false, pathAccess: true });
+    expect(cfg.pathAccess).toEqual({
+      mode: 'allow',
+      allowedPaths: [{ kind: 'directory', path: '/data/export' }],
+    });
+    const agentRule = cfg.policies.rules.find((r: { id: string }) => r.id === 'agent-runtime');
+    expect(agentRule).toBeDefined();
+    expect(cfg.policies.rules).toHaveLength(1);
+  });
+
+  it('preparePiWorkspace 写入的 guardrails.json 反映 guardrailsOverrides（端到端）', () => {
+    const home = mkdtempSync(path.join(tmpdir(), 'pi-agent-'));
+    try {
+      withPiExtensionsEnv(home, GUARDRAILS_PACKAGE_NAME, () => {
+        preparePiWorkspace(UID, WS_ID, {
+          agentId: 1,
+          chatModel: CHAT_MODEL,
+          imageModel: null,
+          skillNames: [],
+          guardrailsOverrides: {
+            enabled: false,
+            features: { pathAccess: false },
+            pathAccessMode: 'ask',
+            allowedPaths: [{ kind: 'directory', path: '/x' }, { kind: 'file', path: '/tmp/k.txt' }],
+          },
+        });
+        const cfgPath = path.join(wsPath(), '.pi-agent', 'extensions', 'guardrails.json');
+        expect(existsSync(cfgPath)).toBe(true);
+        const cfg = JSON.parse(readFileSync(cfgPath, 'utf-8'));
+        expect(cfg.enabled).toBe(false);
+        expect(cfg.features).toEqual({ policies: true, permissionGate: true, pathAccess: false });
+        expect(cfg.pathAccess).toEqual({
+          mode: 'ask',
+          allowedPaths: [{ kind: 'directory', path: '/x' }, { kind: 'file', path: '/tmp/k.txt' }],
+        });
       });
     } finally {
       rmSync(home, { recursive: true, force: true });

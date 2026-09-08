@@ -26,6 +26,7 @@ import {
   buildGuardrailsConfig,
   GUARDRAILS_CONFIG_REL,
   GUARDRAILS_PACKAGE_NAME,
+  type GuardrailsConfigOverrides,
 } from './guardrails.js';
 import { resolvePiExtensions, extensionDirName } from './resolve.js';
 import { killPiProcess } from './registry.js';
@@ -122,6 +123,11 @@ export interface PreparePiWorkspaceOptions {
   skillNames: string[];
   /** pi-web-access 扩展配置（buildWebSearchConfig 产物；含 API Key，来自 app_settings 映射，仅受支持字段）。 */
   webSearchConfig?: Record<string, string>;
+  /**
+   * pi-guardrails 安全护栏管理员覆盖项（来自 app_settings 的 `pi.guardrails.*`，
+   * guardrailsOverridesFromSettings 解析；缺省 = 内置安全默认）。装配期写入 guardrails.json。
+   */
+  guardrailsOverrides?: GuardrailsConfigOverrides;
 }
 
 export interface PreparedWorkspaceInfo {
@@ -280,7 +286,7 @@ export function preparePiWorkspace(
     if (version) {
       writeFileSync(
         guardrailsConfigPath,
-        JSON.stringify(buildGuardrailsConfig(version), null, 2),
+        JSON.stringify(buildGuardrailsConfig(version, opts.guardrailsOverrides), null, 2),
         'utf-8'
       );
     } else {

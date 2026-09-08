@@ -41,6 +41,7 @@ import {
   setConversationPinned,
   setConversationTitle,
 } from '../../../services/pi-agent-service.js';
+import { guardrailsOverridesFromSettings } from '../../../services/pi/guardrails.js';
 import {
   buildTranscriptFoldText,
   deleteChatConversation,
@@ -225,6 +226,8 @@ export async function register(app: FastifyInstance): Promise<void> {
             chatModel,
             imageModel: saCfg.image,
             extensionNames: resolvePiExtensions().map((s) => s.name),
+            // guardrails 管理员覆盖项来自 app_settings（admin/settings Pi Agent 分类）；变更 → 代数变 → 重拉
+            guardrailsOverrides: guardrailsOverridesFromSettings(getAppSettingsMap(getDb())),
           });
           let prepared;
           try {
@@ -236,6 +239,8 @@ export async function register(app: FastifyInstance): Promise<void> {
               // pi-web-access 扩展配置：DB app_settings 的 web search API Key 映射（仅受支持字段；
               // zhihu/doubao 扩展不支持，不写入）。装配期注入，扩展按次热读，改 Key 无需重拉进程。
               webSearchConfig: buildWebSearchConfig(getAppSettingsMap(getDb())),
+              // pi-guardrails 安全护栏：admin/settings Pi Agent 分类的配置参数 → guardrails.json
+              guardrailsOverrides: guardrailsOverridesFromSettings(getAppSettingsMap(getDb())),
             });
           } catch (err) {
             yield {

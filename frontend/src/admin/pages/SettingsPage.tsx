@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useState, useMemo } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import {
   BookOpen,
+  Bot,
   Calendar,
   Check,
   HelpCircle,
@@ -27,6 +28,8 @@ import { Button } from '../../platform/components/ui/Button';
 import { Input } from '../../platform/components/ui/Input';
 import { Card } from '../../platform/components/ui/Card';
 import { Dialog } from '../../platform/components/ui/Dialog';
+import { Select } from '../../platform/components/ui/Select';
+import { Toggle } from '../../platform/components/ui/Toggle';
 import { FieldLabel } from '../components/AdminBits';
 import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
 
@@ -61,6 +64,12 @@ const KNOWN_KEYS: { key: string; description: string }[] = [
   { key: 'loc.use_proxy', description: 'LoC 国会图书馆检索/图片是否使用全局代理（true = 启用，false = 直连）' },
   { key: 'google_translate.use_proxy', description: 'Google 翻译是否使用全局代理（true = 启用，false = 直连）' },
   { key: 'deeplx.use_proxy', description: 'DeepLX 翻译是否使用全局代理（true = 启用，false = 直连；未配置默认直连）' },
+  { key: 'pi.guardrails.enabled', description: 'Pi Agent 安全护栏总开关（false = 关闭全部 Guardrails 检查，不建议）' },
+  { key: 'pi.guardrails.features.policies', description: 'Pi Agent 文件保护策略（.env / 私钥等敏感文件禁止 Agent 读取与修改）' },
+  { key: 'pi.guardrails.features.permission_gate', description: 'Pi Agent 危险命令确认（递归删除 / 提权 / 格式化等危险命令触发确认）' },
+  { key: 'pi.guardrails.features.path_access', description: 'Pi Agent 越界路径访问控制（工作区外的文件访问拦截）' },
+  { key: 'pi.guardrails.path_access.mode', description: 'Pi Agent 越界路径访问模式：block/ask/allow' },
+  { key: 'pi.guardrails.path_access.allowed_paths', description: 'Pi Agent 越界路径放行白名单（JSON 数组，如 [{"kind":"file","path":"/data/x.txt"},{"kind":"directory","path":"/data/y"}]）' },
 ];
 
 /** 业务分类配置定义 */
@@ -145,6 +154,13 @@ const CATEGORY_DEFS: CategoryDef[] = [
       key.startsWith('brave.') ||
       key.startsWith('bocha.'),
   },
+  {
+    id: 'pi',
+    name: 'Pi Agent',
+    icon: Bot,
+    description: 'Skill Agent（pi）运行时配置：安全护栏（Guardrails）的文件保护策略 / 危险命令确认 / 越界路径访问控制',
+    match: (key) => key.startsWith('pi.'),
+  },
 ];
 
 /** 判断配置项所属分类 ID */
@@ -176,6 +192,298 @@ const EMPTY_EDIT: EditState = { id: null, key: '', value: '', description: '', s
 /** 内存级 SWR 缓存：支持路由切换/返回时 0ms 瞬间直出，并在后台静默更新 */
 let cachedSettingsData: AppSetting[] | null = null;
 let cachedBifrostFoldersData: BifrostFolder[] | null = null;
+
+/** Pi Agent 安全护栏（guardrails）设置键 → admin/settings 键名（与后端 seed.ts / guardrails.ts 对齐） */
+const PI_GUARDRAILS_KEYS: Record<string, string> = {
+  enabled: 'pi.guardrails.enabled',
+  policies: 'pi.guardrails.features.policies',
+  permissionGate: 'pi.guardrails.features.permission_gate',
+  pathAccess: 'pi.guardrails.features.path_access',
+  accessMode: 'pi.guardrails.path_access.mode',
+  allowedPaths: 'pi.guardrails.path_access.allowed_paths',
+  prefix: 'pi.guardrails.',
+};
+
+const PI_GUARDRAILS_FEATURE_DEFS: { key: string; label: string; desc: string }[] = [
+  {
+    key: PI_GUARDRAILS_KEYS.policies,
+    label: '文件保护策略（policies）',
+    desc: '保护 .env / 私钥等敏感文件，禁止 Agent 读取与修改；内置 agent-runtime 规则额外保护 .pi-agent/**（含真实 API Key）',
+  },
+  {
+    key: PI_GUARDRAILS_KEYS.permissionGate,
+    label: '危险命令确认（permissionGate）',
+    desc: '递归删除 / 提权 / 格式化等危险命令在执行前经确认弹窗二次确认（Allow once / Deny / Stop）',
+  },
+  {
+    key: PI_GUARDRAILS_KEYS.pathAccess,
+    label: '越界路径访问控制（pathAccess）',
+    desc: '拦截工作区之外的路径访问；mode=block 时越界一律拒绝（RPC 交互不可用，确定性最高）',
+  },
+];
+
+/**
+ * 从已加载的 settings 项解析 Pi Agent 安全护栏配置（缺键 → 内置默认值）。
+ * 用于渲染可管理的护栏配置面板：开关 + 模式选择 + 放行路径列表。
+ */
+function resolvePiGuardrails(items: AppSetting[]) {
+  const get = (key: string, fallback: string): string => {
+    const s = items.find((it) => it.key === key);
+    return s ? s.value : fallback;
+  };
+  const enabled = get(PI_GUARDRAILS_KEYS.enabled, 'true') === 'true';
+  const policies = get(PI_GUARDRAILS_KEYS.policies, 'true') === 'true';
+  const permissionGate = get(PI_GUARDRAILS_KEYS.permissionGate, 'true') === 'true';
+  const pathAccess = get(PI_GUARDRAILS_KEYS.pathAccess, 'true') === 'true';
+  const mode = get(PI_GUARDRAILS_KEYS.accessMode, 'block');
+  const raw = get(PI_GUARDRAILS_KEYS.allowedPaths, '[]');
+  let allowedPaths: { kind: string; path: string }[] = [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) allowedPaths = parsed;
+  } catch {
+    /* 非法 JSON：视为空 */
+  }
+  return { enabled, policies, permissionGate, pathAccess, mode, allowedPaths, rawAllowedPaths: raw };
+}
+
+interface AllowedPathRow {
+  kind: 'file' | 'directory';
+  path: string;
+}
+
+const PI_PATHACCESS_MODE_OPTIONS = [
+  { label: 'block（一律拒绝，RPC 推荐）', value: 'block' },
+  { label: 'ask（询问用户）', value: 'ask' },
+  { label: 'allow（放行并记录）', value: 'allow' },
+];
+
+/**
+ * Pi Agent 安全护栏（Guardrails）可视化管理卡片：
+ * 开关（总控 + 三档功能）+ 越界路径模式 + 放行路径列表。
+ * 每个开关即时落库（upsert app_settings），放行路径列表以 JSON 数组整体保存。
+ */
+function PiGuardrailsConfigCard({
+  items,
+  onChanged,
+}: {
+  items: AppSetting[];
+  onChanged: (next: AppSetting[]) => void;
+}) {
+  const { showToast } = useFeedback();
+  const [saving, setSaving] = useState(false);
+  const g = resolvePiGuardrails(items);
+
+  // 放行路径编辑草稿（独立于 items，保存前不写入选区）
+  const [pathRows, setPathRows] = useState<AllowedPathRow[]>(() =>
+    g.allowedPaths.filter(
+      (p): p is AllowedPathRow => (p.kind === 'file' || p.kind === 'directory') && !!p.path
+    )
+  );
+  const [pathsSaved, setPathsSaved] = useState(false);
+
+  // items 变化（如外部刷新）时同步放行路径草稿，避免显示过期数据
+  const rawAllowed = g.rawAllowedPaths;
+  const lastRawRef = useRef(rawAllowed);
+  useEffect(() => {
+    if (lastRawRef.current !== rawAllowed) {
+      lastRawRef.current = rawAllowed;
+      setPathRows(
+        g.allowedPaths.filter(
+          (p): p is AllowedPathRow => (p.kind === 'file' || p.kind === 'directory') && !!p.path
+        )
+      );
+      setPathsSaved(false);
+    }
+  }, [rawAllowed, g.allowedPaths]);
+
+  const setSetting = async (key: string, value: string, description = '') => {
+    const existing = items.find((it) => it.key === key);
+    const updated = existing
+      ? await adminService.updateSetting(key, { value })
+      : await adminService.createSetting({ key, value, description });
+    onChanged(
+      existing ? items.map((it) => (it.key === key ? updated : it)) : [...items, updated]
+    );
+    return updated;
+  };
+
+  const toggleBoolean = async (key: string, current: boolean, label: string) => {
+    try {
+      setSaving(true);
+      await setSetting(key, current ? 'false' : 'true');
+      showToast(`已${current ? '关闭' : '开启'}${label}`, { type: 'success' });
+    } catch (e: any) {
+      showToast(e?.message || '保存失败，请重试', { type: 'error' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const changeMode = async (value: string) => {
+    try {
+      setSaving(true);
+      await setSetting(PI_GUARDRAILS_KEYS.accessMode, value);
+      showToast(`越界路径模式已更新为 ${value}`, { type: 'success' });
+    } catch (e: any) {
+      showToast(e?.message || '保存失败，请重试', { type: 'error' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const validatePathRows = (): string | null => {
+    const cleaned = pathRows.filter((r) => r.path.trim());
+    if (pathRows.some((r) => !r.path.trim())) return '存在未填写路径的空行，请补全或删除';
+    if (cleaned.some((r) => r.kind !== 'file' && r.kind !== 'directory')) return '放行路径类型非法';
+    return null;
+  };
+
+  const savePaths = async () => {
+    const err = validatePathRows();
+    if (err) {
+      showToast(err, { type: 'error' });
+      return;
+    }
+    try {
+      setSaving(true);
+      const cleaned = pathRows.filter((r) => r.path.trim());
+      const json = JSON.stringify(cleaned);
+      await setSetting(PI_GUARDRAILS_KEYS.allowedPaths, json);
+      setPathsSaved(true);
+      showToast(cleaned.length ? `已保存 ${cleaned.length} 条放行路径` : '已清空放行路径', { type: 'success' });
+    } catch (e: any) {
+      showToast(e?.message || '保存失败，请重试', { type: 'error' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const renderToggleRow = (label: string, desc: string, checked: boolean, onToggle: () => void) => (
+    <div className="flex items-center justify-between gap-3 py-1.5">
+      <div className="min-w-0">
+        <p className="text-sm text-ink font-medium font-sans">{label}</p>
+        <p className="text-xs text-ink-light font-sans leading-relaxed mt-0.5">{desc}</p>
+      </div>
+      <Toggle checked={checked} onChange={onToggle} disabled={saving} className="shrink-0" />
+    </div>
+  );
+
+  return (
+    <Card className="p-5 border-accent/30 shadow-xs">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <Bot size={16} strokeWidth={1.5} className="text-accent shrink-0" />
+          <span className="font-serif text-base font-semibold text-ink">Pi Agent 安全护栏（Guardrails）</span>
+        </div>
+        <span className="text-[11px] text-ink-faint font-mono shrink-0">pi.guardrails.*</span>
+      </div>
+      <p className="mt-1 text-xs text-ink-light font-sans leading-relaxed">
+        Skill Agent（pi）装配期自动写入 <code className="font-mono text-accent">.pi-agent/extensions/guardrails.json</code>，
+        新对话工作区生效；此处修改即时入库，无需重启后端
+      </p>
+
+      <div className="mt-4 border-t border-dashed border-paper-grid pt-3 space-y-1">
+        {renderToggleRow(
+          '安全护栏总开关',
+          '关闭后全部 Guardrails 检查均不生效（泄露 .env / 私钥等风险自负，不建议）',
+          g.enabled,
+          () => void toggleBoolean(PI_GUARDRAILS_KEYS.enabled, g.enabled, '安全护栏')
+        )}
+        {PI_GUARDRAILS_FEATURE_DEFS.map((f) => {
+          const checked =
+            f.key === PI_GUARDRAILS_KEYS.policies
+              ? g.policies
+              : f.key === PI_GUARDRAILS_KEYS.permissionGate
+                ? g.permissionGate
+                : g.pathAccess;
+          return renderToggleRow(f.label, f.desc, checked, () =>
+            void toggleBoolean(f.key, checked, f.label.split('（')[0])
+          );
+        })}
+      </div>
+
+      <div className="mt-4 border-t border-dashed border-paper-grid pt-4">
+        <p className="text-sm text-ink font-medium font-sans">越界路径访问模式</p>
+        <div className="mt-2 max-w-xs">
+          <Select
+            size="sm"
+            value={g.mode}
+            onChange={(v) => void changeMode(v)}
+            options={PI_PATHACCESS_MODE_OPTIONS}
+            disabled={saving}
+          />
+        </div>
+        <p className="mt-1.5 text-xs text-ink-faint font-sans">
+          RPC 模式下 ask 会退化为「一律拒绝」且语义含糊，block 确定性最高；模式变更需新装配工作区生效
+        </p>
+      </div>
+
+      <div className="mt-4 border-t border-dashed border-paper-grid pt-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm text-ink font-medium font-sans">越界放行路径（allowedPaths）</p>
+            <p className="text-xs text-ink-light font-sans mt-0.5">
+              仅 mode=allow 时有意义：file 精确匹配 / directory 匹配目录及其后代；支持 <code className="font-mono">~/</code> 前缀
+            </p>
+          </div>
+          {pathsSaved && <span className="text-[11px] text-accent font-sans shrink-0">已保存</span>}
+        </div>
+        <div className="mt-3 space-y-2">
+          {pathRows.map((row, idx) => (
+            <div key={idx} className="flex items-center gap-2">
+              <Select
+                size="sm"
+                className="w-28 shrink-0"
+                value={row.kind}
+                onChange={(v) =>
+                  setPathRows((prev) =>
+                    prev.map((r, i) => (i === idx ? { ...r, kind: v as AllowedPathRow['kind'] } : r))
+                  )
+                }
+                options={[
+                  { label: 'file（文件）', value: 'file' },
+                  { label: 'directory（目录）', value: 'directory' },
+                ]}
+              />
+              <Input
+                className="flex-1"
+                value={row.path}
+                placeholder="如 /data/export"
+                onChange={(e) =>
+                  setPathRows((prev) =>
+                    prev.map((r, i) => (i === idx ? { ...r, path: e.target.value } : r))
+                  )
+                }
+              />
+              <button
+                type="button"
+                onClick={() => setPathRows((prev) => prev.filter((_, i) => i !== idx))}
+                title="删除此行"
+                className="p-1.5 rounded-md text-ink-light hover:text-error hover:bg-error/10 transition-colors active:scale-[0.96] shrink-0"
+              >
+                <Trash2 size={14} strokeWidth={1.5} />
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={() => setPathRows((prev) => [...prev, { kind: 'file', path: '' }])}
+            className="inline-flex items-center gap-1 text-xs text-accent font-medium hover:opacity-80 transition-opacity"
+          >
+            <Plus size={13} strokeWidth={2} />
+            添加放行路径
+          </button>
+        </div>
+        <div className="mt-3 flex justify-end">
+          <Button size="sm" onClick={() => void savePaths()} isLoading={saving}>
+            保存放行路径
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
 
 export const SettingsPage: React.FC = () => {
   const [items, setItems] = useState<AppSetting[]>(() => cachedSettingsData ?? []);
@@ -532,6 +840,15 @@ export const SettingsPage: React.FC = () => {
     (activeTab === 'all' || activeTab === 'bifrost') &&
     (!searchQuery || 'bifrost.allowed_folders'.includes(searchQuery.toLowerCase()) || '白名单'.includes(searchQuery));
 
+  const shouldShowPiGuardrailsCard =
+    (activeTab === 'all' || activeTab === 'pi') &&
+    (!searchQuery || 'pi.guardrails'.includes(searchQuery.toLowerCase()) || '护栏'.includes(searchQuery) || 'Pi Agent'.toLowerCase().includes(searchQuery.toLowerCase()));
+
+  const applyItems = (next: AppSetting[]) => {
+    cachedSettingsData = next;
+    setItems(next);
+  };
+
   return (
     <div className="space-y-6">
       {/* 页面主标题说明 */}
@@ -839,9 +1156,14 @@ export const SettingsPage: React.FC = () => {
                 </Card>
               )}
 
+              {/* Pi Agent 安全护栏专用卡片（可视化管理，覆盖 pi.guardrails.* 全部键） */}
+              {shouldShowPiGuardrailsCard && (
+                <PiGuardrailsConfigCard items={items} onChanged={applyItems} />
+              )}
+
               {/* 普通配置项卡片 */}
               {filteredItems
-                .filter((s) => s.key !== 'bifrost.allowed_folders')
+                .filter((s) => s.key !== 'bifrost.allowed_folders' && !s.key.startsWith(PI_GUARDRAILS_KEYS.prefix))
                 .map((s) => (
                   <Card key={s.id} className="p-5 transition-colors duration-150 hover:border-accent/40 shadow-xs">
                     {/* 第一层：Key 徽章 + 时间戳 + 操作按钮 */}
@@ -912,7 +1234,7 @@ export const SettingsPage: React.FC = () => {
               ))}
 
               {/* 空状态 */}
-              {filteredItems.length === 0 && !shouldShowBifrostWhitelistCard && (
+              {filteredItems.length === 0 && !shouldShowBifrostWhitelistCard && !shouldShowPiGuardrailsCard && (
                 <Card className="py-14 flex flex-col items-center gap-3 text-center">
                   <SettingsIcon size={32} strokeWidth={1} className="text-ink-faint" />
                   <p className="font-serif text-base text-ink">
