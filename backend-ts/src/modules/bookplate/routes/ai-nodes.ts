@@ -50,6 +50,7 @@ import {
   listChatConversations,
   persistTranscriptAssistant,
   persistTranscriptUser,
+  rewriteTranscriptFromWire,
   type HydratedMessage,
 } from '../../../services/chat-conversations.js';
 import {
@@ -462,21 +463,25 @@ export async function register(app: FastifyInstance): Promise<void> {
           : null;
         if (ws) {
           const msgs = Array.isArray(payload.messages) ? payload.messages : [];
-          const lastUser = [...msgs].reverse().find(
-            (m): m is { role: 'user'; content?: unknown; images?: unknown } =>
-              !!m && typeof m === 'object' && (m as { role?: unknown }).role === 'user'
-          );
-          if (lastUser) {
-            persistTranscriptUser(
-              ws,
-              {
-                content: String(lastUser.content ?? ''),
-                images: Array.isArray(lastUser.images)
-                  ? lastUser.images.filter((i): i is string => typeof i === 'string')
-                  : undefined,
-              },
-              'llm'
+          if (payload.sync_history) {
+            rewriteTranscriptFromWire(ws, msgs, 'llm');
+          } else {
+            const lastUser = [...msgs].reverse().find(
+              (m): m is { role: 'user'; content?: unknown; images?: unknown } =>
+                !!m && typeof m === 'object' && (m as { role?: unknown }).role === 'user'
             );
+            if (lastUser) {
+              persistTranscriptUser(
+                ws,
+                {
+                  content: String(lastUser.content ?? ''),
+                  images: Array.isArray(lastUser.images)
+                    ? lastUser.images.filter((i): i is string => typeof i === 'string')
+                    : undefined,
+                },
+                'llm'
+              );
+            }
           }
         }
         let content = '';
@@ -742,6 +747,31 @@ export async function register(app: FastifyInstance): Promise<void> {
       const ws = workspacePath(request.authUser!.id, workspaceId);
       const renamed = setConversationTitle(ws, payload.title);
       if (!renamed) return reply.code(404).send({ detail: '会话不存在' });
+      return { ok: true };
+    }
+  );
+
+  // ---- LLM 对话消息同步：前端删除/截断消息后，同步重写 conversation.jsonl ----
+  app.post(
+    '/api/modules/bookplate/chat/session/sync',
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const payload = (request.body ?? {}) as {
+        workspace_id?: string;
+        messages?: Array<{
+          role?: string;
+          content?: unknown;
+          images?: string[];
+          reasoning?: string;
+          tokenUsage?: HydratedMessage['tokenUsage'];
+        }>;
+      };
+      const workspaceId = sanitizeWorkspaceId(payload.workspace_id ?? '');
+      if (!workspaceId) {
+        return reply.code(400).send({ detail: 'workspace_id 不能为空' });
+      }
+      const ws = nodeWorkspace(request.authUser!.id, workspaceId);
+      rewriteTranscriptFromWire(ws, payload.messages ?? [], 'llm');
       return { ok: true };
     }
   );

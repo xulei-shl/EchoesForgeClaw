@@ -1,6 +1,6 @@
 import React, { memo, useMemo, useState } from 'react';
 import { PhotoView } from 'react-photo-view';
-import { Check, Copy, RefreshCw, Square } from 'lucide-react';
+import { Check, Copy, Pencil, RefreshCw, Square, Trash2 } from 'lucide-react';
 import { Streamdown, cjk, code } from '../../../../platform/utils/markdown';
 import { normalizeMarkdown } from '../../../../platform/utils/normalizeMarkdown';
 import { SkillFileCard } from './SkillFileCard';
@@ -40,6 +40,18 @@ interface ChatMessageItemProps {
   onCopy: (content: string, idx: number) => void;
   isCopied: boolean;
   onRetry?: () => void;
+  /** 删除消息回调（仅 LLM 模式启用） */
+  onDelete?: (idx: number) => void;
+  /** 编辑用户消息并重新发送回调（仅 LLM 模式启用） */
+  onEditResend?: (idx: number, newText: string) => void;
+  /** 重试 AI 消息回调（截断当前 AI 及后续，重新发送上一条 user，仅 LLM 模式启用） */
+  onRetryAssistant?: (idx: number) => void;
+  /** 是否允许删除该 AI 消息 */
+  canDelete?: boolean;
+  /** 是否允许编辑该用户消息 */
+  canEdit?: boolean;
+  /** 节点是否正在流式生成中 */
+  isGenerating?: boolean;
   /** 扩展交互提问（仅最后一条活动消息消费） */
   extensionDialog?: {
     request: PendingUiRequest | null;
@@ -62,10 +74,18 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
   onCopy,
   isCopied,
   onRetry,
+  onDelete,
+  onEditResend,
+  onRetryAssistant,
+  canDelete,
+  canEdit,
+  isGenerating,
   extensionDialog,
 }) => {
   // 单条消息生成时随机确定一个专属俏皮颜文字，在当前消息流式生命周期内保持稳定
   const [kaomoji] = useState(() => getRandomKaomoji());
+  const [isEditing, setIsEditing] = useState(false);
+  const [editText, setEditText] = useState('');
 
   // 流式代码块降级：流式期间仅启用 cjk 插件，暂缓昂贵的 Shiki 语法高亮；待本轮流式结束后一次性高亮渲染
   const streamPlugins = useMemo(
@@ -90,8 +110,26 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
     const rawContent = idx === 0 ? stripInjectedContext(msg.content, contextBlocks) : msg.content;
     // 展示层把正文中的 inputs/ 上传路径提取为可预览/下载卡片（发送给模型的原文不变）
     const { files: userFiles, display: userContent } = extractUserUploadRefs(rawContent, workspaceId);
+
+    const handleStartEdit = () => {
+      setEditText(rawContent);
+      setIsEditing(true);
+    };
+
+    const handleCancelEdit = () => {
+      setIsEditing(false);
+      setEditText('');
+    };
+
+    const handleConfirmResend = () => {
+      const trimmed = editText.trim();
+      if (!trimmed || isGenerating) return;
+      setIsEditing(false);
+      onEditResend?.(idx, trimmed);
+    };
+
     return (
-      <div className={`flex flex-col items-end gap-0.5 ${isLast ? 'msg-enter-anim' : ''}`}>
+      <div className={`flex flex-col items-end gap-0.5 w-full ${isLast ? 'msg-enter-anim' : ''}`}>
         {msg.images && msg.images.length > 0 && (
           <div className="flex flex-wrap justify-end gap-1.5 max-w-[85%]">
             {msg.images.map((img, i) => (
@@ -113,10 +151,75 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
             ))}
           </div>
         )}
-        {userContent && (
-          <div className="max-w-[85%] px-3 py-2 rounded-2xl rounded-br-sm bg-accent text-white text-sm leading-relaxed whitespace-pre-wrap break-words font-sans shadow-sm select-text [text-wrap:pretty]">
-            {userContent}
+        {isEditing ? (
+          <div className="w-full max-w-[90%] flex flex-col items-end gap-1.5 bg-paper-grid/20 border border-accent/40 rounded-2xl rounded-br-sm p-2.5 shadow-sm">
+            <textarea
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                  e.preventDefault();
+                  handleConfirmResend();
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  handleCancelEdit();
+                }
+              }}
+              className="w-full min-h-[64px] max-h-[220px] p-2 text-sm leading-relaxed text-ink bg-transparent focus:outline-none resize-y font-sans placeholder:text-ink-faint/50"
+              placeholder="编辑此条消息..."
+              autoFocus
+            />
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className="text-[10px] text-ink-faint/60 font-sans mr-1 select-none">
+                Ctrl+Enter 发送 · Esc 取消
+              </span>
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                className="px-2 py-1 text-ink-faint hover:text-ink rounded-md border border-paper-grid/60 hover:bg-paper-grid/30 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmResend}
+                disabled={!editText.trim() || isGenerating}
+                className="px-2.5 py-1 text-white bg-accent hover:bg-accent-hover disabled:opacity-50 rounded-md shadow-xs transition-colors font-medium"
+              >
+                重新发送
+              </button>
+            </div>
           </div>
+        ) : (
+          userContent && (
+            <div className="relative group/user flex items-start justify-end gap-1 max-w-[85%]">
+              {canEdit && !isGenerating && (
+                <div className="opacity-0 group-hover/user:opacity-100 flex items-center gap-0.5 shrink-0 mt-1 transition-opacity duration-150">
+                  <button
+                    type="button"
+                    onClick={() => onEditResend?.(idx, rawContent)}
+                    aria-label="重新发送此轮对话"
+                    title="重新发送此轮对话（删除后续消息）"
+                    className="p-1 text-ink-faint hover:text-ink hover:bg-paper-grid/40 rounded-md transition-colors duration-150 active:scale-[0.96]"
+                  >
+                    <RefreshCw size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleStartEdit}
+                    aria-label="编辑并重新发送"
+                    title="编辑并重新发送"
+                    className="p-1 text-ink-faint hover:text-ink hover:bg-paper-grid/40 rounded-md transition-colors duration-150 active:scale-[0.96]"
+                  >
+                    <Pencil size={13} />
+                  </button>
+                </div>
+              )}
+              <div className="px-3 py-2 rounded-2xl rounded-br-sm bg-accent text-white text-sm leading-relaxed whitespace-pre-wrap break-words font-sans shadow-sm select-text [text-wrap:pretty]">
+                {userContent}
+              </div>
+            </div>
+          )
         )}
       </div>
     );
@@ -182,19 +285,6 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
               </Streamdown>
             )}
           </div>
-          {!msg.streaming && hasContent && (
-            <div className="ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-              <button
-                type="button"
-                onClick={() => onCopy(msg.content, idx)}
-                aria-label="复制回复"
-                className="p-1.5 text-ink-faint hover:text-ink hover:bg-paper-grid/40 rounded-md transition-[color,background-color,transform] duration-150 active:scale-[0.96] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
-                title="复制回复"
-              >
-                {isCopied ? <Check size={14} /> : <Copy size={14} />}
-              </button>
-            </div>
-          )}
         </div>
       )}
       {/* 3.5 子代理运行卡片（subagent）：按对话顺序独立折叠展示；多条同现时仅最后一条默认展开 */}
@@ -227,31 +317,75 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
           ))}
         </div>
       )}
-      {/* 6. Token 用量与上下文窗口占比（非流式且有 tokenUsage 时展示） */}
-      {!msg.streaming && msg.tokenUsage && (
-        <div className="flex items-center gap-1.5 text-[10px] font-mono text-ink-faint/60 pl-1 mt-0.5 select-none">
-          <span>
-            {formatTokenCount(msg.tokenUsage.totalTokens)} tokens
-            {msg.tokenUsage.input != null && msg.tokenUsage.output != null && (
-              <span className="opacity-75 font-sans ml-1">
-                (↑{formatTokenCount(msg.tokenUsage.input)} ↓{formatTokenCount(msg.tokenUsage.output)})
-              </span>
-            )}
-          </span>
-          {msg.tokenUsage.percent != null && (
-            <>
-              <span>·</span>
-              <span
-                title={
-                  msg.tokenUsage.contextWindow
-                    ? `模型上下文窗口：${formatTokenCount(msg.tokenUsage.contextWindow)} tokens`
-                    : undefined
-                }
+      {/* 6. Token 用量与操作栏（复制 / 删除，与 token 用量同一行） */}
+      {!msg.streaming && (msg.tokenUsage || hasContent || canDelete) && (
+        <div className="flex items-center justify-between w-full max-w-[92%] text-[10px] pl-1 mt-0.5 select-none min-h-[22px]">
+          {/* 左侧：Token 用量与上下文窗口占比 */}
+          <div className="flex items-center gap-1.5 font-mono text-ink-faint/60">
+            {msg.tokenUsage ? (
+              <>
+                <span>
+                  {formatTokenCount(msg.tokenUsage.totalTokens)} tokens
+                  {msg.tokenUsage.input != null && msg.tokenUsage.output != null && (
+                    <span className="opacity-75 font-sans ml-1">
+                      (↑{formatTokenCount(msg.tokenUsage.input)} ↓{formatTokenCount(msg.tokenUsage.output)})
+                    </span>
+                  )}
+                </span>
+                {msg.tokenUsage.percent != null && (
+                  <>
+                    <span>·</span>
+                    <span
+                      title={
+                        msg.tokenUsage.contextWindow
+                          ? `模型上下文窗口：${formatTokenCount(msg.tokenUsage.contextWindow)} tokens`
+                          : undefined
+                      }
+                    >
+                      {msg.tokenUsage.percent}% 窗口
+                    </span>
+                  </>
+                )}
+              </>
+            ) : <span />}
+          </div>
+
+          {/* 右侧：复制 & 重试 & 删除 操作按钮 */}
+          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+            {hasContent && (
+              <button
+                type="button"
+                onClick={() => onCopy(msg.content, idx)}
+                aria-label="复制回复"
+                className="p-1 text-ink-faint hover:text-ink hover:bg-paper-grid/40 rounded transition-[color,background-color,transform] duration-150 active:scale-[0.96] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+                title="复制回复"
               >
-                {msg.tokenUsage.percent}% 窗口
-              </span>
-            </>
-          )}
+                {isCopied ? <Check size={12} /> : <Copy size={12} />}
+              </button>
+            )}
+            {Boolean(onRetryAssistant) && !isGenerating && (
+              <button
+                type="button"
+                onClick={() => onRetryAssistant?.(idx)}
+                aria-label="重新生成此回复"
+                className="p-1 text-ink-faint hover:text-accent hover:bg-paper-grid/40 rounded transition-[color,background-color,transform] duration-150 active:scale-[0.96] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+                title="重新生成此回复（删除当前回复及后续消息）"
+              >
+                <RefreshCw size={12} />
+              </button>
+            )}
+            {canDelete && !isGenerating && (
+              <button
+                type="button"
+                onClick={() => onDelete?.(idx)}
+                aria-label="删除此回复"
+                className="p-1 text-ink-faint hover:text-error hover:bg-error/10 rounded transition-[color,background-color,transform] duration-150 active:scale-[0.96] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-error"
+                title="删除此回复"
+              >
+                <Trash2 size={12} />
+              </button>
+            )}
+          </div>
         </div>
       )}
       {/* 被用户停止的回复：展示「重试」入口（仅当该消息是最后一条时，重试目标 = 本轮） */}

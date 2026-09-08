@@ -70,6 +70,10 @@ export interface ChatNodeProps {
   onStop?: (id: string) => void;
   /** 重试最后一轮（失败 / 中断后重新发送调用） */
   onRetry?: (id: string) => void;
+  /** 删除消息（仅 LLM 模式启用） */
+  onDeleteMessage?: (id: string, index: number) => void;
+  /** 编辑用户消息并重新发送（仅 LLM 模式启用） */
+  onEditResend?: (id: string, index: number, newText: string) => void;
   /** 更新上下文加载设置 */
   onUpdateSettings?: (id: string, settings: ChatNodeSettings) => void;
   /** 清空当前对话 */
@@ -132,6 +136,8 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
   onUploadFile,
   onStop,
   onRetry,
+  onDeleteMessage,
+  onEditResend,
   onUpdateSettings,
   onClearChat,
   onPositionChange,
@@ -191,6 +197,23 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
       showToast('复制失败，请手动选择文本复制', { type: 'error' });
     }
   }, []);
+
+  /** AI 气泡重试：倒序找到本轮 user 输入，触发截断重发（删除当前 AI 及后续内容） */
+  const handleRetryAssistant = useCallback(
+    (assistantIdx: number) => {
+      let targetUserIdx = -1;
+      for (let i = assistantIdx - 1; i >= 0; i--) {
+        if (messages[i].role === 'user') {
+          targetUserIdx = i;
+          break;
+        }
+      }
+      if (targetUserIdx >= 0) {
+        onEditResend?.(id, targetUserIdx, messages[targetUserIdx].content);
+      }
+    },
+    [id, messages, onEditResend]
+  );
 
   const handleDownload = () => {
     if (messages.length === 0) return;
@@ -432,6 +455,14 @@ const ChatNodeInner: React.FC<ChatNodeProps> = ({
                     onCopy={handleCopy}
                     isCopied={copiedId === idx}
                     onRetry={() => onRetry?.(id)}
+                    canDelete={mode === 'llm' && Boolean(onDeleteMessage)}
+                    canEdit={mode === 'llm' && Boolean(onEditResend)}
+                    isGenerating={isGenerating}
+                    onDelete={(targetIdx) => onDeleteMessage?.(id, targetIdx)}
+                    onEditResend={(targetIdx, newText) => onEditResend?.(id, targetIdx, newText)}
+                    onRetryAssistant={
+                      mode === 'llm' && Boolean(onEditResend) ? handleRetryAssistant : undefined
+                    }
                     extensionDialog={extensionDialog}
                   />
                 );

@@ -33,6 +33,8 @@ export interface ChatRequest {
    * 兼容历史档位字符串 minimal/low/medium/high/xhigh/max。非法值由执行器静默忽略）
    */
   thinking?: string | null;
+  /** 历史重写标记（仅 LLM 模式生效；编辑历史重发时同步截断 conversation.jsonl） */
+  sync_history?: boolean;
 }
 
 export interface AnalyzeImageRequest {

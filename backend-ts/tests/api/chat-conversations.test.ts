@@ -831,4 +831,113 @@ describe('FastClaw 模式 transcript', () => {
     const atts = streamBodies().map((b) => b.attachments ?? []);
     expect(atts).toEqual([[], []]);
   });
+
+  it('编辑重发（sync_history: true）截断历史并同步 conversation.jsonl', async () => {
+    const srv = await startMockOpenAIServer((_req, send) => {
+      const base = { id: 'chatcmpl-x', object: 'chat.completion.chunk', created: 0, model: 'mock-model' };
+      send(sseChunk({ ...base, choices: [{ index: 0, delta: { content: '新回答1' }, finish_reason: null }] }));
+      send(sseChunk({ ...base, choices: [], usage: { total_tokens: 10 } }));
+    });
+    openServers.push(srv);
+    const configId = await seedChat({ llmConfig: { baseUrl: srv.baseURL, modelName: 'mock-model' } });
+    const wsId = `${NODE_ID}_edit_resend`;
+
+    // 轮次 1
+    await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/chat',
+      headers: auth(),
+      payload: {
+        messages: [{ role: 'user', content: '问题一' }],
+        config_id: configId,
+        node_id: NODE_ID,
+        workspace_id: wsId,
+      },
+    });
+    // 轮次 2
+    await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/chat',
+      headers: auth(),
+      payload: {
+        messages: [
+          { role: 'user', content: '问题一' },
+          { role: 'assistant', content: '新回答1' },
+          { role: 'user', content: '问题二' },
+        ],
+        config_id: configId,
+        node_id: NODE_ID,
+        workspace_id: wsId,
+      },
+    });
+
+    let lines = readTranscript(wsId);
+    expect(lines.map((l) => l.role)).toEqual(['user', 'assistant', 'user', 'assistant']);
+
+    // 用户编辑问题一并重新发送：携带 sync_history: true，只有编辑后的问题一
+    const editResend = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/chat',
+      headers: auth(),
+      payload: {
+        messages: [{ role: 'user', content: '问题一（已修改）' }],
+        config_id: configId,
+        node_id: NODE_ID,
+        workspace_id: wsId,
+        sync_history: true,
+      },
+    });
+    expect(editResend.statusCode).toBe(200);
+
+    // 验证 transcript 已截断为修改后的首条 user + 新的 assistant 回复
+    lines = readTranscript(wsId);
+    expect(lines).toHaveLength(2);
+    expect(lines[0]!.role).toBe('user');
+    expect(lines[0]!.content).toBe('问题一（已修改）');
+    expect(lines[1]!.role).toBe('assistant');
+  });
+
+  it('POST /session/sync 支持删除消息后同步 conversation.jsonl', async () => {
+    const wsId = `${NODE_ID}_sync_delete`;
+    const wsDir = path.join(RUNTIME_ROOT, String(uid), 'workspace', wsId);
+    mkdirSync(wsDir, { recursive: true });
+
+    // 初始化 3 条消息
+    const syncResp = await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/chat/session/sync',
+      headers: auth(),
+      payload: {
+        workspace_id: wsId,
+        messages: [
+          { role: 'user', content: '问题A' },
+          { role: 'assistant', content: '回答A' },
+          { role: 'user', content: '问题B' },
+          { role: 'assistant', content: '回答B' },
+        ],
+      },
+    });
+    expect(syncResp.statusCode).toBe(200);
+
+    let lines = readTranscript(wsId);
+    expect(lines).toHaveLength(4);
+
+    // 模拟删除 回答B
+    await app.inject({
+      method: 'POST',
+      url: '/api/modules/bookplate/chat/session/sync',
+      headers: auth(),
+      payload: {
+        workspace_id: wsId,
+        messages: [
+          { role: 'user', content: '问题A' },
+          { role: 'assistant', content: '回答A' },
+          { role: 'user', content: '问题B' },
+        ],
+      },
+    });
+    lines = readTranscript(wsId);
+    expect(lines).toHaveLength(3);
+    expect(lines.map((l) => l.role)).toEqual(['user', 'assistant', 'user']);
+  });
 });

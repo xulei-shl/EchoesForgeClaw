@@ -2,12 +2,14 @@ import {
   appendFileSync,
   closeSync,
   existsSync,
+  mkdirSync,
   openSync,
   readFileSync,
   readSync,
   readdirSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
@@ -332,6 +334,51 @@ export function persistTranscriptAssistant(
       ...(msg.tokenUsage ? { tokenUsage: msg.tokenUsage } : {}),
       ts: Date.now(),
     });
+  } catch {
+    /* best-effort：磁盘写失败不影响对话流 */
+  }
+}
+
+/**
+ * 用指定的消息序列同步重写 transcript 文件（用于编辑重发截断或单删消息后的持久化对齐）。
+ */
+export function rewriteTranscriptFromWire(
+  ws: string,
+  messages: unknown[],
+  mode: 'llm' | 'agent'
+): void {
+  const file = path.join(ws, CONVERSATION_REL);
+  const valid: TranscriptMessage[] = [];
+  for (let i = 0; i < messages.length; i++) {
+    const raw = messages[i];
+    if (!raw || typeof raw !== 'object') continue;
+    const m = raw as {
+      role?: string;
+      content?: unknown;
+      images?: string[];
+      reasoning?: string;
+      tokenUsage?: HydratedMessage['tokenUsage'];
+    };
+    if (m.role !== 'user' && m.role !== 'assistant') continue;
+    const content = typeof m.content === 'string' ? m.content : '';
+    const images = sanitizeImages(m.images);
+    if (!content.trim() && !images?.length && !m.reasoning?.trim()) continue;
+    valid.push({
+      type: 'message',
+      id: `${m.role === 'user' ? 'u' : 'a'}-${Date.now()}-${i}`,
+      role: m.role,
+      content,
+      mode,
+      ...(images?.length ? { images } : {}),
+      ...(m.reasoning ? { reasoning: m.reasoning } : {}),
+      ...(m.tokenUsage ? { tokenUsage: m.tokenUsage } : {}),
+      ts: Date.now(),
+    });
+  }
+  try {
+    mkdirSync(ws, { recursive: true });
+    const text = valid.map((entry) => JSON.stringify(entry)).join('\n') + (valid.length ? '\n' : '');
+    writeFileSync(file, text, 'utf-8');
   } catch {
     /* best-effort：磁盘写失败不影响对话流 */
   }

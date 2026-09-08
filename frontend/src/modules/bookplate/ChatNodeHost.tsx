@@ -10,6 +10,7 @@ import {
   fetchWorkspaceFiles,
   renameConversation,
   setConversationPinned,
+  syncChatSessionMessages,
 } from './piSessionApi';
 import { ChatNode } from './components/ChatNode';
 import { getNodeTitle } from './nodeTypes';
@@ -161,7 +162,26 @@ function ChatNodeHostInner({
       prepareSendMessagesRequest: async ({ messages, requestMetadata }) => {
         pendingTokenUsageRef.current = null;
         const cur = nodesRef.current.find((n) => n.id === nodeId) ?? null;
-        let chatMsgs = uiToStore(messages);
+
+        // 本轮附加信息（sendMessage metadata 传入）
+        const bookplateMeta = (
+          requestMetadata as
+            | {
+                bookplate?: {
+                  images?: string[];
+                  syncHistory?: boolean;
+                  history?: ChatMessage[];
+                };
+              }
+            | undefined
+        )?.bookplate;
+        const turnImages = (bookplateMeta?.images ?? []) as string[];
+        const syncHistory = Boolean(bookplateMeta?.syncHistory);
+        const overrideHistory = bookplateMeta?.history;
+
+        // 若本次请求是重发截断（syncHistory 且显式提供了 targetHistory），优先使用裁剪后的精准历史，
+        // 避免 useChat 异步 setMessages 尚未 flush 导致携带旧的未裁剪后续消息
+        let chatMsgs = overrideHistory ? [...overrideHistory] : uiToStore(messages);
 
         // 上下文注入：仅首轮一次，持久在首条 user 消息（首条折叠卡片展示；清空对话后可重新注入）
         const firstUserIdx = chatMsgs.findIndex((m) => m.role === 'user');
@@ -193,12 +213,8 @@ function ChatNodeHostInner({
         }
 
         // 本轮附件图片（sendMessage metadata 传入）并入最后一条 user 消息（多模态 + 展示）
-        const turnImages = (
-          (requestMetadata as { bookplate?: { images?: string[] } } | undefined)?.bookplate
-            ?.images ?? []
-        ) as string[];
         const lastUserIdx = chatMsgs.findLastIndex((m) => m.role === 'user');
-        if (turnImages.length && lastUserIdx >= 0) {
+        if (turnImages.length && lastUserIdx >= 0 && !overrideHistory) {
           const last = chatMsgs[lastUserIdx];
           chatMsgs[lastUserIdx] = {
             ...last,
@@ -247,6 +263,7 @@ function ChatNodeHostInner({
             epoch: cur?.data?.epoch ?? 0,
             skills: cur ? collectSkillNames(cur) : [],
             workspace_id: workspaceId,
+            sync_history: syncHistory,
             // 节点内手动选择的模型名（仅 LLM 模式生效；空 = 跟随节点配置的默认模型）
             model_name:
               (cur?.data?.settings as ChatNodeSettings | undefined)?.modelOverride ?? null,
@@ -731,6 +748,107 @@ function ChatNodeHostInner({
     void regenerate();
   }, [status, clearError, regenerate, nodeId, setNodes]);
 
+  /** 删除某条消息（LLM 模式）：剔除该消息并同步更新 store 与后端 transcript */
+  const handleDeleteMessage = useCallback(
+    (_id: string, index: number) => {
+      if (statusRef.current === 'submitted' || statusRef.current === 'streaming') return;
+      const curStore = uiToStore(uiMessagesRef.current);
+      if (index < 0 || index >= curStore.length) return;
+
+      const next = curStore.filter((_, i) => i !== index);
+      const nextUi = storeToUI(next);
+      lastMirroredRef.current = JSON.stringify(next);
+      lastFlushedCountRef.current = next.length;
+
+      setMessages(nextUi);
+      setNodes((prev) =>
+        prev.map((n) =>
+          n.id === nodeId
+            ? { ...n, data: { ...n.data, messages: next } }
+            : n
+        )
+      );
+
+      // 同步后端 conversation.jsonl（防刷新/会话载入后复活）
+      const curWs = wsIdRef.current ?? activeWsRef.current;
+      if (curWs) {
+        void syncChatSessionMessages(curWs, next).catch(() => {});
+      }
+    },
+    [nodeId, setMessages, setNodes]
+  );
+
+  /** 编辑用户输入并重新发送（LLM 模式）：截断该节点之后的消息，以此作为最后一条 user 发送 */
+  const handleEditResend = useCallback(
+    (_id: string, index: number, newText: string) => {
+      if (statusRef.current === 'submitted' || statusRef.current === 'streaming') return;
+      const curStore = uiToStore(uiMessagesRef.current);
+      if (index < 0 || index >= curStore.length) return;
+      if (curStore[index].role !== 'user') return;
+
+      if (statusRef.current === 'error') clearError();
+
+      // 截断：保留 index 之前的历史消息
+      const preserved = curStore.slice(0, index);
+      const originalTarget = curStore[index];
+      // 目标 user 消息更新正文，保留原本的图片/上下文
+      const updatedUser: ChatMessage = {
+        ...originalTarget,
+        content: newText,
+      };
+      const targetHistory = [...preserved, updatedUser];
+
+      // 重置本轮状态（agent 步骤 / 产物文件缓冲 / 错误横幅），标记 isGenerating: true
+      pendingFilesRef.current.clear();
+      setNodes((prev) =>
+        prev.map((n) =>
+          n.id === nodeId
+            ? {
+                ...n,
+                data: {
+                  ...n.data,
+                  messages: targetHistory,
+                  agentSteps: [],
+                  error: null,
+                  isGenerating: true,
+                },
+              }
+            : n
+        )
+      );
+
+      // 空闲超时保护
+      const controller = new AbortController();
+      const idle = makeIdleTimeout(controller, PROMPT_SSE_IDLE_TIMEOUT_MS);
+      idle.arm();
+      idleRef.current = { idle, controller };
+      controller.signal.addEventListener('abort', () => {
+        if (idle.isTimedOut()) {
+          forcedErrorRef.current = '对话超时，请重试';
+          void chatStop();
+        }
+      });
+
+      // 先将 useChat 状态同步裁剪到 preserved 历史
+      setMessages(storeToUI(preserved));
+      // 发送新编辑的消息作为最后一条 user 输入，并通过 history 显式透传 targetHistory，
+      // 确保 prepareSendMessagesRequest 与后端 conversation.jsonl 同步对齐截断，不受 React 异步 setState 延迟干扰
+      void sendMessage(
+        { text: newText },
+        {
+          metadata: {
+            bookplate: {
+              images: updatedUser.images,
+              syncHistory: true,
+              history: targetHistory,
+            },
+          },
+        }
+      );
+    },
+    [clearError, chatStop, nodeId, sendMessage, setMessages, setNodes]
+  );
+
   // ---------- 渲染 ----------
   const config = h.configOf(node);
   const settings: ChatNodeSettings =
@@ -942,6 +1060,8 @@ function ChatNodeHostInner({
       onClearChat={h.handleClearChatFor}
       onStop={stop}
       onRetry={retry}
+      onDeleteMessage={config?.mode === 'llm' ? handleDeleteMessage : undefined}
+      onEditResend={config?.mode === 'llm' ? handleEditResend : undefined}
       onPositionChange={h.handlePositionChange}
       onSizeChange={h.handleSizeChange}
       onDrag={h.handleNodeDrag}

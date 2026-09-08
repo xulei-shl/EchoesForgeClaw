@@ -285,6 +285,31 @@ async function deleteWorkspaceFile(ws: string, relPath: string): Promise<void> {
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 }
 
+/** 同步会话消息（POST /chat/session/sync：删改消息后对齐服务端 conversation.jsonl）。 */
+async function syncChatSessionMessages(ws: string, messages: ChatMessage[]): Promise<void> {
+  const wire = messages.map((m) => ({
+    role: m.role,
+    content: m.content,
+    images: m.images,
+    reasoning: m.reasoning,
+    tokenUsage: m.tokenUsage,
+  }));
+  const resp = await fetch('/api/modules/bookplate/chat/session/sync', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ workspace_id: ws, messages: wire }),
+  });
+  if (resp.status === 401) {
+    handleUnauthorized();
+    throw new Error('401');
+  }
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const hit = sessionCache.get(ws);
+  if (hit) {
+    sessionCache.set(ws, { ...hit, messages });
+  }
+}
+
 /** 从会话快照缓存移除指定工作区（删除对话后调用，防止残留缓存被再次水合）。 */
 function evictSessionCache(ws: string): void {
   sessionCache.delete(ws);
@@ -304,4 +329,5 @@ export {
   renameConversation,
   deleteConversationSession,
   deleteWorkspaceFile,
+  syncChatSessionMessages,
 };
