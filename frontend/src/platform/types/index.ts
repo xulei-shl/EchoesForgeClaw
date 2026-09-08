@@ -601,13 +601,15 @@ export interface InstalledSkill {
   user_note?: string;
 }
 
-/** Admin 端：Bifrost Skill（本地缓存 + 远端未缓存合并浏览；Bifrost 可达时富化远端版本信息） */
+/** Admin 端：Bifrost Skill（本地缓存 + 远端未缓存合并浏览；Bifrost 可达时富化远端版本信息）
+ *  列表响应已瘦身：body/files 仅详情接口（GET /api/admin/bifrost-skills/:name）返回。 */
 export interface CachedBifrostSkill {
   name: string;
   description: string;
-  body: string;
-  /** 文件树（相对路径列表；未缓存时为空） */
-  files: string[];
+  /** SKILL.md 正文（仅详情接口返回） */
+  body?: string;
+  /** 文件树（相对路径列表；仅详情接口返回，未缓存时为空） */
+  files?: string[];
   /** 是否已缓存到本地共享区（false = 仅存在于远端仓库，点「同步最新」即可下载缓存） */
   cached?: boolean;
   /** 远端文件数 */

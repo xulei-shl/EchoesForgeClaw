@@ -152,11 +152,18 @@ export const adminService = {
 
   /* ---------------- Bifrost Skills 管理 ---------------- */
 
-  /** 共享区缓存的 Bifrost Skills 列表 + 远端未缓存 skill 合并浏览；force=true 绕过 TTL 缓存强制拉取远端 */
+  /** 共享区缓存的 Bifrost Skills 列表 + 远端未缓存 skill 合并浏览；force=true 绕过 TTL 缓存强制拉取远端。
+   *  列表已瘦身（无 body/files）；后端远端拉取单页超时 8s，此处放宽到 30s 避免客户端先于后端超时。 */
   listBifrostSkills: (params?: { q?: string; force?: boolean }): Promise<{ skills: CachedBifrostSkill[]; remote_available: boolean }> =>
     api.get<{ skills: CachedBifrostSkill[]; remote_available: boolean }, { skills: CachedBifrostSkill[]; remote_available: boolean }>(
       '/admin/bifrost-skills',
-      { params }
+      { params, timeout: 30000 }
+    ),
+  /** 单 skill 详情（SKILL.md 正文 + 文件树 + 用户标注；列表弹窗按需拉取） */
+  getBifrostSkillDetail: (name: string): Promise<CachedBifrostSkill> =>
+    api.get<CachedBifrostSkill, CachedBifrostSkill>(
+      `/admin/bifrost-skills/${encodeURIComponent(name)}`,
+      { timeout: 15000 }
     ),
   /** 强制从 Bifrost 拉取最新 zip 覆盖共享区（不触碰用户登记） */
   syncBifrostSkill: (name: string): Promise<{ skill: CachedBifrostSkill }> =>

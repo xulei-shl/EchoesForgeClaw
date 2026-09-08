@@ -68,6 +68,10 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
   const requestSeq = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // 增量渲染：大目录先渲染前 N 条，触底自动加载更多（避免一次性渲染几百条卡顿）
+  const [visibleCount, setVisibleCount] = useState(20);
+  const observerTarget = useRef<HTMLDivElement>(null);
+
   /** 已选 skill 名称集合（按 name 判等去重） */
   const selectedNames = useMemo(() => new Set(selections.map((s) => s.name)), [selections]);
 
@@ -100,6 +104,7 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
     setUploadError('');
     setLoading(true);
     setError('');
+    setVisibleCount(20);
     setPickerOpen(true);
   }, []);
 
@@ -195,14 +200,32 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
     });
   }, [skills, ratingFilter]);
 
-  // 搜索防抖：输入停止 350ms 后重新加载
+  // 搜索防抖：输入停止 350ms 后重新加载（每次搜索/打开重置增量渲染计数）
   useEffect(() => {
     if (!pickerOpen) return;
+    setVisibleCount(20);
     const t = window.setTimeout(() => {
       void loadSkills(q);
     }, 350);
     return () => window.clearTimeout(t);
   }, [pickerOpen, q, loadSkills]);
+
+  // 触底自动加载更多（增量渲染，避免大目录一次性渲染卡顿）
+  useEffect(() => {
+    if (!pickerOpen || filteredSkills.length === 0) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setVisibleCount((prev) => Math.min(prev + 20, filteredSkills.length));
+        }
+      },
+      { rootMargin: '100px' }
+    );
+    if (observerTarget.current) {
+      observer.observe(observerTarget.current);
+    }
+    return () => observer.disconnect();
+  }, [pickerOpen, filteredSkills.length, visibleCount]);
 
   /** 从 Bifrost 安装；成功后加入选择集（不关闭 picker，支持多选）。
    *  已选中的条目再次点击 = 取消选择：仅从选择集移除，不重复安装、不卸载工作区 skill。 */
@@ -318,7 +341,7 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
       )}
       {!loading &&
         !error &&
-        filteredSkills.map((s) => {
+        filteredSkills.slice(0, visibleCount).map((s) => {
           const isSelected = selectedNames.has(s.name);
           const noteText = s.user_note || s.note;
           return (
@@ -392,6 +415,14 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
             </div>
           );
         })}
+      {!loading && !error && filteredSkills.length > 0 && visibleCount < filteredSkills.length && (
+        <div ref={observerTarget} className="py-4 flex justify-center">
+          <Loader2 className="w-4 h-4 animate-spin text-ink-faint" />
+        </div>
+      )}
+      {!loading && !error && filteredSkills.length > 0 && visibleCount >= filteredSkills.length && (
+        <p className="text-xs text-ink-faint font-sans text-center py-4">已加载全部 {filteredSkills.length} 个</p>
+      )}
     </div>
   );
 

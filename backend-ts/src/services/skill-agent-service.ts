@@ -298,6 +298,7 @@ export function installSkillZip(userId: number, zipBytes: Uint8Array): Record<st
   removePath(registry);
   symlinkOrCopy(dest, registry);
   meta.path = `skills/${name}`;
+  invalidateSharedSkillsCache(); // 共享区覆盖，失效列表缓存
   return meta;
 }
 
@@ -367,9 +368,21 @@ export function removeSkill(userId: number, skillName: string): void {
   removePath(target); // 软链只移除登记条目，不动共享真实包
 }
 
-/** 扫描共享区 runtime/.agent/skills/，返回各 skill 元数据 + 目录修改时间（不含残缺目录）。 */
+/** 共享区 skill 列表的内存缓存（TTL 30s；写操作主动失效），避免每次检索全量同步扫描磁盘 + 文件树。 */
+let sharedSkillsCache: { skills: Record<string, unknown>[]; expiresAt: number } | null = null;
+const SHARED_SKILLS_CACHE_TTL_MS = 30_000;
+
+/** 共享区变更（安装/同步/删除）后主动失效，保证下次读取立即反映磁盘状态。 */
+export function invalidateSharedSkillsCache(): void {
+  sharedSkillsCache = null;
+}
+
+/** 扫描共享区 runtime/.agent/skills/，返回各 skill 元数据 + 目录修改时间（不含残缺目录）。
+ *  结果带短 TTL 缓存；调用方如需修改返回对象应先浅拷贝（如 getMergedBifrostSkills）。 */
 export function listSharedBifrostSkills(): Record<string, unknown>[] {
   if (!existsSync(REAL_SKILLS_ROOT)) return [];
+  const now = Date.now();
+  if (sharedSkillsCache && sharedSkillsCache.expiresAt > now) return sharedSkillsCache.skills;
   const items: Record<string, unknown>[] = [];
   for (const child of readdirSync(REAL_SKILLS_ROOT).sort()) {
     const full = path.join(REAL_SKILLS_ROOT, child);
@@ -386,6 +399,7 @@ export function listSharedBifrostSkills(): Record<string, unknown>[] {
     }
     items.push(meta);
   }
+  sharedSkillsCache = { skills: items, expiresAt: now + SHARED_SKILLS_CACHE_TTL_MS };
   return items;
 }
 
@@ -395,7 +409,9 @@ export function updateSharedBifrostSkill(zipBytes: Uint8Array): Record<string, u
   const name = info.name;
   const dest = path.join(REAL_SKILLS_ROOT, name);
   removePath(dest);
-  return extractSkillZip(zipBytes, dest, info);
+  const meta = extractSkillZip(zipBytes, dest, info);
+  invalidateSharedSkillsCache(); // 共享区覆盖，失效列表缓存
+  return meta;
 }
 
 /** Admin 删除：从共享区彻底删除 skill 包，并清理指向它的用户登记软链；返回清理条数。 */
@@ -405,6 +421,7 @@ export function removeSharedBifrostSkill(skillName: string): number {
     throw new SkillValidationError('skill 名称含非法字符');
   }
   removePath(path.join(REAL_SKILLS_ROOT, name));
+  invalidateSharedSkillsCache(); // 共享区删除，失效列表缓存
   let cleaned = 0;
   if (!existsSync(RUNTIME_ROOT)) return cleaned;
   for (const entry of readdirSync(RUNTIME_ROOT)) {

@@ -44,7 +44,8 @@ export async function register(app: FastifyInstance): Promise<void> {
     { preHandler: app.authenticate },
     async (request) => {
       const q = (request.query ?? {}) as { q?: string; limit?: string };
-      const limit = Number(q.limit ?? 50) || 50;
+      // 默认 200：列表已瘦身（无 body/files），支持数百 skill 目录浏览
+      const limit = Number(q.limit ?? 200) || 200;
       return getMergedBifrostSkills({
         db: getDb(),
         userId: request.authUser!.id,

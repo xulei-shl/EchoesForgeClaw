@@ -457,8 +457,24 @@ describe('admin bifrost-skills 管理', () => {
       (s) => s.name === 'admin-skill'
     );
     expect(found).toBeTruthy();
-    expect(found!.files).toContain('SKILL.md');
+    // 列表已瘦身：不返回 body/files，仅保留 file_count
+    expect(found!.body).toBeUndefined();
+    expect(found!.files).toBeUndefined();
+    expect(found!.file_count).toBeGreaterThan(0);
     expect(typeof found!.updated_at).toBe('number');
+
+    // 详情接口返回完整信息（SKILL.md 正文 + 文件树）
+    const detail = await app.inject({
+      method: 'GET',
+      url: '/api/admin/bifrost-skills/admin-skill',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(detail.statusCode).toBe(200);
+    const d = detail.json() as { name: string; body: string; files: string[]; cached: boolean };
+    expect(d.name).toBe('admin-skill');
+    expect(d.files).toContain('SKILL.md');
+    expect(d.body).toBeTruthy();
+    expect(d.cached).toBe(true);
   });
 
   it('sync：拉取最新 zip 覆盖共享区（不动用户登记）', async () => {
@@ -584,7 +600,10 @@ describe('admin bifrost-skills 管理', () => {
     const local = body.skills.find((s) => s.name === 'browse-skill');
     expect(local?.cached).toBe(true);
     expect(local?.latest_version).toBe('2.0');
-    expect(local?.files).toContain('SKILL.md');
+    // 列表瘦身：本地缓存条目同样不含 body/files，但保留 file_count
+    expect(local?.body).toBeUndefined();
+    expect(local?.files).toBeUndefined();
+    expect(typeof local?.file_count).toBe('number');
     const remoteOnly = body.skills.find((s) => s.name === 'remote-only-skill');
     expect(remoteOnly).toBeTruthy();
     expect(remoteOnly!.cached).toBe(false);

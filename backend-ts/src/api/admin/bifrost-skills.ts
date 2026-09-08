@@ -5,10 +5,12 @@ import {
   BifrostNotConfiguredError,
   BifrostNotFoundError,
   downloadBifrostSkillZip,
+  getBifrostSkillDetail,
   getMergedBifrostSkills,
 } from '../../services/bifrost-service.js';
 import {
   RESOURCE_TYPE_BIFROST_SKILL,
+  getUserAnnotation,
   setUserAnnotation,
 } from '../../services/annotation-service.js';
 import {
@@ -20,6 +22,7 @@ import {
 /**
  * Admin 端 Bifrost Skills 管理（对应 Python `app/api/admin/bifrost_skills.py`）：
  * - GET /api/admin/bifrost-skills（共享区缓存列表 + 远端未缓存 skill 合并浏览；富化当前用户的 user_rating 与 user_note；force=1 绕过 TTL）
+ * - GET /api/admin/bifrost-skills/:name（单 skill 详情：SKILL.md 正文 + 文件树 + 用户标注；列表已瘦身，详情按需拉取）
  * - POST /api/admin/bifrost-skills/:name/sync（强制拉取最新 zip 覆盖共享区，不动用户登记）
  * - PUT /api/admin/bifrost-skills/:name/note（写入/更新当前用户的 skill 备注，空串清除；独立于 skill 包）
  * - DELETE /api/admin/bifrost-skills/:name（删除共享包并清理指向它的用户登记软链）
@@ -53,7 +56,8 @@ export async function registerBifrostSkillsAdminRouter(app: FastifyInstance): Pr
   app.get('/api/admin/bifrost-skills', admin, async (request) => {
     const q = (request.query ?? {}) as { q?: string; force?: string; limit?: string };
     const force = q.force === '1' || q.force === 'true';
-    const limit = Number(q.limit ?? 100) || 100;
+    // 默认 200：列表已瘦身（无 body/files），支持数百 skill 目录浏览
+    const limit = Number(q.limit ?? 200) || 200;
     return getMergedBifrostSkills({
       db: getDb(),
       userId: request.authUser?.id,
@@ -61,6 +65,30 @@ export async function registerBifrostSkillsAdminRouter(app: FastifyInstance): Pr
       limit,
       force,
     });
+  });
+
+  // 单个 skill 详情（列表瘦身后的完整信息：SKILL.md 正文 + 文件树 + 用户标注；
+  // 本地未缓存时从远端按 id 拉取 Management 详情，不触发 zip 下载）
+  app.get('/api/admin/bifrost-skills/:name', admin, async (request, reply) => {
+    try {
+      const skillName = checkSkillName((request.params as { name: string }).name);
+      const detail = await getBifrostSkillDetail(getDb(), skillName);
+      if (!detail) {
+        return reply.code(404).send({ detail: 'skill 不存在（本地无缓存且远端仓库中未找到）' });
+      }
+      const userId = request.authUser?.id;
+      if (userId) {
+        const ann = getUserAnnotation(getDb(), userId, RESOURCE_TYPE_BIFROST_SKILL, skillName);
+        detail.user_rating = ann.rating;
+        detail.user_note = ann.note;
+        detail.note = ann.note;
+      }
+      return detail;
+    } catch (err) {
+      if (err instanceof SkillValidationError) return reply.code(400).send({ detail: err.message });
+      const e = bifrostErrorHttp(err);
+      return reply.code(e.code).send(e.body);
+    }
   });
 
   // 强制从 Bifrost 拉取最新 zip 覆盖共享区（不触碰用户登记）

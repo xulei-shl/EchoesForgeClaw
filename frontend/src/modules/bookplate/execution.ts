@@ -79,7 +79,6 @@ export function resolveNodeRunInputs(
     edges,
     portTypesOf
   );
-  const settings: NodeRunSettings = node.data?.settings ?? DEFAULT_RUN_SETTINGS;
   // 图书元数据：文本与封面两个开关独立控制——「包含图书元数据」只注入元数据文本，
   // 「加载图书封面图片」只注入封面；任一开启即解析图书（直接连线的 book_info 优先，
   // 未直接连线时沿连线向上追溯实际连通的 book_info，无连通者才回退画布根节点），

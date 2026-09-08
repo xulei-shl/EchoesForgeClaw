@@ -127,7 +127,8 @@ async function getJson(
   cfg: BifrostAuthConfig,
   apiPath: string,
   params?: Record<string, string>,
-  raw = false
+  raw = false,
+  timeoutMs = 30_000
 ): Promise<unknown> {
   const url = `${cfg.base_url}${apiPath}`;
   let resp: Response;
@@ -135,7 +136,7 @@ async function getJson(
     const qs = params ? `?${new URLSearchParams(params).toString()}` : '';
     resp = await fetch(url + qs, {
       headers: headersOf(cfg),
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (err) {
     throw new BifrostError(`连接 Bifrost 失败: ${err instanceof Error ? err.message : String(err)}`);
@@ -379,15 +380,31 @@ export async function getPromptRaw(db: DB, promptId: string): Promise<unknown> {
   return getJson(cfg, `/api/prompt-repo/prompts/${promptId}`, undefined, true);
 }
 
-/** 检索 Bifrost Skills 仓库（按名称/描述）；force=true 绕过 5 分钟 TTL 缓存强制拉取远端。 */
-export async function searchBifrostSkills(db: DB, q = '', limit = 50, force = false): Promise<Record<string, any>[]> {
-  const cfg = requireConfig(db);
-  const params: Record<string, string> = { limit: String(Math.min(Math.max(limit, 1), 100)) };
-  if (q.trim()) params.search = q.trim();
-  const cacheKey = `skills:${cfg.base_url}:${params.search ?? ''}:${params.limit}`;
-  const payload = await cached(cacheKey, () => getJson(cfg, '/api/skills', params), force);
-  const skills = asList(payload, 'skills');
-  return skills.map((s) => ({
+// ---- Bifrost Skills 目录检索（区别于 prompts：全量目录按 base_url 缓存，关键词本地过滤）----
+
+/** Bifrost /api/skills 单页 limit 上限（官方接口约束）。 */
+const SKILLS_PAGE_SIZE = 100;
+/** 目录拉取的防御性上限（防止分页异常时死循环）。 */
+const SKILLS_CATALOG_MAX = 2000;
+/** 单页拉取超时：检索路径要快（交互场景），远小于 prompts 的 30s。 */
+const SKILLS_FETCH_TIMEOUT_MS = 8_000;
+/** 拉取失败后的「不可达」负缓存窗口：期间直接跳过远端，仅用本地缓存。 */
+const SKILLS_UNREACHABLE_TTL_MS = 60_000;
+
+/** Bifrost 不可达负缓存：base_url → 窗口截止时间。 */
+const unreachableUntil = new Map<string, number>();
+function markSkillsUnreachable(baseUrl: string): void {
+  unreachableUntil.set(baseUrl, Date.now() + SKILLS_UNREACHABLE_TTL_MS);
+}
+function isSkillsUnreachable(baseUrl: string): boolean {
+  const until = unreachableUntil.get(baseUrl) ?? 0;
+  if (until <= Date.now()) unreachableUntil.delete(baseUrl);
+  return until > Date.now();
+}
+
+/** 压缩远端 skill 原始对象为检索元数据（与旧 searchBifrostSkills 输出口径一致）。 */
+function compactSkill(s: Record<string, any>): Record<string, any> {
+  return {
     id: s.id ?? '',
     name: s.name ?? '',
     description: s.description ?? '',
@@ -399,7 +416,155 @@ export async function searchBifrostSkills(db: DB, q = '', limit = 50, force = fa
     files: (Array.isArray(s.files) ? s.files : []).map((f) => ({ path: f?.path ?? '' })),
     created_at: s.created_at ?? null,
     updated_at: s.updated_at ?? null,
-  }));
+  };
+}
+
+/** 分页拉取 Bifrost Skills 全量目录（updated_at desc；单页 100 条，直到 total 或不足一页）。 */
+async function fetchSkillCatalog(db: DB): Promise<Record<string, any>[]> {
+  const cfg = requireConfig(db);
+  const collected: Record<string, any>[] = [];
+  const seen = new Set<string>();
+  const maxPages = Math.ceil(SKILLS_CATALOG_MAX / SKILLS_PAGE_SIZE);
+  for (let page = 0; page < maxPages; page++) {
+    const payload = await getJson(
+      cfg,
+      '/api/skills',
+      {
+        limit: String(SKILLS_PAGE_SIZE),
+        offset: String(page * SKILLS_PAGE_SIZE),
+        sort_by: 'updated_at',
+        order: 'desc',
+      },
+      false,
+      SKILLS_FETCH_TIMEOUT_MS
+    );
+    const skills = asList(payload, 'skills');
+    if (!skills.length) break;
+    for (const s of skills) {
+      const name = String(s.name ?? '');
+      if (name && !seen.has(name)) {
+        seen.add(name);
+        collected.push(s);
+      }
+    }
+    const total =
+      payload && typeof payload === 'object' && typeof (payload as { total?: unknown }).total === 'number'
+        ? (payload as { total: number }).total
+        : undefined;
+    if (total != null && collected.length >= total) break;
+    if (skills.length < SKILLS_PAGE_SIZE) break; // 无 total 时按「不足一页」判定结束
+  }
+  return collected;
+}
+
+/** 本地过滤全量目录（名称/描述/正文），截取前 limit 条。 */
+function filterSkillCatalog(catalog: Record<string, any>[], q: string, limit: number): Record<string, any>[] {
+  const keyword = q.trim().toLowerCase();
+  const out: Record<string, any>[] = [];
+  for (const s of catalog) {
+    if (keyword) {
+      const hay = `${s.name ?? ''}\n${s.description ?? ''}\n${s.skill_md_body ?? ''}`.toLowerCase();
+      if (!hay.includes(keyword)) continue;
+    }
+    out.push(compactSkill(s));
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+/**
+ * 检索 Bifrost Skills 仓库（全量目录 TTL 缓存 + 本地关键词过滤）。
+ * - 目录按 base_url 缓存 5 分钟（force=true 绕过），关键词不进缓存 key → 逐词搜索不再穿透远端；
+ * - 拉取失败（连接/HTTP 错误）进入 60s 不可达负缓存，期间抛 BifrostError（调用方降级为仅本地缓存）；
+ * - 未配置（BifrostNotConfiguredError）不缓存失败，配置后立即生效。
+ */
+export async function searchBifrostSkills(db: DB, q = '', limit = 50, force = false): Promise<Record<string, any>[]> {
+  const cfg = requireConfig(db);
+  const cappedLimit = Math.min(Math.max(limit, 1), SKILLS_CATALOG_MAX);
+  const catalogKey = `skills-catalog:${cfg.base_url}`;
+  if (!force) {
+    if (isSkillsUnreachable(cfg.base_url)) {
+      throw new BifrostError('Bifrost 暂不可达（负缓存窗口内，请稍后重试）');
+    }
+    const hit = ttlCache.get(catalogKey);
+    if (hit && hit.expiresAt > Date.now()) {
+      return filterSkillCatalog(hit.value as Record<string, any>[], q, cappedLimit);
+    }
+  }
+  let catalog: Record<string, any>[];
+  try {
+    catalog = await fetchSkillCatalog(db);
+  } catch (err) {
+    if (err instanceof BifrostError && !(err instanceof BifrostNotConfiguredError)) {
+      markSkillsUnreachable(cfg.base_url);
+    }
+    throw err;
+  }
+  ttlCache.set(catalogKey, { value: catalog, expiresAt: Date.now() + TTL_MS });
+  return filterSkillCatalog(catalog, q, cappedLimit);
+}
+
+/**
+ * 单个 skill 的完整元数据（SKILL.md 正文 + 文件树），供列表瘦身后的详情展示。
+ * 本地共享区已缓存则直接读盘返回；否则按 name 定位远端 id 后拉取 Management 详情。
+ * 不存在返回 null。
+ */
+export async function getBifrostSkillDetail(db: DB, skillName: string): Promise<Record<string, any> | null> {
+  const name = (skillName ?? '').trim();
+  if (!name) return null;
+  const local = listSharedBifrostSkills().find((s) => String(s.name) === name);
+  if (local) {
+    const detail: Record<string, any> = { ...local, cached: true };
+    if (typeof detail.file_count !== 'number') {
+      detail.file_count = Array.isArray(detail.files) ? (detail.files as unknown[]).length : 0;
+    }
+    return detail;
+  }
+
+  // 未缓存：从目录定位 id → Management 详情
+  const cfg = requireConfig(db);
+  if (isSkillsUnreachable(cfg.base_url)) {
+    throw new BifrostError('Bifrost 暂不可达（负缓存窗口内，请稍后重试）');
+  }
+  const catalogKey = `skills-catalog:${cfg.base_url}`;
+  let catalog: Record<string, any>[];
+  const hit = ttlCache.get(catalogKey);
+  if (hit && hit.expiresAt > Date.now()) {
+    catalog = hit.value as Record<string, any>[];
+  } else {
+    try {
+      catalog = await fetchSkillCatalog(db);
+      ttlCache.set(catalogKey, { value: catalog, expiresAt: Date.now() + TTL_MS });
+    } catch (err) {
+      if (err instanceof BifrostError && !(err instanceof BifrostNotConfiguredError)) {
+        markSkillsUnreachable(cfg.base_url);
+      }
+      throw err;
+    }
+  }
+  const found = catalog.find((s) => String(s.name) === name);
+  if (!found?.id) return null;
+  const payload = await getJson(
+    cfg,
+    `/api/skills/${encodeURIComponent(String(found.id))}`,
+    undefined,
+    false,
+    SKILLS_FETCH_TIMEOUT_MS
+  );
+  const skill =
+    payload && typeof payload === 'object' && (payload as { skill?: unknown }).skill
+      ? (payload as { skill: Record<string, any> }).skill
+      : payload;
+  if (!skill || typeof skill !== 'object') throw new BifrostError('Bifrost 返回了非预期的 skill 数据');
+  const raw = skill as Record<string, any>;
+  const compact = compactSkill(raw);
+  return {
+    ...compact,
+    body: compact.skill_md_body ?? '',
+    cached: false,
+    // 详情弹窗按路径字符串渲染，与管理端列表（本地缓存）口径一致
+    files: (Array.isArray(raw.files) ? raw.files : []).map((f) => String((f as { path?: unknown })?.path ?? '')),
+  };
 }
 
 /** 下载单个 skill 的完整 ZIP（Serving API，公开接口）。 */
@@ -452,8 +617,8 @@ export async function getMergedBifrostSkills(
   const { db, userId, q = '', limit = 50, force = false } = options;
   const keyword = q.trim().toLowerCase();
 
-  // 1. 本地共享区缓存
-  const localSkills = listSharedBifrostSkills();
+  // 1. 本地共享区缓存（浅拷贝：下方合并会写回远端富化字段，避免污染共享列表缓存）
+  const localSkills = listSharedBifrostSkills().map((s) => ({ ...s }));
   const localNames = new Set<string>();
   for (const s of localSkills) {
     if (s?.name) localNames.add(String(s.name));
@@ -497,6 +662,9 @@ export async function getMergedBifrostSkills(
       s.file_count = r.file_count ?? 0;
       s.remote_updated_at = r.updated_at ?? null;
     }
+    if (typeof s.file_count !== 'number') {
+      s.file_count = Array.isArray(s.files) ? (s.files as unknown[]).length : 0;
+    }
     s.cached = true;
     merged.push(s);
   }
@@ -507,6 +675,7 @@ export async function getMergedBifrostSkills(
     if (!name || localNames.has(name)) continue;
     merged.push({
       cached: false,
+      id: r.id ?? '',
       name,
       description: r.description ?? '',
       body: r.skill_md_body ?? '',
@@ -529,6 +698,14 @@ export async function getMergedBifrostSkills(
       s.user_note = ann?.note ?? '';
       s.note = ann?.note ?? '';
     }
+  }
+
+  // 6. 列表瘦身：检索/管理列表仅需元数据（body/files 由详情接口按需返回），
+  //    支撑数百 skill 目录的轻量响应（详情弹窗改走 GET /api/admin/bifrost-skills/:name）
+  for (const s of merged) {
+    delete s.body;
+    delete s.skill_md_body;
+    delete s.files;
   }
 
   return { skills: merged, remote_available: remoteAvailable };

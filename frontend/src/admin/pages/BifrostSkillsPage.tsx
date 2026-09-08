@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Boxes, FolderSync, RefreshCw, Search, StickyNote, Trash2, FileText, FolderTree } from 'lucide-react';
+import { Boxes, FolderSync, Loader2, RefreshCw, Search, StickyNote, Trash2, FileText, FolderTree } from 'lucide-react';
 import { adminService, annotationService } from '../../platform/services/admin';
 import type { CachedBifrostSkill } from '../../platform/types';
 import { Button } from '../../platform/components/ui/Button';
@@ -30,10 +30,29 @@ export const BifrostSkillsPage: React.FC = () => {
   const [savingNote, setSavingNote] = useState(false);
   const { dialog, showToast } = useFeedback();
 
+  // 增量渲染：大目录先渲染前 N 条，触底自动加载更多（避免一次性渲染几百条卡片卡顿）
+  const [visibleCount, setVisibleCount] = useState(60);
+  const observerTarget = useRef<HTMLDivElement>(null);
+
   // 打开详情时同步备注草稿
   useEffect(() => {
     setNoteDraft(detail?.user_note ?? detail?.note ?? '');
   }, [detail]);
+
+  /** 打开详情：先用列表信息即时渲染，再按需拉取完整详情（body/files）补齐 */
+  const openDetail = useCallback(
+    async (s: CachedBifrostSkill) => {
+      setDetail(s);
+      try {
+        const full = await adminService.getBifrostSkillDetail(s.name);
+        setDetail((prev) => (prev && prev.name === s.name ? { ...prev, ...full } : prev));
+      } catch (e: any) {
+        // 远端不可达等场景降级展示列表信息（无 body/files，弹窗相应位置显示「无内容」）
+        showToast(e?.message || '详情加载失败，已展示列表信息', { type: 'error' });
+      }
+    },
+    [showToast]
+  );
 
   /** 保存用户的评分 */
   const handleUpdateRating = async (skillName: string, nextRating: number, currentNote?: string) => {
@@ -218,6 +237,28 @@ export const BifrostSkillsPage: React.FC = () => {
     });
   }, [skills, ratingFilter]);
 
+  // 搜索词/筛选条件变化时重置增量渲染计数
+  useEffect(() => {
+    setVisibleCount(60);
+  }, [q, ratingFilter]);
+
+  // 触底自动加载更多（增量渲染，避免大目录一次性渲染卡顿）
+  useEffect(() => {
+    if (filteredSkills.length === 0) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setVisibleCount((prev) => Math.min(prev + 60, filteredSkills.length));
+        }
+      },
+      { rootMargin: '200px' }
+    );
+    if (observerTarget.current) {
+      observer.observe(observerTarget.current);
+    }
+    return () => observer.disconnect();
+  }, [filteredSkills.length, visibleCount]);
+
   const anyBusy = syncingAll || busy.size > 0;
   const remoteUnavailable = skills.length > 0 && !remoteAvailable;
 
@@ -340,7 +381,7 @@ export const BifrostSkillsPage: React.FC = () => {
             </Card>
           ) : (
             <div className="space-y-3">
-              {filteredSkills.map((s) => {
+              {filteredSkills.slice(0, visibleCount).map((s) => {
                 const isBusy = busy.has(s.name);
                 const isCached = s.cached !== false;
                 const noteText = s.user_note || s.note;
@@ -348,7 +389,7 @@ export const BifrostSkillsPage: React.FC = () => {
                   <Card 
                     key={s.name} 
                     className="p-4 cursor-pointer transition-colors duration-150 hover:border-accent/40 active:scale-[0.98] shadow-xs"
-                    onClick={() => setDetail(s)}
+                    onClick={() => void openDetail(s)}
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0 flex-1">
@@ -377,7 +418,7 @@ export const BifrostSkillsPage: React.FC = () => {
                         <div className="flex items-center gap-3 mt-2 text-[10px] text-ink-faint font-sans tabular-nums">
                           <span>
                             {isCached
-                              ? `${s.files.length} 个文件`
+                              ? `${s.file_count ?? 0} 个文件`
                               : typeof s.file_count === 'number'
                                 ? `远端 ${s.file_count} 个文件`
                                 : '未下载'}
@@ -413,6 +454,16 @@ export const BifrostSkillsPage: React.FC = () => {
                   </Card>
                 );
               })}
+              {filteredSkills.length > 0 && visibleCount < filteredSkills.length && (
+                <div ref={observerTarget} className="py-4 flex justify-center">
+                  <Loader2 className="w-4 h-4 animate-spin text-ink-faint" />
+                </div>
+              )}
+              {filteredSkills.length > 60 && visibleCount >= filteredSkills.length && (
+                <p className="text-xs text-ink-faint font-sans text-center py-4">
+                  已加载全部 {filteredSkills.length} 个
+                </p>
+              )}
             </div>
           )}
         </div>

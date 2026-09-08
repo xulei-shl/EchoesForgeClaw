@@ -432,7 +432,8 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       const contextBlocks = buildInjectedContextBlocks(
         node,
         {
-          includeBook: settings.includeBook,
+          // 与 image_analysis / chat 调用点同口径：显式设置优先，未设置时按 book_info 连通性默认
+          includeBook: isBookMetadataEnabled(node, h.nodes, h.edges),
           includeBookCover: false,
           includeUpstreamText: true,
           includeUpstreamImages: false,
