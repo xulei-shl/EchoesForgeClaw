@@ -3,6 +3,7 @@
 > 面向：给 Skill Agent（pi）节点新增/维护扩展包（如 `@juicesharp/rpiv-todo`、`@juicesharp/rpiv-ask-user-question`）的工程师。
 > 关联实现：
 > - 装配：`backend-ts/src/services/pi-agent-service.ts`（`resolvePiExtensions` / `preparePiWorkspace` / `runPiAgent` / RPC 进程注册表）
+> - guardrails 自动配置：`backend-ts/src/services/pi/guardrails.ts`（装配期写入 `{ws}/.pi-agent/extensions/guardrails.json`）
 > - 工具事件桥 + 生产者注册表：`backend-ts/src/services/pi-widgets.ts`
 > - 交互通道设计：`docs/skill-agent/pi-rpc-interactive-plan.md`（v1.0，RPC 化 + dialog 桥）
 > - 数据流设计（widget 侧）：`docs/skill-agent/extension-widgets-implementation-plan.md`（v2.0）
@@ -165,8 +166,6 @@ json 模式是「spawn → 出结果 → 进程退出」一次性；**RPC 模式
 7. 前端：节点发送消息出现内容与扩展面板（`extension_widget`）；交互型扩展出现弹层，作答后对话继续。
 8. （交互型）多轮并发回归：两个账号对同一 nodeId 发起对话，A 答 A 的问卷、B 答 B 的问卷，互不串扰（注册表复合 key 隔离）。
 
----
-
 ## 5. 安全与一致性原则
 
 - **白名单即安全边界**：扩展能执行任意服务端代码，`PI_EXTENSIONS` 只能由管理员维护；用户不可直接装任意扩展。
@@ -177,3 +176,32 @@ json 模式是「spawn → 出结果 → 进程退出」一次性；**RPC 模式
 - **跨轮一致性**：widget 以服务端 per-workspace 快照（`{ws}/.pi-agent/widgets.json`）为真相源，随 `/chat/session` 水合恢复；`clearPiSession`（清空对话）会一并清除**且先杀活跃 RPC 子进程**（问卷等待中/流式中）。
 - **key 稳定性**：widget `key`（如 `rpiv-todos`）是跨轮持久化标识，改动会导致旧快照残留，勿随意改名。
 - **进程担保**：`runPiAgent` 在 `finally` 中注销注册表 + killTree（防御遗留）；总超时 `PI_RPC_TIMEOUT_MS`（默认 10 分钟）兜底「永不落定」的死等。
+
+---
+
+## 6. Guardrails（安全护栏）自动装配
+
+已接入 `@aliou/pi-guardrails`（文件保护 / 越界路径 / 危险命令三合一安全扩展），配置**完全自动**，无需用户跑 `/guardrails:onboarding` 或手工编辑任何文件。
+
+### 机制（为什么写 `{ws}/.pi-agent/extensions/guardrails.json` 即生效）
+
+guardrails 的 ConfigLoader（`@aliou/pi-utils-settings`）把**全局**配置读自 `{agentDir}/extensions/guardrails.json`，其中 `agentDir = getAgentDir()` 优先取 `PI_CODING_AGENT_DIR` 环境变量；runner 把该变量指向 `{ws}/.pi-agent`（见 `runner.ts`）。因此 `preparePiWorkspace` 在装配期写入该文件 = pi 子进程启动即加载，与其他配置文件（models.json / settings.json / web-search.json）同款装配。装配代码集中在 `backend-ts/src/services/pi/guardrails.ts`。
+
+### 自动配置内容（buildGuardrailsConfig）
+
+- `onboarding.completed: true`：扩展不再注册引导命令，无需人工 onboarding；
+- `features` 三档全开：`policies`（.env/私钥等内置规则）+ `permissionGate`（危险命令）+ `pathAccess`（越界路径）；
+- 额外策略规则 `agent-runtime`：禁止工具访问 `.pi-agent/**`（models.json / web-search.json 等装配了真实 API Key，Agent 不应经 read/bash 等工具读到）；
+- `pathAccess.mode: 'block'`（不是 ask）：**RPC 下 `ctx.ui.custom()` 返回 undefined**（见 pi-coding-agent `rpc-mode.js`），ask 模式会静默退化为「一律拒绝」且语义含糊；block 模式确定性拒绝越界访问，完全自动、零交互。工作区内访问恒放行，pi 文档路径与 skill 文件路径由扩展自动豁免；
+- `permissionGate.requireConfirmation: true`（内置默认）：`custom()` 不可用后 permission-gate 自带 `ctx.ui.select(...)` 回退 → 走既有 `extension_ui_request` → dialog 桥，前端零改动（Allow once / session / Deny / Stop）。
+
+### 接入与升级
+
+- 白名单：`backend-ts/.env` 的 `PI_EXTENSIONS` 追加 `@aliou/pi-guardrails`（⚠️ `.env` 变更不触发 tsx watch 热重载，**必须手动重启后端**，见坑 1）；
+- 安装：已 `npm install @aliou/pi-guardrails` 到 backend-ts 依赖树（resolvePiExtensions ① 命中；非 alias 依赖 `@aliou/pi-utils-settings` / `@aliou/sh` 从真实路径解析，规避坑 3 复制退化）；
+- 升级：固定 npm 版本（当前 0.17.1）+ 回归。config.version 在装配期从已安装包 package.json 实读，高于扩展所有内置迁移版本（≤0.16.2），加载不会触发迁移改写；
+- 移除：从白名单摘除后，装配会自动清理残留的 guardrails.json。
+
+### 验证
+
+`npx vitest run tests/api/pi-guardrails-run.test.ts`：真实 RPC 子进程加载扩展 + permission-gate 危险命令 dialog 全链闭环（作答后命令放行、轮次正常落定）。配置形状断言在 `pi-agent-workspace.test.ts` 的 guardrails describe 块。

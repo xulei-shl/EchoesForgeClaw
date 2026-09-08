@@ -22,6 +22,11 @@ import {
   RETRY_BASE_DELAY_MS,
   RETRY_MAX_RETRIES,
 } from './config.js';
+import {
+  buildGuardrailsConfig,
+  GUARDRAILS_CONFIG_REL,
+  GUARDRAILS_PACKAGE_NAME,
+} from './guardrails.js';
 import { resolvePiExtensions, extensionDirName } from './resolve.js';
 import { killPiProcess } from './registry.js';
 import { cleanupSubagentAsyncRuns } from './subagents/cleanup.js';
@@ -35,6 +40,8 @@ import { removePathSafe } from '../file-utils.js';
  *   目标目录必须是 .pi-agent/skills/：这是 pi 的 user-scope 技能目录（agentDir=PI_CODING_AGENT_DIR），
  *   无条件扫描；.agents/skills 属 project scope，需 project trust，headless json 模式下不会加载；
  * - .pi-agent/extensions/{name}：白名单扩展包装配（symlinkOrCopy）；
+ * - .pi-agent/extensions/guardrails.json：pi-guardrails 安全护栏自动配置（文件保护策略 /
+ *   危险命令确认 / 越界路径 block；onboarding 标记完成，完全自动执行，无需手动引导）；
  * - .pi-agent/models.json：对话模型物化（provider=bookforge）；
  * - .pi-agent/settings.json：pi-image-gen 段物化 + 运行时调优（自动压缩 / 自动重试）固化；
  * - .pi-agent/web-search.json：pi-web-access 扩展配置物化（DB 映射的 web search API Key +
@@ -251,6 +258,36 @@ export function preparePiWorkspace(
       symlinkOrCopy(spec.dir, dest);
       mountedExtensions.push(dest);
     }
+  }
+
+  // 3.6) pi-guardrails 自动配置（{agentDir}/extensions/guardrails.json）
+  // guardrails 的「全局」配置读自 {PI_CODING_AGENT_DIR}/extensions/guardrails.json
+  // （ConfigLoader globalPath），而 runner 把 PI_CODING_AGENT_DIR 指向 {ws}/.pi-agent——
+  // 此处写入即自动生效（完全自动：onboarding.completed=true，无需手动引导；pathAccess
+  // 固定 block，零交互）。仅当白名单命中且已安装时装配；未装配清理残留文件防误导。
+  const guardrailsConfigPath = path.join(agentDir, GUARDRAILS_CONFIG_REL);
+  const guardrailsSpec = extSpecs.find((s) => s.name === GUARDRAILS_PACKAGE_NAME);
+  if (guardrailsSpec) {
+    let version = '';
+    try {
+      const pkg = JSON.parse(
+        readFileSync(path.join(guardrailsSpec.dir, 'package.json'), 'utf-8')
+      ) as { version?: unknown };
+      version = typeof pkg.version === 'string' ? pkg.version : '';
+    } catch {
+      /* package.json 不可读：视为未装配 */
+    }
+    if (version) {
+      writeFileSync(
+        guardrailsConfigPath,
+        JSON.stringify(buildGuardrailsConfig(version), null, 2),
+        'utf-8'
+      );
+    } else {
+      removePathSafe(guardrailsConfigPath);
+    }
+  } else {
+    removePathSafe(guardrailsConfigPath);
   }
 
   // 对话模型 → models.json（api 按配置选 openai-completions / anthropic-messages；与后端 LLM 服务同协议）

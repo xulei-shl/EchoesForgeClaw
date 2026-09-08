@@ -437,6 +437,97 @@ describe('resolvePiExtensions（PI_EXTENSIONS 白名单 → pi install 全局 np
   });
 });
 
+describe('pi-guardrails 自动配置装配（{ws}/.pi-agent/extensions/guardrails.json）', () => {
+  it('白名单命中已安装包时：写入护栏配置（完全自动：onboarding 完成 / 越界 block / 保护 .pi-agent）且幂等', () => {
+    // 真实已安装包（backend-ts 依赖树 ① 命中），版本从 package.json 实读
+    const installedPkg = JSON.parse(
+      readFileSync(
+        path.resolve(
+          path.dirname(fileURLToPath(import.meta.url)),
+          '../../node_modules/@aliou/pi-guardrails/package.json'
+        ),
+        'utf-8'
+      )
+    );
+    const home = mkdtempSync(path.join(tmpdir(), 'pi-agent-'));
+    try {
+      withPiExtensionsEnv(home, '@aliou/pi-guardrails', () => {
+        const r1 = preparePiWorkspace(UID, WS_ID, {
+          agentId: 1,
+          chatModel: CHAT_MODEL,
+          imageModel: null,
+          skillNames: [],
+        });
+        const agentDir = path.join(wsPath(), '.pi-agent');
+        // 挂载目录按包名展平（@aliou/pi-guardrails → pi-guardrails）；
+        // 自动配置落点仍是扩展约定的 extensions/guardrails.json（与挂载目录共存）
+        const dest = path.join(agentDir, 'extensions', 'pi-guardrails');
+        expect(r1.mountedExtensions).toContain(dest);
+
+        const cfgPath = path.join(agentDir, 'extensions', 'guardrails.json');
+        expect(existsSync(cfgPath)).toBe(true);
+        const cfg = JSON.parse(readFileSync(cfgPath, 'utf-8'));
+        expect(cfg.$schema).toBe(
+          `https://unpkg.com/@aliou/pi-guardrails@${installedPkg.version}/schema.json`
+        );
+        expect(cfg.version).toBe(installedPkg.version);
+        expect(cfg.enabled).toBe(true);
+        expect(cfg.applyBuiltinDefaults).toBe(true);
+        // 完全自动执行：无需手动跑 /guardrails:onboarding
+        expect(cfg.onboarding).toMatchObject({ completed: true, version: installedPkg.version });
+        // 三档安全功能全部开启；pathAccess 固定 block（RPC 下 custom() 不可用，ask 会退化为一律拒绝）
+        expect(cfg.features).toEqual({ policies: true, permissionGate: true, pathAccess: true });
+        expect(cfg.pathAccess).toEqual({
+          mode: 'block',
+          allowedPaths: [{ kind: 'file', path: '/dev/null' }],
+        });
+        // 额外保护规则：.pi-agent/（models.json / web-search.json 含真实 API Key）不可经工具访问
+        const agentRule = cfg.policies.rules.find((r: { id: string }) => r.id === 'agent-runtime');
+        expect(agentRule).toMatchObject({
+          protection: 'noAccess',
+          onlyIfExists: true,
+          patterns: [{ pattern: '.pi-agent' }, { pattern: '.pi-agent/**' }],
+        });
+
+        // 幂等：两次装配产物逐字节一致（配置无时间戳等漂移字段）
+        const firstBytes = readFileSync(cfgPath, 'utf-8');
+        const r2 = preparePiWorkspace(UID, WS_ID, {
+          agentId: 1,
+          chatModel: CHAT_MODEL,
+          imageModel: null,
+          skillNames: [],
+        });
+        expect(readFileSync(cfgPath, 'utf-8')).toBe(firstBytes);
+        expect(r2.mountedExtensions).toEqual(r1.mountedExtensions);
+      });
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it('白名单未命中时：不写护栏配置，且清理上一轮残留文件', () => {
+    const home = mkdtempSync(path.join(tmpdir(), 'pi-agent-'));
+    try {
+      // 预置一个残留配置文件（模拟曾装配过 guardrails 后白名单被移除）
+      const agentDir = path.join(wsPath(), '.pi-agent');
+      mkdirSync(path.join(agentDir, 'extensions'), { recursive: true });
+      writeFileSync(path.join(agentDir, 'extensions', 'guardrails.json'), '{}', 'utf-8');
+
+      withPiExtensionsEnv(home, '', () => {
+        preparePiWorkspace(UID, WS_ID, {
+          agentId: 1,
+          chatModel: CHAT_MODEL,
+          imageModel: null,
+          skillNames: [],
+        });
+        expect(existsSync(path.join(agentDir, 'extensions', 'guardrails.json'))).toBe(false);
+      });
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('resolveThinkingArgs（节点思考开关 → pi CLI 参数）', () => {
   it("'on' → --thinking high（启用思考取高推理档）", () => {
     expect(resolveThinkingArgs('on')).toEqual(['--thinking', 'high']);
