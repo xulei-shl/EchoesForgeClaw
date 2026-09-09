@@ -104,6 +104,10 @@ export type ChatStreamEvent =
       type: 'token_usage';
       input: number;
       output: number;
+      /** 缓存命中输入 token（pi Usage 归一化；provider 未上报时为 0） */
+      cacheRead?: number;
+      /** 本次新写入缓存 token */
+      cacheWrite?: number;
       totalTokens: number;
       contextWindow: number;
       percent: number;

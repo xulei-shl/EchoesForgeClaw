@@ -260,7 +260,7 @@ describe('preparePiWorkspace 装配', () => {
     expect(settings['pi-image-gen']).toBeUndefined();
   });
 
-  it('api_format / thinking_format：OpenAI 兼容 + deepseek wire 格式 → api + compat.thinkingFormat', () => {
+  it('api_format / thinking_format：OpenAI 兼容 + deepseek wire 格式 → api + compat.thinkingFormat + 长缓存保留关闭', () => {
     preparePiWorkspace(UID, WS_ID, {
       agentId: 1,
       chatModel: { ...CHAT_MODEL, apiFormat: 'openai', thinkingFormat: 'deepseek' },
@@ -272,10 +272,12 @@ describe('preparePiWorkspace 装配', () => {
     ).providers.bookforge;
     expect(provider.api).toBe('openai-completions');
     expect(provider.models[0].reasoning).toBe(true);
-    expect(provider.models[0].compat).toEqual({ thinkingFormat: 'deepseek' });
+    // 显式关闭长缓存保留：pi 核心在 PI_CACHE_RETENTION=long 时据此跳过 prompt_cache_key /
+    // prompt_cache_retention 注入，零 400 风险（见 docs/skill-agent/pi-cache-optimizer-plan.md §4.2）。
+    expect(provider.models[0].compat).toEqual({ thinkingFormat: 'deepseek', supportsLongCacheRetention: false });
   });
 
-  it('api_format=anthropic → api=anthropic-messages 且不注入 OpenAI 兼容 thinkingFormat', () => {
+  it('api_format=anthropic → api=anthropic-messages 且不注入 OpenAI 兼容 compat', () => {
     preparePiWorkspace(UID, WS_ID, {
       agentId: 1,
       chatModel: { ...CHAT_MODEL, apiFormat: 'anthropic', thinkingFormat: 'deepseek' },
@@ -290,7 +292,7 @@ describe('preparePiWorkspace 装配', () => {
     expect(provider.models[0].compat).toBeUndefined();
   });
 
-  it('thinkingFormat 未配置：不注入 compat（pi 默认 reasoning_effort）', () => {
+  it('thinkingFormat 未配置：仅注入 supportsLongCacheRetention: false（不注入 thinkingFormat）', () => {
     preparePiWorkspace(UID, WS_ID, {
       agentId: 1,
       chatModel: CHAT_MODEL,
@@ -301,7 +303,7 @@ describe('preparePiWorkspace 装配', () => {
       readFileSync(path.join(wsPath(), '.pi-agent', 'models.json'), 'utf-8')
     ).providers.bookforge;
     expect(provider.api).toBe('openai-completions');
-    expect(provider.models[0].compat).toBeUndefined();
+    expect(provider.models[0].compat).toEqual({ supportsLongCacheRetention: false });
   });
 
   it('web-search.json 装配：受支持 key + workflow=auto-summary；保留未知键；幂等；不支持源不写入', () => {

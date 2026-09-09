@@ -346,6 +346,28 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
                     </span>
                   </>
                 )}
+                {msg.tokenUsage.cacheRead !== undefined &&
+                  msg.tokenUsage.cacheWrite !== undefined &&
+                  (msg.tokenUsage.cacheRead > 0 || msg.tokenUsage.cacheWrite > 0) && (
+                    <>
+                      <span>·</span>
+                      <span
+                        title={`缓存命中 ${formatTokenCount(msg.tokenUsage.cacheRead)} / 未缓存 ${formatTokenCount(
+                          msg.tokenUsage.input ?? 0
+                        )} / 写入缓存 ${formatTokenCount(msg.tokenUsage.cacheWrite)}`}
+                      >
+                        缓存命中{' '}
+                        {msg.tokenUsage.input != null &&
+                        msg.tokenUsage.input + msg.tokenUsage.cacheRead > 0
+                          ? `${Math.round(
+                              (msg.tokenUsage.cacheRead /
+                                (msg.tokenUsage.input + msg.tokenUsage.cacheRead)) *
+                                1000
+                            ) / 10}%`
+                          : '—'}
+                      </span>
+                    </>
+                  )}
               </>
             ) : <span />}
           </div>

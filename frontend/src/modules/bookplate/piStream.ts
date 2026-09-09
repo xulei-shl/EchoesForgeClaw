@@ -63,6 +63,8 @@ export type PiStreamEvent =
       type: 'token_usage';
       input: number;
       output: number;
+      cacheRead?: number;
+      cacheWrite?: number;
       totalTokens: number;
       contextWindow: number;
       percent: number;
@@ -101,6 +103,8 @@ export interface LiveAssistantStep {
   tokenUsage?: {
     input?: number;
     output?: number;
+    cacheRead?: number;
+    cacheWrite?: number;
     totalTokens: number;
     contextWindow?: number;
     percent?: number;
@@ -177,6 +181,8 @@ export type PiStreamAction =
       type: 'token_usage';
       input: number;
       output: number;
+      cacheRead?: number;
+      cacheWrite?: number;
       totalTokens: number;
       contextWindow: number;
       percent: number;
@@ -252,6 +258,8 @@ export function piStreamReducer(state: PiStreamState, action: PiStreamAction): P
         tokenUsage: {
           input: action.input,
           output: action.output,
+          cacheRead: action.cacheRead,
+          cacheWrite: action.cacheWrite,
           totalTokens: action.totalTokens,
           contextWindow: action.contextWindow,
           percent: action.percent,

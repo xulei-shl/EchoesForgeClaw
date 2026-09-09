@@ -319,6 +319,10 @@ export interface ChatMessage {
   tokenUsage?: {
     input?: number;
     output?: number;
+    /** 缓存命中输入 token（provider 未上报时为空；与 input 之和为该条全部输入） */
+    cacheRead?: number;
+    /** 本次新写入缓存 token */
+    cacheWrite?: number;
     totalTokens: number;
     contextWindow?: number;
     percent?: number;

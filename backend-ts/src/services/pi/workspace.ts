@@ -308,8 +308,15 @@ export function preparePiWorkspace(
   };
   // OpenAI 兼容路径：按模型声明思考 wire 格式（agnes → qwen-chat-template、deepseek → deepseek 等；
   // 空 = pi 默认 reasoning_effort）。Anthropic 路径由 pi 适配器原生映射，无需 compat。
-  if (opts.chatModel.apiFormat !== 'anthropic' && opts.chatModel.thinkingFormat) {
-    chatModelEntry.compat = { thinkingFormat: opts.chatModel.thinkingFormat };
+  // 同时显式关闭长缓存保留：pi 核心在 cacheRetention=long 且 compat.supportsLongCacheRetention
+  // （第三方 openai-completions 默认 true）时会自行注入 prompt_cache_key / prompt_cache_retention，
+  // 而 pi-cache-optimizer 扩展加载即强制 PI_CACHE_RETENTION=long —— 未知端点可能 400。显式 false
+  // 从源头关闭，零风险；官方 OpenAI baseUrl 分支独立不受影响。见 docs/skill-agent/pi-cache-optimizer-plan.md §4.2。
+  if (opts.chatModel.apiFormat !== 'anthropic') {
+    chatModelEntry.compat = {
+      ...(opts.chatModel.thinkingFormat ? { thinkingFormat: opts.chatModel.thinkingFormat } : {}),
+      supportsLongCacheRetention: false,
+    };
   }
   const modelsJson = {
     providers: {

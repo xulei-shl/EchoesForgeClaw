@@ -614,6 +614,8 @@ function PiChatNodeHostInner({
                   type: 'token_usage',
                   input: evt.input,
                   output: evt.output,
+                  cacheRead: evt.cacheRead,
+                  cacheWrite: evt.cacheWrite,
                   totalTokens: evt.totalTokens,
                   contextWindow: evt.contextWindow,
                   percent: evt.percent,

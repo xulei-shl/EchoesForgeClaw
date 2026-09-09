@@ -90,6 +90,8 @@ describe('mapPiJsonEvent（pi json 事件 → ChatStreamEvent）', () => {
         type: 'token_usage',
         input: 3000,
         output: 1000,
+        cacheRead: 0,
+        cacheWrite: 0,
         totalTokens: 4000,
         contextWindow: 200_000,
         percent: 2.0, // 4000 / 200000 * 100 = 2.0
@@ -113,9 +115,62 @@ describe('mapPiJsonEvent（pi json 事件 → ChatStreamEvent）', () => {
         type: 'token_usage',
         input: 1280,
         output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
         totalTokens: 1280,
         contextWindow: 128000,
         percent: 1.0, // 1280 / 128000 * 100 = 1.0
+      },
+    ]);
+  });
+
+  it('message_end usage 透传缓存命中/写入 token；缺失或非数值归零', () => {
+    const state: PiEventMapperState = { lastError: null };
+    // provider 上报缓存命中（如 DeepSeek prompt_cache_hit_tokens → cacheRead）
+    const hit = collect(
+      {
+        type: 'message_end',
+        message: {
+          role: 'assistant',
+          usage: { input: 100, output: 50, cacheRead: 900, cacheWrite: 120, totalTokens: 1070 },
+        },
+      },
+      state
+    );
+    expect(hit).toEqual([
+      {
+        type: 'token_usage',
+        input: 100,
+        output: 50,
+        cacheRead: 900,
+        cacheWrite: 120,
+        totalTokens: 1070,
+        contextWindow: 128000,
+        percent: 0.8,
+      },
+    ]);
+
+    // 非数值 cacheRead/cacheWrite → 归零（不产出额外事件、不抛错）
+    const bad = collect(
+      {
+        type: 'message_end',
+        message: {
+          role: 'assistant',
+          usage: { input: 100, output: 50, cacheRead: 'n/a', cacheWrite: null, totalTokens: 150 },
+        },
+      },
+      state
+    );
+    expect(bad).toEqual([
+      {
+        type: 'token_usage',
+        input: 100,
+        output: 50,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 150,
+        contextWindow: 128000,
+        percent: 0.1,
       },
     ]);
   });

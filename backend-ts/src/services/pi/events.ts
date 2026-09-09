@@ -145,6 +145,12 @@ export function* mapPiJsonEvent(
         const u = msg.usage as Record<string, unknown>;
         const input = typeof u.input === 'number' && Number.isFinite(u.input) ? u.input : 0;
         const output = typeof u.output === 'number' && Number.isFinite(u.output) ? u.output : 0;
+        // 缓存命中/写入 token（pi Usage 归一化字段；provider 未上报时为 0）：
+        // 前端据此在气泡底部渲染「缓存命中 X%」。见 docs/skill-agent/pi-cache-optimizer-plan.md §5。
+        const cacheRead =
+          typeof u.cacheRead === 'number' && Number.isFinite(u.cacheRead) ? u.cacheRead : 0;
+        const cacheWrite =
+          typeof u.cacheWrite === 'number' && Number.isFinite(u.cacheWrite) ? u.cacheWrite : 0;
         const totalTokens =
           typeof u.totalTokens === 'number' && Number.isFinite(u.totalTokens)
             ? u.totalTokens
@@ -159,6 +165,8 @@ export function* mapPiJsonEvent(
             type: 'token_usage',
             input,
             output,
+            cacheRead,
+            cacheWrite,
             totalTokens,
             contextWindow,
             percent,

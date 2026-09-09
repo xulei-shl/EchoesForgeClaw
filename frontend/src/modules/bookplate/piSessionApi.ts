@@ -21,6 +21,8 @@ interface HydratedMessageDto {
   tokenUsage?: {
     input?: number;
     output?: number;
+    cacheRead?: number;
+    cacheWrite?: number;
     totalTokens: number;
     contextWindow?: number;
     percent?: number;

@@ -192,6 +192,13 @@ function spawnPiProcess(opts: RunPiAgentOptions): PiProcessEntry {
       PI_CODING_AGENT_DIR: agentDirEnv,
       PI_AGENT_HOME: agentDirEnv,
       PI_TELEMETRY: '0',
+      // 无感安全默认：pi-cache-optimizer 扩展的 prompt_cache_key fallback 默认关闭——
+      // 端点是否支持该参数未知，注入仅对明确支持方有意义。管理员部署级 env 显式配置优先
+      // （不覆盖已有值，值为 0/false/no/off 时扩展视为放开注入）。与 workspace.ts 装配的
+      // supportsLongCacheRetention: false 构成双层兜底。见 docs/skill-agent/pi-cache-optimizer-plan.md §4.2。
+      ...(process.env.PI_CACHE_OPTIMIZER_NO_OPENAI_CACHE_KEY === undefined
+        ? { PI_CACHE_OPTIMIZER_NO_OPENAI_CACHE_KEY: '1' }
+        : {}),
       // pi-subagents 后台运行 temp 根按用户/工作区收敛：可枚举、可清理、多租户隔离
       // （扩展源码读 PI_SUBAGENTS_TEMP_ROOT 派生 async 运行目录）
       PI_SUBAGENTS_TEMP_ROOT: resolveSubagentsTempRoot(opts.userId, opts.workspaceId),
