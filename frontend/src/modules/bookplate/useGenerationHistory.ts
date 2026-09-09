@@ -4,6 +4,7 @@ import { flushSnapshot } from '../../platform/stores/useCanvasState';
 import { getImageFxEffect } from '../../modules/multimodal/imageprocess';
 import type { GenerationStageResults } from '../../platform/types';
 import { findConnectedBookInfoUpstream, findRootBookInfo, resolveDirectParents } from './nodeTypes';
+import { buildGraphSnapshot } from './graphSnapshot';
 import type { EdgeData, NodeData } from './graphTypes';
 
 /** 历史记录组装依赖（由画布注入） */
@@ -112,6 +113,12 @@ export function useGenerationHistory(ctx: GenerationHistoryContext): GenerationH
           prompt: promptText,
           agent_steps: imageSteps.length > 0 ? imageSteps : undefined,
         },
+        // 上游连线子图快照：历史/画廊「画板」导入时重建完整链路（无上游连线时为 null）
+        graph_snapshot: buildGraphSnapshot(
+          imageNodeId,
+          ctx.nodesRef.current,
+          ctx.edgesRef.current
+        ) ?? undefined,
       };
     },
     // nodesRef / edgesRef 为模块级单例（useCanvasState），身份恒定，加入不会改变稳定性

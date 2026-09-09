@@ -62,6 +62,7 @@ import { useManualConnection } from '../../modules/bookplate/useManualConnection
 import ConnectionGhost from '../../modules/bookplate/ConnectionGhost';
 import { renderCanvasNode, type NodeViewHelpers } from '../../modules/bookplate/CanvasNodeViews';
 import { seedDataFor } from '../../modules/bookplate/seedData';
+import { hydrateGraphSnapshot } from '../../modules/bookplate/graphSnapshotImport';
 import { useFavoritesSync } from '../../modules/bookplate/useFavoritesSync';
 import { useNodeHandlers } from '../../modules/bookplate/useNodeHandlers';
 import { NodeEdge, type NodeEdgeHandle } from '../../platform/components/node/NodeEdge';
@@ -848,6 +849,32 @@ const BookplatePage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recordHistory, setNodes]);
 
+  // 把导入的节点/连线注入画布：写入 refs + store、恢复结果节点的生成/收藏/公开映射并聚焦
+  const importNodesIntoCanvas = useCallback(
+    (
+      newNodes: NodeData[],
+      newEdges: EdgeData[],
+      resultNodeId: string,
+      gen: any
+    ) => {
+      if (newNodes.length === 0) return;
+      recordHistory();
+      nodesRef.current = [...nodesRef.current, ...newNodes];
+      edgesRef.current = [...edgesRef.current, ...newEdges];
+      setNodes((prev) => [...prev, ...newNodes]);
+      setEdges((prev) => [...prev, ...newEdges]);
+      generationIds.current[resultNodeId] = gen?.id;
+      setFavoritedState((prev) => ({ ...prev, [resultNodeId]: !!gen?.is_favorited }));
+      setPublishedState((prev) => ({ ...prev, [resultNodeId]: !!gen?.is_public }));
+      const targetFocus = newNodes.find((n) => n.id === resultNodeId) ?? newNodes[0];
+      if (targetFocus) focusOnNode(targetFocus);
+      showToast('已载入作品到画板', { type: 'success' });
+    },
+    // 稳定回调设计：focusOnNode 仅读取 refs / 稳定 setter，闭包不会过期
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [recordHistory, setNodes, setEdges, generationIds, setFavoritedState, setPublishedState, focusOnNode, showToast]
+  );
+
   // 检测外部页面（/history, /favorites, /gallery）请求导入的作品并注入画布
   useEffect(() => {
     const raw = sessionStorage.getItem('bf-canvas-import');
@@ -857,6 +884,28 @@ const BookplatePage: React.FC = () => {
       const gen = JSON.parse(raw);
       if (!gen || !gen.stage_results) return;
 
+      const currentNodes = nodesRef.current;
+      const startY = 120;
+
+      // 优先走完整连线子图快照重建;无快照（老记录）回退 3 节点拼接
+      const graphSnapshot = gen.stage_results?.graph_snapshot;
+      if (graphSnapshot) {
+        const { nodes: snapshotNodes, edges: snapshotEdges, resultNodeId } = hydrateGraphSnapshot(
+          graphSnapshot,
+          currentNodes,
+          startY
+        );
+        // 结果图使用 record 权威 URL 兜底：export 类节点保存历史时节点 data 可能尚未回写 imageUrl
+        const resultUrl = gen.result_url || gen.stage_results?.stage3?.image_url || '';
+        if (resultUrl) {
+          const resultNode = snapshotNodes.find((n) => n.id === resultNodeId);
+          if (resultNode) resultNode.data = { ...resultNode.data, imageUrl: resultUrl };
+        }
+        importNodesIntoCanvas(snapshotNodes, snapshotEdges, resultNodeId, gen);
+        return;
+      }
+
+      // ---- 回退路径：老记录无 graph_snapshot，按 stage1/2/3 拼 3 节点 ----
       const meta = gen.stage_results?.stage1?.metadata;
       const prompt =
         gen.stage_results?.stage2?.prompt || gen.stage_results?.stage3?.prompt || '';
@@ -870,9 +919,7 @@ const BookplatePage: React.FC = () => {
           : []),
       ];
 
-      const currentNodes = nodesRef.current;
       const maxX = currentNodes.reduce((m, n) => Math.max(m, n.x + 380), 80);
-      const startY = 120;
 
       const newNodes: NodeData[] = [];
       const newEdges: EdgeData[] = [];
@@ -942,24 +989,12 @@ const BookplatePage: React.FC = () => {
         });
       }
 
-      generationIds.current[imageNodeId] = gen.id;
-      setFavoritedState((prev) => ({ ...prev, [imageNodeId]: !!gen.is_favorited }));
-      setPublishedState((prev) => ({ ...prev, [imageNodeId]: !!gen.is_public }));
-
-      recordHistory();
-      nodesRef.current = [...nodesRef.current, ...newNodes];
-      edgesRef.current = [...edgesRef.current, ...newEdges];
-      setNodes((prev) => [...prev, ...newNodes]);
-      setEdges((prev) => [...prev, ...newEdges]);
-
-      const targetFocus = newNodes[newNodes.length - 1];
-      if (targetFocus) focusOnNode(targetFocus);
-
-      showToast('已载入作品到画板', { type: 'success' });
+      importNodesIntoCanvas(newNodes, newEdges, imageNodeId, gen);
     } catch (e) {
       console.warn('载入画板失败:', e);
     }
-  }, [recordHistory, setNodes, setEdges, setFavoritedState, setPublishedState, generationIds, focusOnNode, showToast]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
 
 

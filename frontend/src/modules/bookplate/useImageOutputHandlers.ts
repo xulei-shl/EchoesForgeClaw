@@ -4,6 +4,7 @@ import generationsService from '../../platform/services/generations';
 import { flushSnapshot } from '../../platform/stores/useCanvasState';
 import { SMALL_TOOL_TIMEOUT_MS } from '../../platform/utils/timeouts';
 import { findConnectedBookInfoUpstream, findRootBookInfo } from './nodeTypes';
+import { buildGraphSnapshot } from './graphSnapshot';
 import type { EdgeData, NodeData, NodeType } from './graphTypes';
 import type { GlamSearchSelection } from '../../modules/multimodal/components/ArtImageSearchNode';
 import type { ImageSearchSelection } from '../../modules/multimodal/components/ImageSearchNode';
@@ -148,6 +149,11 @@ export function useImageExportHandler(
                 image_url: imageUrl,
                 prompt: promptText,
               },
+              graph_snapshot: buildGraphSnapshot(
+                id,
+                ctx.nodesRef.current,
+                ctx.edgesRef.current
+              ) ?? undefined,
             },
             result_url: imageUrl,
             status: 'completed',

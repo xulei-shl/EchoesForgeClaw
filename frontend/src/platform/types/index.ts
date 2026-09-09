@@ -48,6 +48,37 @@ export interface GenerationStageResults {
     /** Agent 模式中间步骤（持久化，刷新/历史页仍可见） */
     agent_steps?: AgentStep[];
   };
+  /** 结果节点的上游连线子图快照（含结果节点，字段已清洗降体积）；
+   *  历史/画廊「画板」导入时用于重建完整连线链路（无快照的老记录回退 3 节点拼接）。 */
+  graph_snapshot?: GraphSnapshot;
+}
+
+/** 画板连线子图快照：结果节点 + 全部上游可达节点（沿入边 BFS 到根），序列化自前端画布。 */
+export interface GraphSnapshot {
+  /** 快照结构版本号（现阶段固定 1，后续演进做迁移/兼容） */
+  version: 1;
+  /** 快照内结果节点 id（导入时据此恢复收藏/公开等映射） */
+  resultNodeId: string;
+  nodes: GraphSnapshotNode[];
+  edges: GraphSnapshotEdge[];
+}
+
+export interface GraphSnapshotNode {
+  id: string;
+  /** 节点模板类型 */
+  type: CanvasNodeType;
+  /** 节点模板配置 id（节点变体）；无则使用默认配置 */
+  configId?: number;
+  configName?: string;
+  x: number;
+  y: number;
+  /** 清洗后的节点数据（去掉瞬态字段/base64/超长文本，见 graphSnapshotSanitize） */
+  data: any;
+}
+
+export interface GraphSnapshotEdge {
+  source: string;
+  target: string;
 }
 
 /** 历史 / 收藏 / 画廊共用的生成记录 */
