@@ -8,7 +8,7 @@ import {
   promptTemplates,
   skillAgentConfigs,
 } from '../../db/schema.js';
-import { NODE_TEMPLATES } from '../../modules/bookplate/node-types.js';
+import { NODE_TEMPLATES } from '../canvas/node-types.js';
 import { now, toIso } from '../../shared/datetime.js';
 
 /**

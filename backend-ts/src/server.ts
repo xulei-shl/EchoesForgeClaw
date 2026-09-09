@@ -10,14 +10,14 @@ import { env } from './config/env.js';
 import { seedStartup } from './config/seed.js';
 import { registerAuth } from './shared/security.js';
 import { registerAuthRouter } from './api/auth.js';
-import { registerBookplateRouter } from './modules/bookplate/router.js';
-import { userGeneratedDir, userMapPosterDir, userSearchImageDir, userMapArtDir } from './services/image-service.js';
-import { COVERS_DIR } from './modules/bookplate/covers.js';
-import { PREVIEW_DIR, migrateLegacyPreviewFiles } from './services/bifrost-service.js';
-import { scheduleRuntimeGc } from './services/runtime-gc.js';
+import { registerBookplateRouter } from './api/canvas/router.js';
+import { userGeneratedDir, userMapPosterDir, userSearchImageDir, userMapArtDir } from './services/multimodal/image-service.js';
+import { COVERS_DIR } from './api/canvas/covers.js';
+import { PREVIEW_DIR, migrateLegacyPreviewFiles } from './services/ai/bifrost-service.js';
+import { scheduleRuntimeGc } from './services/platform/runtime-gc.js';
 import { registerUsersRouter } from './api/users.js';
-import { registerGenerationsRouter } from './api/generations.js';
-import { registerFavoritesRouter } from './api/favorites.js';
+import { registerGenerationsRouter } from './api/library/generations.js';
+import { registerFavoritesRouter } from './api/library/favorites.js';
 import { registerPublicRouter } from './api/public.js';
 import { registerLLMConfigsAdminRouter } from './api/admin/llm-configs.js';
 import { registerPromptsAdminRouter } from './api/admin/prompts.js';
@@ -28,7 +28,7 @@ import { registerSkillAgentConfigsAdminRouter } from './api/admin/skill-agent-co
 import { registerBifrostAdminRouter } from './api/admin/bifrost.js';
 import { registerBifrostSkillsAdminRouter } from './api/admin/bifrost-skills.js';
 import { registerAnnotationRouter } from './api/annotation.js';
-import { killAllPiProcesses } from './services/pi-agent-service.js';
+import { killAllPiProcesses } from './services/ai/pi-agent-service.js';
 
 /**
  * BookForge TypeScript 后端入口（对应 Python `app/main.py`）。

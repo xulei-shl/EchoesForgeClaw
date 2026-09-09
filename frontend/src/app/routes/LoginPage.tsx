@@ -1,9 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { AlertCircle } from 'lucide-react';
-import { useAuth } from '../../platform/stores/authStore';
-import { Button } from '../../platform/components/ui/Button';
-import { Input } from '../../platform/components/ui/Input';
+import { useAuth } from '../../shared/stores/authStore';
+import { Button } from '../../shared/components/ui/Button';
+import { Input } from '../../shared/components/ui/Input';
 
 const LoginPage: React.FC = () => {
   const [username, setUsername] = useState('');

@@ -20,11 +20,11 @@
 import { eq } from 'drizzle-orm';
 import { getDb } from '../src/config/database.js';
 import { llmConfigs } from '../src/db/schema.js';
-import { preparePiWorkspace } from '../src/services/pi/workspace.js';
-import { runPiAgent } from '../src/services/pi/runner.js';
-import { computeWorkspaceGeneration } from '../src/services/pi/generation.js';
-import { resolvePiExtensions } from '../src/services/pi/resolve.js';
-import type { ChatStreamEvent } from '../src/modules/bookplate/stream.js';
+import { preparePiWorkspace } from '../src/services/ai/pi/workspace.js';
+import { runPiAgent } from '../src/services/ai/pi/runner.js';
+import { computeWorkspaceGeneration } from '../src/services/ai/pi/generation.js';
+import { resolvePiExtensions } from '../src/services/ai/pi/resolve.js';
+import type { ChatStreamEvent } from '../src/api/canvas/stream.js';
 
 const db = getDb();
 const llm = db.select().from(llmConfigs).where(eq(llmConfigs.id, 1)).get();

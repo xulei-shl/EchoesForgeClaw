@@ -7,7 +7,7 @@ import { llmConfigs, nodeConfigs, skillAgentConfigs } from '../../db/schema.js';
 import { now, toIso } from '../../shared/datetime.js';
 import { createAIProvider, resolveEnvProxy } from '../../infrastructure/ai/provider.js';
 import { classifyAIError } from '../../infrastructure/ai/errors.js';
-import { fetchWithProxy } from '../../services/http-proxy.js';
+import { fetchWithProxy } from '../../services/platform/http-proxy.js';
 
 /**
  * 大模型配置管理（对应 Python `app/api/admin/llm_configs.py`）：

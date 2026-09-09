@@ -5,7 +5,7 @@ import {
   registerPiProcess,
   sendExtensionUiResponse,
   type PiProcessEntry,
-} from '../../src/services/pi-agent-service.js';
+} from '../../src/services/ai/pi-agent-service.js';
 
 /** 可写的假 stdin：捕获写出的全部 JSON 行。 */
 function makeFakeStdin(): { stdin: Writable; lines: string[] } {

@@ -5,13 +5,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { initDb, setDb, type DB } from '../../src/config/database.js';
 import { buildApp } from '../../src/server.js';
-import { nodeWorkspace, workspacePath, workspaceRoot } from '../../src/services/skill-agent-service.js';
+import { nodeWorkspace, workspacePath, workspaceRoot } from '../../src/services/ai/skill-agent-service.js';
 import {
   deletePiConversation,
   listPiConversations,
   setConversationPinned,
   setConversationTitle,
-} from '../../src/services/pi/conversations.js';
+} from '../../src/services/ai/pi/conversations.js';
 
 /**
  * pi 对话历史列表 / 置顶 / 删除契约测试：

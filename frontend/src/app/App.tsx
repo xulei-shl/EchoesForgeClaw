@@ -1,12 +1,12 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { AuthProvider, useAuth } from '../platform/stores/authStore';
-import { FeedbackProvider } from '../platform/components/ui/FeedbackProvider';
+import { AuthProvider, useAuth } from '../shared/stores/authStore';
+import { FeedbackProvider } from '../shared/components/ui/FeedbackProvider';
 import HomePage from './routes/HomePage';
 import LoginPage from './routes/LoginPage';
 
-import BookplatePage from './routes/BookplatePage';
-import GenerationListPage from './routes/GenerationListPage';
+import CanvasPage from './routes/CanvasPage';
+import GalleryPage from './routes/GalleryPage';
 import AdminLayout from '../admin/AdminLayout';
 import UsersPage from '../admin/pages/UsersPage';
 import LlmConfigsPage from '../admin/pages/LlmConfigsPage';
@@ -59,7 +59,7 @@ const AppRoutes = () => {
         path="/bookplate"
         element={
           <PrivateRoute>
-            <BookplatePage />
+            <CanvasPage />
           </PrivateRoute>
         }
       />
@@ -67,7 +67,7 @@ const AppRoutes = () => {
         path="/history"
         element={
           <PrivateRoute>
-            <GenerationListPage mode="history" />
+            <GalleryPage mode="history" />
           </PrivateRoute>
         }
       />
@@ -75,7 +75,7 @@ const AppRoutes = () => {
         path="/favorites"
         element={
           <PrivateRoute>
-            <GenerationListPage mode="favorites" />
+            <GalleryPage mode="favorites" />
           </PrivateRoute>
         }
       />
@@ -83,7 +83,7 @@ const AppRoutes = () => {
         path="/gallery"
         element={
           <PrivateRoute>
-            <GenerationListPage mode="gallery" />
+            <GalleryPage mode="gallery" />
           </PrivateRoute>
         }
       />

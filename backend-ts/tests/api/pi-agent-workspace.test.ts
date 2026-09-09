@@ -18,7 +18,7 @@ import {
   REAL_SKILLS_ROOT,
   symlinkOrCopy,
   userSkillsRoot,
-} from '../../src/services/skill-agent-service.js';
+} from '../../src/services/ai/skill-agent-service.js';
 import {
   buildWebSearchConfig,
   clearPiSession,
@@ -29,15 +29,15 @@ import {
   resolvePiExtensions,
   resolveThinkingArgs,
   saveInputImages,
-} from '../../src/services/pi-agent-service.js';
-import { isDiffExcluded } from '../../src/services/pi/snapshot.js';
-import { isSecretFileRel } from '../../src/services/file-utils.js';
+} from '../../src/services/ai/pi-agent-service.js';
+import { isDiffExcluded } from '../../src/services/ai/pi/snapshot.js';
+import { isSecretFileRel } from '../../src/services/platform/file-utils.js';
 import {
   buildGuardrailsConfig,
   guardrailsOverridesFromSettings,
   GUARDRAILS_PACKAGE_NAME,
   GUARDRAILS_SETTING_KEYS,
-} from '../../src/services/pi/guardrails.js';
+} from '../../src/services/ai/pi/guardrails.js';
 
 // runtime/ 在仓库根目录下（与 skill-agent-service.ts 的 RUNTIME_ROOT 口径一致），测试文件位于 backend-ts/tests/api/，向上三层
 const RUNTIME_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../runtime');

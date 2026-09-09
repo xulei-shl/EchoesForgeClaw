@@ -1,10 +1,10 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Navbar } from '../../platform/components/layout/Navbar';
-import { Button } from '../../platform/components/ui/Button';
-import { useAuth } from '../../platform/stores/authStore';
-import { getStartCreationRoute } from '../../platform/utils/creation';
-import { CornerDecorations } from '../../platform/components/ui/CornerDecorations';
+import { Navbar } from '../../shared/components/layout/Navbar';
+import { Button } from '../../shared/components/ui/Button';
+import { useAuth } from '../../shared/stores/authStore';
+import { getStartCreationRoute } from '../../shared/utils/creation';
+import { CornerDecorations } from '../../shared/components/ui/CornerDecorations';
 
 const HomePage: React.FC = () => {
   const { user } = useAuth();

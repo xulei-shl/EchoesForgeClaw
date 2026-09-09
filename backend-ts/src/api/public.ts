@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { getDb } from '../config/database.js';
 import { generations, publicShares } from '../db/schema.js';
 import { now } from '../shared/datetime.js';
-import { toGenerationOut, type GenerationPage, type GenerationRow } from './generations.js';
+import { toGenerationOut, type GenerationPage, type GenerationRow } from './library/generations.js';
 
 /**
  * 公开画廊接口（对应 Python `app/api/public.py`）：

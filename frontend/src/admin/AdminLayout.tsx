@@ -12,7 +12,7 @@ import {
   Workflow,
   ArrowLeft,
 } from 'lucide-react';
-import { useAuth } from '../platform/stores/authStore';
+import { useAuth } from '../shared/stores/authStore';
 
 const NAV_ITEMS = [
   { to: '/admin/users', label: '用户管理', icon: Users },

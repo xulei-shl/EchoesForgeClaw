@@ -2,7 +2,7 @@ import type { ModelMessage } from 'ai';
 import {
   COMPACTION_KEEP_RECENT_TOKENS,
   COMPACTION_RESERVE_TOKENS,
-} from '../../services/pi/config.js';
+} from '../../services/ai/pi/config.js';
 
 /**
  * LLM 模式（AI SDK）多轮对话的上下文自动压缩。

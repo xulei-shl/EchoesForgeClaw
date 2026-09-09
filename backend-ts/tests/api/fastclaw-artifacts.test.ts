@@ -8,7 +8,7 @@ import {
   fastclawDataRoot,
   harvestFastclawArtifacts,
   resolveFastclawArtifact,
-} from '../../src/services/fastclaw-artifacts.js';
+} from '../../src/services/ai/fastclaw-artifacts.js';
 
 let root: string;
 let dest: string;

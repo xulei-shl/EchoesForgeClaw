@@ -1,18 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import type { EdgeData, NodeData } from '../../frontend/src/modules/bookplate/graphTypes.js';
+import type { EdgeData, NodeData } from '../../frontend/src/canvas/core/graphTypes.js';
 import {
   buildGraphSnapshot,
   collectAncestorIds,
-} from '../../frontend/src/modules/bookplate/graphSnapshot.js';
+} from '../../frontend/src/canvas/core/graphSnapshot.js';
 import {
   sanitizeNodeData,
   MAX_CHAT_MESSAGES,
   MAX_AGENT_STEPS,
-} from '../../frontend/src/modules/bookplate/graphSnapshotSanitize.js';
+} from '../../frontend/src/canvas/core/graphSnapshotSanitize.js';
 import {
   hydrateGraphSnapshot,
   nextCanvasX,
-} from '../../frontend/src/modules/bookplate/graphSnapshotImport.js';
+} from '../../frontend/src/canvas/core/graphSnapshotImport.js';
 
 const node = (id: string, type: string, x: number, y: number, data: any = {}): NodeData => ({
   id,

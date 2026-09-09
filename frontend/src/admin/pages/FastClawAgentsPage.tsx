@@ -10,17 +10,17 @@ import {
   Search,
   Trash2,
 } from 'lucide-react';
-import { adminService } from '../../platform/services/admin';
-import api from '../../platform/services/api';
-import type { FastClawAgentConfig } from '../../platform/types';
-import { Button } from '../../platform/components/ui/Button';
-import { Dialog } from '../../platform/components/ui/Dialog';
-import { Input } from '../../platform/components/ui/Input';
-import { Toggle } from '../../platform/components/ui/Toggle';
-import { Badge } from '../../platform/components/ui/Badge';
-import { Card } from '../../platform/components/ui/Card';
+import { adminService } from '../../shared/services/admin';
+import api from '../../shared/services/api';
+import type { FastClawAgentConfig } from '../../shared/types';
+import { Button } from '../../shared/components/ui/Button';
+import { Dialog } from '../../shared/components/ui/Dialog';
+import { Input } from '../../shared/components/ui/Input';
+import { Toggle } from '../../shared/components/ui/Toggle';
+import { Badge } from '../../shared/components/ui/Badge';
+import { Card } from '../../shared/components/ui/Card';
 import { FieldLabel, PageHeader } from '../components/AdminBits';
-import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
+import { useFeedback } from '../../shared/components/ui/FeedbackProvider';
 
 interface FormState {
   name: string;

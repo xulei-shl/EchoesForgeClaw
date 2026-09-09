@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { env } from './env.js';
 import { getDb } from './database.js';
 import { appSettings, promptTemplates, users } from '../db/schema.js';
-import { DEFAULT_SYSTEM_PROMPT, DEFAULT_COVER_SYSTEM_PROMPT } from '../services/llm-service.js';
+import { DEFAULT_SYSTEM_PROMPT, DEFAULT_COVER_SYSTEM_PROMPT } from '../services/ai/llm-service.js';
 
 /**
  * 启动种子（对应 Python `app/main.py::_startup_init`）：

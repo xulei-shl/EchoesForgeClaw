@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { initDb, setDb } from '../../src/config/database.js';
 import { buildApp } from '../../src/server.js';
-import { PREVIEW_DIR, migrateLegacyPreviewFiles } from '../../src/services/bifrost-service.js';
+import { PREVIEW_DIR, migrateLegacyPreviewFiles } from '../../src/services/ai/bifrost-service.js';
 
 /**
  * Bifrost 提示词预览图持久化：

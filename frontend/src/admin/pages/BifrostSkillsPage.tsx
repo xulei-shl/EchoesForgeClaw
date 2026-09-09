@@ -1,17 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Boxes, FolderSync, Loader2, RefreshCw, Search, StickyNote, Trash2, FileText, FolderTree } from 'lucide-react';
-import { adminService, annotationService } from '../../platform/services/admin';
-import type { CachedBifrostSkill } from '../../platform/types';
-import { Button } from '../../platform/components/ui/Button';
-import { Card } from '../../platform/components/ui/Card';
-import { Badge } from '../../platform/components/ui/Badge';
-import { Dialog } from '../../platform/components/ui/Dialog';
-import { Input } from '../../platform/components/ui/Input';
-import { Select } from '../../platform/components/ui/Select';
-import { Textarea } from '../../platform/components/ui/Textarea';
-import { RatingStars } from '../../platform/components/ui/RatingStars';
+import { adminService, annotationService } from '../../shared/services/admin';
+import type { CachedBifrostSkill } from '../../shared/types';
+import { Button } from '../../shared/components/ui/Button';
+import { Card } from '../../shared/components/ui/Card';
+import { Badge } from '../../shared/components/ui/Badge';
+import { Dialog } from '../../shared/components/ui/Dialog';
+import { Input } from '../../shared/components/ui/Input';
+import { Select } from '../../shared/components/ui/Select';
+import { Textarea } from '../../shared/components/ui/Textarea';
+import { RatingStars } from '../../shared/components/ui/RatingStars';
 import { PageHeader, FieldLabel } from '../components/AdminBits';
-import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
+import { useFeedback } from '../../shared/components/ui/FeedbackProvider';
 
 /** 内存级 SWR 缓存：页面切换 0ms 瞬间秒开 */
 let cachedBifrostSkillsData: CachedBifrostSkill[] | null = null;

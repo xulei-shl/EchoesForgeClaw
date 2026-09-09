@@ -9,7 +9,7 @@ import {
   RESOURCE_TYPE_BIFROST_PROMPT,
   getUserAnnotation,
   getUserAnnotationMap,
-} from '../../services/annotation-service.js';
+} from '../../services/platform/annotation-service.js';
 import {
   BifrostError,
   BifrostNotConfiguredError,
@@ -24,7 +24,7 @@ import {
   listPrompts,
   listPromptsRaw,
   sanitizePromptId,
-} from '../../services/bifrost-service.js';
+} from '../../services/ai/bifrost-service.js';
 
 /**
  * Bifrost 管理（对应 Python `app/api/admin/bifrost.py`）：

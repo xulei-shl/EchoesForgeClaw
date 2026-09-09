@@ -12,7 +12,7 @@ import {
   FastClawAgentError,
   FastClawAgentService,
   type FastClawRuntimeConfig,
-} from '../../src/services/fastclaw-service.js';
+} from '../../src/services/ai/fastclaw-service.js';
 
 const cfg: FastClawRuntimeConfig = {
   base_url: 'http://fc:18953',

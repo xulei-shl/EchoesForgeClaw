@@ -6,19 +6,19 @@ import {
   RefreshCw,
   Trash2,
 } from 'lucide-react';
-import { adminService } from '../../platform/services/admin';
-import type { PromptTemplate } from '../../platform/types';
-import { NODE_TEMPLATES } from '../../modules/bookplate/nodeTypes';
-import { Select } from '../../platform/components/ui/Select';
-import { Button } from '../../platform/components/ui/Button';
-import { Dialog } from '../../platform/components/ui/Dialog';
-import { Input } from '../../platform/components/ui/Input';
-import { Toggle } from '../../platform/components/ui/Toggle';
-import { Badge } from '../../platform/components/ui/Badge';
-import { Card } from '../../platform/components/ui/Card';
-import { Textarea } from '../../platform/components/ui/Textarea';
+import { adminService } from '../../shared/services/admin';
+import type { PromptTemplate } from '../../shared/types';
+import { NODE_TEMPLATES } from '../../canvas/nodes/_shared/nodeTypes';
+import { Select } from '../../shared/components/ui/Select';
+import { Button } from '../../shared/components/ui/Button';
+import { Dialog } from '../../shared/components/ui/Dialog';
+import { Input } from '../../shared/components/ui/Input';
+import { Toggle } from '../../shared/components/ui/Toggle';
+import { Badge } from '../../shared/components/ui/Badge';
+import { Card } from '../../shared/components/ui/Card';
+import { Textarea } from '../../shared/components/ui/Textarea';
 import { FieldLabel, PageHeader } from '../components/AdminBits';
-import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
+import { useFeedback } from '../../shared/components/ui/FeedbackProvider';
 
 /**
  * 可绑定提示词的节点模板类型：LLM 驱动的可配置模板

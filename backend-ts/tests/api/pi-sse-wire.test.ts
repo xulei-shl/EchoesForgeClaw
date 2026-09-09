@@ -4,8 +4,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { rmSync } from 'node:fs';
 
-import { killPiProcess, preparePiWorkspace, runPiAgent } from '../../src/services/pi-agent-service.js';
-import { chatStreamToSseResponse, type ChatStreamEvent } from '../../src/modules/bookplate/stream.js';
+import { killPiProcess, preparePiWorkspace, runPiAgent } from '../../src/services/ai/pi-agent-service.js';
+import { chatStreamToSseResponse, type ChatStreamEvent } from '../../src/api/canvas/stream.js';
 
 const PNG_B64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';

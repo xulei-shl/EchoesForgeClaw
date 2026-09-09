@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { getDb, type DB } from '../../config/database.js';
 import { llmConfigs, nodeConfigs, promptTemplates, skillAgentConfigs } from '../../db/schema.js';
 import { now, toIso } from '../../shared/datetime.js';
-import { ensureAgentMd, writeAgentMd } from '../../services/skill-agent-files.js';
+import { ensureAgentMd, writeAgentMd } from '../../services/ai/skill-agent-files.js';
 
 /**
  * Skill Agent 配置管理（对应 Python `app/api/admin/skill_agent_configs.py`）：

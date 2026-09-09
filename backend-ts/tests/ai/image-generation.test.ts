@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { imageService } from '../../src/services/image-service.js';
+import { imageService } from '../../src/services/multimodal/image-service.js';
 import { ImageGenerationError } from '../../src/infrastructure/ai/errors.js';
 import { startMockOpenAIServer, type MockOpenAIServer } from '../helpers/mock-openai-server.js';
 import type { ImageModelConfig } from '../../src/infrastructure/ai/types.js';

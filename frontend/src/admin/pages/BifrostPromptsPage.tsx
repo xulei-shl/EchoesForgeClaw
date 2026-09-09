@@ -12,19 +12,19 @@ import {
 } from 'lucide-react';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
-import { adminService, annotationService } from '../../platform/services/admin';
-import type { BifrostFolder, BifrostPrompt } from '../../platform/types';
-import { Button } from '../../platform/components/ui/Button';
-import { Input } from '../../platform/components/ui/Input';
-import { Select } from '../../platform/components/ui/Select';
-import { Dialog } from '../../platform/components/ui/Dialog';
-import { Card } from '../../platform/components/ui/Card';
-import { Badge } from '../../platform/components/ui/Badge';
-import { RatingStars } from '../../platform/components/ui/RatingStars';
-import { Textarea } from '../../platform/components/ui/Textarea';
+import { adminService, annotationService } from '../../shared/services/admin';
+import type { BifrostFolder, BifrostPrompt } from '../../shared/types';
+import { Button } from '../../shared/components/ui/Button';
+import { Input } from '../../shared/components/ui/Input';
+import { Select } from '../../shared/components/ui/Select';
+import { Dialog } from '../../shared/components/ui/Dialog';
+import { Card } from '../../shared/components/ui/Card';
+import { Badge } from '../../shared/components/ui/Badge';
+import { RatingStars } from '../../shared/components/ui/RatingStars';
+import { Textarea } from '../../shared/components/ui/Textarea';
 import { FieldLabel, PageHeader } from '../components/AdminBits';
-import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
-import { Pagination } from '../../platform/components/ui/Pagination';
+import { useFeedback } from '../../shared/components/ui/FeedbackProvider';
+import { Pagination } from '../../shared/components/ui/Pagination';
 
 /** 内存级 SWR 缓存：页面切换 0ms 瞬间秒开 */
 let cachedBifrostFoldersData: BifrostFolder[] | null = null;

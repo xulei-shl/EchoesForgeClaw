@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   hydrateChatTranscript,
   persistTranscriptUser,
-} from '../../src/services/chat-conversations.js';
+} from '../../src/services/ai/chat-conversations.js';
 import { hashSync } from 'bcryptjs';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';

@@ -3,7 +3,7 @@ import type { ImageModelConfig } from '../types.js';
 import { IMAGE_REQUEST_TIMEOUT_MS } from '../types.js';
 import { createAIProvider, resolveBaseURL, resolveEnvProxy } from '../provider.js';
 import { ImageGenerationError, classifyAIError } from '../errors.js';
-import { fetchWithProxy } from '../../../services/http-proxy.js';
+import { fetchWithProxy } from '../../../services/platform/http-proxy.js';
 
 /**
  * 图像生成（对应 Python `image_service.generate_image` 的底层 API 调用部分）。

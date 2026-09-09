@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   extractBibliographic,
   parseHoldingsFromHtml,
-} from '../../src/services/vufind-service.js';
+} from '../../src/services/node/vufind-service.js';
 
 /** 依据 vufind 检索结果项（result-body）真实结构精简的样例 */
 const SEARCH_ITEM_HTML = `

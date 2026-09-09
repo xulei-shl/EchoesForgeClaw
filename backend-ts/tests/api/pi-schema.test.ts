@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assistantMessageEventSchema, rpcEventSchema } from '../../src/services/pi/schema.js';
+import { assistantMessageEventSchema, rpcEventSchema } from '../../src/services/ai/pi/schema.js';
 
 /**
  * 进程边界 schema 校验（P1-3）：

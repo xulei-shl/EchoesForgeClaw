@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mapPiJsonEvent, type PiEventMapperState } from '../../src/services/pi-agent-service.js';
+import { mapPiJsonEvent, type PiEventMapperState } from '../../src/services/ai/pi-agent-service.js';
 
 /** 收集生成器产出的全部事件。 */
 function collect(evt: Record<string, unknown>, state: PiEventMapperState) {

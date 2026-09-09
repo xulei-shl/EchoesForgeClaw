@@ -12,7 +12,7 @@ import {
   RefreshCw,
   Trash2,
 } from 'lucide-react';
-import { adminService } from '../../platform/services/admin';
+import { adminService } from '../../shared/services/admin';
 import type {
   CanvasNodeType,
   FastClawAgentConfig,
@@ -20,16 +20,16 @@ import type {
   NodeConfig,
   PromptTemplate,
   SkillAgentConfig,
-} from '../../platform/types';
-import { Button } from '../../platform/components/ui/Button';
-import { Dialog } from '../../platform/components/ui/Dialog';
-import { Select } from '../../platform/components/ui/Select';
-import { Card } from '../../platform/components/ui/Card';
-import { Toggle } from '../../platform/components/ui/Toggle';
-import { Badge } from '../../platform/components/ui/Badge';
+} from '../../shared/types';
+import { Button } from '../../shared/components/ui/Button';
+import { Dialog } from '../../shared/components/ui/Dialog';
+import { Select } from '../../shared/components/ui/Select';
+import { Card } from '../../shared/components/ui/Card';
+import { Toggle } from '../../shared/components/ui/Toggle';
+import { Badge } from '../../shared/components/ui/Badge';
 import { FieldLabel, PageHeader } from '../components/AdminBits';
-import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
-import { NODE_TEMPLATES, NODE_PORT_TYPES, PORT_TYPE_LABELS, CATEGORY_LABELS } from '../../modules/bookplate/nodeTypes';
+import { useFeedback } from '../../shared/components/ui/FeedbackProvider';
+import { NODE_TEMPLATES, NODE_PORT_TYPES, PORT_TYPE_LABELS, CATEGORY_LABELS } from '../../canvas/nodes/_shared/nodeTypes';
 import { Sparkles } from 'lucide-react';
 
 /** 模型类型短标签（下拉选项展示） */

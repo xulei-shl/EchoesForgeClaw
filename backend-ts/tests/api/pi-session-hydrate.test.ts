@@ -5,8 +5,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { initDb, setDb, type DB } from '../../src/config/database.js';
 import { buildApp } from '../../src/server.js';
-import { nodeWorkspace } from '../../src/services/skill-agent-service.js';
-import { hydratePiSession, resolvePiSessionFile } from '../../src/services/pi-session-hydrate.js';
+import { nodeWorkspace } from '../../src/services/ai/skill-agent-service.js';
+import { hydratePiSession, resolvePiSessionFile } from '../../src/services/ai/pi-session-hydrate.js';
 
 /**
  * pi 会话水合与产物列表契约测试：

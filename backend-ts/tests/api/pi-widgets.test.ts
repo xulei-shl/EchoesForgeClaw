@@ -14,8 +14,8 @@ import {
   withWidgetBridge,
   type WidgetSnapshot,
   type WidgetStore,
-} from '../../src/services/pi-widgets.js';
-import type { ChatStreamEvent } from '../../src/modules/bookplate/stream.js';
+} from '../../src/services/ai/pi-widgets.js';
+import type { ChatStreamEvent } from '../../src/api/canvas/stream.js';
 
 /** 驱动 withWidgetBridge 处理输入事件，返回全部产出事件。 */
 async function runBridge(

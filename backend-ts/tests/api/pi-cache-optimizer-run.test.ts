@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFileSync, rmSync } from 'node:fs';
 
-import { killPiProcess, preparePiWorkspace, runPiAgent } from '../../src/services/pi-agent-service.js';
+import { killPiProcess, preparePiWorkspace, runPiAgent } from '../../src/services/ai/pi-agent-service.js';
 
 // runtime/ 在仓库根目录下，测试文件位于 backend-ts/tests/api/，向上三层
 const RUNTIME_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../runtime');

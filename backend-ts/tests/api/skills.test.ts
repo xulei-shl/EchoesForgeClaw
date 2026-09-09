@@ -7,7 +7,7 @@ import AdmZip from 'adm-zip';
 import { initDb, setDb, type DB } from '../../src/config/database.js';
 import { buildApp } from '../../src/server.js';
 import { startMockOpenAIServer, type MockOpenAIServer } from '../helpers/mock-openai-server.js';
-import { nodeWorkspace } from '../../src/services/skill-agent-service.js';
+import { nodeWorkspace } from '../../src/services/ai/skill-agent-service.js';
 
 /**
  * Skills 路由契约测试（对应 Python `app/modules/bookplate/router.py` 的 Skill 工作区部分）：

@@ -1,0 +1,518 @@
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useCanvas } from '../../core/CanvasContext';
+import { AlertCircle, X } from 'lucide-react';
+
+/** 拖拽激活阈值（px），防止点击头部时轻微抖动误触发 */
+const DRAG_THRESHOLD = 3;
+
+let globalZIndex = 10;
+
+export interface CanvasNodeProps {
+  id: string;
+  initialX?: number;
+  initialY?: number;
+  title?: string;
+  children: React.ReactNode;
+  className?: string;
+  /** 卡片边框外侧右下角的操作按钮（icon 按钮），随卡片拖动 */
+  actionBar?: React.ReactNode;
+  /** 卡片边框外侧底部的插槽（如「+ 添加子节点」按钮），随卡片拖动 */
+  footer?: React.ReactNode;
+  /** 边框外侧吸附侧边抽屉/检查器面板（如 NodeSideDrawer），挂载在根层级避免被内容区 overflow 裁剪 */
+  sideDrawer?: React.ReactNode;
+  /** 所属自定义分组（有分组时在标题旁展示小标签） */
+  groupBadge?: string;
+  /** 标题旁的类型不匹配提示（红色徽标，如「类型不匹配 ×2」）；null/undefined 不展示 */
+  mismatchBadge?: string | null;
+  /** 左上角类型指示圆点颜色 (推荐使用 OKLCH) */
+  dotColor?: string;
+  /** 允许拖拽右下角手柄调整卡片尺寸 */
+  resizable?: boolean;
+  /** 默认（同时也是最小）尺寸；开启 resizable 时必填 */
+  defaultSize?: { width: number; height: number };
+  onRemove?: () => void;
+  onPositionChange?: (id: string, x: number, y: number) => void;
+  onSizeChange?: (id: string, width: number, height: number) => void;
+  /** 拖拽中（每帧）实时回调，供父级命令式更新连线，不触发 React 渲染 */
+  onDrag?: (id: string, x: number, y: number) => void;
+  /** 调整尺寸中（每帧）实时回调，供父级命令式更新连线，不触发 React 渲染 */
+  onResizeLive?: (id: string, width: number, height: number) => void;
+  /** 根层级覆盖层，渲染在卡片根节点（边框内），用于光束动效等 */
+  glowOverlay?: React.ReactNode;
+  /** 是否显示左侧/右侧连接点 */
+  showLeftAnchor?: boolean;
+  showRightAnchor?: boolean;
+  /** 根节点点击回调（选中态等） */
+  onClick?: (e: React.MouseEvent<HTMLDivElement>) => void;
+  /** 根节点右键菜单回调（父级需 preventDefault 以抑制浏览器菜单） */
+  onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
+  /** 禁用删除按钮 */
+  disableRemove?: boolean;
+}
+
+export const CanvasNode: React.FC<CanvasNodeProps> = ({
+  id,
+  initialX = 100,
+  initialY = 100,
+  title,
+  children,
+  className = '',
+  actionBar,
+  resizable = false,
+  defaultSize,
+  onRemove,
+  onPositionChange,
+  onSizeChange,
+  onDrag,
+  onResizeLive,
+  glowOverlay,
+  showLeftAnchor,
+  showRightAnchor,
+  onClick,
+  onContextMenu,
+  footer,
+  sideDrawer,
+  groupBadge,
+  mismatchBadge,
+  dotColor,
+  disableRemove,
+}) => {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const {
+    scale,
+    onAnchorPointerDown,
+    activeNodeId,
+    setActiveNodeId,
+    selectedIds,
+    selectNode,
+    toggleNodeSelection,
+  } = useCanvas();
+  // 多选集合优先：在集合内即高亮；旧接入方（未提供集合）回退单选 activeNodeId
+  const isActive = selectedIds ? selectedIds.has(id) : activeNodeId === id;
+
+  const [zIndex, setZIndex] = useState(() => (globalZIndex++ % 70) + 10);
+
+  const bringToFront = useCallback(() => {
+    setZIndex((globalZIndex++ % 70) + 10);
+  }, []);
+
+  /** 激活/选中：普通点击替换单选，Ctrl/Cmd+点击切换多选成员（旧接入方回退 setActiveNodeId） */
+  const handleActivate = useCallback(
+    (e?: React.PointerEvent<HTMLDivElement> | React.FocusEvent<HTMLDivElement>) => {
+      const mod = e ? 'ctrlKey' in e && (e.ctrlKey || e.metaKey) : false;
+      if (!mod && isActive) {
+        // 节点已被单选激活时，避免重复刷新 state 触发全板重绘
+        return;
+      }
+      bringToFront();
+      if (mod) {
+        if (toggleNodeSelection) toggleNodeSelection(id);
+        else setActiveNodeId?.(id);
+      } else {
+        if (selectNode) selectNode(id);
+        else setActiveNodeId?.(id);
+      }
+    },
+    [bringToFront, id, isActive, selectNode, toggleNodeSelection, setActiveNodeId]
+  );
+
+  const [position, setPosition] = useState({ x: initialX, y: initialY });
+  // 拖拽中的实时位置：命令式更新，不触发 React 渲染
+  const dragPos = useRef({ x: initialX, y: initialY });
+  const draggingRef = useRef(false);
+  const pointerDown = useRef<{ x: number; y: number } | null>(null);
+  const dragStart = useRef({ pointerX: 0, pointerY: 0, nodeX: 0, nodeY: 0 });
+  const rafId = useRef<number | null>(null);
+
+  // 调整尺寸状态（最终提交的 React 状态）
+  const [size, setSize] = useState<{ w: number; h: number } | null>(
+    () => (resizable && defaultSize ? { w: defaultSize.width, h: defaultSize.height } : null)
+  );
+  // 调整尺寸中的实时尺寸：命令式更新，不触发 React 渲染
+  const resizeSize = useRef<{ w: number; h: number }>({
+    w: defaultSize?.width ?? 0,
+    h: defaultSize?.height ?? 0,
+  });
+  const resizeStart = useRef<{ px: number; py: number; w: number; h: number } | null>(null);
+  const resizingRef = useRef(false);
+  const resizeHandleRef = useRef<HTMLDivElement>(null);
+  const resizeRafId = useRef<number | null>(null);
+
+  // 外部 size 改变时同步实时 ref
+  useEffect(() => {
+    if (size) {
+      resizeSize.current = { w: size.w, h: size.h };
+    }
+  }, [size]);
+
+  // position 变化（提交后）时同步拖拽基准位
+  useEffect(() => {
+    dragPos.current = { x: position.x, y: position.y };
+  }, [position]);
+
+  // 父级坐标变化（如撤销/恢复历史）时同步本地位置，避免节点内部拖拽状态与数据层脱节
+  useEffect(() => {
+    setPosition({ x: initialX, y: initialY });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialX, initialY]);
+
+  // 上报节点实际尺寸（用于连线锚点计算）
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el || !onSizeChange) return;
+    const observer = new ResizeObserver((entries) => {
+      // 调整尺寸拖拽期间，屏蔽 ResizeObserver 回调广播，防止触发 React 全局渲染风暴
+      if (resizingRef.current) return;
+      for (const entry of entries) {
+        // borderBoxSize 为元素自身坐标空间尺寸（不受画布 scale 影响），更精确
+        const box = entry.borderBoxSize?.[0];
+        if (box) {
+          onSizeChange(id, box.inlineSize, box.blockSize);
+        } else {
+          // 老旧浏览器回退：contentRect 同样不受父级 transform 影响
+          onSizeChange(id, entry.contentRect.width, entry.contentRect.height);
+        }
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [id, onSizeChange]);
+
+  /** 将实时位置应用到 DOM（GPU 合成）并通知父级更新连线（整数像素对齐，杜绝亚像素文本抗锯齿微抖动） */
+  const applyTransform = useCallback(() => {
+    rafId.current = null;
+    const el = rootRef.current;
+    if (!el) return;
+    const { x, y } = dragPos.current;
+    const rx = Math.round(x);
+    const ry = Math.round(y);
+    el.style.transform = `translate3d(${rx}px, ${ry}px, 0)`;
+    onDrag?.(id, rx, ry);
+  }, [id, onDrag]);
+
+  /** 将实时尺寸应用到 DOM 并通知父级更新连线（0 React 渲染开销） */
+  const applyResizeTransform = useCallback(() => {
+    resizeRafId.current = null;
+    const el = rootRef.current;
+    if (!el) return;
+    const { w, h } = resizeSize.current;
+    el.style.width = `${w}px`;
+    el.style.height = `${h}px`;
+    onResizeLive?.(id, w, h);
+  }, [id, onResizeLive]);
+
+  const startDrag = (pointerX: number, pointerY: number) => {
+    draggingRef.current = true;
+    dragStart.current = {
+      pointerX,
+      pointerY,
+      nodeX: dragPos.current.x,
+      nodeY: dragPos.current.y,
+    };
+    rootRef.current?.classList.add('node-dragging');
+    document.body.classList.add('canvas-node-dragging-active');
+  };
+
+  const endDrag = () => {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    rootRef.current?.classList.remove('node-dragging');
+    document.body.classList.remove('canvas-node-dragging-active');
+    if (rafId.current !== null) {
+      cancelAnimationFrame(rafId.current);
+      rafId.current = null;
+    }
+    applyTransform();
+    const { x, y } = dragPos.current;
+    const rx = Math.round(x);
+    const ry = Math.round(y);
+    setPosition({ x: rx, y: ry });
+    onPositionChange?.(id, rx, ry);
+  };
+
+  const endResize = (pointerId?: number, currentTarget?: HTMLElement) => {
+    if (!resizingRef.current) return;
+    resizingRef.current = false;
+    resizeStart.current = null;
+    rootRef.current?.classList.remove('node-resizing');
+    if (resizeRafId.current !== null) {
+      cancelAnimationFrame(resizeRafId.current);
+      resizeRafId.current = null;
+    }
+    if (pointerId !== undefined && currentTarget) {
+      try {
+        currentTarget.releasePointerCapture?.(pointerId);
+      } catch {
+        /* 忽略释放捕获失败 */
+      }
+    }
+    applyResizeTransform();
+    const { w, h } = resizeSize.current;
+    setSize({ w, h });
+    onSizeChange?.(id, w, h);
+  };
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    // 仅响应主键（左键）：右键/中键留给画布菜单等交互，避免误触发拖拽
+    if (e.button !== 0) return;
+    const target = e.target as HTMLElement;
+    // 命中右下角调整尺寸手柄 → 进入 resize 模式
+    if (resizeHandleRef.current?.contains(target)) {
+      if (!defaultSize) return;
+      const curW = resizeSize.current.w || defaultSize.width;
+      const curH = resizeSize.current.h || defaultSize.height;
+      e.stopPropagation(); // 防止画布拖拽
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+      resizeStart.current = { px: e.clientX, py: e.clientY, w: curW, h: curH };
+      resizingRef.current = true;
+      rootRef.current?.classList.add('node-resizing');
+      return;
+    }
+    // 仅从头部拖拽；按钮/链接等可交互元素不触发
+    if (!target.closest('.node-drag-handle')) return;
+    if (target.closest('button, a, input, textarea, [contenteditable]')) return;
+    e.stopPropagation(); // 防止画布拖拽
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    pointerDown.current = { x: e.clientX, y: e.clientY };
+    // 按下瞬间预热 GPU 合成层，消除跨过 3px 阈值瞬间的纹理升层卡顿
+    if (rootRef.current) rootRef.current.style.willChange = 'transform';
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    // resize 分支：rAF 合并 DOM 直接更新，不触发 React 渲染
+    if (resizingRef.current) {
+      if (!resizeStart.current || !defaultSize) return;
+      const dx = (e.clientX - resizeStart.current.px) / scale;
+      const dy = (e.clientY - resizeStart.current.py) / scale;
+      const newW = Math.max(defaultSize.width, Math.round(resizeStart.current.w + dx));
+      const newH = Math.max(defaultSize.height, Math.round(resizeStart.current.h + dy));
+      resizeSize.current = { w: newW, h: newH };
+      if (resizeRafId.current === null) {
+        resizeRafId.current = requestAnimationFrame(applyResizeTransform);
+      }
+      return;
+    }
+    // 拖拽分支
+    if (!pointerDown.current) return;
+    const dx = e.clientX - pointerDown.current.x;
+    const dy = e.clientY - pointerDown.current.y;
+    if (!draggingRef.current) {
+      if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+      startDrag(pointerDown.current.x, pointerDown.current.y);
+    }
+    const nextX = dragStart.current.nodeX + (e.clientX - dragStart.current.pointerX) / scale;
+    const nextY = dragStart.current.nodeY + (e.clientY - dragStart.current.pointerY) / scale;
+    dragPos.current = { x: nextX, y: nextY };
+    // rAF 合并：一帧最多应用一次
+    if (rafId.current === null) {
+      rafId.current = requestAnimationFrame(applyTransform);
+    }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (rootRef.current) rootRef.current.style.willChange = 'auto';
+    // 结束 resize
+    if (resizingRef.current) {
+      endResize(e.pointerId, e.currentTarget as HTMLElement);
+      return;
+    }
+    if (!pointerDown.current) return;
+    pointerDown.current = null;
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+    } catch {
+      // 未捕获时忽略
+    }
+    endDrag();
+  };
+
+  // 卸载时清理未执行的 rAF 与全局拖拽标记
+  useEffect(() => {
+    return () => {
+      if (rafId.current !== null) cancelAnimationFrame(rafId.current);
+      if (resizeRafId.current !== null) cancelAnimationFrame(resizeRafId.current);
+      document.body.classList.remove('canvas-node-dragging-active');
+    };
+  }, []);
+
+  // 拖拽中若发生意外重渲染（如 SSE 流更新），用实时位置渲染避免回跳
+  const shownPos = draggingRef.current ? dragPos.current : position;
+
+  return (
+    <div
+      ref={rootRef}
+      id={id}
+      data-node-id={id}
+      className={`absolute bg-node-bg border-dashed-grid border rounded-xl shadow-sm flex flex-col pointer-events-auto transition-shadow duration-150 ${
+        isActive ? 'ring-1 ring-accent/60 shadow-md' : ''
+      } ${className}`}
+      style={{
+        zIndex: isActive ? 200 : zIndex,
+        width: size ? `${size.w}px` : undefined,
+        height: size ? `${size.h}px` : undefined,
+        minWidth: size ? `${defaultSize!.width}px` : '200px',
+        minHeight: size ? `${defaultSize!.height}px` : undefined,
+        transform: `translate3d(${shownPos.x}px, ${shownPos.y}px, 0)`,
+        contain: 'layout style',
+      }}
+      onPointerDownCapture={handleActivate}
+      onFocusCapture={handleActivate}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      onClick={onClick}
+      onContextMenu={onContextMenu}
+      onLostPointerCapture={() => {
+        // 浏览器中途回收指针捕获（如切换标签页）时结束拖拽并提交当前状态，避免卡在拖拽态
+        if (resizingRef.current) {
+          endResize();
+          return;
+        }
+        pointerDown.current = null;
+        endDrag();
+      }}
+    >
+      {/* 调整尺寸与拖拽时的样式覆盖 */}
+      <style>{`
+        .node-resizing,
+        .node-dragging {
+          transition: none !important;
+          user-select: none !important;
+        }
+        .node-resizing *,
+        .node-dragging * {
+          pointer-events: none !important;
+        }
+        .node-dragging,
+        .node-dragging * {
+          cursor: grabbing !important;
+        }
+        body.canvas-node-dragging-active,
+        body.canvas-node-dragging-active * {
+          cursor: grabbing !important;
+          user-select: none !important;
+        }
+      `}</style>
+
+      {/* 左右连接点（输出/输入端口），通过伪元素扩展触控热区至 40x40px */}
+      {showLeftAnchor && (
+        <div
+          data-anchor-input={id}
+          title="拖拽连线到此：作为本节点的上级输入"
+          className="absolute top-1/2 -left-[10px] w-5 h-5 -translate-y-1/2 z-30 flex items-center justify-center rounded-full cursor-crosshair group/anchor before:absolute before:-inset-2.5 before:content-['']"
+          style={{ touchAction: 'none' }}
+        >
+          <div className="w-3 h-3 bg-paper border-[1.5px] border-accent rounded-full shadow-sm transition-transform duration-150 group-hover/anchor:scale-125" />
+        </div>
+      )}
+      {showRightAnchor && (
+        <div
+          data-anchor-output={id}
+          title="按住拖拽到目标节点的左侧连接点创建连线"
+          className="absolute top-1/2 -right-[10px] w-5 h-5 -translate-y-1/2 z-30 flex items-center justify-center rounded-full cursor-crosshair group/anchor before:absolute before:-inset-2.5 before:content-['']"
+          style={{ touchAction: 'none' }}
+          onPointerDown={(e) => {
+            if (e.button !== 0) return;
+            e.stopPropagation(); // 防止触发节点拖动 / 画布平移
+            onAnchorPointerDown?.(id, e);
+          }}
+        >
+          <div className="w-3 h-3 bg-paper border-[1.5px] border-accent rounded-full shadow-sm transition-transform duration-150 group-hover/anchor:scale-125" />
+        </div>
+      )}
+
+      {/* 根层级覆盖层，如光束动效 */}
+      {glowOverlay}
+
+      {/* 头部拖拽区（悬停预热合成层，消除初次拖动丢帧） */}
+      <div
+        className="relative z-10 node-drag-handle h-8 bg-paper border-b border-dashed border-paper-grid flex items-center justify-between px-3 cursor-grab active:cursor-grabbing hover:will-change-transform rounded-t-xl select-none"
+        style={{ touchAction: 'none' }}
+      >
+        <div className="flex gap-1.5 items-center min-w-0">
+          <div 
+            className={`w-2 h-2 rounded-full shrink-0 -translate-y-[0.5px] ${!dotColor ? 'bg-paper-hole' : ''}`} 
+            style={dotColor ? { backgroundColor: dotColor } : undefined}
+          />
+          <span className="font-serif text-sm text-ink-light font-medium truncate">{title || 'Node'}</span>
+          {groupBadge && (
+            <span
+              title={groupBadge}
+              className="shrink-0 max-w-[100px] truncate text-[10px] text-ink-faint border border-dashed border-paper-grid rounded-pill px-1.5 py-px font-mono"
+            >
+              {groupBadge}
+            </span>
+          )}
+          {mismatchBadge && (
+            <div
+              title={mismatchBadge}
+              className="shrink-0 flex items-center gap-1 max-w-[140px] px-1.5 py-[2px] rounded-full bg-error/10 border border-error/20 text-error shadow-sm overflow-hidden"
+            >
+              <AlertCircle size={10} strokeWidth={2} className="shrink-0" />
+              <span className="truncate text-[10px] font-medium leading-none mt-[0.5px]">
+                {mismatchBadge}
+              </span>
+            </div>
+          )}
+        </div>
+        {onRemove && (
+          <button
+            onClick={(e) => {
+              if (disableRemove) return;
+              e.stopPropagation();
+              onRemove();
+            }}
+            disabled={disableRemove}
+            title={disableRemove ? '有下级节点关联，不可删除' : '删除节点'}
+            aria-label="删除节点"
+            className={`p-1 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-error ${disableRemove ? 'text-ink-faint/40 cursor-not-allowed' : 'text-ink-light hover:text-error hover:bg-error/10 active:scale-[0.96] transition-transform'}`}
+          >
+            <X size={13} strokeWidth={2} />
+          </button>
+        )}
+      </div>
+
+      {/* 内容区 */}
+      <div className="relative z-10 p-4 flex-1 overflow-y-auto overflow-x-hidden min-h-0 flex flex-col">
+        {children}
+      </div>
+
+      {/* 边框外侧吸附侧边抽屉/检查器面板（不被内容区 overflow 裁剪） */}
+      {sideDrawer}
+
+      {/* 边框外侧右下角操作按钮 */}
+      {actionBar && (
+        <div className="absolute -bottom-8 right-0 flex items-center gap-0.5 z-20">
+          {actionBar}
+        </div>
+      )}
+
+      {/* 边框外侧右侧插槽（「+ 添加子节点」按钮） */}
+      {footer && (
+        <div className="absolute top-1/2 -right-10 -translate-y-1/2 z-30">
+          {footer}
+        </div>
+      )}
+
+      {/* 右下角调整尺寸手柄（增大触控热区至 28x28px 并增加微交互反馈） */}
+      {resizable && defaultSize && (
+        <div
+          ref={resizeHandleRef}
+          className="absolute -bottom-1 -right-1 w-7 h-7 cursor-se-resize z-30 flex items-end justify-end p-1.5 group/handle select-none"
+          style={{ touchAction: 'none' }}
+          title="拖动调整大小"
+        >
+          <div className="w-3.5 h-3.5 flex items-end justify-end transition-transform duration-150 group-hover/handle:scale-110 group-active/handle:scale-125">
+            <svg width="10" height="10" viewBox="0 0 10 10" className="text-ink-faint/60 group-hover/handle:text-accent transition-colors duration-150">
+              <line x1="7" y1="10" x2="10" y2="7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="4" y1="10" x2="10" y2="4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default CanvasNode;

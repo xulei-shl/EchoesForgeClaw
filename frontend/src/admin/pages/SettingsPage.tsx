@@ -22,16 +22,16 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { adminService } from '../../platform/services/admin';
-import type { AppSetting, BifrostFolder } from '../../platform/types';
-import { Button } from '../../platform/components/ui/Button';
-import { Input } from '../../platform/components/ui/Input';
-import { Card } from '../../platform/components/ui/Card';
-import { Dialog } from '../../platform/components/ui/Dialog';
-import { Select } from '../../platform/components/ui/Select';
-import { Toggle } from '../../platform/components/ui/Toggle';
+import { adminService } from '../../shared/services/admin';
+import type { AppSetting, BifrostFolder } from '../../shared/types';
+import { Button } from '../../shared/components/ui/Button';
+import { Input } from '../../shared/components/ui/Input';
+import { Card } from '../../shared/components/ui/Card';
+import { Dialog } from '../../shared/components/ui/Dialog';
+import { Select } from '../../shared/components/ui/Select';
+import { Toggle } from '../../shared/components/ui/Toggle';
 import { FieldLabel } from '../components/AdminBits';
-import { useFeedback } from '../../platform/components/ui/FeedbackProvider';
+import { useFeedback } from '../../shared/components/ui/FeedbackProvider';
 
 /** 需要默认展示的设置项说明（新增时用于输入提示） */
 const KNOWN_KEYS: { key: string; description: string }[] = [

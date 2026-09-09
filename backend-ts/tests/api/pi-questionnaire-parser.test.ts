@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { parseQuestionnaireInteractions } from '../../../frontend/src/modules/bookplate/utils/piQuestionnaireParser.js';
-import type { AgentStep } from '../../../frontend/src/platform/types/index.js';
+import { parseQuestionnaireInteractions } from '../../../frontend/src/canvas/nodes/ai/utils/piQuestionnaireParser.js';
+import type { AgentStep } from '../../../frontend/src/shared/types/index.js';
 
 describe('parseQuestionnaireInteractions（问答交互数据解析）', () => {
   it('空步骤或无问答工具时返回空数组', () => {

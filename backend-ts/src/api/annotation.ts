@@ -4,7 +4,7 @@ import {
   VALID_RESOURCE_TYPES,
   setUserAnnotation,
   getUserAnnotation,
-} from '../services/annotation-service.js';
+} from '../services/platform/annotation-service.js';
 
 export async function registerAnnotationRouter(app: FastifyInstance): Promise<void> {
   const auth = { preHandler: app.authenticate };

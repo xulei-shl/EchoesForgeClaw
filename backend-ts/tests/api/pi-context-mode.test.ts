@@ -9,7 +9,7 @@ import {
   killPiProcess,
   preparePiWorkspace,
   runPiAgent,
-} from '../../src/services/pi-agent-service.js';
+} from '../../src/services/ai/pi-agent-service.js';
 
 const require = createRequire(import.meta.url);
 const Database = require('better-sqlite3') as new (p: string, opts?: { readonly?: boolean }) => {

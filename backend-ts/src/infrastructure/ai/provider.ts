@@ -1,5 +1,5 @@
 import { createOpenAICompatible, type OpenAICompatibleProvider } from '@ai-sdk/openai-compatible';
-import { proxyDispatcher } from '../../services/http-proxy.js';
+import { proxyDispatcher } from '../../services/platform/http-proxy.js';
 
 /**
  * Provider 工厂（AI SDK 边界内，对应 Python 每次调用 `AsyncOpenAI(...)` 的构造）。

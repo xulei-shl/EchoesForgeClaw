@@ -5,8 +5,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { initDb, setDb, type DB } from '../../src/config/database.js';
 import { buildApp } from '../../src/server.js';
-import { userGeneratedDir } from '../../src/services/image-service.js';
-import { nodeWorkspace } from '../../src/services/skill-agent-service.js';
+import { userGeneratedDir } from '../../src/services/multimodal/image-service.js';
+import { nodeWorkspace } from '../../src/services/ai/skill-agent-service.js';
 
 /**
  * Skill Agent 文件附件链路契约测试：

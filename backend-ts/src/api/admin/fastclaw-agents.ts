@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { getDb } from '../../config/database.js';
 import { fastclawAgentConfigs, nodeConfigs } from '../../db/schema.js';
 import { now, toIso } from '../../shared/datetime.js';
-import { fastclawAgentService } from '../../services/fastclaw-service.js';
+import { fastclawAgentService } from '../../services/ai/fastclaw-service.js';
 
 /**
  * FastClaw Agent 配置管理（对应 Python `app/api/admin/fastclaw_agents.py`）：

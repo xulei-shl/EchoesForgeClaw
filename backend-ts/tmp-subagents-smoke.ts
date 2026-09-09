@@ -20,8 +20,8 @@ import {
   killPiProcess,
   preparePiWorkspace,
   runPiAgent,
-} from './src/services/pi-agent-service.js';
-import { withWidgetBridge, createWidgetStore } from './src/services/pi-widgets.js';
+} from './src/services/ai/pi-agent-service.js';
+import { withWidgetBridge, createWidgetStore } from './src/services/ai/pi-widgets.js';
 
 const RUNTIME_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../runtime');
 const UID = 990003;

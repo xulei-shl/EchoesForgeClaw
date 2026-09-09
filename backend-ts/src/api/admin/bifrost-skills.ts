@@ -7,17 +7,17 @@ import {
   downloadBifrostSkillZip,
   getBifrostSkillDetail,
   getMergedBifrostSkills,
-} from '../../services/bifrost-service.js';
+} from '../../services/ai/bifrost-service.js';
 import {
   RESOURCE_TYPE_BIFROST_SKILL,
   getUserAnnotation,
   setUserAnnotation,
-} from '../../services/annotation-service.js';
+} from '../../services/platform/annotation-service.js';
 import {
   SkillValidationError,
   removeSharedBifrostSkill,
   updateSharedBifrostSkill,
-} from '../../services/skill-agent-service.js';
+} from '../../services/ai/skill-agent-service.js';
 
 /**
  * Admin 端 Bifrost Skills 管理（对应 Python `app/api/admin/bifrost_skills.py`）：

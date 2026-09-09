@@ -4,9 +4,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { initDb, setDb, getDb } from '../../src/config/database.js';
 import { buildApp } from '../../src/server.js';
-import { IMAGE_GC_TTL_MS, runRuntimeGc } from '../../src/services/runtime-gc.js';
-import { extractRuntimeImageUrls } from '../../src/services/image-service.js';
-import { RUNTIME_ROOT } from '../../src/services/skill-agent-service.js';
+import { IMAGE_GC_TTL_MS, runRuntimeGc } from '../../src/services/platform/runtime-gc.js';
+import { extractRuntimeImageUrls } from '../../src/services/multimodal/image-service.js';
+import { RUNTIME_ROOT } from '../../src/services/ai/skill-agent-service.js';
 import { generations, users } from '../../src/db/schema.js';
 import { now } from '../../src/shared/datetime.js';
 import { eq } from 'drizzle-orm';
@@ -207,7 +207,7 @@ describe('DELETE /api/generations/:id 级联删盘', () => {
   });
 
   it('deleteFile 对旧格式（无 userId）URL 安全拒绝', async () => {
-    const { imageService } = await import('../../src/services/image-service.js');
+    const { imageService } = await import('../../src/services/multimodal/image-service.js');
     expect(imageService.deleteFile('/static/generated/no-user-id.png')).toBe(false);
     expect(imageService.deleteFile('/static/covers/whatever.png')).toBe(false);
     expect(imageService.deleteFile('')).toBe(false);

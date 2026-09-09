@@ -9,7 +9,7 @@ import {
   preparePiWorkspace,
   resolvePiExtensions,
   runPiAgent,
-} from '../../src/services/pi-agent-service.js';
+} from '../../src/services/ai/pi-agent-service.js';
 
 // runtime/ 在仓库根目录下，测试文件位于 backend-ts/tests/api/，向上三层
 const RUNTIME_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../runtime');

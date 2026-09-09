@@ -17,8 +17,8 @@ import {
   reapIdlePiProcesses,
   evictLeastRecentlyUsedPiProcess,
   type PiProcessEntry,
-} from '../../src/services/pi-agent-service.js';
-import { createPiRoundState } from '../../src/services/pi/registry.js';
+} from '../../src/services/ai/pi-agent-service.js';
+import { createPiRoundState } from '../../src/services/ai/pi/registry.js';
 
 const RUNTIME_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../runtime');
 const UID = 990005;
