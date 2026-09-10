@@ -505,6 +505,31 @@ export async function searchBifrostSkills(db: DB, q = '', limit = 50, force = fa
 }
 
 /**
+ * 按名称查单个 skill 的远端最新版本号（用于下载/同步时记录缓存版本戳）。
+ * 优先复用 TTL 内的目录缓存（零网络请求）；仅当缓存缺失时拉取一次目录。
+ * 任何失败（未配置/不可达/超时）返回 ''，版本标记是尽力而为，不应阻断下载。
+ */
+export async function lookupBifrostSkillVersion(db: DB, skillName: string): Promise<string> {
+  const name = (skillName ?? '').trim();
+  if (!name) return '';
+  try {
+    const cfg = requireConfig(db);
+    const catalogKey = `skills-catalog:${cfg.base_url}`;
+    const hit = ttlCache.get(catalogKey);
+    if (hit && hit.expiresAt > Date.now()) {
+      const found = (hit.value as Record<string, any>[]).find((s) => String(s.name) === name);
+      return String(found?.latest_version ?? '');
+    }
+    const catalog = await fetchSkillCatalog(db);
+    ttlCache.set(catalogKey, { value: catalog, expiresAt: Date.now() + TTL_MS });
+    const found = catalog.find((s) => String(s.name) === name);
+    return String(found?.latest_version ?? '');
+  } catch {
+    return ''; // 未配置/不可达：不记录版本（读取端回退 updated_at 口径），不影响安装
+  }
+}
+
+/**
  * 单个 skill 的完整元数据（SKILL.md 正文 + 文件树），供列表瘦身后的详情展示。
  * 本地共享区已缓存则直接读盘返回；否则按 name 定位远端 id 后拉取 Management 详情。
  * 不存在返回 null。

@@ -141,6 +141,34 @@ export function parseFrontmatter(markdown: string): { meta: Record<string, strin
   return { meta, body: lines.slice(endIndex + 1).join('\n').trim() };
 }
 
+/** Bifrost skill 共享包内的缓存元数据 sidecar（记录解压来源 zip 对应的远端版本）。 */
+const BIFROST_CACHE_STAMP = '.bifrost-cache.json';
+
+/** 在共享包内写入/更新缓存版本戳；失败静默（版本标记是尽力而为，不应让安装失败）。 */
+export function writeBifrostCacheStamp(dest: string, version: string): void {
+  try {
+    const v = (version ?? '').trim();
+    if (!v) return; // 无版本信息时不落空戳（读取端回退 updated_at 口径）
+    writeFileSync(
+      path.join(dest, BIFROST_CACHE_STAMP),
+      JSON.stringify({ version: v, cached_at: Math.floor(Date.now() / 1000) }),
+      'utf-8'
+    );
+  } catch {
+    /* 版本标记失败不影响安装结果 */
+  }
+}
+
+/** 读取共享包内的缓存版本戳；不存在/损坏返回 ''（调用方自行降级）。 */
+export function readBifrostCacheStamp(skillDir: string): string {
+  try {
+    const raw = JSON.parse(readFileSync(path.join(skillDir, BIFROST_CACHE_STAMP), 'utf-8')) as { version?: unknown };
+    return typeof raw.version === 'string' ? raw.version : '';
+  } catch {
+    return '';
+  }
+}
+
 /** 递归列出目录下全部文件（相对路径，/ 分隔，排序）。 */
 function listFilesRecursive(dir: string, prefix = ''): string[] {
   const out: string[] = [];
@@ -183,7 +211,9 @@ export function readSkillMeta(skillDir: string): Record<string, unknown> {
     name: meta.name || path.basename(real),
     description: meta.description ?? '',
     body,
-    files: listFilesRecursive(real),
+    // 缓存版本戳是管理端 sidecar，不属于 skill 文件树：对外隐藏，仅以 cached_version 暴露
+    files: listFilesRecursive(real).filter((f) => f !== BIFROST_CACHE_STAMP),
+    cached_version: readBifrostCacheStamp(real),
   };
 }
 
@@ -285,14 +315,17 @@ function extractSkillZip(zipBytes: Uint8Array, dest: string, info: { root: strin
   return readSkillMeta(dest);
 }
 
-/** Bifrost 检索路径：校验并真实解压到共享区，再在该用户登记目录建软链（Windows 失败退化为复制）。 */
-export function installSkillZip(userId: number, zipBytes: Uint8Array): Record<string, unknown> {
+/** Bifrost 检索路径：校验并真实解压到共享区，再在该用户登记目录建软链（Windows 失败退化为复制）。
+ *  version 为本次下载对应的远端版本号（缓存时间记录版本戳；未知传空串）。 */
+export function installSkillZip(userId: number, zipBytes: Uint8Array, version = ''): Record<string, unknown> {
   const info = validateSkillZip(zipBytes);
   const name = info.name;
   // 共享区：同名 skill 先清空再覆盖（重装 = 更新）。Node 单线程 + 同步操作天然互斥，无需额外锁。
   const dest = path.join(REAL_SKILLS_ROOT, name);
   removePath(dest);
   const meta = extractSkillZip(zipBytes, dest, info);
+  writeBifrostCacheStamp(dest, version); // 记录本次缓存的远端版本，供管理端比对远端是否已更新
+  meta.cached_version = readBifrostCacheStamp(dest); // meta 在戳写入前生成，回读保持一致
   // 用户登记：软链 -> 共享真实包（绝对目标路径；Windows 无权限退化为真实复制）
   const registry = path.join(userSkillsRoot(userId), name);
   removePath(registry);
@@ -403,13 +436,16 @@ export function listSharedBifrostSkills(): Record<string, unknown>[] {
   return items;
 }
 
-/** Admin 同步：校验 zip 并覆盖共享区 runtime/.agent/skills/{name}/（不触碰任何用户登记）。 */
-export function updateSharedBifrostSkill(zipBytes: Uint8Array): Record<string, unknown> {
+/** Admin 同步：校验 zip 并覆盖共享区 runtime/.agent/skills/{name}/（不触碰任何用户登记）。
+ *  version 为本次下载对应的远端版本号（缓存时间记录版本戳；未知传空串）。 */
+export function updateSharedBifrostSkill(zipBytes: Uint8Array, version = ''): Record<string, unknown> {
   const info = validateSkillZip(zipBytes);
   const name = info.name;
   const dest = path.join(REAL_SKILLS_ROOT, name);
   removePath(dest);
   const meta = extractSkillZip(zipBytes, dest, info);
+  writeBifrostCacheStamp(dest, version); // 记录本次缓存的远端版本，供管理端比对远端是否已更新
+  meta.cached_version = readBifrostCacheStamp(dest); // meta 在戳写入前生成，回读保持一致
   invalidateSharedSkillsCache(); // 共享区覆盖，失效列表缓存
   return meta;
 }

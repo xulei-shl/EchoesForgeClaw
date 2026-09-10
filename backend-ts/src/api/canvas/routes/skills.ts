@@ -12,6 +12,7 @@ import {
   BifrostNotFoundError,
   downloadBifrostSkillZip,
   getMergedBifrostSkills,
+  lookupBifrostSkillVersion,
 } from '../../../services/ai/bifrost-service.js';
 import {
   SkillNotFoundError,
@@ -74,7 +75,9 @@ export async function register(app: FastifyInstance): Promise<void> {
           if (!zipBytes.length || zipBytes.length > 20 * 1024 * 1024) {
             return reply.code(400).send({ detail: 'skill 压缩包为空或超过 20MB 上限' });
           }
-          meta = installSkillZip(request.authUser!.id, zipBytes);
+          // 记录本次缓存的远端版本号（目录查询失败不阻断安装，版本标记尽力而为）
+          const version = await lookupBifrostSkillVersion(getDb(), name);
+          meta = installSkillZip(request.authUser!.id, zipBytes, version);
         }
         const ann = getUserAnnotation(getDb(), request.authUser!.id, RESOURCE_TYPE_BIFROST_SKILL, String(meta.name ?? ''));
         meta.user_rating = ann.rating;

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { hashSync } from 'bcryptjs';
-import { cpSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import AdmZip from 'adm-zip';
@@ -236,6 +236,8 @@ describe('skills Bifrost 安装 / 检索', () => {
   it('install：从 Bifrost 下载 zip → 共享区安装 + 软链登记', async () => {
     const zipBytes = makeSkillZip('bifrost-skill');
     const srv = await startMockOpenAIServer((req) => {
+      // 版本戳会探测远端目录 /api/skills（404 → 版本未知，不阻断安装）
+      if (req.path === '/api/skills') return { raw: '{}', status: 404 };
       expect(req.path).toBe('/api/skills/serve/bifrost-skill/download.zip');
       return { raw: zipBytes, contentType: 'application/zip' };
     });
@@ -497,9 +499,15 @@ describe('admin bifrost-skills 管理', () => {
       headers: { authorization: `Bearer ${token}` },
     });
     expect(res.statusCode).toBe(200);
-    const skill = (res.json() as { skill: { name: string; files: string[] } }).skill;
+    const skill = (res.json() as { skill: { name: string; files: string[]; cached_version?: string } }).skill;
     expect(skill.name).toBe('admin-skill');
     expect(skill.files).toContain('v2.txt');
+    // 版本戳是 sidecar，不属于 skill 文件树
+    expect(skill.files).not.toContain('.bifrost-cache.json');
+    // 同步时刻远端目录不可达（mock 对 /api/skills 返回 404）→ 版本未知，回落空串（不阻断同步）
+    expect(skill.cached_version ?? '').toBe('');
+    // 版本未知时不落空戳：sidecar 不应存在（读取端回退 updated_at 口径）
+    expect(existsSync(path.join(RUNTIME_ROOT, '.agent', 'skills', 'admin-skill', '.bifrost-cache.json'))).toBe(false);
   });
 
   it('delete：从共享区删除并清理登记软链', async () => {
@@ -600,6 +608,8 @@ describe('admin bifrost-skills 管理', () => {
     const local = body.skills.find((s) => s.name === 'browse-skill');
     expect(local?.cached).toBe(true);
     expect(local?.latest_version).toBe('2.0');
+    // 本地缓存版本戳：安装时刻记录的远端版本号（与远端 latest_version 一致）
+    expect(local?.cached_version).toBe('2.0');
     // 列表瘦身：本地缓存条目同样不含 body/files，但保留 file_count
     expect(local?.body).toBeUndefined();
     expect(local?.files).toBeUndefined();
@@ -609,6 +619,7 @@ describe('admin bifrost-skills 管理', () => {
     expect(remoteOnly!.cached).toBe(false);
     expect(remoteOnly!.latest_version).toBe('1.5');
     expect(remoteOnly!.file_count).toBe(4);
+    expect(remoteOnly!.cached_version).toBeUndefined();
   });
 });
 
@@ -719,6 +730,8 @@ describe('install：本地共享缓存优先（registerExistingBifrostSkill）',
   it('共享区已有该 skill 时跳过网络下载，仅登记软链（幂等）', async () => {
     const zipBytes = makeSkillZip('cache-skill', { 'data.txt': 'v1' });
     const srv = await startMockOpenAIServer((req) => {
+      // 版本戳会探测远端目录 /api/skills（404 → 版本未知，不阻断安装）
+      if (req.path === '/api/skills') return { raw: '{}', status: 404 };
       expect(req.path).toBe('/api/skills/serve/cache-skill/download.zip');
       return { raw: zipBytes, contentType: 'application/zip' };
     });

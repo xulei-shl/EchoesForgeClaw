@@ -647,6 +647,8 @@ export interface CachedBifrostSkill {
   files?: string[];
   /** 是否已缓存到本地共享区（false = 仅存在于远端仓库，点「同步最新」即可下载缓存） */
   cached?: boolean;
+  /** 本地缓存时记录的远端版本号（下载/同步时刻写入 .bifrost-cache.json；旧缓存或远端目录不可达时为空） */
+  cached_version?: string;
   /** 远端文件数 */
   file_count?: number;
   /** 本地共享包目录修改时间（unix 秒；未缓存时为 null） */

@@ -7,6 +7,7 @@ import {
   downloadBifrostSkillZip,
   getBifrostSkillDetail,
   getMergedBifrostSkills,
+  lookupBifrostSkillVersion,
 } from '../../services/ai/bifrost-service.js';
 import {
   RESOURCE_TYPE_BIFROST_SKILL,
@@ -99,7 +100,9 @@ export async function registerBifrostSkillsAdminRouter(app: FastifyInstance): Pr
       if (!zipBytes.length || zipBytes.length > MAX_SKILL_ZIP_BYTES) {
         return reply.code(400).send({ detail: 'skill 压缩包为空或超过 20MB 上限' });
       }
-      const meta = updateSharedBifrostSkill(zipBytes);
+      // 记录本次缓存的远端版本号（目录查询失败不阻断同步，版本标记尽力而为）
+      const version = await lookupBifrostSkillVersion(getDb(), skillName);
+      const meta = updateSharedBifrostSkill(zipBytes, version);
       // 防御性校验：Bifrost 按 name 分发 zip，zip 内 SKILL.md 的 name 应一致，
       // 否则会出现「同步的是 A、落盘的是 B」的困惑状态
       if (meta.name !== skillName) {
