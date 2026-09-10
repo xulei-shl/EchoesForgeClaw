@@ -134,15 +134,33 @@ export interface GuardrailsAutoConfig {
   policies: { rules: GuardrailsAgentRuntimeRule[] };
 }
 
-/** agent-runtime 规则：保护 .pi-agent/（含 models.json/web-search.json 等真实密钥装配物）。 */
+/**
+ * agent-runtime 规则：保护 .pi-agent/（含 models.json/web-search.json 等真实密钥装配物）。
+ *
+ * 黑名单粒度（fail-closed + 显式豁免）：.pi-agent/** 默认全封，但技能/提示词是
+ * pi 渐进式披露机制要求「模型经 read tool 按需读取」的可读资源（索引已注入系统提示词，
+ * 正文由 read 读取）——若被 noAccess 封死，装配到 .pi-agent/skills 的技能形同虚设。
+ * 故经 allowedPatterns 显式放行 skills/prompts 两棵资源树；models.json / web-search.json /
+ * settings.json / auth.json / extensions / sessions / run 等运行态与密钥装配物保持封禁。
+ * 后续新增敏感文件默认仍受保护，无需修改本规则。
+ */
 export interface GuardrailsAgentRuntimeRule {
   id: 'agent-runtime';
   description: string;
   patterns: [{ pattern: '.pi-agent' }, { pattern: '.pi-agent/**' }];
+  allowedPatterns: { pattern: string }[];
   protection: 'noAccess';
   onlyIfExists: true;
   blockMessage: string;
 }
+
+/** 可读资源树（带裸目录模式：`/**` 在 Node matchesGlob 下不匹配无尾斜杠的目录本身）。 */
+const AGENT_RUNTIME_ALLOWED_PATTERNS = [
+  { pattern: '.pi-agent/skills' },
+  { pattern: '.pi-agent/skills/**' },
+  { pattern: '.pi-agent/prompts' },
+  { pattern: '.pi-agent/prompts/**' },
+] as const;
 
 /** 装配期注入的策略规则（按 id 与扩展内置/用户规则去重合并，见 loader afterMerge）。 */
 export function guardrailsPolicyRules(): GuardrailsAgentRuntimeRule[] {
@@ -155,6 +173,7 @@ export function guardrailsPolicyRules(): GuardrailsAgentRuntimeRule[] {
         { pattern: '.pi-agent' },
         { pattern: '.pi-agent/**' },
       ],
+      allowedPatterns: [...AGENT_RUNTIME_ALLOWED_PATTERNS],
       protection: 'noAccess',
       onlyIfExists: true,
       blockMessage:

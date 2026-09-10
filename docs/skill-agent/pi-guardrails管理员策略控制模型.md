@@ -75,7 +75,7 @@
 ## 6. 生效口径与注意事项
 
 - 策略变更一般不实时作用于已有对话进程；新 workspace 装配才会使用新策略。
-- 目前默认配置里已加入一条额外策略规则 `agent-runtime`，禁止工具访问 `.pi-agent/**`，用来保护后端装配的真实密钥类文件（如 models.json / web-search.json）。
+- 目前默认配置里已加入一条额外策略规则 `agent-runtime`，禁止工具访问 `.pi-agent/**`，用来保护后端装配的真实密钥类文件（如 models.json / web-search.json）；同时经 `allowedPatterns` 显式放行 `.pi-agent/skills/**` 与 `.pi-agent/prompts/**`——技能/提示词是 pi 渐进式披露要求模型经 read tool 按需读取的可读资源，封死会导致装配的技能形同虚设（详见 `pi-extension-integration.md` 的 agent-runtime 规则说明）。
 - 如果后续打开 pathAccess 的交互语义（allow/ask），在 RPC 服务端场景需重新评估，不应默认引入用户对话确认。
 
 ---

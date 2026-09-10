@@ -489,12 +489,19 @@ describe('pi-guardrails 自动配置装配（{ws}/.pi-agent/extensions/guardrail
           mode: 'block',
           allowedPaths: [{ kind: 'file', path: '/dev/null' }],
         });
-        // 额外保护规则：.pi-agent/（models.json / web-search.json 含真实 API Key）不可经工具访问
+        // 额外保护规则：.pi-agent/（models.json / web-search.json 含真实 API Key）不可经工具访问；
+        // skills/prompts 是渐进式披露要求「read tool 按需读取」的可读资源，allowedPatterns 显式放行
         const agentRule = cfg.policies.rules.find((r: { id: string }) => r.id === 'agent-runtime');
         expect(agentRule).toMatchObject({
           protection: 'noAccess',
           onlyIfExists: true,
           patterns: [{ pattern: '.pi-agent' }, { pattern: '.pi-agent/**' }],
+          allowedPatterns: [
+            { pattern: '.pi-agent/skills' },
+            { pattern: '.pi-agent/skills/**' },
+            { pattern: '.pi-agent/prompts' },
+            { pattern: '.pi-agent/prompts/**' },
+          ],
         });
 
         // 幂等：两次装配产物逐字节一致（配置无时间戳等漂移字段）
@@ -592,6 +599,15 @@ describe('pi-guardrails 管理员设置映射（admin/settings Pi Agent 分类 �
     });
     const agentRule = cfg.policies.rules.find((r: { id: string }) => r.id === 'agent-runtime');
     expect(agentRule).toBeDefined();
+    expect(agentRule).toMatchObject({
+      patterns: [{ pattern: '.pi-agent' }, { pattern: '.pi-agent/**' }],
+      allowedPatterns: [
+        { pattern: '.pi-agent/skills' },
+        { pattern: '.pi-agent/skills/**' },
+        { pattern: '.pi-agent/prompts' },
+        { pattern: '.pi-agent/prompts/**' },
+      ],
+    });
     expect(cfg.policies.rules).toHaveLength(1);
   });
 

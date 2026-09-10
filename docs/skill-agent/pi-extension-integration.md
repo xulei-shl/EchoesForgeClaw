@@ -191,7 +191,7 @@ guardrails 的 ConfigLoader（`@aliou/pi-utils-settings`）把**全局**配置�
 
 - `onboarding.completed: true`：扩展不再注册引导命令，无需人工 onboarding；
 - `features` 三档全开：`policies`（.env/私钥等内置规则）+ `permissionGate`（危险命令）+ `pathAccess`（越界路径）；
-- 额外策略规则 `agent-runtime`：禁止工具访问 `.pi-agent/**`（models.json / web-search.json 等装配了真实 API Key，Agent 不应经 read/bash 等工具读到）；
+- 额外策略规则 `agent-runtime`：禁止工具访问 `.pi-agent/**`（models.json / web-search.json 等装配了真实 API Key，Agent 不应经 read/bash 等工具读到）；经 `allowedPatterns` 显式放行 `.pi-agent/skills/**` 与 `.pi-agent/prompts/**`——这是 pi 渐进式披露机制要求「模型经 read tool 按需读取」的可读资源，黑名单 fail-closed + 显式豁免，新增敏感文件默认仍受保护；
 - `pathAccess.mode: 'block'`（不是 ask）：**RPC 下 `ctx.ui.custom()` 返回 undefined**（见 pi-coding-agent `rpc-mode.js`），ask 模式会静默退化为「一律拒绝」且语义含糊；block 模式确定性拒绝越界访问，完全自动、零交互。工作区内访问恒放行，pi 文档路径与 skill 文件路径由扩展自动豁免；
 - `permissionGate.requireConfirmation: true`（内置默认）：`custom()` 不可用后 permission-gate 自带 `ctx.ui.select(...)` 回退 → 走既有 `extension_ui_request` → dialog 桥，前端零改动（Allow once / session / Deny / Stop）。
 
