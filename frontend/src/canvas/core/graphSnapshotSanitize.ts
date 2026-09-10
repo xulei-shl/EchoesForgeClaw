@@ -6,13 +6,19 @@
  *
  * 规则分层：
  * - 保留：节点 type/边拓扑/坐标/配置(configId)/文本类字段（content/output/analysis/prompt 等）
- * - 截断：单字段超长文本、chat 消息轮数、agentSteps 条数与单条长度
- * - 丢弃：瞬态字段(isGenerating/error/reasoning)、base64 data URL（替换为 ''，水合显示「素材已省略」）
+ * - 截断：单字段超长文本、chat 兜底消息、agentSteps 条数与单条长度
+ * - 丢弃：瞬态字段(isGenerating/error/reasoning)、base64 data URL（中间节点图片即工作流可重算的产物）
+ *
+ * chat 节点会话恢复策略：全量历史以 workspaceId 为权柄——服务端按 workspace 落盘
+ * transcript（LLM/FastClaw 为 {ws}/conversation.jsonl，pi 为 .pi-agent/run/chat.jsonl），
+ * 导入重建后宿主按 workspaceId 从服务端水合即可完整恢复；内嵌 messages 仅作为
+ * 跨用户公开画廊 / 会话已删等场景的兜底展示，只留最后一轮减小落库体积。
  */
 
 export const MAX_TEXT_LEN = 20_000;
 export const MAX_ARRAY_ITEMS = 200;
-export const MAX_CHAT_MESSAGES = 12;
+/** chat 兜底消息数（最后一轮 user+assistant；全量历史由 workspaceId 指向服务端 jsonl 恢复） */
+export const MAX_CHAT_FALLBACK_MESSAGES = 2;
 export const MAX_AGENT_STEPS = 10;
 export const MAX_STEP_TEXT_LEN = 500;
 
@@ -76,10 +82,11 @@ export function sanitizeNodeData(nodeType: string, data: unknown): any {
   const out: Record<string, unknown> = {};
   for (const [key, val] of Object.entries(data as Record<string, unknown>)) {
     if (DROP_KEYS.has(key)) continue;
-    // chat 节点：消息保留最近 N 轮，每条做通用清洗
+    // chat 节点：全量历史由 workspaceId（保持原样随快照携带）指向服务端 jsonl 恢复，
+    // 此处仅保留最后一轮消息作为跨用户画廊 / 会话缺失时的兜底展示
     if (nodeType === 'chat' && key === 'messages' && Array.isArray(val)) {
       out[key] = val
-        .slice(-MAX_CHAT_MESSAGES)
+        .slice(-MAX_CHAT_FALLBACK_MESSAGES)
         .map((m) => sanitizeValue(m, MAX_TEXT_LEN))
         .filter((x) => x !== undefined);
       continue;

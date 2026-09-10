@@ -6,7 +6,7 @@ import {
 } from '../../frontend/src/canvas/core/graphSnapshot.js';
 import {
   sanitizeNodeData,
-  MAX_CHAT_MESSAGES,
+  MAX_CHAT_FALLBACK_MESSAGES,
   MAX_AGENT_STEPS,
 } from '../../frontend/src/canvas/core/graphSnapshotSanitize.js';
 import {
@@ -98,12 +98,13 @@ describe('sanitizeNodeData', () => {
     expect(out.agentSteps[1].arguments.length).toBeLessThanOrEqual(500 + 1); // 截断 + 省略号
   });
 
-  it('chat 只保留最近 N 条消息', () => {
-    const msgs = Array.from({ length: MAX_CHAT_MESSAGES + 5 }, (_, i) => ({ role: 'user', content: `m${i}`, images: ['data:image/png;base64,x'] }));
-    const out = sanitizeNodeData('chat', { messages: msgs, output: 'final' });
-    expect(out.messages.length).toBe(MAX_CHAT_MESSAGES);
-    expect(out.messages[0].content).toBe(`m${5}`);
-    expect(out.messages[1].images).toEqual([]);
+  it('chat 只保留最后一轮兜底消息，workspaceId 全量恢复权柄原样保留', () => {
+    const msgs = Array.from({ length: MAX_CHAT_FALLBACK_MESSAGES + 5 }, (_, i) => ({ role: 'user', content: `m${i}`, images: ['data:image/png;base64,x'] }));
+    const out = sanitizeNodeData('chat', { messages: msgs, output: 'final', workspaceId: 'chatnode_abc_1725900000000' });
+    expect(out.messages.length).toBe(MAX_CHAT_FALLBACK_MESSAGES);
+    expect(out.messages[0].content).toBe(`m${MAX_CHAT_FALLBACK_MESSAGES + 3}`);
+    expect(out.messages[0].images).toEqual([]);
+    expect(out.workspaceId).toBe('chatnode_abc_1725900000000');
     expect(out.output).toBe('final');
   });
 
