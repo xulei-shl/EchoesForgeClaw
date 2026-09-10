@@ -395,13 +395,13 @@ export const BifrostSkillsPage: React.FC = () => {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-serif text-sm font-semibold text-ink">{s.name}</p>
-                          {isCached ? <Badge>本地缓存</Badge> : <Badge>未缓存</Badge>}
-                          {isCached && s.cached_version && (
-                            <Badge variant={s.latest_version && s.cached_version !== s.latest_version ? 'warning' : 'success'}>
-                              本地 v{s.cached_version}
-                              {s.latest_version && s.cached_version !== s.latest_version && ` → 远端 v${s.latest_version}`}
-                            </Badge>
-                          )}
+                          {isCached
+                            ? (s.cached_version
+                              ? <Badge variant={s.latest_version && s.cached_version !== s.latest_version ? 'warning' : 'success'}>
+                                  本地 v{s.cached_version}
+                                </Badge>
+                              : <Badge>本地缓存</Badge>)
+                            : <Badge>未缓存</Badge>}
                           {s.latest_version && <Badge>远端 v{s.latest_version}</Badge>}
                           {s.license && <Badge>{s.license}</Badge>}
                           <div onClick={(e) => e.stopPropagation()} className="ml-1">
@@ -490,11 +490,12 @@ export const BifrostSkillsPage: React.FC = () => {
         {detail && (
           <div className="space-y-5">
             <div className="flex items-center gap-2 flex-wrap text-xs text-ink-light font-sans -mt-2">
-              {detail.cached !== false && detail.cached_version && (
-                <Badge variant={detail.latest_version && detail.cached_version !== detail.latest_version ? 'warning' : 'success'}>
-                  本地 v{detail.cached_version}
-                  {detail.latest_version && detail.cached_version !== detail.latest_version && ` → 远端 v${detail.latest_version}`}
-                </Badge>
+              {detail.cached !== false && (
+                detail.cached_version
+                  ? <Badge variant={detail.latest_version && detail.cached_version !== detail.latest_version ? 'warning' : 'success'}>
+                      本地 v{detail.cached_version}
+                    </Badge>
+                  : <Badge>本地缓存</Badge>
               )}
               {detail.latest_version && <Badge>远端 v{detail.latest_version}</Badge>}
               {detail.license && <Badge>{detail.license}</Badge>}
