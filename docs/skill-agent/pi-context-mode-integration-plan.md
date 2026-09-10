@@ -4,6 +4,10 @@
 > 核心诉求：**自动执行——无需用户手动触发**，随每个对话会话自动生效。
 > 关联实现 / 文档：
 > - 扩展装配与 RPC 运行：`backend-ts/src/services/pi/`（`resolve.ts` / `workspace.ts` / `runner.ts` / `registry.ts`）
+>
+> **状态更新（2026-09-10）**：已随 `pi-coding-agent@0.85.1` 升级完成全量回归；§4/§5 所列漂移点在 0.85.1
+> 上未变化（`before_provider_response` 仍不存在，死注册依旧无害）。核对过程见
+> `docs/skill-agent/pi-agent-upgrade-playbook.md`。
 > - 既有扩展接入规范：`docs/skill-agent/pi-extension-integration.md`
 > - RPC 升级不变量：`docs/skill-agent/rpc-invariants.md`
 > - context-mode 源码基线（本仓库 vendored）：`docs/skill-agent/context-mode-main/`（npm v1.0.169）
@@ -205,6 +209,7 @@ PI_EXTENSIONS=context-mode
 
 - context-mode 锁定精确版本（`--save-exact` / package.json），升级 = 改版本 + 全量冒烟。
 - pi-coding-agent 升级时，本文 §4 事件表与 §5 漂移点即为升级核对面（事件名/payload 形状随 0.84.x 演进会变）。
+  完整升级操作手册见 **`docs/skill-agent/pi-agent-upgrade-playbook.md`**。
 - §5.1 补丁已落地为「防御性读取 content[]」并经 patch-package 持久化（`patches/context-mode+1.0.169.patch`）。**升级 context-mode 后需重跑 `npx patch-package context-mode` 重新生成补丁**（先确认上游是否已原生修复该形状），并回归 `pi-context-mode.test.ts`。
 
 ---

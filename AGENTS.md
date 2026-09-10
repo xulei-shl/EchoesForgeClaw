@@ -288,4 +288,4 @@ If any of these are not true, say so clearly.
 
 ## 项目约束（pi-agent 集成）
 
-- 升级 `@earendil-works/pi-coding-agent` 前，先过 `docs/skill-agent/rpc-invariants.md` 核对 RPC 协议假设，再跑回归（`npx tsc --noEmit` + `npx vitest run tests/api/pi-*.test.ts`）。
+- 升级 `@earendil-works/pi-coding-agent` 前，先过 `docs/skill-agent/rpc-invariants.md` 核对 RPC 协议假设，再跑回归（`npx tsc --noEmit` + `npx vitest run tests/api/pi-*.test.ts`）。完整升级手册（含扩展包与回滚）见 `docs/skill-agent/pi-agent-upgrade-playbook.md`。

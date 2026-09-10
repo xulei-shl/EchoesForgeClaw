@@ -3,11 +3,12 @@
 - **维护**: 每次升级 `pi-coding-agent` 前，先核对本清单，再回归 `backend-ts/src/services/pi/`。
 - **适用**: 开发人员（后端 `backend-ts`）、升级执行者。
 - **定位**: 这些都是踩过的坑，原文埋在代码注释里；本文把它们沉淀为可被新人/升级流程触达的约束。
-- **代码基线**: pi-coding-agent 0.84.2（RPC 模式，`pi --mode rpc` 常驻子进程，非 SDK 进程内嵌入）。
+- **代码基线**: pi-coding-agent 0.85.1（RPC 模式，`pi --mode rpc` 常驻子进程，非 SDK 进程内嵌入）。2026-09-10 从 0.84.2 升级并按本文清单逐条核对 + 全量回归通过（`npx tsc --noEmit` + `tests/api/` 25 个套件 266 用例）。注意：vendored 源码快照 `docs/skill-agent/pi-main/` 仍为 0.84.x，仅作历史对照，与安装版本已不再一致。
 
 > 升级流程：`npm ls @earendil-works/pi-coding-agent` → 读包内 `CHANGELOG.md`（
 > `node_modules/@earendil-works/pi-coding-agent/CHANGELOG.md`）→ 逐条比对下方不变量是否仍成立
 > → 再跑回归（`npx tsc --noEmit` + `npx vitest run tests/api/pi-*.test.ts`）。
+> 完整操作手册（含扩展包矩阵核对、已知已知坑、回滚）见 **`docs/skill-agent/pi-agent-upgrade-playbook.md`**。
 
 ---
 
@@ -58,6 +59,18 @@
 - **原因**: `agent_settled` 保证 retry / compaction / queue 等收尾处理**全部完成**后才触发，是
   会话文件落盘与「本轮完全落定」的权威边界；`agent_end` 不保证上述收尾已完。
 - **升级注意**: 新增事件类型时，判断「轮结束」一律以 `agent_settled` 为锚，不要引入新的终局事件。
+
+---
+
+## 6. 已知测试敏感点（非协议不变量，升级排查先看这里）
+
+- **`pi-agent-reuse.test.ts`「手动暂停后重发消息」是时序敏感用例**：断言 `mock.userCounts` 为
+  `[1, 2]`（第 2 轮能收到第 1 轮上下文）。间歇性失败（`[1, 1]`）的根因是 pi `SessionManager._persist`
+  的 **no-assistant guard**——新会话的 user entry 在首条 assistant entry 落盘前**只存内存**；
+  若 abort 杀进程发生在首次持久化之前，第 1 轮 user entry 即丢失。
+- **2026-09-10 已验证**：0.84.2 与 0.85.1 的 `_persist` 实现逐字节一致，该 flake 在两个版本上均可复现，
+  **不是版本回归**。全量回归中偶发此用例失败时，先单独重跑确认，不要直接归因于升级。
+- 彻底修复方向：abort 前等待 assistant entry 落盘（测试侧），或上游调整 no-assistant guard 持久化时机。
 
 ---
 

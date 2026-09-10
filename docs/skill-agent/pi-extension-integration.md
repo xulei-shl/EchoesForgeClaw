@@ -170,6 +170,7 @@ json 模式是「spawn → 出结果 → 进程退出」一次性；**RPC 模式
 
 - **白名单即安全边界**：扩展能执行任意服务端代码，`PI_EXTENSIONS` 只能由管理员维护；用户不可直接装任意扩展。
 - **版本锁定**：升级 = 固定包版本（`pi install` / npm 锁定） + 回归验证，不随 npm 最新版漂移。
+  当前已装版本与升级操作手册见 **`docs/skill-agent/pi-agent-upgrade-playbook.md`**（含扩展包 peer-dep 矩阵与 0.85.1 实测记录）。
 - **widget 内容白名单**：只下发生产者精挑的安全字段，`applyCap` 顺带剥除 ANSI/控制字符；前端 `<pre>` React 转义，无注入面。
 - **交互字段白名单**：`extension_ui_request` 只透传 `select/confirm/input/editor` 且限字段（`id/method/title/options/...`）；前端 React 转义渲染，无注入面。
 - **多租户并发隔离**：RPC 进程注册表 key = `${userId}:${workspaceId}`；ui-response 路由从鉴权态取 userId（非查询参数），与 `nodeWorkspace` 防穿越同一口径。
