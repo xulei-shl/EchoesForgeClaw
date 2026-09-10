@@ -107,7 +107,9 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
   // 正文直接透传：SSE text-delta 增量到达即随消息内容增长，Streamdown 以 streaming 模式
   // （parseIncompleteMarkdown / block 级 memo / caret）负责流式渲染，无需再叠加打字机节流。
   if (msg.role === 'user') {
-    const rawContent = idx === 0 ? stripInjectedContext(msg.content, contextBlocks) : msg.content;
+    // 所有 user 消息统一剥离注入上下文前缀（首轮全量注入与复用历史后的增量注入都携带
+    // `【标题】\n正文` 前缀；发送给模型的原文不变，仅展示层保留纯用户输入）
+    const rawContent = stripInjectedContext(msg.content, contextBlocks);
     // 展示层把正文中的 inputs/ 上传路径提取为可预览/下载卡片（发送给模型的原文不变）
     const { files: userFiles, display: userContent } = extractUserUploadRefs(rawContent, workspaceId);
 

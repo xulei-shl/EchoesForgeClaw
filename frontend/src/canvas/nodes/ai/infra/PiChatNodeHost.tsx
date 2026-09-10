@@ -38,9 +38,15 @@ import {
   MAX_CHAT_IMAGES,
   DEFAULT_CHAT_SETTINGS,
   buildChatContext,
+  buildChatImagesFromBlocks,
   collectBlockImageUrls,
   collectSkillNames,
   stripInjectedContext,
+  emptyContextBaseline,
+  collectContextBaseline,
+  diffContextBlocks,
+  recordInjectedContext,
+  type ContextBaseline,
   type ChatHostDeps,
 } from './chatSendHelpers';
 import type {
@@ -128,6 +134,11 @@ function PiChatNodeHostInner({
   const contextSentRef = useRef(false);
   /** 首轮用户原始输入（不含注入上下文），水合后用于还原首条 user 消息展示 */
   const firstUserTextRef = useRef<string | null>(null);
+  /**
+   * 会话上下文注入基线（原始未剥离 user 内容 + 本次挂载记录）。水合时从服务端
+   * 响应收集；首轮全量注入后记录。增量注入据此判定「新接入/变更的上级节点内容」。
+   */
+  const contextBaselineRef = useRef<ContextBaseline>(emptyContextBaseline());
 
   // ---------- 服务端会话状态 ----------
   const wsId =
@@ -190,12 +201,15 @@ function PiChatNodeHostInner({
           )
         : [];
       return rawMsgs.map((m, idx) => {
-        if (m.role !== 'user' || idx !== 0) return m;
+        // 首条与后续所有 user 消息统一剥离注入上下文前缀：首轮全量注入、复用历史后的
+        // 增量注入、以及重新水合的历史 user 消息都携带 `【标题】\n正文` 前缀，
+        // 展示层只需保留纯用户输入（顶部折叠卡片已展示当前图上下文）。
+        if (m.role !== 'user' || !m.content) return m;
         let content = stripInjectedContext(m.content, blocks);
-        if (!content && firstUserTextRef.current) {
+        if (!content && idx === 0 && firstUserTextRef.current) {
           content = firstUserTextRef.current;
         }
-        return { ...m, content };
+        return content !== m.content ? { ...m, content } : m;
       });
     },
     [nodeId, portTypesRef]
@@ -217,7 +231,12 @@ function PiChatNodeHostInner({
       .then(({ messages: rawMsgs, widgets }) => {
         if (seq !== swapSeqRef.current || run !== runSeqRef.current) return;
         const msgs = sanitizeHydrated(rawMsgs);
-        putSessionCache(ws, { messages: msgs, widgets });
+        // 基线取「未剥离」原始消息：chat.jsonl 已持久化首轮注入文本，供增量注入差集
+        putSessionCache(ws, {
+          messages: msgs,
+          widgets,
+          baseline: collectContextBaseline(rawMsgs),
+        });
         setSessionMsgs(msgs);
         dispatchStream({ type: 'end' });
         dispatchStream({ type: 'widget_set_all', widgets });
@@ -264,6 +283,7 @@ function PiChatNodeHostInner({
       pendingFilesRef.current.clear();
       contextSentRef.current = false;
       firstUserTextRef.current = null;
+      contextBaselineRef.current = emptyContextBaseline();
       statusRef.current = 'ready';
     }
     activeRequestWsRef.current = wsId;
@@ -279,6 +299,8 @@ function PiChatNodeHostInner({
     if (cached) {
       setSessionMsgs(cached.messages);
       dispatchStream({ type: 'widget_set_all', widgets: cached.widgets });
+      // 恢复缓存携带的注入基线（原始未剥离 user 内容），跨挂载继续增量注入判定
+      contextBaselineRef.current = cached.baseline ?? emptyContextBaseline();
       // 会话产生过完整助手回复才视为「上下文已注入」：仅剩孤立 user 消息（首轮被
       // 中断/未落完整）时保持未发送态，下次发送仍会重新注入上级上下文。
       if (cached.messages.some((m) => m.role === 'assistant')) contextSentRef.current = true;
@@ -290,7 +312,12 @@ function PiChatNodeHostInner({
       .then(({ messages: rawMsgs, widgets }) => {
         if (seq !== loadSeqRef.current) return;
         const msgs = sanitizeHydrated(rawMsgs);
-        putSessionCache(wsId, { messages: msgs, widgets });
+        contextBaselineRef.current = collectContextBaseline(rawMsgs);
+        putSessionCache(wsId, {
+          messages: msgs,
+          widgets,
+          baseline: contextBaselineRef.current,
+        });
         setSessionMsgs(msgs);
         dispatchStream({ type: 'widget_set_all', widgets });
         // 会话产生过完整助手回复才视为「上下文已注入」：仅剩孤立 user 消息（首轮被
@@ -467,6 +494,8 @@ function PiChatNodeHostInner({
         // （contextSentRef 主动标记，避免水合失败后误判 freshSession 导致重复注入）
         const contextBlocksForMeta: InjectedContextBlock[] = [];
         let contextImages: string[] = [];
+        /** 增量注入（复用历史后新接入上级节点）收集的上下文图片（base64） */
+        const deltaContextImages: string[] = [];
         let wireText = text;
         if (!contextSentRef.current && cur) {
           contextBlocksForMeta.push(
@@ -530,9 +559,41 @@ function PiChatNodeHostInner({
             };
           }
           contextSentRef.current = true;
+          // 记录首轮全量注入基线，后续轮次据此做增量差集（不再重复注入既有块）
+          recordInjectedContext(contextBaselineRef.current, contextBlocksForMeta);
+        } else if (cur && contextBaselineRef.current) {
+          // 复用历史会话后的增量上下文注入：以会话原始历史为基线做差，把新接入/
+          // 变更的上级节点内容（prompt_search / 图片节点等）补进本轮 wireText。
+          // 与全量注入的区别：只注入尚未进入会话的块，避免与 pi 会话历史里的既有
+          // 上下文重复。skill 装配不走这里（payload.skills 软链接链路每轮生效）。
+          const currentBlocks = buildContextBlocks(
+            cur,
+            nodeSettings,
+            nodesRef.current,
+            edgesRef.current,
+            portTypesRef.current
+          );
+          const deltaBlocks = diffContextBlocks(currentBlocks, contextBaselineRef.current);
+          if (deltaBlocks.length) {
+            const deltaCtx = buildChatContext(deltaBlocks);
+            // 增量图片走 base64 通道（RPC 进程经 prompt images 字段直传）
+            const deltaImages = await buildChatImagesFromBlocks(deltaBlocks);
+            if (deltaCtx) wireText = `${deltaCtx}\n\n${wireText}`;
+            deltaContextImages.push(...deltaImages);
+            recordInjectedContext(contextBaselineRef.current, deltaBlocks);
+            if (optimisticUserRef.current) {
+              optimisticUserRef.current = {
+                ...optimisticUserRef.current,
+                contextBlocks: [...(optimisticUserRef.current.contextBlocks ?? []), ...deltaBlocks],
+              };
+            }
+          }
         }
 
-        const turnImages = [...(images ?? []), ...contextImages].slice(0, MAX_CHAT_IMAGES);
+        const turnImages = [...(images ?? []), ...contextImages, ...deltaContextImages].slice(
+          0,
+          MAX_CHAT_IMAGES
+        );
 
         const controller = new AbortController();
         const idle = makeIdleTimeout(controller, PROMPT_SSE_IDLE_TIMEOUT_MS);

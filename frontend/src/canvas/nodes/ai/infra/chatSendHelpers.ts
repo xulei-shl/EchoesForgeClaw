@@ -34,6 +34,108 @@ export interface ChatHostDeps {
   portTypesRef: RefObject<PortTypesLookup>;
 }
 
+/**
+ * 会话上下文注入基线：判定「哪些上下文块已进入会话历史」。
+ *
+ * 背景：上下文只在会话首轮注入一次（pi 的 contextSentRef / ChatNodeHost 的
+ * hasContextInStore 门控），复用历史会话后新接入/变更的上级节点（prompt_search、
+ * 图片节点等）内容不会进入后续 LLM 调用。本基线以「原始（未剥离）用户消息内容」
+ * 为真相做差集，把仍未注入的块增量补进当前轮次，避免重复注入既有块。
+ *
+ * 不依赖服务端新增存储：rawUserContents 在宿主水合时从 fetchPiSession 响应
+ * 收集（chat.jsonl / conversation.jsonl 已含注入文本），recorded* 只覆盖
+ * 「本次挂载注入但服务端尚未持久化」的窗口期。
+ */
+export interface ContextBaseline {
+  /** 水合响应的原始用户消息正文（含注入上下文，剥离之前收集） */
+  rawUserContents: string[];
+  /** 水合响应的原始用户消息图片 URL（data URL / http） */
+  rawUserImages: string[];
+  /** 本次挂载期间已记录注入的文本块装配标记（防持久化前重复注入） */
+  recordedMarkers: string[];
+  /** 本次挂载期间已记录注入的图片 URL */
+  recordedImages: string[];
+}
+
+export function emptyContextBaseline(): ContextBaseline {
+  return { rawUserContents: [], rawUserImages: [], recordedMarkers: [], recordedImages: [] };
+}
+
+/** 从水合原始消息收集基线（调用方须在剥离注入上下文之前、用未清洗的 user 消息调用）。 */
+export function collectContextBaseline(msgs: ChatMessage[]): ContextBaseline {
+  const rawUserContents: string[] = [];
+  const rawUserImages: string[] = [];
+  for (const m of msgs) {
+    if (m.role !== 'user') continue;
+    if (typeof m.content === 'string' && m.content) rawUserContents.push(m.content);
+    for (const img of m.images ?? []) {
+      if (typeof img === 'string' && img && !rawUserImages.includes(img)) rawUserImages.push(img);
+    }
+  }
+  return {
+    rawUserContents,
+    rawUserImages,
+    recordedMarkers: [],
+    recordedImages: [],
+  };
+}
+
+/** 单个上下文块的装配标记（与 buildChatContext 的 `【title】\ntext` 单块格式一致）。 */
+export function blockMarker(b: InjectedContextBlock): string {
+  return `【${b.title}】\n${b.text}`;
+}
+
+/** 记录一次已注入的上下文块（文本标记 + 图片 URL，供后续差集跳过）。 */
+export function recordInjectedContext(
+  baseline: ContextBaseline,
+  blocks: InjectedContextBlock[]
+): void {
+  for (const b of blocks) {
+    if (b.text) {
+      const marker = blockMarker(b);
+      if (!baseline.recordedMarkers.includes(marker)) baseline.recordedMarkers.push(marker);
+    }
+    for (const img of b.images ?? []) {
+      if (img && !baseline.recordedImages.includes(img)) baseline.recordedImages.push(img);
+    }
+  }
+}
+
+/** 块正文是否已注入会话（原始历史全文包含装配标记，或本次挂载已记录）。 */
+function blockTextInjected(b: InjectedContextBlock, baseline: ContextBaseline): boolean {
+  if (!b.text) return false;
+  const marker = blockMarker(b);
+  return (
+    baseline.rawUserContents.some((raw) => raw.includes(marker)) ||
+    baseline.recordedMarkers.includes(marker)
+  );
+}
+
+/**
+ * 对比基线，返回仍需注入的上下文块。判定口径：
+ * - 文本块：`【title】\ntext` 装配标记未在原始历史/挂载记录中出现 → 视为新增/变更，保留 text；
+ * - 图片块：仅保留未在原始历史/挂载记录中出现的图片 URL（已注入的图不重复下发）；
+ * - 正文已注入、且无新图片的块整体跳过（不重复注入）。
+ */
+export function diffContextBlocks(
+  blocks: InjectedContextBlock[],
+  baseline: ContextBaseline
+): InjectedContextBlock[] {
+  const out: InjectedContextBlock[] = [];
+  for (const b of blocks) {
+    const textInjected = blockTextInjected(b, baseline);
+    const freshImages = (b.images ?? []).filter(
+      (u) => u && !baseline.rawUserImages.includes(u) && !baseline.recordedImages.includes(u)
+    );
+    if (textInjected && !freshImages.length) continue;
+    const outBlock: InjectedContextBlock = { id: b.id, title: b.title, nodeType: b.nodeType };
+    if (!textInjected && b.text) outBlock.text = b.text;
+    if (freshImages.length) outBlock.images = freshImages;
+    out.push(outBlock);
+  }
+  return out;
+}
+
 /** 从上下文块拼接送给模型的文本上下文。 */
 export function buildChatContext(blocks: InjectedContextBlock[]): string {
   const seen = new Set<string>();

@@ -124,6 +124,56 @@ export function hasContextInStore(msgs: ChatMessage[]): boolean {
   return !!first && !!(first.context || first.contextImages?.length || first.contextBlocks?.length);
 }
 
+/** 把增量上下文追加合并到指定下标 user 消息（合并而非覆盖；供增量注入复用）。 */
+function mergeContextAt(
+  ui: UIMessage[],
+  idx: number,
+  delta: { context?: string; contextImages?: string[]; contextBlocks?: InjectedContextBlock[] }
+): UIMessage[] {
+  if (
+    idx < 0 ||
+    (!delta.context && !delta.contextImages?.length && !delta.contextBlocks?.length)
+  ) {
+    return ui;
+  }
+  const target = ui[idx];
+  const prior: BookplateMeta = { ...metaOf(target) };
+  const meta: BookplateMeta = { ...prior };
+  // context 是 wire 拼接锚点（toWireChatMessages 每轮展开到正文）：追加而不是覆盖
+  if (delta.context) {
+    meta.context = prior.context ? `${prior.context}\n\n${delta.context}` : delta.context;
+  }
+  if (delta.contextImages?.length) {
+    meta.contextImages = [...(prior.contextImages ?? []), ...delta.contextImages];
+  }
+  if (delta.contextBlocks?.length) {
+    meta.contextBlocks = [...(prior.contextBlocks ?? []), ...delta.contextBlocks];
+  }
+  if (JSON.stringify(meta) === JSON.stringify(prior)) return ui;
+  const next = [...ui];
+  next[idx] = { ...target, metadata: { bookplate: meta } };
+  return next;
+}
+
+/**
+ * 把增量上下文追加合并进首条 user 消息（LLM 模式增量注入：随完整历史每轮重发，
+ * 与首轮注入同口径）。区别于 attachContextToFirstUser 的覆盖语义。
+ */
+export function appendContextToFirstUser(
+  ui: UIMessage[],
+  delta: { context?: string; contextImages?: string[]; contextBlocks?: InjectedContextBlock[] }
+): UIMessage[] {
+  return mergeContextAt(ui, ui.findIndex((m) => m.role === 'user'), delta);
+}
+
+/** 把增量上下文追加合并进末条 user 消息（FastClaw 模式增量注入：随 message 字段下发）。 */
+export function mergeContextToLastUser(
+  ui: UIMessage[],
+  delta: { context?: string; contextImages?: string[]; contextBlocks?: InjectedContextBlock[] }
+): UIMessage[] {
+  return mergeContextAt(ui, ui.findLastIndex((m) => m.role === 'user'), delta);
+}
+
 /** 把本轮装配的 Skill 名合并到最后一条 user 消息 metadata（去重追加；发送时调用）。 */
 export function attachSkillsToLastUser(ui: UIMessage[], skills: string[]): UIMessage[] {
   if (!skills.length) return ui;

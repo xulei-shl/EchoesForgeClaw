@@ -1,5 +1,6 @@
 import { authHeaders, handleUnauthorized } from './authUtils';
 import type { ExtensionWidgetItem } from './piStream';
+import type { ContextBaseline } from './chatSendHelpers';
 import type { AgentFile, AgentStep, ChatMessage } from '../../../../shared/types';
 
 // ---------------------------------------------------------------------------
@@ -55,10 +56,18 @@ export interface ConversationSessionSummary {
 }
 
 const SESSION_CACHE_MAX = 8;
-/** 模块级 LRU：key = workspaceId（含节点创建时间戳，跨账号碰撞概率可忽略）；缓存消息 + widget 快照。 */
-const sessionCache = new Map<string, { messages: ChatMessage[]; widgets: ExtensionWidgetItem[] }>();
+/** 模块级 LRU：key = workspaceId（含节点创建时间戳，跨账号碰撞概率可忽略）；
+ *  缓存消息 + widget 快照 + 上下文注入基线（原始未剥离 user 内容，供增量注入差集）。 */
+const sessionCache = new Map<
+  string,
+  { messages: ChatMessage[]; widgets: ExtensionWidgetItem[]; baseline: ContextBaseline }
+>();
 
-function cachedSessionOf(ws: string): { messages: ChatMessage[]; widgets: ExtensionWidgetItem[] } | null {
+function cachedSessionOf(ws: string): {
+  messages: ChatMessage[];
+  widgets: ExtensionWidgetItem[];
+  baseline: ContextBaseline;
+} | null {
   const hit = sessionCache.get(ws);
   if (hit) {
     sessionCache.delete(ws);
@@ -69,7 +78,7 @@ function cachedSessionOf(ws: string): { messages: ChatMessage[]; widgets: Extens
 
 function putSessionCache(
   ws: string,
-  data: { messages: ChatMessage[]; widgets: ExtensionWidgetItem[] }
+  data: { messages: ChatMessage[]; widgets: ExtensionWidgetItem[]; baseline: ContextBaseline }
 ): void {
   sessionCache.delete(ws);
   sessionCache.set(ws, data);

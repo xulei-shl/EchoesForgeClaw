@@ -23,8 +23,10 @@ import { authHeaders, handleUnauthorized } from './authUtils';
 import { makeIdleTimeout } from '../../../core/idleTimeout';
 import { PROMPT_SSE_IDLE_TIMEOUT_MS } from '../../../../shared/utils/timeouts';
 import {
+  appendContextToFirstUser,
   attachContextToFirstUser,
   hasContextInStore,
+  mergeContextToLastUser,
   storeToUI,
   uiToStore,
 } from './chatMessages';
@@ -39,6 +41,11 @@ import {
   collectSkillNames,
   capWireImages,
   stripInjectedContext,
+  emptyContextBaseline,
+  collectContextBaseline,
+  diffContextBlocks,
+  recordInjectedContext,
+  type ContextBaseline,
   type ChatHostDeps,
 } from './chatSendHelpers';
 import type { AgentFile, ChatMessage, ChatNodeSettings, InjectedContextBlock } from '../../../../shared/types';
@@ -116,6 +123,13 @@ function ChatNodeHostInner({
   wsIdRef.current = wsId;
   // 在途请求实际使用的工作区（首轮发送自生成 workspaceId 属 self-assigned，不得触发水合 / 中断）
   const activeWsRef = useRef<string | null>(wsId);
+  /**
+   * 会话上下文注入基线（原始未剥离 user 内容 + 本次挂载记录）。水合到有消息的会话时
+   * 从服务端响应收集；首轮全量注入后也会记录。增量注入据此判定「新接入/变更的上级
+   * 节点内容」。null = 尚无可信基线（未水合 / 会话确认无消息），此时不做增量注入，
+   * 避免把已注入的既有上下文重复喂给模型。
+   */
+  const contextBaselineRef = useRef<ContextBaseline | null>(null);
 
   // ---------- 侧边面板（工作区文件 + 对话历史合并为单一右侧抽屉，Tab 切换） ----------
   // 单一展开态 sideOpen 统一驱动两个面板状态机（openOverride 受控模式，与 PiChatNodeHost 同构）：
@@ -187,8 +201,7 @@ function ChatNodeHostInner({
         const firstUserIdx = chatMsgs.findIndex((m) => m.role === 'user');
         const alreadyHasContext = hasContextInStore(chatMsgs);
         if (!alreadyHasContext && cur) {
-          const chatSettings: ChatNodeSettings =
-            cur.data?.settings ?? DEFAULT_CHAT_SETTINGS;
+          const chatSettings: ChatNodeSettings = cur.data?.settings ?? DEFAULT_CHAT_SETTINGS;
           const blocks = buildContextBlocks(
             cur,
             chatSettings,
@@ -210,10 +223,87 @@ function ChatNodeHostInner({
             // 同步进 useChat metadata → 镜像写入 store，后续轮次不再重复注入
             setMessages((prev) => attachContextToFirstUser(prev, context, contextImages, blocks));
           }
+          // 记录首轮全量注入基线（后续增量差集的数据源，避免把既有块重复注入）
+          if (!contextBaselineRef.current) contextBaselineRef.current = emptyContextBaseline();
+          recordInjectedContext(contextBaselineRef.current, blocks);
+        }
+
+        const lastUserIdx = chatMsgs.findLastIndex((m) => m.role === 'user');
+        // 复用历史会话后的增量上下文注入：以会话原始历史为基线做差，把新接入/变更的
+        // 上级节点内容（prompt_search / 图片节点等）补进本轮请求。LLM 并入首条 user
+        // context（随每轮完整历史重发）；FastClaw 并入末条 user（经 message 字段下发，
+        // FastClaw 会话不带 messages 数组）。skill 装配不走这里（payload.skills 每轮生效）。
+        const isAgentMode = cur !== null && h.configOf(cur)?.mode === 'agent';
+        if (cur && !overrideHistory && contextBaselineRef.current !== null) {
+          const chatSettings: ChatNodeSettings =
+            cur.data?.settings ?? DEFAULT_CHAT_SETTINGS;
+          const blocks = buildContextBlocks(
+            cur,
+            chatSettings,
+            nodesRef.current,
+            edgesRef.current,
+            portTypesRef.current
+          );
+          const deltaBlocks = diffContextBlocks(blocks, contextBaselineRef.current);
+          if (deltaBlocks.length) {
+            const deltaCtx = buildChatContext(deltaBlocks);
+            const deltaContextImages = await buildChatImagesFromBlocks(deltaBlocks);
+            if (isAgentMode) {
+              // FastClaw：增量上下文并入末条 user（message 字段随本轮下发）
+              if (lastUserIdx >= 0 && (deltaCtx || deltaContextImages.length)) {
+                const last = chatMsgs[lastUserIdx];
+                chatMsgs[lastUserIdx] = {
+                  ...last,
+                  ...(deltaCtx
+                    ? { context: last.context ? `${last.context}\n\n${deltaCtx}` : deltaCtx }
+                    : {}),
+                  contextImages: [...(last.contextImages ?? []), ...deltaContextImages].slice(
+                    0,
+                    MAX_CHAT_IMAGES
+                  ),
+                  ...(deltaBlocks.length
+                    ? { contextBlocks: [...(last.contextBlocks ?? []), ...deltaBlocks] }
+                    : {}),
+                };
+              }
+              setMessages((prev) =>
+                mergeContextToLastUser(prev, {
+                  context: deltaCtx,
+                  contextImages: deltaContextImages,
+                  contextBlocks: deltaBlocks,
+                })
+              );
+            } else {
+              // LLM：增量上下文并入首条 user（随完整历史每轮重发）
+              if (firstUserIdx >= 0 && (deltaCtx || deltaContextImages.length)) {
+                const first = chatMsgs[firstUserIdx];
+                chatMsgs[firstUserIdx] = {
+                  ...first,
+                  ...(deltaCtx
+                    ? { context: first.context ? `${first.context}\n\n${deltaCtx}` : deltaCtx }
+                    : {}),
+                  contextImages: [...(first.contextImages ?? []), ...deltaContextImages].slice(
+                    0,
+                    MAX_CHAT_IMAGES
+                  ),
+                  ...(deltaBlocks.length
+                    ? { contextBlocks: [...(first.contextBlocks ?? []), ...deltaBlocks] }
+                    : {}),
+                };
+              }
+              setMessages((prev) =>
+                appendContextToFirstUser(prev, {
+                  context: deltaCtx,
+                  contextImages: deltaContextImages,
+                  contextBlocks: deltaBlocks,
+                })
+              );
+            }
+            recordInjectedContext(contextBaselineRef.current, deltaBlocks);
+          }
         }
 
         // 本轮附件图片（sendMessage metadata 传入）并入最后一条 user 消息（多模态 + 展示）
-        const lastUserIdx = chatMsgs.findLastIndex((m) => m.role === 'user');
         if (turnImages.length && lastUserIdx >= 0 && !overrideHistory) {
           const last = chatMsgs[lastUserIdx];
           chatMsgs[lastUserIdx] = {
@@ -635,7 +725,9 @@ function ChatNodeHostInner({
       (statusRef.current === 'submitted' || statusRef.current === 'streaming');
     activeWsRef.current = wsId;
     if (selfAssigned) return;
-    // 外部切换（载入历史 / 挂载）：文件面板同步重置并拉取**新工作区**的文件列表
+    // 外部切换（载入历史 / 挂载）：作废旧工作区的注入基线（新缓存区待水合结果重建）
+    contextBaselineRef.current = null;
+    // 文件面板同步重置并拉取**新工作区**的文件列表
     // （与 PiChatNodeHost 同口径），否则「AI 产物」会停留在旧会话列表直到手动刷新。
     // refreshIfOpen 读 openRef：面板展开才拉取（loader 内部读最新 workspaceId），关闭时跳过。
     panel.reset();
@@ -651,7 +743,11 @@ function ChatNodeHostInner({
       .then(({ messages }) => {
         if (seq !== hydrateSeqRef.current || wsIdRef.current !== wsId) return;
         if (!messages.length) return; // 服务端无记录：保留本地 store（存量会话 / 空会话）
-        // 首条 user 消息剥离注入上下文（以当前画布上下文块为准，与发送侧 buildChatContext 同口径）
+        // 以会话原始内容重建注入基线（增量注入差集的数据源，须在剥离之前收集）
+        contextBaselineRef.current = collectContextBaseline(messages);
+        // 所有 user 消息剥离注入上下文（以当前画布上下文块为准，与发送侧 buildChatContext
+        // 同口径）：首轮全量注入 / 增量注入文本都携带 `【标题】\n正文` 前缀，
+        // 展示与后续 wire 重发仅保留纯用户输入（增量块经首条 user context 随每轮重发）。
         const cur = nodesRef.current.find((n) => n.id === nodeId);
         const settings: ChatNodeSettings = cur?.data?.settings ?? DEFAULT_CHAT_SETTINGS;
         const blocks = cur
@@ -663,10 +759,10 @@ function ChatNodeHostInner({
               portTypesRef.current
             )
           : [];
-        const sanitized = messages.map((m, idx) => {
-          if (m.role !== 'user' || idx !== 0 || !m.content) return m;
+        const sanitized = messages.map((m) => {
+          if (m.role !== 'user' || !m.content) return m;
           const stripped = stripInjectedContext(m.content, blocks);
-          return stripped ? { ...m, content: stripped } : m;
+          return stripped && stripped !== m.content ? { ...m, content: stripped } : m;
         });
         const ui = storeToUI(sanitized);
         const storeForm = uiToStore(ui);
