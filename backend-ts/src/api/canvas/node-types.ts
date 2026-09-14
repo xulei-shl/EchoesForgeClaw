@@ -136,11 +136,12 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
   },
   {
     type: NODE_TYPES.IMAGE_UPLOAD,
-    name: '图片上传',
-    description: '手动上传一张图片到画布',
+    name: '图片加载',
+    description: '上传 / 继承上级图片 / 从 AI 产物选择加载',
     category: 'input',
     configurable: false,
     output_type: 'image',
+    input_types: ['image', 'text'],
   },
   {
     type: NODE_TYPES.CHAT,

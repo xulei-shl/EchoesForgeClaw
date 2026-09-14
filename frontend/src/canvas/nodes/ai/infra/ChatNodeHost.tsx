@@ -18,6 +18,7 @@ import { buildContextBlocks } from './contextBlocks';
 import { isBookCoverEnabled, isBookMetadataEnabled } from '../../../core/execution';
 import { toWireChatMessages } from '../../../core/graphTypes';
 import { useWorkspaceFilesPanel } from './useWorkspaceFilesPanel';
+import { fetchFastClawWorkspaceFiles } from './agentArtifactImages';
 import { handleAgentSseMessage } from './agentSteps';
 import { authHeaders, handleUnauthorized } from './authUtils';
 import { makeIdleTimeout } from '../../../core/idleTimeout';
@@ -53,36 +54,6 @@ import type { NodeData } from '../../../core/graphTypes';
 
 // AI SDK 依赖的共享发送辅助已抽至 chatSendHelpers.ts（与 PiChatNodeHost 复用）
 export type { ChatHostDeps } from './chatSendHelpers';
-
-/**
- * 拉取 FastClaw（Agent 模式）当前会话工作区文件列表。
- * 节点内手动覆盖的 Agent（agentOverride）优先，空 = 跟随节点绑定 Agent。
- *
- * FastClaw 工作区 = 服务端会话目录，文件随 agent 工具调用产生，跨轮保留；
- * 与 Skill Agent 的「本节点工作区」面板语义对齐。
- */
-async function fetchFastClawWorkspaceFiles(params: {
-  nodeId: string;
-  epoch: number;
-  configId: number | null;
-  agentConfigId: number | null;
-  /** 当前会话工作区（FastClaw 会话 key 一对话一 key，与服务端 /chat 同参） */
-  workspaceId: string | null;
-}): Promise<AgentFile[]> {
-  const qs = new URLSearchParams({
-    node_id: params.nodeId,
-    epoch: String(params.epoch),
-    config_id: params.configId != null ? String(params.configId) : '',
-    agent_config_id: params.agentConfigId != null ? String(params.agentConfigId) : '',
-    workspace_id: params.workspaceId ?? '',
-  });
-  const resp = await fetch(`/api/modules/bookplate/chat/fastclaw-files?${qs.toString()}`, {
-    headers: authHeaders(),
-  });
-  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  const data = (await resp.json()) as { files?: AgentFile[] };
-  return data.files ?? [];
-}
 
 /**
  * AI 对话节点宿主（useChat 迁移核心）：

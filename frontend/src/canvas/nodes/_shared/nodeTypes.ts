@@ -102,8 +102,8 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   },
   {
     type: 'image_upload',
-    name: '图片上传',
-    description: '手动上传一张图片到画布',
+    name: '图片加载',
+    description: '上传 / 继承上级图片 / 从 AI 产物选择加载',
     category: 'input',
     configurable: false,
     defaultSize: DEFAULT_SIZES.image_upload,
@@ -401,7 +401,9 @@ export const NODE_PORT_TYPES: Record<
   book_info: { output: 'text', inputs: [] },
   // 文本节点：默认手动输入；也可连线文本上级继承其内容（连线即输入，仍可编辑）
   text: { output: 'text', inputs: ['text'] },
-  image_upload: { output: 'image', inputs: [] },
+  // 图片加载：上传本地图 / 继承上级图片（直连图片 → 穿透图书封面 → 根封面兜底），
+  // 也可从 AI 对话上级的「AI 产物」中人工选择加载；image 输出经 data.imageUrl 供下游消费
+  image_upload: { output: 'image', inputs: ['image', 'text'] },
   image_analysis: { output: 'text', inputs: ['image', 'text'] },
   text_generation: { output: 'text', inputs: ['text'] },
   image_generation: { output: 'image', inputs: ['text', 'image'] },

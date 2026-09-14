@@ -6,7 +6,7 @@ import { ChatNodeHost, type ChatHostDeps } from '../ai/infra/ChatNodeHost';
 import { PiChatNodeHost } from '../ai/infra/PiChatNodeHost';
 import { ImageNode } from '../multimodal/ImageNode';
 import { TextNode } from '../text/TextNode';
-import { ImageUploadNode } from '../general/ImageUploadNode';
+import { ImageUploadNode, type ArtifactImageSource, type InheritedSourceKind } from '../general/ImageUploadNode';
 import { TextAggregateNode } from '../text/TextAggregateNode';
 import { PromptSearchNode } from '../general/PromptSearchNode';
 import { SkillSearchNode } from '../general/SkillSearchNode';
@@ -42,6 +42,7 @@ import { MAP_ART_DEFAULTS } from '../multimodal/engines/map/art-defaults';
 import {
   findConnectedBookInfoUpstream,
   findRootBookInfo,
+  getNodeDynamicTitle,
   getNodeTitle,
   matchPortType,
   nodeOutputImages,
@@ -279,6 +280,55 @@ function resolveUpstreamImage(node: NodeData, h: NodeViewHelpers): {
     upstreamImageUrl: directParentImage || connectedBookCover || rootBookCover || null,
     upstreamBookData: connectedBookData || rootBookData || null,
   };
+}
+
+/**
+ * 图片加载节点继承源解析：直连图片上级（非 book_info）→ 穿透连通图书封面 → 根节点封面兜底，
+ * 与 resolveUpstreamImage 同口径，但额外区分来源种类（上级节点 / 图书封面·穿透 / 图书封面·根节点）。
+ */
+function resolveImageUploadInheritance(node: NodeData, h: NodeViewHelpers): {
+  url: string | null;
+  kind: InheritedSourceKind;
+} {
+  const inputs = collectNodeInputs(node, h.nodes, h.edges, h.portTypesOf);
+  const nonBookImageParents = inputs.images.filter((p) => p.type !== 'book_info');
+  const directParentImage = resolveReferenceImage(nonBookImageParents);
+  if (directParentImage) return { url: directParentImage, kind: 'parent' };
+  const connectedBookNode = findConnectedBookInfoUpstream(node.id, h.nodes, h.edges);
+  const connectedCover =
+    connectedBookNode?.data?.cover_image_local ||
+    connectedBookNode?.data?.cover_image ||
+    connectedBookNode?.data?.coverUrl ||
+    null;
+  if (connectedCover) return { url: connectedCover, kind: 'book_connected' };
+  const rootBookNode = findRootBookInfo(h.nodes, h.edges);
+  const rootCover =
+    rootBookNode?.data?.cover_image_local ||
+    rootBookNode?.data?.cover_image ||
+    rootBookNode?.data?.coverUrl ||
+    null;
+  return { url: rootCover ?? null, kind: 'book_root' };
+}
+
+/** 图片加载节点：chat 直连上级 → AI 产物来源描述符（模式决定产物接口，含 FastClaw 覆盖 Agent） */
+function artifactSourcesOf(node: NodeData, h: NodeViewHelpers): ArtifactImageSource[] {
+  return collectNodeInputs(node, h.nodes, h.edges, h.portTypesOf)
+    .parents.filter((p) => p.type === 'chat')
+    .map((p) => {
+      const settings = p.data?.settings ?? null;
+      return {
+        nodeId: p.id,
+        title: getNodeDynamicTitle(p),
+        mode: h.configOf(p)?.mode ?? 'skill_agent',
+        workspaceId:
+          typeof p.data?.workspaceId === 'string' && p.data.workspaceId
+            ? p.data.workspaceId
+            : null,
+        epoch: p.data?.epoch ?? 0,
+        configId: p.configId ?? null,
+        agentConfigId: settings?.agentOverride ?? null,
+      };
+    });
 }
 
 /**
@@ -553,12 +603,16 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       );
     }
     case 'image_upload': {
+      const inherited = resolveImageUploadInheritance(node, h);
       return (
         <ImageUploadNode
           key={node.id}
           {...common}
           imageUrl={node.data.imageUrl ?? null}
           imageName={node.data.imageName ?? ''}
+          inheritedUrl={inherited.url}
+          inheritedKind={inherited.kind}
+          artifactSources={artifactSourcesOf(node, h)}
           onImageChange={h.handleImageChangeFor}
         />
       );

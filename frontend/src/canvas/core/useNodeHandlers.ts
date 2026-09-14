@@ -369,16 +369,11 @@ export function useNodeHandlers({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  /** 图片上传节点上传 / 替换 / 移除图片（imageUrl 为 null 表示移除；未变化不记历史） */
+  /** 图片加载节点上传 / 替换 / 加载 / 清除图片（imageUrl 为 null 表示清除已加载图，回落继承源；未变化不记历史） */
   const handleImageChangeFor = useCallback(
     (id: string, imageUrl: string | null, imageName: string) => {
       const node = nodesRef.current.find((n) => n.id === id);
       if (!node || node.type !== 'image_upload') return;
-
-      if (imageUrl === null) {
-        handleRemoveNode(id);
-        return;
-      }
 
       const curUrl = node.data?.imageUrl ?? null;
       const curName = node.data?.imageName ?? '';
