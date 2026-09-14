@@ -766,6 +766,15 @@ function ChatNodeHostInner({
         });
         const ui = storeToUI(sanitized);
         const storeForm = uiToStore(ui);
+        // 载入历史 = 该会话成为当前会话：对外输出同步恢复为会话最后一条助手回复
+        // （与镜像 effect 同口径：中断 / 空正文视为无输出）。载入时 handleLoadChatSessionFor
+        // 已把 output 置空，且本次写入后镜像 effect 因基线匹配而跳过，若不在此恢复，
+        // 下游节点经 nodeOutputText 读取到的永远是空串。
+        const lastAssistant = [...storeForm].reverse().find((m) => m.role === 'assistant');
+        const output =
+          lastAssistant && !lastAssistant.interrupted && lastAssistant.content
+            ? lastAssistant.content
+            : '';
         // 以服务端水合结果为新的镜像基线：先更新基线再写 store，避免被外部变更检测误判回灌
         lastMirroredRef.current = JSON.stringify(storeForm);
         lastFlushedCountRef.current = storeForm.length;
@@ -773,7 +782,9 @@ function ChatNodeHostInner({
         setMessages(ui);
         setNodes((prev) =>
           prev.map((n) =>
-            n.id === nodeId ? { ...n, data: { ...n.data, messages: storeForm } } : n
+            n.id === nodeId
+              ? { ...n, data: { ...n.data, messages: storeForm, output } }
+              : n
           )
         );
       })
