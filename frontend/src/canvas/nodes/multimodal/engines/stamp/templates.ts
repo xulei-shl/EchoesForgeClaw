@@ -13,6 +13,13 @@ export interface StampTemplate {
   settings: Partial<StampStudioSettings>;
 }
 
+/** 生成当天日期，格式 YYYY.MM.DD */
+function todayStampDate(): string {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}.${pad(now.getMonth() + 1)}.${pad(now.getDate())}`;
+}
+
 /** 默认未启用高级特性的极简原图工坊设置 */
 export const defaultStudioSettings: StampStudioSettings = {
   print: 'offset',
@@ -65,7 +72,7 @@ export const defaultStudioSettings: StampStudioSettings = {
   postmarkColor: '#1c1b1f',
   postmarkCity: 'BEIJING',
   postmarkSubtext: '中国邮政',
-  postmarkDate: '2024.10.01',
+  postmarkDate: todayStampDate(),
   postmarkAngle: 11,
   postmarkPos: { x: 0.35, y: 0.62 },
   postmarkStrength: 0.55,
