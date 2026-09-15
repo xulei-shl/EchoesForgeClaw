@@ -101,7 +101,10 @@ export const MascotWidget: React.FC = () => {
     startY: number;
     initialPos: WidgetPosition;
     hasMoved: boolean;
+    pointerId: number;
+    target: HTMLElement;
   } | null>(null);
+  const rafIdRef = useRef<number | null>(null);
 
   // 窗口 resize 时自动调整边界并重算朝向中心
   useEffect(() => {
@@ -124,16 +127,32 @@ export const MascotWidget: React.FC = () => {
     setIsPickerOpen(false);
   };
 
-  // 开始拖拽
+  // 开始拖拽：原生 Pointer Capture + 阻断向底层画布冒泡 + rAF 帧级调度
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0 && e.pointerType === 'mouse') return;
+
+    // 严防事件向底层画板及节点穿透
+    e.stopPropagation();
+
+    const target = e.currentTarget;
+    const pointerId = e.pointerId;
+
+    try {
+      target.setPointerCapture(pointerId);
+    } catch {
+      /* ignore */
+    }
 
     dragInfoRef.current = {
       startX: e.clientX,
       startY: e.clientY,
       initialPos: { ...position },
       hasMoved: false,
+      pointerId,
+      target,
     };
+
+    let latestPos = { ...position };
 
     const handlePointerMove = (moveEvent: PointerEvent) => {
       if (!dragInfoRef.current) return;
@@ -148,7 +167,15 @@ export const MascotWidget: React.FC = () => {
       if (dragInfoRef.current.hasMoved) {
         const nextX = dragInfoRef.current.initialPos.x + dx;
         const nextY = dragInfoRef.current.initialPos.y + dy;
-        setPosition(clampPosition(nextX, nextY, WIDGET_SIZE));
+        latestPos = clampPosition(nextX, nextY, WIDGET_SIZE);
+
+        // rAF 批处理调度：对齐 VSync 刷新帧，严禁高回报率鼠标密集触发 React 重绘
+        if (rafIdRef.current === null) {
+          rafIdRef.current = window.requestAnimationFrame(() => {
+            setPosition(latestPos);
+            rafIdRef.current = null;
+          });
+        }
       }
     };
 
@@ -156,11 +183,24 @@ export const MascotWidget: React.FC = () => {
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
 
+      if (rafIdRef.current !== null) {
+        window.cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+
       const info = dragInfoRef.current;
       dragInfoRef.current = null;
       setIsDragging(false);
 
       if (!info) return;
+
+      try {
+        if (info.target.hasPointerCapture(info.pointerId)) {
+          info.target.releasePointerCapture(info.pointerId);
+        }
+      } catch {
+        /* ignore */
+      }
 
       if (info.hasMoved) {
         const finalDx = upEvent.clientX - info.startX;
@@ -185,7 +225,7 @@ export const MascotWidget: React.FC = () => {
       }
     };
 
-    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointermove', handlePointerMove, { passive: true });
     window.addEventListener('pointerup', handlePointerUp);
   };
 
@@ -208,12 +248,11 @@ export const MascotWidget: React.FC = () => {
 
   return (
     <>
-      {/* 任意可拖拽浮动挂件容器 */}
+      {/* 任意可拖拽浮动挂件容器：GPU 硬件加速位移（translate3d），0 layout 重排，0 延迟阻滞 */}
       <div
-        className="fixed select-none transition-[left,top] duration-75"
+        className="fixed select-none left-0 top-0 will-change-transform"
         style={{
-          left: `${position.x}px`,
-          top: `${position.y}px`,
+          transform: `translate3d(${position.x}px, ${position.y}px, 0)`,
           zIndex: 9980,
           cursor: isDragging ? 'grabbing' : 'grab',
           touchAction: 'none',
@@ -259,18 +298,18 @@ export const MascotWidget: React.FC = () => {
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-sans font-medium text-ink-light hover:text-accent hover:bg-accent/10 active:scale-[0.96] transition-[background-color,color,transform] duration-150 cursor-pointer"
             >
               <Sparkles size={13} strokeWidth={1.75} className="text-amber-500 shrink-0" />
-              <span>角色换装</span>
+              <span>换装</span>
             </button>
 
             {/* 底部精巧小三角指示器 */}
             <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 rotate-45 bg-paper border-r border-b border-paper-grid/80 shadow-xs" />
           </div>
 
-          {/* 2. Mascot 核心形象：手感优化，拖拽抓取与悬停升起 */}
+          {/* 2. Mascot 核心形象：手感优化，拖拽抓取与悬停升起，拖拽期间冻结内部无用计算 */}
           <div
-            className={`transition-[transform,filter] duration-200 ease-out ${
+            className={`transition-[transform,filter] duration-150 ease-out ${
               isDragging
-                ? 'scale-[1.06] drop-shadow-[0_12px_24px_rgba(0,0,0,0.15)]'
+                ? 'scale-[1.06] drop-shadow-[0_16px_32px_rgba(0,0,0,0.18)]'
                 : 'group-hover:scale-[1.02] group-hover:drop-shadow-md'
             }`}
           >
@@ -280,6 +319,7 @@ export const MascotWidget: React.FC = () => {
               reactions={reactions}
               size={WIDGET_SIZE}
               label={currentCharacter.name}
+              isDragging={isDragging}
             />
           </div>
 

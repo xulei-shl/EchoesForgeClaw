@@ -50,14 +50,36 @@ const SQUASH_MS = 420;
 const DIZZY_AFTER = 4;
 const DIZZY_WINDOW = 1600;
 const DIZZY_END = 1100;
+const IDLE_TIMEOUT_MS = 14000;
 
-const SQUASH: Keyframe[] = [
-  { transform: 'scale(1, 1)', easing: 'ease-in' },
-  { transform: 'scale(1.10, 0.86)', offset: 0.18, easing: 'ease-out' },
-  { transform: 'scale(0.95, 1.08)', offset: 0.45, easing: 'ease-in-out' },
-  { transform: 'scale(1.03, 0.97)', offset: 0.72, easing: 'ease-in-out' },
-  { transform: 'scale(1, 1)' },
+/** 阶梯式连击弹性动画：连戳越快越弹 */
+function getComboSquash(combo: number): Keyframe[] {
+  const intensity = Math.min(Math.max(combo, 1), 3);
+  const sx = (1 + 0.08 * intensity).toFixed(2);
+  const sy = (1 - 0.12 * intensity).toFixed(2);
+  const reboundX = (1 - 0.04 * intensity).toFixed(2);
+  const reboundY = (1 + 0.07 * intensity).toFixed(2);
+
+  return [
+    { transform: 'scale(1, 1)', easing: 'ease-in' },
+    { transform: `scale(${sx}, ${sy})`, offset: 0.18, easing: 'ease-out' },
+    { transform: `scale(${reboundX}, ${reboundY})`, offset: 0.45, easing: 'ease-in-out' },
+    { transform: 'scale(1.03, 0.97)', offset: 0.72, easing: 'ease-in-out' },
+    { transform: 'scale(1, 1)' },
+  ];
+}
+
+/** 连续 4 戳触发的眩晕不倒翁摇摆关键帧 */
+const DIZZY_WOBBLE: Keyframe[] = [
+  { transform: 'scale(1, 1) rotate(0deg)' },
+  { transform: 'scale(1.10, 0.90) rotate(-11deg)', offset: 0.15, easing: 'ease-out' },
+  { transform: 'scale(0.95, 1.05) rotate(10deg)', offset: 0.35, easing: 'ease-in-out' },
+  { transform: 'scale(1.04, 0.96) rotate(-7deg)', offset: 0.55, easing: 'ease-in-out' },
+  { transform: 'scale(0.98, 1.02) rotate(4deg)', offset: 0.75, easing: 'ease-in-out' },
+  { transform: 'scale(1.01, 0.99) rotate(-1deg)', offset: 0.90, easing: 'ease-out' },
+  { transform: 'scale(1, 1) rotate(0deg)' },
 ];
+const DIZZY_WOBBLE_MS = 980;
 
 function cell(index: number): CSSProperties {
   return { backgroundPosition: `${(index % 3) * 50}% ${Math.floor(index / 3) * 50}%` };
@@ -85,6 +107,8 @@ export interface MascotProps {
   label?: string;
   /** 点击互动触发的回调（在 boop 表情后触发） */
   onInteract?: (event?: React.MouseEvent<HTMLDivElement>) => void;
+  /** 拖拽中状态：为 true 时彻底暂停光标跟踪与朝向重排，保障 120fps 极速拖拽 */
+  isDragging?: boolean;
 }
 
 export interface MascotRefHandle {
@@ -99,19 +123,31 @@ export interface MascotRefHandle {
  * - 性能优化：视口坐标缓存 + rAF 节流，避免高频 Reflow
  */
 export const Mascot = forwardRef<MascotRefHandle, MascotProps>(function Mascot(props, ref) {
-  const { directions, reactions, size = 110, className = '', label = 'mascot', onInteract } = props;
+  const {
+    directions,
+    reactions,
+    size = 110,
+    className = '',
+    label = 'mascot',
+    onInteract,
+    isDragging = false,
+  } = props;
 
   const rootRef = useRef<HTMLDivElement>(null);
   const squashRef = useRef<HTMLSpanElement>(null);
   const timersRef = useRef<number[]>([]);
+  const idleTimerRef = useRef<number | null>(null);
   const boopsRef = useRef({ count: 0, at: 0 });
   const [direction, setDirection] = useState<Direction>('center');
   const [reaction, setReaction] = useState<Reaction | null>(null);
+  const [bubbleState, setBubbleState] = useState<'dizzy' | 'sleepy' | null>(null);
 
   // 视口坐标缓存：记录挂件中心 (cx, cy)，避免 pointermove 每帧 getBoundingClientRect
   const centerRef = useRef<{ cx: number; cy: number } | null>(null);
   const rafIdRef = useRef<number | null>(null);
   const currentSectorRef = useRef<number>(-1);
+  const isDraggingRef = useRef(isDragging);
+  isDraggingRef.current = isDragging;
 
   const recalibratePosition = useCallback(() => {
     if (!rootRef.current) return;
@@ -122,15 +158,41 @@ export const Mascot = forwardRef<MascotRefHandle, MascotProps>(function Mascot(p
     };
   }, []);
 
+  // 待机打瞌睡计时器重置与唤醒
+  const resetIdleTimer = useCallback(() => {
+    if (idleTimerRef.current !== null) {
+      window.clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = null;
+    }
+    // 若当前正在打瞌睡，鼠标一动立刻唤醒
+    setBubbleState((prev) => (prev === 'sleepy' ? null : prev));
+    setReaction((prev) => (prev === 'sleepy' ? null : prev));
+
+    idleTimerRef.current = window.setTimeout(() => {
+      if (isDraggingRef.current) return;
+      setReaction((curReaction) => {
+        if (curReaction === null) {
+          setBubbleState('sleepy');
+          return 'sleepy';
+        }
+        return curReaction;
+      });
+    }, IDLE_TIMEOUT_MS);
+  }, []);
+
   useEffect(() => {
     recalibratePosition();
+    resetIdleTimer();
     window.addEventListener('resize', recalibratePosition, { passive: true });
     window.addEventListener('scroll', recalibratePosition, { passive: true });
     return () => {
       window.removeEventListener('resize', recalibratePosition);
       window.removeEventListener('scroll', recalibratePosition);
+      if (idleTimerRef.current !== null) {
+        window.clearTimeout(idleTimerRef.current);
+      }
     };
-  }, [recalibratePosition]);
+  }, [recalibratePosition, resetIdleTimer]);
 
   // 光标跟踪逻辑
   useEffect(() => {
@@ -139,6 +201,11 @@ export const Mascot = forwardRef<MascotRefHandle, MascotProps>(function Mascot(p
     }
 
     const onPointerMove = (event: PointerEvent) => {
+      // 移动光标即重置打瞌睡计时
+      resetIdleTimer();
+
+      // 拖拽过程中完全不进行任何角度计算和 setState，避免重排和卡顿
+      if (isDraggingRef.current) return;
       if (rafIdRef.current !== null) return;
 
       rafIdRef.current = window.requestAnimationFrame(() => {
@@ -180,17 +247,21 @@ export const Mascot = forwardRef<MascotRefHandle, MascotProps>(function Mascot(p
         rafIdRef.current = null;
       }
     };
-  }, [recalibratePosition]);
+  }, [recalibratePosition, resetIdleTimer]);
 
   useEffect(() => {
     return () => {
       timersRef.current.forEach(window.clearTimeout);
+      if (idleTimerRef.current !== null) {
+        window.clearTimeout(idleTimerRef.current);
+      }
     };
   }, []);
 
-  // 戳一下交互
+  // 戳一下交互（支持阶梯连击弹性与眩晕彩蛋）
   const boop = useCallback(
     (event?: React.MouseEvent<HTMLDivElement>) => {
+      resetIdleTimer();
       timersRef.current.forEach(window.clearTimeout);
       timersRef.current = [];
 
@@ -204,28 +275,47 @@ export const Mascot = forwardRef<MascotRefHandle, MascotProps>(function Mascot(p
       boops.at = now;
 
       if (boops.count >= DIZZY_AFTER) {
+        // 连戳 4 次触发“眩晕”彩蛋
         boops.count = 0;
         setReaction('dizzy');
+        setBubbleState('dizzy');
+
+        if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+          squashRef.current?.animate(DIZZY_WOBBLE, {
+            duration: DIZZY_WOBBLE_MS,
+            easing: 'ease-out',
+          });
+        }
+
         later(DIZZY_END, null);
+        timersRef.current.push(
+          window.setTimeout(() => {
+            setBubbleState(null);
+          }, DIZZY_END)
+        );
       } else {
+        // 普通连击戳戳：阶梯式回弹缩放动画
+        setBubbleState(null);
         setReaction('blink');
         later(BOOP_PAYOFF, PAYOFFS[(boops.count - 1) % PAYOFFS.length]);
         later(BOOP_END, null);
-      }
 
-      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-        squashRef.current?.animate(SQUASH, { duration: SQUASH_MS, easing: 'linear' });
+        if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+          squashRef.current?.animate(getComboSquash(boops.count), {
+            duration: SQUASH_MS,
+            easing: 'linear',
+          });
+        }
       }
 
       // 触发外部交互通知（如弹出表单）
       if (onInteract) {
-        // 延迟触发：让用户先看到生动的戳戳表情动画
         window.setTimeout(() => {
           onInteract(event);
         }, 400);
       }
     },
-    [onInteract]
+    [onInteract, resetIdleTimer]
   );
 
   useImperativeHandle(
@@ -250,6 +340,20 @@ export const Mascot = forwardRef<MascotRefHandle, MascotProps>(function Mascot(p
         appearance: 'none',
       }}
     >
+      {/* 趣味彩蛋微气泡（眩晕 / 打瞌睡） */}
+      {bubbleState && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -top-3 -right-2 z-20 flex items-center gap-1 rounded-full bg-white/95 px-2 py-0.5 text-xs font-semibold text-amber-600 shadow-md ring-1 ring-amber-400/30 backdrop-blur-sm animate-bounce dark:bg-zinc-800/95 dark:text-amber-300 dark:ring-amber-500/30 select-none"
+        >
+          {bubbleState === 'dizzy' ? (
+            <span>💫 晕啦~</span>
+          ) : (
+            <span className="font-mono tracking-wider text-indigo-500 dark:text-indigo-400">zZ 💤</span>
+          )}
+        </div>
+      )}
+
       <span
         ref={squashRef}
         style={{
