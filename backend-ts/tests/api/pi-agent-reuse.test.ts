@@ -359,6 +359,22 @@ describe('pi 进程生命周期（空闲回收 / LRU 上限）', () => {
     expect(countActivePiProcesses()).toBe(1);
   });
 
+  it(
+    '空闲回收：活跃轮（round 非空）即使远超 idleMs 也跳过不杀（防长任务被误回收中断）',
+    () => {
+      const now = Date.now();
+      // lastUsed 轮首刷新后不再更新：长任务（图像生成 + 重试退避）运行期可远超 idleMs
+      const busy = fakeEntry(4, now - 600_000);
+      busy.round = createPiRoundState();
+      unregs.push(registerPiProcess(1, 'ws-busy', busy));
+      unregs.push(registerPiProcess(1, 'ws-idle', fakeEntry(5, now - 60_000)));
+      expect(reapIdlePiProcesses(10_000)).toBe(1);
+      // 忙进程存活，空闲进程被回收
+      expect(getPiProcess(1, 'ws-busy')).not.toBeNull();
+      expect(getPiProcess(1, 'ws-idle')).toBeNull();
+    }
+  );
+
   it('LRU 上限：驱逐最近最久未用', () => {
     const now = Date.now();
     unregs.push(registerPiProcess(2, 'ws-lru-a', fakeEntry(1, now - 30_000)));
@@ -369,5 +385,30 @@ describe('pi 进程生命周期（空闲回收 / LRU 上限）', () => {
     // 最久未用的 ws-lru-a 被驱逐
     expect(getPiProcess(2, 'ws-lru-a')).toBeNull();
     expect(getPiProcess(2, 'ws-lru-b')).not.toBeNull();
+  });
+
+  it('LRU 上限：活跃轮进程不作为驱逐候选，空闲者被优先驱逐', () => {
+    const now = Date.now();
+    // 最久未用的是忙进程：驱逐必须落到空闲进程头上，而不是杀掉运行中的轮
+    const busy = fakeEntry(6, now - 600_000);
+    busy.round = createPiRoundState();
+    unregs.push(registerPiProcess(3, 'ws-lru-busy', busy));
+    unregs.push(registerPiProcess(3, 'ws-lru-free', fakeEntry(7, now - 5_000)));
+    expect(evictLeastRecentlyUsedPiProcess()).toBe(true);
+    expect(getPiProcess(3, 'ws-lru-busy')).not.toBeNull();
+    expect(getPiProcess(3, 'ws-lru-free')).toBeNull();
+  });
+
+  it('LRU 上限：全部进程均在忙时返回 false（软上限，新 spawn 放行）', () => {
+    const now = Date.now();
+    const busyA = fakeEntry(8, now - 600_000);
+    busyA.round = createPiRoundState();
+    const busyB = fakeEntry(9, now - 1_000);
+    busyB.round = createPiRoundState();
+    unregs.push(registerPiProcess(4, 'ws-lru-only-busy-a', busyA));
+    unregs.push(registerPiProcess(4, 'ws-lru-only-busy-b', busyB));
+    expect(evictLeastRecentlyUsedPiProcess()).toBe(false);
+    expect(getPiProcess(4, 'ws-lru-only-busy-a')).not.toBeNull();
+    expect(getPiProcess(4, 'ws-lru-only-busy-b')).not.toBeNull();
   });
 });

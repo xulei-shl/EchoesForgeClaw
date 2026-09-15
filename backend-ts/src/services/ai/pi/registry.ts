@@ -159,12 +159,18 @@ export function countActivePiProcesses(): number {
   return n;
 }
 
-/** 回收空闲进程（距 lastUsed 超过 idleMs）；返回被杀进程数。 */
+/**
+ * 回收空闲进程（距 lastUsed 超过 idleMs）；返回被杀进程数。
+ * 有活跃轮（entry.round 非空）的进程一律跳过：lastUsed 仅在轮首刷新，长任务
+ * （图像生成 + 模型重试退避）运行期远超 idleMs，杀掉即「任务中断」。轮自身有
+ * RPC_AGENT_TIMEOUT_MS 超时兜底，跳过不会造成进程泄漏。
+ */
 export function reapIdlePiProcesses(idleMs: number): number {
   const now = Date.now();
   let killed = 0;
   for (const [key, entry] of [...piProcessRegistry]) {
     if (entry.ended || !entry.alive) continue;
+    if (entry.round) continue;
     if (now - entry.lastUsed >= idleMs) {
       piProcessRegistry.delete(key);
       markKilled(entry);
@@ -190,12 +196,19 @@ export function killAllPiProcesses(): number {
   return killed;
 }
 
-/** 驱逐最近最久未使用的存活进程（LRU）；无存活进程返回 false。 */
+/**
+ * 驱逐最近最久未使用的存活进程（LRU）；无可驱逐进程返回 false。
+ * 有活跃轮（entry.round 非空）的进程不作为候选（杀掉即「任务中断」）；
+ * 全部存活进程均在忙时返回 false —— 调用方（runPiAgent）据此放行新 spawn：
+ * 软上限语义，宁可临时超 PI_MAX_PROCESSES 也不终止运行中的轮（忙进程经
+ * RPC_AGENT_TIMEOUT_MS / abort 路径自清理，超限是暂态）。
+ */
 export function evictLeastRecentlyUsedPiProcess(): boolean {
   let oldestKey: string | null = null;
   let oldestUsed = Infinity;
   for (const [key, entry] of piProcessRegistry) {
     if (entry.ended || !entry.alive) continue;
+    if (entry.round) continue;
     if (entry.lastUsed < oldestUsed) {
       oldestUsed = entry.lastUsed;
       oldestKey = key;
