@@ -24,6 +24,7 @@ import { AddNodeButton, type NodePickerItem } from '../../canvas/nodes/_shared/A
 import { NodePickerList } from '../../canvas/nodes/_shared/NodePickerList';
 import NodeContextMenu from '../../canvas/nodes/_shared/NodeContextMenu';
 import EmptyCanvasHint from '../../canvas/nodes/_shared/EmptyCanvasHint';
+import { MascotWidget } from '../../canvas/components/mascot';
 import {
   getBookInfoPosition,
   getBranchNodePosition,
@@ -1589,6 +1590,9 @@ const CanvasPage: React.FC = () => {
           onZoomOut={handleZoomOut}
           onFocus={handleFocus}
         />
+
+        {/* 画板动态吉祥物反馈交互小组件（可拖拽至任一位置，点击戳一下弹出反馈表单） */}
+        <MascotWidget />
       </main>
     </div>
   );

@@ -180,6 +180,11 @@ const DEFAULT_SETTINGS: Array<[string, string, string]> = [
     '[]',
     'Pi Agent 越界路径放行白名单（JSON 数组，如 [{"kind":"file","path":"/data/x.txt"},{"kind":"directory","path":"/data/y"}]；仅 mode=allow 时有意义；留空 = 不放行任何越界路径）',
   ],
+  [
+    'wechat.webhook_url',
+    '',
+    '企业微信群机器人 Webhook 地址（用于接收画板用户反馈通知，敏感，仅显示掩码）',
+  ],
 ];
 
 /** 废弃/已删除的系统设置键（启动时自动彻底清理存量历史数据） */

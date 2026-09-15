@@ -28,6 +28,7 @@ import { registerSkillAgentConfigsAdminRouter } from './api/admin/skill-agent-co
 import { registerBifrostAdminRouter } from './api/admin/bifrost.js';
 import { registerBifrostSkillsAdminRouter } from './api/admin/bifrost-skills.js';
 import { registerAnnotationRouter } from './api/annotation.js';
+import { registerFeedbackRouter } from './api/feedback.js';
 import { killAllPiProcesses } from './services/ai/pi-agent-service.js';
 
 /**
@@ -195,6 +196,9 @@ export async function buildApp() {
 
   // 通用标注 API：Prompt / Skill 用户打标与私有备注
   await registerAnnotationRouter(app);
+
+  // 用户反馈 API：画板吉祥物表单反馈推送到企业微信
+  await registerFeedbackRouter(app);
 
   app.get('/', async () => ({ message: 'Welcome to BookForge API (TypeScript)' }));
 

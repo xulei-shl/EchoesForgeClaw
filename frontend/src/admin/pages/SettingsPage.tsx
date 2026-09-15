@@ -70,6 +70,7 @@ const KNOWN_KEYS: { key: string; description: string }[] = [
   { key: 'pi.guardrails.features.path_access', description: 'Pi Agent 越界路径访问控制（工作区外的文件访问拦截）' },
   { key: 'pi.guardrails.path_access.mode', description: 'Pi Agent 越界路径访问模式：block/ask/allow' },
   { key: 'pi.guardrails.path_access.allowed_paths', description: 'Pi Agent 越界路径放行白名单（JSON 数组，如 [{"kind":"file","path":"/data/x.txt"},{"kind":"directory","path":"/data/y"}]）' },
+  { key: 'wechat.webhook_url', description: '企业微信群机器人 Webhook 地址（用于接收画板用户反馈通知；敏感，仅显示掩码）' },
 ];
 
 /** 业务分类配置定义 */
