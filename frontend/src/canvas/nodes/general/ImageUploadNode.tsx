@@ -29,7 +29,7 @@ import {
   isRasterArtifact,
 } from '../ai/infra/agentArtifactImages';
 import { fetchWorkspaceFiles } from '../ai/infra/piSessionApi';
-import type { AgentFile } from '../../../../shared/types';
+import type { AgentFile } from '../../../shared/types';
 
 /** 继承图来源类型：直连图片上级 / 穿透连通图书封面 / 根节点图书封面兜底 */
 export type InheritedSourceKind = 'parent' | 'book_connected' | 'book_root';
