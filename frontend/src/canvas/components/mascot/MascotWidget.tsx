@@ -20,6 +20,10 @@ import {
 
 const WIDGET_SIZE = 110;
 const PADDING_EDGE = 14;
+/** 底部 ISBN 输入框顶边距视口底部的距离：bottom-8(32px) + 表单高(p-2×2 + h-10 = 56px) = 88px */
+const ISBN_INPUT_TOP_OFFSET = 88;
+/** 吉祥物底边与 ISBN 输入框顶边的呼吸间距 */
+const MASCOT_ISBN_GAP = 10;
 
 interface WidgetPosition {
   x: number;
@@ -39,13 +43,16 @@ function clampPosition(x: number, y: number, size: number): WidgetPosition {
 }
 
 /**
- * 计算默认右下角坐标
+ * 计算默认坐标：水平与底部 ISBN 输入框居中对齐，底边贴其顶部
  */
 function getDefaultPosition(size: number): WidgetPosition {
   if (typeof window === 'undefined') return { x: 100, y: 100 };
   return {
-    x: Math.max(PADDING_EDGE, window.innerWidth - size - 28),
-    y: Math.max(PADDING_EDGE, window.innerHeight - size - 28),
+    x: Math.max(PADDING_EDGE, (window.innerWidth - size) / 2),
+    y: Math.max(
+      PADDING_EDGE,
+      window.innerHeight - size - ISBN_INPUT_TOP_OFFSET - MASCOT_ISBN_GAP
+    ),
   };
 }
 
