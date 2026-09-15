@@ -184,7 +184,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ open, onClose, mas
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between">
             <label className="text-sm font-sans text-ink-light">反馈详情 *</label>
-            <span className="text-xs text-ink-faint font-sans">{content.length}/1000</span>
+            <span className="text-xs text-ink-faint font-sans tabular-nums">{content.length}/1000</span>
           </div>
           <Textarea
             placeholder="请详细描述您遇到的问题、改进设想或新功能诉求..."
