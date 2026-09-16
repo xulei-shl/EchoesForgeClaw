@@ -20,7 +20,7 @@ import type { CachedBifrostSkill, SkillSelection } from '../../shared/types';
 import { Button } from '../../shared/components/ui/Button';
 import { Card } from '../../shared/components/ui/Card';
 import { Badge } from '../../shared/components/ui/Badge';
-import { Dialog } from '../../shared/components/ui/Dialog';
+import { Drawer } from '../../shared/components/ui/Drawer';
 import { Input } from '../../shared/components/ui/Input';
 import { Select } from '../../shared/components/ui/Select';
 import { RatingStars } from '../../shared/components/ui/RatingStars';
@@ -31,6 +31,85 @@ import { Pagination } from '../../shared/components/ui/Pagination';
 
 /** 内存级 SWR 缓存 */
 let cachedSkills: CachedBifrostSkill[] | null = null;
+
+/** 高性能 Skill 文件列表组件（支持分批按需渲染与即时搜索过滤，轻松承载 100+ 文件） */
+const SkillFileList: React.FC<{ files?: (string | { path: string })[] }> = ({ files }) => {
+  const [filter, setFilter] = useState('');
+  const [displayLimit, setDisplayLimit] = useState(40);
+
+  const filePaths = useMemo(() => {
+    if (!Array.isArray(files)) return [];
+    return files.map((f) => (typeof f === 'string' ? f : f.path)).filter(Boolean);
+  }, [files]);
+
+  const filteredPaths = useMemo(() => {
+    if (!filter.trim()) return filePaths;
+    const q = filter.trim().toLowerCase();
+    return filePaths.filter((p) => p.toLowerCase().includes(q));
+  }, [filePaths, filter]);
+
+  const visiblePaths = useMemo(() => {
+    return filteredPaths.slice(0, displayLimit);
+  }, [filteredPaths, displayLimit]);
+
+  if (filePaths.length === 0) {
+    return <p className="text-xs text-ink-faint py-6 text-center">暂无文件列表信息</p>;
+  }
+
+  return (
+    <div className="space-y-2">
+      {/* 搜索框（文件数较多时显示，方便快速筛选） */}
+      {filePaths.length > 12 && (
+        <div className="relative">
+          <Search
+            size={13}
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-faint pointer-events-none"
+          />
+          <input
+            type="text"
+            value={filter}
+            onChange={(e) => {
+              setFilter(e.target.value);
+              setDisplayLimit(40);
+            }}
+            placeholder={`快速筛选 ${filePaths.length} 个文件...`}
+            className="w-full h-7 pl-7 pr-2.5 text-xs rounded-lg border border-paper-grid bg-paper/60 text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent"
+          />
+        </div>
+      )}
+
+      {/* 文件清单 */}
+      <div className="p-3 rounded-xl border border-paper-grid bg-paper/60 max-h-[420px] overflow-y-auto custom-scrollbar space-y-1">
+        {visiblePaths.length > 0 ? (
+          <>
+            {visiblePaths.map((filePath, idx) => (
+              <div
+                key={idx}
+                className="text-xs font-mono text-ink-light py-0.5 flex items-center gap-2 hover:text-ink transition-colors"
+              >
+                <span className="text-ink-faint shrink-0">📄</span>
+                <span className="truncate" title={filePath}>{filePath}</span>
+              </div>
+            ))}
+            {filteredPaths.length > displayLimit && (
+              <div className="pt-2 pb-1 text-center">
+                <button
+                  type="button"
+                  onClick={() => setDisplayLimit((prev) => prev + 50)}
+                  className="text-xs text-accent hover:text-accent-hover font-sans py-1 px-3 rounded-md hover:bg-accent/5 active:scale-[0.96] transition-all"
+                >
+                  显示更多（已展示 {displayLimit} / {filteredPaths.length} 项）
+                </button>
+              </div>
+            )}
+          </>
+        ) : (
+          <p className="text-xs text-ink-faint py-4 text-center">未找到匹配的文件</p>
+        )}
+      </div>
+    </div>
+  );
+};
 
 export const BifrostSkillsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -209,6 +288,35 @@ export const BifrostSkillsPage: React.FC = () => {
 
   const totalPages = Math.ceil(filteredSkills.length / PAGE_SIZE);
   const currentSkills = filteredSkills.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  // 当前详情在筛选结果中的索引，用于抽屉内上一条/下一条连续检视
+  const detailIndex = useMemo(() => {
+    if (!detail) return -1;
+    return filteredSkills.findIndex((s) => s.name === detail.name);
+  }, [detail, filteredSkills]);
+
+  const hasPrev = detailIndex > 0;
+  const hasNext = detailIndex >= 0 && detailIndex < filteredSkills.length - 1;
+
+  const handlePrev = useCallback(() => {
+    if (detailIndex > 0) {
+      const prevSkill = filteredSkills[detailIndex - 1];
+      void openDetail(prevSkill);
+      const targetPage = Math.floor((detailIndex - 1) / PAGE_SIZE) + 1;
+      if (targetPage !== currentPage) setCurrentPage(targetPage);
+    }
+  }, [detailIndex, filteredSkills, currentPage, openDetail]);
+
+  const handleNext = useCallback(() => {
+    if (detailIndex >= 0 && detailIndex < filteredSkills.length - 1) {
+      const nextSkill = filteredSkills[detailIndex + 1];
+      void openDetail(nextSkill);
+      const targetPage = Math.floor((detailIndex + 1) / PAGE_SIZE) + 1;
+      if (targetPage !== currentPage) setCurrentPage(targetPage);
+    }
+  }, [detailIndex, filteredSkills, currentPage, openDetail]);
+
+
 
   /** 全选/取消当前页 */
   const handleToggleSelectPage = () => {
@@ -568,20 +676,59 @@ export const BifrostSkillsPage: React.FC = () => {
           </div>
         )}
 
-        {/* 详情弹窗 */}
-        <Dialog
-          open={!!detail}
+        {/* 详情侧边栏抽屉 */}
+        <Drawer
+          isOpen={!!detail}
           onClose={() => setDetail(null)}
-          title={detail?.name || 'Skill 详情'}
-          panelClassName="max-w-3xl max-h-[90vh] flex flex-col"
+          title="Skill 详情"
+          hasPrev={hasPrev}
+          hasNext={hasNext}
+          onPrev={handlePrev}
+          onNext={handleNext}
+          prevTitle="上一个 Skill (←)"
+          nextTitle="下一个 Skill (→)"
+          width="w-[560px] xl:w-[640px] max-w-[92vw]"
+          footer={
+            detail ? (
+              <>
+                <Button variant="ghost" onClick={() => setDetail(null)}>
+                  关闭
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => void handleDownloadZip(detail.name)}
+                  disabled={downloadingName === detail.name}
+                  className="flex items-center gap-1.5"
+                >
+                  {downloadingName === detail.name ? (
+                    <Loader2 size={14} className="animate-spin text-accent" />
+                  ) : (
+                    <Download size={14} />
+                  )}
+                  打包下载 (.zip)
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    handleLoadSkillsToCanvas([detail]);
+                    setDetail(null);
+                  }}
+                  className="flex items-center gap-1.5"
+                >
+                  <PlusCircle size={14} />
+                  载入画板
+                </Button>
+              </>
+            ) : null
+          }
         >
           {detail && (
-            <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+            <div className="space-y-4">
               {/* 头部摘要信息 */}
               <div className="flex items-start justify-between gap-3 flex-wrap border-b border-paper-grid pb-3">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-serif text-base font-bold text-ink">{detail.name}</span>
+                    <span className="font-serif text-lg font-bold text-ink">{detail.name}</span>
                     {detail.latest_version && <Badge>v{detail.latest_version}</Badge>}
                     {detail.license && <span className="text-xs text-ink-faint font-mono">({detail.license})</span>}
                   </div>
@@ -647,69 +794,24 @@ export const BifrostSkillsPage: React.FC = () => {
                   </button>
                 </div>
 
-                {/* SKILL.md 文档区 */}
+                {/* SKILL.md 文档区（内置双速渐进高亮，毫秒级即刻挂载，无需多余延迟） */}
                 {detailTab === 'doc' && (
                   <MarkdownViewer
                     content={detail.body}
                     emptyText="（暂无 SKILL.md 文档正文）"
                     copyable
-                    className="max-h-72"
+                    className="max-h-[460px]"
                   />
                 )}
 
-                {/* 文件树列表区 */}
+                {/* 文件树列表区（高性能分批按需渲染 + 即时搜索） */}
                 {detailTab === 'files' && (
-                  <div className="p-3 rounded-xl border border-paper-grid bg-paper/60 max-h-72 overflow-y-auto custom-scrollbar space-y-1">
-                    {detail.files && detail.files.length > 0 ? (
-                      detail.files.map((f: any, idx: number) => {
-                        const filePath = typeof f === 'string' ? f : f.path;
-                        return (
-                          <div key={idx} className="text-xs font-mono text-ink-light py-0.5 flex items-center gap-2">
-                            <span className="text-ink-faint">📄</span>
-                            <span>{filePath}</span>
-                          </div>
-                        );
-                      })
-                    ) : (
-                      <p className="text-xs text-ink-faint py-3 text-center">暂无文件列表信息</p>
-                    )}
-                  </div>
+                  <SkillFileList files={detail.files} />
                 )}
-              </div>
-
-              {/* 弹窗底部操作条 */}
-              <div className="pt-3 border-t border-paper-grid flex justify-end gap-2.5">
-                <Button variant="ghost" onClick={() => setDetail(null)}>
-                  关闭
-                </Button>
-                <Button
-                  variant="secondary"
-                  onClick={() => void handleDownloadZip(detail.name)}
-                  disabled={downloadingName === detail.name}
-                  className="flex items-center gap-1.5"
-                >
-                  {downloadingName === detail.name ? (
-                    <Loader2 size={14} className="animate-spin text-accent" />
-                  ) : (
-                    <Download size={14} />
-                  )}
-                  打包下载 (.zip)
-                </Button>
-                <Button
-                  variant="primary"
-                  onClick={() => {
-                    handleLoadSkillsToCanvas([detail]);
-                    setDetail(null);
-                  }}
-                  className="flex items-center gap-1.5"
-                >
-                  <PlusCircle size={14} />
-                  载入画板
-                </Button>
               </div>
             </div>
           )}
-        </Dialog>
+        </Drawer>
 
         {/* 独立备注编辑模态框 */}
         {editingNoteTarget && (

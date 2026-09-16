@@ -1,7 +1,11 @@
-import React, { memo, useState, useCallback } from 'react';
+import React, { memo, useState, useCallback, useMemo, useEffect } from 'react';
 import { Copy, Check } from 'lucide-react';
 import { Streamdown, cjk, code } from '../../utils/markdown';
 import { normalizeMarkdown } from '../../utils/normalizeMarkdown';
+
+/** 单例化插件配置对象：轻量极速版（仅 CJK 中文排版，< 2ms 首绘）与全量版（含 Shiki 语法高亮） */
+const FAST_PLUGINS = { cjk };
+const FULL_PLUGINS = { cjk, code };
 
 export interface MarkdownViewerProps {
   /** Markdown 原始正文（内置 normalizeMarkdown 预处理） */
@@ -26,6 +30,26 @@ export const MarkdownViewer: React.FC<MarkdownViewerProps> = memo(({
   const [copied, setCopied] = useState(false);
 
   const text = (content ?? '').trim();
+
+  // 记忆化预处理正文，避免每次重新渲染全量正则扫码
+  const normalizedText = useMemo(() => normalizeMarkdown(text), [text]);
+
+  // 大文档优化：包含代码块或超长文本时，首帧以 FAST_PLUGINS 毫秒级极速首绘（0 卡顿），
+  // 避开抽屉平移动画的 220ms 窗口，待动效停稳后静默升级为 Shiki 语法高亮
+  const isLargeDoc = text.length > 2500 || text.includes('```');
+  const [highlightActive, setHighlightActive] = useState(!isLargeDoc);
+
+  useEffect(() => {
+    if (!isLargeDoc) {
+      setHighlightActive(true);
+      return;
+    }
+    setHighlightActive(false);
+    const timer = window.setTimeout(() => {
+      setHighlightActive(true);
+    }, 240);
+    return () => window.clearTimeout(timer);
+  }, [text, isLargeDoc]);
 
   const handleCopy = useCallback(() => {
     if (!text) return;
@@ -55,7 +79,7 @@ export const MarkdownViewer: React.FC<MarkdownViewerProps> = memo(({
           type="button"
           onClick={handleCopy}
           title={copied ? '已复制' : '复制 Markdown 正文'}
-          className="absolute right-2.5 top-2.5 z-10 p-1.5 rounded-md bg-paper/80 backdrop-blur-sm border border-paper-grid text-ink-light hover:text-ink hover:bg-paper transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 shadow-xs flex items-center gap-1 text-[11px]"
+          className="absolute right-2.5 top-2.5 z-10 p-1.5 rounded-md bg-paper/95 border border-paper-grid text-ink-light hover:text-ink hover:bg-paper transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 shadow-xs flex items-center gap-1 text-[11px]"
         >
           {copied ? (
             <>
@@ -72,12 +96,12 @@ export const MarkdownViewer: React.FC<MarkdownViewerProps> = memo(({
       )}
 
       <Streamdown
-        plugins={{ cjk, code }}
+        plugins={highlightActive ? FULL_PLUGINS : FAST_PLUGINS}
         isAnimating={false}
         caret="block"
         linkSafety={{ enabled: false }}
       >
-        {normalizeMarkdown(text)}
+        {normalizedText}
       </Streamdown>
     </div>
   );

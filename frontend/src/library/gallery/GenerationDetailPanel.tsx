@@ -11,8 +11,6 @@ import {
   Heart,
   Loader2,
   Trash2,
-  ChevronLeft,
-  ChevronRight,
   Maximize2,
   Palette,
   ExternalLink,
@@ -160,39 +158,17 @@ export const GenerationDetailPanel: React.FC<GenerationDetailPanelProps> = ({
     'hover:text-ink hover:bg-paper-grid/30 active:scale-[0.96] transition-transform transition-colors rounded-md ' +
     'disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent';
 
-  // 顶部导航按钮
-  const navHeader = (
-    <div className="flex items-center gap-1">
-      <button
-        type="button"
-        onClick={onPrev}
-        disabled={!hasPrev}
-        aria-label="上一条作品 (←)"
-        title="上一条 (←)"
-        className="p-1.5 rounded-md text-ink-light hover:text-ink hover:bg-paper-grid/30 active:scale-[0.94] transition-all disabled:opacity-30 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
-      >
-        <ChevronLeft size={18} strokeWidth={1.75} />
-      </button>
-      <button
-        type="button"
-        onClick={onNext}
-        disabled={!hasNext}
-        aria-label="下一条作品 (→)"
-        title="下一条 (→)"
-        className="p-1.5 rounded-md text-ink-light hover:text-ink hover:bg-paper-grid/30 active:scale-[0.94] transition-all disabled:opacity-30 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
-      >
-        <ChevronRight size={18} strokeWidth={1.75} />
-      </button>
-      <div className="h-4 w-px bg-paper-grid/50 mx-1" />
-    </div>
-  );
-
   return (
     <Drawer
       isOpen={!!gen && !!meta}
       onClose={onClose}
       title="作品详情"
-      headerRight={navHeader}
+      hasPrev={hasPrev}
+      hasNext={hasNext}
+      onPrev={onPrev}
+      onNext={onNext}
+      prevTitle="上一条作品 (←)"
+      nextTitle="下一条作品 (→)"
       footer={
         gen && meta ? (
           <>

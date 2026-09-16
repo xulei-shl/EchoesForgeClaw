@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Check,
   ChevronDown,
@@ -313,6 +313,6 @@ export const WorkspaceFileTree: React.FC<{
     );
   };
 
-  const root = buildTree(files);
+  const root = useMemo(() => buildTree(files), [files]);
   return <div className="flex flex-col gap-0.5">{root.map((n) => (n.isDir ? renderDir(n, 0) : renderFile(n, 0)))}</div>;
 };

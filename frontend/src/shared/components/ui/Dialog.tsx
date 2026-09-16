@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { CornerDecorations } from './CornerDecorations';
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 
 interface DialogProps {
   open: boolean;
@@ -42,15 +43,8 @@ export const Dialog: React.FC<DialogProps> = ({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [open, dismissible, onClose]);
 
-  // 打开时锁定背景滚动
-  useEffect(() => {
-    if (!open) return;
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = prevOverflow;
-    };
-  }, [open]);
+  // 打开时锁定背景滚动（带 Windows 滚动条宽度防抖补偿）
+  useBodyScrollLock(open);
 
   // 自动聚焦（等待面板挂载完成）
   useEffect(() => {

@@ -19,7 +19,7 @@ import type { BifrostFolder, BifrostPrompt } from '../../shared/types';
 import { Button } from '../../shared/components/ui/Button';
 import { Input } from '../../shared/components/ui/Input';
 import { Select } from '../../shared/components/ui/Select';
-import { Dialog } from '../../shared/components/ui/Dialog';
+import { Drawer } from '../../shared/components/ui/Drawer';
 import { Card } from '../../shared/components/ui/Card';
 import { Badge } from '../../shared/components/ui/Badge';
 import { RatingStars } from '../../shared/components/ui/RatingStars';
@@ -209,6 +209,35 @@ export const BifrostPromptsPage: React.FC = () => {
 
   const totalPages = Math.ceil(filteredPrompts.length / PAGE_SIZE);
   const currentPrompts = filteredPrompts.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  // 当前详情在筛选结果中的索引，用于抽屉内上一条/下一条连续检视
+  const detailIndex = useMemo(() => {
+    if (!detail) return -1;
+    return filteredPrompts.findIndex((p) => p.id === detail.id);
+  }, [detail, filteredPrompts]);
+
+  const hasPrev = detailIndex > 0;
+  const hasNext = detailIndex >= 0 && detailIndex < filteredPrompts.length - 1;
+
+  const handlePrev = useCallback(() => {
+    if (detailIndex > 0) {
+      const prevPrompt = filteredPrompts[detailIndex - 1];
+      setDetail(prevPrompt);
+      const targetPage = Math.floor((detailIndex - 1) / PAGE_SIZE) + 1;
+      if (targetPage !== currentPage) setCurrentPage(targetPage);
+    }
+  }, [detailIndex, filteredPrompts, currentPage]);
+
+  const handleNext = useCallback(() => {
+    if (detailIndex >= 0 && detailIndex < filteredPrompts.length - 1) {
+      const nextPrompt = filteredPrompts[detailIndex + 1];
+      setDetail(nextPrompt);
+      const targetPage = Math.floor((detailIndex + 1) / PAGE_SIZE) + 1;
+      if (targetPage !== currentPage) setCurrentPage(targetPage);
+    }
+  }, [detailIndex, filteredPrompts, currentPage]);
+
+
 
   return (
     <div className="min-h-screen bg-paper flex flex-col">
@@ -455,48 +484,85 @@ export const BifrostPromptsPage: React.FC = () => {
           </div>
         )}
 
-        {/* 详情弹窗 */}
-        <Dialog
-          open={!!detail}
+        {/* 详情侧边栏抽屉 */}
+        <Drawer
+          isOpen={!!detail}
           onClose={() => setDetail(null)}
-          title={detail?.name || '提示词详情'}
-          panelClassName="max-w-2xl max-h-[90vh] flex flex-col"
+          title="提示词详情"
+          hasPrev={hasPrev}
+          hasNext={hasNext}
+          onPrev={handlePrev}
+          onNext={handleNext}
+          prevTitle="上一个提示词 (←)"
+          nextTitle="下一个提示词 (→)"
+          width="w-[540px] xl:w-[600px] max-w-[92vw]"
+          footer={
+            detail ? (
+              <>
+                <Button variant="ghost" onClick={() => setDetail(null)}>
+                  关闭
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => handleCopy(detail.content, detail.name)}
+                  className="flex items-center gap-1.5"
+                >
+                  <Copy size={14} />
+                  复制正文
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    handleLoadToCanvas(detail);
+                    setDetail(null);
+                  }}
+                  className="flex items-center gap-1.5"
+                >
+                  <PlusCircle size={14} />
+                  载入画板
+                </Button>
+              </>
+            ) : null
+          }
         >
           {detail && (
-            <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+            <div className="space-y-4">
+              {/* 标题与基础属性 */}
+              <div className="space-y-2">
+                <h3 className="font-serif text-lg font-bold text-ink leading-snug">{detail.name}</h3>
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    {detail.folder_name && <Badge>{detail.folder_name}</Badge>}
+                    <span className="text-xs text-ink-light">更新于: {formatDate(detail.updated_at)}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-ink-light">评分：</span>
+                    <RatingStars
+                      value={detail.user_rating || 0}
+                      onChange={(r) => void handleUpdateRating(detail.id, r, detail.user_note)}
+                      size="sm"
+                    />
+                  </div>
+                </div>
+              </div>
+
               {/* 预览大图 */}
               {detail.preview_image && (
                 <PhotoProvider maskOpacity={0.8} bannerVisible={false}>
                   <PhotoView src={detail.preview_image}>
-                    <div className="relative group cursor-pointer h-52 rounded-xl overflow-hidden border border-paper-grid bg-paper">
+                    <div className="relative group cursor-pointer h-56 rounded-xl overflow-hidden border border-paper-grid bg-paper">
                       <img
                         src={detail.preview_image}
                         alt={detail.name}
                         className="w-full h-full object-cover group-hover:scale-102 transition-transform"
                       />
-                      <div className="absolute right-3 bottom-3 p-1.5 rounded-lg bg-black/40 backdrop-blur-sm text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 text-xs">
+                      <div className="absolute right-3 bottom-3 p-1.5 rounded-lg bg-black/50 backdrop-blur-sm text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 text-xs">
                         <Maximize2 size={13} /> 点击全屏预览
                       </div>
                     </div>
                   </PhotoView>
                 </PhotoProvider>
               )}
-
-              {/* 基础属性 */}
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div className="flex items-center gap-2">
-                  {detail.folder_name && <Badge>{detail.folder_name}</Badge>}
-                  <span className="text-xs text-ink-light">更新于: {formatDate(detail.updated_at)}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-ink-light">评分：</span>
-                  <RatingStars
-                    value={detail.user_rating || 0}
-                    onChange={(r) => void handleUpdateRating(detail.id, r, detail.user_note)}
-                    size="sm"
-                  />
-                </div>
-              </div>
 
               {/* 正文区域 */}
               <div className="space-y-1.5">
@@ -514,7 +580,7 @@ export const BifrostPromptsPage: React.FC = () => {
                 <MarkdownViewer
                   content={detail.content}
                   emptyText="（空）"
-                  className="max-h-60"
+                  className="max-h-[360px]"
                 />
               </div>
 
@@ -539,35 +605,9 @@ export const BifrostPromptsPage: React.FC = () => {
                   )}
                 </div>
               </div>
-
-              {/* 弹窗底部操作 */}
-              <div className="pt-3 border-t border-paper-grid flex justify-end gap-2.5">
-                <Button variant="ghost" onClick={() => setDetail(null)}>
-                  关闭
-                </Button>
-                <Button
-                  variant="secondary"
-                  onClick={() => handleCopy(detail.content, detail.name)}
-                  className="flex items-center gap-1.5"
-                >
-                  <Copy size={14} />
-                  复制正文
-                </Button>
-                <Button
-                  variant="primary"
-                  onClick={() => {
-                    handleLoadToCanvas(detail);
-                    setDetail(null);
-                  }}
-                  className="flex items-center gap-1.5"
-                >
-                  <PlusCircle size={14} />
-                  载入画板
-                </Button>
-              </div>
             </div>
           )}
-        </Dialog>
+        </Drawer>
 
         {/* 独立备注编辑模态框 */}
         {editingNoteTarget && (
