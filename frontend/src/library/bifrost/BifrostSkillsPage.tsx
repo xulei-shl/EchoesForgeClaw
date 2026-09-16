@@ -28,88 +28,10 @@ import { NoteEditModal } from '../../shared/components/ui/NoteEditModal';
 import { MarkdownViewer } from '../../shared/components/ui/MarkdownViewer';
 import { useFeedback } from '../../shared/components/ui/FeedbackProvider';
 import { Pagination } from '../../shared/components/ui/Pagination';
+import { SkillFileTree } from '../../shared/components/ui/SkillFileTree';
 
 /** 内存级 SWR 缓存 */
 let cachedSkills: CachedBifrostSkill[] | null = null;
-
-/** 高性能 Skill 文件列表组件（支持分批按需渲染与即时搜索过滤，轻松承载 100+ 文件） */
-const SkillFileList: React.FC<{ files?: (string | { path: string })[] }> = ({ files }) => {
-  const [filter, setFilter] = useState('');
-  const [displayLimit, setDisplayLimit] = useState(40);
-
-  const filePaths = useMemo(() => {
-    if (!Array.isArray(files)) return [];
-    return files.map((f) => (typeof f === 'string' ? f : f.path)).filter(Boolean);
-  }, [files]);
-
-  const filteredPaths = useMemo(() => {
-    if (!filter.trim()) return filePaths;
-    const q = filter.trim().toLowerCase();
-    return filePaths.filter((p) => p.toLowerCase().includes(q));
-  }, [filePaths, filter]);
-
-  const visiblePaths = useMemo(() => {
-    return filteredPaths.slice(0, displayLimit);
-  }, [filteredPaths, displayLimit]);
-
-  if (filePaths.length === 0) {
-    return <p className="text-xs text-ink-faint py-6 text-center">暂无文件列表信息</p>;
-  }
-
-  return (
-    <div className="space-y-2">
-      {/* 搜索框（文件数较多时显示，方便快速筛选） */}
-      {filePaths.length > 12 && (
-        <div className="relative">
-          <Search
-            size={13}
-            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-faint pointer-events-none"
-          />
-          <input
-            type="text"
-            value={filter}
-            onChange={(e) => {
-              setFilter(e.target.value);
-              setDisplayLimit(40);
-            }}
-            placeholder={`快速筛选 ${filePaths.length} 个文件...`}
-            className="w-full h-7 pl-7 pr-2.5 text-xs rounded-lg border border-paper-grid bg-paper/60 text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent"
-          />
-        </div>
-      )}
-
-      {/* 文件清单 */}
-      <div className="p-3 rounded-xl border border-paper-grid bg-paper/60 max-h-[420px] overflow-y-auto custom-scrollbar space-y-1">
-        {visiblePaths.length > 0 ? (
-          <>
-            {visiblePaths.map((filePath, idx) => (
-              <div
-                key={idx}
-                className="text-xs font-mono text-ink-light py-0.5 flex items-center gap-2 hover:text-ink transition-colors"
-              >
-                <span className="text-ink-faint shrink-0">📄</span>
-                <span className="truncate" title={filePath}>{filePath}</span>
-              </div>
-            ))}
-            {filteredPaths.length > displayLimit && (
-              <div className="pt-2 pb-1 text-center">
-                <button
-                  type="button"
-                  onClick={() => setDisplayLimit((prev) => prev + 50)}
-                  className="text-xs text-accent hover:text-accent-hover font-sans py-1 px-3 rounded-md hover:bg-accent/5 active:scale-[0.96] transition-all"
-                >
-                  显示更多（已展示 {displayLimit} / {filteredPaths.length} 项）
-                </button>
-              </div>
-            )}
-          </>
-        ) : (
-          <p className="text-xs text-ink-faint py-4 text-center">未找到匹配的文件</p>
-        )}
-      </div>
-    </div>
-  );
-};
 
 export const BifrostSkillsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -804,9 +726,9 @@ export const BifrostSkillsPage: React.FC = () => {
                   />
                 )}
 
-                {/* 文件树列表区（高性能分批按需渲染 + 即时搜索） */}
+                {/* 文件树列表区（树形结构 + 默认文件夹折叠 + 即时搜索） */}
                 {detailTab === 'files' && (
-                  <SkillFileList files={detail.files} />
+                  <SkillFileTree files={detail.files} maxHeightClass="max-h-[460px]" />
                 )}
               </div>
             </div>

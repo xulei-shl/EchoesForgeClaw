@@ -13,6 +13,7 @@ import { RatingStars } from '../../shared/components/ui/RatingStars';
 import { MarkdownViewer } from '../../shared/components/ui/MarkdownViewer';
 import { PageHeader, FieldLabel } from '../components/AdminBits';
 import { useFeedback } from '../../shared/components/ui/FeedbackProvider';
+import { SkillFileTree } from '../../shared/components/ui/SkillFileTree';
 
 /** 内存级 SWR 缓存：页面切换 0ms 瞬间秒开 */
 let cachedBifrostSkillsData: CachedBifrostSkill[] | null = null;
@@ -558,13 +559,7 @@ export const BifrostSkillsPage: React.FC = () => {
                   <FolderTree size={14} className="inline mr-1" />
                   文件结构（<span className="tabular-nums">{detail.files.length}</span> 个）
                 </FieldLabel>
-                <div className="bg-paper border border-paper-grid rounded-md p-3 max-h-36 overflow-y-auto custom-scrollbar space-y-1">
-                  {detail.files.map((f) => (
-                    <p key={f} className="text-[11px] text-ink-light font-mono truncate pl-3 border-l-2 border-paper-grid/60 hover:bg-paper-grid/20 rounded-r transition-colors px-1 py-0.5">
-                      {f}
-                    </p>
-                  ))}
-                </div>
+                <SkillFileTree files={detail.files} maxHeightClass="max-h-56" />
               </div>
             )}
           </div>
