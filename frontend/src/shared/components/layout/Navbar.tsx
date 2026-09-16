@@ -39,7 +39,7 @@ export const Navbar: React.FC = () => {
                   <NavLink to="/favorites" className={getNavLinkClass}>收藏</NavLink>
                   <NavLink to="/gallery" className={getNavLinkClass}>画廊</NavLink>
                   <NavLink to="/prompts" className={getNavLinkClass}>提示词</NavLink>
-                  <NavLink to="/skills" className={getNavLinkClass}>Skills</NavLink>
+                  <NavLink to="/skills" className={getNavLinkClass}>技能</NavLink>
                   {user.role === 'admin' && (
                     <NavLink to="/admin/users" className={getAdminLinkClass}>
                       <Settings size={16} strokeWidth={2} />

@@ -303,10 +303,10 @@ export const BifrostSkillsPage: React.FC = () => {
           <div>
             <div className="flex items-center gap-2.5">
               <Boxes size={24} className="text-accent" />
-              <h1 className="font-serif text-2xl font-bold text-ink">Bifrost Skills 技能库</h1>
+              <h1 className="font-serif text-2xl font-bold text-ink">Bifrost Skills</h1>
             </div>
             <p className="text-sm text-ink-light font-sans mt-1">
-              浏览与检索所有可用 Skills，支持多选批量载入画板、星级打标与私有备注、一键打包 ZIP 下载
+              浏览与检索所有可用技能，支持多选批量载入画板、星级打标与私有备注、一键打包 ZIP 下载
             </p>
           </div>
 
