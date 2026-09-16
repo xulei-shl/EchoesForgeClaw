@@ -15,6 +15,8 @@ interface CanvasContextType {
   toggleNodeSelection?: (id: string) => void;
   /** 节点输出锚点按下（开始手动拖线连线）；未提供则锚点仅展示 */
   onAnchorPointerDown?: (nodeId: string, e: ReactPointerEvent) => void;
+  /** 节点尺寸实时改变（折叠展开动效/调整尺寸等），供命令式更新连线，0 React 渲染开销 */
+  onNodeResizeLive?: (id: string, width: number, height: number) => void;
 }
 
 export const CanvasContext = createContext<CanvasContextType>({ scale: 1 });

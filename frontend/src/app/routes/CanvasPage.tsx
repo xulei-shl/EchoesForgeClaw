@@ -1399,6 +1399,7 @@ const CanvasPage: React.FC = () => {
           getMarqueeCandidates={getMarqueeCandidates}
           onMarqueeSelect={handleMarqueeSelect}
           onAnchorPointerDown={onAnchorPointerDown}
+          onNodeResizeLive={handleNodeResizeLive}
           onContextMenu={handleCanvasContextMenu}
         >
           {sortedEdges.map((edge) => {

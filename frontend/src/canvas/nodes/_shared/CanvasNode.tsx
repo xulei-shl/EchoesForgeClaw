@@ -1,9 +1,14 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useCanvas } from '../../core/CanvasContext';
-import { AlertCircle, X } from 'lucide-react';
+import { AlertCircle, ChevronDown, ChevronUp, X } from 'lucide-react';
 
 /** 拖拽激活阈值（px），防止点击头部时轻微抖动误触发 */
 const DRAG_THRESHOLD = 3;
+
+/** 节点折叠固定高度（px）：32px 头部 + 88px 关键预览区，符合渐进式披露规范 */
+const COLLAPSED_HEIGHT = 120;
+/** 折叠动画时长（ms） */
+const COLLAPSE_DURATION = 220;
 
 let globalZIndex = 10;
 
@@ -30,6 +35,10 @@ export interface CanvasNodeProps {
   resizable?: boolean;
   /** 默认（同时也是最小）尺寸；开启 resizable 时必填 */
   defaultSize?: { width: number; height: number };
+  /** 初始是否处于折叠状态（默认 false） */
+  defaultCollapsed?: boolean;
+  /** 折叠状态切换回调 */
+  onCollapseChange?: (collapsed: boolean) => void;
   onRemove?: () => void;
   onPositionChange?: (id: string, x: number, y: number) => void;
   onSizeChange?: (id: string, width: number, height: number) => void;
@@ -76,17 +85,25 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
   mismatchBadge,
   dotColor,
   disableRemove,
+  defaultCollapsed = false,
+  onCollapseChange,
 }) => {
   const rootRef = useRef<HTMLDivElement>(null);
+  const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
+  const isAnimatingCollapseRef = useRef(false);
+  const collapseRafId = useRef<number | null>(null);
+  const lastExpandedHeightRef = useRef<number | null>(null);
   const {
     scale,
     onAnchorPointerDown,
+    onNodeResizeLive: ctxResizeLive,
     activeNodeId,
     setActiveNodeId,
     selectedIds,
     selectNode,
     toggleNodeSelection,
   } = useCanvas();
+  const liveResize = onResizeLive ?? ctxResizeLive;
   // 多选集合优先：在集合内即高亮；旧接入方（未提供集合）回退单选 activeNodeId
   const isActive = selectedIds ? selectedIds.has(id) : activeNodeId === id;
 
@@ -120,6 +137,8 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
   // 拖拽中的实时位置：命令式更新，不触发 React 渲染
   const dragPos = useRef({ x: initialX, y: initialY });
   const draggingRef = useRef(false);
+  /** 记录本次交互是否真实发生了拖拽位移，用于抑制拖拽松手后的误触发 click 事件 */
+  const didDragRef = useRef(false);
   const pointerDown = useRef<{ x: number; y: number } | null>(null);
   const dragStart = useRef({ pointerX: 0, pointerY: 0, nodeX: 0, nodeY: 0 });
   const rafId = useRef<number | null>(null);
@@ -156,13 +175,73 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialX, initialY]);
 
+  /** 折叠/展开切换：带有 rAF 命令式连线驱动的丝滑过渡动画，屏蔽 ResizeObserver 避免 React 重绘风暴 */
+  const toggleCollapse = useCallback(
+    (e?: React.MouseEvent) => {
+      e?.stopPropagation();
+      const el = rootRef.current;
+      const next = !isCollapsed;
+
+      if (!el) {
+        setIsCollapsed(next);
+        onCollapseChange?.(next);
+        return;
+      }
+
+      // 获取动画开始与目标尺寸
+      const startH = el.offsetHeight;
+      const targetH = next
+        ? COLLAPSED_HEIGHT
+        : (lastExpandedHeightRef.current ?? size?.h ?? defaultSize?.height ?? 400);
+
+      // 展开 -> 折叠：记录当前展开态的实际渲染高度，供后续平滑展开恢复
+      if (!isCollapsed) {
+        lastExpandedHeightRef.current = startH;
+      }
+
+      setIsCollapsed(next);
+      onCollapseChange?.(next);
+      isAnimatingCollapseRef.current = true;
+
+      const curW = el.offsetWidth;
+      const startTime = performance.now();
+      if (collapseRafId.current !== null) {
+        cancelAnimationFrame(collapseRafId.current);
+      }
+
+      // Emil Kowalski 标准强 ease-out 缓动 (cubic-bezier(0.23, 1, 0.32, 1) 的高精度数学三次方缓动)
+      const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
+
+      const step = (now: number) => {
+        const elapsed = now - startTime;
+        const progress = Math.min(1, elapsed / COLLAPSE_DURATION);
+        const currentInterpolatedH = startH + (targetH - startH) * easeOut(progress);
+
+        // 动画每一帧：使用数学纯平滑插值驱动连线，杜绝 offsetHeight 触发 Layout 回流，保持 60fps 丝滑跟随
+        liveResize?.(id, curW, Math.round(currentInterpolatedH));
+
+        if (progress < 1) {
+          collapseRafId.current = requestAnimationFrame(step);
+        } else {
+          collapseRafId.current = null;
+          isAnimatingCollapseRef.current = false;
+          // 动画结束：精准上报 1 次最终尺寸给父级画布与分组框
+          onSizeChange?.(id, curW, targetH);
+        }
+      };
+
+      collapseRafId.current = requestAnimationFrame(step);
+    },
+    [id, isCollapsed, onCollapseChange, liveResize, onSizeChange, size, defaultSize]
+  );
+
   // 上报节点实际尺寸（用于连线锚点计算）
   useEffect(() => {
     const el = rootRef.current;
     if (!el || !onSizeChange) return;
     const observer = new ResizeObserver((entries) => {
-      // 调整尺寸拖拽期间，屏蔽 ResizeObserver 回调广播，防止触发 React 全局渲染风暴
-      if (resizingRef.current) return;
+      // 调整尺寸拖拽期间 或 折叠展开动画过渡期间，屏蔽 ResizeObserver 回调广播，防止触发 React 全局渲染风暴
+      if (resizingRef.current || isAnimatingCollapseRef.current) return;
       for (const entry of entries) {
         // borderBoxSize 为元素自身坐标空间尺寸（不受画布 scale 影响），更精确
         const box = entry.borderBoxSize?.[0];
@@ -203,6 +282,7 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
 
   const startDrag = (pointerX: number, pointerY: number) => {
     draggingRef.current = true;
+    didDragRef.current = true;
     dragStart.current = {
       pointerX,
       pointerY,
@@ -255,6 +335,7 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     // 仅响应主键（左键）：右键/中键留给画布菜单等交互，避免误触发拖拽
     if (e.button !== 0) return;
+    didDragRef.current = false;
     const target = e.target as HTMLElement;
     // 命中右下角调整尺寸手柄 → 进入 resize 模式
     if (resizeHandleRef.current?.contains(target)) {
@@ -331,12 +412,30 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
     return () => {
       if (rafId.current !== null) cancelAnimationFrame(rafId.current);
       if (resizeRafId.current !== null) cancelAnimationFrame(resizeRafId.current);
+      if (collapseRafId.current !== null) cancelAnimationFrame(collapseRafId.current);
       document.body.classList.remove('canvas-node-dragging-active');
     };
   }, []);
 
   // 拖拽中若发生意外重渲染（如 SSE 流更新），用实时位置渲染避免回跳
   const shownPos = draggingRef.current ? dragPos.current : position;
+
+  // 计算卡片高度样式：折叠时锁定 COLLAPSED_HEIGHT；展开过渡期使用记录的高度保证 CSS transition 生效
+  const computedHeight = isCollapsed
+    ? `${COLLAPSED_HEIGHT}px`
+    : size
+    ? `${size.h}px`
+    : isAnimatingCollapseRef.current && lastExpandedHeightRef.current
+    ? `${lastExpandedHeightRef.current}px`
+    : undefined;
+
+  const computedMinHeight = isCollapsed
+    ? `${COLLAPSED_HEIGHT}px`
+    : size
+    ? `${defaultSize!.height}px`
+    : undefined;
+
+  const computedMaxHeight = isCollapsed ? `${COLLAPSED_HEIGHT}px` : undefined;
 
   return (
     <div
@@ -349,11 +448,16 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
       style={{
         zIndex: isActive ? 200 : zIndex,
         width: size ? `${size.w}px` : undefined,
-        height: size ? `${size.h}px` : undefined,
+        height: computedHeight,
         minWidth: size ? `${defaultSize!.width}px` : '200px',
-        minHeight: size ? `${defaultSize!.height}px` : undefined,
+        minHeight: computedMinHeight,
+        maxHeight: computedMaxHeight,
         transform: `translate3d(${shownPos.x}px, ${shownPos.y}px, 0)`,
         contain: 'layout style',
+        transition:
+          isAnimatingCollapseRef.current || isCollapsed
+            ? 'height 220ms cubic-bezier(0.23, 1, 0.32, 1), max-height 220ms cubic-bezier(0.23, 1, 0.32, 1), box-shadow 150ms'
+            : undefined,
       }}
       onPointerDownCapture={handleActivate}
       onFocusCapture={handleActivate}
@@ -361,7 +465,14 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
-      onClick={onClick}
+      onClick={(e) => {
+        // 若刚刚发生了拖拽移动，抑制残留的 click 事件，防止拖拽松手误触发展开或激活
+        if (didDragRef.current) {
+          didDragRef.current = false;
+          return;
+        }
+        onClick?.(e);
+      }}
       onContextMenu={onContextMenu}
       onLostPointerCapture={() => {
         // 浏览器中途回收指针捕获（如切换标签页）时结束拖拽并提交当前状态，避免卡在拖拽态
@@ -392,6 +503,11 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
         body.canvas-node-dragging-active * {
           cursor: grabbing !important;
           user-select: none !important;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          #${id} {
+            transition: box-shadow 150ms !important;
+          }
         }
       `}</style>
 
@@ -456,33 +572,71 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
             </div>
           )}
         </div>
-        {onRemove && (
+        <div className="flex items-center gap-1 shrink-0">
+          {/* 折叠/展开切换按钮 */}
           <button
-            onClick={(e) => {
-              if (disableRemove) return;
-              e.stopPropagation();
-              onRemove();
-            }}
-            disabled={disableRemove}
-            title={disableRemove ? '有下级节点关联，不可删除' : '删除节点'}
-            aria-label="删除节点"
-            className={`p-1 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-error ${disableRemove ? 'text-ink-faint/40 cursor-not-allowed' : 'text-ink-light hover:text-error hover:bg-error/10 active:scale-[0.96] transition-transform'}`}
+            type="button"
+            onClick={toggleCollapse}
+            aria-label={isCollapsed ? '展开节点' : '折叠节点'}
+            aria-expanded={!isCollapsed}
+            title={isCollapsed ? '展开节点 (点击展开)' : '折叠节点'}
+            className="p-1 rounded text-ink-light hover:text-ink hover:bg-paper-grid/40 active:scale-[0.96] transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
           >
-            <X size={13} strokeWidth={2} />
+            {isCollapsed ? (
+              <ChevronDown size={13} strokeWidth={2} className="transition-transform duration-200" />
+            ) : (
+              <ChevronUp size={13} strokeWidth={2} className="transition-transform duration-200" />
+            )}
           </button>
-        )}
+          {onRemove && (
+            <button
+              onClick={(e) => {
+                if (disableRemove) return;
+                e.stopPropagation();
+                onRemove();
+              }}
+              disabled={disableRemove}
+              title={disableRemove ? '有下级节点关联，不可删除' : '删除节点'}
+              aria-label="删除节点"
+              className={`p-1 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-error ${disableRemove ? 'text-ink-faint/40 cursor-not-allowed' : 'text-ink-light hover:text-error hover:bg-error/10 active:scale-[0.96] transition-transform'}`}
+            >
+              <X size={13} strokeWidth={2} />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* 内容区 */}
-      <div className="relative z-10 p-4 flex-1 overflow-y-auto overflow-x-hidden min-h-0 flex flex-col">
+      <div
+        className={`relative z-10 p-4 flex-1 overflow-x-hidden min-h-0 flex flex-col ${
+          isCollapsed
+            ? 'overflow-y-hidden pointer-events-none select-none max-h-[88px]'
+            : 'overflow-y-auto'
+        }`}
+      >
         {children}
+        {/* 折叠时底部渐变淡出遮罩（含快捷展开热区） */}
+        {isCollapsed && (
+          <div
+            className="absolute inset-x-0 bottom-0 h-9 bg-gradient-to-t from-node-bg via-node-bg/90 to-transparent flex items-end justify-center pb-1 cursor-pointer pointer-events-auto group/expand select-none"
+            onClick={(e) => {
+              if (didDragRef.current) return;
+              toggleCollapse(e);
+            }}
+            title="点击展开完整节点"
+          >
+            <span className="text-[10px] text-ink-faint/80 group-hover/expand:text-accent flex items-center gap-0.5 transition-colors font-sans select-none">
+              点击展开 <ChevronDown size={10} strokeWidth={2.5} className="mt-px" />
+            </span>
+          </div>
+        )}
       </div>
 
       {/* 边框外侧吸附侧边抽屉/检查器面板（不被内容区 overflow 裁剪） */}
-      {sideDrawer}
+      {!isCollapsed && sideDrawer}
 
-      {/* 边框外侧右下角操作按钮 */}
-      {actionBar && (
+      {/* 边框外侧右下角操作按钮（折叠时隐藏，避免悬空） */}
+      {actionBar && !isCollapsed && (
         <div className="absolute -bottom-8 right-0 flex items-center gap-0.5 z-20">
           {actionBar}
         </div>
@@ -495,8 +649,8 @@ export const CanvasNode: React.FC<CanvasNodeProps> = ({
         </div>
       )}
 
-      {/* 右下角调整尺寸手柄（增大触控热区至 28x28px 并增加微交互反馈） */}
-      {resizable && defaultSize && (
+      {/* 右下角调整尺寸手柄（折叠时隐藏，避免误拉拽尺寸） */}
+      {resizable && defaultSize && !isCollapsed && (
         <div
           ref={resizeHandleRef}
           className="absolute -bottom-1 -right-1 w-7 h-7 cursor-se-resize z-30 flex items-end justify-end p-1.5 group/handle select-none"

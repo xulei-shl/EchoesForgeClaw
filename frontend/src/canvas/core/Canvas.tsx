@@ -32,6 +32,8 @@ interface CanvasProps {
   onMarqueeSelect?: (ids: string[]) => void;
   /** 节点输出锚点按下（手动拖线连线起点），经 context 透传给各节点 */
   onAnchorPointerDown?: (nodeId: string, e: ReactPointerEvent) => void;
+  /** 节点尺寸实时改变（折叠展开/调整尺寸等），用于命令式更新相连连线，0 React 渲染开销 */
+  onNodeResizeLive?: (id: string, width: number, height: number) => void;
   onContextMenu?: (e: React.MouseEvent) => void;
 }
 
@@ -48,6 +50,7 @@ export const Canvas: React.FC<CanvasProps> = ({
   getMarqueeCandidates,
   onMarqueeSelect,
   onAnchorPointerDown,
+  onNodeResizeLive,
   onContextMenu,
 }) => {
   const isDragging = useRef(false);
@@ -321,6 +324,7 @@ export const Canvas: React.FC<CanvasProps> = ({
         selectNode,
         toggleNodeSelection,
         onAnchorPointerDown,
+        onNodeResizeLive,
       }}
     >
       <div

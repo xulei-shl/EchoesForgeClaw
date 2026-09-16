@@ -107,7 +107,8 @@ export const CanvasGroupFrame: React.FC<CanvasGroupFrameProps> = ({
         border: `1px solid color-mix(in srgb, ${color} ${active ? 85 : 68}%, transparent)`,
         background: `color-mix(in srgb, ${color} ${active ? 10 : 8}%, transparent)`,
         boxShadow: active ? `0 4px 20px rgba(0,0,0,0.08), 0 0 0 1px color-mix(in srgb, ${color} 40%, transparent)` : undefined,
-        transition: 'border-color 150ms ease, box-shadow 150ms ease, z-index 0ms',
+        transition:
+          'left 220ms cubic-bezier(0.23, 1, 0.32, 1), top 220ms cubic-bezier(0.23, 1, 0.32, 1), width 220ms cubic-bezier(0.23, 1, 0.32, 1), height 220ms cubic-bezier(0.23, 1, 0.32, 1), border-color 150ms ease, box-shadow 150ms ease',
       }}
       onPointerDown={(e) => {
         // 仅主键（左键）拖拽；按住 Shift 留给画布框选
@@ -130,6 +131,11 @@ export const CanvasGroupFrame: React.FC<CanvasGroupFrameProps> = ({
           transition: none !important;
           user-select: none !important;
           cursor: grabbing !important;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          [data-group-frame="${id}"] {
+            transition: border-color 150ms ease, box-shadow 150ms ease !important;
+          }
         }
       `}</style>
       {/* 左上角标题 chip：略微压住边框 */}
