@@ -90,7 +90,7 @@ const AppRoutes = () => {
         }
       />
       <Route
-        path="/bifrost-prompts"
+        path="/prompts"
         element={
           <PrivateRoute>
             <UserBifrostPromptsPage />
@@ -98,7 +98,7 @@ const AppRoutes = () => {
         }
       />
       <Route
-        path="/bifrost-skills"
+        path="/skills"
         element={
           <PrivateRoute>
             <UserBifrostSkillsPage />

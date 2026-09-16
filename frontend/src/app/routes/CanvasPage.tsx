@@ -876,7 +876,7 @@ const CanvasPage: React.FC = () => {
     [recordHistory, setNodes, setEdges, generationIds, setFavoritedState, setPublishedState, focusOnNode, showToast]
   );
 
-  // 检测外部页面（/bifrost-prompts, /bifrost-skills）请求载入画板的提示词或 Skill 节点
+  // 检测外部页面（/prompts, /skills）请求载入画板的提示词或 Skill 节点
   useEffect(() => {
     const raw = sessionStorage.getItem('bf-canvas-node-import');
     if (!raw) return;
