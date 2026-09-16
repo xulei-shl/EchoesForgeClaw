@@ -10,6 +10,7 @@ import { Input } from '../../shared/components/ui/Input';
 import { Select } from '../../shared/components/ui/Select';
 import { Textarea } from '../../shared/components/ui/Textarea';
 import { RatingStars } from '../../shared/components/ui/RatingStars';
+import { MarkdownViewer } from '../../shared/components/ui/MarkdownViewer';
 import { PageHeader, FieldLabel } from '../components/AdminBits';
 import { useFeedback } from '../../shared/components/ui/FeedbackProvider';
 
@@ -548,9 +549,7 @@ export const BifrostSkillsPage: React.FC = () => {
                 <FileText size={14} className="inline mr-1" />
                 SKILL.md 内容
               </FieldLabel>
-              <pre className="text-xs text-ink-light font-sans whitespace-pre-wrap bg-paper border border-paper-grid rounded-md p-3 max-h-48 overflow-y-auto custom-scrollbar">
-                {detail.body || '（无内容）'}
-              </pre>
+              <MarkdownViewer content={detail.body} emptyText="（无内容）" copyable className="max-h-56" />
             </div>
 
             {Array.isArray(detail.files) && detail.files.length > 0 && (

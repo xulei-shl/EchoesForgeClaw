@@ -754,6 +754,15 @@ describe('管理端：Bifrost', () => {
     });
     expect(bookplateDetail.statusCode).toBe(200);
     expect((bookplateDetail.json() as { id: string }).id).toBe('p1');
+
+    // 画布端文件夹列表（普通用户 token 即可访问）
+    const bookplateFolders = await app.inject({
+      method: 'GET',
+      url: '/api/modules/bookplate/bifrost/folders',
+      headers: { authorization: `Bearer ${userToken}` },
+    });
+    expect(bookplateFolders.statusCode).toBe(200);
+    expect(Array.isArray((bookplateFolders.json() as { folders: unknown[] }).folders)).toBe(true);
   });
 
   it('提示词列表 force=1 绕过 TTL 缓存强制拉取远端', async () => {

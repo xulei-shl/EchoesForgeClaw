@@ -17,6 +17,8 @@ import NodeConfigsPage from '../admin/pages/NodeConfigsPage';
 import FastClawAgentsPage from '../admin/pages/FastClawAgentsPage';
 import SkillAgentConfigsPage from '../admin/pages/SkillAgentConfigsPage';
 import SettingsPage from '../admin/pages/SettingsPage';
+import UserBifrostPromptsPage from '../library/bifrost/BifrostPromptsPage';
+import UserBifrostSkillsPage from '../library/bifrost/BifrostSkillsPage';
 
 // 路由守卫：未登录时跳转登录页，登录后回到原页面
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -84,6 +86,22 @@ const AppRoutes = () => {
         element={
           <PrivateRoute>
             <GalleryPage mode="gallery" />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/bifrost-prompts"
+        element={
+          <PrivateRoute>
+            <UserBifrostPromptsPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/bifrost-skills"
+        element={
+          <PrivateRoute>
+            <UserBifrostSkillsPage />
           </PrivateRoute>
         }
       />

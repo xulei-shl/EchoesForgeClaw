@@ -10,11 +10,30 @@ import {
   BifrostNotConfiguredError,
   BifrostNotFoundError,
   getPrompt,
+  listFolders,
   listPrompts,
 } from '../../../services/ai/bifrost-service.js';
 
 export async function register(app: FastifyInstance): Promise<void> {
-  // ---- Bifrost 提示词检索（供「提示词检索」PromptSearchNode 节点使用） ----
+  // ---- Bifrost 提示词检索（供「提示词检索」PromptSearchNode 节点与提示词库页面使用） ----
+
+  // 文件夹列表（受管理员白名单过滤；普通登录用户可用；支持 force=1 绕过 TTL）
+  app.get(
+    '/api/modules/bookplate/bifrost/folders',
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const q = (request.query ?? {}) as { force?: string };
+      try {
+        const folders = await listFolders(getDb(), false, q.force === '1' || q.force === 'true');
+        return { folders };
+      } catch (err) {
+        if (err instanceof BifrostNotFoundError) return reply.code(404).send({ detail: err.message });
+        if (err instanceof BifrostNotConfiguredError) return reply.code(503).send({ detail: err.message });
+        if (err instanceof BifrostError) return reply.code(502).send({ detail: err.message });
+        return reply.code(502).send({ detail: err instanceof Error ? err.message : String(err) });
+      }
+    }
+  );
 
   // 提示词列表（支持 q 搜索与 folder_id 过滤；富化当前用户的 user_rating 与 user_note）
   app.get(

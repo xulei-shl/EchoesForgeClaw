@@ -25,6 +25,7 @@ import { Textarea } from '../../shared/components/ui/Textarea';
 import { FieldLabel, PageHeader } from '../components/AdminBits';
 import { useFeedback } from '../../shared/components/ui/FeedbackProvider';
 import { Pagination } from '../../shared/components/ui/Pagination';
+import { MarkdownViewer } from '../../shared/components/ui/MarkdownViewer';
 
 /** 内存级 SWR 缓存：页面切换 0ms 瞬间秒开 */
 let cachedBifrostFoldersData: BifrostFolder[] | null = null;
@@ -563,9 +564,12 @@ export const BifrostPromptsPage: React.FC = () => {
 
             <div className="space-y-1.5">
               <FieldLabel>提示词内容</FieldLabel>
-              <pre className="text-sm text-ink font-sans whitespace-pre-wrap bg-paper border border-paper-grid rounded-md p-3 max-h-48 overflow-y-auto">
-                {detail.content || '（空内容）'}
-              </pre>
+              <MarkdownViewer
+                content={detail.content}
+                emptyText="（空内容）"
+                copyable
+                className="max-h-56"
+              />
             </div>
 
             {/* 调试：Bifrost 原始响应（raw=true） */}

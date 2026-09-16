@@ -652,6 +652,8 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           promptName={typeof node.data?.promptName === 'string' ? node.data.promptName : ''}
           content={typeof node.data?.content === 'string' ? node.data.content : ''}
           promptImage={typeof node.data?.promptImage === 'string' ? node.data.promptImage : null}
+          userRating={typeof node.data?.userRating === 'number' ? node.data.userRating : 0}
+          userNote={typeof node.data?.userNote === 'string' ? node.data.userNote : ''}
           onUpdatePrompt={h.handleUpdatePromptFor}
         />
       );

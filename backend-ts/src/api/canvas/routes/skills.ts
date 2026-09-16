@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { getDb } from '../../../config/database.js';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import path from 'node:path';
+import AdmZip from 'adm-zip';
 import {
   RESOURCE_TYPE_BIFROST_SKILL,
   getUserAnnotation,
@@ -11,10 +12,12 @@ import {
   BifrostNotConfiguredError,
   BifrostNotFoundError,
   downloadBifrostSkillZip,
+  getBifrostSkillDetail,
   getMergedBifrostSkills,
   lookupBifrostSkillVersion,
 } from '../../../services/ai/bifrost-service.js';
 import {
+  REAL_SKILLS_ROOT,
   SkillNotFoundError,
   SkillValidationError,
   installSkillZip,
@@ -26,6 +29,14 @@ import {
   resolveSkillAbs,
 } from '../../../services/ai/skill-agent-service.js';
 import { isWorkspaceFileServable, mimeOf } from '../../../services/platform/file-utils.js';
+
+function checkSkillName(raw: string): string {
+  const name = (raw ?? '').trim();
+  if (!name || name === '.' || name === '..' || name.includes('/') || name.includes('\\')) {
+    throw new SkillValidationError('非法 skill 名称');
+  }
+  return name;
+}
 
 export async function register(app: FastifyInstance): Promise<void> {
   // ---- Skill 工作区（Skill Agent 的 skill 来源） ----
@@ -44,15 +55,85 @@ export async function register(app: FastifyInstance): Promise<void> {
     '/api/modules/bookplate/skills/bifrost-search',
     { preHandler: app.authenticate },
     async (request) => {
-      const q = (request.query ?? {}) as { q?: string; limit?: string };
+      const q = (request.query ?? {}) as { q?: string; limit?: string; force?: string };
       // 默认 200：列表已瘦身（无 body/files），支持数百 skill 目录浏览
       const limit = Number(q.limit ?? 200) || 200;
+      const force = q.force === '1' || q.force === 'true';
       return getMergedBifrostSkills({
         db: getDb(),
         userId: request.authUser!.id,
         q: q.q,
         limit,
+        force,
       });
+    }
+  );
+
+  // 获取单个 Bifrost Skill 详情（SKILL.md 正文 + 文件树 + 用户打标备注）
+  app.get(
+    '/api/modules/bookplate/skills/bifrost/:name',
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      try {
+        const skillName = checkSkillName((request.params as { name: string }).name);
+        const detail = await getBifrostSkillDetail(getDb(), skillName);
+        if (!detail) {
+          return reply.code(404).send({ detail: 'skill 不存在（本地无缓存且远端仓库中未找到）' });
+        }
+        const userId = request.authUser?.id;
+        if (userId) {
+          const ann = getUserAnnotation(getDb(), userId, RESOURCE_TYPE_BIFROST_SKILL, skillName);
+          detail.user_rating = ann.rating;
+          detail.user_note = ann.note;
+          detail.note = ann.note;
+        }
+        return detail;
+      } catch (err) {
+        if (err instanceof SkillValidationError) return reply.code(400).send({ detail: err.message });
+        if (err instanceof BifrostNotFoundError) return reply.code(404).send({ detail: err.message });
+        if (err instanceof BifrostNotConfiguredError) return reply.code(503).send({ detail: err.message });
+        if (err instanceof BifrostError) return reply.code(502).send({ detail: err.message });
+        return reply.code(502).send({ detail: err instanceof Error ? err.message : String(err) });
+      }
+    }
+  );
+
+  // 打包下载单个 Bifrost Skill（ZIP 压缩包）
+  app.get(
+    '/api/modules/bookplate/skills/bifrost/:name/download',
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      try {
+        const skillName = checkSkillName((request.params as { name: string }).name);
+        let zipBytes: Uint8Array | Buffer;
+        const localDir = path.join(REAL_SKILLS_ROOT, skillName);
+        if (existsSync(localDir) && statSync(localDir).isDirectory() && existsSync(path.join(localDir, 'SKILL.md'))) {
+          // 本地共享缓存存在：直接用 AdmZip 压缩该目录
+          const zip = new AdmZip();
+          zip.addLocalFolder(localDir);
+          zipBytes = zip.toBuffer();
+        } else {
+          // 否则从 Bifrost 远端获取原始 ZIP
+          zipBytes = await downloadBifrostSkillZip(getDb(), skillName);
+        }
+        if (!zipBytes.length) {
+          return reply.code(404).send({ detail: 'skill 文件为空或不存在' });
+        }
+        const fileName = `${skillName}.zip`;
+        const asciiFallback = fileName.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
+        reply.type('application/zip');
+        reply.header(
+          'Content-Disposition',
+          `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(fileName)}`
+        );
+        return reply.send(Buffer.isBuffer(zipBytes) ? zipBytes : Buffer.from(zipBytes));
+      } catch (err) {
+        if (err instanceof SkillValidationError) return reply.code(400).send({ detail: err.message });
+        if (err instanceof BifrostNotFoundError) return reply.code(404).send({ detail: err.message });
+        if (err instanceof BifrostNotConfiguredError) return reply.code(503).send({ detail: err.message });
+        if (err instanceof BifrostError) return reply.code(502).send({ detail: err.message });
+        return reply.code(502).send({ detail: err instanceof Error ? err.message : String(err) });
+      }
     }
   );
 

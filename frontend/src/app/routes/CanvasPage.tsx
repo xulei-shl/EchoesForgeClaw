@@ -876,6 +876,80 @@ const CanvasPage: React.FC = () => {
     [recordHistory, setNodes, setEdges, generationIds, setFavoritedState, setPublishedState, focusOnNode, showToast]
   );
 
+  // 检测外部页面（/bifrost-prompts, /bifrost-skills）请求载入画板的提示词或 Skill 节点
+  useEffect(() => {
+    const raw = sessionStorage.getItem('bf-canvas-node-import');
+    if (!raw) return;
+    sessionStorage.removeItem('bf-canvas-node-import');
+    try {
+      const payload = JSON.parse(raw);
+      if (!payload || !payload.type) return;
+
+      const currentNodes = nodesRef.current;
+      // 智能落点：若画布已有节点，向右延伸放置；若空画布置于左上方
+      let x = 120;
+      let y = 140;
+      if (currentNodes.length > 0) {
+        const maxX = currentNodes.reduce((m, n) => Math.max(m, n.x + 440), 120);
+        x = maxX + 60;
+        y = 140;
+      }
+
+      if (payload.type === 'prompt_search') {
+        const newId = genNodeId('prompt_search');
+        const d = payload.data || {};
+        const newNode: NodeData = {
+          id: newId,
+          type: 'prompt_search',
+          x,
+          y,
+          data: {
+            ...seedDataFor('prompt_search'),
+            promptId: d.promptId ?? null,
+            promptName: d.promptName ?? '',
+            content: d.content ?? '',
+            promptImage: d.promptImage ?? null,
+            userRating: d.userRating ?? 0,
+            userNote: d.userNote ?? '',
+          },
+        };
+        recordHistory();
+        nodesRef.current = [...nodesRef.current, newNode];
+        setNodes((prev) => [...prev, newNode]);
+        focusOnNode(newNode);
+        showToast(`已在画板创建「${d.promptName || '提示词'}」检索节点`, { type: 'success' });
+      } else if (payload.type === 'skill_search') {
+        const newId = genNodeId('skill_search');
+        const selections = Array.isArray(payload.data?.skillSelections)
+          ? payload.data.skillSelections
+          : [];
+        const newNode: NodeData = {
+          id: newId,
+          type: 'skill_search',
+          x,
+          y,
+          data: {
+            ...seedDataFor('skill_search'),
+            skillSelections: selections,
+          },
+        };
+        recordHistory();
+        nodesRef.current = [...nodesRef.current, newNode];
+        setNodes((prev) => [...prev, newNode]);
+        focusOnNode(newNode);
+        showToast(
+          selections.length > 0
+            ? `已在画板创建 Skill 检索节点（已预装载 ${selections.length} 个 skill）`
+            : '已在画板创建 Skill 检索节点',
+          { type: 'success' }
+        );
+      }
+    } catch {
+      /* ignore */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recordHistory, setNodes, focusOnNode, showToast]);
+
   // 检测外部页面（/history, /favorites, /gallery）请求导入的作品并注入画布
   useEffect(() => {
     const raw = sessionStorage.getItem('bf-canvas-import');

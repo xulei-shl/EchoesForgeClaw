@@ -7,7 +7,7 @@ import AdmZip from 'adm-zip';
 import { initDb, setDb, type DB } from '../../src/config/database.js';
 import { buildApp } from '../../src/server.js';
 import { startMockOpenAIServer, type MockOpenAIServer } from '../helpers/mock-openai-server.js';
-import { nodeWorkspace } from '../../src/services/ai/skill-agent-service.js';
+import { nodeWorkspace, updateSharedBifrostSkill } from '../../src/services/ai/skill-agent-service.js';
 
 /**
  * Skills 路由契约测试（对应 Python `app/modules/bookplate/router.py` 的 Skill 工作区部分）：
@@ -66,7 +66,7 @@ afterAll(async () => {
   // - 测试安装/上传的 skill 登记目录（skills/{name}）
   // - 测试创建的节点工作区（workspace/ws_test_1、workspace/other_ws，由 skill-files 用例的 nodeWorkspace 新建）
   // - 共享区真实包（runtime/.agent/skills/{name}）
-  const testSkillNames = ['demo-skill', 'bifrost-skill', 'admin-skill', 'cache-skill', 'browse-skill', 'remote-only-skill', 'note-skill'];
+  const testSkillNames = ['demo-skill', 'bifrost-skill', 'admin-skill', 'cache-skill', 'browse-skill', 'remote-only-skill', 'note-skill', 'download-skill'];
   for (const name of testSkillNames) {
     rmSync(path.join(RUNTIME_ROOT, String(uid), 'skills', name), { recursive: true, force: true });
     rmSync(path.join(RUNTIME_ROOT, '.agent', 'skills', name), { recursive: true, force: true });
@@ -765,4 +765,38 @@ describe('install：本地共享缓存优先（registerExistingBifrostSkill）',
     expect((second.json() as { files: string[] }).files).toContain('SKILL.md');
     expect(srv.requests.filter((r) => r.path.includes('/download.zip')).length).toBe(1); // 未再次下载
   });
+
+  it('普通用户路由：获取 skill 详情与打包下载 zip', async () => {
+    // 准备一个已缓存的 skill
+    const zipBytes = makeSkillZip('download-skill', { 'README.md': '额外文档' });
+    updateSharedBifrostSkill(zipBytes, '1.0.0');
+
+    // 1. 普通用户获取详情
+    const detailResp = await app.inject({
+      method: 'GET',
+      url: '/api/modules/bookplate/skills/bifrost/download-skill',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(detailResp.statusCode).toBe(200);
+    const detail = detailResp.json() as { name: string; body?: string };
+    expect(detail.name).toBe('download-skill');
+    expect(detail.body).toContain('这是正文');
+
+    // 2. 普通用户打包下载 zip
+    const downloadResp = await app.inject({
+      method: 'GET',
+      url: '/api/modules/bookplate/skills/bifrost/download-skill/download',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(downloadResp.statusCode).toBe(200);
+    expect(downloadResp.headers['content-type']).toBe('application/zip');
+    expect(downloadResp.headers['content-disposition']).toContain('download-skill.zip');
+    expect(downloadResp.rawPayload.length).toBeGreaterThan(0);
+
+    // 3. 校验下载返回的 zip 能被正常解包
+    const zip = new AdmZip(downloadResp.rawPayload);
+    const entries = zip.getEntries().map((e) => e.entryName);
+    expect(entries).toContain('SKILL.md');
+  });
 });
+
