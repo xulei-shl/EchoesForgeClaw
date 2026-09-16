@@ -117,9 +117,9 @@ const AppRoutes = () => {
         <Route index element={<Navigate to="/admin/users" replace />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="llm-configs" element={<LlmConfigsPage />} />
-        <Route path="prompts" element={<PromptsPage />} />
-        <Route path="bifrost-prompts" element={<BifrostPromptsPage />} />
-        <Route path="bifrost-skills" element={<BifrostSkillsPage />} />
+        <Route path="prompt-templates" element={<PromptsPage />} />
+        <Route path="prompts" element={<BifrostPromptsPage />} />
+        <Route path="skills" element={<BifrostSkillsPage />} />
         <Route path="node-configs" element={<NodeConfigsPage />} />
         <Route path="fastclaw-agents" element={<FastClawAgentsPage />} />
         <Route path="skill-agent-configs" element={<SkillAgentConfigsPage />} />

@@ -1,11 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  ChevronDown,
+  ChevronUp,
   FileText,
   Pencil,
   Plus,
   RefreshCw,
   Trash2,
 } from 'lucide-react';
+import { MarkdownViewer } from '../../shared/components/ui/MarkdownViewer';
 import { adminService } from '../../shared/services/admin';
 import type { PromptTemplate } from '../../shared/types';
 import { NODE_TEMPLATES } from '../../canvas/nodes/_shared/nodeTypes';
@@ -62,7 +65,20 @@ export const PromptsPage: React.FC = () => {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const { dialog, showToast } = useFeedback();
+
+  const toggleExpand = (id: number) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
 
   const load = useCallback(async (force = false) => {
     const hasCache = !force && !nodeTypeFilter && !!cachedPromptsData;
@@ -174,7 +190,7 @@ export const PromptsPage: React.FC = () => {
   return (
     <div>
       <PageHeader
-        title="提示词管理"
+        title="节点提示词模板"
         subtitle="各节点模板类型使用的系统提示词模板（作为 LLM 的 system prompt）"
         actions={
           !showCreate && !editing && (
@@ -289,43 +305,77 @@ export const PromptsPage: React.FC = () => {
       {/* 列表 */}
       {items.length > 0 && (
         <div className="space-y-3">
-          {items.map((p) => (
-            <Card key={p.id} className="p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-serif text-base font-semibold text-ink">{p.name}</span>
-                    <span className="text-xs text-ink-light border border-dashed border-paper-grid rounded-pill px-2 py-px font-mono">
-                      {NODE_TYPE_LABEL[p.node_type] ?? p.node_type}
-                    </span>
-                    <Badge variant={p.is_active ? 'success' : 'default'} showDot>
-                      {p.is_active ? '启用' : '停用'}
-                    </Badge>
+          {items.map((p) => {
+            const isExpanded = expandedIds.has(p.id);
+            return (
+              <Card key={p.id} className="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-serif text-base font-semibold text-ink">{p.name}</span>
+                      <span className="text-xs text-ink-light border border-dashed border-paper-grid rounded-pill px-2 py-px font-mono">
+                        {NODE_TYPE_LABEL[p.node_type] ?? p.node_type}
+                      </span>
+                      <Badge variant={p.is_active ? 'success' : 'default'} showDot>
+                        {p.is_active ? '启用' : '停用'}
+                      </Badge>
+                    </div>
+
+                    {isExpanded ? (
+                      <div className="mt-2.5">
+                        <MarkdownViewer
+                          content={p.content}
+                          emptyText="（空内容）"
+                          copyable
+                          className="max-h-72"
+                        />
+                      </div>
+                    ) : (
+                      <p className="mt-1.5 text-sm text-ink-light font-sans line-clamp-2 whitespace-pre-wrap">
+                        {p.content || '（空内容）'}
+                      </p>
+                    )}
+
+                    {p.content && (
+                      <button
+                        onClick={() => toggleExpand(p.id)}
+                        className="inline-flex items-center gap-1 mt-2 text-xs text-accent hover:text-accent-hover font-sans active:scale-[0.96] transition-colors"
+                      >
+                        {isExpanded ? (
+                          <>
+                            <ChevronUp size={13} />
+                            收起内容
+                          </>
+                        ) : (
+                          <>
+                            <ChevronDown size={13} />
+                            展开 Markdown 预览
+                          </>
+                        )}
+                      </button>
+                    )}
                   </div>
-                  <p className="mt-1.5 text-sm text-ink-light font-sans line-clamp-2 whitespace-pre-wrap">
-                    {p.content || '（空内容）'}
-                  </p>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Toggle checked={p.is_active} onChange={(v) => handleToggleActive(p, v)} label={p.is_active ? '停用' : '启用'} />
+                    <button
+                      onClick={() => openEdit(p)}
+                      title="编辑"
+                      className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-[0.96]"
+                    >
+                      <Pencil size={15} strokeWidth={1.5} />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(p)}
+                      title="删除"
+                      className="p-1.5 rounded-md text-ink-light hover:text-error hover:bg-error/5 transition-colors active:scale-[0.96]"
+                    >
+                      <Trash2 size={15} strokeWidth={1.5} />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <Toggle checked={p.is_active} onChange={(v) => handleToggleActive(p, v)} label={p.is_active ? '停用' : '启用'} />
-                  <button
-                    onClick={() => openEdit(p)}
-                    title="编辑"
-                    className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-[0.96]"
-                  >
-                    <Pencil size={15} strokeWidth={1.5} />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(p)}
-                    title="删除"
-                    className="p-1.5 rounded-md text-ink-light hover:text-error hover:bg-error/5 transition-colors active:scale-[0.96]"
-                  >
-                    <Trash2 size={15} strokeWidth={1.5} />
-                  </button>
-                </div>
-              </div>
-            </Card>
-          ))}
+              </Card>
+            );
+          })}
         </div>
       )}
 
