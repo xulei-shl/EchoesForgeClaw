@@ -18,6 +18,8 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const MODULE_OPTIONS = [
   { label: '画板节点', value: '画板节点' },
+    { label: '历史收藏画廊', value: '历史收藏画廊' },
+  { label: '智能体', value: '智能体' },
   { label: '提示词', value: '提示词' },
   { label: '技能', value: '技能' },
   { label: 'Bug', value: 'Bug' },
