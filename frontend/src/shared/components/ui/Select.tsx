@@ -1,6 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Search } from 'lucide-react';
 import clsx from 'clsx';
 import { Tooltip } from './Tooltip';
 
@@ -18,6 +18,8 @@ export interface SelectProps {
   className?: string;
   placeholder?: string;
   size?: 'sm' | 'md';
+  searchable?: boolean;
+  searchPlaceholder?: string;
 }
 
 export const Select: React.FC<SelectProps> = ({
@@ -28,9 +30,12 @@ export const Select: React.FC<SelectProps> = ({
   className,
   placeholder = '请选择',
   size = 'md',
+  searchable,
+  searchPlaceholder = '搜索…',
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const triggerRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -40,8 +45,9 @@ export const Select: React.FC<SelectProps> = ({
     setMenuPos(
       rect
         ? { top: rect.bottom + 4, left: rect.left, width: rect.width }
-        : { top: window.innerHeight / 2, left: window.innerWidth / 2, width: 160 }
+        : { top: window.innerHeight / 2, left: window.innerWidth / 2, width: 144 }
     );
+    setSearchQuery('');
     setIsOpen(true);
   };
 
@@ -58,6 +64,30 @@ export const Select: React.FC<SelectProps> = ({
   }, [isOpen]);
 
   const selectedOption = options.find((opt) => opt.value === value);
+
+  // 默认彻底常驻开启搜索过滤（除非显式传入 searchable={false}）
+  const isSearchEnabled = searchable !== false;
+
+  const filteredOptions = useMemo(() => {
+    if (!searchQuery.trim()) return options;
+    const q = searchQuery.toLowerCase().trim();
+    return options.filter((opt) => opt.label.toLowerCase().includes(q));
+  }, [options, searchQuery]);
+
+  // 键盘快捷处理：唯一候选词按 Enter 直接选中，Escape 关闭
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') {
+      if (filteredOptions.length === 1) {
+        e.preventDefault();
+        onChange(filteredOptions[0].value);
+        setIsOpen(false);
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setIsOpen(false);
+    }
+  };
 
   return (
     <div className={clsx("relative", className)} ref={triggerRef}>
@@ -82,39 +112,68 @@ export const Select: React.FC<SelectProps> = ({
         <div
           ref={menuRef}
           style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, width: menuPos.width }}
-          className="bg-paper border border-dashed border-paper-grid rounded-md shadow-md z-[9999] overflow-hidden max-h-60 overflow-y-auto origin-top animate-in fade-in zoom-in-95 duration-100 ease-out"
+          className="bg-paper border border-dashed border-paper-grid rounded-md shadow-md z-[9999] overflow-hidden max-h-60 origin-top animate-in fade-in zoom-in-95 duration-100 ease-out flex flex-col"
           onPointerDown={(e) => e.stopPropagation()}
         >
-          {options.length > 0 ? (
-            options.map((opt) => {
-              const btn = (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => {
-                    onChange(opt.value);
-                    setIsOpen(false);
-                  }}
-                  className={clsx(
-                    "flex w-full text-left hover:bg-paper-grid/50 transition-colors",
-                    size === 'sm' ? "px-2.5 py-1.5 text-xs" : "px-3 py-2 text-sm",
-                    value === opt.value ? 'text-accent font-medium' : 'text-ink'
-                  )}
-                >
-                  {opt.label}
-                </button>
-              );
-              return opt.title ? (
-                <Tooltip key={opt.value} content={opt.title}>
-                  {btn}
-                </Tooltip>
-              ) : (
-                btn
-              );
-            })
-          ) : (
-            <div className="px-3 py-2 text-sm text-ink-faint text-center">暂无数据</div>
+          {isSearchEnabled && (
+            <div className="p-1 border-b border-dashed border-paper-grid sticky top-0 bg-paper z-10 shrink-0">
+              <div className="relative flex items-center">
+                <Search size={11} className="absolute left-2 text-ink-faint pointer-events-none" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder={searchPlaceholder}
+                  autoFocus
+                  className="w-full h-6.5 pl-5.5 pr-2 text-[11px] bg-paper-grid/20 border border-paper-grid rounded focus:outline-none focus:border-accent text-ink placeholder:text-ink-faint font-sans"
+                  onKeyDown={handleSearchKeyDown}
+                />
+              </div>
+            </div>
           )}
+
+          <div className="overflow-y-auto flex-1 max-h-52">
+            {filteredOptions.length > 0 ? (
+              filteredOptions.map((opt) => {
+                const isSoleCandidate = filteredOptions.length === 1;
+                const btn = (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => {
+                      onChange(opt.value);
+                      setIsOpen(false);
+                    }}
+                    className={clsx(
+                      "flex items-center justify-between w-full text-left transition-colors truncate",
+                      size === 'sm' ? "px-2.5 py-1.5 text-xs" : "px-3 py-2 text-sm",
+                      value === opt.value
+                        ? 'text-accent font-medium bg-accent/5'
+                        : isSoleCandidate
+                        ? 'bg-paper-grid/40 text-ink font-medium'
+                        : 'text-ink hover:bg-paper-grid/50'
+                    )}
+                  >
+                    <span className="truncate">{opt.label}</span>
+                    {isSoleCandidate && (
+                      <span className="ml-1 text-[10px] text-ink-faint border border-paper-grid/60 rounded px-1 py-0.5 leading-none shrink-0">
+                        ↵
+                      </span>
+                    )}
+                  </button>
+                );
+                return opt.title ? (
+                  <Tooltip key={opt.value} content={opt.title}>
+                    {btn}
+                  </Tooltip>
+                ) : (
+                  btn
+                );
+              })
+            ) : (
+              <div className="px-3 py-2.5 text-xs text-ink-faint text-center font-sans">未找到匹配项</div>
+            )}
+          </div>
         </div>,
         document.body
       )}

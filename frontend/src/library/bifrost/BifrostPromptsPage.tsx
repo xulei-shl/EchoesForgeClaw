@@ -239,6 +239,7 @@ export const BifrostPromptsPage: React.FC = () => {
               value={tagFilter}
               onChange={(val) => setTagFilter(val)}
               className="w-36"
+              searchPlaceholder="搜索标签…"
               options={[
                 { label: '全部标签', value: '' },
                 ...availableTags.map((t) => ({ label: `#${t}`, value: t })),
