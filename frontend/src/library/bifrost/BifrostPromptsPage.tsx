@@ -342,10 +342,7 @@ export const BifrostPromptsPage: React.FC = () => {
                       </div>
 
                       {/* 正文预览（预留双行基准槽位高度，保持顶边和底边对齐） */}
-                      <p
-                        className="mt-1.5 text-xs text-ink-light font-sans line-clamp-2 leading-relaxed min-h-[2.25rem]"
-                        title={p.content || '（暂无正文内容）'}
-                      >
+                      <p className="mt-1.5 text-xs text-ink-light font-sans line-clamp-2 leading-relaxed min-h-[2.25rem]">
                         {p.content || '（暂无正文内容）'}
                       </p>
 
@@ -471,10 +468,7 @@ export const BifrostPromptsPage: React.FC = () => {
                           </span>
                         )}
                       </div>
-                      <p
-                        className="text-xs text-ink-light font-sans line-clamp-1 mt-1"
-                        title={p.content}
-                      >
+                      <p className="text-xs text-ink-light font-sans line-clamp-1 mt-1">
                         {p.content}
                       </p>
                       {p.user_note && (
