@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Boxes, FolderSync, Loader2, RefreshCw, Search, StickyNote, Trash2, FileText, FolderTree, Tag } from 'lucide-react';
-import { adminService, annotationService } from '../../shared/services/admin';
+import React, { useCallback, useState } from 'react';
+import { Boxes, FolderSync, Loader2, RefreshCw, Search, StickyNote, Trash2, FileText, FolderTree } from 'lucide-react';
+import { adminService } from '../../shared/services/admin';
 import type { CachedBifrostSkill } from '../../shared/types';
 import { Button } from '../../shared/components/ui/Button';
 import { Card } from '../../shared/components/ui/Card';
@@ -8,19 +8,16 @@ import { Badge } from '../../shared/components/ui/Badge';
 import { Dialog } from '../../shared/components/ui/Dialog';
 import { Input } from '../../shared/components/ui/Input';
 import { Select } from '../../shared/components/ui/Select';
-import { Textarea } from '../../shared/components/ui/Textarea';
 import { RatingStars } from '../../shared/components/ui/RatingStars';
 import { MarkdownViewer } from '../../shared/components/ui/MarkdownViewer';
 import { PageHeader, FieldLabel } from '../components/AdminBits';
 import { useFeedback } from '../../shared/components/ui/FeedbackProvider';
 import { SkillFileTree } from '../../shared/components/ui/SkillFileTree';
-import { TagInput } from '../../shared/components/ui/TagInput';
 import { useBifrostSkills } from '../../library/bifrost/useBifrostSkills';
 
 export const BifrostSkillsPage: React.FC = () => {
   const {
     items: skills,
-    setItems: setSkills,
     filteredItems: filteredSkills,
     total,
     loading,
@@ -38,7 +35,6 @@ export const BifrostSkillsPage: React.FC = () => {
     availableTags,
     sentinelRef,
     load,
-    updateRating: handleUpdateRating,
   } = useBifrostSkills({
     pageSize: 60,
     fetcher: adminService.listBifrostSkills,
@@ -47,16 +43,7 @@ export const BifrostSkillsPage: React.FC = () => {
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [syncingAll, setSyncingAll] = useState(false);
   const [detail, setDetail] = useState<CachedBifrostSkill | null>(null);
-  const [noteDraft, setNoteDraft] = useState('');
-  const [tagsDraft, setTagsDraft] = useState<string[]>([]);
-  const [savingNote, setSavingNote] = useState(false);
   const { dialog, showToast } = useFeedback();
-
-  // 打开详情时同步备注与标签草稿
-  useEffect(() => {
-    setNoteDraft(detail?.user_note ?? detail?.note ?? '');
-    setTagsDraft(detail?.user_tags ?? []);
-  }, [detail]);
 
   /** 打开详情：先用列表信息即时渲染，再按需拉取完整详情（body/files）补齐 */
   const openDetail = useCallback(
@@ -71,46 +58,6 @@ export const BifrostSkillsPage: React.FC = () => {
     },
     [showToast]
   );
-
-  /** 保存用户的私有备注与标签 */
-  const saveNote = async () => {
-    if (!detail) return;
-    setSavingNote(true);
-    try {
-      const res = await annotationService.setAnnotation({
-        resource_type: 'bifrost_skill',
-        resource_id: detail.name,
-        rating: detail.user_rating ?? 0,
-        note: noteDraft.trim(),
-        tags: tagsDraft,
-      });
-      setDetail({ ...detail, user_rating: res.rating, user_note: res.note, note: res.note, user_tags: res.tags });
-      setSkills((prev) =>
-        prev.map((s) =>
-          s.name === detail.name
-            ? { ...s, user_rating: res.rating, user_note: res.note, note: res.note, user_tags: res.tags }
-            : s
-        )
-      );
-      showToast('标注已保存', { type: 'success' });
-    } catch (e: any) {
-      showToast(e?.message || '保存失败，请重试', { type: 'error' });
-    } finally {
-      setSavingNote(false);
-    }
-  };
-
-  /** 详情弹窗打星同步（乐观更新 + 失败回滚） */
-  const handleDetailRating = async (nextRating: number) => {
-    if (!detail) return;
-    const targetName = detail.name;
-    const prevRating = detail.user_rating ?? 0;
-    setDetail((prev) => (prev && prev.name === targetName ? { ...prev, user_rating: nextRating } : prev));
-    const ok = await handleUpdateRating(targetName, nextRating, detail.user_note ?? detail.note, detail.user_tags);
-    if (!ok) {
-      setDetail((prev) => (prev && prev.name === targetName ? { ...prev, user_rating: prevRating } : prev));
-    }
-  };
 
   const markBusy = useCallback((name: string, on: boolean) => {
     setBusy((prev) => {
@@ -208,7 +155,7 @@ export const BifrostSkillsPage: React.FC = () => {
     <div>
       <PageHeader
         title="Bifrost Skills"
-        subtitle="本地缓存的 skill 包（runtime/.agent/skills）+ 远端仓库浏览；「同步最新/下载并缓存」覆盖共享包，个人打标与备注独立存储"
+        subtitle="本地缓存的 skill 包（runtime/.agent/skills）+ 远端仓库运维；「同步最新/下载并缓存」覆盖共享包，个人打标与备注在 Library 库中管理"
         actions={
           <div className="flex items-center gap-2">
             {skills.length > 0 && (
@@ -358,13 +305,15 @@ export const BifrostSkillsPage: React.FC = () => {
                             : <Badge>未缓存</Badge>}
                           {s.latest_version && <Badge>远端 v{s.latest_version}</Badge>}
                           {s.license && <Badge>{s.license}</Badge>}
-                          <div onClick={(e) => e.stopPropagation()} className="ml-1">
-                            <RatingStars
-                              value={s.user_rating || 0}
-                              onChange={(r) => void handleUpdateRating(s.name, r, noteText, s.user_tags)}
-                              size="xs"
-                            />
-                          </div>
+                          {Boolean(s.user_rating && s.user_rating > 0) && (
+                            <div onClick={(e) => e.stopPropagation()} className="ml-1">
+                              <RatingStars
+                                value={s.user_rating}
+                                readonly
+                                size="xs"
+                              />
+                            </div>
+                          )}
                         </div>
                         <p className="mt-1 text-xs text-ink-light font-sans line-clamp-2">
                           {s.description || '（无描述）'}
@@ -490,57 +439,44 @@ export const BifrostSkillsPage: React.FC = () => {
               <p className="text-sm text-ink leading-relaxed">{detail.description}</p>
             )}
 
-            {/* 我的评分、标签与私有备注 */}
-            <div className="rounded-lg border border-dashed border-paper-grid bg-paper-grid/20 p-3 space-y-3">
-              <div className="flex items-center justify-between">
-                <FieldLabel>我的评分</FieldLabel>
-                <RatingStars
-                  value={detail.user_rating || 0}
-                  onChange={(r) => void handleDetailRating(r)}
-                  size="md"
-                  showNumber
-                />
-              </div>
-              <div className="space-y-1.5">
-                <FieldLabel>
-                  <Tag size={13} className="inline mr-1" />
-                  我的标签
-                </FieldLabel>
-                <TagInput
-                  value={tagsDraft}
-                  onChange={setTagsDraft}
-                  suggestions={availableTags}
-                  placeholder="输入标签按回车或逗号添加…"
-                />
-              </div>
-              <div className="space-y-1.5">
+            {/* 个人标注信息（只读展示，在 Library 资源库中可编辑管理） */}
+            {(Boolean(detail.user_rating) || (detail.user_tags && detail.user_tags.length > 0) || Boolean(detail.user_note || detail.note)) && (
+              <div className="rounded-lg border border-dashed border-paper-grid bg-paper-grid/15 p-3 space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <FieldLabel>
-                    <StickyNote size={13} className="inline mr-1" />
-                    我的备注
-                  </FieldLabel>
-                  <Button
-                    size="sm"
-                    isLoading={savingNote}
-                    disabled={
-                      noteDraft === (detail.user_note ?? detail.note ?? '') &&
-                      JSON.stringify(tagsDraft) === JSON.stringify(detail.user_tags ?? [])
-                    }
-                    onClick={() => void saveNote()}
-                  >
-                    保存标注
-                  </Button>
+                  <span className="text-xs font-serif font-semibold text-ink flex items-center gap-1.5">
+                    <StickyNote size={13} className="text-accent" />
+                    个人标注
+                    <span className="text-[10px] font-sans text-ink-faint font-normal">（只读，在 Library 库中可编辑）</span>
+                  </span>
+                  {Boolean(detail.user_rating && detail.user_rating > 0) && (
+                    <RatingStars
+                      value={detail.user_rating}
+                      readonly
+                      size="sm"
+                    />
+                  )}
                 </div>
-                <Textarea
-                  value={noteDraft}
-                  onChange={(e) => setNoteDraft(e.target.value)}
-                  placeholder="填写当前账户对该 Skill 的私有备注（如使用场景、注意事项）…"
-                  rows={2}
-                  maxLength={500}
-                  className="text-xs font-sans w-full"
-                />
+
+                {detail.user_tags && detail.user_tags.length > 0 && (
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {detail.user_tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="text-[11px] px-2 py-0.5 rounded-pill bg-accent-surface text-accent border border-accent/20 font-sans"
+                      >
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {(detail.user_note || detail.note) && (
+                  <p className="text-xs text-ink-light font-sans italic bg-paper/60 p-2 rounded border border-paper-grid/50">
+                    {detail.user_note || detail.note}
+                  </p>
+                )}
               </div>
-            </div>
+            )}
 
             <div className="space-y-1.5">
               <FieldLabel>

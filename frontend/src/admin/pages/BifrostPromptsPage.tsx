@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   BookOpen,
@@ -7,14 +7,14 @@ import {
   Loader2,
   RefreshCw,
   Search,
+  StickyNote,
   Trash2,
   Upload,
   Maximize2,
-  Tag,
 } from 'lucide-react';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
-import { adminService, annotationService } from '../../shared/services/admin';
+import { adminService } from '../../shared/services/admin';
 import type { BifrostPrompt } from '../../shared/types';
 import { Button } from '../../shared/components/ui/Button';
 import { Input } from '../../shared/components/ui/Input';
@@ -23,8 +23,6 @@ import { Dialog } from '../../shared/components/ui/Dialog';
 import { Card } from '../../shared/components/ui/Card';
 import { Badge } from '../../shared/components/ui/Badge';
 import { RatingStars } from '../../shared/components/ui/RatingStars';
-import { Textarea } from '../../shared/components/ui/Textarea';
-import { TagInput } from '../../shared/components/ui/TagInput';
 import { FieldLabel, PageHeader } from '../components/AdminBits';
 import { useFeedback } from '../../shared/components/ui/FeedbackProvider';
 import { MarkdownViewer } from '../../shared/components/ui/MarkdownViewer';
@@ -34,7 +32,6 @@ export const BifrostPromptsPage: React.FC = () => {
   const {
     folders,
     items: prompts,
-    setItems: setPrompts,
     filteredItems: filteredPrompts,
     total,
     loading,
@@ -53,7 +50,6 @@ export const BifrostPromptsPage: React.FC = () => {
     availableTags,
     sentinelRef,
     load,
-    updateRating: handleUpdateRating,
   } = useBifrostPrompts({
     pageSize: 48,
     fetchPrompts: adminService.listBifrostPrompts,
@@ -61,9 +57,6 @@ export const BifrostPromptsPage: React.FC = () => {
   });
 
   const [detail, setDetail] = useState<BifrostPrompt | null>(null);
-  const [noteDraft, setNoteDraft] = useState('');
-  const [tagsDraft, setTagsDraft] = useState<string[]>([]);
-  const [savingNote, setSavingNote] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [rawOpen, setRawOpen] = useState(false);
   const [rawData, setRawData] = useState<string>('');
@@ -71,50 +64,6 @@ export const BifrostPromptsPage: React.FC = () => {
   const [hoverPreview, setHoverPreview] = useState<{ x: number; y: number; url: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { dialog, showToast } = useFeedback();
-
-  // 打开详情时同步备注与标签草稿
-  useEffect(() => {
-    setNoteDraft(detail?.user_note ?? '');
-    setTagsDraft(detail?.user_tags ?? []);
-  }, [detail]);
-
-  /** 保存私有备注与标签 */
-  const handleSaveNote = async () => {
-    if (!detail) return;
-    setSavingNote(true);
-    try {
-      const res = await annotationService.setAnnotation({
-        resource_type: 'bifrost_prompt',
-        resource_id: detail.id,
-        rating: detail.user_rating ?? 0,
-        note: noteDraft.trim(),
-        tags: tagsDraft,
-      });
-      setPrompts((prev) =>
-        prev.map((p) =>
-          p.id === detail.id ? { ...p, user_rating: res.rating, user_note: res.note, user_tags: res.tags } : p
-        )
-      );
-      setDetail({ ...detail, user_rating: res.rating, user_note: res.note, user_tags: res.tags });
-      showToast('标注已保存', { type: 'success' });
-    } catch (e: any) {
-      showToast(e?.message || '标注保存失败', { type: 'error' });
-    } finally {
-      setSavingNote(false);
-    }
-  };
-
-  /** 详情弹窗打星同步（乐观更新 + 失败回滚） */
-  const handleDetailRating = async (nextRating: number) => {
-    if (!detail) return;
-    const targetId = detail.id;
-    const prevRating = detail.user_rating ?? 0;
-    setDetail((prev) => (prev && prev.id === targetId ? { ...prev, user_rating: nextRating } : prev));
-    const ok = await handleUpdateRating(targetId, nextRating, detail.user_note, detail.user_tags);
-    if (!ok) {
-      setDetail((prev) => (prev && prev.id === targetId ? { ...prev, user_rating: prevRating } : prev));
-    }
-  };
 
   const notConfigured = !!error && error.includes('未配置');
 
@@ -197,7 +146,7 @@ export const BifrostPromptsPage: React.FC = () => {
     <div>
       <PageHeader
         title="Bifrost 提示词"
-        subtitle="浏览 / 检索 Bifrost Prompt Repository；正文编辑请在 Bifrost 后台进行，预览图与个人打标备注在此管理"
+        subtitle="浏览 / 检索 Bifrost Prompt Repository；正文编辑请在 Bifrost 后台进行，预览图在此管理，个人打标与备注在 Library 库中管理"
         actions={
           <Button size="sm" variant="ghost" onClick={() => void load(true)} title="刷新（强制拉取 Bifrost 最新信息）">
             <RefreshCw size={14} strokeWidth={2} className={isRefreshing ? 'animate-spin' : ''} />
@@ -361,13 +310,15 @@ export const BifrostPromptsPage: React.FC = () => {
                       <p className="font-serif text-sm font-semibold text-ink truncate flex-1" title={p.name}>
                         {p.name}
                       </p>
-                      <div onClick={(e) => e.stopPropagation()}>
-                        <RatingStars
-                          value={p.user_rating || 0}
-                          onChange={(r) => void handleUpdateRating(p.id, r, p.user_note, p.user_tags)}
-                          size="xs"
-                        />
-                      </div>
+                      {Boolean(p.user_rating && p.user_rating > 0) && (
+                        <div onClick={(e) => e.stopPropagation()} className="shrink-0">
+                          <RatingStars
+                            value={p.user_rating}
+                            readonly
+                            size="xs"
+                          />
+                        </div>
+                      )}
                     </div>
                     <p className="mt-0.5 text-xs text-ink-light font-sans line-clamp-2">
                       {p.content || '（空内容）'}
@@ -512,53 +463,44 @@ export const BifrostPromptsPage: React.FC = () => {
               <p className="text-xs text-ink-light font-sans">提交说明：{detail.commit_message}</p>
             )}
 
-            {/* 我的评分、标签与私有备注 */}
-            <div className="rounded-lg border border-dashed border-paper-grid bg-paper-grid/20 p-3 space-y-3">
-              <div className="flex items-center justify-between">
-                <FieldLabel>我的评分</FieldLabel>
-                <RatingStars
-                  value={detail.user_rating || 0}
-                  onChange={(r) => void handleDetailRating(r)}
-                  size="md"
-                  showNumber
-                />
-              </div>
-              <div className="space-y-1.5">
-                <FieldLabel>
-                  <Tag size={13} className="inline mr-1" />
-                  我的标签
-                </FieldLabel>
-                <TagInput
-                  value={tagsDraft}
-                  onChange={setTagsDraft}
-                  suggestions={availableTags}
-                  placeholder="输入标签按回车或逗号添加…"
-                />
-              </div>
-              <div className="space-y-1.5">
+            {/* 个人标注信息（只读展示，在 Library 资源库中可编辑管理） */}
+            {(Boolean(detail.user_rating) || (detail.user_tags && detail.user_tags.length > 0) || Boolean(detail.user_note)) && (
+              <div className="rounded-lg border border-dashed border-paper-grid bg-paper-grid/15 p-3 space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <FieldLabel>我的备注</FieldLabel>
-                  <Button
-                    size="sm"
-                    onClick={() => void handleSaveNote()}
-                    isLoading={savingNote}
-                    disabled={
-                      noteDraft === (detail.user_note ?? '') &&
-                      JSON.stringify(tagsDraft) === JSON.stringify(detail.user_tags ?? [])
-                    }
-                  >
-                    保存标注
-                  </Button>
+                  <span className="text-xs font-serif font-semibold text-ink flex items-center gap-1.5">
+                    <StickyNote size={13} className="text-accent" />
+                    个人标注
+                    <span className="text-[10px] font-sans text-ink-faint font-normal">（只读，在 Library 库中可编辑）</span>
+                  </span>
+                  {Boolean(detail.user_rating && detail.user_rating > 0) && (
+                    <RatingStars
+                      value={detail.user_rating}
+                      readonly
+                      size="sm"
+                    />
+                  )}
                 </div>
-                <Textarea
-                  value={noteDraft}
-                  onChange={(e) => setNoteDraft(e.target.value)}
-                  placeholder="输入该提示词的心得或适用场景…"
-                  rows={2}
-                  className="text-xs font-sans w-full"
-                />
+
+                {detail.user_tags && detail.user_tags.length > 0 && (
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {detail.user_tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="text-[11px] px-2 py-0.5 rounded-pill bg-accent-surface text-accent border border-accent/20 font-sans"
+                      >
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {detail.user_note && (
+                  <p className="text-xs text-ink-light font-sans italic bg-paper/60 p-2 rounded border border-paper-grid/50">
+                    {detail.user_note}
+                  </p>
+                )}
               </div>
-            </div>
+            )}
 
             <div className="space-y-1.5">
               <FieldLabel>提示词内容</FieldLabel>
