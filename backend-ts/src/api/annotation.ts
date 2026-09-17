@@ -24,6 +24,7 @@ export async function registerAnnotationRouter(app: FastifyInstance): Promise<vo
       resource_id?: string;
       rating?: number;
       note?: string;
+      tags?: string[];
     };
 
     const resourceType = (body.resource_type ?? '').trim();
@@ -43,6 +44,7 @@ export async function registerAnnotationRouter(app: FastifyInstance): Promise<vo
       const result = setUserAnnotation(getDb(), userId, resourceType, resourceId, {
         rating: body.rating,
         note: body.note,
+        tags: body.tags,
       });
 
       return {
@@ -50,6 +52,7 @@ export async function registerAnnotationRouter(app: FastifyInstance): Promise<vo
         resource_id: resourceId,
         rating: result.rating,
         note: result.note,
+        tags: result.tags,
       };
     } catch (err: any) {
       return reply.code(400).send({ detail: err?.message || '设置打标或备注失败' });
@@ -79,6 +82,7 @@ export async function registerAnnotationRouter(app: FastifyInstance): Promise<vo
       resource_id: resourceId,
       rating: result.rating,
       note: result.note,
+      tags: result.tags,
     };
   });
 }

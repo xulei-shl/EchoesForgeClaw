@@ -49,6 +49,9 @@ export const BifrostPromptsPage: React.FC = () => {
     setQ,
     ratingFilter,
     setRatingFilter,
+    tagFilter,
+    setTagFilter,
+    availableTags,
     sentinelRef,
     load,
     updateRating: handleUpdateRating,
@@ -95,6 +98,7 @@ export const BifrostPromptsPage: React.FC = () => {
           promptImage: p.preview_image,
           userRating: p.user_rating,
           userNote: p.user_note,
+          userTags: p.user_tags,
         },
       };
       sessionStorage.setItem('bf-canvas-node-import', JSON.stringify(payload));
@@ -142,24 +146,24 @@ export const BifrostPromptsPage: React.FC = () => {
 
   /** 详情抽屉打星同步 */
   const onUpdateRating = useCallback(
-    async (promptId: string, rating: number, currentNote?: string) => {
+    async (promptId: string, rating: number, currentNote?: string, currentTags?: string[]) => {
       setDetail((prev) => (prev && prev.id === promptId ? { ...prev, user_rating: rating } : prev));
-      await handleUpdateRating(promptId, rating, currentNote);
+      await handleUpdateRating(promptId, rating, currentNote, currentTags);
     },
     [handleUpdateRating]
   );
 
-  /** 模态框保存备注 */
+  /** 模态框保存打标、备注与标签 */
   const onSaveNoteModal = useCallback(
-    async (rating: number, note: string) => {
+    async (rating: number, note: string, tags: string[]) => {
       if (!editingNoteTarget) return;
       const targetId = editingNoteTarget.id;
       setDetail((prev) =>
         prev && prev.id === targetId
-          ? { ...prev, user_rating: rating, user_note: note }
+          ? { ...prev, user_rating: rating, user_note: note, user_tags: tags }
           : prev
       );
-      await handleSaveNote(targetId, rating, note);
+      await handleSaveNote(targetId, rating, note, tags);
       setEditingNoteTarget(null);
     },
     [editingNoteTarget, handleSaveNote]
@@ -230,12 +234,24 @@ export const BifrostPromptsPage: React.FC = () => {
               { label: '仅有备注', value: 'noted' },
             ]}
           />
-          {(q || folderId || ratingFilter) && (
+          {availableTags.length > 0 && (
+            <Select
+              value={tagFilter}
+              onChange={(val) => setTagFilter(val)}
+              className="w-36"
+              options={[
+                { label: '全部标签', value: '' },
+                ...availableTags.map((t) => ({ label: `#${t}`, value: t })),
+              ]}
+            />
+          )}
+          {(q || folderId || ratingFilter || tagFilter) && (
             <button
               onClick={() => {
                 setQ('');
                 setFolderId('');
                 setRatingFilter('');
+                setTagFilter('');
               }}
               className="text-sm text-accent hover:text-accent-hover font-sans active:scale-[0.96] transition-colors"
             >
@@ -345,6 +361,35 @@ export const BifrostPromptsPage: React.FC = () => {
                       <p className="mt-1.5 text-xs text-ink-light font-sans line-clamp-2 leading-relaxed min-h-[2.25rem]">
                         {p.content || '（暂无正文内容）'}
                       </p>
+
+                      {/* 微标签展示（最多 2 个，超出显示 +N，点击快捷筛选） */}
+                      {p.user_tags && p.user_tags.length > 0 && (
+                        <div className="mt-2 flex items-center gap-1 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                          {p.user_tags.slice(0, 2).map((tag) => (
+                            <button
+                              key={tag}
+                              type="button"
+                              onClick={() => setTagFilter(tagFilter === tag ? '' : tag)}
+                              className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
+                                tagFilter === tag
+                                  ? 'bg-accent text-paper border-accent font-medium'
+                                  : 'bg-paper-grid/20 border-dashed border-paper-grid text-ink-light hover:border-accent/40 hover:text-accent'
+                              }`}
+                              title={`按标签「${tag}」过滤`}
+                            >
+                              #{tag}
+                            </button>
+                          ))}
+                          {p.user_tags.length > 2 && (
+                            <span
+                              className="text-[10px] text-ink-faint border border-dashed border-paper-grid px-1 rounded"
+                              title={p.user_tags.slice(2).map((t) => `#${t}`).join(', ')}
+                            >
+                              +{p.user_tags.length - 2}
+                            </span>
+                          )}
+                        </div>
+                      )}
 
                       {/* 私有备注展示与编辑（统一槽位高度与基线，并通过 mt-auto 紧贴操作栏） */}
                       <div className="mt-auto pt-3">
@@ -468,9 +513,38 @@ export const BifrostPromptsPage: React.FC = () => {
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-ink-light font-sans line-clamp-1 mt-1">
-                        {p.content}
-                      </p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <p className="text-xs text-ink-light font-sans truncate flex-1">
+                          {p.content}
+                        </p>
+                        {p.user_tags && p.user_tags.length > 0 && (
+                          <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                            {p.user_tags.slice(0, 2).map((tag) => (
+                              <button
+                                key={tag}
+                                type="button"
+                                onClick={() => setTagFilter(tagFilter === tag ? '' : tag)}
+                                className={`text-[10px] px-1.5 py-px rounded border transition-colors ${
+                                  tagFilter === tag
+                                    ? 'bg-accent text-paper border-accent font-medium'
+                                    : 'bg-paper-grid/20 border-dashed border-paper-grid text-ink-light hover:border-accent/40 hover:text-accent'
+                                }`}
+                                title={`按标签「${tag}」过滤`}
+                              >
+                                #{tag}
+                              </button>
+                            ))}
+                            {p.user_tags.length > 2 && (
+                              <span
+                                className="text-[10px] text-ink-faint border border-dashed border-paper-grid px-1 rounded"
+                                title={p.user_tags.slice(2).map((t) => `#${t}`).join(', ')}
+                              >
+                                +{p.user_tags.length - 2}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
                       {p.user_note && (
                         <p className="text-[11px] text-accent font-sans italic truncate mt-0.5">
                           备注：{p.user_note}
@@ -582,15 +656,24 @@ export const BifrostPromptsPage: React.FC = () => {
                         版本 v{detail.version_number}
                       </span>
                     )}
-                    <span className="text-xs text-ink-light">更新于: {formatDate(detail.updated_at)}</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-ink-light">评分：</span>
-                    <RatingStars
-                      value={detail.user_rating || 0}
-                      onChange={(r) => void onUpdateRating(detail.id, r, detail.user_note)}
-                      size="sm"
-                    />
+                  <div className="flex items-center justify-between gap-2 pt-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-ink-light">评分：</span>
+                      <RatingStars
+                        value={detail.user_rating || 0}
+                        onChange={(r) => void onUpdateRating(detail.id, r, detail.user_note, detail.user_tags)}
+                        size="sm"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setEditingNoteTarget(detail)}
+                      className="text-xs text-accent hover:text-accent-hover flex items-center gap-1 font-sans transition-colors"
+                    >
+                      <StickyNote size={13} />
+                      编辑标注
+                    </button>
                   </div>
                 </div>
               </div>
@@ -635,22 +718,31 @@ export const BifrostPromptsPage: React.FC = () => {
 
               {/* 私有备注区域 */}
               <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-ink font-serif">我的备注</label>
-                  <button
-                    type="button"
-                    onClick={() => setEditingNoteTarget(detail)}
-                    className="text-xs text-accent hover:text-accent-hover flex items-center gap-1"
-                  >
-                    <StickyNote size={13} />
-                    编辑备注
-                  </button>
-                </div>
+                <label className="text-xs font-semibold text-ink font-serif block">我的备注</label>
                 <div className="p-3 rounded-xl border border-paper-grid bg-paper/40 text-xs text-ink font-sans">
                   {detail.user_note ? (
                     <span className="text-accent italic">{detail.user_note}</span>
                   ) : (
                     <span className="text-ink-faint">暂无备注（可在节点和此页面同步记录私有见解）</span>
+                  )}
+                </div>
+              </div>
+
+              {/* 标签展示区域 */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-ink font-serif block">我的标签</label>
+                <div className="flex items-center gap-1.5 flex-wrap p-3 rounded-xl border border-paper-grid bg-paper/40">
+                  {detail.user_tags && detail.user_tags.length > 0 ? (
+                    detail.user_tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="text-xs px-2 py-0.5 rounded-pill bg-accent-surface text-accent border border-accent/25"
+                      >
+                        #{tag}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-xs text-ink-faint">暂无标签（可在编辑标注中添加）</span>
                   )}
                 </div>
               </div>
@@ -667,6 +759,8 @@ export const BifrostPromptsPage: React.FC = () => {
             resourceName={editingNoteTarget.name}
             initialRating={editingNoteTarget.user_rating ?? 0}
             initialNote={editingNoteTarget.user_note ?? ''}
+            initialTags={editingNoteTarget.user_tags ?? []}
+            suggestedTags={availableTags}
             onSave={onSaveNoteModal}
           />
         )}

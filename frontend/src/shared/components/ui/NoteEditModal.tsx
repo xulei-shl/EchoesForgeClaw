@@ -3,6 +3,7 @@ import { Dialog } from './Dialog';
 import { Button } from './Button';
 import { Textarea } from './Textarea';
 import { RatingStars } from './RatingStars';
+import { TagInput } from './TagInput';
 import { Sparkles, Trash2 } from 'lucide-react';
 
 export interface NoteEditModalProps {
@@ -12,7 +13,9 @@ export interface NoteEditModalProps {
   resourceName: string;
   initialRating?: number;
   initialNote?: string;
-  onSave: (rating: number, note: string) => Promise<void> | void;
+  initialTags?: string[];
+  suggestedTags?: string[];
+  onSave: (rating: number, note: string, tags: string[]) => Promise<void> | void;
   saving?: boolean;
 }
 
@@ -23,28 +26,33 @@ export const NoteEditModal: React.FC<NoteEditModalProps> = ({
   resourceName,
   initialRating = 0,
   initialNote = '',
+  initialTags = [],
+  suggestedTags = [],
   onSave,
   saving = false,
 }) => {
   const [rating, setRating] = useState(initialRating);
   const [note, setNote] = useState(initialNote);
+  const [tags, setTags] = useState<string[]>(initialTags);
 
   useEffect(() => {
     if (open) {
       setRating(initialRating || 0);
       setNote(initialNote || '');
+      setTags(initialTags || []);
     }
-  }, [open, initialRating, initialNote]);
+  }, [open, initialRating, initialNote, initialTags]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await onSave(rating, note.trim());
+    await onSave(rating, note.trim(), tags);
     onClose();
   };
 
   const handleClear = () => {
     setRating(0);
     setNote('');
+    setTags([]);
   };
 
   return (
@@ -68,16 +76,26 @@ export const NoteEditModal: React.FC<NoteEditModalProps> = ({
         </div>
 
         <div>
+          <label className="block text-xs font-medium text-ink mb-1.5">我的标签（0~多个，按回车添加）</label>
+          <TagInput
+            value={tags}
+            onChange={setTags}
+            suggestions={suggestedTags}
+            placeholder="输入标签并按回车…"
+          />
+        </div>
+
+        <div>
           <div className="flex items-center justify-between mb-1.5">
             <label className="block text-xs font-medium text-ink">我的备注</label>
-            {(rating > 0 || note.trim()) && (
+            {(rating > 0 || note.trim() || tags.length > 0) && (
               <button
                 type="button"
                 onClick={handleClear}
                 className="text-[11px] text-ink-faint hover:text-error transition-colors flex items-center gap-1 font-sans"
               >
                 <Trash2 size={12} />
-                清空打标与备注
+                清空所有标注
               </button>
             )}
           </div>

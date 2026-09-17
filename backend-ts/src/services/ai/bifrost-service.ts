@@ -727,6 +727,7 @@ export async function getMergedBifrostSkills(
       const ann = annotations.get(String(s.name ?? ''));
       s.user_rating = ann?.rating ?? 0;
       s.user_note = ann?.note ?? '';
+      s.user_tags = ann?.tags ?? [];
       s.note = ann?.note ?? '';
     }
   }

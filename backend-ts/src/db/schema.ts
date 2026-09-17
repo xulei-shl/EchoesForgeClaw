@@ -212,6 +212,7 @@ export const userAnnotations = sqliteTable(
 		resourceId: text("resource_id", { length: 128 }).notNull(),
 		rating: integer().default(0).notNull(),
 		note: text().default("").notNull(),
+		tags: text().default("[]").notNull(),
 		createdAt: numeric("created_at"),
 		updatedAt: numeric("updated_at"),
 	},

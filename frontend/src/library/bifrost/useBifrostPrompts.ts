@@ -31,6 +31,7 @@ export function useBifrostPrompts(options: UseBifrostPromptsOptions = {}) {
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
   const [ratingFilter, setRatingFilter] = useState('');
+  const [tagFilter, setTagFilter] = useState('');
 
   const sentinelRef = useRef<HTMLDivElement>(null);
   const nextSkipRef = useRef(0);
@@ -140,11 +141,30 @@ export function useBifrostPrompts(options: UseBifrostPromptsOptions = {}) {
     return () => observer.disconnect();
   }, [loadMore, loading, items.length, total]);
 
+  // 收集当前加载提示词的所有唯一标签列表
+  const availableTags = useMemo(() => {
+    const set = new Set<string>();
+    for (const item of items) {
+      if (Array.isArray(item.user_tags)) {
+        for (const t of item.user_tags) {
+          if (t && t.trim()) set.add(t.trim());
+        }
+      }
+    }
+    return Array.from(set).sort();
+  }, [items]);
+
   // 快捷更新星级评分（乐观更新 + 失败回滚）
-  const updateRating = async (promptId: string, nextRating: number, currentNote?: string): Promise<boolean> => {
+  const updateRating = async (
+    promptId: string,
+    nextRating: number,
+    currentNote?: string,
+    currentTags?: string[]
+  ): Promise<boolean> => {
     const target = items.find((p) => p.id === promptId);
     const prevRating = target?.user_rating ?? 0;
     const prevNote = target?.user_note ?? '';
+    const prevTags = target?.user_tags ?? [];
 
     setItems((prev) =>
       prev.map((p) =>
@@ -158,10 +178,11 @@ export function useBifrostPrompts(options: UseBifrostPromptsOptions = {}) {
         resource_id: promptId,
         rating: nextRating,
         note: currentNote !== undefined ? currentNote : prevNote,
+        tags: currentTags !== undefined ? currentTags : prevTags,
       });
       setItems((prev) =>
         prev.map((p) =>
-          p.id === promptId ? { ...p, user_rating: res.rating, user_note: res.note } : p
+          p.id === promptId ? { ...p, user_rating: res.rating, user_note: res.note, user_tags: res.tags } : p
         )
       );
       showToast(nextRating > 0 ? `已评为 ${nextRating} 星` : '已清除评分', { type: 'success' });
@@ -177,15 +198,24 @@ export function useBifrostPrompts(options: UseBifrostPromptsOptions = {}) {
     }
   };
 
-  // 快捷保存私有备注（乐观更新 + 失败回滚）
-  const saveNote = async (promptId: string, nextRating: number, nextNote: string): Promise<boolean> => {
+  // 快捷保存私有备注与标签（乐观更新 + 失败回滚）
+  const saveNote = async (
+    promptId: string,
+    nextRating: number,
+    nextNote: string,
+    nextTags?: string[]
+  ): Promise<boolean> => {
     const target = items.find((p) => p.id === promptId);
     const prevRating = target?.user_rating ?? 0;
     const prevNote = target?.user_note ?? '';
+    const prevTags = target?.user_tags ?? [];
+    const resolvedTags = nextTags !== undefined ? nextTags : prevTags;
 
     setItems((prev) =>
       prev.map((p) =>
-        p.id === promptId ? { ...p, user_rating: nextRating, user_note: nextNote.trim() } : p
+        p.id === promptId
+          ? { ...p, user_rating: nextRating, user_note: nextNote.trim(), user_tags: resolvedTags }
+          : p
       )
     );
 
@@ -195,18 +225,19 @@ export function useBifrostPrompts(options: UseBifrostPromptsOptions = {}) {
         resource_id: promptId,
         rating: nextRating,
         note: nextNote.trim(),
+        tags: resolvedTags,
       });
       setItems((prev) =>
         prev.map((p) =>
-          p.id === promptId ? { ...p, user_rating: res.rating, user_note: res.note } : p
+          p.id === promptId ? { ...p, user_rating: res.rating, user_note: res.note, user_tags: res.tags } : p
         )
       );
-      showToast('备注已保存', { type: 'success' });
+      showToast('标注已保存', { type: 'success' });
       return true;
     } catch (e: any) {
       setItems((prev) =>
         prev.map((p) =>
-          p.id === promptId ? { ...p, user_rating: prevRating, user_note: prevNote } : p
+          p.id === promptId ? { ...p, user_rating: prevRating, user_note: prevNote, user_tags: prevTags } : p
         )
       );
       showToast(e?.message || '备注保存失败', { type: 'error' });
@@ -214,7 +245,7 @@ export function useBifrostPrompts(options: UseBifrostPromptsOptions = {}) {
     }
   };
 
-  // 客户端过滤（基于星级/备注）
+  // 客户端过滤（基于星级/备注/标签）
   const filteredItems = useMemo(() => {
     return items.filter((p) => {
       if (ratingFilter === '5' && (p.user_rating ?? 0) !== 5) return false;
@@ -223,9 +254,10 @@ export function useBifrostPrompts(options: UseBifrostPromptsOptions = {}) {
       if (ratingFilter === 'rated' && !(p.user_rating && p.user_rating > 0)) return false;
       if (ratingFilter === 'unrated' && (p.user_rating && p.user_rating > 0)) return false;
       if (ratingFilter === 'noted' && !p.user_note?.trim()) return false;
+      if (tagFilter && (!p.user_tags || !p.user_tags.includes(tagFilter))) return false;
       return true;
     });
-  }, [items, ratingFilter]);
+  }, [items, ratingFilter, tagFilter]);
 
   return {
     folders,
@@ -244,6 +276,9 @@ export function useBifrostPrompts(options: UseBifrostPromptsOptions = {}) {
     setQ,
     ratingFilter,
     setRatingFilter,
+    tagFilter,
+    setTagFilter,
+    availableTags,
     sentinelRef,
     load,
     loadMore,

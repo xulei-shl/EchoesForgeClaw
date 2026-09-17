@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Boxes, FolderSync, Loader2, RefreshCw, Search, StickyNote, Trash2, FileText, FolderTree } from 'lucide-react';
+import { Boxes, FolderSync, Loader2, RefreshCw, Search, StickyNote, Trash2, FileText, FolderTree, Tag } from 'lucide-react';
 import { adminService, annotationService } from '../../shared/services/admin';
 import type { CachedBifrostSkill } from '../../shared/types';
 import { Button } from '../../shared/components/ui/Button';
@@ -14,6 +14,7 @@ import { MarkdownViewer } from '../../shared/components/ui/MarkdownViewer';
 import { PageHeader, FieldLabel } from '../components/AdminBits';
 import { useFeedback } from '../../shared/components/ui/FeedbackProvider';
 import { SkillFileTree } from '../../shared/components/ui/SkillFileTree';
+import { TagInput } from '../../shared/components/ui/TagInput';
 import { useBifrostSkills } from '../../library/bifrost/useBifrostSkills';
 
 export const BifrostSkillsPage: React.FC = () => {
@@ -32,6 +33,9 @@ export const BifrostSkillsPage: React.FC = () => {
     setQ,
     ratingFilter,
     setRatingFilter,
+    tagFilter,
+    setTagFilter,
+    availableTags,
     sentinelRef,
     load,
     updateRating: handleUpdateRating,
@@ -44,12 +48,14 @@ export const BifrostSkillsPage: React.FC = () => {
   const [syncingAll, setSyncingAll] = useState(false);
   const [detail, setDetail] = useState<CachedBifrostSkill | null>(null);
   const [noteDraft, setNoteDraft] = useState('');
+  const [tagsDraft, setTagsDraft] = useState<string[]>([]);
   const [savingNote, setSavingNote] = useState(false);
   const { dialog, showToast } = useFeedback();
 
-  // 打开详情时同步备注草稿
+  // 打开详情时同步备注与标签草稿
   useEffect(() => {
     setNoteDraft(detail?.user_note ?? detail?.note ?? '');
+    setTagsDraft(detail?.user_tags ?? []);
   }, [detail]);
 
   /** 打开详情：先用列表信息即时渲染，再按需拉取完整详情（body/files）补齐 */
@@ -66,7 +72,7 @@ export const BifrostSkillsPage: React.FC = () => {
     [showToast]
   );
 
-  /** 保存用户的私有备注 */
+  /** 保存用户的私有备注与标签 */
   const saveNote = async () => {
     if (!detail) return;
     setSavingNote(true);
@@ -76,16 +82,17 @@ export const BifrostSkillsPage: React.FC = () => {
         resource_id: detail.name,
         rating: detail.user_rating ?? 0,
         note: noteDraft.trim(),
+        tags: tagsDraft,
       });
-      setDetail({ ...detail, user_rating: res.rating, user_note: res.note, note: res.note });
+      setDetail({ ...detail, user_rating: res.rating, user_note: res.note, note: res.note, user_tags: res.tags });
       setSkills((prev) =>
         prev.map((s) =>
           s.name === detail.name
-            ? { ...s, user_rating: res.rating, user_note: res.note, note: res.note }
+            ? { ...s, user_rating: res.rating, user_note: res.note, note: res.note, user_tags: res.tags }
             : s
         )
       );
-      showToast('备注已保存', { type: 'success' });
+      showToast('标注已保存', { type: 'success' });
     } catch (e: any) {
       showToast(e?.message || '保存失败，请重试', { type: 'error' });
     } finally {
@@ -99,7 +106,7 @@ export const BifrostSkillsPage: React.FC = () => {
     const targetName = detail.name;
     const prevRating = detail.user_rating ?? 0;
     setDetail((prev) => (prev && prev.name === targetName ? { ...prev, user_rating: nextRating } : prev));
-    const ok = await handleUpdateRating(targetName, nextRating, detail.user_note ?? detail.note);
+    const ok = await handleUpdateRating(targetName, nextRating, detail.user_note ?? detail.note, detail.user_tags);
     if (!ok) {
       setDetail((prev) => (prev && prev.name === targetName ? { ...prev, user_rating: prevRating } : prev));
     }
@@ -281,11 +288,23 @@ export const BifrostSkillsPage: React.FC = () => {
                 { label: '仅有备注', value: 'noted' },
               ]}
             />
-            {(q || ratingFilter) && (
+            {availableTags.length > 0 && (
+              <Select
+                value={tagFilter}
+                onChange={(val) => setTagFilter(val)}
+                className="w-36"
+                options={[
+                  { label: '全部标签', value: '' },
+                  ...availableTags.map((t) => ({ label: `#${t}`, value: t })),
+                ]}
+              />
+            )}
+            {(q || ratingFilter || tagFilter) && (
               <button
                 onClick={() => {
                   setQ('');
                   setRatingFilter('');
+                  setTagFilter('');
                 }}
                 className="text-sm text-accent hover:text-accent-hover font-sans active:scale-[0.96] transition-colors"
               >
@@ -307,7 +326,7 @@ export const BifrostSkillsPage: React.FC = () => {
                 {remoteAvailable ? '暂无匹配的 Bifrost Skill' : '暂无缓存的 Bifrost Skill'}
               </p>
               <p className="text-sm text-ink-light font-sans">
-                {q.trim() || ratingFilter
+                {q.trim() || ratingFilter || tagFilter
                   ? '尝试清除筛选条件'
                   : remoteAvailable
                   ? '在画布的 Skill 检索节点中安装过的 skill 会出现在这里；也可在上方搜索远端仓库后点「下载并缓存」'
@@ -342,7 +361,7 @@ export const BifrostSkillsPage: React.FC = () => {
                           <div onClick={(e) => e.stopPropagation()} className="ml-1">
                             <RatingStars
                               value={s.user_rating || 0}
-                              onChange={(r) => void handleUpdateRating(s.name, r, noteText)}
+                              onChange={(r) => void handleUpdateRating(s.name, r, noteText, s.user_tags)}
                               size="xs"
                             />
                           </div>
@@ -350,6 +369,30 @@ export const BifrostSkillsPage: React.FC = () => {
                         <p className="mt-1 text-xs text-ink-light font-sans line-clamp-2">
                           {s.description || '（无描述）'}
                         </p>
+                        {s.user_tags && s.user_tags.length > 0 && (
+                          <div className="flex items-center gap-1 mt-1.5 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                            {s.user_tags.slice(0, 3).map((tag) => (
+                              <button
+                                key={tag}
+                                type="button"
+                                onClick={() => setTagFilter(tagFilter === tag ? '' : tag)}
+                                className={`text-[10px] px-1.5 py-px rounded border transition-colors ${
+                                  tagFilter === tag
+                                    ? 'bg-accent text-paper border-accent font-medium'
+                                    : 'bg-paper-grid/20 border-dashed border-paper-grid text-ink-light hover:border-accent/40 hover:text-accent'
+                                }`}
+                                title={`按标签「${tag}」过滤`}
+                              >
+                                #{tag}
+                              </button>
+                            ))}
+                            {s.user_tags.length > 3 && (
+                              <span className="text-[10px] text-ink-faint border border-dashed border-paper-grid px-1 rounded">
+                                +{s.user_tags.length - 3}
+                              </span>
+                            )}
+                          </div>
+                        )}
                         {noteText && (
                           <p className="mt-1.5 text-[11px] text-accent font-sans line-clamp-1 italic bg-accent-surface/50 px-2 py-0.5 rounded border border-accent/20 flex items-center gap-1 inline-flex">
                             <StickyNote size={11} strokeWidth={1.5} className="shrink-0" />
@@ -447,8 +490,8 @@ export const BifrostSkillsPage: React.FC = () => {
               <p className="text-sm text-ink leading-relaxed">{detail.description}</p>
             )}
 
-            {/* 我的评分与私有备注 */}
-            <div className="rounded-lg border border-dashed border-paper-grid bg-paper-grid/20 p-3 space-y-2.5">
+            {/* 我的评分、标签与私有备注 */}
+            <div className="rounded-lg border border-dashed border-paper-grid bg-paper-grid/20 p-3 space-y-3">
               <div className="flex items-center justify-between">
                 <FieldLabel>我的评分</FieldLabel>
                 <RatingStars
@@ -458,29 +501,44 @@ export const BifrostSkillsPage: React.FC = () => {
                   showNumber
                 />
               </div>
-              <div className="space-y-1.5 pt-1">
+              <div className="space-y-1.5">
                 <FieldLabel>
-                  <StickyNote size={13} className="inline mr-1" />
-                  我的备注
+                  <Tag size={13} className="inline mr-1" />
+                  我的标签
                 </FieldLabel>
-                <div className="flex gap-2 items-start">
-                  <Textarea
-                    value={noteDraft}
-                    onChange={(e) => setNoteDraft(e.target.value)}
-                    placeholder="填写当前账户对该 Skill 的私有备注（如使用场景、注意事项）…"
-                    rows={2}
-                    maxLength={500}
-                    className="text-xs font-sans flex-1"
-                  />
+                <TagInput
+                  value={tagsDraft}
+                  onChange={setTagsDraft}
+                  suggestions={availableTags}
+                  placeholder="输入标签按回车或逗号添加…"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <FieldLabel>
+                    <StickyNote size={13} className="inline mr-1" />
+                    我的备注
+                  </FieldLabel>
                   <Button
                     size="sm"
                     isLoading={savingNote}
-                    disabled={noteDraft === (detail.user_note ?? detail.note ?? '')}
+                    disabled={
+                      noteDraft === (detail.user_note ?? detail.note ?? '') &&
+                      JSON.stringify(tagsDraft) === JSON.stringify(detail.user_tags ?? [])
+                    }
                     onClick={() => void saveNote()}
                   >
-                    保存备注
+                    保存标注
                   </Button>
                 </div>
+                <Textarea
+                  value={noteDraft}
+                  onChange={(e) => setNoteDraft(e.target.value)}
+                  placeholder="填写当前账户对该 Skill 的私有备注（如使用场景、注意事项）…"
+                  rows={2}
+                  maxLength={500}
+                  className="text-xs font-sans w-full"
+                />
               </div>
             </div>
 

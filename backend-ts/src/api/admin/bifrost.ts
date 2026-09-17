@@ -81,6 +81,7 @@ export async function registerBifrostAdminRouter(app: FastifyInstance): Promise<
           const ann = annotations.get(String(p.id ?? ''));
           p.user_rating = ann?.rating ?? 0;
           p.user_note = ann?.note ?? '';
+          p.user_tags = ann?.tags ?? [];
         }
       }
       return { prompts, total };

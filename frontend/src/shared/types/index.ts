@@ -564,6 +564,7 @@ export interface UserAnnotation {
   resource_id: string;
   rating: number;
   note: string;
+  tags: string[];
 }
 
 export interface UserAnnotationPayload {
@@ -571,6 +572,7 @@ export interface UserAnnotationPayload {
   resource_id: string;
   rating?: number;
   note?: string;
+  tags?: string[];
 }
 
 /* ===================================================================== */
@@ -605,6 +607,8 @@ export interface BifrostPrompt {
   user_rating?: number;
   /** 当前用户私有备注 */
   user_note?: string;
+  /** 当前用户打标标签 */
+  user_tags?: string[];
 }
 
 /** 提示词检索节点：选用一条提示词后写入节点的数据 */
@@ -615,6 +619,7 @@ export interface PromptSelection {
   imageUrl?: string | null;
   userRating?: number;
   userNote?: string;
+  userTags?: string[];
 }
 
 /* ===================================================================== */
@@ -634,6 +639,7 @@ export interface InstalledSkill {
   note?: string;
   user_rating?: number;
   user_note?: string;
+  user_tags?: string[];
 }
 
 /** Admin 端：Bifrost Skill（本地缓存 + 远端未缓存合并浏览；Bifrost 可达时富化远端版本信息）
@@ -662,6 +668,7 @@ export interface CachedBifrostSkill {
   note?: string;
   user_rating?: number;
   user_note?: string;
+  user_tags?: string[];
 }
 
 /** Bifrost Skills 仓库中的 skill（检索结果） */
@@ -682,6 +689,7 @@ export interface BifrostSkill {
   note?: string;
   user_rating?: number;
   user_note?: string;
+  user_tags?: string[];
 }
 
 /** Skill 检索节点：选用一个 skill 后写入节点的数据 */
@@ -701,6 +709,7 @@ export interface SkillSelection {
   note?: string;
   userRating?: number;
   userNote?: string;
+  userTags?: string[];
 }
 
 /** Skill Agent 执行产生的文件（agent_file 事件） */

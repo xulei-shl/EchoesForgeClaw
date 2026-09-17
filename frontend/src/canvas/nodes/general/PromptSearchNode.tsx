@@ -32,6 +32,8 @@ export interface PromptSearchNodeProps {
   userRating?: number;
   /** 当前用户私有备注 */
   userNote?: string;
+  /** 当前用户私有标签 */
+  userTags?: string[];
   onUpdatePrompt?: (id: string, selection: PromptSelection) => void;
   onRemove?: () => void;
   onPositionChange?: (id: string, x: number, y: number) => void;
@@ -52,6 +54,7 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
   promptImage = null,
   userRating = 0,
   userNote = '',
+  userTags = [],
   onUpdatePrompt,
   onRemove,
   onPositionChange,
@@ -68,8 +71,16 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
   const [error, setError] = useState('');
   const [q, setQ] = useState('');
   const [ratingFilter, setRatingFilter] = useState('');
-  // 独立备注弹窗状态
+  const [tagFilter, setTagFilter] = useState('');
+  // 独立备注与标签弹窗状态
   const [editingTarget, setEditingTarget] = useState<BifrostPrompt | null>(null);
+
+  /** 聚合当前提示词列表中所有标签 */
+  const availableTags = useMemo(() => {
+    const set = new Set<string>();
+    prompts.forEach((p) => p.user_tags?.forEach((t) => set.add(t)));
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [prompts]);
 
   // 悬停预览：跟随鼠标的浮层大图（fixed 覆盖层，portal 到 body 避免被画布 transform 裁剪）
   const [hoverPreview, setHoverPreview] = useState<{ x: number; y: number; url: string } | null>(null);
@@ -115,6 +126,7 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
   const openPicker = useCallback(() => {
     setQ('');
     setRatingFilter('');
+    setTagFilter('');
     setPrompts([]);
     setTotal(0);
     forceNextLoad.current = true; // 本次打开强制拉最新，避免吃 5 分钟 TTL 旧缓存
@@ -136,10 +148,13 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
         resource_id: p.id,
         rating: nextRating,
         note: p.user_note ?? '',
+        tags: p.user_tags,
       });
       setPrompts((prev) =>
         prev.map((item) =>
-          item.id === p.id ? { ...item, user_rating: res.rating, user_note: res.note } : item
+          item.id === p.id
+            ? { ...item, user_rating: res.rating, user_note: res.note, user_tags: res.tags }
+            : item
         )
       );
       if (promptId === p.id) {
@@ -150,6 +165,7 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
           imageUrl: p.preview_image,
           userRating: res.rating,
           userNote: res.note,
+          userTags: res.tags,
         });
       }
     } catch {
@@ -158,7 +174,7 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
   };
 
   // 保存打标与备注
-  const handleSaveAnnotation = async (rating: number, note: string) => {
+  const handleSaveAnnotation = async (rating: number, note: string, tags?: string[]) => {
     if (!editingTarget) return;
     try {
       const res = await annotationService.setAnnotation({
@@ -166,11 +182,12 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
         resource_id: editingTarget.id,
         rating,
         note,
+        tags,
       });
       setPrompts((prev) =>
         prev.map((item) =>
           item.id === editingTarget.id
-            ? { ...item, user_rating: res.rating, user_note: res.note }
+            ? { ...item, user_rating: res.rating, user_note: res.note, user_tags: res.tags }
             : item
         )
       );
@@ -182,6 +199,7 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
           imageUrl: editingTarget.preview_image,
           userRating: res.rating,
           userNote: res.note,
+          userTags: res.tags,
         });
       }
     } catch {
@@ -260,12 +278,14 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
       imageUrl: p.preview_image,
       userRating: p.user_rating,
       userNote: p.user_note,
+      userTags: p.user_tags,
     });
   };
 
-  // 客户端星级筛选
+  // 客户端星级与标签筛选
   const filteredPrompts = useMemo(() => {
     return prompts.filter((p) => {
+      if (tagFilter && !p.user_tags?.includes(tagFilter)) return false;
       if (ratingFilter === '5' && (p.user_rating ?? 0) !== 5) return false;
       if (ratingFilter === '4+' && (p.user_rating ?? 0) < 4) return false;
       if (ratingFilter === '3+' && (p.user_rating ?? 0) < 3) return false;
@@ -274,7 +294,7 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
       if (ratingFilter === 'noted' && !p.user_note?.trim()) return false;
       return true;
     });
-  }, [prompts, ratingFilter]);
+  }, [prompts, ratingFilter, tagFilter]);
 
   const renderList = () => (
     <div className="space-y-1.5 max-h-[52vh] overflow-y-auto custom-scrollbar -mx-2 px-2">
@@ -296,7 +316,7 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
         <div className="py-10 flex flex-col items-center gap-2 text-center">
           <FileSearch size={30} strokeWidth={1} className="text-ink-faint" />
           <p className="text-sm text-ink-light font-sans">
-            {q.trim() || ratingFilter ? '没有匹配筛选条件的提示词' : '提示词库为空'}
+            {q.trim() || ratingFilter || tagFilter ? '没有匹配筛选条件的提示词' : '提示词库为空'}
           </p>
         </div>
       )}
@@ -364,6 +384,30 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
                   </div>
                 </div>
                 <p className="text-xs text-ink-light line-clamp-2 leading-relaxed mt-1">{p.content || '（空内容）'}</p>
+                {p.user_tags && p.user_tags.length > 0 && (
+                  <div className="flex items-center gap-1 mt-1.5 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                    {p.user_tags.slice(0, 3).map((tag) => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => setTagFilter(tagFilter === tag ? '' : tag)}
+                        className={`text-[10px] px-1.5 py-px rounded border transition-colors ${
+                          tagFilter === tag
+                            ? 'bg-accent text-paper border-accent font-medium'
+                            : 'bg-paper-grid/20 border-dashed border-paper-grid text-ink-light hover:border-accent/40 hover:text-accent'
+                        }`}
+                        title={`按标签「${tag}」过滤`}
+                      >
+                        #{tag}
+                      </button>
+                    ))}
+                    {p.user_tags.length > 3 && (
+                      <span className="text-[10px] text-ink-faint border border-dashed border-paper-grid px-1 rounded">
+                        +{p.user_tags.length - 3}
+                      </span>
+                    )}
+                  </div>
+                )}
                 {p.user_note && (
                   <p className="text-[11px] text-accent font-sans mt-1 line-clamp-1 italic bg-accent-surface/50 px-1.5 py-0.5 rounded border border-accent/20">
                     备注：{p.user_note}
@@ -479,6 +523,19 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
               )}
             </div>
 
+            {userTags && userTags.length > 0 && (
+              <div className="flex items-center gap-1 px-1 flex-wrap">
+                {userTags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="text-[10px] px-1.5 py-px rounded border border-paper-grid bg-paper-grid/20 text-ink-light font-mono"
+                  >
+                    #{tag}
+                  </span>
+                ))}
+              </div>
+            )}
+
             {userNote && (
               <div className="text-[11px] text-accent font-sans bg-accent-surface/40 px-2 py-1 rounded border border-accent/20 leading-tight">
                 <span className="font-medium">我的备注：</span>
@@ -522,7 +579,7 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
                   <Select
                     value={ratingFilter}
                     onChange={(val) => setRatingFilter(val)}
-                    className="w-36"
+                    className="w-32 shrink-0"
                     options={[
                       { label: '全部打标', value: '' },
                       { label: '★ 5 星', value: '5' },
@@ -531,6 +588,15 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
                       { label: '已打标', value: 'rated' },
                       { label: '未打标', value: 'unrated' },
                       { label: '仅有备注', value: 'noted' },
+                    ]}
+                  />
+                  <Select
+                    value={tagFilter}
+                    onChange={(val) => setTagFilter(val)}
+                    className="w-32 shrink-0"
+                    options={[
+                      { label: '全部标签', value: '' },
+                      ...availableTags.map((t) => ({ label: `#${t}`, value: t })),
                     ]}
                   />
                 </div>
@@ -549,13 +615,15 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
               </div>
             </Dialog>
 
-            {/* 独立备注编辑弹窗 */}
+            {/* 独立备注与标签编辑弹窗 */}
             <NoteEditModal
               open={Boolean(editingTarget)}
               onClose={() => setEditingTarget(null)}
               resourceName={editingTarget?.name || ''}
               initialRating={editingTarget?.user_rating || 0}
               initialNote={editingTarget?.user_note || ''}
+              initialTags={editingTarget?.user_tags || []}
+              suggestedTags={availableTags}
               onSave={handleSaveAnnotation}
             />
 

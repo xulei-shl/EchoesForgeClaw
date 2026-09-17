@@ -46,6 +46,7 @@ export function applyInitialSchema(db: DB): void {
   ensureColumn(sqlite, 'llm_configs', 'thinking_format', 'VARCHAR');
   ensureColumn(sqlite, 'llm_configs', 'context_window', 'INTEGER');
   ensureColumn(sqlite, 'llm_configs', 'max_tokens', 'INTEGER');
+  ensureColumn(sqlite, 'user_annotations', 'tags', "TEXT NOT NULL DEFAULT '[]'");
 }
 
 /** 存量库补列：PRAGMA 检查缺失时 ALTER TABLE ADD COLUMN（SQLite 无 ADD COLUMN IF NOT EXISTS）。 */
@@ -231,6 +232,7 @@ const INITIAL_DDL: string[] = [
     resource_id VARCHAR(128) NOT NULL,
     rating INTEGER NOT NULL DEFAULT 0,
     note TEXT NOT NULL DEFAULT '',
+    tags TEXT NOT NULL DEFAULT '[]',
     created_at DATETIME,
     updated_at DATETIME,
     FOREIGN KEY (user_id) REFERENCES users(id)

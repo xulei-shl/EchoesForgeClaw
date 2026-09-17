@@ -107,6 +107,7 @@ describe('用户通用标注（打标 1-5 星与私有备注）API 测试', () =
       resource_id: 'p_test_1',
       rating: 5,
       note: '测试提示词备注',
+      tags: [],
     });
 
     // 单个读取
@@ -121,9 +122,10 @@ describe('用户通用标注（打标 1-5 星与私有备注）API 测试', () =
       resource_id: 'p_test_1',
       rating: 5,
       note: '测试提示词备注',
+      tags: [],
     });
 
-    // 单独更新 rating（保留已有 note）
+    // 单独更新 rating（保留已有 note 与 tags）
     const updateRating = await app.inject({
       method: 'PUT',
       url: '/api/annotations',
@@ -140,10 +142,42 @@ describe('用户通用标注（打标 1-5 星与私有备注）API 测试', () =
       resource_id: 'p_test_1',
       rating: 3,
       note: '测试提示词备注',
+      tags: [],
     });
   });
 
-  it('rating 为 0 且 note 为空时自动清理数据库记录', async () => {
+  it('写入与更新 tags，支持标签去重与历史保留', async () => {
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/annotations',
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: {
+        resource_type: 'bifrost_skill',
+        resource_id: 'tag_skill_test',
+        rating: 4,
+        note: '带标签的技能',
+        tags: ['代码', ' 工作流 ', '代码', ''],
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      resource_type: 'bifrost_skill',
+      resource_id: 'tag_skill_test',
+      rating: 4,
+      note: '带标签的技能',
+      tags: ['代码', '工作流'],
+    });
+
+    // 读取验证
+    const getRes = await app.inject({
+      method: 'GET',
+      url: '/api/annotations/bifrost_skill/tag_skill_test',
+      headers: { authorization: `Bearer ${adminToken}` },
+    });
+    expect(getRes.json().tags).toEqual(['代码', '工作流']);
+  });
+
+  it('rating 为 0 且 note 为空且 tags 为空时自动清理数据库记录', async () => {
     // 先写入一条
     await app.inject({
       method: 'PUT',
@@ -154,6 +188,7 @@ describe('用户通用标注（打标 1-5 星与私有备注）API 测试', () =
         resource_id: 'temp_skill',
         rating: 4,
         note: '临时备注',
+        tags: ['临时标签'],
       },
     });
 
@@ -164,7 +199,7 @@ describe('用户通用标注（打标 1-5 星与私有备注）API 测试', () =
       .get();
     expect(row).toBeTruthy();
 
-    // 清空 rating 和 note
+    // 清空 rating, note, tags
     const clearRes = await app.inject({
       method: 'PUT',
       url: '/api/annotations',
@@ -174,6 +209,7 @@ describe('用户通用标注（打标 1-5 星与私有备注）API 测试', () =
         resource_id: 'temp_skill',
         rating: 0,
         note: '  ',
+        tags: [],
       },
     });
     expect(clearRes.statusCode).toBe(200);
@@ -182,6 +218,7 @@ describe('用户通用标注（打标 1-5 星与私有备注）API 测试', () =
       resource_id: 'temp_skill',
       rating: 0,
       note: '',
+      tags: [],
     });
 
     // 验证数据库行已删除
@@ -196,7 +233,7 @@ describe('用户通用标注（打标 1-5 星与私有备注）API 测试', () =
   it('多用户完全隔离：不同用户对同一资源的打标与备注互不干扰', async () => {
     const targetPrompt = 'shared_prompt_123';
 
-    // 1. Admin 打 5 星 + 写备注 A
+    // 1. Admin 打 5 星 + 写备注 A + 标签
     await app.inject({
       method: 'PUT',
       url: '/api/annotations',
@@ -206,6 +243,7 @@ describe('用户通用标注（打标 1-5 星与私有备注）API 测试', () =
         resource_id: targetPrompt,
         rating: 5,
         note: 'Admin 专享超棒提示词',
+        tags: ['精选', '推荐'],
       },
     });
 
@@ -219,6 +257,7 @@ describe('用户通用标注（打标 1-5 星与私有备注）API 测试', () =
         resource_id: targetPrompt,
         rating: 2,
         note: 'User 觉得效果一般',
+        tags: ['草稿'],
       },
     });
 
@@ -233,6 +272,7 @@ describe('用户通用标注（打标 1-5 星与私有备注）API 测试', () =
       resource_id: targetPrompt,
       rating: 5,
       note: 'Admin 专享超棒提示词',
+      tags: ['精选', '推荐'],
     });
 
     // 4. User 读取自己视角
@@ -246,6 +286,7 @@ describe('用户通用标注（打标 1-5 星与私有备注）API 测试', () =
       resource_id: targetPrompt,
       rating: 2,
       note: 'User 觉得效果一般',
+      tags: ['草稿'],
     });
   });
 });

@@ -14,11 +14,13 @@ export const VALID_RESOURCE_TYPES = new Set([
 export interface UserAnnotationData {
   rating: number;
   note: string;
+  tags: string[];
 }
 
 export interface SetAnnotationPayload {
   rating?: number;
   note?: string;
+  tags?: string[];
 }
 
 /** 校验并规范化评分值（0~5 整数，0 表示未打标/清除打标）。 */
@@ -29,7 +31,35 @@ export function normalizeRating(rating: unknown): number {
   return Math.min(5, Math.max(0, Math.floor(num)));
 }
 
-/** 批量获取用户在特定资源类型下的打标与备注映射表：resourceId → { rating, note } */
+/** 规范化标签列表：去重、去除空白字符、过滤空串 */
+export function normalizeTags(tags: unknown[]): string[] {
+  const set = new Set<string>();
+  for (const t of tags) {
+    if (typeof t === 'string') {
+      const trimmed = t.trim();
+      if (trimmed) set.add(trimmed);
+    }
+  }
+  return Array.from(set);
+}
+
+/** 解析数据库存储的 tags 原始值（JSON 字符串或数组） */
+export function parseTags(raw: unknown): string[] {
+  if (Array.isArray(raw)) {
+    return normalizeTags(raw);
+  }
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return normalizeTags(parsed);
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+/** 批量获取用户在特定资源类型下的打标与备注映射表：resourceId → { rating, note, tags } */
 export function getUserAnnotationMap(
   db: DB,
   userId: number,
@@ -56,12 +86,13 @@ export function getUserAnnotationMap(
     map.set(r.resourceId, {
       rating: r.rating ?? 0,
       note: r.note ?? '',
+      tags: parseTags(r.tags),
     });
   }
   return map;
 }
 
-/** 单个查询用户对指定资源的打标与备注（无则返回默认 { rating: 0, note: '' }）。 */
+/** 单个查询用户对指定资源的打标与备注（无则返回默认 { rating: 0, note: '', tags: [] }）。 */
 export function getUserAnnotation(
   db: DB,
   userId: number,
@@ -69,7 +100,7 @@ export function getUserAnnotation(
   resourceId: string
 ): UserAnnotationData {
   const rid = (resourceId ?? '').trim();
-  if (!rid || !userId) return { rating: 0, note: '' };
+  if (!rid || !userId) return { rating: 0, note: '', tags: [] };
 
   const row = db
     .select()
@@ -86,12 +117,13 @@ export function getUserAnnotation(
   return {
     rating: row?.rating ?? 0,
     note: row?.note ?? '',
+    tags: parseTags(row?.tags),
   };
 }
 
 /**
- * 写入或更新用户的打标/备注。
- * 若 rating 为 0 且 note 为空串，则自动物理删除记录以精简数据库。
+ * 写入或更新用户的打标/备注/标签。
+ * 若 rating 为 0 且 note 为空串且 tags 为空，则自动物理删除记录以精简数据库。
  */
 export function setUserAnnotation(
   db: DB,
@@ -128,24 +160,31 @@ export function setUserAnnotation(
     payload.note !== undefined
       ? (payload.note ?? '').trim()
       : existing?.note ?? '';
+  const nextTags =
+    payload.tags !== undefined
+      ? normalizeTags(payload.tags)
+      : parseTags(existing?.tags);
 
   const timestamp = now();
 
-  // 若无星级且无备注，删除行以保持库表紧凑
-  if (nextRating === 0 && !nextNote) {
+  // 若无星级、无备注且无标签，删除行以保持库表紧凑
+  if (nextRating === 0 && !nextNote && nextTags.length === 0) {
     if (existing) {
       db.delete(userAnnotations)
         .where(eq(userAnnotations.id, existing.id))
         .run();
     }
-    return { rating: 0, note: '' };
+    return { rating: 0, note: '', tags: [] };
   }
+
+  const tagsJson = JSON.stringify(nextTags);
 
   if (existing) {
     db.update(userAnnotations)
       .set({
         rating: nextRating,
         note: nextNote,
+        tags: tagsJson,
         updatedAt: timestamp,
       })
       .where(eq(userAnnotations.id, existing.id))
@@ -158,11 +197,12 @@ export function setUserAnnotation(
         resourceId: rid,
         rating: nextRating,
         note: nextNote,
+        tags: tagsJson,
         createdAt: timestamp,
         updatedAt: timestamp,
       })
       .run();
   }
 
-  return { rating: nextRating, note: nextNote };
+  return { rating: nextRating, note: nextNote, tags: nextTags };
 }

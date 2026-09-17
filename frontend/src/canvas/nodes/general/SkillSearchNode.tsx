@@ -63,6 +63,7 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
   const [error, setError] = useState('');
   const [q, setQ] = useState('');
   const [ratingFilter, setRatingFilter] = useState('');
+  const [tagFilter, setTagFilter] = useState('');
   const [editingTarget, setEditingTarget] = useState<BifrostSkill | null>(null);
 
   const [uploading, setUploading] = useState(false);
@@ -76,6 +77,13 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
 
   /** 已选 skill 名称集合（按 name 判等去重） */
   const selectedNames = useMemo(() => new Set(selections.map((s) => s.name)), [selections]);
+
+  /** 聚合当前列表中所有的标签供筛选和输入推荐 */
+  const availableTags = useMemo(() => {
+    const set = new Set<string>();
+    skills.forEach((s) => s.user_tags?.forEach((t) => set.add(t)));
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [skills]);
 
   const loadSkills = useCallback(async (keyword?: string) => {
     const seq = ++requestSeq.current;
@@ -109,6 +117,7 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
   const openPicker = useCallback(() => {
     setQ('');
     setRatingFilter('');
+    setTagFilter('');
     setSkills([]);
     setTotal(0);
     setUploadError('');
@@ -129,11 +138,12 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
         resource_id: s.name,
         rating: nextRating,
         note: s.user_note ?? s.note ?? '',
+        tags: s.user_tags,
       });
       setSkills((prev) =>
         prev.map((item) =>
           item.name === s.name
-            ? { ...item, user_rating: res.rating, user_note: res.note, note: res.note }
+            ? { ...item, user_rating: res.rating, user_note: res.note, note: res.note, user_tags: res.tags }
             : item
         )
       );
@@ -142,7 +152,7 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
           id,
           selections.map((item) =>
             item.name === s.name
-              ? { ...item, userRating: res.rating, userNote: res.note, note: res.note }
+              ? { ...item, userRating: res.rating, userNote: res.note, note: res.note, userTags: res.tags }
               : item
           )
         );
@@ -153,7 +163,7 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
   };
 
   /** 保存打标与备注 */
-  const handleSaveAnnotation = async (rating: number, note: string) => {
+  const handleSaveAnnotation = async (rating: number, note: string, tags?: string[]) => {
     if (!editingTarget) return;
     try {
       const res = await annotationService.setAnnotation({
@@ -161,11 +171,12 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
         resource_id: editingTarget.name,
         rating,
         note,
+        tags,
       });
       setSkills((prev) =>
         prev.map((item) =>
           item.name === editingTarget.name
-            ? { ...item, user_rating: res.rating, user_note: res.note, note: res.note }
+            ? { ...item, user_rating: res.rating, user_note: res.note, note: res.note, user_tags: res.tags }
             : item
         )
       );
@@ -174,7 +185,7 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
           id,
           selections.map((item) =>
             item.name === editingTarget.name
-              ? { ...item, userRating: res.rating, userNote: res.note, note: res.note }
+              ? { ...item, userRating: res.rating, userNote: res.note, note: res.note, userTags: res.tags }
               : item
           )
         );
@@ -196,9 +207,10 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
     [id, selections, onUpdateSkills]
   );
 
-  // 客户端星级过滤
+  // 客户端星级与标签过滤
   const filteredSkills = useMemo(() => {
     return skills.filter((s) => {
+      if (tagFilter && !s.user_tags?.includes(tagFilter)) return false;
       if (ratingFilter === '5' && (s.user_rating ?? 0) !== 5) return false;
       if (ratingFilter === '4+' && (s.user_rating ?? 0) < 4) return false;
       if (ratingFilter === '3+' && (s.user_rating ?? 0) < 3) return false;
@@ -207,7 +219,7 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
       if (ratingFilter === 'noted' && !(s.user_note?.trim() || s.note?.trim())) return false;
       return true;
     });
-  }, [skills, ratingFilter]);
+  }, [skills, ratingFilter, tagFilter]);
 
   // 加载更多（流式触底加载）
   const loadMoreSkills = useCallback(async () => {
@@ -289,6 +301,7 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
         note: meta.user_note ?? meta.note,
         userRating: meta.user_rating ?? s.user_rating,
         userNote: meta.user_note ?? s.user_note,
+        userTags: meta.user_tags ?? s.user_tags,
       });
     } catch (e: any) {
       setError(e?.message || '安装失败，请重试');
@@ -374,7 +387,7 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
         <div className="py-10 flex flex-col items-center gap-2 text-center">
           <Archive size={30} strokeWidth={1} className="text-ink-faint" />
           <p className="text-sm text-ink-light font-sans">
-            {q.trim() || ratingFilter ? '没有匹配筛选条件的 skill' : 'Bifrost Skills 仓库为空（或未配置）'}
+            {q.trim() || ratingFilter || tagFilter ? '没有匹配筛选条件的 skill' : 'Bifrost Skills 仓库为空（或未配置）'}
           </p>
         </div>
       )}
@@ -427,6 +440,30 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
                   </div>
                 </div>
                 <p className="text-xs text-ink-light line-clamp-2 leading-relaxed mt-1">{s.description || '（无描述）'}</p>
+                {s.user_tags && s.user_tags.length > 0 && (
+                  <div className="flex items-center gap-1 mt-1.5 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                    {s.user_tags.slice(0, 3).map((tag) => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => setTagFilter(tagFilter === tag ? '' : tag)}
+                        className={`text-[10px] px-1.5 py-px rounded border transition-colors ${
+                          tagFilter === tag
+                            ? 'bg-accent text-paper border-accent font-medium'
+                            : 'bg-paper-grid/20 border-dashed border-paper-grid text-ink-light hover:border-accent/40 hover:text-accent'
+                        }`}
+                        title={`按标签「${tag}」过滤`}
+                      >
+                        #{tag}
+                      </button>
+                    ))}
+                    {s.user_tags.length > 3 && (
+                      <span className="text-[10px] text-ink-faint border border-dashed border-paper-grid px-1 rounded">
+                        +{s.user_tags.length - 3}
+                      </span>
+                    )}
+                  </div>
+                )}
                 {noteText && (
                   <p className="text-[11px] text-accent font-sans mt-1 line-clamp-1 italic bg-accent-surface/50 px-1.5 py-0.5 rounded border border-accent/20">
                     备注：{noteText}
@@ -657,7 +694,7 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
                   <Select
                     value={ratingFilter}
                     onChange={(val) => setRatingFilter(val)}
-                    className="w-36"
+                    className="w-32 shrink-0"
                     options={[
                       { label: '全部打标', value: '' },
                       { label: '★ 5 星', value: '5' },
@@ -666,6 +703,15 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
                       { label: '已打标', value: 'rated' },
                       { label: '未打标', value: 'unrated' },
                       { label: '仅有备注', value: 'noted' },
+                    ]}
+                  />
+                  <Select
+                    value={tagFilter}
+                    onChange={(val) => setTagFilter(val)}
+                    className="w-32 shrink-0"
+                    options={[
+                      { label: '全部标签', value: '' },
+                      ...availableTags.map((t) => ({ label: `#${t}`, value: t })),
                     ]}
                   />
                 </div>
@@ -691,13 +737,15 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
               </div>
             </Dialog>
 
-            {/* 独立备注编辑弹窗 */}
+            {/* 独立备注与标签编辑弹窗 */}
             <NoteEditModal
               open={Boolean(editingTarget)}
               onClose={() => setEditingTarget(null)}
               resourceName={editingTarget?.name || ''}
               initialRating={editingTarget?.user_rating || 0}
               initialNote={editingTarget?.user_note || editingTarget?.note || ''}
+              initialTags={editingTarget?.user_tags || []}
+              suggestedTags={availableTags}
               onSave={handleSaveAnnotation}
             />
           </>,
