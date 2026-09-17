@@ -2,6 +2,8 @@ import React, { memo, useState, useCallback, useMemo, useEffect } from 'react';
 import { Copy, Check } from 'lucide-react';
 import { Streamdown, cjk, code } from '../../utils/markdown';
 import { normalizeMarkdown } from '../../utils/normalizeMarkdown';
+import { copyTextToClipboard } from '../../utils/clipboard';
+import { useFeedback } from './FeedbackProvider';
 
 /** 单例化插件配置对象：轻量极速版（仅 CJK 中文排版，< 2ms 首绘）与全量版（含 Shiki 语法高亮） */
 const FAST_PLUGINS = { cjk };
@@ -28,6 +30,7 @@ export const MarkdownViewer: React.FC<MarkdownViewerProps> = memo(({
   selectable = true,
 }) => {
   const [copied, setCopied] = useState(false);
+  const { showToast } = useFeedback();
 
   const text = (content ?? '').trim();
 
@@ -51,12 +54,16 @@ export const MarkdownViewer: React.FC<MarkdownViewerProps> = memo(({
     return () => window.clearTimeout(timer);
   }, [text, isLargeDoc]);
 
-  const handleCopy = useCallback(() => {
+  const handleCopy = useCallback(async () => {
     if (!text) return;
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }, [text]);
+    try {
+      await copyTextToClipboard(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      showToast('复制失败，已全选正文，请按 Ctrl+C 手动复制', { type: 'error' });
+    }
+  }, [text, showToast]);
 
   if (!text) {
     return (

@@ -2,6 +2,10 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Tooltip } from '../../../shared/components/ui/Tooltip';
 import { useFeedback } from '../../../shared/components/ui/FeedbackProvider';
+import { copyTextToClipboard } from '../../../shared/utils/clipboard';
+
+// 全站统一剪贴板工具下沉至 shared/utils/clipboard，此处保留导出兼容旧引用
+export { copyTextToClipboard };
 import { Play, RefreshCw, Pencil, Check, X, Download, Eraser, Settings2, Copy, RotateCcw, ExternalLink, PanelRight, Loader2 } from 'lucide-react';
 
 export const ACTION_BTN_CLASS =
@@ -159,33 +163,6 @@ NodeActionBar.SettingsTrigger = React.forwardRef<HTMLButtonElement, Omit<BaseBut
   )
 );
 NodeActionBar.SettingsTrigger.displayName = 'SettingsTrigger';
-
-/** 复制文本到剪贴板，优先 Clipboard API，非安全上下文等场景降级为 execCommand */
-export const copyTextToClipboard = async (text: string): Promise<void> => {
-  if (navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(text);
-      return;
-    } catch {
-      // 忽略后尝试降级方案
-    }
-  }
-  const textarea = document.createElement('textarea');
-  textarea.value = text;
-  textarea.style.position = 'fixed';
-  textarea.style.opacity = '0';
-  textarea.style.pointerEvents = 'none';
-  document.body.appendChild(textarea);
-  textarea.focus();
-  textarea.select();
-  try {
-    if (!document.execCommand('copy')) {
-      throw new Error('execCommand copy failed');
-    }
-  } finally {
-    document.body.removeChild(textarea);
-  }
-};
 
 export interface CopyButtonProps extends Omit<BaseButtonProps, 'icon' | 'tooltip'> {
   /** 需要复制的文本内容（与 onCopy 二选一，优先调用 onCopy） */

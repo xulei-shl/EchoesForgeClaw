@@ -15,6 +15,7 @@ import { NodeActionBar } from '../_shared/NodeActionBar';
 import { useFeedback } from '../../../shared/components/ui/FeedbackProvider';
 import { Select } from '../../../shared/components/ui/Select';
 import { SMALL_TOOL_TIMEOUT_MS } from '../../../shared/utils/timeouts';
+import { copyTextToClipboard } from '../../../shared/utils/clipboard';
 import { NODE_COLORS } from '../_shared/nodeTypes';
 
 export interface ColorHarmonyItem {
@@ -726,17 +727,21 @@ const ColorSearchNodeInner: React.FC<ColorSearchNodeProps> = ({
     });
   };
 
-  // 复制 HEX
-  const copyToClipboard = (text: string, label = '颜色代码') => {
-    navigator.clipboard.writeText(text);
-    showToast(`已复制 ${label}: ${text}`, { type: 'success' });
+  // 复制 HEX（Clipboard API 失败时自动降级 execCommand）
+  const copyToClipboard = async (text: string, label = '颜色代码') => {
+    try {
+      await copyTextToClipboard(text);
+      showToast(`已复制 ${label}: ${text}`, { type: 'success' });
+    } catch {
+      showToast('复制失败，已全选文本，请按 Ctrl+C 手动复制', { type: 'error' });
+    }
   };
 
   // 复制整个调色板
   const copyFullPalette = () => {
     if (!palette.length) return;
     const text = palette.map((p) => `${p.name} ${p.hex}`).join(' | ');
-    copyToClipboard(text, '5色调色板');
+    void copyToClipboard(text, '5色调色板');
   };
 
   const handleDownload = () => {
@@ -1073,7 +1078,7 @@ const ColorSearchNodeInner: React.FC<ColorSearchNodeProps> = ({
                         </span>
                         <button
                           type="button"
-                          onClick={() => copyToClipboard(color.hex, color.name)}
+                          onClick={() => void copyToClipboard(color.hex, color.name)}
                           className="text-[10px] font-mono opacity-80 hover:opacity-100 hover:underline cursor-pointer"
                           title="点击复制 HEX"
                         >

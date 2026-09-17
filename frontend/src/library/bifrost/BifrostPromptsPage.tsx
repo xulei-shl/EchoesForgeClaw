@@ -27,6 +27,7 @@ import { MarkdownViewer } from '../../shared/components/ui/MarkdownViewer';
 import { useFeedback } from '../../shared/components/ui/FeedbackProvider';
 import { ViewToggle, type ViewMode } from '../../shared/components/ui/ViewToggle';
 import { useBifrostPrompts } from './useBifrostPrompts';
+import { copyTextToClipboard } from '../../shared/utils/clipboard';
 
 export const BifrostPromptsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -68,14 +69,18 @@ export const BifrostPromptsPage: React.FC = () => {
   const [detail, setDetail] = useState<BifrostPrompt | null>(null);
   const [editingNoteTarget, setEditingNoteTarget] = useState<BifrostPrompt | null>(null);
 
-  /** 复制提示词正文 */
-  const handleCopy = (content: string, name: string) => {
+  /** 复制提示词正文（Clipboard API 失败时自动降级 execCommand） */
+  const handleCopy = async (content: string, name: string) => {
     if (!content.trim()) {
       showToast('该提示词内容为空', { type: 'warning' });
       return;
     }
-    navigator.clipboard.writeText(content);
-    showToast(`已复制「${name}」正文`, { type: 'success' });
+    try {
+      await copyTextToClipboard(content);
+      showToast(`已复制「${name}」正文`, { type: 'success' });
+    } catch {
+      showToast('复制失败，请手动选择正文复制', { type: 'error' });
+    }
   };
 
   /** 一键在画板创建提示词节点并载入内容 */
@@ -394,7 +399,7 @@ export const BifrostPromptsPage: React.FC = () => {
                         <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
                           <button
                             type="button"
-                            onClick={() => handleCopy(p.content, p.name)}
+                            onClick={() => void handleCopy(p.content, p.name)}
                             className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-paper-grid/80 text-ink-light hover:text-ink active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out"
                             title="复制提示词正文"
                           >
@@ -492,7 +497,7 @@ export const BifrostPromptsPage: React.FC = () => {
                     <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
                       <button
                         type="button"
-                        onClick={() => handleCopy(p.content, p.name)}
+                        onClick={() => void handleCopy(p.content, p.name)}
                         className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-paper-grid/80 text-ink-light hover:text-ink active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out"
                         title="复制提示词正文"
                       >
@@ -549,7 +554,7 @@ export const BifrostPromptsPage: React.FC = () => {
                 </Button>
                 <Button
                   variant="secondary"
-                  onClick={() => handleCopy(detail.content, detail.name)}
+                  onClick={() => void handleCopy(detail.content, detail.name)}
                   className="flex items-center gap-1.5"
                 >
                   <Copy size={14} />
@@ -620,7 +625,7 @@ export const BifrostPromptsPage: React.FC = () => {
                   <label className="text-xs font-semibold text-ink font-serif">提示词正文内容</label>
                   <button
                     type="button"
-                    onClick={() => handleCopy(detail.content, detail.name)}
+                    onClick={() => void handleCopy(detail.content, detail.name)}
                     className="text-xs text-accent hover:text-accent-hover flex items-center gap-1"
                   >
                     <Copy size={13} />
