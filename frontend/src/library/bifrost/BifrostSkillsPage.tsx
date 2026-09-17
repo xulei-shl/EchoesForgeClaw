@@ -438,128 +438,129 @@ export const BifrostSkillsPage: React.FC = () => {
                           : 'hover:border-accent/40 hover:shadow-md hover:-translate-y-0.5'
                       }`}
                     >
-                      {/* 卡片头部：复选框 + 名称 + 评分 + 稳定徽标行 */}
-                      <div className="flex items-start gap-2.5">
+                      {/* 第 1 行：主标题纯享行（复选框 + 名称，单行截断，不换行） */}
+                      <div className="flex items-center gap-2">
                         <button
                           type="button"
                           onClick={() => toggleSelect(s.name)}
-                          className="h-7 w-7 -ml-1 -mt-0.5 flex items-center justify-center rounded-md hover:bg-paper-grid/40 text-ink-light hover:text-accent active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out shrink-0"
+                          className="h-6 w-6 -ml-0.5 flex items-center justify-center rounded-md hover:bg-paper-grid/40 text-ink-light hover:text-accent active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out shrink-0"
                           title={isChecked ? '取消选择' : '勾选此项'}
                         >
                           {isChecked ? (
-                            <CheckSquare size={17} className="text-accent" />
+                            <CheckSquare size={16} className="text-accent" />
                           ) : (
-                            <Square size={17} className="text-ink-faint group-hover:text-ink-light" />
+                            <Square size={16} className="text-ink-faint group-hover:text-ink-light" />
                           )}
                         </button>
 
-                        <div className="flex-1 min-w-0 cursor-pointer" onClick={() => void openDetail(s)}>
-                          <div className="flex items-center justify-between gap-2">
-                            <p
-                              className="font-serif text-sm font-semibold text-ink truncate flex-1 group-hover:text-accent transition-colors"
-                              title={s.name}
-                            >
-                              {s.name}
-                            </p>
-                            <div onClick={(e) => e.stopPropagation()} className="shrink-0">
-                              <RatingStars
-                                value={s.user_rating || 0}
-                                onChange={(r) => void handleUpdateRating(s.name, r, noteText)}
-                                size="xs"
-                              />
-                            </div>
-                          </div>
-                          {/* 紧随标题的固定元数据徽标行，位置整齐划一 */}
-                          <div className="flex items-center gap-1.5 mt-1 min-h-[1.25rem] flex-wrap">
-                            {isCached ? (
-                              s.cached_version ? (
-                                <Badge variant={s.latest_version && s.cached_version !== s.latest_version ? 'warning' : 'success'} className="text-[10px] px-1.5 py-px">
-                                  本地 v{s.cached_version}
-                                </Badge>
-                              ) : (
-                                <Badge className="text-[10px] px-1.5 py-px">本地缓存</Badge>
-                              )
-                            ) : (
-                              <Badge className="text-[10px] px-1.5 py-px">未缓存</Badge>
-                            )}
-                            {s.latest_version && (
-                              <Badge className="text-[10px] px-1.5 py-px">远端 v{s.latest_version}</Badge>
-                            )}
-                          </div>
+                        <div
+                          className="flex-1 min-w-0 cursor-pointer"
+                          onClick={() => void openDetail(s)}
+                          title={s.name}
+                        >
+                          <p className="font-serif text-sm font-semibold text-ink truncate group-hover:text-accent transition-colors">
+                            {s.name}
+                          </p>
                         </div>
                       </div>
 
-                      {/* 描述信息（预留双行基准槽位高度，保持顶边和底边对齐） */}
+                      {/* 第 2 行：核心元数据行（版本/缓存 Badge 居左，打星 RatingStars 居右两极平衡） */}
+                      <div className="flex items-center justify-between gap-2 mt-2 h-5">
+                        <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                          {isCached ? (
+                            s.cached_version ? (
+                              <Badge variant={s.latest_version && s.cached_version !== s.latest_version ? 'warning' : 'success'} className="text-[10px] px-1.5 py-px">
+                                本地 v{s.cached_version}
+                              </Badge>
+                            ) : (
+                              <Badge className="text-[10px] px-1.5 py-px">本地缓存</Badge>
+                            )
+                          ) : (
+                            <Badge className="text-[10px] px-1.5 py-px">未缓存</Badge>
+                          )}
+                          {s.latest_version && (
+                            <Badge className="text-[10px] px-1.5 py-px">远端 v{s.latest_version}</Badge>
+                          )}
+                        </div>
+
+                        <div onClick={(e) => e.stopPropagation()} className="shrink-0">
+                          <RatingStars
+                            value={s.user_rating || 0}
+                            onChange={(r) => void handleUpdateRating(s.name, r, noteText)}
+                            size="xs"
+                          />
+                        </div>
+                      </div>
+
+                      {/* 第 3 区：描述信息（固定两行基准槽位高度，保持严格等高对齐） */}
                       <p
-                        className="mt-2 text-xs text-ink-light font-sans line-clamp-2 leading-relaxed cursor-pointer min-h-[2.25rem]"
+                        className="mt-2 text-xs text-ink-light font-sans line-clamp-2 leading-relaxed cursor-pointer h-9 overflow-hidden"
                         onClick={() => void openDetail(s)}
                       >
                         {s.description || '（暂无详细功能描述）'}
                       </p>
 
-                      {/* 微标签展示（最多 2 个，超出显示 +N，点击快捷筛选） */}
-                      {s.user_tags && s.user_tags.length > 0 && (
-                        <div className="mt-2 flex items-center gap-1 flex-wrap" onClick={(e) => e.stopPropagation()}>
-                          {s.user_tags.slice(0, 2).map((tag) => (
+                      {/* 第 4 区：微标签与私有备注轻量微聚合行 */}
+                      <div className="mt-2 flex items-center justify-between gap-1.5 min-h-[1.5rem]" onClick={(e) => e.stopPropagation()}>
+                        {/* 微标签 */}
+                        <div className="flex items-center gap-1 min-w-0 flex-wrap">
+                          {s.user_tags && s.user_tags.length > 0 ? (
+                            <>
+                              {s.user_tags.slice(0, 2).map((tag) => (
+                                <button
+                                  key={tag}
+                                  type="button"
+                                  onClick={() => setTagFilter(tagFilter === tag ? '' : tag)}
+                                  className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
+                                    tagFilter === tag
+                                      ? 'bg-accent text-paper border-accent font-medium'
+                                      : 'bg-paper-grid/20 border-dashed border-paper-grid text-ink-light hover:border-accent/40 hover:text-accent'
+                                  }`}
+                                  title={`按标签「${tag}」过滤`}
+                                >
+                                  #{tag}
+                                </button>
+                              ))}
+                              {s.user_tags.length > 2 && (
+                                <span
+                                  className="text-[10px] text-ink-faint border border-dashed border-paper-grid px-1 rounded"
+                                  title={s.user_tags.slice(2).map((t) => `#${t}`).join(', ')}
+                                >
+                                  +{s.user_tags.length - 2}
+                                </span>
+                              )}
+                            </>
+                          ) : null}
+                        </div>
+
+                        {/* 私有备注触发与展示 */}
+                        <div className="shrink-0 max-w-[55%]">
+                          {noteText ? (
                             <button
-                              key={tag}
                               type="button"
-                              onClick={() => setTagFilter(tagFilter === tag ? '' : tag)}
-                              className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
-                                tagFilter === tag
-                                  ? 'bg-accent text-paper border-accent font-medium'
-                                  : 'bg-paper-grid/20 border-dashed border-paper-grid text-ink-light hover:border-accent/40 hover:text-accent'
-                              }`}
-                              title={`按标签「${tag}」过滤`}
+                              onClick={() => setEditingNoteTarget(s)}
+                              className="h-5 text-[10px] text-accent font-sans italic bg-accent-surface/50 px-2 rounded border border-accent/20 hover:border-accent/40 transition-colors flex items-center gap-1 max-w-full group/note truncate"
+                              title={`备注：${noteText}`}
                             >
-                              #{tag}
+                              <StickyNote size={10} className="shrink-0 opacity-70 group-hover/note:opacity-100" />
+                              <span className="truncate">{noteText}</span>
                             </button>
-                          ))}
-                          {s.user_tags.length > 2 && (
-                            <span
-                              className="text-[10px] text-ink-faint border border-dashed border-paper-grid px-1 rounded"
-                              title={s.user_tags.slice(2).map((t) => `#${t}`).join(', ')}
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setEditingNoteTarget(s)}
+                              className="h-5 text-[10px] text-ink-faint hover:text-accent font-sans px-1.5 rounded hover:bg-paper-grid/40 transition-colors flex items-center gap-1 opacity-60 hover:opacity-100"
+                              title="添加私有备注"
                             >
-                              +{s.user_tags.length - 2}
-                            </span>
+                              <StickyNote size={11} />
+                              <span>备注</span>
+                            </button>
                           )}
                         </div>
-                      )}
-
-                      {/* 私有备注展示与编辑（统一槽位高度与基线，并通过 mt-auto 紧贴操作栏） */}
-                      <div className="mt-auto pt-3">
-                        {noteText ? (
-                          <div
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingNoteTarget(s);
-                            }}
-                            className="h-7 text-[11px] text-accent font-sans italic bg-accent-surface/50 px-2.5 rounded-lg border border-accent/20 hover:border-accent/40 transition-colors flex items-center justify-between cursor-pointer group/note"
-                            title={`备注：${noteText}`}
-                          >
-                            <span className="truncate">备注：{noteText}</span>
-                            <StickyNote size={12} className="shrink-0 ml-1.5 opacity-70 group-hover/note:opacity-100 transition-opacity" />
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingNoteTarget(s);
-                            }}
-                            className="h-7 w-full text-[11px] text-ink-faint hover:text-accent font-sans px-2.5 rounded-lg border border-dashed border-paper-grid hover:border-accent/40 hover:bg-accent-surface/20 transition-all flex items-center justify-between cursor-pointer active:scale-[0.98]"
-                            title="添加私有备注"
-                          >
-                            <span className="flex items-center gap-1.5">
-                              <StickyNote size={12} className="opacity-60" />
-                              <span>添加私有备注</span>
-                            </span>
-                          </button>
-                        )}
                       </div>
 
-                      {/* 底部信息与动作按钮：单行绝对对齐，零折叠 */}
-                      <div className="flex items-center justify-between gap-2 pt-3 mt-3 border-t border-paper-grid/50">
+                      {/* 第 5 区：底部信息与动作按钮（mt-auto 绝对沉底，单行零折叠） */}
+                      <div className="flex items-center justify-between gap-2 pt-2.5 mt-auto border-t border-paper-grid/40">
                         <div className="min-w-0 flex-1">
                           {(isCached ? s.updated_at : s.remote_updated_at) ? (
                             <span className="text-[10px] text-ink-faint font-sans tabular-nums truncate block" title={isCached ? `本地更新: ${formatDate(s.updated_at)}` : `远端更新: ${formatDate(s.remote_updated_at)}`}>
@@ -635,14 +636,14 @@ export const BifrostSkillsPage: React.FC = () => {
                         </button>
                       </div>
 
-                      {/* 技能名称与版本/时间元数据组（3行稳定结构：1行名称，2行版本徽标，3行时间） */}
-                      <div className="w-56 sm:w-64 shrink-0 min-w-0 flex flex-col justify-center gap-1">
+                      {/* 技能名称与状态徽标（纯粹双行：1行名称单行截断，2行状态徽标；时间移至右侧详情面板） */}
+                      <div className="w-44 sm:w-52 shrink-0 min-w-0 flex flex-col justify-center gap-1">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className="font-serif text-sm font-semibold text-ink truncate group-hover:text-accent transition-colors" title={s.name}>
                             {s.name}
                           </span>
                         </div>
-                        <div className="flex items-center gap-1.5 min-w-0">
+                        <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                           {isCached ? (
                             s.cached_version ? (
                               <Badge variant={s.latest_version && s.cached_version !== s.latest_version ? 'warning' : 'success'} className="text-[10px] px-1.5 py-px">
@@ -658,64 +659,58 @@ export const BifrostSkillsPage: React.FC = () => {
                             <Badge className="text-[10px] px-1.5 py-px">远端 v{s.latest_version}</Badge>
                           )}
                         </div>
-                        {(isCached ? s.updated_at : s.remote_updated_at) ? (
-                          <span className="text-[10px] text-ink-faint font-sans tabular-nums truncate">
-                            {isCached ? formatDate(s.updated_at) : formatDate(s.remote_updated_at)}
-                          </span>
-                        ) : null}
                       </div>
 
-                      {/* 功能描述、微标签与私有备注 */}
-                      <div className="flex-1 min-w-0 hidden md:block">
-                        <div className="flex items-center gap-2">
-                          <p className="text-xs text-ink-light font-sans truncate flex-1">
-                            {s.description || '（暂无详细功能描述）'}
-                          </p>
-                          {s.user_tags && s.user_tags.length > 0 && (
-                            <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                              {s.user_tags.slice(0, 2).map((tag) => (
-                                <button
-                                  key={tag}
-                                  type="button"
-                                  onClick={() => setTagFilter(tagFilter === tag ? '' : tag)}
-                                  className={`text-[10px] px-1.5 py-px rounded border transition-colors ${
-                                    tagFilter === tag
-                                      ? 'bg-accent text-paper border-accent font-medium'
-                                      : 'bg-paper-grid/20 border-dashed border-paper-grid text-ink-light hover:border-accent/40 hover:text-accent'
-                                  }`}
-                                  title={`按标签「${tag}」过滤`}
-                                >
-                                  #{tag}
-                                </button>
-                              ))}
-                              {s.user_tags.length > 2 && (
-                                <span
-                                  className="text-[10px] text-ink-faint border border-dashed border-paper-grid px-1 rounded"
-                                  title={s.user_tags.slice(2).map((t) => `#${t}`).join(', ')}
-                                >
-                                  +{s.user_tags.length - 2}
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </div>
+                      {/* 功能描述与私有备注（中间弹性区域，支持超宽舒展） */}
+                      <div className="flex-1 min-w-0 hidden md:block px-2">
+                        <p className="text-xs text-ink-light font-sans truncate">
+                          {s.description || '（暂无详细功能描述）'}
+                        </p>
                         {noteText && (
                           <p
-                            className="text-[11px] text-accent font-sans italic truncate mt-0.5"
+                            className="text-[11px] text-accent font-sans italic truncate mt-0.5 flex items-center gap-1"
                             title={`备注：${noteText}`}
                           >
-                            备注：{noteText}
+                            <StickyNote size={11} className="shrink-0 opacity-70" />
+                            <span className="truncate">{noteText}</span>
                           </p>
                         )}
                       </div>
 
-                      {/* 打星评分 */}
-                      <div onClick={(e) => e.stopPropagation()} className="shrink-0 hidden sm:block">
+                      {/* 用户标注列：上行打星评价，下行微标签（聚合为同一列上下展示） */}
+                      <div className="w-28 shrink-0 hidden sm:flex flex-col justify-center items-start gap-1" onClick={(e) => e.stopPropagation()}>
                         <RatingStars
                           value={s.user_rating || 0}
                           onChange={(r) => void handleUpdateRating(s.name, r, noteText)}
                           size="xs"
                         />
+                        {s.user_tags && s.user_tags.length > 0 && (
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {s.user_tags.slice(0, 2).map((tag) => (
+                              <button
+                                key={tag}
+                                type="button"
+                                onClick={() => setTagFilter(tagFilter === tag ? '' : tag)}
+                                className={`text-[10px] px-1.5 py-px rounded border transition-colors ${
+                                  tagFilter === tag
+                                    ? 'bg-accent text-paper border-accent font-medium'
+                                    : 'bg-paper-grid/20 border-dashed border-paper-grid text-ink-light hover:border-accent/40 hover:text-accent'
+                                }`}
+                                title={`按标签「${tag}」过滤`}
+                              >
+                                #{tag}
+                              </button>
+                            ))}
+                            {s.user_tags.length > 2 && (
+                              <span
+                                className="text-[10px] text-ink-faint border border-dashed border-paper-grid px-1 rounded"
+                                title={s.user_tags.slice(2).map((t) => `#${t}`).join(', ')}
+                              >
+                                +{s.user_tags.length - 2}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       {/* 快捷操作：打包下载 + 单项载入画板 */}

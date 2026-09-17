@@ -339,16 +339,26 @@ export const BifrostPromptsPage: React.FC = () => {
 
                     {/* 卡片主体 */}
                     <div className="pt-2.5 flex-1 flex flex-col min-w-0">
-                      {/* 标题与评分（预留双行基准槽位高度，长标题优雅折行） */}
-                      <div className="flex items-start justify-between gap-2 min-h-[2.5rem]">
-                        <p
-                          className="font-serif text-sm font-semibold text-ink line-clamp-2 break-words flex-1 group-hover:text-accent transition-colors"
-                          title={p.name}
-                        >
-                          {p.name}
-                        </p>
-                        {/* 打星组件 */}
-                        <div onClick={(e) => e.stopPropagation()} className="shrink-0 mt-0.5">
+                      {/* 第 1 行：主标题纯享行（名称单行截断，不换行） */}
+                      <p
+                        className="font-serif text-sm font-semibold text-ink truncate group-hover:text-accent transition-colors"
+                        title={p.name}
+                      >
+                        {p.name}
+                      </p>
+
+                      {/* 第 2 行：核心元数据行（文件夹分类/版本居左，打星 RatingStars 居右两极平衡） */}
+                      <div className="flex items-center justify-between gap-2 mt-2 h-5">
+                        <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                          {p.folder_name && <Badge className="text-[10px] px-1.5 py-px">{p.folder_name}</Badge>}
+                          {(typeof p.version_number === 'number' || p.version_number) && (
+                            <span className="text-[10px] font-mono text-ink-faint border border-paper-grid rounded-pill px-1.5 py-px shrink-0">
+                              v{p.version_number}
+                            </span>
+                          )}
+                        </div>
+
+                        <div onClick={(e) => e.stopPropagation()} className="shrink-0">
                           <RatingStars
                             value={p.user_rating || 0}
                             onChange={(r) => void handleUpdateRating(p.id, r, p.user_note)}
@@ -357,85 +367,75 @@ export const BifrostPromptsPage: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* 正文预览（预留双行基准槽位高度，保持顶边和底边对齐） */}
-                      <p className="mt-1.5 text-xs text-ink-light font-sans line-clamp-2 leading-relaxed min-h-[2.25rem]">
+                      {/* 第 3 区：正文预览（固定两行基准槽位高度，保持严格等高对齐） */}
+                      <p className="mt-2 text-xs text-ink-light font-sans line-clamp-2 leading-relaxed h-9 overflow-hidden">
                         {p.content || '（暂无正文内容）'}
                       </p>
 
-                      {/* 微标签展示（最多 2 个，超出显示 +N，点击快捷筛选） */}
-                      {p.user_tags && p.user_tags.length > 0 && (
-                        <div className="mt-2 flex items-center gap-1 flex-wrap" onClick={(e) => e.stopPropagation()}>
-                          {p.user_tags.slice(0, 2).map((tag) => (
+                      {/* 第 4 区：微标签与私有备注轻量微聚合行 */}
+                      <div className="mt-2 flex items-center justify-between gap-1.5 min-h-[1.5rem]" onClick={(e) => e.stopPropagation()}>
+                        {/* 微标签 */}
+                        <div className="flex items-center gap-1 min-w-0 flex-wrap">
+                          {p.user_tags && p.user_tags.length > 0 ? (
+                            <>
+                              {p.user_tags.slice(0, 2).map((tag) => (
+                                <button
+                                  key={tag}
+                                  type="button"
+                                  onClick={() => setTagFilter(tagFilter === tag ? '' : tag)}
+                                  className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
+                                    tagFilter === tag
+                                      ? 'bg-accent text-paper border-accent font-medium'
+                                      : 'bg-paper-grid/20 border-dashed border-paper-grid text-ink-light hover:border-accent/40 hover:text-accent'
+                                  }`}
+                                  title={`按标签「${tag}」过滤`}
+                                >
+                                  #{tag}
+                                </button>
+                              ))}
+                              {p.user_tags.length > 2 && (
+                                <span
+                                  className="text-[10px] text-ink-faint border border-dashed border-paper-grid px-1 rounded"
+                                  title={p.user_tags.slice(2).map((t) => `#${t}`).join(', ')}
+                                >
+                                  +{p.user_tags.length - 2}
+                                </span>
+                              )}
+                            </>
+                          ) : null}
+                        </div>
+
+                        {/* 私有备注触发与展示 */}
+                        <div className="shrink-0 max-w-[55%]">
+                          {p.user_note ? (
                             <button
-                              key={tag}
                               type="button"
-                              onClick={() => setTagFilter(tagFilter === tag ? '' : tag)}
-                              className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors ${
-                                tagFilter === tag
-                                  ? 'bg-accent text-paper border-accent font-medium'
-                                  : 'bg-paper-grid/20 border-dashed border-paper-grid text-ink-light hover:border-accent/40 hover:text-accent'
-                              }`}
-                              title={`按标签「${tag}」过滤`}
+                              onClick={() => setEditingNoteTarget(p)}
+                              className="h-5 text-[10px] text-accent font-sans italic bg-accent-surface/50 px-2 rounded border border-accent/20 hover:border-accent/40 transition-colors flex items-center gap-1 max-w-full group/note truncate"
+                              title={`备注：${p.user_note}`}
                             >
-                              #{tag}
+                              <StickyNote size={10} className="shrink-0 opacity-70 group-hover/note:opacity-100" />
+                              <span className="truncate">{p.user_note}</span>
                             </button>
-                          ))}
-                          {p.user_tags.length > 2 && (
-                            <span
-                              className="text-[10px] text-ink-faint border border-dashed border-paper-grid px-1 rounded"
-                              title={p.user_tags.slice(2).map((t) => `#${t}`).join(', ')}
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setEditingNoteTarget(p)}
+                              className="h-5 text-[10px] text-ink-faint hover:text-accent font-sans px-1.5 rounded hover:bg-paper-grid/40 transition-colors flex items-center gap-1 opacity-60 hover:opacity-100"
+                              title="添加私有备注"
                             >
-                              +{p.user_tags.length - 2}
-                            </span>
+                              <StickyNote size={11} />
+                              <span>备注</span>
+                            </button>
                           )}
                         </div>
-                      )}
-
-                      {/* 私有备注展示与编辑（统一槽位高度与基线，并通过 mt-auto 紧贴操作栏） */}
-                      <div className="mt-auto pt-3">
-                        {p.user_note ? (
-                          <div
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingNoteTarget(p);
-                            }}
-                            className="h-7 text-[11px] text-accent font-sans italic bg-accent-surface/50 px-2.5 rounded-lg border border-accent/20 hover:border-accent/40 transition-colors flex items-center justify-between cursor-pointer group/note"
-                            title={`备注：${p.user_note}`}
-                          >
-                            <span className="truncate">备注：{p.user_note}</span>
-                            <StickyNote size={12} className="shrink-0 ml-1.5 opacity-70 group-hover/note:opacity-100 transition-opacity" />
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingNoteTarget(p);
-                            }}
-                            className="h-7 w-full text-[11px] text-ink-faint hover:text-accent font-sans px-2.5 rounded-lg border border-dashed border-paper-grid hover:border-accent/40 hover:bg-accent-surface/20 transition-all flex items-center justify-between cursor-pointer active:scale-[0.98]"
-                            title="添加私有备注"
-                          >
-                            <span className="flex items-center gap-1.5">
-                              <StickyNote size={12} className="opacity-60" />
-                              <span>添加私有备注</span>
-                            </span>
-                          </button>
-                        )}
                       </div>
 
-                      {/* 底部信息与动作按钮 */}
-                      <div className="flex items-center justify-between gap-2 pt-3 mt-3 border-t border-paper-grid/50">
-                        <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
-                          {p.folder_name && <Badge>{p.folder_name}</Badge>}
-                          {(typeof p.version_number === 'number' || p.version_number) && (
-                            <span className="text-[10px] font-mono text-ink-faint border border-paper-grid rounded-pill px-1.5 py-px shrink-0">
-                              v{p.version_number}
-                            </span>
-                          )}
-                          <span className="text-[10px] text-ink-faint font-sans tabular-nums truncate">
-                            {formatDate(p.updated_at)}
-                          </span>
-                        </div>
+                      {/* 第 5 区：底部信息与动作按钮（mt-auto 绝对沉底） */}
+                      <div className="flex items-center justify-between gap-2 pt-2.5 mt-auto border-t border-paper-grid/40">
+                        <span className="text-[10px] text-ink-faint font-sans tabular-nums truncate">
+                          {formatDate(p.updated_at)}
+                        </span>
 
                         {/* 快捷操作区 */}
                         <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
@@ -486,19 +486,17 @@ export const BifrostPromptsPage: React.FC = () => {
                       )}
                     </div>
 
-                    {/* 主体信息 */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p
-                          className="font-serif text-sm font-semibold text-ink truncate group-hover:text-accent transition-colors"
-                          title={p.name}
-                        >
-                          {p.name}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-1.5 mt-0.5 min-w-0 flex-wrap text-[10px] text-ink-faint font-sans tabular-nums">
+                    {/* 标识与版本组（纯粹双行：1行名称单行截断，2行文件夹与版本；时间移至右侧详情面板） */}
+                    <div className="w-44 sm:w-52 shrink-0 min-w-0 flex flex-col justify-center gap-1">
+                      <p
+                        className="font-serif text-sm font-semibold text-ink truncate group-hover:text-accent transition-colors"
+                        title={p.name}
+                      >
+                        {p.name}
+                      </p>
+                      <div className="flex items-center gap-1.5 min-w-0 flex-wrap text-[10px] text-ink-faint font-sans tabular-nums">
                         {p.folder_name && (
-                          <Badge variant="default" className="text-[10px] shrink-0">
+                          <Badge variant="default" className="text-[10px] px-1.5 py-px shrink-0">
                             {p.folder_name}
                           </Badge>
                         )}
@@ -507,58 +505,56 @@ export const BifrostPromptsPage: React.FC = () => {
                             v{p.version_number}
                           </span>
                         )}
-                        {p.updated_at && (
-                          <span className="text-ink-faint truncate">
-                            {formatDate(p.updated_at)}
-                          </span>
-                        )}
                       </div>
-                      <div className="flex items-center gap-2 mt-1">
-                        <p className="text-xs text-ink-light font-sans truncate flex-1">
-                          {p.content}
-                        </p>
-                        {p.user_tags && p.user_tags.length > 0 && (
-                          <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                            {p.user_tags.slice(0, 2).map((tag) => (
-                              <button
-                                key={tag}
-                                type="button"
-                                onClick={() => setTagFilter(tagFilter === tag ? '' : tag)}
-                                className={`text-[10px] px-1.5 py-px rounded border transition-colors ${
-                                  tagFilter === tag
-                                    ? 'bg-accent text-paper border-accent font-medium'
-                                    : 'bg-paper-grid/20 border-dashed border-paper-grid text-ink-light hover:border-accent/40 hover:text-accent'
-                                }`}
-                                title={`按标签「${tag}」过滤`}
-                              >
-                                #{tag}
-                              </button>
-                            ))}
-                            {p.user_tags.length > 2 && (
-                              <span
-                                className="text-[10px] text-ink-faint border border-dashed border-paper-grid px-1 rounded"
-                                title={p.user_tags.slice(2).map((t) => `#${t}`).join(', ')}
-                              >
-                                +{p.user_tags.length - 2}
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </div>
+                    </div>
+
+                    {/* 正文内容与私有备注（中间弹性区域，支持舒展） */}
+                    <div className="flex-1 min-w-0 hidden md:block px-2">
+                      <p className="text-xs text-ink-light font-sans truncate">
+                        {p.content}
+                      </p>
                       {p.user_note && (
-                        <p className="text-[11px] text-accent font-sans italic truncate mt-0.5">
-                          备注：{p.user_note}
+                        <p className="text-[11px] text-accent font-sans italic truncate mt-0.5 flex items-center gap-1" title={`备注：${p.user_note}`}>
+                          <StickyNote size={11} className="shrink-0 opacity-70" />
+                          <span className="truncate">{p.user_note}</span>
                         </p>
                       )}
                     </div>
 
-                    {/* 打星评分 */}
-                    <div onClick={(e) => e.stopPropagation()} className="shrink-0 hidden sm:block">
+                    {/* 用户标注列：上行打星评价，下行微标签（聚合为同一列上下展示） */}
+                    <div className="w-28 shrink-0 hidden sm:flex flex-col justify-center items-start gap-1" onClick={(e) => e.stopPropagation()}>
                       <RatingStars
                         value={p.user_rating || 0}
                         onChange={(r) => void handleUpdateRating(p.id, r, p.user_note)}
                         size="xs"
                       />
+                      {p.user_tags && p.user_tags.length > 0 && (
+                        <div className="flex items-center gap-1 flex-wrap">
+                          {p.user_tags.slice(0, 2).map((tag) => (
+                            <button
+                              key={tag}
+                              type="button"
+                              onClick={() => setTagFilter(tagFilter === tag ? '' : tag)}
+                              className={`text-[10px] px-1.5 py-px rounded border transition-colors ${
+                                tagFilter === tag
+                                  ? 'bg-accent text-paper border-accent font-medium'
+                                  : 'bg-paper-grid/20 border-dashed border-paper-grid text-ink-light hover:border-accent/40 hover:text-accent'
+                              }`}
+                              title={`按标签「${tag}」过滤`}
+                            >
+                              #{tag}
+                            </button>
+                          ))}
+                          {p.user_tags.length > 2 && (
+                            <span
+                              className="text-[10px] text-ink-faint border border-dashed border-paper-grid px-1 rounded"
+                              title={p.user_tags.slice(2).map((t) => `#${t}`).join(', ')}
+                            >
+                              +{p.user_tags.length - 2}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {/* 快捷操作区 */}
@@ -654,6 +650,11 @@ export const BifrostPromptsPage: React.FC = () => {
                     {(typeof detail.version_number === 'number' || detail.version_number) && (
                       <span className="font-mono text-xs text-ink-light border border-paper-grid rounded-pill px-2 py-0.5">
                         版本 v{detail.version_number}
+                      </span>
+                    )}
+                    {detail.updated_at && (
+                      <span className="text-xs text-ink-faint font-sans tabular-nums">
+                        更新时间: {formatDate(detail.updated_at)}
                       </span>
                     )}
                   </div>
