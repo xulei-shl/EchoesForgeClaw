@@ -19,6 +19,7 @@ import SkillAgentConfigsPage from '../admin/pages/SkillAgentConfigsPage';
 import SettingsPage from '../admin/pages/SettingsPage';
 import UserBifrostPromptsPage from '../library/bifrost/BifrostPromptsPage';
 import UserBifrostSkillsPage from '../library/bifrost/BifrostSkillsPage';
+import { MascotWidget } from '../canvas/components/mascot';
 
 // 路由守卫：未登录时跳转登录页，登录后回到原页面
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -137,6 +138,8 @@ const App: React.FC = () => {
       <FeedbackProvider>
         <Router>
           <AppRoutes />
+          {/* 全局常驻吉祥物小组件（全页面互动、自由拖拽、换装与反馈） */}
+          <MascotWidget />
         </Router>
       </FeedbackProvider>
     </AuthProvider>

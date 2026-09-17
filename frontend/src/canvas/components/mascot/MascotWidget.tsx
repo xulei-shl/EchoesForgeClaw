@@ -6,6 +6,7 @@ import {
   X,
   Check,
   Search,
+  RotateCcw,
 } from 'lucide-react';
 import { Mascot, type MascotRefHandle } from './Mascot';
 import { FeedbackModal } from './FeedbackModal';
@@ -20,10 +21,9 @@ import {
 
 const WIDGET_SIZE = 110;
 const PADDING_EDGE = 14;
-/** 底部 ISBN 输入框顶边距视口底部的距离：bottom-8(32px) + 表单高(p-2×2 + h-10 = 56px) = 88px */
-const ISBN_INPUT_TOP_OFFSET = 88;
-/** 吉祥物底边与 ISBN 输入框顶边的呼吸间距 */
-const MASCOT_ISBN_GAP = 10;
+/** 默认贴近视口右下角的安全边距 */
+const DEFAULT_MARGIN_RIGHT = 24;
+const DEFAULT_MARGIN_BOTTOM = 24;
 
 interface WidgetPosition {
   x: number;
@@ -43,16 +43,13 @@ function clampPosition(x: number, y: number, size: number): WidgetPosition {
 }
 
 /**
- * 计算默认坐标：水平与底部 ISBN 输入框居中对齐，底边贴其顶部
+ * 计算默认坐标：视口右下角安全停靠区，避免遮挡页面核心内容与分页/输入栏
  */
 function getDefaultPosition(size: number): WidgetPosition {
   if (typeof window === 'undefined') return { x: 100, y: 100 };
   return {
-    x: Math.max(PADDING_EDGE, (window.innerWidth - size) / 2),
-    y: Math.max(
-      PADDING_EDGE,
-      window.innerHeight - size - ISBN_INPUT_TOP_OFFSET - MASCOT_ISBN_GAP
-    ),
+    x: Math.max(PADDING_EDGE, window.innerWidth - size - DEFAULT_MARGIN_RIGHT),
+    y: Math.max(PADDING_EDGE, window.innerHeight - size - DEFAULT_MARGIN_BOTTOM),
   };
 }
 
@@ -125,6 +122,20 @@ export const MascotWidget: React.FC = () => {
       /* ignore */
     }
     setIsPickerOpen(false);
+  };
+
+  // 重置到默认右下角位置
+  const handleResetPosition = () => {
+    const defaultPos = getDefaultPosition(WIDGET_SIZE);
+    setPosition(defaultPos);
+    try {
+      localStorage.removeItem(MASCOT_POSITION_STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+    window.setTimeout(() => {
+      mascotRef.current?.recalibratePosition();
+    }, 50);
   };
 
   // 开始拖拽：原生 Pointer Capture + 阻断向底层画布冒泡 + rAF 帧级调度
@@ -289,7 +300,7 @@ export const MascotWidget: React.FC = () => {
             {/* 换装形象选择入口 */}
             <button
               type="button"
-              title="切换画板吉祥物形象"
+              title="切换吉祥物形象"
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
@@ -299,6 +310,23 @@ export const MascotWidget: React.FC = () => {
             >
               <Sparkles size={13} strokeWidth={1.75} className="text-amber-500 shrink-0" />
               <span>角色换装</span>
+            </button>
+
+            {/* 极简轻柔间距点 */}
+            <span className="w-0.5 h-3 bg-paper-grid/60 rounded-full shrink-0 select-none" />
+
+            {/* 复位到默认右下角 */}
+            <button
+              type="button"
+              title="重置到右下角"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleResetPosition();
+              }}
+              className="p-1 rounded-full text-ink-light hover:text-accent hover:bg-accent/10 active:scale-[0.96] transition-[background-color,color,transform] duration-150 cursor-pointer"
+            >
+              <RotateCcw size={12} strokeWidth={1.75} className="shrink-0" />
             </button>
 
             {/* 底部精巧小三角指示器 */}
