@@ -285,9 +285,9 @@ function compactPrompt(prompt: Record<string, any>, previewImage: string | null)
     content: extractPromptText(prompt),
     preview_image: previewImage ?? null,
     created_at: prompt.created_at ?? null,
-    updated_at: prompt.updated_at ?? null,
-    version_number: source?.version_number ?? null,
-    commit_message: source?.commit_message ?? null,
+    updated_at: prompt.updated_at ?? source?.updated_at ?? prompt.created_at ?? source?.created_at ?? null,
+    version_number: source?.version_number ?? (prompt.latest_version as any)?.version_number ?? prompt.version_number ?? null,
+    commit_message: source?.commit_message ?? (prompt.latest_version as any)?.commit_message ?? null,
   };
 }
 

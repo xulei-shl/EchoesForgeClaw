@@ -161,8 +161,17 @@ export const BifrostPromptsPage: React.FC = () => {
     }
   };
 
-  const formatDate = (s?: string | null) =>
-    s ? new Date(s).toLocaleString('zh-CN', { hour12: false }) : '';
+  const formatDate = (s?: string | number | null) => {
+    if (!s) return '';
+    const d = typeof s === 'number' ? new Date(s * 1000) : new Date(s);
+    if (isNaN(d.getTime())) return '';
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const h = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return `${y}/${m}/${day} ${h}:${min}`;
+  };
 
   return (
     <div>
@@ -340,6 +349,11 @@ export const BifrostPromptsPage: React.FC = () => {
                     )}
                     <div className="flex items-center gap-2 mt-auto pt-2.5">
                       {p.folder_name && <Badge>{p.folder_name}</Badge>}
+                      {(typeof p.version_number === 'number' || p.version_number) && (
+                        <span className="text-[10px] font-mono text-ink-faint border border-paper-grid rounded-pill px-1.5 py-px shrink-0">
+                          v{p.version_number}
+                        </span>
+                      )}
                       <span className="text-[10px] text-ink-faint font-sans tabular-nums ml-auto">
                         {formatDate(p.updated_at)}
                       </span>

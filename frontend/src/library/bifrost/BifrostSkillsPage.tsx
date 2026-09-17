@@ -214,6 +214,18 @@ export const BifrostSkillsPage: React.FC = () => {
     return skills.filter((s) => selectedNames.has(s.name));
   }, [skills, selectedNames]);
 
+  const formatDate = (t?: number | string | null) => {
+    if (t == null) return '';
+    const d = typeof t === 'number' ? new Date(t * 1000) : new Date(t);
+    if (isNaN(d.getTime())) return '';
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const h = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return `${y}/${m}/${day} ${h}:${min}`;
+  };
+
   return (
     <div className="min-h-screen bg-paper flex flex-col">
       <Navbar />
@@ -404,7 +416,7 @@ export const BifrostSkillsPage: React.FC = () => {
                           : 'hover:border-accent/40 hover:shadow-md hover:-translate-y-0.5'
                       }`}
                     >
-                      {/* 卡片头部：复选框 + 名称 + 评分 */}
+                      {/* 卡片头部：复选框 + 名称 + 评分 + 稳定徽标行 */}
                       <div className="flex items-start gap-2.5">
                         <button
                           type="button"
@@ -419,29 +431,41 @@ export const BifrostSkillsPage: React.FC = () => {
                           )}
                         </button>
 
-                        <div className="flex-1 min-w-0 cursor-pointer min-h-[2.5rem]" onClick={() => void openDetail(s)}>
-                          <div className="flex items-start gap-1.5 min-w-0">
+                        <div className="flex-1 min-w-0 cursor-pointer" onClick={() => void openDetail(s)}>
+                          <div className="flex items-center justify-between gap-2">
                             <p
-                              className="font-serif text-sm font-semibold text-ink line-clamp-2 break-words group-hover:text-accent transition-colors"
+                              className="font-serif text-sm font-semibold text-ink truncate flex-1 group-hover:text-accent transition-colors"
                               title={s.name}
                             >
                               {s.name}
                             </p>
-                            {s.latest_version && (
-                              <span className="text-[10px] font-mono text-ink-faint border border-paper-grid rounded-pill px-1.5 py-px shrink-0 mt-0.5">
-                                v{s.latest_version}
+                            <div onClick={(e) => e.stopPropagation()} className="shrink-0">
+                              <RatingStars
+                                value={s.user_rating || 0}
+                                onChange={(r) => void handleUpdateRating(s.name, r, noteText)}
+                                size="xs"
+                              />
+                            </div>
+                          </div>
+                          {/* 紧随标题的固定元数据徽标行，位置整齐划一 */}
+                          <div className="flex items-center gap-1.5 mt-1 min-h-[1.25rem] flex-wrap">
+                            {s.cached ? (
+                              s.cached_version ? (
+                                <Badge variant={s.latest_version && s.cached_version !== s.latest_version ? 'warning' : 'success'} className="text-[10px] px-1.5 py-px">
+                                  本地 v{s.cached_version}
+                                </Badge>
+                              ) : (
+                                <Badge className="text-[10px] px-1.5 py-px">本地缓存</Badge>
+                              )
+                            ) : (
+                              <Badge className="text-[10px] px-1.5 py-px">未缓存</Badge>
+                            )}
+                            {s.latest_version && (!s.cached || s.cached_version !== s.latest_version) && (
+                              <span className="text-[10px] font-mono text-ink-faint border border-paper-grid rounded-pill px-1.5 py-px shrink-0">
+                                远端 v{s.latest_version}
                               </span>
                             )}
                           </div>
-                        </div>
-
-                        {/* 打星评分 */}
-                        <div onClick={(e) => e.stopPropagation()} className="shrink-0 mt-0.5">
-                          <RatingStars
-                            value={s.user_rating || 0}
-                            onChange={(r) => void handleUpdateRating(s.name, r, noteText)}
-                            size="xs"
-                          />
                         </div>
                       </div>
 
@@ -486,17 +510,14 @@ export const BifrostSkillsPage: React.FC = () => {
                         )}
                       </div>
 
-                      {/* 底部信息与动作按钮 */}
+                      {/* 底部信息与动作按钮：单行绝对对齐，零折叠 */}
                       <div className="flex items-center justify-between gap-2 pt-3 mt-3 border-t border-paper-grid/50">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <button
-                            type="button"
-                            onClick={() => void openDetail(s)}
-                            className="text-xs text-ink-faint group-hover:text-accent font-sans flex items-center gap-0.5 transition-colors"
-                          >
-                            <span>查看详情</span>
-                            <span className="text-[10px] opacity-70">→</span>
-                          </button>
+                        <div className="min-w-0 flex-1">
+                          {(s.cached ? s.updated_at : s.remote_updated_at) ? (
+                            <span className="text-[10px] text-ink-faint font-sans tabular-nums truncate block" title={s.cached ? `本地更新: ${formatDate(s.updated_at)}` : `远端更新: ${formatDate(s.remote_updated_at)}`}>
+                              {s.cached ? formatDate(s.updated_at) : formatDate(s.remote_updated_at)}
+                            </span>
+                          ) : null}
                         </div>
 
                         {/* 快捷操作：打包下载 + 单项载入画板 */}
@@ -565,15 +586,33 @@ export const BifrostSkillsPage: React.FC = () => {
                         </button>
                       </div>
 
-                      {/* 技能名称与版本号 */}
-                      <div className="w-44 sm:w-52 shrink-0 min-w-0">
+                      {/* 技能名称与版本/时间元数据组 */}
+                      <div className="w-56 sm:w-64 shrink-0 min-w-0 flex flex-col justify-center">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className="font-serif text-sm font-semibold text-ink truncate group-hover:text-accent transition-colors" title={s.name}>
                             {s.name}
                           </span>
-                          {s.latest_version && (
-                            <span className="text-[10px] font-mono text-ink-faint border border-paper-grid rounded-pill px-1.5 py-px shrink-0">
-                              v{s.latest_version}
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-1 min-w-0 flex-wrap text-[10px] text-ink-faint font-sans tabular-nums">
+                          {s.cached ? (
+                            s.cached_version ? (
+                              <Badge variant={s.latest_version && s.cached_version !== s.latest_version ? 'warning' : 'success'} className="text-[10px] px-1.5 py-px">
+                                本地 v{s.cached_version}
+                              </Badge>
+                            ) : (
+                              <Badge className="text-[10px] px-1.5 py-px">本地缓存</Badge>
+                            )
+                          ) : (
+                            <Badge className="text-[10px] px-1.5 py-px">未缓存</Badge>
+                          )}
+                          {s.latest_version && (!s.cached || s.cached_version !== s.latest_version) && (
+                            <span className="font-mono text-ink-faint border border-paper-grid rounded-pill px-1.5 py-px shrink-0">
+                              远端 v{s.latest_version}
+                            </span>
+                          )}
+                          {(s.cached ? s.updated_at : s.remote_updated_at) && (
+                            <span className="text-ink-faint truncate">
+                              {s.cached ? formatDate(s.updated_at) : formatDate(s.remote_updated_at)}
                             </span>
                           )}
                         </div>
@@ -707,8 +746,25 @@ export const BifrostSkillsPage: React.FC = () => {
                 <div className="space-y-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-serif text-lg font-bold text-ink">{detail.name}</span>
-                    {detail.latest_version && <Badge>v{detail.latest_version}</Badge>}
+                    {detail.cached
+                      ? (detail.cached_version
+                        ? <Badge variant={detail.latest_version && detail.cached_version !== detail.latest_version ? 'warning' : 'success'}>
+                            本地 v{detail.cached_version}
+                          </Badge>
+                        : <Badge>本地缓存</Badge>)
+                      : <Badge>未缓存</Badge>}
+                    {detail.latest_version && (!detail.cached || detail.cached_version !== detail.latest_version) && (
+                      <Badge>远端 v{detail.latest_version}</Badge>
+                    )}
                     {detail.license && <span className="text-xs text-ink-faint font-mono">({detail.license})</span>}
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-ink-light font-sans tabular-nums mt-1">
+                    {detail.cached && detail.updated_at && (
+                      <span>本地更新: {formatDate(detail.updated_at)}</span>
+                    )}
+                    {detail.remote_updated_at && (
+                      <span>远端更新: {formatDate(detail.remote_updated_at)}</span>
+                    )}
                   </div>
                   <p className="text-xs text-ink-light font-sans">{detail.description || '（无描述）'}</p>
                 </div>

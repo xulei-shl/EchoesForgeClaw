@@ -100,8 +100,17 @@ export const BifrostPromptsPage: React.FC = () => {
     }
   };
 
-  const formatDate = (s?: string | null) =>
-    s ? new Date(s).toLocaleString('zh-CN', { hour12: false }) : '';
+  const formatDate = (s?: string | number | null) => {
+    if (!s) return '';
+    const d = typeof s === 'number' ? new Date(s * 1000) : new Date(s);
+    if (isNaN(d.getTime())) return '';
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const h = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return `${y}/${m}/${day} ${h}:${min}`;
+  };
 
   // 当前详情在筛选结果中的索引，用于抽屉内上一条/下一条连续检视
   const detailIndex = useMemo(() => {
@@ -369,8 +378,13 @@ export const BifrostPromptsPage: React.FC = () => {
 
                       {/* 底部信息与动作按钮 */}
                       <div className="flex items-center justify-between gap-2 pt-3 mt-3 border-t border-paper-grid/50">
-                        <div className="flex items-center gap-1.5 min-w-0">
+                        <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                           {p.folder_name && <Badge>{p.folder_name}</Badge>}
+                          {(typeof p.version_number === 'number' || p.version_number) && (
+                            <span className="text-[10px] font-mono text-ink-faint border border-paper-grid rounded-pill px-1.5 py-px shrink-0">
+                              v{p.version_number}
+                            </span>
+                          )}
                           <span className="text-[10px] text-ink-faint font-sans tabular-nums truncate">
                             {formatDate(p.updated_at)}
                           </span>
@@ -434,14 +448,26 @@ export const BifrostPromptsPage: React.FC = () => {
                         >
                           {p.name}
                         </p>
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-0.5 min-w-0 flex-wrap text-[10px] text-ink-faint font-sans tabular-nums">
                         {p.folder_name && (
                           <Badge variant="default" className="text-[10px] shrink-0">
                             {p.folder_name}
                           </Badge>
                         )}
+                        {(typeof p.version_number === 'number' || p.version_number) && (
+                          <span className="font-mono text-ink-faint border border-paper-grid rounded-pill px-1.5 py-px shrink-0">
+                            v{p.version_number}
+                          </span>
+                        )}
+                        {p.updated_at && (
+                          <span className="text-ink-faint truncate">
+                            {formatDate(p.updated_at)}
+                          </span>
+                        )}
                       </div>
                       <p
-                        className="text-xs text-ink-light font-sans line-clamp-1 mt-0.5"
+                        className="text-xs text-ink-light font-sans line-clamp-1 mt-1"
                         title={p.content}
                       >
                         {p.content}
@@ -550,8 +576,13 @@ export const BifrostPromptsPage: React.FC = () => {
               <div className="space-y-2">
                 <h3 className="font-serif text-lg font-bold text-ink leading-snug">{detail.name}</h3>
                 <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     {detail.folder_name && <Badge>{detail.folder_name}</Badge>}
+                    {(typeof detail.version_number === 'number' || detail.version_number) && (
+                      <span className="font-mono text-xs text-ink-light border border-paper-grid rounded-pill px-2 py-0.5">
+                        版本 v{detail.version_number}
+                      </span>
+                    )}
                     <span className="text-xs text-ink-light">更新于: {formatDate(detail.updated_at)}</span>
                   </div>
                   <div className="flex items-center gap-2">

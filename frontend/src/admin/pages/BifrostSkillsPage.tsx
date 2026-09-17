@@ -173,7 +173,13 @@ export const BifrostSkillsPage: React.FC = () => {
   const formatDate = (t?: number | string | null) => {
     if (t == null) return '';
     const d = typeof t === 'number' ? new Date(t * 1000) : new Date(t);
-    return isNaN(d.getTime()) ? '' : d.toLocaleString('zh-CN', { hour12: false });
+    if (isNaN(d.getTime())) return '';
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const h = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return `${y}/${m}/${day} ${h}:${min}`;
   };
 
   const anyBusy = syncingAll || busy.size > 0;
@@ -338,7 +344,7 @@ export const BifrostSkillsPage: React.FC = () => {
                             备注：{noteText}
                           </p>
                         )}
-                        <div className="flex items-center gap-3 mt-2 text-[10px] text-ink-faint font-sans tabular-nums">
+                        <div className="flex items-center gap-3 mt-2 text-[10px] text-ink-faint font-sans tabular-nums flex-wrap">
                           <span>
                             {isCached
                               ? `${s.file_count ?? 0} 个文件`
@@ -346,7 +352,11 @@ export const BifrostSkillsPage: React.FC = () => {
                                 ? `远端 ${s.file_count} 个文件`
                                 : '未下载'}
                           </span>
-                          {isCached && <span>本地更新：{formatDate(s.updated_at) || '—'}</span>}
+                          {isCached ? (
+                            <span>本地更新：{formatDate(s.updated_at) || '—'}</span>
+                          ) : (
+                            s.remote_updated_at && <span>远端更新：{formatDate(s.remote_updated_at)}</span>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
@@ -414,7 +424,11 @@ export const BifrostSkillsPage: React.FC = () => {
               )}
               {detail.latest_version && <Badge>远端 v{detail.latest_version}</Badge>}
               {detail.license && <Badge>{detail.license}</Badge>}
-              <span className="tabular-nums">本地更新于 {formatDate(detail.updated_at) || '—'}</span>
+              {detail.cached !== false ? (
+                <span className="tabular-nums">本地更新于 {formatDate(detail.updated_at) || '—'}</span>
+              ) : (
+                detail.remote_updated_at && <span className="tabular-nums">远端更新于 {formatDate(detail.remote_updated_at)}</span>
+              )}
             </div>
             
             {detail.description && (
