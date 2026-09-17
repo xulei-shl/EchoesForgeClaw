@@ -6,6 +6,7 @@ import { appSettings } from '../db/schema.js';
 interface FeedbackBody {
   name?: string;
   email?: string;
+  module?: string;
   content?: string;
 }
 
@@ -17,10 +18,11 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  */
 export async function registerFeedbackRouter(app: FastifyInstance): Promise<void> {
   app.post<{ Body: FeedbackBody }>('/api/feedback', async (request, reply) => {
-    const { name, email, content } = request.body || {};
+    const { name, email, module, content } = request.body || {};
 
     const cleanName = (name ?? '').trim();
     const cleanEmail = (email ?? '').trim();
+    const cleanModule = (module ?? '画板节点').trim();
     const cleanContent = (content ?? '').trim();
 
     // 必填字段校验
@@ -74,6 +76,7 @@ export async function registerFeedbackRouter(app: FastifyInstance): Promise<void
       const markdownContent = [
         '### 📋 画板用户反馈通知',
         `> **提交时间**：${timestamp}`,
+        `> **反馈模块**：${cleanModule}`,
         `> **反馈用户**：${cleanName}`,
         `> **联系邮箱**：${cleanEmail}`,
         '',

@@ -4,6 +4,7 @@ import { Dialog } from '../../../shared/components/ui/Dialog';
 import { Button } from '../../../shared/components/ui/Button';
 import { Input } from '../../../shared/components/ui/Input';
 import { Textarea } from '../../../shared/components/ui/Textarea';
+import { Select } from '../../../shared/components/ui/Select';
 import { useFeedback } from '../../../shared/components/ui/FeedbackProvider';
 import api from '../../../shared/services/api';
 
@@ -15,10 +16,19 @@ interface FeedbackModalProps {
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+const MODULE_OPTIONS = [
+  { label: '画板节点', value: '画板节点' },
+  { label: '提示词', value: '提示词' },
+  { label: '技能', value: '技能' },
+  { label: 'Bug', value: 'Bug' },
+  { label: '其他', value: '其他' },
+];
+
 export const FeedbackModal: React.FC<FeedbackModalProps> = ({ open, onClose, mascotName }) => {
   const { showToast } = useFeedback();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [module, setModule] = useState('画板节点');
   const [content, setContent] = useState('');
 
   const [nameError, setNameError] = useState('');
@@ -85,11 +95,13 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ open, onClose, mas
       const res = (await api.post('/feedback', {
         name: name.trim(),
         email: email.trim(),
+        module,
         content: content.trim(),
       })) as { success?: boolean; message?: string };
 
       showToast(res.message || '反馈已发送，感谢您的宝贵建议！', { type: 'success' });
       setContent('');
+      setModule('画板节点');
       onClose();
     } catch (err: any) {
       showToast(err?.detail || err?.message || '发送失败，请稍后重试', { type: 'error' });
@@ -108,7 +120,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ open, onClose, mas
         <div className="flex items-center justify-between w-full pr-1">
           <div className="flex items-center gap-2 text-ink">
             <MessageSquareHeart size={20} className="text-accent" />
-            <span className="font-serif font-bold text-base">画板意见与反馈</span>
+            <span className="font-serif font-bold text-base">意见与反馈</span>
           </div>
           {mascotName && (
             <span className="text-xs font-sans text-ink-faint px-2 py-0.5 rounded-full bg-paper-grid/20">
@@ -137,7 +149,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ open, onClose, mas
             className="flex items-center gap-1.5"
           >
             <Send size={14} />
-            发送反馈
+            发送
           </Button>
         </div>
       }
@@ -177,6 +189,17 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ open, onClose, mas
             }}
             disabled={isSubmitting}
             maxLength={120}
+          />
+        </div>
+
+        {/* 模块选择（下拉框） */}
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-sans text-ink-light">模块 *</label>
+          <Select
+            value={module}
+            onChange={(val) => setModule(val)}
+            options={MODULE_OPTIONS}
+            disabled={isSubmitting}
           />
         </div>
 

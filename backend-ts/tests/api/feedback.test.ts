@@ -101,6 +101,7 @@ describe('用户反馈 /api/feedback API 测试', () => {
       payload: {
         name: '王五',
         email: 'wangwu@example.com',
+        module: '画板节点',
         content: '希望可以调整吉祥物大小！',
       },
     });
@@ -115,6 +116,8 @@ describe('用户反馈 /api/feedback API 测试', () => {
     expect(sentBody.msgtype).toBe('markdown');
     expect(sentBody.markdown.content).toContain('王五');
     expect(sentBody.markdown.content).toContain('wangwu@example.com');
+    expect(sentBody.markdown.content).toContain('反馈模块');
+    expect(sentBody.markdown.content).toContain('画板节点');
     expect(sentBody.markdown.content).toContain('希望可以调整吉祥物大小！');
 
     fetchSpy.mockRestore();

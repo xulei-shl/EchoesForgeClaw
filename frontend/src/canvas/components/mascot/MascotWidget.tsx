@@ -291,7 +291,7 @@ export const MascotWidget: React.FC = () => {
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-sans font-medium text-ink-light hover:text-accent hover:bg-accent/10 active:scale-[0.96] transition-[background-color,color,transform] duration-150 cursor-pointer"
             >
               <MessageSquareHeart size={13} strokeWidth={1.75} className="text-accent shrink-0" />
-              <span>反馈建议</span>
+              <span>反馈</span>
             </button>
 
             {/* 极简轻柔间距点 */}
@@ -309,7 +309,7 @@ export const MascotWidget: React.FC = () => {
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-sans font-medium text-ink-light hover:text-accent hover:bg-accent/10 active:scale-[0.96] transition-[background-color,color,transform] duration-150 cursor-pointer"
             >
               <Sparkles size={13} strokeWidth={1.75} className="text-amber-500 shrink-0" />
-              <span>角色换装</span>
+              <span>换装</span>
             </button>
 
             {/* 极简轻柔间距点 */}
