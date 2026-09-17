@@ -473,7 +473,6 @@ export const BifrostSkillsPage: React.FC = () => {
                       <p
                         className="mt-2 text-xs text-ink-light font-sans line-clamp-2 leading-relaxed cursor-pointer min-h-[2.25rem]"
                         onClick={() => void openDetail(s)}
-                        title={s.description || '（暂无详细功能描述）'}
                       >
                         {s.description || '（暂无详细功能描述）'}
                       </p>
@@ -620,10 +619,7 @@ export const BifrostSkillsPage: React.FC = () => {
 
                       {/* 功能描述与私有备注 */}
                       <div className="flex-1 min-w-0 hidden md:block">
-                        <p
-                          className="text-xs text-ink-light font-sans truncate"
-                          title={s.description || '（暂无详细功能描述）'}
-                        >
+                        <p className="text-xs text-ink-light font-sans truncate">
                           {s.description || '（暂无详细功能描述）'}
                         </p>
                         {noteText && (
