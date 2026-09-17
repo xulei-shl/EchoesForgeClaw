@@ -55,14 +55,15 @@ export async function registerBifrostSkillsAdminRouter(app: FastifyInstance): Pr
   // 共享区缓存的 Bifrost Skills 列表（本地为事实来源；Bifrost 可达时用检索接口做富化，
   // 并追加「远端有、本地未缓存」的 skill 供仓库浏览）。force=1 绕过 TTL 缓存强制拉取远端。
   app.get('/api/admin/bifrost-skills', admin, async (request) => {
-    const q = (request.query ?? {}) as { q?: string; force?: string; limit?: string };
+    const q = (request.query ?? {}) as { q?: string; skip?: string; limit?: string; force?: string };
     const force = q.force === '1' || q.force === 'true';
-    // 默认 200：列表已瘦身（无 body/files），支持数百 skill 目录浏览
-    const limit = Number(q.limit ?? 200) || 200;
+    const skip = Math.max(0, Number(q.skip ?? 0) || 0);
+    const limit = q.limit !== undefined ? Math.max(0, Number(q.limit) || 0) : 50;
     return getMergedBifrostSkills({
       db: getDb(),
       userId: request.authUser?.id,
       q: q.q,
+      skip,
       limit,
       force,
     });

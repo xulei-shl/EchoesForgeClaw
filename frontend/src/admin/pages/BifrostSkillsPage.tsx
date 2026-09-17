@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Boxes, FolderSync, Loader2, RefreshCw, Search, StickyNote, Trash2, FileText, FolderTree } from 'lucide-react';
 import { adminService, annotationService } from '../../shared/services/admin';
 import type { CachedBifrostSkill } from '../../shared/types';
@@ -14,27 +14,38 @@ import { MarkdownViewer } from '../../shared/components/ui/MarkdownViewer';
 import { PageHeader, FieldLabel } from '../components/AdminBits';
 import { useFeedback } from '../../shared/components/ui/FeedbackProvider';
 import { SkillFileTree } from '../../shared/components/ui/SkillFileTree';
-
-/** 内存级 SWR 缓存：页面切换 0ms 瞬间秒开 */
-let cachedBifrostSkillsData: CachedBifrostSkill[] | null = null;
+import { useBifrostSkills } from '../../library/bifrost/useBifrostSkills';
 
 export const BifrostSkillsPage: React.FC = () => {
-  const [skills, setSkills] = useState<CachedBifrostSkill[]>(() => cachedBifrostSkillsData ?? []);
-  const [loading, setLoading] = useState(() => !cachedBifrostSkillsData);
-  const [error, setError] = useState('');
+  const {
+    items: skills,
+    setItems: setSkills,
+    filteredItems: filteredSkills,
+    total,
+    loading,
+    isRefreshing,
+    loadingMore,
+    hasMore,
+    error,
+    remoteAvailable,
+    q,
+    setQ,
+    ratingFilter,
+    setRatingFilter,
+    sentinelRef,
+    load,
+    updateRating: handleUpdateRating,
+  } = useBifrostSkills({
+    pageSize: 60,
+    fetcher: adminService.listBifrostSkills,
+  });
+
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [syncingAll, setSyncingAll] = useState(false);
   const [detail, setDetail] = useState<CachedBifrostSkill | null>(null);
-  const [q, setQ] = useState('');
-  const [ratingFilter, setRatingFilter] = useState('');
-  const [remoteAvailable, setRemoteAvailable] = useState(true);
   const [noteDraft, setNoteDraft] = useState('');
   const [savingNote, setSavingNote] = useState(false);
   const { dialog, showToast } = useFeedback();
-
-  // 增量渲染：大目录先渲染前 N 条，触底自动加载更多（避免一次性渲染几百条卡片卡顿）
-  const [visibleCount, setVisibleCount] = useState(60);
-  const observerTarget = useRef<HTMLDivElement>(null);
 
   // 打开详情时同步备注草稿
   useEffect(() => {
@@ -49,38 +60,11 @@ export const BifrostSkillsPage: React.FC = () => {
         const full = await adminService.getBifrostSkillDetail(s.name);
         setDetail((prev) => (prev && prev.name === s.name ? { ...prev, ...full } : prev));
       } catch (e: any) {
-        // 远端不可达等场景降级展示列表信息（无 body/files，弹窗相应位置显示「无内容」）
         showToast(e?.message || '详情加载失败，已展示列表信息', { type: 'error' });
       }
     },
     [showToast]
   );
-
-  /** 保存用户的评分 */
-  const handleUpdateRating = async (skillName: string, nextRating: number, currentNote?: string) => {
-    try {
-      const targetSkill = skills.find((s) => s.name === skillName);
-      const res = await annotationService.setAnnotation({
-        resource_type: 'bifrost_skill',
-        resource_id: skillName,
-        rating: nextRating,
-        note: currentNote !== undefined ? currentNote : (targetSkill?.user_note ?? targetSkill?.note ?? ''),
-      });
-      setSkills((prev) =>
-        prev.map((s) =>
-          s.name === skillName
-            ? { ...s, user_rating: res.rating, user_note: res.note, note: res.note }
-            : s
-        )
-      );
-      if (detail && detail.name === skillName) {
-        setDetail({ ...detail, user_rating: res.rating, user_note: res.note, note: res.note });
-      }
-      showToast(nextRating > 0 ? `已评为 ${nextRating} 星` : '已清除评分', { type: 'success' });
-    } catch (e: any) {
-      showToast(e?.message || '评分更新失败', { type: 'error' });
-    }
-  };
 
   /** 保存用户的私有备注 */
   const saveNote = async () => {
@@ -109,40 +93,6 @@ export const BifrostSkillsPage: React.FC = () => {
     }
   };
 
-  /** 拉取列表（force=true 绕过后端 TTL 缓存强制刷新远端） */
-  const load = useCallback(
-    async (force = false, showLoading = true) => {
-      if (showLoading && !cachedBifrostSkillsData) setLoading(true);
-      setError('');
-      try {
-        const res = await adminService.listBifrostSkills({ q: q.trim() || undefined, force });
-        const fetched = res.skills ?? [];
-        if (!q.trim()) cachedBifrostSkillsData = fetched;
-        setSkills(fetched);
-        setRemoteAvailable(res.remote_available !== false);
-      } catch (e: any) {
-        if (!cachedBifrostSkillsData) setError(e?.message || '加载失败，请重试');
-      } finally {
-        setLoading(false);
-      }
-    },
-    [q]
-  );
-
-  // 初次挂载立即拉取（零延迟），仅搜索词变化时防抖 350ms
-  const mountedRef = useRef(false);
-  useEffect(() => {
-    if (!mountedRef.current) {
-      mountedRef.current = true;
-      void load(false, !cachedBifrostSkillsData);
-      return;
-    }
-    const t = window.setTimeout(() => {
-      void load(false, false);
-    }, 350);
-    return () => window.clearTimeout(t);
-  }, [q, load]);
-
   const markBusy = useCallback((name: string, on: boolean) => {
     setBusy((prev) => {
       const next = new Set(prev);
@@ -157,7 +107,7 @@ export const BifrostSkillsPage: React.FC = () => {
     try {
       await adminService.syncBifrostSkill(s.name);
       showToast(`「${s.name}」已同步最新版本`, { type: 'success' });
-      await load();
+      await load(true);
     } catch (e: any) {
       showToast(e?.message || '同步失败，请重试', { type: 'error' });
     } finally {
@@ -187,7 +137,7 @@ export const BifrostSkillsPage: React.FC = () => {
         await adminService.syncBifrostSkill(s.name);
       }
       showToast('全部 skill 已同步', { type: 'success' });
-      await load();
+      await load(true);
     } catch (e: any) {
       showToast(e?.message || '同步中断，请重试', { type: 'error' });
     } finally {
@@ -212,7 +162,7 @@ export const BifrostSkillsPage: React.FC = () => {
           : `已删除「${s.name}」`,
         { type: 'success' }
       );
-      await load();
+      await load(true);
     } catch (e: any) {
       showToast(e?.message || '删除失败，请重试', { type: 'error' });
     } finally {
@@ -225,41 +175,6 @@ export const BifrostSkillsPage: React.FC = () => {
     const d = typeof t === 'number' ? new Date(t * 1000) : new Date(t);
     return isNaN(d.getTime()) ? '' : d.toLocaleString('zh-CN', { hour12: false });
   };
-
-  // 客户端多维过滤
-  const filteredSkills = useMemo(() => {
-    return skills.filter((s) => {
-      if (ratingFilter === '5' && (s.user_rating ?? 0) !== 5) return false;
-      if (ratingFilter === '4+' && (s.user_rating ?? 0) < 4) return false;
-      if (ratingFilter === '3+' && (s.user_rating ?? 0) < 3) return false;
-      if (ratingFilter === 'rated' && !(s.user_rating && s.user_rating > 0)) return false;
-      if (ratingFilter === 'unrated' && (s.user_rating && s.user_rating > 0)) return false;
-      if (ratingFilter === 'noted' && !(s.user_note?.trim() || s.note?.trim())) return false;
-      return true;
-    });
-  }, [skills, ratingFilter]);
-
-  // 搜索词/筛选条件变化时重置增量渲染计数
-  useEffect(() => {
-    setVisibleCount(60);
-  }, [q, ratingFilter]);
-
-  // 触底自动加载更多（增量渲染，避免大目录一次性渲染卡顿）
-  useEffect(() => {
-    if (filteredSkills.length === 0) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting) {
-          setVisibleCount((prev) => Math.min(prev + 60, filteredSkills.length));
-        }
-      },
-      { rootMargin: '200px' }
-    );
-    if (observerTarget.current) {
-      observer.observe(observerTarget.current);
-    }
-    return () => observer.disconnect();
-  }, [filteredSkills.length, visibleCount]);
 
   const anyBusy = syncingAll || busy.size > 0;
   const remoteUnavailable = skills.length > 0 && !remoteAvailable;
@@ -284,7 +199,7 @@ export const BifrostSkillsPage: React.FC = () => {
               </Button>
             )}
             <Button size="sm" variant="ghost" onClick={() => void load(true)} title="刷新（强制拉取 Bifrost 最新信息）">
-              <RefreshCw size={14} strokeWidth={2} className={loading ? 'animate-spin' : ''} />
+              <RefreshCw size={14} strokeWidth={2} className={isRefreshing ? 'animate-spin' : ''} />
             </Button>
           </div>
         }
@@ -383,7 +298,7 @@ export const BifrostSkillsPage: React.FC = () => {
             </Card>
           ) : (
             <div className="space-y-3">
-              {filteredSkills.slice(0, visibleCount).map((s) => {
+              {filteredSkills.map((s) => {
                 const isBusy = busy.has(s.name);
                 const isCached = s.cached !== false;
                 const noteText = s.user_note || s.note;
@@ -462,14 +377,12 @@ export const BifrostSkillsPage: React.FC = () => {
                   </Card>
                 );
               })}
-              {filteredSkills.length > 0 && visibleCount < filteredSkills.length && (
-                <div ref={observerTarget} className="py-4 flex justify-center">
-                  <Loader2 className="w-4 h-4 animate-spin text-ink-faint" />
-                </div>
-              )}
-              {filteredSkills.length > 60 && visibleCount >= filteredSkills.length && (
+              <div ref={sentinelRef} className="py-4 flex justify-center">
+                {loadingMore && <Loader2 className="w-4 h-4 animate-spin text-ink-faint" />}
+              </div>
+              {!hasMore && filteredSkills.length > 0 && (
                 <p className="text-xs text-ink-faint font-sans text-center py-4">
-                  已加载全部 {filteredSkills.length} 个
+                  已加载全部 {total} 个技能
                 </p>
               )}
             </div>

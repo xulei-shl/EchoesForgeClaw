@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Boxes,
@@ -15,7 +15,6 @@ import {
 } from 'lucide-react';
 import { Navbar } from '../../shared/components/layout/Navbar';
 import { bifrostService } from '../../shared/services/bifrost';
-import { annotationService } from '../../shared/services/admin';
 import type { CachedBifrostSkill, SkillSelection } from '../../shared/types';
 import { Button } from '../../shared/components/ui/Button';
 import { Card } from '../../shared/components/ui/Card';
@@ -27,20 +26,33 @@ import { RatingStars } from '../../shared/components/ui/RatingStars';
 import { NoteEditModal } from '../../shared/components/ui/NoteEditModal';
 import { MarkdownViewer } from '../../shared/components/ui/MarkdownViewer';
 import { useFeedback } from '../../shared/components/ui/FeedbackProvider';
-import { Pagination } from '../../shared/components/ui/Pagination';
 import { SkillFileTree } from '../../shared/components/ui/SkillFileTree';
 import { ViewToggle, type ViewMode } from '../../shared/components/ui/ViewToggle';
-
-/** 内存级 SWR 缓存 */
-let cachedSkills: CachedBifrostSkill[] | null = null;
+import { useBifrostSkills } from './useBifrostSkills';
 
 export const BifrostSkillsPage: React.FC = () => {
   const navigate = useNavigate();
   const { showToast } = useFeedback();
 
-  const [skills, setSkills] = useState<CachedBifrostSkill[]>(() => cachedSkills ?? []);
-  const [loading, setLoading] = useState(() => !cachedSkills);
-  const [error, setError] = useState('');
+  const {
+    items: skills,
+    filteredItems,
+    total,
+    loading,
+    isRefreshing,
+    loadingMore,
+    hasMore,
+    error,
+    q,
+    setQ,
+    ratingFilter,
+    setRatingFilter,
+    sentinelRef,
+    load,
+    updateRating: handleUpdateRating,
+    saveNote: handleSaveNote,
+  } = useBifrostSkills();
+
   const [downloadingName, setDownloadingName] = useState<string | null>(null);
 
   const [viewMode, setViewMode] = useState<ViewMode>(
@@ -54,66 +66,12 @@ export const BifrostSkillsPage: React.FC = () => {
     } catch {}
   };
 
-  const [q, setQ] = useState('');
-  const [ratingFilter, setRatingFilter] = useState('');
-
   // 多选集合：存储选中的 skill name
   const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set());
-
-  const [currentPage, setCurrentPage] = useState(1);
-  const PAGE_SIZE = 24;
 
   const [detail, setDetail] = useState<CachedBifrostSkill | null>(null);
   const [detailTab, setDetailTab] = useState<'doc' | 'files'>('doc');
   const [editingNoteTarget, setEditingNoteTarget] = useState<CachedBifrostSkill | null>(null);
-
-  /** 加载 Skills 列表 */
-  const load = useCallback(
-    async (force = false, showLoading = true) => {
-      if (showLoading && !cachedSkills) setLoading(true);
-      setError('');
-      try {
-        const res = await bifrostService.listSkills({ q: q.trim() || undefined, force });
-        const fetched = res.skills ?? [];
-        if (!q.trim()) cachedSkills = fetched;
-        setSkills(fetched);
-      } catch (e: any) {
-        if (!cachedSkills) setError(e?.message || '加载 Skills 失败，请重试');
-      } finally {
-        setLoading(false);
-      }
-    },
-    [q]
-  );
-
-  // 挂载初次加载
-  const mountedRef = useRef(false);
-  useEffect(() => {
-    if (!mountedRef.current) {
-      mountedRef.current = true;
-      void load(false, !cachedSkills);
-    }
-  }, [load]);
-
-  // 搜索防抖
-  const loadRef = useRef(load);
-  loadRef.current = load;
-  const firstLoad = useRef(true);
-  useEffect(() => {
-    if (firstLoad.current) {
-      firstLoad.current = false;
-      return;
-    }
-    const t = window.setTimeout(() => {
-      void loadRef.current();
-    }, 350);
-    return () => window.clearTimeout(t);
-  }, [q]);
-
-  // 条件变化回到第一页
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [q, ratingFilter]);
 
   /** 打开详情弹窗并补齐完整 SKILL.md 与文件树 */
   const openDetail = useCallback(
@@ -129,58 +87,6 @@ export const BifrostSkillsPage: React.FC = () => {
     },
     []
   );
-
-  /** 更新星级打标 */
-  const handleUpdateRating = async (skillName: string, nextRating: number, currentNote?: string) => {
-    try {
-      const targetSkill = skills.find((s) => s.name === skillName);
-      const res = await annotationService.setAnnotation({
-        resource_type: 'bifrost_skill',
-        resource_id: skillName,
-        rating: nextRating,
-        note: currentNote !== undefined ? currentNote : (targetSkill?.user_note ?? targetSkill?.note ?? ''),
-      });
-      setSkills((prev) =>
-        prev.map((s) =>
-          s.name === skillName
-            ? { ...s, user_rating: res.rating, user_note: res.note, note: res.note }
-            : s
-        )
-      );
-      if (detail && detail.name === skillName) {
-        setDetail({ ...detail, user_rating: res.rating, user_note: res.note, note: res.note });
-      }
-      showToast(nextRating > 0 ? `已评为 ${nextRating} 星` : '已清除评分', { type: 'success' });
-    } catch (e: any) {
-      showToast(e?.message || '评分更新失败', { type: 'error' });
-    }
-  };
-
-  /** 保存私有备注 */
-  const handleSaveNote = async (nextRating: number, nextNote: string) => {
-    if (!editingNoteTarget) return;
-    try {
-      const res = await annotationService.setAnnotation({
-        resource_type: 'bifrost_skill',
-        resource_id: editingNoteTarget.name,
-        rating: nextRating,
-        note: nextNote.trim(),
-      });
-      setSkills((prev) =>
-        prev.map((s) =>
-          s.name === editingNoteTarget.name
-            ? { ...s, user_rating: res.rating, user_note: res.note, note: res.note }
-            : s
-        )
-      );
-      if (detail && detail.name === editingNoteTarget.name) {
-        setDetail({ ...detail, user_rating: res.rating, user_note: res.note, note: res.note });
-      }
-      showToast('备注已保存', { type: 'success' });
-    } catch (e: any) {
-      showToast(e?.message || '保存备注失败', { type: 'error' });
-    }
-  };
 
   /** 打包下载 ZIP */
   const handleDownloadZip = async (skillName: string) => {
@@ -207,61 +113,64 @@ export const BifrostSkillsPage: React.FC = () => {
     });
   };
 
-  /** 客户端打标筛选 */
-  const filteredSkills = useMemo(() => {
-    return skills.filter((s) => {
-      if (ratingFilter === '5' && (s.user_rating ?? 0) !== 5) return false;
-      if (ratingFilter === '4+' && (s.user_rating ?? 0) < 4) return false;
-      if (ratingFilter === '3+' && (s.user_rating ?? 0) < 3) return false;
-      if (ratingFilter === 'rated' && !(s.user_rating && s.user_rating > 0)) return false;
-      if (ratingFilter === 'unrated' && (s.user_rating && s.user_rating > 0)) return false;
-      if (ratingFilter === 'noted' && !s.user_note?.trim() && !s.note?.trim()) return false;
-      return true;
-    });
-  }, [skills, ratingFilter]);
+  /** 详情抽屉打星同步 */
+  const onUpdateRating = useCallback(
+    async (skillName: string, rating: number, currentNote?: string) => {
+      setDetail((prev) => (prev && prev.name === skillName ? { ...prev, user_rating: rating } : prev));
+      await handleUpdateRating(skillName, rating, currentNote);
+    },
+    [handleUpdateRating]
+  );
 
-  const totalPages = Math.ceil(filteredSkills.length / PAGE_SIZE);
-  const currentSkills = filteredSkills.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  /** 模态框保存备注 */
+  const onSaveNoteModal = useCallback(
+    async (rating: number, note: string) => {
+      if (!editingNoteTarget) return;
+      const targetName = editingNoteTarget.name;
+      setDetail((prev) =>
+        prev && prev.name === targetName
+          ? { ...prev, user_rating: rating, user_note: note, note }
+          : prev
+      );
+      await handleSaveNote(targetName, rating, note);
+      setEditingNoteTarget(null);
+    },
+    [editingNoteTarget, handleSaveNote]
+  );
 
   // 当前详情在筛选结果中的索引，用于抽屉内上一条/下一条连续检视
   const detailIndex = useMemo(() => {
     if (!detail) return -1;
-    return filteredSkills.findIndex((s) => s.name === detail.name);
-  }, [detail, filteredSkills]);
+    return filteredItems.findIndex((s) => s.name === detail.name);
+  }, [detail, filteredItems]);
 
   const hasPrev = detailIndex > 0;
-  const hasNext = detailIndex >= 0 && detailIndex < filteredSkills.length - 1;
+  const hasNext = detailIndex >= 0 && detailIndex < filteredItems.length - 1;
 
   const handlePrev = useCallback(() => {
     if (detailIndex > 0) {
-      const prevSkill = filteredSkills[detailIndex - 1];
+      const prevSkill = filteredItems[detailIndex - 1];
       void openDetail(prevSkill);
-      const targetPage = Math.floor((detailIndex - 1) / PAGE_SIZE) + 1;
-      if (targetPage !== currentPage) setCurrentPage(targetPage);
     }
-  }, [detailIndex, filteredSkills, currentPage, openDetail]);
+  }, [detailIndex, filteredItems, openDetail]);
 
   const handleNext = useCallback(() => {
-    if (detailIndex >= 0 && detailIndex < filteredSkills.length - 1) {
-      const nextSkill = filteredSkills[detailIndex + 1];
+    if (detailIndex >= 0 && detailIndex < filteredItems.length - 1) {
+      const nextSkill = filteredItems[detailIndex + 1];
       void openDetail(nextSkill);
-      const targetPage = Math.floor((detailIndex + 1) / PAGE_SIZE) + 1;
-      if (targetPage !== currentPage) setCurrentPage(targetPage);
     }
-  }, [detailIndex, filteredSkills, currentPage, openDetail]);
+  }, [detailIndex, filteredItems, openDetail]);
 
-
-
-  /** 全选/取消当前页 */
-  const handleToggleSelectPage = () => {
-    const pageSkillNames = currentSkills.map((s) => s.name);
-    const allInPage = pageSkillNames.every((n) => selectedNames.has(n));
+  /** 全选/取消已加载项 */
+  const handleToggleSelectAll = () => {
+    const skillNames = filteredItems.map((s) => s.name);
+    const allInList = skillNames.length > 0 && skillNames.every((n) => selectedNames.has(n));
     setSelectedNames((prev) => {
       const next = new Set(prev);
-      if (allInPage) {
-        pageSkillNames.forEach((n) => next.delete(n));
+      if (allInList) {
+        skillNames.forEach((n) => next.delete(n));
       } else {
-        pageSkillNames.forEach((n) => next.add(n));
+        skillNames.forEach((n) => next.add(n));
       }
       return next;
     });
@@ -343,7 +252,7 @@ export const BifrostSkillsPage: React.FC = () => {
               title="刷新（强制获取最新信息）"
               className="flex items-center gap-1.5"
             >
-              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+              <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
               刷新
             </Button>
           </div>
@@ -394,20 +303,20 @@ export const BifrostSkillsPage: React.FC = () => {
 
           {/* 页面多选控制与视图切换 */}
           <div className="flex items-center gap-3 ms-auto flex-wrap">
-            {currentSkills.length > 0 && (
+            {filteredItems.length > 0 && (
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={handleToggleSelectPage}
+                  onClick={handleToggleSelectAll}
                   className="text-xs text-ink-light hover:text-accent font-sans flex items-center gap-1 active:scale-[0.96] transition-all"
                 >
-                  {currentSkills.every((s) => selectedNames.has(s.name)) ? (
+                  {filteredItems.every((s) => selectedNames.has(s.name)) ? (
                     <>
-                      <CheckSquare size={14} className="text-accent" /> 取消本页
+                      <CheckSquare size={14} className="text-accent" /> 取消全选
                     </>
                   ) : (
                     <>
-                      <Square size={14} /> 全选本页
+                      <Square size={14} /> 全选已载入
                     </>
                   )}
                 </button>
@@ -423,7 +332,7 @@ export const BifrostSkillsPage: React.FC = () => {
                 )}
 
                 <span className="text-xs text-ink-faint font-sans ml-1">
-                  共 <span className="tabular-nums font-mono text-ink font-medium">{filteredSkills.length}</span> 个 Skill
+                  共 <span className="tabular-nums font-mono text-ink font-medium">{total}</span> 个 Skill
                 </span>
               </div>
             )}
@@ -471,7 +380,7 @@ export const BifrostSkillsPage: React.FC = () => {
         {/* Skills 内容区（网格 vs 高密度列表） */}
         {(skills.length > 0 || (!loading && !error)) && (
           <div>
-            {filteredSkills.length === 0 ? (
+            {filteredItems.length === 0 ? (
               <Card className="py-16 flex flex-col items-center gap-3 text-center">
                 <Boxes size={40} strokeWidth={1} className="text-ink-faint" />
                 <p className="font-serif text-base text-ink">没有找到匹配的 Skill</p>
@@ -481,7 +390,7 @@ export const BifrostSkillsPage: React.FC = () => {
               </Card>
             ) : viewMode === 'grid' ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4.5">
-                {currentSkills.map((s) => {
+                {filteredItems.map((s) => {
                   const isChecked = selectedNames.has(s.name);
                   const isDownloading = downloadingName === s.name;
                   const noteText = s.user_note || s.note;
@@ -625,7 +534,7 @@ export const BifrostSkillsPage: React.FC = () => {
             ) : (
               /* 高密度列表视图 */
               <div className="space-y-2">
-                {currentSkills.map((s) => {
+                {filteredItems.map((s) => {
                   const isChecked = selectedNames.has(s.name);
                   const isDownloading = downloadingName === s.name;
                   const noteText = s.user_note || s.note;
@@ -730,16 +639,18 @@ export const BifrostSkillsPage: React.FC = () => {
               </div>
             )}
 
-            {/* 分页组件 */}
-            {totalPages > 1 && (
-              <div className="mt-8 flex justify-center">
-                <Pagination
-                  currentPage={currentPage}
-                  totalPages={totalPages}
-                  onPageChange={setCurrentPage}
-                />
-              </div>
-            )}
+            {/* 流式触底哨兵与加载更多状态 */}
+            <div ref={sentinelRef} className="py-6 flex justify-center items-center">
+              {loadingMore && (
+                <div className="flex items-center gap-2 text-xs font-sans text-ink-light">
+                  <Loader2 size={16} className="animate-spin text-accent" />
+                  <span>加载更多技能...</span>
+                </div>
+              )}
+              {!hasMore && filteredItems.length > 0 && (
+                <span className="text-xs text-ink-faint font-sans select-none">已加载全部 {total} 个技能</span>
+              )}
+            </div>
           </div>
         )}
 
@@ -806,7 +717,7 @@ export const BifrostSkillsPage: React.FC = () => {
                   <span className="text-xs text-ink-light">评分：</span>
                   <RatingStars
                     value={detail.user_rating || 0}
-                    onChange={(r) => void handleUpdateRating(detail.name, r, detail.user_note || detail.note)}
+                    onChange={(r) => void onUpdateRating(detail.name, r, detail.user_note || detail.note)}
                     size="sm"
                   />
                 </div>
@@ -846,7 +757,7 @@ export const BifrostSkillsPage: React.FC = () => {
                         : 'border-transparent text-ink-light hover:text-ink'
                     }`}
                   >
-                    <FileText size={14} /> SKILL.md 文档
+                    <FileText size={14} /> SKILL.md
                   </button>
                   <button
                     type="button"
@@ -865,7 +776,7 @@ export const BifrostSkillsPage: React.FC = () => {
                 {detailTab === 'doc' && (
                   <MarkdownViewer
                     content={detail.body}
-                    emptyText="（暂无 SKILL.md 文档正文）"
+                    emptyText="（暂无 SKILL.md 文档）"
                     copyable
                     className="max-h-[460px]"
                   />
@@ -889,7 +800,7 @@ export const BifrostSkillsPage: React.FC = () => {
             resourceName={editingNoteTarget.name}
             initialRating={editingNoteTarget.user_rating ?? 0}
             initialNote={editingNoteTarget.user_note ?? editingNoteTarget.note ?? ''}
-            onSave={handleSaveNote}
+            onSave={onSaveNoteModal}
           />
         )}
       </main>

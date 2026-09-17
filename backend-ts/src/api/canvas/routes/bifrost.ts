@@ -40,9 +40,18 @@ export async function register(app: FastifyInstance): Promise<void> {
     '/api/modules/bookplate/bifrost/prompts',
     { preHandler: app.authenticate },
     async (request, reply) => {
-      const q = (request.query ?? {}) as { folder_id?: string; q?: string; force?: string };
+      const q = (request.query ?? {}) as { folder_id?: string; q?: string; skip?: string; limit?: string; force?: string };
+      const skip = Math.max(0, Number(q.skip ?? 0) || 0);
+      const limit = q.limit !== undefined ? Math.max(0, Number(q.limit) || 0) : 50;
       try {
-        const prompts = await listPrompts(getDb(), q.folder_id || null, q.q ?? '', q.force === '1' || q.force === 'true');
+        const { prompts, total } = await listPrompts(
+          getDb(),
+          q.folder_id || null,
+          q.q ?? '',
+          q.force === '1' || q.force === 'true',
+          skip,
+          limit
+        );
         const userId = request.authUser?.id;
         if (userId && prompts.length) {
           const pids = prompts.map((p) => String(p.id ?? '')).filter(Boolean);
@@ -53,7 +62,7 @@ export async function register(app: FastifyInstance): Promise<void> {
             p.user_note = ann?.note ?? '';
           }
         }
-        return { prompts };
+        return { prompts, total };
       } catch (err) {
         if (err instanceof BifrostNotFoundError) return reply.code(404).send({ detail: err.message });
         if (err instanceof BifrostNotConfiguredError) return reply.code(503).send({ detail: err.message });

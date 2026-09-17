@@ -129,8 +129,14 @@ export const adminService = {
   listBifrostFolders: (params?: { all?: boolean; force?: boolean }): Promise<{ folders: BifrostFolder[] }> =>
     api.get<{ folders: BifrostFolder[] }, { folders: BifrostFolder[] }>('/admin/bifrost/folders', { params }),
   /** force=true 绕过 TTL 缓存强制拉取 Bifrost（供「刷新」按钮使用） */
-  listBifrostPrompts: (params?: { folder_id?: string; q?: string; force?: boolean }): Promise<{ prompts: BifrostPrompt[] }> =>
-    api.get<{ prompts: BifrostPrompt[] }, { prompts: BifrostPrompt[] }>('/admin/bifrost/prompts', { params }),
+  listBifrostPrompts: (params?: {
+    folder_id?: string;
+    q?: string;
+    skip?: number;
+    limit?: number;
+    force?: boolean;
+  }): Promise<{ prompts: BifrostPrompt[]; total: number }> =>
+    api.get<{ prompts: BifrostPrompt[]; total: number }, { prompts: BifrostPrompt[]; total: number }>('/admin/bifrost/prompts', { params }),
   getBifrostPrompt: (promptId: string): Promise<BifrostPrompt> =>
     api.get<BifrostPrompt, BifrostPrompt>(`/admin/bifrost/prompts/${encodeURIComponent(promptId)}`),
   /** 调试：Bifrost 原始响应（raw=true 透传，排查正文提取 / 数据结构问题） */
@@ -138,24 +144,29 @@ export const adminService = {
     api.get<unknown, unknown>(`/admin/bifrost/prompts/${encodeURIComponent(promptId)}?raw=true`),
   /** 上传 / 更换提示词预览图（multipart，axios 自动设置 boundary） */
   uploadBifrostPreview: (promptId: string, file: File): Promise<{ preview_image: string }> => {
-    const form = new FormData();
-    form.append('file', file);
+    const fd = new FormData();
+    fd.append('file', file);
     return api.post<{ preview_image: string }, { preview_image: string }>(
       `/admin/bifrost/prompts/${encodeURIComponent(promptId)}/preview`,
-      form
+      fd,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
     );
   },
-  deleteBifrostPreview: (promptId: string): Promise<{ preview_image: null }> =>
-    api.delete<{ preview_image: null }, { preview_image: null }>(
-      `/admin/bifrost/prompts/${encodeURIComponent(promptId)}/preview`
-    ),
+  /** 删除提示词预览图 */
+  deleteBifrostPreview: (promptId: string): Promise<{ message: string }> =>
+    api.delete(`/admin/bifrost/prompts/${encodeURIComponent(promptId)}/preview`),
 
   /* ---------------- Bifrost Skills 管理 ---------------- */
 
   /** 共享区缓存的 Bifrost Skills 列表 + 远端未缓存 skill 合并浏览；force=true 绕过 TTL 缓存强制拉取远端。
    *  列表已瘦身（无 body/files）；后端远端拉取单页超时 8s，此处放宽到 30s 避免客户端先于后端超时。 */
-  listBifrostSkills: (params?: { q?: string; force?: boolean }): Promise<{ skills: CachedBifrostSkill[]; remote_available: boolean }> =>
-    api.get<{ skills: CachedBifrostSkill[]; remote_available: boolean }, { skills: CachedBifrostSkill[]; remote_available: boolean }>(
+  listBifrostSkills: (params?: {
+    q?: string;
+    skip?: number;
+    limit?: number;
+    force?: boolean;
+  }): Promise<{ skills: CachedBifrostSkill[]; total: number; remote_available: boolean }> =>
+    api.get<{ skills: CachedBifrostSkill[]; total: number; remote_available: boolean }, { skills: CachedBifrostSkill[]; total: number; remote_available: boolean }>(
       '/admin/bifrost-skills',
       { params, timeout: 30000 }
     ),

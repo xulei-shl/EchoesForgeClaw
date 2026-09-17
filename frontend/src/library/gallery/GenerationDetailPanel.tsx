@@ -6,6 +6,7 @@ import { normalizeMarkdown } from '../../shared/utils/normalizeMarkdown';
 import { AgentActivity } from '../../shared/components/agent/AgentActivity';
 import { Drawer } from '../../shared/components/ui/Drawer';
 import {
+  ChevronRight,
   Download,
   Globe,
   Heart,

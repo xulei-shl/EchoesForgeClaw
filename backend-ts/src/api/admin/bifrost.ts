@@ -58,12 +58,21 @@ export async function registerBifrostAdminRouter(app: FastifyInstance): Promise<
 
   // 提示词列表（force=1 绕过 TTL 缓存强制拉取 Bifrost，供管理页「刷新」使用）
   app.get('/api/admin/bifrost/prompts', admin, async (request, reply) => {
-    const q = (request.query ?? {}) as { folder_id?: string; q?: string; raw?: string; force?: string };
+    const q = (request.query ?? {}) as { folder_id?: string; q?: string; raw?: string; force?: string; skip?: string; limit?: string };
     try {
       if (q.raw === 'true') {
         return await listPromptsRaw(getDb(), q.folder_id || null);
       }
-      const prompts = await listPrompts(getDb(), q.folder_id || null, q.q ?? '', q.force === '1' || q.force === 'true');
+      const skip = Math.max(0, Number(q.skip ?? 0) || 0);
+      const limit = q.limit !== undefined ? Math.max(0, Number(q.limit) || 0) : 50;
+      const { prompts, total } = await listPrompts(
+        getDb(),
+        q.folder_id || null,
+        q.q ?? '',
+        q.force === '1' || q.force === 'true',
+        skip,
+        limit
+      );
       const userId = request.authUser?.id;
       if (userId && prompts.length) {
         const pids = prompts.map((p) => String(p.id ?? '')).filter(Boolean);
@@ -74,7 +83,7 @@ export async function registerBifrostAdminRouter(app: FastifyInstance): Promise<
           p.user_note = ann?.note ?? '';
         }
       }
-      return { prompts };
+      return { prompts, total };
     } catch (err) {
       const e = bifrostErrorHttp(err);
       return reply.code(e.code).send(e.body);

@@ -55,14 +55,15 @@ export async function register(app: FastifyInstance): Promise<void> {
     '/api/modules/bookplate/skills/bifrost-search',
     { preHandler: app.authenticate },
     async (request) => {
-      const q = (request.query ?? {}) as { q?: string; limit?: string; force?: string };
-      // 默认 200：列表已瘦身（无 body/files），支持数百 skill 目录浏览
-      const limit = Number(q.limit ?? 200) || 200;
+      const q = (request.query ?? {}) as { q?: string; skip?: string; limit?: string; force?: string };
+      const skip = Math.max(0, Number(q.skip ?? 0) || 0);
+      const limit = q.limit !== undefined ? Math.max(0, Number(q.limit) || 0) : 50;
       const force = q.force === '1' || q.force === 'true';
       return getMergedBifrostSkills({
         db: getDb(),
         userId: request.authUser!.id,
         q: q.q,
+        skip,
         limit,
         force,
       });

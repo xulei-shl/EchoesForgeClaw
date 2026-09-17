@@ -9,13 +9,15 @@ export const bifrostService = {
       { params }
     ),
 
-  /** 提示词列表（支持文件夹过滤、关键字搜索、强制穿透 TTL 缓存） */
+  /** 提示词列表（支持文件夹过滤、关键字搜索、分页、强制穿透 TTL 缓存） */
   listPrompts: (params?: {
     folder_id?: string;
     q?: string;
+    skip?: number;
+    limit?: number;
     force?: boolean;
-  }): Promise<{ prompts: BifrostPrompt[] }> =>
-    api.get<{ prompts: BifrostPrompt[] }, { prompts: BifrostPrompt[] }>(
+  }): Promise<{ prompts: BifrostPrompt[]; total: number }> =>
+    api.get<{ prompts: BifrostPrompt[]; total: number }, { prompts: BifrostPrompt[]; total: number }>(
       '/modules/bookplate/bifrost/prompts',
       { params, timeout: 20000 }
     ),
@@ -26,12 +28,14 @@ export const bifrostService = {
       `/modules/bookplate/bifrost/prompts/${encodeURIComponent(promptId)}`
     ),
 
-  /** 检索 Bifrost Skills 仓库（共享区本地缓存优先 + 远端合并浏览，支持 force 刷新） */
+  /** 检索 Bifrost Skills 仓库（共享区本地缓存优先 + 远端合并浏览，支持分页与 force 刷新） */
   listSkills: (params?: {
     q?: string;
+    skip?: number;
+    limit?: number;
     force?: boolean;
-  }): Promise<{ skills: CachedBifrostSkill[]; remote_available: boolean }> =>
-    api.get<{ skills: CachedBifrostSkill[]; remote_available: boolean }, { skills: CachedBifrostSkill[]; remote_available: boolean }>(
+  }): Promise<{ skills: CachedBifrostSkill[]; total: number; remote_available: boolean }> =>
+    api.get<{ skills: CachedBifrostSkill[]; total: number; remote_available: boolean }, { skills: CachedBifrostSkill[]; total: number; remote_available: boolean }>(
       '/modules/bookplate/skills/bifrost-search',
       { params, timeout: 30000 }
     ),

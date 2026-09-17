@@ -325,8 +325,10 @@ export async function listPrompts(
   db: DB,
   folderId: string | null = null,
   q = '',
-  force = false
-): Promise<Record<string, any>[]> {
+  force = false,
+  skip = 0,
+  limit = 50
+): Promise<{ prompts: Record<string, any>[]; total: number }> {
   const cfg = requireConfig(db);
   const cacheKey = `list:${cfg.base_url}:${folderId ?? ''}`;
   const payload = await cached(
@@ -335,7 +337,7 @@ export async function listPrompts(
     force
   );
   const prompts = asList(payload, 'prompts');
-  if (!prompts.length) return [];
+  if (!prompts.length) return { prompts: [], total: 0 };
   const previews = previewMap(db, prompts.map((p) => p.id).filter(Boolean));
   const keyword = q.trim().toLowerCase();
   const items: Record<string, any>[] = [];
@@ -350,7 +352,9 @@ export async function listPrompts(
     }
     items.push(item);
   }
-  return items;
+  const total = items.length;
+  const sliced = limit > 0 ? items.slice(skip, skip + limit) : items.slice(skip);
+  return { prompts: sliced, total };
 }
 
 /** 提示词列表的 Bifrost 原始响应（调试用）。 */
@@ -623,12 +627,14 @@ export interface MergedBifrostSkillOptions {
   db: DB;
   userId?: number;
   q?: string;
+  skip?: number;
   limit?: number;
   force?: boolean;
 }
 
 export interface MergedBifrostSkillsResult {
   skills: Record<string, any>[];
+  total: number;
   remote_available: boolean;
 }
 
@@ -639,7 +645,7 @@ export interface MergedBifrostSkillsResult {
 export async function getMergedBifrostSkills(
   options: MergedBifrostSkillOptions
 ): Promise<MergedBifrostSkillsResult> {
-  const { db, userId, q = '', limit = 50, force = false } = options;
+  const { db, userId, q = '', skip = 0, limit = 50, force = false } = options;
   const keyword = q.trim().toLowerCase();
 
   // 1. 本地共享区缓存（浅拷贝：下方合并会写回远端富化字段，避免污染共享列表缓存）
@@ -649,11 +655,11 @@ export async function getMergedBifrostSkills(
     if (s?.name) localNames.add(String(s.name));
   }
 
-  // 2. 尝试向远端发起检索（带 force / limit）
+  // 2. 尝试向远端发起检索（带 force；取足够大的 catalog 供准确过滤与分页）
   let remoteAvailable = false;
   let remote: Record<string, any>[] = [];
   try {
-    remote = await searchBifrostSkills(db, q, limit, force);
+    remote = await searchBifrostSkills(db, q, SKILLS_CATALOG_MAX, force);
     remoteAvailable = true;
   } catch {
     /* Bifrost 不可达 / 未配置：静默降级为仅本地缓存 */
@@ -733,6 +739,8 @@ export async function getMergedBifrostSkills(
     delete s.files;
   }
 
-  return { skills: merged, remote_available: remoteAvailable };
+  const total = merged.length;
+  const sliced = limit > 0 ? merged.slice(skip, skip + limit) : merged.slice(skip);
+  return { skills: sliced, total, remote_available: remoteAvailable };
 }
 

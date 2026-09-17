@@ -57,7 +57,9 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
   const [pickerOpen, setPickerOpen] = useState(false);
   /** 检索结果（Bifrost） */
   const [skills, setSkills] = useState<BifrostSkill[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
   const [q, setQ] = useState('');
   const [ratingFilter, setRatingFilter] = useState('');
@@ -66,11 +68,11 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const requestSeq = useRef(0);
+  const nextSkipRef = useRef(0);
+  const observerTarget = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 增量渲染：大目录先渲染前 N 条，触底自动加载更多（避免一次性渲染几百条卡顿）
-  const [visibleCount, setVisibleCount] = useState(20);
-  const observerTarget = useRef<HTMLDivElement>(null);
+  const PAGE_SIZE = 30;
 
   /** 已选 skill 名称集合（按 name 判等去重） */
   const selectedNames = useMemo(() => new Set(selections.map((s) => s.name)), [selections]);
@@ -79,16 +81,23 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
     const seq = ++requestSeq.current;
     setLoading(true);
     setError('');
+    nextSkipRef.current = 0;
     try {
-      const res: { skills: BifrostSkill[] } = await api.get(
+      const res: { skills: BifrostSkill[]; total: number } = await api.get(
         '/modules/bookplate/skills/bifrost-search',
         {
-          params: keyword?.trim() ? { q: keyword.trim() } : {},
+          params: {
+            q: keyword?.trim() || undefined,
+            skip: 0,
+            limit: PAGE_SIZE,
+          },
           timeout: 20000,
         }
       );
       if (seq !== requestSeq.current) return;
       setSkills(res.skills ?? []);
+      setTotal(res.total ?? 0);
+      nextSkipRef.current = (res.skills ?? []).length;
     } catch (e: any) {
       if (seq !== requestSeq.current) return;
       setError(e?.message || '加载 skill 失败，请重试');
@@ -101,10 +110,10 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
     setQ('');
     setRatingFilter('');
     setSkills([]);
+    setTotal(0);
     setUploadError('');
     setLoading(true);
     setError('');
-    setVisibleCount(20);
     setPickerOpen(true);
   }, []);
 
@@ -200,23 +209,53 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
     });
   }, [skills, ratingFilter]);
 
-  // 搜索防抖：输入停止 350ms 后重新加载（每次搜索/打开重置增量渲染计数）
+  // 加载更多（流式触底加载）
+  const loadMoreSkills = useCallback(async () => {
+    if (loading || loadingMore || skills.length >= total) return;
+    const skip = nextSkipRef.current;
+    setLoadingMore(true);
+    try {
+      const res: { skills: BifrostSkill[]; total: number } = await api.get(
+        '/modules/bookplate/skills/bifrost-search',
+        {
+          params: {
+            q: q.trim() || undefined,
+            skip,
+            limit: PAGE_SIZE,
+          },
+          timeout: 20000,
+        }
+      );
+      setSkills((prev) => {
+        const seen = new Set(prev.map((s) => s.name));
+        const append = (res.skills ?? []).filter((s) => !seen.has(s.name));
+        return [...prev, ...append];
+      });
+      setTotal(res.total ?? 0);
+      nextSkipRef.current = skip + (res.skills ?? []).length;
+    } catch {
+      /* ignore */
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loading, loadingMore, q, skills.length, total]);
+
+  // 搜索防抖：输入停止 350ms 后重新加载
   useEffect(() => {
     if (!pickerOpen) return;
-    setVisibleCount(20);
     const t = window.setTimeout(() => {
       void loadSkills(q);
     }, 350);
     return () => window.clearTimeout(t);
   }, [pickerOpen, q, loadSkills]);
 
-  // 触底自动加载更多（增量渲染，避免大目录一次性渲染卡顿）
+  // 触底自动加载更多
   useEffect(() => {
-    if (!pickerOpen || filteredSkills.length === 0) return;
+    if (!pickerOpen || skills.length >= total) return;
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting) {
-          setVisibleCount((prev) => Math.min(prev + 20, filteredSkills.length));
+          void loadMoreSkills();
         }
       },
       { rootMargin: '100px' }
@@ -225,7 +264,7 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
       observer.observe(observerTarget.current);
     }
     return () => observer.disconnect();
-  }, [pickerOpen, filteredSkills.length, visibleCount]);
+  }, [pickerOpen, loadMoreSkills, skills.length, total]);
 
   /** 从 Bifrost 安装；成功后加入选择集（不关闭 picker，支持多选）。
    *  已选中的条目再次点击 = 取消选择：仅从选择集移除，不重复安装、不卸载工作区 skill。 */
@@ -341,7 +380,7 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
       )}
       {!loading &&
         !error &&
-        filteredSkills.slice(0, visibleCount).map((s) => {
+        filteredSkills.map((s) => {
           const isSelected = selectedNames.has(s.name);
           const noteText = s.user_note || s.note;
           return (
@@ -416,13 +455,11 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
             </div>
           );
         })}
-      {!loading && !error && filteredSkills.length > 0 && visibleCount < filteredSkills.length && (
-        <div ref={observerTarget} className="py-4 flex justify-center">
-          <Loader2 className="w-4 h-4 animate-spin text-ink-faint" />
-        </div>
-      )}
-      {!loading && !error && filteredSkills.length > 0 && visibleCount >= filteredSkills.length && (
-        <p className="text-xs text-ink-faint font-sans text-center py-4">已加载全部 {filteredSkills.length} 个</p>
+      <div ref={observerTarget} className="py-4 flex justify-center">
+        {loadingMore && <Loader2 className="w-4 h-4 animate-spin text-ink-faint" />}
+      </div>
+      {!loading && !error && skills.length >= total && filteredSkills.length > 0 && (
+        <p className="text-xs text-ink-faint font-sans text-center py-4">已加载全部 {total} 个技能</p>
       )}
     </div>
   );

@@ -62,7 +62,9 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
 }) => {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [prompts, setPrompts] = useState<BifrostPrompt[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
   const [q, setQ] = useState('');
   const [ratingFilter, setRatingFilter] = useState('');
@@ -75,18 +77,23 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
   const requestSeq = useRef(0);
   // 本次打开选择器的首次加载强制刷新（绕过 TTL 缓存），后续输入防抖走缓存
   const forceNextLoad = useRef(true);
-  const [visibleCount, setVisibleCount] = useState(20);
+  const nextSkipRef = useRef(0);
   const observerTarget = useRef<HTMLDivElement>(null);
+  const PAGE_SIZE = 30;
 
   const loadPrompts = useCallback(async (keyword?: string, force = false) => {
     const seq = ++requestSeq.current;
     setLoading(true);
     setError('');
+    nextSkipRef.current = 0;
     try {
-      const params: Record<string, string | number> = {};
+      const params: Record<string, string | number> = {
+        skip: 0,
+        limit: PAGE_SIZE,
+      };
       if (keyword?.trim()) params.q = keyword.trim();
       if (force) params.force = 1;
-      const res: { prompts: BifrostPrompt[] } = await api.get(
+      const res: { prompts: BifrostPrompt[]; total: number } = await api.get(
         '/modules/bookplate/bifrost/prompts',
         {
           params,
@@ -95,6 +102,8 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
       );
       if (seq !== requestSeq.current) return;
       setPrompts(res.prompts ?? []);
+      setTotal(res.total ?? 0);
+      nextSkipRef.current = (res.prompts ?? []).length;
     } catch (e: any) {
       if (seq !== requestSeq.current) return;
       setError(e?.message || '加载提示词失败，请重试');
@@ -106,8 +115,8 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
   const openPicker = useCallback(() => {
     setQ('');
     setRatingFilter('');
-    setVisibleCount(20);
     setPrompts([]);
+    setTotal(0);
     forceNextLoad.current = true; // 本次打开强制拉最新，避免吃 5 分钟 TTL 旧缓存
     setLoading(true);
     setError('');
@@ -180,10 +189,41 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
     }
   };
 
+  // 加载更多（流式触底加载）
+  const loadMorePrompts = useCallback(async () => {
+    if (loading || loadingMore || prompts.length >= total) return;
+    const skip = nextSkipRef.current;
+    setLoadingMore(true);
+    try {
+      const params: Record<string, string | number> = {
+        skip,
+        limit: PAGE_SIZE,
+      };
+      if (q.trim()) params.q = q.trim();
+      const res: { prompts: BifrostPrompt[]; total: number } = await api.get(
+        '/modules/bookplate/bifrost/prompts',
+        {
+          params,
+          timeout: 20000,
+        }
+      );
+      setPrompts((prev) => {
+        const seen = new Set(prev.map((p) => p.id));
+        const append = (res.prompts ?? []).filter((p) => !seen.has(p.id));
+        return [...prev, ...append];
+      });
+      setTotal(res.total ?? 0);
+      nextSkipRef.current = skip + (res.prompts ?? []).length;
+    } catch {
+      /* ignore */
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loading, loadingMore, prompts.length, q, total]);
+
   // 搜索防抖：输入停止 350ms 后按关键词重新加载（仅打开后的首次加载带 force）
   useEffect(() => {
     if (!pickerOpen) return;
-    setVisibleCount(20);
     const force = forceNextLoad.current;
     forceNextLoad.current = false;
     const t = window.setTimeout(() => {
@@ -194,12 +234,12 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
 
   // 触底自动加载更多
   useEffect(() => {
-    if (!pickerOpen || prompts.length === 0) return;
+    if (!pickerOpen || prompts.length >= total) return;
     
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting) {
-          setVisibleCount((prev) => Math.min(prev + 20, prompts.length));
+          void loadMorePrompts();
         }
       },
       { rootMargin: '100px' }
@@ -210,7 +250,7 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
     }
 
     return () => observer.disconnect();
-  }, [pickerOpen, prompts.length, visibleCount]);
+  }, [pickerOpen, loadMorePrompts, prompts.length, total]);
 
   const handleSelect = (p: BifrostPrompt) => {
     onUpdatePrompt?.(id, {
@@ -262,7 +302,7 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
       )}
       {!loading &&
         !error &&
-        filteredPrompts.slice(0, visibleCount).map((p) => {
+        filteredPrompts.map((p) => {
           const isSelected = p.id === promptId;
           return (
             <div
@@ -349,13 +389,11 @@ const PromptSearchNodeInner: React.FC<PromptSearchNodeProps> = ({
             </div>
           );
         })}
-      {!loading && !error && filteredPrompts.length > 0 && visibleCount < filteredPrompts.length && (
-        <div ref={observerTarget} className="py-4 flex justify-center">
-          <Loader2 className="w-4 h-4 animate-spin text-ink-faint" />
-        </div>
-      )}
-      {!loading && !error && filteredPrompts.length > 0 && visibleCount >= filteredPrompts.length && (
-        <p className="text-xs text-ink-faint font-sans text-center py-4">已加载全部 {filteredPrompts.length} 条</p>
+      <div ref={observerTarget} className="py-4 flex justify-center">
+        {loadingMore && <Loader2 className="w-4 h-4 animate-spin text-ink-faint" />}
+      </div>
+      {!loading && !error && prompts.length >= total && filteredPrompts.length > 0 && (
+        <p className="text-xs text-ink-faint font-sans text-center py-4">已加载全部 {total} 条提示词</p>
       )}
     </div>
   );

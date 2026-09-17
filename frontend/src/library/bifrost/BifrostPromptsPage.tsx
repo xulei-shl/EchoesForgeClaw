@@ -1,9 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   BookOpen,
   Copy,
   ImageOff,
+  Loader2,
   Maximize2,
   PlusCircle,
   RefreshCw,
@@ -13,9 +14,7 @@ import {
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
 import { Navbar } from '../../shared/components/layout/Navbar';
-import { bifrostService } from '../../shared/services/bifrost';
-import { annotationService } from '../../shared/services/admin';
-import type { BifrostFolder, BifrostPrompt } from '../../shared/types';
+import type { BifrostPrompt } from '../../shared/types';
 import { Button } from '../../shared/components/ui/Button';
 import { Input } from '../../shared/components/ui/Input';
 import { Select } from '../../shared/components/ui/Select';
@@ -26,21 +25,34 @@ import { RatingStars } from '../../shared/components/ui/RatingStars';
 import { NoteEditModal } from '../../shared/components/ui/NoteEditModal';
 import { MarkdownViewer } from '../../shared/components/ui/MarkdownViewer';
 import { useFeedback } from '../../shared/components/ui/FeedbackProvider';
-import { Pagination } from '../../shared/components/ui/Pagination';
 import { ViewToggle, type ViewMode } from '../../shared/components/ui/ViewToggle';
-
-/** 内存级 SWR 缓存：页面切换 0ms 瞬间秒开 */
-let cachedFolders: BifrostFolder[] | null = null;
-let cachedPrompts: BifrostPrompt[] | null = null;
+import { useBifrostPrompts } from './useBifrostPrompts';
 
 export const BifrostPromptsPage: React.FC = () => {
   const navigate = useNavigate();
   const { showToast } = useFeedback();
 
-  const [folders, setFolders] = useState<BifrostFolder[]>(() => cachedFolders ?? []);
-  const [prompts, setPrompts] = useState<BifrostPrompt[]>(() => cachedPrompts ?? []);
-  const [loading, setLoading] = useState(() => !cachedPrompts);
-  const [error, setError] = useState('');
+  const {
+    folders,
+    items: prompts,
+    filteredItems,
+    total,
+    loading,
+    isRefreshing,
+    loadingMore,
+    hasMore,
+    error,
+    folderId,
+    setFolderId,
+    q,
+    setQ,
+    ratingFilter,
+    setRatingFilter,
+    sentinelRef,
+    load,
+    updateRating: handleUpdateRating,
+    saveNote: handleSaveNote,
+  } = useBifrostPrompts();
 
   const [viewMode, setViewMode] = useState<ViewMode>(
     () => (localStorage.getItem('bf-prompts-view') as ViewMode) || 'grid'
@@ -53,122 +65,8 @@ export const BifrostPromptsPage: React.FC = () => {
     } catch {}
   };
 
-  const [q, setQ] = useState('');
-  const [folderId, setFolderId] = useState('');
-  const [ratingFilter, setRatingFilter] = useState('');
-
-  const [currentPage, setCurrentPage] = useState(1);
-  const PAGE_SIZE = 24;
-
   const [detail, setDetail] = useState<BifrostPrompt | null>(null);
   const [editingNoteTarget, setEditingNoteTarget] = useState<BifrostPrompt | null>(null);
-
-  /** 加载提示词与文件夹 */
-  const load = useCallback(
-    async (force = false, showLoading = true) => {
-      if (showLoading && !cachedPrompts) setLoading(true);
-      setError('');
-      try {
-        const [folderRes, promptRes] = await Promise.all([
-          bifrostService.listFolders({ force }),
-          bifrostService.listPrompts({
-            folder_id: folderId || undefined,
-            q: q || undefined,
-            force,
-          }),
-        ]);
-        cachedFolders = folderRes.folders;
-        if (!folderId && !q) cachedPrompts = promptRes.prompts;
-        setFolders(folderRes.folders ?? []);
-        setPrompts(promptRes.prompts ?? []);
-      } catch (e: any) {
-        if (!cachedPrompts) setError(e?.message || '加载提示词失败，请重试');
-      } finally {
-        setLoading(false);
-      }
-    },
-    [folderId, q]
-  );
-
-  // 文件夹变化立即加载
-  const prevFolderRef = useRef(folderId);
-  const mountedRef = useRef(false);
-  useEffect(() => {
-    if (!mountedRef.current) {
-      mountedRef.current = true;
-      void load(false, !cachedPrompts);
-      return;
-    }
-    if (prevFolderRef.current !== folderId) {
-      prevFolderRef.current = folderId;
-      void load(false, false);
-    }
-  }, [folderId, load]);
-
-  // 搜索防抖
-  const loadRef = useRef(load);
-  loadRef.current = load;
-  const firstLoad = useRef(true);
-  useEffect(() => {
-    if (firstLoad.current) {
-      firstLoad.current = false;
-      return;
-    }
-    const t = window.setTimeout(() => {
-      void loadRef.current();
-    }, 350);
-    return () => window.clearTimeout(t);
-  }, [q]);
-
-  // 条件变化回到第一页
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [q, folderId, ratingFilter]);
-
-  /** 更新星级评分 */
-  const handleUpdateRating = async (promptId: string, nextRating: number, currentNote?: string) => {
-    try {
-      const res = await annotationService.setAnnotation({
-        resource_type: 'bifrost_prompt',
-        resource_id: promptId,
-        rating: nextRating,
-        note: currentNote !== undefined ? currentNote : (prompts.find((p) => p.id === promptId)?.user_note ?? ''),
-      });
-      setPrompts((prev) =>
-        prev.map((p) => (p.id === promptId ? { ...p, user_rating: res.rating, user_note: res.note } : p))
-      );
-      if (detail && detail.id === promptId) {
-        setDetail({ ...detail, user_rating: res.rating, user_note: res.note });
-      }
-      showToast(nextRating > 0 ? `已评为 ${nextRating} 星` : '已清除评分', { type: 'success' });
-    } catch (e: any) {
-      showToast(e?.message || '评分更新失败', { type: 'error' });
-    }
-  };
-
-  /** 保存私有备注 */
-  const handleSaveNote = async (nextRating: number, nextNote: string) => {
-    if (!editingNoteTarget) return;
-    try {
-      const res = await annotationService.setAnnotation({
-        resource_type: 'bifrost_prompt',
-        resource_id: editingNoteTarget.id,
-        rating: nextRating,
-        note: nextNote.trim(),
-      });
-      setPrompts((prev) =>
-        prev.map((p) =>
-          p.id === editingNoteTarget.id ? { ...p, user_rating: res.rating, user_note: res.note } : p
-        )
-      );
-      if (detail && detail.id === editingNoteTarget.id) {
-        setDetail({ ...detail, user_rating: res.rating, user_note: res.note });
-      }
-      showToast('备注已保存', { type: 'success' });
-    } catch (e: any) {
-      showToast(e?.message || '备注保存失败', { type: 'error' });
-    }
-  };
 
   /** 复制提示词正文 */
   const handleCopy = (content: string, name: string) => {
@@ -205,50 +103,53 @@ export const BifrostPromptsPage: React.FC = () => {
   const formatDate = (s?: string | null) =>
     s ? new Date(s).toLocaleString('zh-CN', { hour12: false }) : '';
 
-  // 客户端打标/备注筛选
-  const filteredPrompts = useMemo(() => {
-    return prompts.filter((p) => {
-      if (ratingFilter === '5' && (p.user_rating ?? 0) !== 5) return false;
-      if (ratingFilter === '4+' && (p.user_rating ?? 0) < 4) return false;
-      if (ratingFilter === '3+' && (p.user_rating ?? 0) < 3) return false;
-      if (ratingFilter === 'rated' && !(p.user_rating && p.user_rating > 0)) return false;
-      if (ratingFilter === 'unrated' && (p.user_rating && p.user_rating > 0)) return false;
-      if (ratingFilter === 'noted' && !p.user_note?.trim()) return false;
-      return true;
-    });
-  }, [prompts, ratingFilter]);
-
-  const totalPages = Math.ceil(filteredPrompts.length / PAGE_SIZE);
-  const currentPrompts = filteredPrompts.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
-
   // 当前详情在筛选结果中的索引，用于抽屉内上一条/下一条连续检视
   const detailIndex = useMemo(() => {
     if (!detail) return -1;
-    return filteredPrompts.findIndex((p) => p.id === detail.id);
-  }, [detail, filteredPrompts]);
+    return filteredItems.findIndex((p) => p.id === detail.id);
+  }, [detail, filteredItems]);
 
   const hasPrev = detailIndex > 0;
-  const hasNext = detailIndex >= 0 && detailIndex < filteredPrompts.length - 1;
+  const hasNext = detailIndex >= 0 && detailIndex < filteredItems.length - 1;
 
   const handlePrev = useCallback(() => {
     if (detailIndex > 0) {
-      const prevPrompt = filteredPrompts[detailIndex - 1];
+      const prevPrompt = filteredItems[detailIndex - 1];
       setDetail(prevPrompt);
-      const targetPage = Math.floor((detailIndex - 1) / PAGE_SIZE) + 1;
-      if (targetPage !== currentPage) setCurrentPage(targetPage);
     }
-  }, [detailIndex, filteredPrompts, currentPage]);
+  }, [detailIndex, filteredItems]);
 
   const handleNext = useCallback(() => {
-    if (detailIndex >= 0 && detailIndex < filteredPrompts.length - 1) {
-      const nextPrompt = filteredPrompts[detailIndex + 1];
+    if (detailIndex >= 0 && detailIndex < filteredItems.length - 1) {
+      const nextPrompt = filteredItems[detailIndex + 1];
       setDetail(nextPrompt);
-      const targetPage = Math.floor((detailIndex + 1) / PAGE_SIZE) + 1;
-      if (targetPage !== currentPage) setCurrentPage(targetPage);
     }
-  }, [detailIndex, filteredPrompts, currentPage]);
+  }, [detailIndex, filteredItems]);
 
+  /** 详情抽屉打星同步 */
+  const onUpdateRating = useCallback(
+    async (promptId: string, rating: number, currentNote?: string) => {
+      setDetail((prev) => (prev && prev.id === promptId ? { ...prev, user_rating: rating } : prev));
+      await handleUpdateRating(promptId, rating, currentNote);
+    },
+    [handleUpdateRating]
+  );
 
+  /** 模态框保存备注 */
+  const onSaveNoteModal = useCallback(
+    async (rating: number, note: string) => {
+      if (!editingNoteTarget) return;
+      const targetId = editingNoteTarget.id;
+      setDetail((prev) =>
+        prev && prev.id === targetId
+          ? { ...prev, user_rating: rating, user_note: note }
+          : prev
+      );
+      await handleSaveNote(targetId, rating, note);
+      setEditingNoteTarget(null);
+    },
+    [editingNoteTarget, handleSaveNote]
+  );
 
   return (
     <div className="min-h-screen bg-paper flex flex-col">
@@ -274,7 +175,7 @@ export const BifrostPromptsPage: React.FC = () => {
               title="刷新（强制获取最新信息）"
               className="flex items-center gap-1.5"
             >
-              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+              <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} />
               刷新
             </Button>
           </div>
@@ -329,7 +230,7 @@ export const BifrostPromptsPage: React.FC = () => {
           )}
           <div className="flex items-center gap-3 ms-auto">
             <span className="text-xs text-ink-faint font-sans">
-              共 <span className="tabular-nums font-mono text-ink font-medium">{filteredPrompts.length}</span> 条提示词
+              共 <span className="tabular-nums font-mono text-ink font-medium">{total}</span> 条提示词
             </span>
             <ViewToggle mode={viewMode} onChange={handleViewModeChange} />
           </div>
@@ -376,7 +277,7 @@ export const BifrostPromptsPage: React.FC = () => {
         {/* 提示词内容区（网格 vs 列表） */}
         {(prompts.length > 0 || (!loading && !error)) && (
           <div>
-            {filteredPrompts.length === 0 ? (
+            {filteredItems.length === 0 ? (
               <Card className="py-16 flex flex-col items-center gap-3 text-center">
                 <BookOpen size={40} strokeWidth={1} className="text-ink-faint" />
                 <p className="font-serif text-base text-ink">没有找到匹配的提示词</p>
@@ -386,7 +287,7 @@ export const BifrostPromptsPage: React.FC = () => {
               </Card>
             ) : viewMode === 'grid' ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4.5">
-                {currentPrompts.map((p) => (
+                {filteredItems.map((p) => (
                   <Card
                     key={p.id}
                     className="p-3 rounded-[20px] cursor-pointer transition-[border-color,box-shadow,transform] duration-200 ease-out hover:border-accent/40 hover:shadow-md hover:-translate-y-0.5 flex flex-col group relative"
@@ -504,7 +405,7 @@ export const BifrostPromptsPage: React.FC = () => {
             ) : (
               /* 高密度列表视图 */
               <div className="space-y-2.5">
-                {currentPrompts.map((p) => (
+                {filteredItems.map((p) => (
                   <div
                     key={p.id}
                     onClick={() => setDetail(p)}
@@ -520,32 +421,33 @@ export const BifrostPromptsPage: React.FC = () => {
                           loading="lazy"
                         />
                       ) : (
-                        <ImageOff size={20} strokeWidth={1.25} className="text-ink-faint" />
+                        <ImageOff size={22} strokeWidth={1} className="text-ink-faint" />
                       )}
                     </div>
 
-                    {/* 提示词标题与内容摘要 */}
+                    {/* 主体信息 */}
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="font-serif text-sm font-semibold text-ink truncate group-hover:text-accent transition-colors" title={p.name}>
+                      <div className="flex items-center gap-2">
+                        <p
+                          className="font-serif text-sm font-semibold text-ink truncate group-hover:text-accent transition-colors"
+                          title={p.name}
+                        >
                           {p.name}
-                        </span>
-                        {p.folder_name && <Badge>{p.folder_name}</Badge>}
-                        <span className="text-[11px] text-ink-faint font-sans tabular-nums shrink-0">
-                          {formatDate(p.updated_at)}
-                        </span>
+                        </p>
+                        {p.folder_name && (
+                          <Badge variant="default" className="text-[10px] shrink-0">
+                            {p.folder_name}
+                          </Badge>
+                        )}
                       </div>
                       <p
-                        className="mt-1 text-xs text-ink-light font-sans truncate"
-                        title={p.content || '（暂无正文内容）'}
+                        className="text-xs text-ink-light font-sans line-clamp-1 mt-0.5"
+                        title={p.content}
                       >
-                        {p.content || '（暂无正文内容）'}
+                        {p.content}
                       </p>
                       {p.user_note && (
-                        <p
-                          className="mt-0.5 text-[11px] text-accent font-sans italic truncate"
-                          title={`备注：${p.user_note}`}
-                        >
+                        <p className="text-[11px] text-accent font-sans italic truncate mt-0.5">
                           备注：{p.user_note}
                         </p>
                       )}
@@ -586,16 +488,18 @@ export const BifrostPromptsPage: React.FC = () => {
               </div>
             )}
 
-            {/* 分页组件 */}
-            {totalPages > 1 && (
-              <div className="mt-8 flex justify-center">
-                <Pagination
-                  currentPage={currentPage}
-                  totalPages={totalPages}
-                  onPageChange={setCurrentPage}
-                />
-              </div>
-            )}
+            {/* 流式触底哨兵与加载更多状态 */}
+            <div ref={sentinelRef} className="py-6 flex justify-center items-center">
+              {loadingMore && (
+                <div className="flex items-center gap-2 text-xs font-sans text-ink-light">
+                  <Loader2 size={16} className="animate-spin text-accent" />
+                  <span>加载更多提示词...</span>
+                </div>
+              )}
+              {!hasMore && filteredItems.length > 0 && (
+                <span className="text-xs text-ink-faint font-sans select-none">已加载全部 {total} 条提示词</span>
+              )}
+            </div>
           </div>
         )}
 
@@ -654,7 +558,7 @@ export const BifrostPromptsPage: React.FC = () => {
                     <span className="text-xs text-ink-light">评分：</span>
                     <RatingStars
                       value={detail.user_rating || 0}
-                      onChange={(r) => void handleUpdateRating(detail.id, r, detail.user_note)}
+                      onChange={(r) => void onUpdateRating(detail.id, r, detail.user_note)}
                       size="sm"
                     />
                   </div>
@@ -733,7 +637,7 @@ export const BifrostPromptsPage: React.FC = () => {
             resourceName={editingNoteTarget.name}
             initialRating={editingNoteTarget.user_rating ?? 0}
             initialNote={editingNoteTarget.user_note ?? ''}
-            onSave={handleSaveNote}
+            onSave={onSaveNoteModal}
           />
         )}
       </main>

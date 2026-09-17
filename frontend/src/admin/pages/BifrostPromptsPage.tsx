@@ -1,9 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   BookOpen,
   Braces,
   ImageOff,
+  Loader2,
   RefreshCw,
   Search,
   Trash2,
@@ -13,7 +14,7 @@ import {
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
 import { adminService, annotationService } from '../../shared/services/admin';
-import type { BifrostFolder, BifrostPrompt } from '../../shared/types';
+import type { BifrostPrompt } from '../../shared/types';
 import { Button } from '../../shared/components/ui/Button';
 import { Input } from '../../shared/components/ui/Input';
 import { Select } from '../../shared/components/ui/Select';
@@ -24,25 +25,35 @@ import { RatingStars } from '../../shared/components/ui/RatingStars';
 import { Textarea } from '../../shared/components/ui/Textarea';
 import { FieldLabel, PageHeader } from '../components/AdminBits';
 import { useFeedback } from '../../shared/components/ui/FeedbackProvider';
-import { Pagination } from '../../shared/components/ui/Pagination';
 import { MarkdownViewer } from '../../shared/components/ui/MarkdownViewer';
-
-/** 内存级 SWR 缓存：页面切换 0ms 瞬间秒开 */
-let cachedBifrostFoldersData: BifrostFolder[] | null = null;
-let cachedBifrostPromptsData: BifrostPrompt[] | null = null;
+import { useBifrostPrompts } from '../../library/bifrost/useBifrostPrompts';
 
 export const BifrostPromptsPage: React.FC = () => {
-  const [folders, setFolders] = useState<BifrostFolder[]>(() => cachedBifrostFoldersData ?? []);
-  const [prompts, setPrompts] = useState<BifrostPrompt[]>(() => cachedBifrostPromptsData ?? []);
-  const [loading, setLoading] = useState(() => !cachedBifrostPromptsData);
-  const [error, setError] = useState('');
-
-  const [q, setQ] = useState('');
-  const [folderId, setFolderId] = useState('');
-  const [ratingFilter, setRatingFilter] = useState('');
-
-  const [currentPage, setCurrentPage] = useState(1);
-  const PAGE_SIZE = 24;
+  const {
+    folders,
+    items: prompts,
+    setItems: setPrompts,
+    filteredItems: filteredPrompts,
+    total,
+    loading,
+    isRefreshing,
+    loadingMore,
+    hasMore,
+    error,
+    folderId,
+    setFolderId,
+    q,
+    setQ,
+    ratingFilter,
+    setRatingFilter,
+    sentinelRef,
+    load,
+    updateRating: handleUpdateRating,
+  } = useBifrostPrompts({
+    pageSize: 48,
+    fetchPrompts: adminService.listBifrostPrompts,
+    fetchFolders: adminService.listBifrostFolders,
+  });
 
   const [detail, setDetail] = useState<BifrostPrompt | null>(null);
   const [noteDraft, setNoteDraft] = useState('');
@@ -59,29 +70,6 @@ export const BifrostPromptsPage: React.FC = () => {
   useEffect(() => {
     setNoteDraft(detail?.user_note ?? '');
   }, [detail]);
-
-  /** 保存用户对提示词的打标与备注 */
-  const handleUpdateRating = async (promptId: string, nextRating: number, currentNote?: string) => {
-    try {
-      const res = await annotationService.setAnnotation({
-        resource_type: 'bifrost_prompt',
-        resource_id: promptId,
-        rating: nextRating,
-        note: currentNote !== undefined ? currentNote : (prompts.find((p) => p.id === promptId)?.user_note ?? ''),
-      });
-      setPrompts((prev) =>
-        prev.map((p) =>
-          p.id === promptId ? { ...p, user_rating: res.rating, user_note: res.note } : p
-        )
-      );
-      if (detail && detail.id === promptId) {
-        setDetail({ ...detail, user_rating: res.rating, user_note: res.note });
-      }
-      showToast(nextRating > 0 ? `已评为 ${nextRating} 星` : '已清除评分', { type: 'success' });
-    } catch (e: any) {
-      showToast(e?.message || '评分更新失败', { type: 'error' });
-    }
-  };
 
   /** 保存私有备注 */
   const handleSaveNote = async () => {
@@ -107,68 +95,6 @@ export const BifrostPromptsPage: React.FC = () => {
       setSavingNote(false);
     }
   };
-
-  /** force=true 绕过 TTL 缓存强制拉取 Bifrost（供「刷新」按钮使用） */
-  const load = useCallback(
-    async (force = false, showLoading = true) => {
-      if (showLoading && !cachedBifrostPromptsData) setLoading(true);
-      setError('');
-      try {
-        const [folderRes, promptRes] = await Promise.all([
-          adminService.listBifrostFolders(),
-          adminService.listBifrostPrompts({
-            folder_id: folderId || undefined,
-            q: q || undefined,
-            force,
-          }),
-        ]);
-        cachedBifrostFoldersData = folderRes.folders;
-        if (!folderId && !q) cachedBifrostPromptsData = promptRes.prompts;
-        setFolders(folderRes.folders);
-        setPrompts(promptRes.prompts);
-      } catch (e: any) {
-        if (!cachedBifrostPromptsData) setError(e?.message || '加载失败，请重试');
-      } finally {
-        setLoading(false);
-      }
-    },
-    [folderId, q]
-  );
-
-  // 挂载 + 文件夹变化：立即加载（q 变化不触发，交给下方防抖，避免每次输入发两次请求）
-  const prevFolderRef = useRef(folderId);
-  const mountedRef = useRef(false);
-  useEffect(() => {
-    if (!mountedRef.current) {
-      mountedRef.current = true;
-      void load(false, !cachedBifrostPromptsData);
-      return;
-    }
-    if (prevFolderRef.current !== folderId) {
-      prevFolderRef.current = folderId;
-      void load(false, false);
-    }
-  }, [folderId, load]);
-
-  // 搜索防抖：仅关键词变化时触发
-  const loadRef = useRef(load);
-  loadRef.current = load;
-  const firstLoad = useRef(true);
-  useEffect(() => {
-    if (firstLoad.current) {
-      firstLoad.current = false;
-      return;
-    }
-    const t = window.setTimeout(() => {
-      void loadRef.current();
-    }, 350);
-    return () => window.clearTimeout(t);
-  }, [q]);
-
-  // 当搜索或过滤条件变化时，重置回第一页
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [q, folderId, ratingFilter]);
 
   const notConfigured = !!error && error.includes('未配置');
 
@@ -238,22 +164,6 @@ export const BifrostPromptsPage: React.FC = () => {
   const formatDate = (s?: string | null) =>
     s ? new Date(s).toLocaleString('zh-CN', { hour12: false }) : '';
 
-  // 客户端多维过滤（星级、备注等）
-  const filteredPrompts = useMemo(() => {
-    return prompts.filter((p) => {
-      if (ratingFilter === '5' && (p.user_rating ?? 0) !== 5) return false;
-      if (ratingFilter === '4+' && (p.user_rating ?? 0) < 4) return false;
-      if (ratingFilter === '3+' && (p.user_rating ?? 0) < 3) return false;
-      if (ratingFilter === 'rated' && !(p.user_rating && p.user_rating > 0)) return false;
-      if (ratingFilter === 'unrated' && (p.user_rating && p.user_rating > 0)) return false;
-      if (ratingFilter === 'noted' && !p.user_note?.trim()) return false;
-      return true;
-    });
-  }, [prompts, ratingFilter]);
-
-  const totalPages = Math.ceil(filteredPrompts.length / PAGE_SIZE);
-  const currentPrompts = filteredPrompts.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
-
   return (
     <div>
       <PageHeader
@@ -261,7 +171,7 @@ export const BifrostPromptsPage: React.FC = () => {
         subtitle="浏览 / 检索 Bifrost Prompt Repository；正文编辑请在 Bifrost 后台进行，预览图与个人打标备注在此管理"
         actions={
           <Button size="sm" variant="ghost" onClick={() => void load(true)} title="刷新（强制拉取 Bifrost 最新信息）">
-            <RefreshCw size={14} strokeWidth={2} className={loading ? 'animate-spin' : ''} />
+            <RefreshCw size={14} strokeWidth={2} className={isRefreshing ? 'animate-spin' : ''} />
           </Button>
         }
       />
@@ -373,7 +283,7 @@ export const BifrostPromptsPage: React.FC = () => {
             </Card>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {currentPrompts.map((p) => (
+              {filteredPrompts.map((p) => (
                 <Card
                   key={p.id}
                   className="p-2.5 rounded-2xl cursor-pointer transition-colors duration-150 hover:border-accent/40 active:scale-[0.98] flex flex-col shadow-xs"
@@ -440,15 +350,20 @@ export const BifrostPromptsPage: React.FC = () => {
             </div>
           )}
 
-          {totalPages > 1 && (
-            <div className="mt-8 flex justify-center">
-              <Pagination
-                currentPage={currentPage}
-                totalPages={totalPages}
-                onPageChange={setCurrentPage}
-              />
-            </div>
-          )}
+          {/* 流式触底哨兵与加载更多状态 */}
+          <div ref={sentinelRef} className="py-6 flex justify-center items-center">
+            {loadingMore && (
+              <div className="flex items-center gap-2 text-xs font-sans text-ink-light">
+                <Loader2 size={16} className="animate-spin text-accent" />
+                <span>加载更多提示词...</span>
+              </div>
+            )}
+            {!hasMore && filteredPrompts.length > 0 && (
+              <span className="text-xs text-ink-faint font-sans select-none">
+                已加载全部 {total} 条提示词
+              </span>
+            )}
+          </div>
         </div>
       )}
 
