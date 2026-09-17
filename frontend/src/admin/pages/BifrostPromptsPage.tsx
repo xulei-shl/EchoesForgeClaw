@@ -96,6 +96,18 @@ export const BifrostPromptsPage: React.FC = () => {
     }
   };
 
+  /** 详情弹窗打星同步（乐观更新 + 失败回滚） */
+  const handleDetailRating = async (nextRating: number) => {
+    if (!detail) return;
+    const targetId = detail.id;
+    const prevRating = detail.user_rating ?? 0;
+    setDetail((prev) => (prev && prev.id === targetId ? { ...prev, user_rating: nextRating } : prev));
+    const ok = await handleUpdateRating(targetId, nextRating, detail.user_note);
+    if (!ok) {
+      setDetail((prev) => (prev && prev.id === targetId ? { ...prev, user_rating: prevRating } : prev));
+    }
+  };
+
   const notConfigured = !!error && error.includes('未配置');
 
   const refreshDetail = useCallback(async (id: string) => {
@@ -464,7 +476,7 @@ export const BifrostPromptsPage: React.FC = () => {
                 <FieldLabel>我的评分</FieldLabel>
                 <RatingStars
                   value={detail.user_rating || 0}
-                  onChange={(r) => void handleUpdateRating(detail.id, r, detail.user_note)}
+                  onChange={(r) => void handleDetailRating(r)}
                   size="md"
                   showNumber
                 />

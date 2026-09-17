@@ -93,6 +93,18 @@ export const BifrostSkillsPage: React.FC = () => {
     }
   };
 
+  /** 详情弹窗打星同步（乐观更新 + 失败回滚） */
+  const handleDetailRating = async (nextRating: number) => {
+    if (!detail) return;
+    const targetName = detail.name;
+    const prevRating = detail.user_rating ?? 0;
+    setDetail((prev) => (prev && prev.name === targetName ? { ...prev, user_rating: nextRating } : prev));
+    const ok = await handleUpdateRating(targetName, nextRating, detail.user_note ?? detail.note);
+    if (!ok) {
+      setDetail((prev) => (prev && prev.name === targetName ? { ...prev, user_rating: prevRating } : prev));
+    }
+  };
+
   const markBusy = useCallback((name: string, on: boolean) => {
     setBusy((prev) => {
       const next = new Set(prev);
@@ -441,7 +453,7 @@ export const BifrostSkillsPage: React.FC = () => {
                 <FieldLabel>我的评分</FieldLabel>
                 <RatingStars
                   value={detail.user_rating || 0}
-                  onChange={(r) => void handleUpdateRating(detail.name, r, detail.user_note ?? detail.note)}
+                  onChange={(r) => void handleDetailRating(r)}
                   size="md"
                   showNumber
                 />
