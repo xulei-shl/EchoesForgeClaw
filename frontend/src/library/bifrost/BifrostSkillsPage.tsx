@@ -305,18 +305,16 @@ export const BifrostSkillsPage: React.FC = () => {
             ]}
           />
 
-          {availableTags.length > 0 && (
-            <Select
-              value={tagFilter}
-              onChange={(val) => setTagFilter(val)}
-              className="w-36"
-              searchPlaceholder="搜索标签…"
-              options={[
-                { label: '全部标签', value: '' },
-                ...availableTags.map((t) => ({ label: `#${t}`, value: t })),
-              ]}
-            />
-          )}
+          <Select
+            value={tagFilter}
+            onChange={(val) => setTagFilter(val)}
+            className="w-36"
+            searchPlaceholder="搜索标签…"
+            options={[
+              { label: '全部标签', value: '' },
+              ...availableTags.map((t) => ({ label: `#${t}`, value: t })),
+            ]}
+          />
 
           {(q || ratingFilter || tagFilter) && (
             <button
@@ -333,39 +331,42 @@ export const BifrostSkillsPage: React.FC = () => {
 
           {/* 页面多选控制与视图切换 */}
           <div className="flex items-center gap-3 ms-auto flex-wrap">
-            {filteredItems.length > 0 && (
-              <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={filteredItems.length === 0}
+                onClick={handleToggleSelectAll}
+                className={`text-xs font-sans flex items-center gap-1 transition-all ${
+                  filteredItems.length === 0
+                    ? 'text-ink-faint/50 cursor-not-allowed'
+                    : 'text-ink-light hover:text-accent active:scale-[0.96]'
+                }`}
+              >
+                {filteredItems.length > 0 && filteredItems.every((s) => selectedNames.has(s.name)) ? (
+                  <>
+                    <CheckSquare size={14} className="text-accent" /> 取消全选
+                  </>
+                ) : (
+                  <>
+                    <Square size={14} /> 全选已载入
+                  </>
+                )}
+              </button>
+
+              {selectedNames.size > 0 && (
                 <button
                   type="button"
-                  onClick={handleToggleSelectAll}
-                  className="text-xs text-ink-light hover:text-accent font-sans flex items-center gap-1 active:scale-[0.96] transition-all"
+                  onClick={() => setSelectedNames(new Set())}
+                  className="text-xs text-ink-faint hover:text-error font-sans active:scale-[0.96] transition-colors ml-1"
                 >
-                  {filteredItems.every((s) => selectedNames.has(s.name)) ? (
-                    <>
-                      <CheckSquare size={14} className="text-accent" /> 取消全选
-                    </>
-                  ) : (
-                    <>
-                      <Square size={14} /> 全选已载入
-                    </>
-                  )}
+                  清空已选
                 </button>
+              )}
 
-                {selectedNames.size > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setSelectedNames(new Set())}
-                    className="text-xs text-ink-faint hover:text-error font-sans active:scale-[0.96] transition-colors ml-1"
-                  >
-                    清空已选
-                  </button>
-                )}
-
-                <span className="text-xs text-ink-faint font-sans ml-1">
-                  共 <span className="tabular-nums font-mono text-ink font-medium">{total}</span> 个 Skill
-                </span>
-              </div>
-            )}
+              <span className="text-xs text-ink-faint font-sans ml-1">
+                共 <span className="tabular-nums font-mono text-ink font-medium">{total}</span> 个 Skill
+              </span>
+            </div>
             <ViewToggle mode={viewMode} onChange={handleViewModeChange} />
           </div>
         </div>

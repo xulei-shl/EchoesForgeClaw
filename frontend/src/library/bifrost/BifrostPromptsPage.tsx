@@ -234,18 +234,16 @@ export const BifrostPromptsPage: React.FC = () => {
               { label: '仅有备注', value: 'noted' },
             ]}
           />
-          {availableTags.length > 0 && (
-            <Select
-              value={tagFilter}
-              onChange={(val) => setTagFilter(val)}
-              className="w-36"
-              searchPlaceholder="搜索标签…"
-              options={[
-                { label: '全部标签', value: '' },
-                ...availableTags.map((t) => ({ label: `#${t}`, value: t })),
-              ]}
-            />
-          )}
+          <Select
+            value={tagFilter}
+            onChange={(val) => setTagFilter(val)}
+            className="w-36"
+            searchPlaceholder="搜索标签…"
+            options={[
+              { label: '全部标签', value: '' },
+              ...availableTags.map((t) => ({ label: `#${t}`, value: t })),
+            ]}
+          />
           {(q || folderId || ratingFilter || tagFilter) && (
             <button
               onClick={() => {

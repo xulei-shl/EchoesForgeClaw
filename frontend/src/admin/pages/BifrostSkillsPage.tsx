@@ -177,10 +177,66 @@ export const BifrostSkillsPage: React.FC = () => {
         }
       />
 
+      {/* 工具栏：搜索与星级过滤 */}
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
+        <div className="relative flex-1 min-w-[200px] max-w-md">
+          <Search
+            size={15}
+            strokeWidth={1.5}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint pointer-events-none"
+          />
+          <Input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="搜索 Bifrost 仓库…（含远端未缓存的 skill）"
+            className="pl-9"
+          />
+        </div>
+        <Select
+          value={ratingFilter}
+          onChange={(val) => setRatingFilter(val)}
+          className="w-36"
+          options={[
+            { label: '全部打标', value: '' },
+            { label: '★ 5 星', value: '5' },
+            { label: '★ 4 星及以上', value: '4+' },
+            { label: '★ 3 星及以上', value: '3+' },
+            { label: '已打标', value: 'rated' },
+            { label: '未打标', value: 'unrated' },
+            { label: '仅有备注', value: 'noted' },
+          ]}
+        />
+        <Select
+          value={tagFilter}
+          onChange={(val) => setTagFilter(val)}
+          className="w-36"
+          options={[
+            { label: '全部标签', value: '' },
+            ...availableTags.map((t) => ({ label: `#${t}`, value: t })),
+          ]}
+        />
+        {(q || ratingFilter || tagFilter) && (
+          <button
+            onClick={() => {
+              setQ('');
+              setRatingFilter('');
+              setTagFilter('');
+            }}
+            className="text-sm text-accent hover:text-accent-hover font-sans active:scale-[0.96] transition-colors"
+          >
+            清除筛选
+          </button>
+        )}
+        <div className="flex items-center gap-3 ms-auto">
+          <span className="text-xs text-ink-faint font-sans">
+            共 <span className="tabular-nums font-mono text-ink font-medium">{total}</span> 个 Skill
+          </span>
+        </div>
+      </div>
+
       {/* 首次冷启动骨架屏 */}
       {loading && skills.length === 0 && (
         <div className="space-y-3 animate-pulse" aria-busy="true" aria-label="正在加载 Skills">
-          <div className="h-9 w-64 bg-paper-grid/45 rounded-lg mb-4" />
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="p-4 rounded-lg border border-dashed border-paper-grid bg-node-bg space-y-2.5">
               <div className="flex justify-between items-center">
@@ -206,59 +262,6 @@ export const BifrostSkillsPage: React.FC = () => {
 
       {(skills.length > 0 || (!loading && !error)) && (
         <div>
-          {/* 工具栏：搜索与星级过滤 */}
-          <div className="flex items-center gap-3 mb-3 flex-wrap">
-            <div className="relative flex-1 min-w-[200px] max-w-md">
-              <Search
-                size={15}
-                strokeWidth={1.5}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint pointer-events-none"
-              />
-              <Input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="搜索 Bifrost 仓库…（含远端未缓存的 skill）"
-                className="pl-9"
-              />
-            </div>
-            <Select
-              value={ratingFilter}
-              onChange={(val) => setRatingFilter(val)}
-              className="w-36"
-              options={[
-                { label: '全部打标', value: '' },
-                { label: '★ 5 星', value: '5' },
-                { label: '★ 4 星及以上', value: '4+' },
-                { label: '★ 3 星及以上', value: '3+' },
-                { label: '已打标', value: 'rated' },
-                { label: '未打标', value: 'unrated' },
-                { label: '仅有备注', value: 'noted' },
-              ]}
-            />
-            {availableTags.length > 0 && (
-              <Select
-                value={tagFilter}
-                onChange={(val) => setTagFilter(val)}
-                className="w-36"
-                options={[
-                  { label: '全部标签', value: '' },
-                  ...availableTags.map((t) => ({ label: `#${t}`, value: t })),
-                ]}
-              />
-            )}
-            {(q || ratingFilter || tagFilter) && (
-              <button
-                onClick={() => {
-                  setQ('');
-                  setRatingFilter('');
-                  setTagFilter('');
-                }}
-                className="text-sm text-accent hover:text-accent-hover font-sans active:scale-[0.96] transition-colors"
-              >
-                清除筛选
-              </button>
-            )}
-          </div>
 
           {remoteUnavailable && (
             <p className="text-xs text-ink-faint font-sans mb-3">

@@ -224,6 +224,11 @@ export const BifrostPromptsPage: React.FC = () => {
             清除筛选
           </button>
         )}
+        <div className="flex items-center gap-3 ms-auto">
+          <span className="text-xs text-ink-faint font-sans">
+            共 <span className="tabular-nums font-mono text-ink font-medium">{total}</span> 条提示词
+          </span>
+        </div>
       </div>
 
       {/* 首次冷启动骨架屏 */}
