@@ -369,7 +369,11 @@ export const BifrostSkillsPage: React.FC = () => {
               {Array.from({ length: 8 }).map((_, i) => (
                 <div key={i} className="p-3 rounded-xl border border-dashed border-paper-grid bg-node-bg flex items-center gap-3.5 animate-pulse">
                   <div className="w-5 h-5 rounded bg-paper-grid/40 shrink-0" />
-                  <div className="w-36 h-4 rounded bg-paper-grid/50 shrink-0" />
+                  <div className="w-48 sm:w-56 shrink-0 space-y-1.5">
+                    <div className="w-32 h-4 rounded bg-paper-grid/50" />
+                    <div className="w-24 h-3.5 rounded bg-paper-grid/35" />
+                    <div className="w-20 h-3 rounded bg-paper-grid/25" />
+                  </div>
                   <div className="flex-1 h-3.5 rounded bg-paper-grid/30 hidden md:block" />
                   <div className="w-20 h-6 rounded bg-paper-grid/30 shrink-0" />
                 </div>
@@ -406,6 +410,7 @@ export const BifrostSkillsPage: React.FC = () => {
                   const isChecked = selectedNames.has(s.name);
                   const isDownloading = downloadingName === s.name;
                   const noteText = s.user_note || s.note;
+                  const isCached = s.cached !== false;
 
                   return (
                     <Card
@@ -449,7 +454,7 @@ export const BifrostSkillsPage: React.FC = () => {
                           </div>
                           {/* 紧随标题的固定元数据徽标行，位置整齐划一 */}
                           <div className="flex items-center gap-1.5 mt-1 min-h-[1.25rem] flex-wrap">
-                            {s.cached ? (
+                            {isCached ? (
                               s.cached_version ? (
                                 <Badge variant={s.latest_version && s.cached_version !== s.latest_version ? 'warning' : 'success'} className="text-[10px] px-1.5 py-px">
                                   本地 v{s.cached_version}
@@ -460,10 +465,8 @@ export const BifrostSkillsPage: React.FC = () => {
                             ) : (
                               <Badge className="text-[10px] px-1.5 py-px">未缓存</Badge>
                             )}
-                            {s.latest_version && (!s.cached || s.cached_version !== s.latest_version) && (
-                              <span className="text-[10px] font-mono text-ink-faint border border-paper-grid rounded-pill px-1.5 py-px shrink-0">
-                                远端 v{s.latest_version}
-                              </span>
+                            {s.latest_version && (
+                              <Badge className="text-[10px] px-1.5 py-px">远端 v{s.latest_version}</Badge>
                             )}
                           </div>
                         </div>
@@ -512,9 +515,9 @@ export const BifrostSkillsPage: React.FC = () => {
                       {/* 底部信息与动作按钮：单行绝对对齐，零折叠 */}
                       <div className="flex items-center justify-between gap-2 pt-3 mt-3 border-t border-paper-grid/50">
                         <div className="min-w-0 flex-1">
-                          {(s.cached ? s.updated_at : s.remote_updated_at) ? (
-                            <span className="text-[10px] text-ink-faint font-sans tabular-nums truncate block" title={s.cached ? `本地更新: ${formatDate(s.updated_at)}` : `远端更新: ${formatDate(s.remote_updated_at)}`}>
-                              {s.cached ? formatDate(s.updated_at) : formatDate(s.remote_updated_at)}
+                          {(isCached ? s.updated_at : s.remote_updated_at) ? (
+                            <span className="text-[10px] text-ink-faint font-sans tabular-nums truncate block" title={isCached ? `本地更新: ${formatDate(s.updated_at)}` : `远端更新: ${formatDate(s.remote_updated_at)}`}>
+                              {isCached ? formatDate(s.updated_at) : formatDate(s.remote_updated_at)}
                             </span>
                           ) : null}
                         </div>
@@ -558,6 +561,7 @@ export const BifrostSkillsPage: React.FC = () => {
                   const isChecked = selectedNames.has(s.name);
                   const isDownloading = downloadingName === s.name;
                   const noteText = s.user_note || s.note;
+                  const isCached = s.cached !== false;
 
                   return (
                     <div
@@ -585,15 +589,15 @@ export const BifrostSkillsPage: React.FC = () => {
                         </button>
                       </div>
 
-                      {/* 技能名称与版本/时间元数据组 */}
-                      <div className="w-56 sm:w-64 shrink-0 min-w-0 flex flex-col justify-center">
+                      {/* 技能名称与版本/时间元数据组（3行稳定结构：1行名称，2行版本徽标，3行时间） */}
+                      <div className="w-56 sm:w-64 shrink-0 min-w-0 flex flex-col justify-center gap-1">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className="font-serif text-sm font-semibold text-ink truncate group-hover:text-accent transition-colors" title={s.name}>
                             {s.name}
                           </span>
                         </div>
-                        <div className="flex items-center gap-1.5 mt-1 min-w-0 flex-wrap text-[10px] text-ink-faint font-sans tabular-nums">
-                          {s.cached ? (
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          {isCached ? (
                             s.cached_version ? (
                               <Badge variant={s.latest_version && s.cached_version !== s.latest_version ? 'warning' : 'success'} className="text-[10px] px-1.5 py-px">
                                 本地 v{s.cached_version}
@@ -604,17 +608,15 @@ export const BifrostSkillsPage: React.FC = () => {
                           ) : (
                             <Badge className="text-[10px] px-1.5 py-px">未缓存</Badge>
                           )}
-                          {s.latest_version && (!s.cached || s.cached_version !== s.latest_version) && (
-                            <span className="font-mono text-ink-faint border border-paper-grid rounded-pill px-1.5 py-px shrink-0">
-                              远端 v{s.latest_version}
-                            </span>
-                          )}
-                          {(s.cached ? s.updated_at : s.remote_updated_at) && (
-                            <span className="text-ink-faint truncate">
-                              {s.cached ? formatDate(s.updated_at) : formatDate(s.remote_updated_at)}
-                            </span>
+                          {s.latest_version && (
+                            <Badge className="text-[10px] px-1.5 py-px">远端 v{s.latest_version}</Badge>
                           )}
                         </div>
+                        {(isCached ? s.updated_at : s.remote_updated_at) ? (
+                          <span className="text-[10px] text-ink-faint font-sans tabular-nums truncate">
+                            {isCached ? formatDate(s.updated_at) : formatDate(s.remote_updated_at)}
+                          </span>
+                        ) : null}
                       </div>
 
                       {/* 功能描述与私有备注 */}
@@ -742,20 +744,18 @@ export const BifrostSkillsPage: React.FC = () => {
                 <div className="space-y-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-serif text-lg font-bold text-ink">{detail.name}</span>
-                    {detail.cached
+                    {detail.cached !== false
                       ? (detail.cached_version
                         ? <Badge variant={detail.latest_version && detail.cached_version !== detail.latest_version ? 'warning' : 'success'}>
                             本地 v{detail.cached_version}
                           </Badge>
                         : <Badge>本地缓存</Badge>)
                       : <Badge>未缓存</Badge>}
-                    {detail.latest_version && (!detail.cached || detail.cached_version !== detail.latest_version) && (
-                      <Badge>远端 v{detail.latest_version}</Badge>
-                    )}
+                    {detail.latest_version && <Badge>远端 v{detail.latest_version}</Badge>}
                     {detail.license && <span className="text-xs text-ink-faint font-mono">({detail.license})</span>}
                   </div>
                   <div className="flex items-center gap-3 text-xs text-ink-light font-sans tabular-nums mt-1">
-                    {detail.cached && detail.updated_at && (
+                    {detail.cached !== false && detail.updated_at && (
                       <span>本地更新: {formatDate(detail.updated_at)}</span>
                     )}
                     {detail.remote_updated_at && (
