@@ -151,7 +151,7 @@ export const Drawer: React.FC<DrawerProps> = ({
                   disabled={!hasPrev}
                   aria-label={prevTitle}
                   title={prevTitle}
-                  className="p-1.5 rounded-md text-ink-light hover:text-ink hover:bg-paper-grid/30 active:scale-[0.94] transition-all disabled:opacity-30 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+                  className="p-1.5 rounded-md text-ink-light hover:text-ink hover:bg-paper-grid/30 active:scale-[0.96] transition-[transform,color,background-color] duration-150 ease-out disabled:opacity-30 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
                 >
                   <ChevronLeft size={18} strokeWidth={1.75} />
                 </button>
@@ -161,7 +161,7 @@ export const Drawer: React.FC<DrawerProps> = ({
                   disabled={!hasNext}
                   aria-label={nextTitle}
                   title={nextTitle}
-                  className="p-1.5 rounded-md text-ink-light hover:text-ink hover:bg-paper-grid/30 active:scale-[0.94] transition-all disabled:opacity-30 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+                  className="p-1.5 rounded-md text-ink-light hover:text-ink hover:bg-paper-grid/30 active:scale-[0.96] transition-[transform,color,background-color] duration-150 ease-out disabled:opacity-30 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
                 >
                   <ChevronRight size={18} strokeWidth={1.75} />
                 </button>
@@ -176,7 +176,7 @@ export const Drawer: React.FC<DrawerProps> = ({
               onClick={onClose}
               aria-label="关闭面板 (Esc)"
               title="关闭 (Esc)"
-              className="p-2 rounded-md text-ink-light hover:text-ink hover:bg-paper-grid/30 active:scale-[0.96] transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent flex items-center justify-center min-w-[36px] min-h-[36px]"
+              className="p-2 rounded-md text-ink-light hover:text-ink hover:bg-paper-grid/30 active:scale-[0.96] transition-[transform,color,background-color] duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent flex items-center justify-center min-w-[36px] min-h-[36px]"
             >
               <X size={18} strokeWidth={1.5} />
             </button>
@@ -190,7 +190,7 @@ export const Drawer: React.FC<DrawerProps> = ({
 
         {/* 底部操作栏（可选） */}
         {footer && (
-          <div className="flex items-center justify-end gap-2 px-5 py-3 shrink-0 border-t border-paper-grid/60 bg-paper">
+          <div className="flex items-center justify-end gap-2 px-5 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] shrink-0 border-t border-paper-grid/60 bg-paper">
             {footer}
           </div>
         )}

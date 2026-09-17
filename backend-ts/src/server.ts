@@ -194,7 +194,7 @@ export async function buildApp() {
   await registerBifrostAdminRouter(app);
   await registerBifrostSkillsAdminRouter(app);
 
-  // 通用标注 API：Prompt / Skill 用户打标与私有备注
+  // 通用标注 API：Prompt / Skill 用户打标与备注
   await registerAnnotationRouter(app);
 
   // 用户反馈 API：画板吉祥物表单反馈推送到企业微信

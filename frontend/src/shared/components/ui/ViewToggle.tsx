@@ -11,7 +11,7 @@ export interface ViewToggleProps {
 
 export const ViewToggle: React.FC<ViewToggleProps> = ({ mode, onChange, className = '' }) => {
   const getBtnClass = (active: boolean) =>
-    `p-1.5 rounded text-xs font-sans flex items-center justify-center transition-all duration-150 active:scale-[0.94] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent ${
+    `p-1.5 rounded text-xs font-sans flex items-center justify-center transition-[background-color,color,transform,box-shadow] duration-150 ease-out active:scale-[0.96] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent ${
       active
         ? 'bg-paper text-accent shadow-sm border border-paper-grid/50 font-medium'
         : 'text-ink-faint hover:text-ink hover:bg-paper-grid/20'

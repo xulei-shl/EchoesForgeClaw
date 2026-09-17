@@ -42,7 +42,7 @@ export const Pagination: React.FC<PaginationProps> = ({
         type="button"
         disabled={currentPage === 1}
         onClick={() => onPageChange(currentPage - 1)}
-        className="p-1.5 rounded-md text-ink hover:bg-accent-surface hover:text-accent disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-ink transition-colors"
+        className="p-1.5 rounded-md text-ink hover:bg-accent-surface hover:text-accent disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-ink active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out"
         aria-label="Previous page"
       >
         <ChevronLeft size={16} strokeWidth={2} />
@@ -58,7 +58,7 @@ export const Pagination: React.FC<PaginationProps> = ({
             key={p}
             type="button"
             onClick={() => onPageChange(p)}
-            className={`min-w-[32px] h-8 px-2 flex items-center justify-center rounded-md text-sm font-sans font-medium transition-colors ${
+            className={`min-w-[32px] h-8 px-2 flex items-center justify-center rounded-md text-sm font-sans font-medium tabular-nums active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out ${
               currentPage === p
                 ? 'bg-accent text-white'
                 : 'text-ink hover:bg-accent-surface hover:text-accent'
@@ -74,7 +74,7 @@ export const Pagination: React.FC<PaginationProps> = ({
         type="button"
         disabled={currentPage === totalPages}
         onClick={() => onPageChange(currentPage + 1)}
-        className="p-1.5 rounded-md text-ink hover:bg-accent-surface hover:text-accent disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-ink transition-colors"
+        className="p-1.5 rounded-md text-ink hover:bg-accent-surface hover:text-accent disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-ink active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out"
         aria-label="Next page"
       >
         <ChevronRight size={16} strokeWidth={2} />

@@ -69,7 +69,7 @@ export const NoteEditModal: React.FC<NoteEditModalProps> = ({
 
         <div>
           <div className="flex items-center justify-between mb-1.5">
-            <label className="block text-xs font-medium text-ink">我的私有备注</label>
+            <label className="block text-xs font-medium text-ink">我的备注</label>
             {(rating > 0 || note.trim()) && (
               <button
                 type="button"

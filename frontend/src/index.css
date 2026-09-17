@@ -408,7 +408,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .drawer-panel-out {
-  animation: drawer-slide-out 0.18s ease-in both;
+  animation: drawer-slide-out 0.16s cubic-bezier(0.16, 1, 0.3, 1) both;
   will-change: transform;
 }
 
@@ -417,7 +417,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .drawer-backdrop-out {
-  animation: drawer-backdrop-fade-out 0.18s ease-in both;
+  animation: drawer-backdrop-fade-out 0.15s ease-out both;
 }
 
 /* ========== 手动拖线连线 ========== */

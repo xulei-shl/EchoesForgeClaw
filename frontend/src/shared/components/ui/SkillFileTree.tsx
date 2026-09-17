@@ -345,7 +345,7 @@ export const SkillFileTree: React.FC<SkillFileTreeProps> = ({
             type="button"
             onClick={isAllCollapsed ? handleExpandAll : handleCollapseAll}
             title={isAllCollapsed ? '全部展开所有文件夹' : '全部折叠所有文件夹'}
-            className="h-7 px-2 flex items-center gap-1 text-[11px] text-ink-light hover:text-ink bg-paper/60 border border-paper-grid rounded-lg hover:bg-paper-grid/40 active:scale-[0.97] transition-all shrink-0 ml-auto"
+            className="h-7 px-2 flex items-center gap-1 text-[11px] text-ink-light hover:text-ink bg-paper/60 border border-paper-grid rounded-lg hover:bg-paper-grid/40 active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out shrink-0 ms-auto"
           >
             {isAllCollapsed ? (
               <>

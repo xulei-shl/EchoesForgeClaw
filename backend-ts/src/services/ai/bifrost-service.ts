@@ -713,7 +713,7 @@ export async function getMergedBifrostSkills(
     });
   }
 
-  // 5. 富化当前用户的打标与私有备注
+  // 5. 富化当前用户的打标与备注
   if (userId && merged.length) {
     const skillNames = merged.map((s) => String(s.name ?? '')).filter(Boolean);
     const annotations = getUserAnnotationMap(db, userId, RESOURCE_TYPE_BIFROST_SKILL, skillNames);

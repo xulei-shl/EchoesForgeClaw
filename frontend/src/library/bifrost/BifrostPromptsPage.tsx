@@ -27,6 +27,7 @@ import { NoteEditModal } from '../../shared/components/ui/NoteEditModal';
 import { MarkdownViewer } from '../../shared/components/ui/MarkdownViewer';
 import { useFeedback } from '../../shared/components/ui/FeedbackProvider';
 import { Pagination } from '../../shared/components/ui/Pagination';
+import { ViewToggle, type ViewMode } from '../../shared/components/ui/ViewToggle';
 
 /** 内存级 SWR 缓存：页面切换 0ms 瞬间秒开 */
 let cachedFolders: BifrostFolder[] | null = null;
@@ -41,6 +42,17 @@ export const BifrostPromptsPage: React.FC = () => {
   const [loading, setLoading] = useState(() => !cachedPrompts);
   const [error, setError] = useState('');
 
+  const [viewMode, setViewMode] = useState<ViewMode>(
+    () => (localStorage.getItem('bf-prompts-view') as ViewMode) || 'grid'
+  );
+
+  const handleViewModeChange = (nextMode: ViewMode) => {
+    setViewMode(nextMode);
+    try {
+      localStorage.setItem('bf-prompts-view', nextMode);
+    } catch {}
+  };
+
   const [q, setQ] = useState('');
   const [folderId, setFolderId] = useState('');
   const [ratingFilter, setRatingFilter] = useState('');
@@ -50,7 +62,6 @@ export const BifrostPromptsPage: React.FC = () => {
 
   const [detail, setDetail] = useState<BifrostPrompt | null>(null);
   const [editingNoteTarget, setEditingNoteTarget] = useState<BifrostPrompt | null>(null);
-  const [hoverPreview, setHoverPreview] = useState<{ x: number; y: number; url: string } | null>(null);
 
   /** 加载提示词与文件夹 */
   const load = useCallback(
@@ -316,22 +327,39 @@ export const BifrostPromptsPage: React.FC = () => {
               清除筛选
             </button>
           )}
-          <span className="text-xs text-ink-faint font-sans ml-auto">
-            共 {filteredPrompts.length} 条提示词
-          </span>
+          <div className="flex items-center gap-3 ms-auto">
+            <span className="text-xs text-ink-faint font-sans">
+              共 <span className="tabular-nums font-mono text-ink font-medium">{filteredPrompts.length}</span> 条提示词
+            </span>
+            <ViewToggle mode={viewMode} onChange={handleViewModeChange} />
+          </div>
         </div>
 
         {/* 骨架屏加载状态 */}
         {loading && prompts.length === 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="p-4 rounded-2xl border border-dashed border-paper-grid bg-node-bg space-y-3 animate-pulse">
-                <div className="h-32 rounded-lg bg-paper-grid/30" />
-                <div className="h-4 w-3/5 bg-paper-grid/50 rounded" />
-                <div className="h-3 w-4/5 bg-paper-grid/25 rounded" />
-              </div>
-            ))}
-          </div>
+          viewMode === 'grid' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4.5">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="p-3 rounded-[20px] border border-dashed border-paper-grid bg-node-bg space-y-3 animate-pulse">
+                  <div className="h-32 rounded-[10px] bg-paper-grid/30" />
+                  <div className="h-4 w-3/5 bg-paper-grid/50 rounded" />
+                  <div className="h-3 w-4/5 bg-paper-grid/25 rounded" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="p-3 rounded-xl border border-dashed border-paper-grid bg-node-bg flex items-center gap-3.5 animate-pulse">
+                  <div className="w-14 h-14 rounded-lg bg-paper-grid/40 shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-4 w-1/4 rounded bg-paper-grid/50" />
+                    <div className="h-3 w-3/4 rounded bg-paper-grid/30" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
         )}
 
         {/* 错误状态 */}
@@ -345,7 +373,7 @@ export const BifrostPromptsPage: React.FC = () => {
           </Card>
         )}
 
-        {/* 提示词网格 */}
+        {/* 提示词内容区（网格 vs 列表） */}
         {(prompts.length > 0 || (!loading && !error)) && (
           <div>
             {filteredPrompts.length === 0 ? (
@@ -356,30 +384,21 @@ export const BifrostPromptsPage: React.FC = () => {
                   {q.trim() || folderId || ratingFilter ? '尝试调整或清除筛选条件' : '暂无可用提示词'}
                 </p>
               </Card>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            ) : viewMode === 'grid' ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4.5">
                 {currentPrompts.map((p) => (
                   <Card
                     key={p.id}
-                    className="p-3.5 rounded-2xl cursor-pointer transition-all duration-200 hover:border-accent/40 hover:shadow-md flex flex-col group relative"
+                    className="p-3 rounded-[20px] cursor-pointer transition-[border-color,box-shadow,transform] duration-200 ease-out hover:border-accent/40 hover:shadow-md hover:-translate-y-0.5 flex flex-col group relative"
                     onClick={() => setDetail(p)}
-                    onMouseEnter={(e) =>
-                      p.preview_image &&
-                      setHoverPreview({ x: e.clientX + 18, y: e.clientY + 12, url: p.preview_image })
-                    }
-                    onMouseMove={(e) =>
-                      p.preview_image &&
-                      setHoverPreview({ x: e.clientX + 18, y: e.clientY + 12, url: p.preview_image })
-                    }
-                    onMouseLeave={() => setHoverPreview(null)}
                   >
                     {/* 封面缩略图 */}
-                    <div className="h-36 relative rounded-xl overflow-hidden bg-paper border border-paper-grid flex items-center justify-center shrink-0">
+                    <div className="h-36 relative rounded-[10px] overflow-hidden bg-paper border border-paper-grid flex items-center justify-center shrink-0">
                       {p.preview_image ? (
                         <img
                           src={p.preview_image}
                           alt={p.name}
-                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                          className="w-full h-full object-cover transition-transform duration-200 ease-out group-hover:scale-105"
                           loading="lazy"
                         />
                       ) : (
@@ -388,13 +407,17 @@ export const BifrostPromptsPage: React.FC = () => {
                     </div>
 
                     {/* 卡片主体 */}
-                    <div className="pt-3 flex-1 flex flex-col min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="font-serif text-sm font-semibold text-ink truncate flex-1" title={p.name}>
+                    <div className="pt-2.5 flex-1 flex flex-col min-w-0">
+                      {/* 标题与评分（预留双行基准槽位高度，长标题优雅折行） */}
+                      <div className="flex items-start justify-between gap-2 min-h-[2.5rem]">
+                        <p
+                          className="font-serif text-sm font-semibold text-ink line-clamp-2 break-words flex-1 group-hover:text-accent transition-colors"
+                          title={p.name}
+                        >
                           {p.name}
                         </p>
                         {/* 打星组件 */}
-                        <div onClick={(e) => e.stopPropagation()} className="shrink-0">
+                        <div onClick={(e) => e.stopPropagation()} className="shrink-0 mt-0.5">
                           <RatingStars
                             value={p.user_rating || 0}
                             onChange={(r) => void handleUpdateRating(p.id, r, p.user_note)}
@@ -403,39 +426,48 @@ export const BifrostPromptsPage: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* 正文预览 */}
-                      <p className="mt-1 text-xs text-ink-light font-sans line-clamp-2 leading-relaxed">
+                      {/* 正文预览（预留双行基准槽位高度，保持顶边和底边对齐） */}
+                      <p
+                        className="mt-1.5 text-xs text-ink-light font-sans line-clamp-2 leading-relaxed min-h-[2.25rem]"
+                        title={p.content || '（暂无正文内容）'}
+                      >
                         {p.content || '（暂无正文内容）'}
                       </p>
 
-                      {/* 备注 */}
-                      {p.user_note ? (
-                        <div
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingNoteTarget(p);
-                          }}
-                          className="text-[11px] text-accent font-sans mt-2 line-clamp-1 italic bg-accent-surface/50 px-2 py-1 rounded border border-accent/20 hover:border-accent/40 transition-colors flex items-center justify-between"
-                        >
-                          <span className="truncate">备注：{p.user_note}</span>
-                          <StickyNote size={12} className="shrink-0 ml-1 opacity-70" />
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingNoteTarget(p);
-                          }}
-                          className="text-[11px] text-ink-faint hover:text-accent font-sans mt-2 self-start flex items-center gap-1 transition-colors"
-                        >
-                          <StickyNote size={12} />
-                          添加私有备注
-                        </button>
-                      )}
+                      {/* 私有备注展示与编辑（统一槽位高度与基线，并通过 mt-auto 紧贴操作栏） */}
+                      <div className="mt-auto pt-3">
+                        {p.user_note ? (
+                          <div
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingNoteTarget(p);
+                            }}
+                            className="h-7 text-[11px] text-accent font-sans italic bg-accent-surface/50 px-2.5 rounded-lg border border-accent/20 hover:border-accent/40 transition-colors flex items-center justify-between cursor-pointer group/note"
+                            title={`备注：${p.user_note}`}
+                          >
+                            <span className="truncate">备注：{p.user_note}</span>
+                            <StickyNote size={12} className="shrink-0 ml-1.5 opacity-70 group-hover/note:opacity-100 transition-opacity" />
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingNoteTarget(p);
+                            }}
+                            className="h-7 w-full text-[11px] text-ink-faint hover:text-accent font-sans px-2.5 rounded-lg border border-dashed border-paper-grid hover:border-accent/40 hover:bg-accent-surface/20 transition-all flex items-center justify-between cursor-pointer active:scale-[0.98]"
+                            title="添加私有备注"
+                          >
+                            <span className="flex items-center gap-1.5">
+                              <StickyNote size={12} className="opacity-60" />
+                              <span>添加私有备注</span>
+                            </span>
+                          </button>
+                        )}
+                      </div>
 
                       {/* 底部信息与动作按钮 */}
-                      <div className="flex items-center justify-between gap-2 mt-auto pt-3 border-t border-paper-grid/50">
+                      <div className="flex items-center justify-between gap-2 pt-3 mt-3 border-t border-paper-grid/50">
                         <div className="flex items-center gap-1.5 min-w-0">
                           {p.folder_name && <Badge>{p.folder_name}</Badge>}
                           <span className="text-[10px] text-ink-faint font-sans tabular-nums truncate">
@@ -448,7 +480,7 @@ export const BifrostPromptsPage: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => handleCopy(p.content, p.name)}
-                            className="p-1.5 rounded-md hover:bg-paper-grid/80 text-ink-light hover:text-ink transition-colors"
+                            className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-paper-grid/80 text-ink-light hover:text-ink active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out"
                             title="复制提示词正文"
                           >
                             <Copy size={14} />
@@ -467,6 +499,89 @@ export const BifrostPromptsPage: React.FC = () => {
                       </div>
                     </div>
                   </Card>
+                ))}
+              </div>
+            ) : (
+              /* 高密度列表视图 */
+              <div className="space-y-2.5">
+                {currentPrompts.map((p) => (
+                  <div
+                    key={p.id}
+                    onClick={() => setDetail(p)}
+                    className="p-3 rounded-xl border border-dashed border-paper-grid bg-node-bg hover:border-accent/40 hover:shadow-xs transition-[border-color,box-shadow,background-color] duration-150 ease-out flex items-center gap-3.5 cursor-pointer group"
+                  >
+                    {/* 缩略图 */}
+                    <div className="w-14 h-14 rounded-lg overflow-hidden bg-paper border border-paper-grid flex items-center justify-center shrink-0">
+                      {p.preview_image ? (
+                        <img
+                          src={p.preview_image}
+                          alt={p.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200 ease-out"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <ImageOff size={20} strokeWidth={1.25} className="text-ink-faint" />
+                      )}
+                    </div>
+
+                    {/* 提示词标题与内容摘要 */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-serif text-sm font-semibold text-ink truncate group-hover:text-accent transition-colors" title={p.name}>
+                          {p.name}
+                        </span>
+                        {p.folder_name && <Badge>{p.folder_name}</Badge>}
+                        <span className="text-[11px] text-ink-faint font-sans tabular-nums shrink-0">
+                          {formatDate(p.updated_at)}
+                        </span>
+                      </div>
+                      <p
+                        className="mt-1 text-xs text-ink-light font-sans truncate"
+                        title={p.content || '（暂无正文内容）'}
+                      >
+                        {p.content || '（暂无正文内容）'}
+                      </p>
+                      {p.user_note && (
+                        <p
+                          className="mt-0.5 text-[11px] text-accent font-sans italic truncate"
+                          title={`备注：${p.user_note}`}
+                        >
+                          备注：{p.user_note}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* 打星评分 */}
+                    <div onClick={(e) => e.stopPropagation()} className="shrink-0 hidden sm:block">
+                      <RatingStars
+                        value={p.user_rating || 0}
+                        onChange={(r) => void handleUpdateRating(p.id, r, p.user_note)}
+                        size="xs"
+                      />
+                    </div>
+
+                    {/* 快捷操作区 */}
+                    <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(p.content, p.name)}
+                        className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-paper-grid/80 text-ink-light hover:text-ink active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out"
+                        title="复制提示词正文"
+                      >
+                        <Copy size={14} />
+                      </button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleLoadToCanvas(p)}
+                        className="text-xs px-2.5 py-1 h-7 flex items-center gap-1"
+                        title="在画板中创建该提示词检索节点"
+                      >
+                        <PlusCircle size={13} className="text-accent" />
+                        <span className="hidden md:inline">载入画板</span>
+                      </Button>
+                    </div>
+                  </div>
                 ))}
               </div>
             )}
@@ -587,7 +702,7 @@ export const BifrostPromptsPage: React.FC = () => {
               {/* 私有备注区域 */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-ink font-serif">我的私有备注</label>
+                  <label className="text-xs font-semibold text-ink font-serif">我的备注</label>
                   <button
                     type="button"
                     onClick={() => setEditingNoteTarget(detail)}
@@ -614,27 +729,12 @@ export const BifrostPromptsPage: React.FC = () => {
           <NoteEditModal
             open={!!editingNoteTarget}
             onClose={() => setEditingNoteTarget(null)}
-            title="打标与私有备注"
+            title="打标与备注"
             resourceName={editingNoteTarget.name}
             initialRating={editingNoteTarget.user_rating ?? 0}
             initialNote={editingNoteTarget.user_note ?? ''}
             onSave={handleSaveNote}
           />
-        )}
-
-        {/* 悬停大图跟随浮层 */}
-        {hoverPreview && (
-          <div
-            className="fixed z-[9999] pointer-events-none rounded-xl overflow-hidden border border-paper-grid bg-paper shadow-2xl animate-fade-in"
-            style={{
-              left: Math.min(hoverPreview.x, window.innerWidth - 340),
-              top: Math.min(hoverPreview.y, window.innerHeight - 340),
-              width: 320,
-              height: 320,
-            }}
-          >
-            <img src={hoverPreview.url} alt="" className="w-full h-full object-cover" />
-          </div>
         )}
       </main>
     </div>

@@ -29,6 +29,7 @@ import { MarkdownViewer } from '../../shared/components/ui/MarkdownViewer';
 import { useFeedback } from '../../shared/components/ui/FeedbackProvider';
 import { Pagination } from '../../shared/components/ui/Pagination';
 import { SkillFileTree } from '../../shared/components/ui/SkillFileTree';
+import { ViewToggle, type ViewMode } from '../../shared/components/ui/ViewToggle';
 
 /** 内存级 SWR 缓存 */
 let cachedSkills: CachedBifrostSkill[] | null = null;
@@ -41,6 +42,17 @@ export const BifrostSkillsPage: React.FC = () => {
   const [loading, setLoading] = useState(() => !cachedSkills);
   const [error, setError] = useState('');
   const [downloadingName, setDownloadingName] = useState<string | null>(null);
+
+  const [viewMode, setViewMode] = useState<ViewMode>(
+    () => (localStorage.getItem('bf-skills-view') as ViewMode) || 'list'
+  );
+
+  const handleViewModeChange = (nextMode: ViewMode) => {
+    setViewMode(nextMode);
+    try {
+      localStorage.setItem('bf-skills-view', nextMode);
+    } catch {}
+  };
 
   const [q, setQ] = useState('');
   const [ratingFilter, setRatingFilter] = useState('');
@@ -306,7 +318,7 @@ export const BifrostSkillsPage: React.FC = () => {
               <h1 className="font-serif text-2xl font-bold text-ink">Bifrost Skills</h1>
             </div>
             <p className="text-sm text-ink-light font-sans mt-1">
-              浏览与检索所有可用技能，支持多选批量载入画板、星级打标与私有备注、一键打包 ZIP 下载
+              浏览与检索所有可用技能，支持多选批量载入画板、星级打标与备注、一键打包 ZIP 下载
             </p>
           </div>
 
@@ -317,10 +329,10 @@ export const BifrostSkillsPage: React.FC = () => {
                 variant="primary"
                 size="sm"
                 onClick={() => handleLoadSkillsToCanvas(selectedSkills)}
-                className="flex items-center gap-1.5 shadow-sm animate-fade-in"
+                className="flex items-center gap-1.5 shadow-sm"
               >
                 <PlusCircle size={14} />
-                载入画板 ({selectedNames.size})
+                载入画板 (<span className="tabular-nums font-mono">{selectedNames.size}</span>)
               </Button>
             )}
 
@@ -380,53 +392,69 @@ export const BifrostSkillsPage: React.FC = () => {
             </button>
           )}
 
-          {/* 页面多选控制 */}
-          {currentSkills.length > 0 && (
-            <div className="flex items-center gap-2 ml-auto">
-              <button
-                type="button"
-                onClick={handleToggleSelectPage}
-                className="text-xs text-ink-light hover:text-accent font-sans flex items-center gap-1 transition-colors"
-              >
-                {currentSkills.every((s) => selectedNames.has(s.name)) ? (
-                  <>
-                    <CheckSquare size={14} className="text-accent" /> 取消本页
-                  </>
-                ) : (
-                  <>
-                    <Square size={14} /> 全选本页
-                  </>
-                )}
-              </button>
-
-              {selectedNames.size > 0 && (
+          {/* 页面多选控制与视图切换 */}
+          <div className="flex items-center gap-3 ms-auto flex-wrap">
+            {currentSkills.length > 0 && (
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setSelectedNames(new Set())}
-                  className="text-xs text-ink-faint hover:text-error font-sans transition-colors ml-2"
+                  onClick={handleToggleSelectPage}
+                  className="text-xs text-ink-light hover:text-accent font-sans flex items-center gap-1 active:scale-[0.96] transition-all"
                 >
-                  清空已选
+                  {currentSkills.every((s) => selectedNames.has(s.name)) ? (
+                    <>
+                      <CheckSquare size={14} className="text-accent" /> 取消本页
+                    </>
+                  ) : (
+                    <>
+                      <Square size={14} /> 全选本页
+                    </>
+                  )}
                 </button>
-              )}
 
-              <span className="text-xs text-ink-faint font-sans ml-2">
-                共 {filteredSkills.length} 个 Skill
-              </span>
-            </div>
-          )}
+                {selectedNames.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedNames(new Set())}
+                    className="text-xs text-ink-faint hover:text-error font-sans active:scale-[0.96] transition-colors ml-1"
+                  >
+                    清空已选
+                  </button>
+                )}
+
+                <span className="text-xs text-ink-faint font-sans ml-1">
+                  共 <span className="tabular-nums font-mono text-ink font-medium">{filteredSkills.length}</span> 个 Skill
+                </span>
+              </div>
+            )}
+            <ViewToggle mode={viewMode} onChange={handleViewModeChange} />
+          </div>
         </div>
 
         {/* 加载骨架屏 */}
         {loading && skills.length === 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="p-4 rounded-2xl border border-dashed border-paper-grid bg-node-bg space-y-3 animate-pulse">
-                <div className="h-5 w-2/5 bg-paper-grid/50 rounded" />
-                <div className="h-4 w-full bg-paper-grid/30 rounded" />
-                <div className="h-3 w-4/5 bg-paper-grid/25 rounded" />
-              </div>
-            ))}
-          </div>
+          viewMode === 'grid' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4.5">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="p-4 rounded-[20px] border border-dashed border-paper-grid bg-node-bg space-y-3 animate-pulse">
+                  <div className="h-5 w-2/5 bg-paper-grid/50 rounded" />
+                  <div className="h-4 w-full bg-paper-grid/30 rounded" />
+                  <div className="h-3 w-4/5 bg-paper-grid/25 rounded" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="p-3 rounded-xl border border-dashed border-paper-grid bg-node-bg flex items-center gap-3.5 animate-pulse">
+                  <div className="w-5 h-5 rounded bg-paper-grid/40 shrink-0" />
+                  <div className="w-36 h-4 rounded bg-paper-grid/50 shrink-0" />
+                  <div className="flex-1 h-3.5 rounded bg-paper-grid/30 hidden md:block" />
+                  <div className="w-20 h-6 rounded bg-paper-grid/30 shrink-0" />
+                </div>
+              ))}
+            </div>
+          )
         )}
 
         {/* 错误提示 */}
@@ -440,7 +468,7 @@ export const BifrostSkillsPage: React.FC = () => {
           </Card>
         )}
 
-        {/* Skills 网格 */}
+        {/* Skills 内容区（网格 vs 高密度列表） */}
         {(skills.length > 0 || (!loading && !error)) && (
           <div>
             {filteredSkills.length === 0 ? (
@@ -451,8 +479,8 @@ export const BifrostSkillsPage: React.FC = () => {
                   {q.trim() || ratingFilter ? '尝试调整或清除搜索条件' : '暂无可用 Skills'}
                 </p>
               </Card>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            ) : viewMode === 'grid' ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4.5">
                 {currentSkills.map((s) => {
                   const isChecked = selectedNames.has(s.name);
                   const isDownloading = downloadingName === s.name;
@@ -461,10 +489,10 @@ export const BifrostSkillsPage: React.FC = () => {
                   return (
                     <Card
                       key={s.name}
-                      className={`p-4 rounded-2xl transition-all duration-200 flex flex-col group relative ${
+                      className={`p-4 rounded-[20px] transition-[border-color,box-shadow,background-color,transform] duration-200 ease-out flex flex-col group relative ${
                         isChecked
                           ? 'border-accent ring-1 ring-accent/30 bg-accent-surface/10'
-                          : 'hover:border-accent/40 hover:shadow-md'
+                          : 'hover:border-accent/40 hover:shadow-md hover:-translate-y-0.5'
                       }`}
                     >
                       {/* 卡片头部：复选框 + 名称 + 评分 */}
@@ -472,7 +500,7 @@ export const BifrostSkillsPage: React.FC = () => {
                         <button
                           type="button"
                           onClick={() => toggleSelect(s.name)}
-                          className="mt-0.5 text-ink-light hover:text-accent transition-colors shrink-0"
+                          className="h-7 w-7 -ml-1 -mt-0.5 flex items-center justify-center rounded-md hover:bg-paper-grid/40 text-ink-light hover:text-accent active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out shrink-0"
                           title={isChecked ? '取消选择' : '勾选此项'}
                         >
                           {isChecked ? (
@@ -482,13 +510,16 @@ export const BifrostSkillsPage: React.FC = () => {
                           )}
                         </button>
 
-                        <div className="flex-1 min-w-0 cursor-pointer" onClick={() => void openDetail(s)}>
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <p className="font-serif text-sm font-semibold text-ink truncate group-hover:text-accent transition-colors" title={s.name}>
+                        <div className="flex-1 min-w-0 cursor-pointer min-h-[2.5rem]" onClick={() => void openDetail(s)}>
+                          <div className="flex items-start gap-1.5 min-w-0">
+                            <p
+                              className="font-serif text-sm font-semibold text-ink line-clamp-2 break-words group-hover:text-accent transition-colors"
+                              title={s.name}
+                            >
                               {s.name}
                             </p>
                             {s.latest_version && (
-                              <span className="text-[10px] font-mono text-ink-faint border border-paper-grid rounded-pill px-1.5 py-px shrink-0">
+                              <span className="text-[10px] font-mono text-ink-faint border border-paper-grid rounded-pill px-1.5 py-px shrink-0 mt-0.5">
                                 v{s.latest_version}
                               </span>
                             )}
@@ -496,7 +527,7 @@ export const BifrostSkillsPage: React.FC = () => {
                         </div>
 
                         {/* 打星评分 */}
-                        <div onClick={(e) => e.stopPropagation()} className="shrink-0">
+                        <div onClick={(e) => e.stopPropagation()} className="shrink-0 mt-0.5">
                           <RatingStars
                             value={s.user_rating || 0}
                             onChange={(r) => void handleUpdateRating(s.name, r, noteText)}
@@ -505,49 +536,57 @@ export const BifrostSkillsPage: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* 描述信息 */}
+                      {/* 描述信息（预留双行基准槽位高度，保持顶边和底边对齐） */}
                       <p
-                        className="mt-2 text-xs text-ink-light font-sans line-clamp-2 leading-relaxed cursor-pointer"
+                        className="mt-2 text-xs text-ink-light font-sans line-clamp-2 leading-relaxed cursor-pointer min-h-[2.25rem]"
                         onClick={() => void openDetail(s)}
+                        title={s.description || '（暂无详细功能描述）'}
                       >
                         {s.description || '（暂无详细功能描述）'}
                       </p>
 
-                      {/* 私有备注展示与编辑 */}
-                      {noteText ? (
-                        <div
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingNoteTarget(s);
-                          }}
-                          className="text-[11px] text-accent font-sans mt-2.5 line-clamp-1 italic bg-accent-surface/50 px-2 py-1 rounded border border-accent/20 hover:border-accent/40 transition-colors flex items-center justify-between cursor-pointer"
-                        >
-                          <span className="truncate">备注：{noteText}</span>
-                          <StickyNote size={12} className="shrink-0 ml-1 opacity-70" />
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingNoteTarget(s);
-                          }}
-                          className="text-[11px] text-ink-faint hover:text-accent font-sans mt-2.5 self-start flex items-center gap-1 transition-colors"
-                        >
-                          <StickyNote size={12} />
-                          添加私有备注
-                        </button>
-                      )}
+                      {/* 私有备注展示与编辑（统一槽位高度与基线，并通过 mt-auto 紧贴操作栏） */}
+                      <div className="mt-auto pt-3">
+                        {noteText ? (
+                          <div
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingNoteTarget(s);
+                            }}
+                            className="h-7 text-[11px] text-accent font-sans italic bg-accent-surface/50 px-2.5 rounded-lg border border-accent/20 hover:border-accent/40 transition-colors flex items-center justify-between cursor-pointer group/note"
+                            title={`备注：${noteText}`}
+                          >
+                            <span className="truncate">备注：{noteText}</span>
+                            <StickyNote size={12} className="shrink-0 ml-1.5 opacity-70 group-hover/note:opacity-100 transition-opacity" />
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingNoteTarget(s);
+                            }}
+                            className="h-7 w-full text-[11px] text-ink-faint hover:text-accent font-sans px-2.5 rounded-lg border border-dashed border-paper-grid hover:border-accent/40 hover:bg-accent-surface/20 transition-all flex items-center justify-between cursor-pointer active:scale-[0.98]"
+                            title="添加私有备注"
+                          >
+                            <span className="flex items-center gap-1.5">
+                              <StickyNote size={12} className="opacity-60" />
+                              <span>添加私有备注</span>
+                            </span>
+                          </button>
+                        )}
+                      </div>
 
                       {/* 底部信息与动作按钮 */}
-                      <div className="flex items-center justify-between gap-2 mt-auto pt-3.5 border-t border-paper-grid/50">
+                      <div className="flex items-center justify-between gap-2 pt-3 mt-3 border-t border-paper-grid/50">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <button
                             type="button"
                             onClick={() => void openDetail(s)}
-                            className="text-xs text-accent hover:text-accent-hover font-sans underline underline-offset-2"
+                            className="text-xs text-ink-faint group-hover:text-accent font-sans flex items-center gap-0.5 transition-colors"
                           >
-                            查看详情
+                            <span>查看详情</span>
+                            <span className="text-[10px] opacity-70">→</span>
                           </button>
                         </div>
 
@@ -557,7 +596,7 @@ export const BifrostSkillsPage: React.FC = () => {
                             type="button"
                             onClick={() => void handleDownloadZip(s.name)}
                             disabled={isDownloading}
-                            className="p-1.5 rounded-md hover:bg-paper-grid/80 text-ink-light hover:text-ink transition-colors disabled:opacity-50"
+                            className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-paper-grid/80 text-ink-light hover:text-ink active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out disabled:opacity-50"
                             title="打包下载 Skill (.zip)"
                           >
                             {isDownloading ? (
@@ -580,6 +619,112 @@ export const BifrostSkillsPage: React.FC = () => {
                         </div>
                       </div>
                     </Card>
+                  );
+                })}
+              </div>
+            ) : (
+              /* 高密度列表视图 */
+              <div className="space-y-2">
+                {currentSkills.map((s) => {
+                  const isChecked = selectedNames.has(s.name);
+                  const isDownloading = downloadingName === s.name;
+                  const noteText = s.user_note || s.note;
+
+                  return (
+                    <div
+                      key={s.name}
+                      onClick={() => void openDetail(s)}
+                      className={`p-3 rounded-xl border border-dashed border-paper-grid transition-[border-color,box-shadow,background-color] duration-150 ease-out flex items-center gap-3.5 cursor-pointer group ${
+                        isChecked
+                          ? 'border-accent bg-accent-surface/15 ring-1 ring-accent/30'
+                          : 'bg-node-bg hover:border-accent/40 hover:shadow-xs'
+                      }`}
+                    >
+                      {/* 复选框 */}
+                      <div onClick={(e) => e.stopPropagation()} className="shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => toggleSelect(s.name)}
+                          className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-paper-grid/50 text-ink-light hover:text-accent active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out"
+                          title={isChecked ? '取消选择' : '勾选此项'}
+                        >
+                          {isChecked ? (
+                            <CheckSquare size={17} className="text-accent" />
+                          ) : (
+                            <Square size={17} className="text-ink-faint group-hover:text-ink-light" />
+                          )}
+                        </button>
+                      </div>
+
+                      {/* 技能名称与版本号 */}
+                      <div className="w-44 sm:w-52 shrink-0 min-w-0">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="font-serif text-sm font-semibold text-ink truncate group-hover:text-accent transition-colors" title={s.name}>
+                            {s.name}
+                          </span>
+                          {s.latest_version && (
+                            <span className="text-[10px] font-mono text-ink-faint border border-paper-grid rounded-pill px-1.5 py-px shrink-0">
+                              v{s.latest_version}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 功能描述与私有备注 */}
+                      <div className="flex-1 min-w-0 hidden md:block">
+                        <p
+                          className="text-xs text-ink-light font-sans truncate"
+                          title={s.description || '（暂无详细功能描述）'}
+                        >
+                          {s.description || '（暂无详细功能描述）'}
+                        </p>
+                        {noteText && (
+                          <p
+                            className="text-[11px] text-accent font-sans italic truncate mt-0.5"
+                            title={`备注：${noteText}`}
+                          >
+                            备注：{noteText}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* 打星评分 */}
+                      <div onClick={(e) => e.stopPropagation()} className="shrink-0 hidden sm:block">
+                        <RatingStars
+                          value={s.user_rating || 0}
+                          onChange={(r) => void handleUpdateRating(s.name, r, noteText)}
+                          size="xs"
+                        />
+                      </div>
+
+                      {/* 快捷操作：打包下载 + 单项载入画板 */}
+                      <div className="flex items-center gap-1.5 shrink-0 ms-auto md:ms-0" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          onClick={() => void handleDownloadZip(s.name)}
+                          disabled={isDownloading}
+                          className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-paper-grid/80 text-ink-light hover:text-ink active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out disabled:opacity-50"
+                          title="打包下载 Skill (.zip)"
+                        >
+                          {isDownloading ? (
+                            <Loader2 size={14} className="animate-spin text-accent" />
+                          ) : (
+                            <Download size={14} />
+                          )}
+                        </button>
+
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => handleLoadSkillsToCanvas([s])}
+                          className="text-xs px-2.5 py-1 h-7 flex items-center gap-1"
+                          title="在画板中创建包含此 Skill 的检索节点"
+                        >
+                          <PlusCircle size={13} className="text-accent" />
+                          <span className="hidden sm:inline">载入画板</span>
+                        </Button>
+                      </div>
+                    </div>
                   );
                 })}
               </div>
@@ -670,7 +815,7 @@ export const BifrostSkillsPage: React.FC = () => {
               {/* 私有备注区域 */}
               <div className="space-y-1.5 bg-paper/50 p-3 rounded-xl border border-paper-grid">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-ink font-serif">我的私有备注</label>
+                  <label className="text-xs font-semibold text-ink font-serif">我的备注</label>
                   <button
                     type="button"
                     onClick={() => setEditingNoteTarget(detail)}
@@ -740,7 +885,7 @@ export const BifrostSkillsPage: React.FC = () => {
           <NoteEditModal
             open={!!editingNoteTarget}
             onClose={() => setEditingNoteTarget(null)}
-            title="打标与私有备注"
+            title="打标与备注"
             resourceName={editingNoteTarget.name}
             initialRating={editingNoteTarget.user_rating ?? 0}
             initialNote={editingNoteTarget.user_note ?? editingNoteTarget.note ?? ''}

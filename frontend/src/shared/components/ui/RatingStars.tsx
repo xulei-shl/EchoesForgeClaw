@@ -60,9 +60,9 @@ export const RatingStars: React.FC<RatingStarsProps> = ({
             disabled={!isInteractive}
             onClick={(e) => handleClick(star, e)}
             onMouseEnter={() => isInteractive && setHoverValue(star)}
-            className={`transition-transform focus:outline-none p-0.5 rounded ${
+            className={`relative focus:outline-none p-0.5 rounded transition-transform duration-150 ease-out ${
               isInteractive
-                ? 'cursor-pointer hover:scale-110 active:scale-95 text-ink-faint hover:text-amber-400'
+                ? 'cursor-pointer hover:scale-110 active:scale-[0.96] text-ink-faint hover:text-amber-400 after:absolute after:-inset-1 after:content-[\'\']'
                 : 'cursor-default'
             }`}
           >

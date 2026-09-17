@@ -173,7 +173,7 @@ export const adminService = {
   /** 从共享区删除 skill 包（并清理指向它的用户登记软链） */
   deleteBifrostSkill: (name: string): Promise<{ message: string; cleaned_registries: number }> =>
     api.delete(`/admin/bifrost-skills/${encodeURIComponent(name)}`),
-  /* ---------------- 用户通用标注（打标与私有备注） ---------------- */
+  /* ---------------- 用户通用标注（打标与备注） ---------------- */
 
   setUserAnnotation: (payload: UserAnnotationPayload): Promise<UserAnnotation> =>
     api.put<UserAnnotation, UserAnnotation>('/annotations', payload),
