@@ -6,6 +6,7 @@
  * 纯状态操作，零 React 组件上下文依赖，直接操作全局 useCanvasState。
  */
 import { nodesRef, edgesRef, setNodes, setEdges } from '../../../shared/stores/useCanvasState';
+import api from '../../../shared/services/api';
 import { seedDataFor } from '../../core/seedData';
 import type { NodeType, NodeData } from '../../core/graphTypes';
 
@@ -78,14 +79,10 @@ export function executeCanvasOp(
           const isbnStr = String(customData.isbn).trim();
           if (isbnStr) {
             newNode.data.isGenerating = true;
-            const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
-            const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-
-            fetch(`/api/modules/bookplate/isbn/${encodeURIComponent(isbnStr)}`, { headers })
-              .then(async (res) => {
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                return res.json();
-              })
+            api
+              .get<Record<string, unknown>, Record<string, unknown>>(
+                `/modules/bookplate/isbn/${encodeURIComponent(isbnStr)}`
+              )
               .then((bookMeta) => {
                 setNodes((prev: NodeData[]) =>
                   prev.map((n) =>
@@ -104,7 +101,7 @@ export function executeCanvasOp(
                   )
                 );
               })
-              .catch((err) => {
+              .catch((err: any) => {
                 setNodes((prev: NodeData[]) =>
                   prev.map((n) =>
                     n.id === nodeId
@@ -113,7 +110,7 @@ export function executeCanvasOp(
                           data: {
                             ...n.data,
                             isGenerating: false,
-                            error: err.message || '获取图书元数据失败',
+                            error: err.message || err.detail || '获取图书元数据失败',
                           },
                         }
                       : n
