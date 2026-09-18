@@ -2,11 +2,8 @@ import React, { useState, useRef, useEffect, useReducer, useMemo, useCallback } 
 import {
   Bot,
   X,
-  Send,
   Trash2,
   Sparkles,
-  Paperclip,
-  Square,
   Maximize2,
   Minimize2,
   History,
@@ -14,6 +11,7 @@ import {
 import { PhotoProvider } from 'react-photo-view';
 import { useFeedback } from '../../../shared/components/ui/FeedbackProvider';
 import { ChatMessageItem } from '../../nodes/ai/chat/ChatMessageItem';
+import { ChatNodeComposer } from '../../nodes/ai/chat/ChatNodeComposer';
 import { authHeaders, handleUnauthorized } from '../../nodes/ai/infra/authUtils';
 import {
   parseSseStream,
@@ -25,6 +23,8 @@ import {
   setConversationPinned,
   renameConversation,
   deleteConversationSession,
+  uploadWorkspaceFile,
+  type UploadedWorkspaceFile,
 } from '../../nodes/ai/infra/piSessionApi';
 import { useConversationHistoryPanel } from '../../nodes/ai/infra/useConversationHistoryPanel';
 import { copyTextToClipboard } from '../../../shared/utils/clipboard';
@@ -88,8 +88,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   const [sessionMsgs, setSessionMsgs] = useState<ChatMessage[] | null>(null);
   const [streamState, dispatchStream] = useReducer(piStreamReducer, INITIAL_PI_STREAM);
 
-  // 2. 输入与界面状态
-  const [inputValue, setInputValue] = useState('');
+  // 2. 界面状态
   const [showQuickPrompts, setShowQuickPrompts] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [copiedId, setCopiedId] = useState<number | null>(null);
@@ -105,7 +104,6 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // 打开或工作区变化时：从服务端水合历史会话（与 PiChatNodeHost 延迟分配对齐）
   useEffect(() => {
@@ -137,39 +135,41 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
     }
   }, [sessionMsgs, streamState.steps, optimisticUser, open]);
 
-  // 打开时自动聚焦输入框
-  useEffect(() => {
-    if (open) {
-      setTimeout(() => inputRef.current?.focus(), 150);
+  // 确保工作区 ID 存在（若为空则延迟生成并持久化，与 PiChatNodeHost 对齐）
+  const ensureWorkspaceId = useCallback((): string => {
+    if (activeWorkspaceId) return activeWorkspaceId;
+    const newWs = `canvas-agent_${Date.now()}`;
+    setActiveWorkspaceId(newWs);
+    try {
+      localStorage.setItem(MASCOT_AGENT_WORKSPACE_STORAGE_KEY, newWs);
+    } catch {
+      /* ignore */
     }
-  }, [open]);
+    return newWs;
+  }, [activeWorkspaceId]);
+
+  // 任意格式文件上传到工作区 inputs/ 目录（与 pi-agent 节点完全一致）
+  const handleUploadFile = useCallback(
+    async (file: File): Promise<UploadedWorkspaceFile> => {
+      const ws = ensureWorkspaceId();
+      return await uploadWorkspaceFile(ws, file);
+    },
+    [ensureWorkspaceId]
+  );
 
   // 发送消息（复用 piStreamReducer 状态归约）
-  const handleSend = async (textToSend?: string) => {
-    const text = (textToSend || inputValue).trim();
-    if (!text || streamState.isStreaming) return;
+  const handleSend = async (textToSend?: string, images?: string[]) => {
+    const text = (textToSend || '').trim();
+    if ((!text && (!images || images.length === 0)) || streamState.isStreaming) return;
 
     // 延迟分配：首轮发送时分配专属工作区（与 pi-agent 节点模式对齐，新对话创建新目录）
-    let currentWs = activeWorkspaceId;
-    if (!currentWs) {
-      currentWs = `canvas-agent_${Date.now()}`;
-      setActiveWorkspaceId(currentWs);
-      try {
-        localStorage.setItem(MASCOT_AGENT_WORKSPACE_STORAGE_KEY, currentWs);
-      } catch {
-        /* ignore */
-      }
-    }
-
-    setInputValue('');
-    if (inputRef.current) {
-      inputRef.current.style.height = '36px';
-    }
+    const currentWs = ensureWorkspaceId();
 
     const userMsg: ChatMessage = {
       id: `user_${Date.now()}`,
       role: 'user',
       content: text,
+      ...(images && images.length > 0 ? { images } : {}),
     };
     optimisticUserRef.current = userMsg;
     setOptimisticUser(userMsg);
@@ -191,6 +191,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         body: JSON.stringify({
           prompt: text,
           workspace_id: currentWs,
+          ...(images && images.length > 0 ? { images } : {}),
         }),
       });
 
@@ -523,6 +524,20 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-1">
+            {/* 快捷创作灵感切换按钮 */}
+            <button
+              type="button"
+              onClick={() => setShowQuickPrompts((prev) => !prev)}
+              title={showQuickPrompts ? '收起快捷灵感' : '展开快捷灵感'}
+              aria-label="快捷创作灵感"
+              className={`p-1.5 rounded-lg transition-colors active:scale-95 ${
+                showQuickPrompts
+                  ? 'text-accent bg-accent/10 font-medium'
+                  : 'text-ink-faint hover:text-ink hover:bg-paper-grid/30'
+              }`}
+            >
+              <Sparkles size={15} />
+            </button>
             {/* 对话历史侧边抽屉切换按钮 */}
             <button
               type="button"
@@ -641,7 +656,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
       </PhotoProvider>
 
       {/* 3. 输入控制栏 */}
-      <div className="relative p-3 border-t border-paper-grid bg-paper shrink-0">
+      <div className="relative px-3 pb-3 bg-paper shrink-0">
         {/* 快捷创作灵感弹出卡片 */}
         {showQuickPrompts && (
           <div className="absolute bottom-full mb-2 left-3 right-3 p-2 bg-paper/95 backdrop-blur-sm border border-paper-grid rounded-xl shadow-lg flex flex-col gap-1 z-30 animate-in fade-in slide-in-from-bottom-2">
@@ -671,70 +686,15 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
           </div>
         )}
 
-        <div className="relative flex items-end gap-1.5">
-          {/* 左侧操作按钮：Paperclip 快捷灵感 */}
-          <button
-            type="button"
-            onClick={() => setShowQuickPrompts((prev) => !prev)}
-            disabled={streamState.isStreaming}
-            aria-label="快捷创作灵感"
-            title="快捷创作灵感"
-            className="flex shrink-0 items-center justify-center w-9 h-9 rounded-lg border border-paper-grid/70 text-ink-faint hover:text-accent hover:border-accent/40 hover:bg-accent/5 active:scale-[0.96] transition-[color,background-color,border-color,transform] duration-150 ease-out disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-          >
-            <Paperclip size={15} strokeWidth={2} />
-          </button>
-
-          {/* 中间输入框：自适应高度 */}
-          <div className="relative flex-1 min-w-0 rounded-lg bg-node-bg">
-            <textarea
-              ref={inputRef}
-              rows={1}
-              value={inputValue}
-              onChange={(e) => {
-                setInputValue(e.target.value);
-                if (inputRef.current) {
-                  inputRef.current.style.height = '36px';
-                  if (inputRef.current.scrollHeight > 36) {
-                    inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 128)}px`;
-                  }
-                }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSend();
-                }
-              }}
-              placeholder={streamState.isStreaming ? '回复生成中…' : '输入消息，Enter 发送，Shift+Enter 换行'}
-              disabled={streamState.isStreaming}
-              className="relative z-10 block w-full min-h-[36px] max-h-32 overflow-y-auto resize-none rounded-lg border border-paper-grid/70 bg-transparent px-3 py-1.5 text-sm font-sans text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-[border-color,box-shadow] duration-150 disabled:opacity-60 [text-wrap:pretty]"
-            />
-          </div>
-
-          {/* 右侧操作按钮：发送 / 停止生成 */}
-          {streamState.isStreaming ? (
-            <button
-              type="button"
-              onClick={handleStop}
-              aria-label="停止生成"
-              title="停止生成"
-              className="flex shrink-0 items-center justify-center w-9 h-9 rounded-lg border border-error/30 bg-error/5 text-error hover:bg-error/10 active:scale-[0.96] transition-[color,background-color,transform] duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error"
-            >
-              <Square size={14} strokeWidth={2} fill="currentColor" />
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => handleSend()}
-              disabled={!inputValue.trim()}
-              aria-label="发送消息 (Enter)"
-              title="发送 (Enter)"
-              className="flex shrink-0 items-center justify-center w-9 h-9 rounded-lg bg-accent text-white shadow-xs hover:bg-accent/90 active:scale-[0.96] transition-[background-color,transform] duration-150 ease-out disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-            >
-              <Send size={15} strokeWidth={2} />
-            </button>
-          )}
-        </div>
+        {/* 输入区：复用 ChatNodeComposer（支持任意文件上传至 inputs/、@ 工作区文件引用及原子删除） */}
+        <ChatNodeComposer
+          mode="skill_agent"
+          onUploadFile={handleUploadFile}
+          isGenerating={streamState.isStreaming}
+          workspaceId={activeWorkspaceId}
+          onSend={(text, images) => handleSend(text, images)}
+          onStop={handleStop}
+        />
       </div>
     </div>
   </div>

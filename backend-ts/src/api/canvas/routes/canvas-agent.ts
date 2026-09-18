@@ -20,6 +20,7 @@ interface CanvasAgentChatRequest {
   prompt: string;
   chat_id?: string;
   workspace_id?: string;
+  images?: string[];
 }
 
 /**
@@ -151,6 +152,7 @@ export async function register(app: FastifyInstance): Promise<void> {
             chatModelName: chatModel.modelName,
             imageGenEnabled: false,
             message: prompt,
+            images: payload.images,
             extensions: prepared.mountedExtensions,
             excludeTools: [...CANVAS_AGENT_EXCLUDED_TOOLS],
             generation,
