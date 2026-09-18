@@ -14,27 +14,55 @@ export function executeCanvasOp(
   params: Record<string, unknown>
 ): Record<string, unknown> {
   try {
+    // 1. 参数解包防御：若参数被外层 params 对象包裹，解出内层真正参数
+    let realParams = params;
+    if (
+      realParams &&
+      typeof realParams === 'object' &&
+      'params' in realParams &&
+      typeof realParams.params === 'object' &&
+      realParams.params !== null
+    ) {
+      realParams = realParams.params as Record<string, unknown>;
+    }
+
     switch (op) {
       case 'create_node': {
-        const type = params.type as NodeType;
+        const type = (realParams.type || (params && (params as any).type)) as NodeType;
         if (!type) {
           return { success: false, error: '缺少必填的节点类型 (type)' };
         }
 
-        const parentId = params.parent_id as string | undefined;
+        const parentId = realParams.parent_id as string | undefined;
         const nodes: NodeData[] = nodesRef.current || [];
+        const edges = edgesRef.current || [];
         const parent = parentId ? nodes.find((n) => n.id === parentId) : undefined;
 
         // 生成唯一节点 ID
         const nodeId = `${type}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-        
+
         // 获取该类型节点的默认 seed 数据
         const defaultSeed = seedDataFor(type, parent);
-        const customData = (params.data as Record<string, unknown>) || {};
 
-        // 计算新节点摆放坐标（在父节点右侧偏移，或居中级联偏移）
-        const x = parent ? parent.x + 280 : 360 + (nodes.length % 5) * 40;
-        const y = parent ? parent.y + 40 : 240 + (nodes.length % 5) * 40;
+        // 处理自定义 data：支持对象或 JSON 字符串安全解析
+        let customData: Record<string, unknown> = {};
+        if (realParams.data && typeof realParams.data === 'object' && !Array.isArray(realParams.data)) {
+          customData = realParams.data as Record<string, unknown>;
+        } else if (typeof realParams.data === 'string') {
+          try {
+            const parsed = JSON.parse(realParams.data);
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+              customData = parsed;
+            }
+          } catch {
+            /* ignore bad json */
+          }
+        }
+
+        // 计算新节点摆放坐标（标准卡片宽约 380~440px，横向偏移 460px 彻底避免与父节点重叠；同一父节点下多子节点 Y 轴错位）
+        const siblingEdges = parentId ? edges.filter((e: any) => e.source === parentId) : [];
+        const x = parent ? parent.x + 460 : 360 + (nodes.length % 5) * 40;
+        const y = parent ? parent.y + siblingEdges.length * 120 : 240 + (nodes.length % 5) * 40;
 
         const newNode: NodeData = {
           id: nodeId,
@@ -42,8 +70,58 @@ export function executeCanvasOp(
           x,
           y,
           data: { ...defaultSeed, ...customData },
-          ...(params.config_id ? { configId: Number(params.config_id) } : {}),
+          ...(realParams.config_id ? { configId: Number(realParams.config_id) } : {}),
         };
+
+        // 业务增强：若创建 book_info 且提供了 ISBN，自动异步抓取豆瓣图书元数据并水合填充
+        if (type === 'book_info' && customData.isbn) {
+          const isbnStr = String(customData.isbn).trim();
+          if (isbnStr) {
+            newNode.data.isGenerating = true;
+            const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+            const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+
+            fetch(`/api/modules/bookplate/isbn/${encodeURIComponent(isbnStr)}`, { headers })
+              .then(async (res) => {
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                return res.json();
+              })
+              .then((bookMeta) => {
+                setNodes((prev: NodeData[]) =>
+                  prev.map((n) =>
+                    n.id === nodeId
+                      ? {
+                          ...n,
+                          data: {
+                            ...n.data,
+                            ...bookMeta,
+                            isbn: isbnStr,
+                            isGenerating: false,
+                            error: null,
+                          },
+                        }
+                      : n
+                  )
+                );
+              })
+              .catch((err) => {
+                setNodes((prev: NodeData[]) =>
+                  prev.map((n) =>
+                    n.id === nodeId
+                      ? {
+                          ...n,
+                          data: {
+                            ...n.data,
+                            isGenerating: false,
+                            error: err.message || '获取图书元数据失败',
+                          },
+                        }
+                      : n
+                  )
+                );
+              });
+          }
+        }
 
         // 写入全局画布节点
         setNodes((prev: NodeData[]) => [...prev, newNode]);
@@ -62,10 +140,14 @@ export function executeCanvasOp(
       }
 
       case 'connect_nodes': {
-        const sourceId = params.source_id as string;
-        const targetId = params.target_id as string;
+        const sourceId = (realParams.source_id || (params && (params as any).source_id)) as string;
+        const targetId = (realParams.target_id || (params && (params as any).target_id)) as string;
         if (!sourceId || !targetId) {
           return { success: false, error: '必须同时提供 source_id 与 target_id' };
+        }
+
+        if (sourceId === targetId) {
+          return { success: false, error: '无法自连接同一节点' };
         }
 
         const nodes: NodeData[] = nodesRef.current || [];
@@ -81,6 +163,26 @@ export function executeCanvasOp(
         const existing = edges.find((e: any) => e.source === sourceId && e.target === targetId);
         if (existing) {
           return { success: true, edge_id: existing.id, message: '连线已存在，无需重复连接' };
+        }
+
+        // DAG 防成环检查：检测 target 沿着出边是否能到达 source
+        const wouldCreateCycle = (src: string, tgt: string): boolean => {
+          const visited = new Set<string>([tgt]);
+          const queue = [tgt];
+          while (queue.length > 0) {
+            const cur = queue.shift()!;
+            for (const e of edges) {
+              if (e.source !== cur || visited.has(e.target)) continue;
+              if (e.target === src) return true;
+              visited.add(e.target);
+              queue.push(e.target);
+            }
+          }
+          return false;
+        };
+
+        if (wouldCreateCycle(sourceId, targetId)) {
+          return { success: false, error: `连线会导致循环依赖 (${source.type} 与 ${target.type} 形成闭环)` };
         }
 
         const edgeId = `edge-${sourceId}-${targetId}`;

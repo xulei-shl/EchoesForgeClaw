@@ -143,24 +143,39 @@ export interface GuardrailsAutoConfig {
  * 故经 allowedPatterns 显式放行 skills/prompts 两棵资源树；models.json / web-search.json /
  * settings.json / auth.json / extensions / sessions / run 等运行态与密钥装配物保持封禁。
  * 后续新增敏感文件默认仍受保护，无需修改本规则。
+ *
+ * 前缀通配：guardrails 的 bash 路径提取是 best-effort 的——含 shell 展开的 token
+ * （如 `cat "$base/.pi-agent/run/chat.jsonl"`）不会被解析成真实路径，而是按字面相对 cwd
+ * 解析，得到 `<cwd>/$base/.pi-agent/...` 这类「带垃圾前缀但落在工作区内」的候选。
+ * 首段模式（`.pi-agent` 与 `.pi-agent` 子树）匹配不到这种形态（Node matchesGlob 要求
+ * 首段就是 `.pi-agent`），故补齐「任意前缀 + .pi-agent」的两条模式；
+ * skills/prompts 豁免仍优先命中，不受影响。
  */
 export interface GuardrailsAgentRuntimeRule {
   id: 'agent-runtime';
   description: string;
-  patterns: [{ pattern: '.pi-agent' }, { pattern: '.pi-agent/**' }];
+  patterns: { pattern: string }[];
   allowedPatterns: { pattern: string }[];
   protection: 'noAccess';
   onlyIfExists: true;
   blockMessage: string;
 }
 
+/** 受保护路径模式（fail-closed；前后两种形态都封，防变量拼接绕过）。 */
+const AGENT_RUNTIME_PATTERNS: GuardrailsAgentRuntimeRule['patterns'] = [
+  { pattern: '.pi-agent' },
+  { pattern: '.pi-agent/**' },
+  { pattern: '**/.pi-agent' },
+  { pattern: '**/.pi-agent/**' },
+];
+
 /** 可读资源树（带裸目录模式：`/**` 在 Node matchesGlob 下不匹配无尾斜杠的目录本身）。 */
-const AGENT_RUNTIME_ALLOWED_PATTERNS = [
+const AGENT_RUNTIME_ALLOWED_PATTERNS: GuardrailsAgentRuntimeRule['allowedPatterns'] = [
   { pattern: '.pi-agent/skills' },
   { pattern: '.pi-agent/skills/**' },
   { pattern: '.pi-agent/prompts' },
   { pattern: '.pi-agent/prompts/**' },
-] as const;
+];
 
 /** 装配期注入的策略规则（按 id 与扩展内置/用户规则去重合并，见 loader afterMerge）。 */
 export function guardrailsPolicyRules(): GuardrailsAgentRuntimeRule[] {
@@ -169,11 +184,8 @@ export function guardrailsPolicyRules(): GuardrailsAgentRuntimeRule[] {
       id: 'agent-runtime',
       description:
         'Agent runtime configuration (backend-materialized API keys under .pi-agent/)',
-      patterns: [
-        { pattern: '.pi-agent' },
-        { pattern: '.pi-agent/**' },
-      ],
-      allowedPatterns: [...AGENT_RUNTIME_ALLOWED_PATTERNS],
+      patterns: AGENT_RUNTIME_PATTERNS.map((p) => ({ ...p })),
+      allowedPatterns: AGENT_RUNTIME_ALLOWED_PATTERNS.map((p) => ({ ...p })),
       protection: 'noAccess',
       onlyIfExists: true,
       blockMessage:

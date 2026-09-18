@@ -216,3 +216,95 @@ describe('runPiAgent 加载 pi-guardrails（RPC 冒烟）', () => {
     90_000
   );
 });
+
+/**
+ * 按 Agent 收敛工具面（`runPiAgent.excludeTools` → pi `--exclude-tools`）。
+ * 画板助手不需要 shell，而 shell 是 guardrails 路径提取唯一可绕过的面
+ * （见 docs/skill-agent/pi-guardrails管理员策略控制模型.md 第 8 节）。
+ */
+describe('runPiAgent excludeTools（按 Agent 收敛工具面）', () => {
+  // 独立 workspaceId：避免与上一个 describe 留下的常驻进程/代数复用搅在一起
+  const WS_ID_EXCLUDED = `pi-exclude-tools_${Date.now()}`;
+  let mock: { server: Server; port: number };
+  let seenTools: string[] = [];
+
+  beforeEach(async () => {
+    await killPiProcess(UID, WS_ID_EXCLUDED);
+    rmSync(path.join(RUNTIME_ROOT, String(UID), 'workspace', WS_ID_EXCLUDED), {
+      recursive: true,
+      force: true,
+    });
+    seenTools = [];
+    // 复用 startMock 的监听端口，换成「记录工具清单后回 pong」的处理器
+    mock = await startMock();
+    mock.server.removeAllListeners('request');
+    mock.server.on('request', (req, res) => {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', () => {
+        const parsed = JSON.parse(body || '{}') as { tools?: { function?: { name?: string } }[] };
+        seenTools = (parsed.tools ?? []).map((t) => String(t.function?.name ?? ''));
+        res.writeHead(200, { 'content-type': 'text/event-stream' });
+        const chunk = (delta: unknown, finish?: string) =>
+          `data: ${JSON.stringify({
+            id: 'chatcmpl-mock',
+            object: 'chat.completion.chunk',
+            created: 0,
+            model: 'test-model',
+            choices: [{ index: 0, delta, finish_reason: finish ?? null }],
+          })}\n\n`;
+        res.write(chunk({ role: 'assistant', content: 'pong' }));
+        res.write(chunk({}, 'stop'));
+        res.write('data: [DONE]\n\n');
+        res.end();
+      });
+    });
+  });
+
+  afterEach(async () => {
+    await killPiProcess(UID, WS_ID_EXCLUDED);
+    mock.server.close();
+    rmSync(path.join(RUNTIME_ROOT, String(UID), 'workspace', WS_ID_EXCLUDED), {
+      recursive: true,
+      force: true,
+    });
+  });
+
+  it(
+    'excludeTools: ["bash"] 时 bash 不再出现在发给模型的工具清单里，其它内置工具保留',
+    async () => {
+      const prepared = preparePiWorkspace(UID, WS_ID_EXCLUDED, {
+        agentId: 1,
+        chatModel: {
+          baseUrl: `http://127.0.0.1:${mock.port}/v1`,
+          apiKey: 'k',
+          modelName: 'test-model',
+          multimodal: false,
+        },
+        imageModel: null,
+        skillNames: [],
+      });
+
+      const events = [];
+      for await (const evt of runPiAgent({
+        userId: UID,
+        workspaceId: WS_ID_EXCLUDED,
+        ws: prepared.ws,
+        hasPrompt: false,
+        chatModelName: 'test-model',
+        imageGenEnabled: false,
+        extensions: prepared.mountedExtensions,
+        excludeTools: ['bash'],
+        message: 'ping',
+      })) {
+        events.push(evt);
+      }
+
+      expect(events.some((e) => e.type === 'error')).toBe(false);
+      expect(seenTools.length).toBeGreaterThan(0);
+      expect(seenTools).not.toContain('bash');
+      expect(seenTools).toContain('read');
+    },
+    90_000
+  );
+});

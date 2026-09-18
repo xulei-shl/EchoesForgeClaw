@@ -25,7 +25,7 @@
 | :--- | :---: | :--- | :--- |
 | **输入类** | **5** | • `book_info`（图书元数据）<br>• `text`（文本输入）<br>• `image_upload`（图片加载）<br>• `prompt_search`（提示词检索）<br>• `skill_search`（Skill 检索） | `isbn`（ISBN号）、`content`（Markdown内容）、`imageUrl`（预加载图片） |
 | **文本工具类** | **7** | • `text_aggregate`（文本聚合）<br>• `calendar`（万年历）<br>• `weather`（天气查询）<br>• `zhihu_search`（知乎检索）<br>• `wikipedia_search`（维基检索）<br>• `text_translation`（文本翻译）<br>• `web_search`（网络搜索） | `template`（占位符 `{别名}`）、`city`（查询城市）、`date`（日期）、`engine`（翻译引擎/搜索源） |
-| **多模态工具类** | **19** | • **图片检索**：`image_search`、`nasa_image_search`<br>• **地图生成**：`map_poster`、`map_art`<br>• **传统文化**：`pattern_search`（纹样）、`color_search`（配色）<br>• **排版印刷**：`receipt_printer`（小票）、`book_card`（图书卡片）、`editorial_layout`（杂志排版）、`journal_maker`（手账制作）、`text_image`（文本成图）<br>• **图像加工**：`sticker_maker`（贴纸）、`stamp_cutter`（邮票）、`image_bg_remove`（抠图）、`image_process`（滤镜处理）<br>• **艺术质感**：`oil_paint`（油画）、`emboss_foil`（微浮雕）、`glass_refract`（玻璃折射）、`watercolor_brush`（水彩）、`ink_wash`（水墨） | 拥有丰富预设（如玻璃 9 款、浮雕 8 款、水彩 12 构图、水墨 8 意境、书卡 20 模板等） |
+| **多模态工具类** | **19** | • **图片检索**：`image_search`（含 NASA 图库）<br>• **地图生成**：`map_poster`、`map_art`<br>• **传统文化**：`pattern_search`（纹样）、`color_search`（配色）<br>• **排版印刷**：`receipt_printer`（小票）、`book_card`（图书卡片）、`editorial_layout`（杂志排版）、`journal_maker`（手账制作）、`text_image`（文本成图）<br>• **图像加工**：`sticker_maker`（贴纸）、`stamp_cutter`（邮票）、`image_bg_remove`（抠图）、`image_process`（滤镜处理）<br>• **艺术质感**：`oil_paint`（油画）、`emboss_foil`（微浮雕）、`glass_refract`（玻璃折射）、`watercolor_brush`（水彩）、`ink_wash`（水墨） | 拥有丰富预设（如玻璃 9 款、浮雕 8 款、水彩 12 构图、水墨 8 意境、书卡 20 模板等） |
 | **GLAM 工具类** | **2** | • `art_image_search`（艺术图片检索，13家博物馆）<br>• `vufind_call_number`（VuFind 索书号检索） | `source`（指定博物馆来源）、`isbn` |
 
 ### 2.2 4 类受管自定义 AI 节点（普通用户不可直接硬建，触发反馈直达微信）
@@ -81,7 +81,7 @@
 │                    pi-agent RPC 专属子进程                             │
 ├────────────────────────────────────────────────────────────────────────┤
 │                                                                        │
-│  工作区目录: runtime/{userId}/workspace/canvas-agent/                  │
+│  工作区目录: runtime/{userId}/workspace/canvas-agent_{chatId}/         │
 │  ├── AGENTS.md                   ← 专属系统提示词                      │
 │  │                                                                     │
 │  ├── .pi-agent/extensions/                                             │

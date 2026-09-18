@@ -58,6 +58,11 @@ export interface RunPiAgentOptions {
   images?: string[];
   /** 白名单扩展已装配目录（preparePiWorkspace.mountedExtensions；逐个追加 -e） */
   extensions?: string[];
+  /**
+   * 本 Agent 额外排除的工具名（与全局 DISABLED_TOOLS 合并去重，逐个追加 --exclude-tools）。
+   * 用于按 Agent 收敛风险面（如画板助手不需要 shell 能力）。
+   */
+  excludeTools?: string[];
   /** thinking 开关（'on'='--thinking high'、'off'、遗留档位透传；空/非法 = 跟随 pi 默认） */
   thinkingLevel?: string | null;
   signal?: AbortSignal;
@@ -86,8 +91,10 @@ function buildSpawnArgs(opts: RunPiAgentOptions): { cmd: string; args: string[] 
   }
   // thinking（节点设置 on/off/遗留档位 → pi CLI；非法值静默忽略 = pi 默认）
   args.push(...resolveThinkingArgs(opts.thinkingLevel));
-  // 工具黑名单（多租户风险收敛；pi 子进程模式无审批门，仅 allowlist/denylist 可控）
-  for (const tool of DISABLED_TOOLS) {
+  // 工具黑名单（多租户风险收敛；pi 子进程模式无审批门，仅 allowlist/denylist 可控）：
+  // 全局 DISABLED_TOOLS ∪ 本 Agent 的 excludeTools
+  const excludedTools = Array.from(new Set([...DISABLED_TOOLS, ...(opts.excludeTools ?? [])]));
+  for (const tool of excludedTools) {
     args.push('--exclude-tools', tool);
   }
   const sessionFile = path.join(opts.ws, PI_SESSION_REL);

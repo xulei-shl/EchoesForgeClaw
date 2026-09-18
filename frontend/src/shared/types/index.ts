@@ -313,6 +313,7 @@ export type NodePortType = 'text' | 'image' | 'document' | 'audio' | 'video' | '
 
 /** AI 对话节点的一条消息 */
 export interface ChatMessage {
+  id?: string;
   role: 'user' | 'assistant';
   content: string;
   /** 是否正在流式输出（展示打字光标） */

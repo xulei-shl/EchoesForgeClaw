@@ -28,7 +28,7 @@ import {
   GUARDRAILS_PACKAGE_NAME,
   type GuardrailsConfigOverrides,
 } from './guardrails.js';
-import { resolvePiExtensions, extensionDirName } from './resolve.js';
+import { resolvePiExtensions, extensionDirName, REPO_ROOT } from './resolve.js';
 import { killPiProcess } from './registry.js';
 import { cleanupSubagentAsyncRuns } from './subagents/cleanup.js';
 import { removePathSafe } from '../../platform/file-utils.js';
@@ -158,6 +158,44 @@ function isValidSkillName(name: string): boolean {
 }
 
 /**
+ * 检查扩展包是否会被 pi 成功加载（与 pi `resolveExtensionEntries` 口径一致），
+ * 返回「不可装配」的原因，可装配时返回 null：
+ *   1. package.json 的 `pi.extensions` 声明的入口（相对包目录）逐个存在性检查；
+ *   2. 否则回退 `index.ts` / `index.js`；
+ *   3. 两者都没有 = pi 静默跳过该扩展（不报错），工具全部缺失。
+ *
+ * 背景：pi 的扩展加载失败只进 LoadExtensionsResult.errors 数组，RPC 模式下不报错也不中止，
+ * 表现为「Agent 悄悄少了一批工具」——调用方需在装配期显式诊断并透传用户。
+ */
+function extensionAssemblyProblem(dir: string): string | null {
+  try {
+    if (!statSync(dir).isDirectory()) return '解析到的路径不是目录';
+  } catch {
+    return '未在允许的解析位置找到已安装的包目录';
+  }
+  const pkgPath = path.join(dir, 'package.json');
+  if (!existsSync(pkgPath)) return 'package.json 缺失，无法解析扩展入口';
+  let declared: string[] = [];
+  try {
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as { pi?: { extensions?: unknown } };
+    if (Array.isArray(pkg.pi?.extensions)) {
+      declared = pkg.pi.extensions.filter((e): e is string => typeof e === 'string');
+    }
+  } catch {
+    return 'package.json 不是合法 JSON，无法解析扩展入口';
+  }
+  if (declared.length > 0) {
+    const missing = declared.filter((rel) => !existsSync(path.resolve(dir, rel)));
+    if (missing.length === declared.length) {
+      return `package.json 声明的扩展入口均不存在：${missing.join('、')}`;
+    }
+    return null;
+  }
+  if (existsSync(path.join(dir, 'index.ts')) || existsSync(path.join(dir, 'index.js'))) return null;
+  return '未发现扩展入口（既无 pi.extensions 声明，也无 index.ts / index.js）';
+}
+
+/**
  * 绘图模型配置的可诊断性检查：返回「配置有问题、不应装配 pi-image-gen 段」的原因文案，
  * 无问题时返回 null。退化配置（缺模型名 / 缺 Key / Key 是模型名本身）写入 settings 只会
  * 让每次生成都 401「API key 问题」——这里在装配期就拦截并给出可操作提示。
@@ -218,6 +256,13 @@ export function preparePiWorkspace(
         if (existsSync(sysSource)) {
           source = sysSource;
           isSystem = true;
+        } else {
+          // 降级支持：从 packages/pi-canvas-tools/skills 中装配画板系统级同捆技能
+          const pkgSource = path.join(REPO_ROOT, 'packages', 'pi-canvas-tools', 'skills', name);
+          if (existsSync(pkgSource)) {
+            source = pkgSource;
+            isSystem = true;
+          }
         }
       }
       try {
@@ -267,14 +312,16 @@ export function preparePiWorkspace(
   if (extSpecs.length) {
     mkdirSync(extRoot, { recursive: true });
     for (const spec of extSpecs) {
-      const dest = path.join(extRoot, extensionDirName(spec.name));
-      try {
-        if (!statSync(spec.dir).isDirectory() || !existsSync(path.join(spec.dir, 'package.json'))) {
-          continue;
-        }
-      } catch {
+      // 装配前显式诊断：入口不可解析时 pi 会静默跳过该扩展（工具全部缺失且无报错），
+      // 这里改为「不装配 + 装配期 warning」，把「Agent 悄悄少了一批工具」变成可见提示。
+      const problem = extensionAssemblyProblem(spec.dir);
+      if (problem) {
+        warnings.push(
+          `扩展包 ${spec.name} 未装配（${problem}），该扩展提供的工具在本 Agent 中不可用。`
+        );
         continue;
       }
+      const dest = path.join(extRoot, extensionDirName(spec.name));
       // 复用 symlinkOrCopy（Bifrost 共享包 → 软链共享区；Windows 无权限时退化为复制）
       symlinkOrCopy(spec.dir, dest);
       mountedExtensions.push(dest);

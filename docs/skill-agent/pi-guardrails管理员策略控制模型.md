@@ -75,7 +75,8 @@
 ## 6. 生效口径与注意事项
 
 - 策略变更一般不实时作用于已有对话进程；新 workspace 装配才会使用新策略。
-- 目前默认配置里已加入一条额外策略规则 `agent-runtime`，禁止工具访问 `.pi-agent/**`，用来保护后端装配的真实密钥类文件（如 models.json / web-search.json）；同时经 `allowedPatterns` 显式放行 `.pi-agent/skills/**` 与 `.pi-agent/prompts/**`——技能/提示词是 pi 渐进式披露要求模型经 read tool 按需读取的可读资源，封死会导致装配的技能形同虚设（详见 `pi-extension-integration.md` 的 agent-runtime 规则说明）。
+- 目前默认配置里已加入一条额外策略规则 `agent-runtime`，禁止工具访问 `.pi-agent`（含其子树），用来保护后端装配的真实密钥类文件（如 models.json / web-search.json）；同时经 `allowedPatterns` 显式放行 `.pi-agent/skills/**` 与 `.pi-agent/prompts/**`——技能/提示词是 pi 渐进式披露要求模型经 read tool 按需读取的可读资源，封死会导致装配的技能形同虚设（详见 `pi-extension-integration.md` 的 agent-runtime 规则说明）。
+- 该规则的 `patterns` 同时包含首段模式（`.pi-agent`、`.pi-agent` 子树）与「任意前缀 + .pi-agent」两条通配，理由见第 8 节。
 - 如果后续打开 pathAccess 的交互语义（allow/ask），在 RPC 服务端场景需重新评估，不应默认引入用户对话确认。
 
 ---
@@ -84,3 +85,24 @@
 
 - 自动配置形状断言：`tests/api/pi-agent-workspace.test.ts` guardrails describe。
 - 真实子进程加载 + 危险命令 dialog 全链：`tests/api/pi-guardrails-run.test.ts`。
+
+---
+
+## 8. 已知限制：bash 路径提取是 best-effort，不能作为唯一防线
+
+`@aliou/pi-guardrails` 的 policies 对 `bash` 工具靠「从命令串提取路径候选，再逐候选匹配规则」。提取器（`shared/paths/bash-paths.ts` + `core/paths/plausibility.ts`）刻意跳过含 shell 展开的 token 的合理性过滤，并把它们**按字面相对 cwd 解析**，因此：
+
+| 命令形态 | 提取到的候选 | 旧模式集结果 |
+| :--- | :--- | :--- |
+| `cat .pi-agent/models.json` | `<cwd>/.pi-agent/models.json` | 拦截 ✅ |
+| `cat "$base/.pi-agent/models.json"` | `<cwd>/$base/.pi-agent/models.json`（含 `$` 的垃圾前缀） | 放行 ❌ |
+| `x=.pi-agent; cat "$x/models.json"` | `<cwd>/$x/models.json` | 放行 ❌（标记只存在于赋值语句里，从不进入候选） |
+| `cd <cwd>/.pi-agent && cat models.json` | `<cwd>/.pi-agent` | 拦截 ✅ |
+
+第 2 行已通过在 `patterns` 中补「任意前缀 + .pi-agent」两条通配堵上（Node `matchesGlob` 下 `.pi-agent` 子树模式匹配不到带前缀的路径）。
+第 3 行**无法用路径模式修补**：策略只在 file 上下文按候选路径匹配，而 `.pi-agent` 这个标记只出现在赋值语句的值里。
+
+**因此真正的收敛手段是移除向量本身**：画板助手（canvas-assistant）的职责全部由 `canvas_*` 工具 + `read` 承担，不需要 shell，故在 `backend-ts/src/api/canvas/routes/canvas-agent.ts` 通过 `excludeTools: ['bash']` 经 `runPiAgent` → `--exclude-tools bash` 关闭该 Agent 的 bash 能力。
+需要 bash 的其它 Agent（如 Skill Agent 节点）仍暴露在剩余残差下，若有更强的隔离诉求，应优先考虑把密钥从子进程可见的文件系统移出（环境注入 / 独立凭据代理），而不是继续加路径模式。
+
+附：提取器与模式语义属于上游包，本仓库只在 `guardrails.ts` 维护模式集，升级 `@aliou/pi-guardrails` 后需按本节的四行表格重跑一次验证。

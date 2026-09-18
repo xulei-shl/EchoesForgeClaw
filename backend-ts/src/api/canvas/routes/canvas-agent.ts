@@ -23,6 +23,18 @@ interface CanvasAgentChatRequest {
 }
 
 /**
+ * 画板助手额外排除的工具（与全局 PI_DISABLED_TOOLS 合并）。
+ *
+ * 只排除 `bash`：本 Agent 的职责是「推荐/创建节点 + 接线 + 推送反馈」，全部由 canvas_* 工具
+ * 承担，技能正文由 `read` 按 available_skills 路径读取——不需要 shell。
+ * 而 shell 是 guardrails 的唯一绕过面：其 bash 路径提取是 best-effort 的，含 shell 展开的
+ * token（`cat "$x/models.json"`、`x=.pi-agent; cat "$x/..."`）无法被还原成真实路径，
+ * 从而绕过 `agent-runtime` 规则读到 `.pi-agent/models.json`（内含真实 API Key）。
+ * 排除 bash 后该面消失，同时避免 Agent 把整轮预算耗在遍历工作区找文件上。
+ */
+const CANVAS_AGENT_EXCLUDED_TOOLS = ['bash'] as const;
+
+/**
  * Mascot Agent（Canvas Assistant）专属后端路由：
  *
  * - POST /api/modules/bookplate/canvas-agent/chat（多轮对话流式，挂载 canvas-assistant 提示词与专用技能）
@@ -78,8 +90,9 @@ export async function register(app: FastifyInstance): Promise<void> {
         maxTokens: activeLlm.maxTokens,
       };
 
-      const chatId = (payload.chat_id || 'default').replace(/[^a-zA-Z0-9_-]/g, '');
-      const workspaceId = payload.workspace_id || `canvas-agent_${chatId}`;
+      const rawChatId = payload.chat_id?.trim();
+      const chatId = (rawChatId || String(Date.now())).replace(/[^a-zA-Z0-9_-]/g, '');
+      const workspaceId = payload.workspace_id?.trim() || `canvas-agent_${chatId}`;
       const defaultSkills = [
         'canvas-node-catalog',
         'canvas-feedback-guide',
@@ -88,40 +101,70 @@ export async function register(app: FastifyInstance): Promise<void> {
       ];
 
       const settingsMap = getAppSettingsMap(db);
-      const prepared = preparePiWorkspace(request.authUser!.id, workspaceId, {
-        agentId: 'canvas-assistant',
-        chatModel,
-        imageModel: null,
-        skillNames: defaultSkills,
-        extraExtensions: ['pi-canvas-tools'],
-        webSearchConfig: buildWebSearchConfig(settingsMap),
-        guardrailsOverrides: guardrailsOverridesFromSettings(settingsMap),
-      });
+      // 装配 + 运行包在生成器里，把装配期诊断（技能未装 / 扩展未装配 / 模型配置退化）
+      // 以 status 事件透传给前端——这些是「悄悄少能力」类故障的唯一可观察出口。
+      async function* canvasAgentEvents(): AsyncGenerator<ChatStreamEvent, void, unknown> {
+        let prepared;
+        try {
+          prepared = preparePiWorkspace(request.authUser!.id, workspaceId, {
+            agentId: 'canvas-assistant',
+            chatModel,
+            imageModel: null,
+            skillNames: defaultSkills,
+            extraExtensions: ['pi-canvas-tools'],
+            webSearchConfig: buildWebSearchConfig(settingsMap),
+            guardrailsOverrides: guardrailsOverridesFromSettings(settingsMap),
+          });
+        } catch (err) {
+          yield {
+            type: 'error',
+            message: `画板助手工作区装配失败: ${err instanceof Error ? err.message : String(err)}`,
+          };
+          return;
+        }
+        if (prepared.skippedSkills.length) {
+          yield {
+            type: 'status',
+            message: `以下技能未安装，已跳过：${prepared.skippedSkills.join('、')}`,
+          };
+        }
+        for (const warning of prepared.warnings) {
+          yield { type: 'status', message: warning };
+        }
 
-      const generation = computeWorkspaceGeneration({
-        userId: request.authUser!.id,
-        agentId: 'canvas-assistant',
-        skillNames: defaultSkills,
-        chatModel,
-        imageModel: null,
-        extensionNames: resolvePiExtensions(['pi-canvas-tools']).map((s) => s.name),
-        guardrailsOverrides: guardrailsOverridesFromSettings(settingsMap),
-      });
+        const generation = computeWorkspaceGeneration({
+          userId: request.authUser!.id,
+          agentId: 'canvas-assistant',
+          skillNames: defaultSkills,
+          chatModel,
+          imageModel: null,
+          extensionNames: resolvePiExtensions(['pi-canvas-tools']).map((s) => s.name),
+          guardrailsOverrides: guardrailsOverridesFromSettings(settingsMap),
+        });
 
-      const stream = runPiAgent({
-        userId: request.authUser!.id,
-        workspaceId,
-        ws: prepared.ws,
-        hasPrompt: prepared.hasPrompt,
-        chatModelName: chatModel.modelName,
-        imageGenEnabled: false,
-        message: prompt,
-        extensions: prepared.mountedExtensions,
-        generation,
-        contextWindow: chatModel.contextWindow,
-      });
+        try {
+          const stream = runPiAgent({
+            userId: request.authUser!.id,
+            workspaceId,
+            ws: prepared.ws,
+            hasPrompt: prepared.hasPrompt,
+            chatModelName: chatModel.modelName,
+            imageGenEnabled: false,
+            message: prompt,
+            extensions: prepared.mountedExtensions,
+            excludeTools: [...CANVAS_AGENT_EXCLUDED_TOOLS],
+            generation,
+            contextWindow: chatModel.contextWindow,
+          });
+          for await (const evt of stream) {
+            yield evt;
+          }
+        } catch (err) {
+          yield { type: 'error', message: err instanceof Error ? err.message : String(err) };
+        }
+      }
 
-      return reply.send(chatStreamToSseResponse(stream));
+      return reply.send(chatStreamToSseResponse(canvasAgentEvents()));
     }
   );
 
@@ -169,7 +212,10 @@ export async function register(app: FastifyInstance): Promise<void> {
     { preHandler: app.authenticate },
     async (request, reply) => {
       const payload = (request.body ?? {}) as { workspace_id?: string };
-      const workspaceId = payload.workspace_id?.trim() || 'canvas-agent_default';
+      const workspaceId = payload.workspace_id?.trim();
+      if (!workspaceId) {
+        return { cleared: false };
+      }
       const cleared = await clearPiSession(request.authUser!.id, workspaceId);
       return { cleared };
     }

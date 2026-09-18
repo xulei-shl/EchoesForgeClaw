@@ -22,6 +22,7 @@ import {
 import { fetchPiSession } from '../../nodes/ai/infra/piSessionApi';
 import { copyTextToClipboard } from '../../../shared/utils/clipboard';
 import { executeCanvasOp } from './canvasExecutor';
+import { MASCOT_AGENT_WORKSPACE_STORAGE_KEY } from './constants';
 import type { ChatMessage } from '../../../shared/types';
 
 export interface AgentChatPanelProps {
@@ -53,9 +54,27 @@ function sanitizeCanvasAgentContent(content: string): string {
 export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   open,
   onClose,
-  workspaceId = 'canvas-agent_default',
+  workspaceId: propWorkspaceId,
 }) => {
   const { dialog, showToast } = useFeedback();
+
+  // 活跃工作区 ID：优先使用 prop 显式传入；缺省时从 localStorage 恢复或置 null（延迟分配）
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(() => {
+    if (propWorkspaceId) return propWorkspaceId;
+    try {
+      const saved = localStorage.getItem(MASCOT_AGENT_WORKSPACE_STORAGE_KEY);
+      return saved && saved.trim() ? saved.trim() : null;
+    } catch {
+      return null;
+    }
+  });
+
+  // 外部 propWorkspaceId 变更时同步
+  useEffect(() => {
+    if (propWorkspaceId && propWorkspaceId !== activeWorkspaceId) {
+      setActiveWorkspaceId(propWorkspaceId);
+    }
+  }, [propWorkspaceId]);
 
   // 1. 服务端水合历史与流式状态机（复用 Pi Agent 的 piStreamReducer）
   const [sessionMsgs, setSessionMsgs] = useState<ChatMessage[] | null>(null);
@@ -76,11 +95,15 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // 打开或工作区变化时：从服务端水合历史会话（与 PiChatNodeHost 对齐）
+  // 打开或工作区变化时：从服务端水合历史会话（与 PiChatNodeHost 延迟分配对齐）
   useEffect(() => {
     if (!open) return;
+    if (!activeWorkspaceId) {
+      setSessionMsgs([]);
+      return;
+    }
     let cancelled = false;
-    void fetchPiSession(workspaceId)
+    void fetchPiSession(activeWorkspaceId)
       .then(({ messages }) => {
         if (!cancelled) {
           setSessionMsgs(messages);
@@ -93,7 +116,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [open, workspaceId]);
+  }, [open, activeWorkspaceId]);
 
   // 新消息到达时平滑滚动到底部
   useEffect(() => {
@@ -113,6 +136,18 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   const handleSend = async (textToSend?: string) => {
     const text = (textToSend || inputValue).trim();
     if (!text || streamState.isStreaming) return;
+
+    // 延迟分配：首轮发送时分配专属工作区（与 pi-agent 节点模式对齐，新对话创建新目录）
+    let currentWs = activeWorkspaceId;
+    if (!currentWs) {
+      currentWs = `canvas-agent_${Date.now()}`;
+      setActiveWorkspaceId(currentWs);
+      try {
+        localStorage.setItem(MASCOT_AGENT_WORKSPACE_STORAGE_KEY, currentWs);
+      } catch {
+        /* ignore */
+      }
+    }
 
     setInputValue('');
     if (inputRef.current) {
@@ -143,7 +178,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         signal: controller.signal,
         body: JSON.stringify({
           prompt: text,
-          workspace_id: workspaceId,
+          workspace_id: currentWs,
         }),
       });
 
@@ -206,7 +241,11 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
               const op = evt.title.slice('CANVAS_OP:'.length);
               let params: Record<string, unknown> = {};
               try {
-                params = evt.options?.[0] ? JSON.parse(evt.options[0]) : {};
+                const raw = evt.options?.[0] ? JSON.parse(evt.options[0]) : {};
+                params =
+                  raw && typeof raw === 'object' && 'params' in raw && typeof raw.params === 'object' && raw.params !== null
+                    ? (raw.params as Record<string, unknown>)
+                    : (raw as Record<string, unknown>);
               } catch {
                 /* ignore */
               }
@@ -217,7 +256,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...authHeaders() },
                 body: JSON.stringify({
-                  workspace_id: workspaceId,
+                  workspace_id: currentWs,
                   id: evt.id,
                   answer: JSON.stringify(result),
                 }),
@@ -255,7 +294,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
 
       // 流式收尾：从服务端水合持久化历史，原子对齐会话
       try {
-        const { messages: refreshedMsgs } = await fetchPiSession(workspaceId);
+        const { messages: refreshedMsgs } = await fetchPiSession(currentWs);
         setSessionMsgs(refreshedMsgs);
         dispatchStream({ type: 'end' });
         optimisticUserRef.current = null;
@@ -281,12 +320,13 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
     id: string,
     response: { value?: string; confirmed?: boolean; cancelled?: boolean }
   ) => {
+    if (!activeWorkspaceId) return;
     dispatchStream({ type: 'ui_response', id });
     await fetch('/api/modules/bookplate/canvas-agent/ui-response', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({
-        workspace_id: workspaceId,
+        workspace_id: activeWorkspaceId,
         id,
         ...response,
       }),
@@ -297,23 +337,32 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   const handleClear = async () => {
     const ok = await dialog.confirm({
       title: '清空会话',
-      message: '确定要清空与画板助手的对话历史吗？此操作将重置会话且不可撤销。',
+      message: '确定要清空与画板助手的对话历史吗？此操作将开启全新会话。',
       confirmText: '清空',
       cancelText: '取消',
       danger: true,
     });
     if (!ok) return;
 
+    const oldWs = activeWorkspaceId;
     handleStop();
     setSessionMsgs([]);
     setOptimisticUser(null);
+    setActiveWorkspaceId(null);
+    try {
+      localStorage.removeItem(MASCOT_AGENT_WORKSPACE_STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
     dispatchStream({ type: 'end' });
 
-    await fetch('/api/modules/bookplate/canvas-agent/clear', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ workspace_id: workspaceId }),
-    }).catch(console.error);
+    if (oldWs) {
+      await fetch('/api/modules/bookplate/canvas-agent/clear', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ workspace_id: oldWs }),
+      }).catch(console.error);
+    }
   };
 
   // 复制正文
@@ -476,7 +525,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
                 stepNumber={stepNumber}
                 isLast={idx === displayMessages.length - 1}
                 agentName="Canvas Agent"
-                workspaceId={workspaceId}
+                workspaceId={activeWorkspaceId || ''}
                 onCopy={handleCopy}
                 isCopied={copiedId === idx}
                 onRetry={() => handleSend(optimisticUser?.content || '')}

@@ -10,7 +10,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import path from 'node:path';
+import path, { matchesGlob } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
@@ -51,6 +51,19 @@ const CHAT_MODEL = {
   multimodal: true,
 };
 const IMAGE_MODEL = { baseUrl: 'http://127.0.0.1:9/v1', apiKey: 'img-key', modelName: 'img-model' };
+
+/**
+ * agent-runtime 规则期望的受保护模式。
+ * 后两条是「任意前缀 + .pi-agent」形态，用于覆盖 guardrails bash 路径提取的 best-effort
+ * 残留：含 shell 展开的 token（如 `cat "$base/.pi-agent/run/chat.jsonl"`）会被按字面相对
+ * cwd 解析成 `<cwd>/$base/.pi-agent/...`，仅靠首段模式匹配不到。
+ */
+const AGENT_RUNTIME_EXPECTED_PATTERNS = [
+  { pattern: '.pi-agent' },
+  { pattern: '.pi-agent/**' },
+  { pattern: '**/.pi-agent' },
+  { pattern: '**/.pi-agent/**' },
+];
 
 function wsPath(): string {
   return path.join(RUNTIME_ROOT, String(UID), 'workspace', WS_ID);
@@ -176,6 +189,19 @@ describe('preparePiWorkspace 装配', () => {
     expect(r.skippedSkills).toEqual(['../escape', 'not-installed']);
     expect(r.mountedSkills).toEqual([]);
     expect(existsSync(path.join(wsPath(), '..', '..'))).toBe(true); // 未发生目录穿越
+  });
+
+  it('系统级画板技能支持从 packages/pi-canvas-tools/skills 同捆降级装配', () => {
+    const r = preparePiWorkspace(UID, WS_ID, {
+      agentId: 1,
+      chatModel: CHAT_MODEL,
+      imageModel: null,
+      skillNames: ['canvas-node-catalog'],
+    });
+    expect(r.mountedSkills).toContain('canvas-node-catalog');
+    const mounted = path.join(wsPath(), '.pi-agent', 'skills', 'canvas-node-catalog', 'SKILL.md');
+    expect(existsSync(mounted)).toBe(true);
+    expect(readFileSync(mounted, 'utf-8')).toContain('canvas_create_node');
   });
 
   it('models.json / settings.json 物化形状正确且幂等', () => {
@@ -438,10 +464,54 @@ describe('resolvePiExtensions（PI_EXTENSIONS 白名单 → pi install 全局 np
         expect(existsSync(path.join(dest, 'package.json'))).toBe(true);
         expect(lstatSync(dest).isSymbolicLink() || existsSync(path.join(dest, 'index.ts'))).toBe(true);
         expect(pkgDir).not.toBe(dest); // 工作区是独立挂载，不原地装配
+        // 入口可解析 → 不产生装配期诊断
+        expect(r.warnings).toEqual([]);
       });
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
+  });
+
+  it('扩展入口不可解析时：不挂载并给出装配期 warning（pi 会静默跳过，工具全缺失）', () => {
+    const home = mkdtempSync(path.join(tmpdir(), 'pi-agent-'));
+    try {
+      // 声明了 pi.extensions，但入口文件不存在
+      const dir = path.join(home, 'npm', 'node_modules', 'broken-ext');
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        path.join(dir, 'package.json'),
+        JSON.stringify({ name: 'broken-ext', version: '1.0.0', pi: { extensions: ['./missing.ts'] } }),
+        'utf-8'
+      );
+      withPiExtensionsEnv(home, 'broken-ext', () => {
+        const r = preparePiWorkspace(UID, WS_ID, {
+          agentId: 1,
+          chatModel: CHAT_MODEL,
+          imageModel: null,
+          skillNames: [],
+        });
+        expect(r.mountedExtensions).toEqual([]);
+        expect(r.warnings).toHaveLength(1);
+        expect(r.warnings[0]).toContain('broken-ext');
+        expect(r.warnings[0]).toContain('./missing.ts');
+        expect(existsSync(path.join(wsPath(), '.pi-agent', 'extensions', 'broken-ext'))).toBe(false);
+      });
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it('内置画布扩展 pi-canvas-tools 入口可解析：正常挂载且无诊断', () => {
+    const r = preparePiWorkspace(UID, WS_ID, {
+      agentId: 1,
+      chatModel: CHAT_MODEL,
+      imageModel: null,
+      skillNames: [],
+      extraExtensions: ['pi-canvas-tools'],
+    });
+    expect(r.mountedExtensions).toHaveLength(1);
+    expect(r.mountedExtensions[0]).toContain(path.join('extensions', 'pi-canvas-tools'));
+    expect(r.warnings).toEqual([]);
   });
 });
 
@@ -495,7 +565,7 @@ describe('pi-guardrails 自动配置装配（{ws}/.pi-agent/extensions/guardrail
         expect(agentRule).toMatchObject({
           protection: 'noAccess',
           onlyIfExists: true,
-          patterns: [{ pattern: '.pi-agent' }, { pattern: '.pi-agent/**' }],
+          patterns: AGENT_RUNTIME_EXPECTED_PATTERNS,
           allowedPatterns: [
             { pattern: '.pi-agent/skills' },
             { pattern: '.pi-agent/skills/**' },
@@ -600,7 +670,7 @@ describe('pi-guardrails 管理员设置映射（admin/settings Pi Agent 分类 �
     const agentRule = cfg.policies.rules.find((r: { id: string }) => r.id === 'agent-runtime');
     expect(agentRule).toBeDefined();
     expect(agentRule).toMatchObject({
-      patterns: [{ pattern: '.pi-agent' }, { pattern: '.pi-agent/**' }],
+      patterns: AGENT_RUNTIME_EXPECTED_PATTERNS,
       allowedPatterns: [
         { pattern: '.pi-agent/skills' },
         { pattern: '.pi-agent/skills/**' },
@@ -609,6 +679,29 @@ describe('pi-guardrails 管理员设置映射（admin/settings Pi Agent 分类 �
       ],
     });
     expect(cfg.policies.rules).toHaveLength(1);
+  });
+
+  it('agent-runtime 模式集覆盖 guardrails bash 提取的变量拼接形态（含垃圾前缀的候选）', () => {
+    // guardrails 对含 shell 展开的 token 无法还原真实路径，按字面相对 cwd 解析后得到
+    // `<cwd>/$base/.pi-agent/...`——只有 `**/.pi-agent{,/**}` 能命中这种前缀形态。
+    const patterns = AGENT_RUNTIME_EXPECTED_PATTERNS.map((p) => p.pattern);
+    const hits = (relPath: string) => patterns.some((p) => matchesGlob(relPath, p));
+
+    expect(hits('$base/.pi-agent/run/chat.jsonl')).toBe(true);
+    expect(hits('$PWD/.pi-agent/models.json')).toBe(true);
+    expect(hits('.pi-agent/models.json')).toBe(true);
+    expect(hits('.pi-agent')).toBe(true);
+
+    // 可读资源树仍由 allowedPatterns 显式豁免（guardrails 先判 allowed 再判 block）
+    const allowed = [
+      '.pi-agent/skills',
+      '.pi-agent/skills/**',
+      '.pi-agent/prompts',
+      '.pi-agent/prompts/**',
+    ];
+    expect(allowed.some((p) => matchesGlob('.pi-agent/skills/canvas-feedback-guide/SKILL.md', p))).toBe(
+      true
+    );
   });
 
   it('preparePiWorkspace 写入的 guardrails.json 反映 guardrailsOverrides（端到端）', () => {
