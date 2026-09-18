@@ -518,7 +518,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
               <h3 className="text-sm font-serif font-bold text-ink leading-tight">Canvas Agent</h3>
               <span className="text-[10px] text-ink-faint font-sans flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-                智能画布助手 · 连线与反馈
+                智能画布助手
               </span>
             </div>
           </div>
