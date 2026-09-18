@@ -566,6 +566,8 @@ export function listChatConversations(
   for (const dir of entries) {
     if (piWs.has(dir)) continue;
     if (prefix && !dir.startsWith(prefix)) continue;
+    // 当未指定 prefix 时（普通画板 chat 节点全局列表），白名单严格只认 chat- 开头的目录
+    if (!prefix && !dir.startsWith('chat-')) continue;
     if (dir === '.' || dir === '..' || dir.includes('/') || dir.includes('\\')) continue;
     const ws = path.join(root, dir);
     try {

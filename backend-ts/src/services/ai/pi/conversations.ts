@@ -218,8 +218,10 @@ export function listPiConversations(userId: number, nodeId?: string): Conversati
   }
   for (const dir of entries) {
     if (prefix && !dir.startsWith(prefix)) continue;
-    // 跨节点全局列表排除画板助手会话；画板助手通过 nodeId='canvas-agent' 专属拉取
-    if (!prefix && dir.startsWith('canvas-agent_')) continue;
+    // 当未指定 prefix 时（普通画板 chat 节点全局列表），白名单严格只认 chat- 开头的目录，
+    // 彻底排除 canvas-agent_ 等所有非 chat 节点的会话；
+    // 画板助手通过指定 nodeId='canvas-agent'（prefix='canvas-agent_'）专属拉取
+    if (!prefix && !dir.startsWith('chat-')) continue;
     // 防御双保险：readdir 本身无穿越风险，此处再拦相对跳转目录名
     if (dir === '.' || dir === '..' || dir.includes('/') || dir.includes('\\')) continue;
     const ws = path.join(root, dir);
