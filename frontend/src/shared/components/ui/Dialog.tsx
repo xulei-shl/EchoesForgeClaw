@@ -59,7 +59,7 @@ export const Dialog: React.FC<DialogProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-[70] flex items-center justify-center p-4 dialog-backdrop"
+      className="fixed inset-0 z-[10000] flex items-center justify-center p-4 dialog-backdrop"
       role="dialog"
       aria-modal="true"
       aria-label={typeof title === 'string' ? title : undefined}

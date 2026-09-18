@@ -1,36 +1,33 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useReducer, useMemo, useCallback } from 'react';
 import {
   Bot,
   X,
   Send,
   Trash2,
-  ChevronDown,
-  ChevronUp,
   Sparkles,
-  CheckCircle2,
-  AlertCircle,
-  Loader2,
   Paperclip,
   Square,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
+import { PhotoProvider } from 'react-photo-view';
+import { useFeedback } from '../../../shared/components/ui/FeedbackProvider';
+import { ChatMessageItem } from '../../nodes/ai/chat/ChatMessageItem';
 import { authHeaders, handleUnauthorized } from '../../nodes/ai/infra/authUtils';
-import { parseSseStream } from '../../nodes/ai/infra/piStream';
-import { Streamdown } from '../../../shared/utils/markdown';
+import {
+  parseSseStream,
+  piStreamReducer,
+  INITIAL_PI_STREAM,
+} from '../../nodes/ai/infra/piStream';
+import { fetchPiSession } from '../../nodes/ai/infra/piSessionApi';
+import { copyTextToClipboard } from '../../../shared/utils/clipboard';
 import { executeCanvasOp } from './canvasExecutor';
+import type { ChatMessage } from '../../../shared/types';
 
 export interface AgentChatPanelProps {
   open: boolean;
   onClose: () => void;
   workspaceId?: string;
-}
-
-interface MessageItem {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  reasoning?: string;
-  toolCalls?: Array<{ id: string; name: string; args?: string; result?: string }>;
-  isStreaming?: boolean;
 }
 
 const QUICK_PROMPTS = [
@@ -39,33 +36,71 @@ const QUICK_PROMPTS = [
   '我想申请定制一个写七言绝句的大模型节点',
 ];
 
+/**
+ * 过滤小模型在正文中幻觉输出的伪 XML 标签（如 <canvas_op>...</canvas_op> 和 <result>...</result>）
+ */
+function sanitizeCanvasAgentContent(content: string): string {
+  if (!content) return '';
+  let cleaned = content.replace(/<canvas_op>[\s\S]*?<\/canvas_op>/gi, '');
+  cleaned = cleaned.replace(/<result>[\s\S]*?<\/result>/gi, '');
+  cleaned = cleaned.replace(
+    /<\/?(?:canvas_op|action_name|params_key|arg_key|arg_value|result|success|node_id)>/gi,
+    ''
+  );
+  return cleaned.trim();
+}
+
 export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   open,
   onClose,
   workspaceId = 'canvas-agent_default',
 }) => {
-  const [messages, setMessages] = useState<MessageItem[]>([]);
-  const [inputValue, setInputValue] = useState('');
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [reasoningExpanded, setReasoningExpanded] = useState<Record<string, boolean>>({});
-  const [pendingDialog, setPendingDialog] = useState<{
-    id: string;
-    title: string;
-    message?: string;
-    options?: string[];
-  } | null>(null);
-  const [showQuickPrompts, setShowQuickPrompts] = useState(false);
+  const { dialog, showToast } = useFeedback();
 
+  // 1. 服务端水合历史与流式状态机（复用 Pi Agent 的 piStreamReducer）
+  const [sessionMsgs, setSessionMsgs] = useState<ChatMessage[] | null>(null);
+  const [streamState, dispatchStream] = useReducer(piStreamReducer, INITIAL_PI_STREAM);
+
+  // 2. 输入与界面状态
+  const [inputValue, setInputValue] = useState('');
+  const [showQuickPrompts, setShowQuickPrompts] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [copiedId, setCopiedId] = useState<number | null>(null);
+
+  // 3. 乐观用户消息与在途请求控制
+  const optimisticUserRef = useRef<ChatMessage | null>(null);
+  const [optimisticUser, setOptimisticUser] = useState<ChatMessage | null>(null);
+  const interruptedRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // 滚动到底部
+  // 打开或工作区变化时：从服务端水合历史会话（与 PiChatNodeHost 对齐）
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void fetchPiSession(workspaceId)
+      .then(({ messages }) => {
+        if (!cancelled) {
+          setSessionMsgs(messages);
+        }
+      })
+      .catch((err) => {
+        console.warn('水合画板助手历史失败:', err);
+        if (!cancelled) setSessionMsgs([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, workspaceId]);
+
+  // 新消息到达时平滑滚动到底部
   useEffect(() => {
     if (open) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [messages, isStreaming, open]);
+  }, [sessionMsgs, streamState.steps, optimisticUser, open]);
 
   // 打开时自动聚焦输入框
   useEffect(() => {
@@ -74,25 +109,27 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
     }
   }, [open]);
 
-  // 发送消息
+  // 发送消息（复用 piStreamReducer 状态归约）
   const handleSend = async (textToSend?: string) => {
     const text = (textToSend || inputValue).trim();
-    if (!text || isStreaming) return;
+    if (!text || streamState.isStreaming) return;
 
     setInputValue('');
     if (inputRef.current) {
       inputRef.current.style.height = '36px';
     }
-    const userMsgId = `user_${Date.now()}`;
-    const assistantMsgId = `assistant_${Date.now()}`;
 
-    setMessages((prev) => [
-      ...prev,
-      { id: userMsgId, role: 'user', content: text },
-      { id: assistantMsgId, role: 'assistant', content: '', reasoning: '', isStreaming: true, toolCalls: [] },
-    ]);
+    const userMsg: ChatMessage = {
+      id: `user_${Date.now()}`,
+      role: 'user',
+      content: text,
+    };
+    optimisticUserRef.current = userMsg;
+    setOptimisticUser(userMsg);
+    interruptedRef.current = false;
 
-    setIsStreaming(true);
+    dispatchStream({ type: 'start' });
+
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
@@ -123,61 +160,46 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         if (controller.signal.aborted) break;
 
         switch (evt.type) {
-          case 'content_delta': {
-            if (evt.delta) {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantMsgId ? { ...m, content: m.content + evt.delta } : m
-                )
-              );
-            }
+          case 'content_delta':
+            if (evt.delta) dispatchStream({ type: 'content', delta: evt.delta });
             break;
-          }
-
-          case 'reasoning_delta': {
-            if (evt.delta) {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantMsgId ? { ...m, reasoning: (m.reasoning || '') + evt.delta } : m
-                )
-              );
-            }
+          case 'reasoning_delta':
+            if (evt.delta) dispatchStream({ type: 'reasoning', delta: evt.delta });
             break;
-          }
-
-          case 'tool_call': {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantMsgId
-                  ? {
-                      ...m,
-                      toolCalls: [
-                        ...(m.toolCalls || []),
-                        { id: evt.id, name: evt.name, args: evt.arguments },
-                      ],
-                    }
-                  : m
-              )
-            );
+          case 'tool_call':
+            dispatchStream({
+              type: 'tool_call',
+              id: evt.id,
+              name: evt.name,
+              arguments: evt.arguments,
+            });
             break;
-          }
-
-          case 'tool_result': {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantMsgId
-                  ? {
-                      ...m,
-                      toolCalls: (m.toolCalls || []).map((t) =>
-                        t.id === evt.id ? { ...t, result: evt.result } : t
-                      ),
-                    }
-                  : m
-              )
-            );
+          case 'tool_result':
+            dispatchStream({
+              type: 'tool_result',
+              id: evt.id,
+              name: evt.name,
+              result: evt.result,
+            });
             break;
-          }
-
+          case 'status':
+            dispatchStream({ type: 'status', message: evt.message });
+            break;
+          case 'turn_start':
+            dispatchStream({ type: 'turn_start' });
+            break;
+          case 'token_usage':
+            dispatchStream({
+              type: 'token_usage',
+              input: evt.input,
+              output: evt.output,
+              cacheRead: evt.cacheRead,
+              cacheWrite: evt.cacheWrite,
+              totalTokens: evt.totalTokens,
+              contextWindow: evt.contextWindow,
+              percent: evt.percent,
+            });
+            break;
           case 'extension_ui_request': {
             // 核心设计：拦截 CANVAS_OP: 自动在画布执行
             if (evt.title?.startsWith('CANVAS_OP:')) {
@@ -201,149 +223,159 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
                 }),
               }).catch(console.error);
             } else {
-              // 普通交互弹层（用户确认 / 选择）
-              setPendingDialog({
-                id: evt.id,
-                title: evt.title || '请选择',
-                message: evt.message,
-                options: evt.options,
+              // 普通扩展问答 / 确认请求，交给 piStream 驱动 QuestionAnswerBlock
+              dispatchStream({
+                type: 'ui_request',
+                request: {
+                  id: evt.id,
+                  method: evt.method ?? 'select',
+                  title: evt.title || '请选择',
+                  options: evt.options,
+                  message: evt.message,
+                  placeholder: evt.placeholder,
+                  prefill: evt.prefill,
+                  timeout: evt.timeout,
+                },
               });
             }
             break;
           }
-
-          case 'error': {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantMsgId
-                  ? {
-                      ...m,
-                      content: m.content
-                        ? `${m.content}\n\n> ⚠️ **执行异常**: ${evt.message}`
-                        : `> ⚠️ **执行失败**: ${evt.message}`,
-                    }
-                  : m
-              )
-            );
+          case 'error':
+            dispatchStream({ type: 'error', message: evt.message });
             break;
-          }
         }
       }
     } catch (err: any) {
       if (!controller.signal.aborted) {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantMsgId
-              ? {
-                  ...m,
-                  content: m.content
-                    ? `${m.content}\n\n> ⚠️ **连接中断**: ${err.message || '网络连接异常'}`
-                    : `> ⚠️ **发送失败**: ${err.message || '网络连接异常'}`,
-                }
-              : m
-          )
-        );
+        dispatchStream({ type: 'error', message: err.message || '网络连接异常' });
       }
     } finally {
-      setIsStreaming(false);
-      setMessages((prev) =>
-        prev.map((m) => (m.id === assistantMsgId ? { ...m, isStreaming: false } : m))
-      );
       abortControllerRef.current = null;
+      dispatchStream({ type: 'settle' });
+
+      // 流式收尾：从服务端水合持久化历史，原子对齐会话
+      try {
+        const { messages: refreshedMsgs } = await fetchPiSession(workspaceId);
+        setSessionMsgs(refreshedMsgs);
+        dispatchStream({ type: 'end' });
+        optimisticUserRef.current = null;
+        setOptimisticUser(null);
+      } catch {
+        /* 保留 live 状态展示 */
+      }
     }
   };
 
   // 停止生成
   const handleStop = () => {
     if (abortControllerRef.current) {
+      interruptedRef.current = true;
       abortControllerRef.current.abort();
-      setIsStreaming(false);
-      setMessages((prev) =>
-        prev.map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m))
-      );
+      abortControllerRef.current = null;
+      dispatchStream({ type: 'settle' });
     }
   };
 
-  // 响应普通 UI 弹窗
-  const handleDialogAnswer = async (answer: string) => {
-    if (!pendingDialog) return;
-    const dialogId = pendingDialog.id;
-    setPendingDialog(null);
-
+  // 响应普通扩展 UI 交互（select / confirm 等）
+  const handleDialogAnswer = async (
+    id: string,
+    response: { value?: string; confirmed?: boolean; cancelled?: boolean }
+  ) => {
+    dispatchStream({ type: 'ui_response', id });
     await fetch('/api/modules/bookplate/canvas-agent/ui-response', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({
         workspace_id: workspaceId,
-        id: dialogId,
-        answer,
+        id,
+        ...response,
       }),
     }).catch(console.error);
   };
 
-  // 清空会话
+  // 清空会话：对齐全站统一的藏书票风格弹窗
   const handleClear = async () => {
-    if (window.confirm('确定要清空与画板助手的对话历史吗？')) {
-      handleStop();
-      setMessages([]);
-      setPendingDialog(null);
-      await fetch('/api/modules/bookplate/canvas-agent/clear', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify({ workspace_id: workspaceId }),
-      }).catch(console.error);
-    }
+    const ok = await dialog.confirm({
+      title: '清空会话',
+      message: '确定要清空与画板助手的对话历史吗？此操作将重置会话且不可撤销。',
+      confirmText: '清空',
+      cancelText: '取消',
+      danger: true,
+    });
+    if (!ok) return;
+
+    handleStop();
+    setSessionMsgs([]);
+    setOptimisticUser(null);
+    dispatchStream({ type: 'end' });
+
+    await fetch('/api/modules/bookplate/canvas-agent/clear', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ workspace_id: workspaceId }),
+    }).catch(console.error);
   };
 
-  // 格式化工具名称展示
-  const renderToolBadge = (tool: { id: string; name: string; args?: string; result?: string }) => {
-    let label = tool.name;
-    let icon = '🔧';
-    if (tool.name === 'canvas_create_node') {
-      icon = '🎨';
-      label = '创建节点';
+  // 复制正文
+  const handleCopy = useCallback(
+    async (content: string, idx: number) => {
       try {
-        const parsed = JSON.parse(tool.args || '{}');
-        if (parsed.type) label = `创建节点: ${parsed.type}`;
+        await copyTextToClipboard(content);
+        setCopiedId(idx);
+        setTimeout(() => setCopiedId(null), 2000);
+        showToast('已复制回复内容', { type: 'success' });
       } catch {
-        /* ignore */
+        showToast('复制失败，请手动选择文本复制', { type: 'error' });
       }
-    } else if (tool.name === 'canvas_connect_nodes') {
-      icon = '🔗';
-      label = '连接连线';
-    } else if (tool.name === 'canvas_send_feedback') {
-      icon = '📨';
-      label = '推送企业微信反馈';
-    } else if (tool.name === 'canvas_get_presets') {
-      icon = '🔍';
-      label = '查询效果预设';
-    }
+    },
+    [showToast]
+  );
 
-    return (
-      <div
-        key={tool.id}
-        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-sans bg-paper-grid/30 border border-paper-grid text-ink-light my-1"
-      >
-        <span>{icon}</span>
-        <span className="font-medium text-ink">{label}</span>
-        {tool.result ? (
-          <CheckCircle2 size={12} className="text-emerald-500 ml-1 shrink-0" />
-        ) : (
-          <Loader2 size={12} className="text-accent animate-spin ml-1 shrink-0" />
-        )}
-      </div>
-    );
-  };
+  // 当轮 live assistant 消息合成（按 streamState.steps 拆分，过滤 XML 伪代码）
+  const liveAssistantMsgs: ChatMessage[] = useMemo(() => {
+    if (!streamState.steps.length) return [];
+    return streamState.steps.map((step, idx) => ({
+      id: `live_assistant_${idx}`,
+      role: 'assistant' as const,
+      content: sanitizeCanvasAgentContent(step.content),
+      reasoning: step.reasoning || undefined,
+      agentSteps: step.agentSteps,
+      tokenUsage: step.tokenUsage,
+      streaming: streamState.isStreaming && idx === streamState.steps.length - 1,
+      interrupted: interruptedRef.current,
+    }));
+  }, [streamState.steps, streamState.isStreaming]);
+
+  // 显示消息列表合成：水合历史 + 当轮乐观用户消息 + 当轮 live assistant
+  const displayMessages: ChatMessage[] = useMemo(() => {
+    const base = (sessionMsgs ?? []).map((m) => ({
+      ...m,
+      content: sanitizeCanvasAgentContent(m.content),
+    }));
+    if (!optimisticUser && !liveAssistantMsgs.length) return base;
+    const out = [...base];
+    if (optimisticUser) out.push(optimisticUser);
+    out.push(...liveAssistantMsgs);
+    return out;
+  }, [sessionMsgs, optimisticUser, liveAssistantMsgs]);
 
   if (!open) return null;
 
+  // 尺寸计算：遵循 better-layout 视口安全边距与通行侧边助手设计规范
+  // 吉祥物小组件已默认移至左下角，右侧整条垂直通道完全释放
+  // 底部下探贴近底边 bottom-4 (16px)，顶部避让 64px 导航栏并保留 12px 呼吸微距 (76px)
+  // 纵向尺寸达到最大化：h-[calc(100dvh-92px)]，呈现通行的垂直长方形 AI 侧边伴随栏
+  const panelSizeClass = isExpanded
+    ? 'w-[760px] max-w-[calc(100vw-2rem)] h-[calc(100dvh-92px)] max-h-[calc(100dvh-92px)]'
+    : 'w-[500px] max-w-[calc(100vw-2rem)] h-[calc(100dvh-92px)] max-h-[calc(100dvh-92px)]';
+
   return (
     <div
-      className="fixed right-4 bottom-24 w-[430px] h-[640px] max-h-[80vh] z-[9985] flex flex-col bg-paper border border-paper-grid rounded-2xl shadow-2xl overflow-hidden animate-in slide-in-from-right-4 duration-200"
+      className={`fixed right-4 bottom-4 ${panelSizeClass} z-[9985] flex flex-col bg-paper border border-paper-grid rounded-2xl shadow-2xl overflow-hidden animate-in slide-in-from-right-4 duration-200 transition-[width,height]`}
       style={{ transformOrigin: 'bottom right' }}
       onClick={(e) => e.stopPropagation()}
     >
-      {/* 1. 顶栏 */}
+      {/* 1. 顶栏：标题、状态、宽屏展开、清空与关闭 */}
       <div className="px-4 py-3 border-b border-paper-grid bg-paper/90 backdrop-blur-sm flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-600">
@@ -358,6 +390,16 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
           </div>
         </div>
         <div className="flex items-center gap-1">
+          {/* 尺寸展开 / 收缩切换 */}
+          <button
+            type="button"
+            onClick={() => setIsExpanded((prev) => !prev)}
+            title={isExpanded ? '还原标准宽度 (540px)' : '展开为宽屏模式 (720px)'}
+            className="p-1.5 rounded-lg text-ink-faint hover:text-ink hover:bg-paper-grid/30 active:scale-95 transition-colors"
+          >
+            {isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+          </button>
+          {/* 清空会话 */}
           <button
             type="button"
             onClick={handleClear}
@@ -366,6 +408,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
           >
             <Trash2 size={14} />
           </button>
+          {/* 关闭面板 */}
           <button
             type="button"
             onClick={onClose}
@@ -377,146 +420,80 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         </div>
       </div>
 
-      {/* 2. 消息流视口 */}
-      <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 font-sans text-xs">
-        {messages.length === 0 && (
-          <div className="py-6 flex flex-col items-center text-center space-y-3 animate-in fade-in duration-200">
-            <div className="w-12 h-12 rounded-full bg-accent/10 text-accent flex items-center justify-center shadow-xs">
-              <Sparkles size={22} />
-            </div>
-            <div>
-              <p className="text-sm font-bold text-ink font-serif">你好！我是智能画板助手</p>
-              <p className="text-xs text-ink-faint mt-1 max-w-[280px] leading-relaxed">
-                告诉我你的创作想法，我能为你推荐内置节点、配置参数并自动创建连线；遇到特殊 AI 需求也能帮你直发企业微信！
-              </p>
-            </div>
-            <div className="w-full pt-2 flex flex-col gap-1.5">
-              <span className="text-[11px] text-ink-faint self-start font-medium px-1">你可以试试：</span>
-              {QUICK_PROMPTS.map((prompt, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => handleSend(prompt)}
-                  className="text-left px-3 py-2 rounded-xl border border-paper-grid bg-paper hover:bg-paper-grid/20 hover:border-accent/40 text-ink text-xs transition-colors active:scale-[0.98]"
-                >
-                  💡 {prompt}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
-          >
-            {msg.role === 'user' ? (
-              <div className="max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-tr-xs bg-accent text-paper shadow-xs leading-relaxed text-xs">
-                {msg.content}
+      {/* 2. 消息流视口：完全复用 ChatMessageItem 呈现 */}
+      <PhotoProvider maskOpacity={0.8} bannerVisible={false}>
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 font-sans text-xs">
+          {displayMessages.length === 0 && (
+            <div className="py-8 flex flex-col items-center text-center space-y-3 animate-in fade-in duration-200">
+              <div className="w-12 h-12 rounded-full bg-accent/10 text-accent flex items-center justify-center shadow-xs">
+                <Sparkles size={22} />
               </div>
-            ) : (
-              <div className="max-w-[95%] space-y-2">
-                {/* 思考过程折叠块 */}
-                {msg.reasoning && (
-                  <div className="rounded-lg border border-paper-grid/70 bg-paper-grid/10 overflow-hidden text-[11px]">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setReasoningExpanded((prev) => ({ ...prev, [msg.id]: !prev[msg.id] }))
-                      }
-                      className="w-full px-2.5 py-1.5 flex items-center justify-between text-ink-faint hover:text-ink transition-colors"
-                    >
-                      <span className="flex items-center gap-1.5 font-medium">
-                        <Sparkles size={12} className="text-accent" />
-                        思考过程
-                      </span>
-                      {reasoningExpanded[msg.id] ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                    </button>
-                    {reasoningExpanded[msg.id] && (
-                      <div className="px-3 py-2 border-t border-paper-grid/50 text-ink-faint text-[11px] leading-relaxed whitespace-pre-wrap max-h-40 overflow-y-auto">
-                        {msg.reasoning}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* 工具执行标签 */}
-                {msg.toolCalls && msg.toolCalls.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {msg.toolCalls.map(renderToolBadge)}
-                  </div>
-                )}
-
-                {/* 消息正文 */}
-                {msg.content ? (
-                  <div className="px-3.5 py-2.5 rounded-2xl rounded-tl-xs bg-paper-grid/20 border border-paper-grid/60 text-ink leading-relaxed shadow-xs">
-                    <Streamdown>{msg.content}</Streamdown>
-                  </div>
-                ) : (
-                  msg.isStreaming &&
-                  (!msg.toolCalls || msg.toolCalls.length === 0) && (
-                    <div className="flex items-center gap-1.5 text-ink-faint py-1 px-2 text-xs">
-                      <Loader2 size={13} className="animate-spin text-accent" />
-                      <span>正在规划并分析中...</span>
-                    </div>
-                  )
-                )}
-              </div>
-            )}
-          </div>
-        ))}
-
-        {/* 交互 Dialog 请求卡片 */}
-        {pendingDialog && (
-          <div className="p-3.5 rounded-xl border border-accent/40 bg-accent/5 space-y-2.5 animate-in fade-in">
-            <div className="flex items-start gap-2">
-              <AlertCircle size={15} className="text-accent mt-0.5 shrink-0" />
               <div>
-                <h4 className="font-bold text-xs text-ink">{pendingDialog.title}</h4>
-                {pendingDialog.message && (
-                  <p className="text-[11px] text-ink-light mt-0.5">{pendingDialog.message}</p>
-                )}
+                <p className="text-sm font-bold text-ink font-serif">你好！我是智能画板助手</p>
+                <p className="text-xs text-ink-faint mt-1 max-w-[320px] leading-relaxed">
+                  告诉我你的创作想法，我能为你推荐内置节点、配置参数并自动创建连线；遇到特殊 AI
+                  需求也能帮你直发企业微信！
+                </p>
               </div>
-            </div>
-            {pendingDialog.options && pendingDialog.options.length > 0 ? (
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                {pendingDialog.options.map((opt, i) => (
+              <div className="w-full pt-2 flex flex-col gap-1.5">
+                <span className="text-[11px] text-ink-faint self-start font-medium px-1">
+                  你可以试试：
+                </span>
+                {QUICK_PROMPTS.map((prompt, idx) => (
                   <button
-                    key={i}
+                    key={idx}
                     type="button"
-                    onClick={() => handleDialogAnswer(opt)}
-                    className="px-3 py-1 rounded-lg text-xs font-medium bg-paper border border-paper-grid hover:border-accent hover:text-accent active:scale-95 transition-all shadow-xs"
+                    onClick={() => handleSend(prompt)}
+                    className="text-left px-3 py-2 rounded-xl border border-paper-grid bg-paper hover:bg-paper-grid/20 hover:border-accent/40 text-ink text-xs transition-colors active:scale-[0.98]"
                   >
-                    {opt}
+                    💡 {prompt}
                   </button>
                 ))}
               </div>
-            ) : (
-              <div className="flex gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => handleDialogAnswer('yes')}
-                  className="px-3 py-1 rounded-lg text-xs font-medium bg-accent text-paper hover:bg-accent/90 active:scale-95 transition-all"
-                >
-                  确认
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDialogAnswer('no')}
-                  className="px-3 py-1 rounded-lg text-xs font-medium bg-paper border border-paper-grid hover:bg-paper-grid/20 active:scale-95 transition-all"
-                >
-                  取消
-                </button>
-              </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
 
-        <div ref={messagesEndRef} />
-      </div>
+          {displayMessages.map((msg, idx) => {
+            // 计算当前 assistant 消息在其所属交互轮次中的步骤序号（以 user 消息为轮次分界）
+            let stepNumber: number | undefined = undefined;
+            if (msg.role === 'assistant') {
+              let count = 0;
+              for (let i = 0; i <= idx; i++) {
+                if (displayMessages[i].role === 'user') {
+                  count = 0;
+                } else if (displayMessages[i].role === 'assistant') {
+                  count++;
+                }
+              }
+              stepNumber = count;
+            }
 
-      {/* 3. 输入控制栏（对齐画板 Chat 节点经典设计） */}
+            return (
+              <ChatMessageItem
+                key={msg.id || `${msg.role}-${idx}`}
+                msg={msg}
+                idx={idx}
+                stepNumber={stepNumber}
+                isLast={idx === displayMessages.length - 1}
+                agentName="Canvas Agent"
+                workspaceId={workspaceId}
+                onCopy={handleCopy}
+                isCopied={copiedId === idx}
+                onRetry={() => handleSend(optimisticUser?.content || '')}
+                isGenerating={streamState.isStreaming}
+                extensionDialog={{
+                  request: streamState.pendingUi,
+                  onAnswer: handleDialogAnswer,
+                }}
+              />
+            );
+          })}
+
+          <div ref={messagesEndRef} />
+        </div>
+      </PhotoProvider>
+
+      {/* 3. 输入控制栏 */}
       <div className="relative p-3 border-t border-paper-grid bg-paper shrink-0">
         {/* 快捷创作灵感弹出卡片 */}
         {showQuickPrompts && (
@@ -552,7 +529,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
           <button
             type="button"
             onClick={() => setShowQuickPrompts((prev) => !prev)}
-            disabled={isStreaming}
+            disabled={streamState.isStreaming}
             aria-label="快捷创作灵感"
             title="快捷创作灵感"
             className="flex shrink-0 items-center justify-center w-9 h-9 rounded-lg border border-paper-grid/70 text-ink-faint hover:text-accent hover:border-accent/40 hover:bg-accent/5 active:scale-[0.96] transition-[color,background-color,border-color,transform] duration-150 ease-out disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
@@ -560,7 +537,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
             <Paperclip size={15} strokeWidth={2} />
           </button>
 
-          {/* 中间输入框：独立圆角边框，自适应高度 */}
+          {/* 中间输入框：自适应高度 */}
           <div className="relative flex-1 min-w-0 rounded-lg bg-node-bg">
             <textarea
               ref={inputRef}
@@ -581,14 +558,14 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
                   handleSend();
                 }
               }}
-              placeholder={isStreaming ? '回复生成中…' : '输入消息，Enter 发送，Shift+Enter 换行'}
-              disabled={isStreaming}
+              placeholder={streamState.isStreaming ? '回复生成中…' : '输入消息，Enter 发送，Shift+Enter 换行'}
+              disabled={streamState.isStreaming}
               className="relative z-10 block w-full min-h-[36px] max-h-32 overflow-y-auto resize-none rounded-lg border border-paper-grid/70 bg-transparent px-3 py-1.5 text-sm font-sans text-ink placeholder:text-ink-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-[border-color,box-shadow] duration-150 disabled:opacity-60 [text-wrap:pretty]"
             />
           </div>
 
           {/* 右侧操作按钮：发送 / 停止生成 */}
-          {isStreaming ? (
+          {streamState.isStreaming ? (
             <button
               type="button"
               onClick={handleStop}

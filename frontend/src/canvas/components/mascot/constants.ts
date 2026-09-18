@@ -10,7 +10,7 @@ export interface MascotCharacter {
 
 export const DEFAULT_MASCOT_ID = 'fox';
 
-export const MASCOT_POSITION_STORAGE_KEY = 'canvas_mascot_widget_pos_v1';
+export const MASCOT_POSITION_STORAGE_KEY = 'canvas_mascot_widget_pos_v2';
 export const MASCOT_CHARACTER_STORAGE_KEY = 'canvas_mascot_character_v1';
 
 export const MASCOT_CATEGORIES: { id: string; name: string }[] = [

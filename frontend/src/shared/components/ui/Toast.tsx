@@ -27,7 +27,7 @@ const TOAST_COLOR: Record<ToastType, string> = {
  * 与全站「藏书票」设计语言保持一致，由 FeedbackProvider 统一渲染。
  */
 export const Toast: React.FC<ToastProps> = ({ text, type = 'info' }) => (
-  <div role="status" className="fixed z-[60] bottom-8 left-1/2 -translate-x-1/2">
+  <div role="status" className="fixed z-[10010] bottom-8 left-1/2 -translate-x-1/2">
     <div className="toast-in flex items-center gap-2 px-4 py-2 bg-node-bg border border-dashed border-paper-grid rounded-md shadow-[0_4px_16px_rgba(43,41,38,0.10)] text-sm text-ink font-sans">
       <span className={`shrink-0 ${TOAST_COLOR[type]}`}>{TOAST_ICON[type]}</span>
       <span className="whitespace-pre-wrap">{text}</span>

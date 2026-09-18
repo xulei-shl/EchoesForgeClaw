@@ -23,8 +23,8 @@ import {
 
 const WIDGET_SIZE = 110;
 const PADDING_EDGE = 14;
-/** 默认贴近视口右下角的安全边距 */
-const DEFAULT_MARGIN_RIGHT = 24;
+/** 默认贴近视口左下角的安全边距（完全释放右侧垂直空间供 Agent 使用） */
+const DEFAULT_MARGIN_LEFT = 24;
 const DEFAULT_MARGIN_BOTTOM = 24;
 
 interface WidgetPosition {
@@ -45,12 +45,12 @@ function clampPosition(x: number, y: number, size: number): WidgetPosition {
 }
 
 /**
- * 计算默认坐标：视口右下角安全停靠区，避免遮挡页面核心内容与分页/输入栏
+ * 计算默认坐标：视口左下角安全停靠区，避免遮挡页面核心内容与右侧 Agent 侧边栏
  */
 function getDefaultPosition(size: number): WidgetPosition {
-  if (typeof window === 'undefined') return { x: 100, y: 100 };
+  if (typeof window === 'undefined') return { x: 24, y: 100 };
   return {
-    x: Math.max(PADDING_EDGE, window.innerWidth - size - DEFAULT_MARGIN_RIGHT),
+    x: DEFAULT_MARGIN_LEFT,
     y: Math.max(PADDING_EDGE, window.innerHeight - size - DEFAULT_MARGIN_BOTTOM),
   };
 }
@@ -260,6 +260,22 @@ export const MascotWidget: React.FC = () => {
     return list;
   }, [activeCategory, searchQuery]);
 
+  // 视口安全边距防遮挡计算（防止左下角或贴边时胶囊工具栏溢出屏幕）
+  const toolbarShift = useMemo(() => {
+    if (typeof window === 'undefined') return 0;
+    const centerX = position.x + WIDGET_SIZE / 2;
+    const estimatedHalfWidth = 125; // 预估胶囊工具栏半宽（全宽约 250px）
+    const minX = 14; // 屏幕左边缘安全边距
+    const maxX = window.innerWidth - 14; // 屏幕右边缘安全边距
+    if (centerX - estimatedHalfWidth < minX) {
+      return Math.round(minX - (centerX - estimatedHalfWidth)); // 需要向右平移补偿
+    }
+    if (centerX + estimatedHalfWidth > maxX) {
+      return Math.round(maxX - (centerX + estimatedHalfWidth)); // 需要向左平移补偿
+    }
+    return 0;
+  }, [position.x]);
+
   return (
     <>
       {/* 任意可拖拽浮动挂件容器：GPU 硬件加速位移（translate3d），0 layout 重排，0 延迟阻滞 */}
@@ -274,10 +290,13 @@ export const MascotWidget: React.FC = () => {
         onPointerDown={handlePointerDown}
       >
         <div className="relative group flex flex-col items-center">
-          {/* 1. 顶部悬浮胶囊工具栏：重构排版，杜绝折行，充裕呼吸感与物理出场动效 */}
+          {/* 1. 顶部悬浮胶囊工具栏：重构排版，防边缘裁切，充裕呼吸感与物理出场动效 */}
           <div
-            style={{ transformOrigin: 'bottom center' }}
-            className={`absolute -top-11 left-1/2 -translate-x-1/2 flex items-center gap-1 px-1.5 py-1 rounded-full bg-paper/95 border border-paper-grid/80 shadow-[0_4px_16px_rgba(0,0,0,0.08)] backdrop-blur-md whitespace-nowrap pointer-events-auto transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] ${
+            style={{
+              transformOrigin: 'bottom center',
+              left: `calc(50% + ${toolbarShift}px)`,
+            }}
+            className={`absolute -top-11 -translate-x-1/2 flex items-center gap-1 px-1.5 py-1 rounded-full bg-paper/95 border border-paper-grid/80 shadow-[0_4px_16px_rgba(0,0,0,0.08)] backdrop-blur-md whitespace-nowrap pointer-events-auto transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] ${
               isDragging
                 ? 'opacity-0 translate-y-2 scale-95 pointer-events-none duration-75'
                 : 'opacity-0 translate-y-1 scale-95 group-hover:opacity-100 group-hover:translate-y-0 group-hover:scale-100'
@@ -336,10 +355,10 @@ export const MascotWidget: React.FC = () => {
             {/* 极简轻柔间距点 */}
             <span className="w-0.5 h-3 bg-paper-grid/60 rounded-full shrink-0 select-none" />
 
-            {/* 复位到默认右下角 */}
+            {/* 复位到默认左下角 */}
             <button
               type="button"
-              title="重置到右下角"
+              title="重置到左下角"
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
@@ -350,8 +369,14 @@ export const MascotWidget: React.FC = () => {
               <RotateCcw size={12} strokeWidth={1.75} className="shrink-0" />
             </button>
 
-            {/* 底部精巧小三角指示器 */}
-            <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 rotate-45 bg-paper border-r border-b border-paper-grid/80 shadow-xs" />
+            {/* 底部精巧小三角指示器：逆向偏移保持精准对齐吉祥物头顶 */}
+            <div
+              className="absolute -bottom-1 w-2 h-2 rotate-45 bg-paper border-r border-b border-paper-grid/80 shadow-xs"
+              style={{
+                left: `calc(50% - ${toolbarShift}px)`,
+                transform: 'translateX(-50%) rotate(45deg)',
+              }}
+            />
           </div>
 
           {/* 2. Mascot 核心形象：手感优化，拖拽抓取与悬停升起，拖拽期间冻结内部无用计算 */}
