@@ -42,7 +42,8 @@ export type NodeType =
   | 'editorial_layout'
   | 'watercolor_brush'
   | 'ink_wash'
-  | 'vufind_call_number';
+  | 'vufind_call_number'
+  | 'canvas_assistant';
 
 /** 各节点模板类型的默认尺寸（必须与组件 defaultSize 一致） */
 export const NODE_SIZES: Record<NodeType, { width: number; height: number }> = {
@@ -84,6 +85,7 @@ export const NODE_SIZES: Record<NodeType, { width: number; height: number }> = {
   watercolor_brush: { width: 440, height: 580 },
   ink_wash:         { width: 450, height: 640 },
   vufind_call_number: { width: 480, height: 640 },
+  canvas_assistant: { width: 500, height: 700 },
 };
 
 /** 节点间水平间距（px） */

@@ -159,7 +159,11 @@ interface SideTabDesc {
  *   叶子点击打开统一预览弹层（FilePreviewModal，图片 / 文本 / PDF 内联预览，二进制给下载引导）；
  * - 对话历史行：点击载入会话到节点，行内置顶 / 重命名 / 删除（带危险确认框）。
  */
-export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel }) => {
+export const ChatSidePanelDrawer: React.FC<{
+  panel: ChatSidePanel;
+  side?: 'right' | 'left';
+  className?: string;
+}> = ({ panel, side = 'right', className }) => {
   const { dialog, showToast } = useFeedback();
   const [activeTab, setActiveTab] = useState<SideTabId>('artifacts');
   const [previewFile, setPreviewFile] = useState<AgentFile | null>(null);
@@ -450,6 +454,8 @@ export const ChatSidePanelDrawer: React.FC<{ panel: ChatSidePanel }> = ({ panel 
         icon={<PanelRight size={14} strokeWidth={1.75} />}
         headerExtra={headerExtra}
         width={320}
+        side={side}
+        className={className}
       >
         <div className="flex flex-col min-h-0">
           {/* Tab 栏：常驻主 Tab（文件类别空桶置灰禁用 / 对话历史始终可点）+ 「…」溢出下拉承载未来新增 Tab */}

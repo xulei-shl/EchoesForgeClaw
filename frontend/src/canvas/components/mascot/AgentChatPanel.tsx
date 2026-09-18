@@ -6,12 +6,16 @@ import {
   Sparkles,
   Maximize2,
   Minimize2,
-  History,
+  PanelRight,
 } from 'lucide-react';
 import { PhotoProvider } from 'react-photo-view';
 import { useFeedback } from '../../../shared/components/ui/FeedbackProvider';
 import { ChatMessageItem } from '../../nodes/ai/chat/ChatMessageItem';
 import { ChatNodeComposer } from '../../nodes/ai/chat/ChatNodeComposer';
+import {
+  ChatSidePanelDrawer,
+  type ChatSidePanel,
+} from '../../nodes/ai/chat/ChatSidePanel';
 import { authHeaders, handleUnauthorized } from '../../nodes/ai/infra/authUtils';
 import {
   parseSseStream,
@@ -24,14 +28,16 @@ import {
   renameConversation,
   deleteConversationSession,
   uploadWorkspaceFile,
+  fetchWorkspaceFiles,
+  deleteWorkspaceFile,
   type UploadedWorkspaceFile,
 } from '../../nodes/ai/infra/piSessionApi';
+import { useWorkspaceFilesPanel } from '../../nodes/ai/infra/useWorkspaceFilesPanel';
 import { useConversationHistoryPanel } from '../../nodes/ai/infra/useConversationHistoryPanel';
 import { copyTextToClipboard } from '../../../shared/utils/clipboard';
 import { executeCanvasOp } from './canvasExecutor';
-import { AgentHistoryDrawer } from './AgentHistoryDrawer';
 import { MASCOT_AGENT_WORKSPACE_STORAGE_KEY } from './constants';
-import type { ChatMessage } from '../../../shared/types';
+import type { ChatMessage, AgentFile } from '../../../shared/types';
 
 export interface AgentChatPanelProps {
   open: boolean;
@@ -93,9 +99,22 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
-  // 3. 对话历史侧边抽屉状态机（向左吸附，专属 canvas-agent 前缀隔离）
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const convPanel = useConversationHistoryPanel(historyOpen, 'pi', 'canvas-agent');
+  // 3. 侧边面板状态机（向左吸附，涵盖 AI 产物 / 我的上传 / 对话历史 / 全部文件 4 个 Tab）
+  const [sideOpen, setSideOpen] = useState(false);
+  const filesPanel = useWorkspaceFilesPanel(
+    async () => {
+      if (!activeWorkspaceId) return null;
+      return fetchWorkspaceFiles(activeWorkspaceId);
+    },
+    sideOpen
+  );
+  const convPanel = useConversationHistoryPanel(sideOpen, 'pi', 'canvas-agent');
+
+  // 工作区变更时重置文件面板并按新工作区拉取
+  useEffect(() => {
+    filesPanel.reset();
+    filesPanel.refreshIfOpen();
+  }, [activeWorkspaceId, filesPanel.refreshIfOpen]);
 
   // 4. 乐观用户消息与在途请求控制
   const optimisticUserRef = useRef<ChatMessage | null>(null);
@@ -152,9 +171,11 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   const handleUploadFile = useCallback(
     async (file: File): Promise<UploadedWorkspaceFile> => {
       const ws = ensureWorkspaceId();
-      return await uploadWorkspaceFile(ws, file);
+      const res = await uploadWorkspaceFile(ws, file);
+      filesPanel.refreshIfOpen();
+      return res;
     },
-    [ensureWorkspaceId]
+    [ensureWorkspaceId, filesPanel.refreshIfOpen]
   );
 
   // 发送消息（复用 piStreamReducer 状态归约）
@@ -311,6 +332,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         setSessionMsgs(refreshedMsgs);
         dispatchStream({ type: 'end' });
         convPanel.bump();
+        filesPanel.refreshIfOpen();
         optimisticUserRef.current = null;
         setOptimisticUser(null);
       } catch {
@@ -349,13 +371,14 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
     setOptimisticUser(null);
     setActiveWorkspaceId(null);
     setSessionMsgs([]);
+    filesPanel.reset();
     try {
       localStorage.removeItem(MASCOT_AGENT_WORKSPACE_STORAGE_KEY);
     } catch {
       /* ignore */
     }
     dispatchStream({ type: 'end' });
-  }, []);
+  }, [filesPanel.reset]);
 
   // 置顶 / 取消置顶
   const handleTogglePin = useCallback(async (ws: string, pinned: boolean) => {
@@ -377,6 +400,62 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
     }
     convPanel.bump();
   }, [activeWorkspaceId, handleNewChat, convPanel]);
+
+  // 批量删除会话（对话历史 Tab 多选 / 全部清空）
+  const handleBatchDeleteSessions = useCallback(
+    async (workspaceIds: string[]) => {
+      const ids = [...new Set(workspaceIds.filter((id): id is string => !!id))];
+      let ok = 0;
+      let failed = 0;
+      for (const workspaceId of ids) {
+        try {
+          await deleteConversationSession(workspaceId);
+          ok += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+      if (activeWorkspaceId && ids.includes(activeWorkspaceId)) {
+        handleNewChat();
+      }
+      convPanel.bump();
+      return { ok, failed };
+    },
+    [activeWorkspaceId, handleNewChat, convPanel.bump]
+  );
+
+  // 删除单个工作区文件（AI 产物 / inputs/ 上传；「全部文件」Tab 只读不触发）
+  const handleDeleteFile = useCallback(
+    async (file: AgentFile) => {
+      if (!activeWorkspaceId) throw new Error('工作区未就绪');
+      await deleteWorkspaceFile(activeWorkspaceId, file.path);
+      filesPanel.refresh();
+    },
+    [activeWorkspaceId, filesPanel.refresh]
+  );
+
+  // 批量删除当前工作区文件（AI 产物 / 我的上传 Tab 多选 / 全部清空）
+  const handleBatchDeleteFiles = useCallback(
+    async (files: AgentFile[]) => {
+      const targets = [
+        ...new Map(files.filter((f) => !!f.path).map((f) => [f.path, f] as const)).values(),
+      ];
+      if (!activeWorkspaceId) return { ok: 0, failed: targets.length };
+      let ok = 0;
+      let failed = 0;
+      for (const file of targets) {
+        try {
+          await deleteWorkspaceFile(activeWorkspaceId, file.path);
+          ok += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+      filesPanel.refresh();
+      return { ok, failed };
+    },
+    [activeWorkspaceId, filesPanel.refresh]
+  );
 
   // 响应普通扩展 UI 交互（select / confirm 等）
   const handleDialogAnswer = async (
@@ -412,6 +491,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
     setSessionMsgs([]);
     setOptimisticUser(null);
     setActiveWorkspaceId(null);
+    filesPanel.reset();
     try {
       localStorage.removeItem(MASCOT_AGENT_WORKSPACE_STORAGE_KEY);
     } catch {
@@ -472,6 +552,41 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
     return out;
   }, [sessionMsgs, optimisticUser, liveAssistantMsgs]);
 
+  const sidePanelProp = useMemo<ChatSidePanel>(() => ({
+    open: sideOpen,
+    onToggle: () => setSideOpen((v) => !v),
+    filesLoading: filesPanel.loading,
+    files: filesPanel.files,
+    onRefreshFiles: filesPanel.refresh,
+    sessions: convPanel.sessions,
+    sessionsLoading: convPanel.loading,
+    currentWorkspaceId: activeWorkspaceId,
+    onRefreshSessions: convPanel.refresh,
+    onSelectSession: handleSelectSession,
+    onTogglePin: handleTogglePin,
+    onRenameSession: handleRenameSession,
+    onDeleteSession: handleDeleteSession,
+    onDeleteFile: handleDeleteFile,
+    onBatchDeleteSessions: handleBatchDeleteSessions,
+    onBatchDeleteFiles: handleBatchDeleteFiles,
+  }), [
+    sideOpen,
+    filesPanel.loading,
+    filesPanel.files,
+    filesPanel.refresh,
+    convPanel.sessions,
+    convPanel.loading,
+    convPanel.refresh,
+    activeWorkspaceId,
+    handleSelectSession,
+    handleTogglePin,
+    handleRenameSession,
+    handleDeleteSession,
+    handleDeleteFile,
+    handleBatchDeleteSessions,
+    handleBatchDeleteFiles,
+  ]);
+
   if (!open) return null;
 
   // 尺寸计算：遵循 better-layout 视口安全边距与通行侧边助手设计规范
@@ -484,103 +599,90 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
 
   return (
     <div
-      className="fixed right-4 bottom-4 z-[9985] flex items-end gap-3 pointer-events-none"
+      className="fixed right-4 bottom-4 z-[9985] flex items-end pointer-events-none"
       onClick={(e) => e.stopPropagation()}
     >
-      {/* 对话历史侧边抽屉（向左吸附展示） */}
-      <div className="pointer-events-auto">
-        <AgentHistoryDrawer
-          open={historyOpen}
-          onClose={() => setHistoryOpen(false)}
-          sessions={convPanel.sessions}
-          loading={convPanel.loading}
-          currentWorkspaceId={activeWorkspaceId}
-          onRefresh={convPanel.refresh}
-          onSelectSession={handleSelectSession}
-          onNewChat={handleNewChat}
-          onTogglePin={handleTogglePin}
-          onRenameSession={handleRenameSession}
-          onDeleteSession={handleDeleteSession}
-        />
-      </div>
+      <div className="relative">
+        {/* 侧边面板抽屉（向左吸附展示，完全复用 ChatSidePanelDrawer，支持 4 个 Tab） */}
+        <ChatSidePanelDrawer panel={sidePanelProp} side="left" />
 
-      {/* 主聊天对话面板 */}
-      <div
-        className={`pointer-events-auto ${panelSizeClass} flex flex-col bg-paper border border-paper-grid rounded-2xl shadow-2xl overflow-hidden animate-in slide-in-from-right-4 duration-200 transition-[width,height]`}
-        style={{ transformOrigin: 'bottom right' }}
-      >
-        {/* 1. 顶栏：标题、状态、历史抽屉、宽屏展开、清空与关闭 */}
-        <div className="px-4 py-3 border-b border-paper-grid bg-paper/90 backdrop-blur-sm flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-600">
-              <Bot size={17} />
+        {/* 主聊天对话面板 */}
+        <div
+          className={`pointer-events-auto ${panelSizeClass} flex flex-col bg-paper border border-paper-grid rounded-2xl shadow-2xl overflow-hidden animate-in slide-in-from-right-4 duration-200 transition-[width,height]`}
+          style={{ transformOrigin: 'bottom right' }}
+        >
+          {/* 1. 顶栏：标题、状态、侧边面板抽屉、宽屏展开、清空与关闭 */}
+          <div className="px-4 py-3 border-b border-paper-grid bg-paper/90 backdrop-blur-sm flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-600">
+                <Bot size={17} />
+              </div>
+              <div>
+                <h3 className="text-sm font-serif font-bold text-ink leading-tight">Canvas Agent</h3>
+                <span className="text-[10px] text-ink-faint font-sans flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                  智能画布助手
+                </span>
+              </div>
             </div>
-            <div>
-              <h3 className="text-sm font-serif font-bold text-ink leading-tight">Canvas Agent</h3>
-              <span className="text-[10px] text-ink-faint font-sans flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-                智能画布助手
-              </span>
+            <div className="flex items-center gap-1">
+              {/* 快捷创作灵感切换按钮 */}
+              <button
+                type="button"
+                onClick={() => setShowQuickPrompts((prev) => !prev)}
+                title={showQuickPrompts ? '收起快捷灵感' : '展开快捷灵感'}
+                aria-label="快捷创作灵感"
+                className={`p-1.5 rounded-lg transition-colors active:scale-95 ${
+                  showQuickPrompts
+                    ? 'text-accent bg-accent/10 font-medium'
+                    : 'text-ink-faint hover:text-ink hover:bg-paper-grid/30'
+                }`}
+              >
+                <Sparkles size={15} />
+              </button>
+              {/* 侧边面板切换按钮（包含 AI 产物 / 我的上传 / 对话历史 / 全部文件） */}
+              <button
+                type="button"
+                onClick={() => setSideOpen((prev) => !prev)}
+                title={sideOpen ? '收起侧边面板' : '展开侧边面板（产物 / 文件 / 历史）'}
+                aria-label="侧边面板"
+                className={`p-1.5 rounded-lg transition-colors active:scale-95 ${
+                  sideOpen
+                    ? 'text-accent bg-accent/10 font-medium'
+                    : 'text-ink-faint hover:text-ink hover:bg-paper-grid/30'
+                }`}
+              >
+                <PanelRight size={15} />
+              </button>
+              {/* 尺寸展开 / 收缩切换 */}
+              <button
+                type="button"
+                onClick={() => setIsExpanded((prev) => !prev)}
+                title={isExpanded ? '还原标准宽度 (540px)' : '展开为宽屏模式 (720px)'}
+                className="p-1.5 rounded-lg text-ink-faint hover:text-ink hover:bg-paper-grid/30 active:scale-95 transition-colors"
+              >
+                {isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+              </button>
+              {/* 清空会话 */}
+              <button
+                type="button"
+                onClick={handleClear}
+                title="清空对话"
+                className="p-1.5 rounded-lg text-ink-faint hover:text-ink hover:bg-paper-grid/30 active:scale-95 transition-colors"
+              >
+                <Trash2 size={14} />
+              </button>
+              {/* 关闭面板 */}
+              <button
+                type="button"
+                onClick={onClose}
+                title="关闭面板"
+                className="p-1.5 rounded-lg text-ink-faint hover:text-ink hover:bg-paper-grid/30 active:scale-95 transition-colors"
+              >
+                <X size={15} />
+              </button>
             </div>
           </div>
-          <div className="flex items-center gap-1">
-            {/* 快捷创作灵感切换按钮 */}
-            <button
-              type="button"
-              onClick={() => setShowQuickPrompts((prev) => !prev)}
-              title={showQuickPrompts ? '收起快捷灵感' : '展开快捷灵感'}
-              aria-label="快捷创作灵感"
-              className={`p-1.5 rounded-lg transition-colors active:scale-95 ${
-                showQuickPrompts
-                  ? 'text-accent bg-accent/10 font-medium'
-                  : 'text-ink-faint hover:text-ink hover:bg-paper-grid/30'
-              }`}
-            >
-              <Sparkles size={15} />
-            </button>
-            {/* 对话历史侧边抽屉切换按钮 */}
-            <button
-              type="button"
-              onClick={() => setHistoryOpen((prev) => !prev)}
-              title={historyOpen ? '收起对话历史' : '展开对话历史'}
-              aria-label="对话历史"
-              className={`p-1.5 rounded-lg transition-colors active:scale-95 ${
-                historyOpen
-                  ? 'text-accent bg-accent/10 font-medium'
-                  : 'text-ink-faint hover:text-ink hover:bg-paper-grid/30'
-              }`}
-            >
-              <History size={15} />
-            </button>
-            {/* 尺寸展开 / 收缩切换 */}
-            <button
-              type="button"
-              onClick={() => setIsExpanded((prev) => !prev)}
-              title={isExpanded ? '还原标准宽度 (540px)' : '展开为宽屏模式 (720px)'}
-              className="p-1.5 rounded-lg text-ink-faint hover:text-ink hover:bg-paper-grid/30 active:scale-95 transition-colors"
-            >
-              {isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-            </button>
-            {/* 清空会话 */}
-            <button
-              type="button"
-              onClick={handleClear}
-              title="清空对话"
-              className="p-1.5 rounded-lg text-ink-faint hover:text-ink hover:bg-paper-grid/30 active:scale-95 transition-colors"
-            >
-              <Trash2 size={14} />
-            </button>
-            {/* 关闭面板 */}
-            <button
-              type="button"
-              onClick={onClose}
-              title="关闭面板"
-              className="p-1.5 rounded-lg text-ink-faint hover:text-ink hover:bg-paper-grid/30 active:scale-95 transition-colors"
-            >
-              <X size={15} />
-            </button>
-          </div>
-        </div>
 
       {/* 2. 消息流视口：完全复用 ChatMessageItem 呈现 */}
       <PhotoProvider maskOpacity={0.8} bannerVisible={false}>
@@ -698,5 +800,6 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
       </div>
     </div>
   </div>
+</div>
 );
 };
