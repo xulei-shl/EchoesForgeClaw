@@ -34,6 +34,7 @@ import { isDiffExcluded } from '../../src/services/ai/pi/snapshot.js';
 import { isSecretFileRel } from '../../src/services/platform/file-utils.js';
 import {
   buildGuardrailsConfig,
+  guardrailsConfigNotices,
   guardrailsOverridesFromSettings,
   GUARDRAILS_PACKAGE_NAME,
   GUARDRAILS_SETTING_KEYS,
@@ -63,6 +64,24 @@ const AGENT_RUNTIME_EXPECTED_PATTERNS = [
   { pattern: '.pi-agent/**' },
   { pattern: '**/.pi-agent' },
   { pattern: '**/.pi-agent/**' },
+];
+
+/**
+ * agent-runtime 规则期望的豁免模式（可读资源）。
+ * 前四条 = pi 渐进式披露要求「read tool 按需读取」的 skills/prompts；
+ * 后四条 = Agent 自身不含密钥的运行态 run/sessions（封禁无安全收益，只会让它找上下文时空转）。
+ * 这些是「字面首段」模式：guardrails 把工作区内目标归一为相对 cwd 路径，工作区外保留绝对
+ * 路径形态，因此豁免只命中本工作区，其它租户的 .pi-agent 仍被受保护模式封禁。
+ */
+const AGENT_RUNTIME_EXPECTED_ALLOWED = [
+  { pattern: '.pi-agent/skills' },
+  { pattern: '.pi-agent/skills/**' },
+  { pattern: '.pi-agent/prompts' },
+  { pattern: '.pi-agent/prompts/**' },
+  { pattern: '.pi-agent/run' },
+  { pattern: '.pi-agent/run/**' },
+  { pattern: '.pi-agent/sessions' },
+  { pattern: '.pi-agent/sessions/**' },
 ];
 
 function wsPath(): string {
@@ -566,12 +585,7 @@ describe('pi-guardrails 自动配置装配（{ws}/.pi-agent/extensions/guardrail
           protection: 'noAccess',
           onlyIfExists: true,
           patterns: AGENT_RUNTIME_EXPECTED_PATTERNS,
-          allowedPatterns: [
-            { pattern: '.pi-agent/skills' },
-            { pattern: '.pi-agent/skills/**' },
-            { pattern: '.pi-agent/prompts' },
-            { pattern: '.pi-agent/prompts/**' },
-          ],
+          allowedPatterns: AGENT_RUNTIME_EXPECTED_ALLOWED,
         });
 
         // 幂等：两次装配产物逐字节一致（配置无时间戳等漂移字段）
@@ -671,14 +685,22 @@ describe('pi-guardrails 管理员设置映射（admin/settings Pi Agent 分类 �
     expect(agentRule).toBeDefined();
     expect(agentRule).toMatchObject({
       patterns: AGENT_RUNTIME_EXPECTED_PATTERNS,
-      allowedPatterns: [
-        { pattern: '.pi-agent/skills' },
-        { pattern: '.pi-agent/skills/**' },
-        { pattern: '.pi-agent/prompts' },
-        { pattern: '.pi-agent/prompts/**' },
-      ],
+      allowedPatterns: AGENT_RUNTIME_EXPECTED_ALLOWED,
     });
     expect(cfg.policies.rules).toHaveLength(1);
+  });
+
+  it('pathAccess mode 归一：ask → block（headless 下两者同为拒绝），allow 原样保留', () => {
+    expect(buildGuardrailsConfig('0.17.1', { pathAccessMode: 'ask' }).pathAccess.mode).toBe('block');
+    expect(buildGuardrailsConfig('0.17.1', { pathAccessMode: 'allow' }).pathAccess.mode).toBe('allow');
+    expect(buildGuardrailsConfig('0.17.1').pathAccess.mode).toBe('block');
+  });
+
+  it('guardrailsConfigNotices 仅在管理员设了 ask 时给出提示（归一不静默）', () => {
+    expect(guardrailsConfigNotices({})).toEqual([]);
+    expect(guardrailsConfigNotices({ pathAccessMode: 'block' })).toEqual([]);
+    expect(guardrailsConfigNotices({ pathAccessMode: 'allow' })).toEqual([]);
+    expect(guardrailsConfigNotices({ pathAccessMode: 'ask' })).toHaveLength(1);
   });
 
   it('agent-runtime 模式集覆盖 guardrails bash 提取的变量拼接形态（含垃圾前缀的候选）', () => {
@@ -692,23 +714,36 @@ describe('pi-guardrails 管理员设置映射（admin/settings Pi Agent 分类 �
     expect(hits('.pi-agent/models.json')).toBe(true);
     expect(hits('.pi-agent')).toBe(true);
 
-    // 可读资源树仍由 allowedPatterns 显式豁免（guardrails 先判 allowed 再判 block）
-    const allowed = [
-      '.pi-agent/skills',
-      '.pi-agent/skills/**',
-      '.pi-agent/prompts',
-      '.pi-agent/prompts/**',
-    ];
-    expect(allowed.some((p) => matchesGlob('.pi-agent/skills/canvas-feedback-guide/SKILL.md', p))).toBe(
-      true
-    );
+    // 可读资源仍由 allowedPatterns 显式豁免（guardrails 先判 allowed 再判 block）
+    const allowed = AGENT_RUNTIME_EXPECTED_ALLOWED.map((p) => p.pattern);
+    const exempt = (relPath: string) => allowed.some((p) => matchesGlob(relPath, p));
+
+    expect(exempt('.pi-agent/skills/canvas-feedback-guide/SKILL.md')).toBe(true);
+    expect(exempt('.pi-agent/prompts/foo.md')).toBe(true);
+    // 收窄：Agent 自身不含密钥的运行态不再被封（封禁无安全收益，只会让找上下文时空转）
+    expect(exempt('.pi-agent/run/chat.jsonl')).toBe(true);
+    expect(exempt('.pi-agent/sessions/s1.jsonl')).toBe(true);
+    // 而密钥装配物不在豁免内：仍受受保护模式约束
+    expect(exempt('.pi-agent/models.json')).toBe(false);
+    expect(exempt('.pi-agent/extensions/guardrails.json')).toBe(false);
+  });
+
+  it('豁免只作用于本工作区：其它租户的 .pi-agent 归一为绝对路径，命不中豁免', () => {
+    // guardrails normalizeTarget（extensions/guardrails/rules.ts:62）：工作区外且不在 home 下的
+    // 目标保留绝对路径形态——字面首段豁免（.pi-agent/…）因此只命中本工作区。
+    const allowed = AGENT_RUNTIME_EXPECTED_ALLOWED.map((p) => p.pattern);
+    const patterns = AGENT_RUNTIME_EXPECTED_PATTERNS.map((p) => p.pattern);
+    const otherTenant = 'F:/repo/runtime/2/workspace/other/.pi-agent/models.json';
+
+    expect(allowed.some((p) => matchesGlob(otherTenant, p))).toBe(false);
+    expect(patterns.some((p) => matchesGlob(otherTenant, p))).toBe(true);
   });
 
   it('preparePiWorkspace 写入的 guardrails.json 反映 guardrailsOverrides（端到端）', () => {
     const home = mkdtempSync(path.join(tmpdir(), 'pi-agent-'));
     try {
       withPiExtensionsEnv(home, GUARDRAILS_PACKAGE_NAME, () => {
-        preparePiWorkspace(UID, WS_ID, {
+        const prepared = preparePiWorkspace(UID, WS_ID, {
           agentId: 1,
           chatModel: CHAT_MODEL,
           imageModel: null,
@@ -725,10 +760,13 @@ describe('pi-guardrails 管理员设置映射（admin/settings Pi Agent 分类 �
         const cfg = JSON.parse(readFileSync(cfgPath, 'utf-8'));
         expect(cfg.enabled).toBe(false);
         expect(cfg.features).toEqual({ policies: true, permissionGate: true, pathAccess: false });
+        // ask 在 headless RPC 下与 block 等价（且多一条 source:'user' 误导遥测）→ 装配期归一为 block
         expect(cfg.pathAccess).toEqual({
-          mode: 'ask',
+          mode: 'block',
           allowedPaths: [{ kind: 'directory', path: '/x' }, { kind: 'file', path: '/tmp/k.txt' }],
         });
+        // 归一不能静默：需以装配期诊断透传（存量 app_settings 里就有 ask）
+        expect(prepared.warnings.some((w) => w.includes('ask'))).toBe(true);
       });
     } finally {
       rmSync(home, { recursive: true, force: true });

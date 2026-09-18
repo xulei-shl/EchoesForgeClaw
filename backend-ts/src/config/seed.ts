@@ -173,7 +173,7 @@ const DEFAULT_SETTINGS: Array<[string, string, string]> = [
   [
     'pi.guardrails.path_access.mode',
     'block',
-    'Pi Agent 越界路径访问模式：block = 一律拒绝（默认、自动）；ask = 询问用户（RPC 下退化为拒绝，不推荐）；allow = 放行并记录',
+    'Pi Agent 越界路径访问模式：block = 越界一律拒绝（默认，headless 无询问通道）；allow = 放行并记录（放弃跨租户隔离，慎用）。注：ask 已不再支持，存量值按 block 生效并在装配期给出提示',
   ],
   [
     'pi.guardrails.path_access.allowed_paths',

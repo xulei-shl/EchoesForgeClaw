@@ -13,16 +13,22 @@ import path from 'node:path';
  *
  * 设计取向（headless 多租户服务端，完全自动执行）：
  * - policies（文件保护）：开启。内置规则保护 .env/私钥等，另加 agent-runtime
- *   规则禁止工具访问 `.pi-agent/**`（models.json / web-search.json 等装配了真实
- *   API Key，Agent 不应通过 read/bash 等工具读到）。
+ *   规则禁止工具访问 .pi-agent 下的密钥装配物（models.json / settings.json /
+ *   web-search.json / auth.json / extensions，含真实 API Key）。
+ *   保留理由：pi 内核完全没有文件保护概念（dist/ 内无任何等价机制），且 Agent 手里
+ *   就有 read 工具——不拦就等于把明文密钥送进模型上下文。这是三项里最硬的一项。
+ *   收窄：整棵 .pi-agent 仍默认全封（fail-closed），仅显式豁免 skills/prompts
+ *   与不含密钥的 run/sessions，不做无安全收益的封禁。
  * - permissionGate（危险命令）：开启 + requireConfirmation=true（内置默认）。
  *   RPC 模式下 `ctx.ui.custom()` 返回 undefined，permission-gate 自带
  *   `ctx.ui.select(...)` 回退（Allow once / session / Deny / Stop），走后端
  *   既有 extension_ui_request → dialog 桥（无需前端改动）。
- * - pathAccess（越界路径）：开启 + mode=block。RPC 下 custom() 不可用，ask 模式
- *   会退化为「一律拒绝」且语义含糊；block 模式确定性更强（完全自动、零交互），
- *   越界访问仅由后端装配物/白名单放行（工作区内访问恒放行；pi 文档路径与
- *   skill 文件路径由扩展自动豁免）。
+ * - pathAccess（越界路径）：开启 + mode 归一为 block。RPC 下 custom() 不可用，ask
+ *   与 block 同为拒绝却多出误导遥测（见 resolvePathAccessMode），故装配期把 ask
+ *   归一为 block 并记一条 notice；管理员若确实要放宽，唯一有意义的取值是 allow。
+ *   保留理由：这是文件工具层的跨租户隔离（工作区外路径一律拒绝，其它租户工作区落在
+ *   此范围内）。越界访问仅由白名单放行；工作区内恒放行，且扩展会另外自动豁免 pi 文档
+ *   路径与全部 skill 的 filePath/baseDir（extensions/path-access/index.ts:35 / dynamic-resources.ts）。
  *
  * 版本锁定：config.version 在装配期从已安装包 package.json 读取（升级 =
  * 固定 npm 版本 + 回归，见 docs/skill-agent/pi-extension-integration.md）。
@@ -66,6 +72,11 @@ export const GUARDRAILS_SETTING_KEYS = {
 export interface GuardrailsConfigOverrides {
   enabled?: boolean;
   features?: { policies?: boolean; permissionGate?: boolean; pathAccess?: boolean };
+  /**
+   * 越界路径模式。`ask` 仅为兼容既有 app_settings 数据保留：装配期归一为 `block`
+   * （headless RPC 下 ctx.ui.custom() 不可用，ask 与 block 同为拒绝，却多一次无用
+   * 交互尝试与一条 source:'user' 的误导遥测——见 resolvePathAccessMode）。
+   */
   pathAccessMode?: 'block' | 'ask' | 'allow';
   allowedPaths?: GuardrailsAllowedPath[];
 }
@@ -135,21 +146,25 @@ export interface GuardrailsAutoConfig {
 }
 
 /**
- * agent-runtime 规则：保护 .pi-agent/（含 models.json/web-search.json 等真实密钥装配物）。
+ * agent-runtime 规则：保护 .pi-agent/（含 models.json/settings.json/web-search.json 等
+ * 真实密钥装配物）。
  *
- * 黑名单粒度（fail-closed + 显式豁免）：.pi-agent/** 默认全封，但技能/提示词是
- * pi 渐进式披露机制要求「模型经 read tool 按需读取」的可读资源（索引已注入系统提示词，
- * 正文由 read 读取）——若被 noAccess 封死，装配到 .pi-agent/skills 的技能形同虚设。
- * 故经 allowedPatterns 显式放行 skills/prompts 两棵资源树；models.json / web-search.json /
- * settings.json / auth.json / extensions / sessions / run 等运行态与密钥装配物保持封禁。
- * 后续新增敏感文件默认仍受保护，无需修改本规则。
+ * 黑名单粒度（fail-closed + 显式豁免）：.pi-agent 整棵默认全封，仅 allowedPatterns
+ * 显式放行两类可读资源——① pi 渐进式披露要求「模型经 read tool 按需读取」的
+ * skills/prompts（若被 noAccess 封死，装配到 .pi-agent/skills 的技能形同虚设）；
+ * ② Agent 自身不含密钥的运行态 run/sessions（封禁无安全收益，只会让 Agent 找上下文时
+ * 被反复拒绝而空转，见 docs/skill-agent/pi-guardrails管理员策略控制模型.md §9）。
+ * models.json / settings.json / web-search.json / auth.json / extensions 等密钥装配物
+ * 保持封禁；后续新增敏感文件默认仍受保护，无需修改本规则。
  *
  * 前缀通配：guardrails 的 bash 路径提取是 best-effort 的——含 shell 展开的 token
  * （如 `cat "$base/.pi-agent/run/chat.jsonl"`）不会被解析成真实路径，而是按字面相对 cwd
  * 解析，得到 `<cwd>/$base/.pi-agent/...` 这类「带垃圾前缀但落在工作区内」的候选。
  * 首段模式（`.pi-agent` 与 `.pi-agent` 子树）匹配不到这种形态（Node matchesGlob 要求
  * 首段就是 `.pi-agent`），故补齐「任意前缀 + .pi-agent」的两条模式；
- * skills/prompts 豁免仍优先命中，不受影响。
+ * 豁免模式仍优先命中，不受影响。
+ *
+ * 注：本文件注释内不得出现 `**` 紧跟 `/` 的字面串（会提前闭合块注释）。
  */
 export interface GuardrailsAgentRuntimeRule {
   id: 'agent-runtime';
@@ -169,12 +184,23 @@ const AGENT_RUNTIME_PATTERNS: GuardrailsAgentRuntimeRule['patterns'] = [
   { pattern: '**/.pi-agent/**' },
 ];
 
-/** 可读资源树（带裸目录模式：`/**` 在 Node matchesGlob 下不匹配无尾斜杠的目录本身）。 */
+/**
+ * 可读资源树（带裸目录模式：`/**` 在 Node matchesGlob 下不匹配无尾斜杠的目录本身）。
+ *
+ * 安全性质：这四条/八条都是「字面首段」模式。guardrails 的 normalizeTarget 把工作区内的
+ * 目标归一为相对 cwd 路径，工作区外（含其它租户工作区）则保留绝对路径形态
+ * （extensions/guardrails/rules.ts:62），故只有本工作区的路径能命中豁免——
+ * 其它租户的 .pi-agent 仍被 AGENT_RUNTIME_PATTERNS 的任意前缀形态封禁。
+ */
 const AGENT_RUNTIME_ALLOWED_PATTERNS: GuardrailsAgentRuntimeRule['allowedPatterns'] = [
   { pattern: '.pi-agent/skills' },
   { pattern: '.pi-agent/skills/**' },
   { pattern: '.pi-agent/prompts' },
   { pattern: '.pi-agent/prompts/**' },
+  { pattern: '.pi-agent/run' },
+  { pattern: '.pi-agent/run/**' },
+  { pattern: '.pi-agent/sessions' },
+  { pattern: '.pi-agent/sessions/**' },
 ];
 
 /** 装配期注入的策略规则（按 id 与扩展内置/用户规则去重合并，见 loader afterMerge）。 */
@@ -189,8 +215,9 @@ export function guardrailsPolicyRules(): GuardrailsAgentRuntimeRule[] {
       protection: 'noAccess',
       onlyIfExists: true,
       blockMessage:
-        'Accessing {file} is not allowed. This file is part of the agent runtime ' +
-        'configuration and may contain API keys. If changes are needed, ask the user.',
+        'Accessing {file} is not allowed. This file holds agent runtime credentials ' +
+        '(API keys), so it stays unreadable. Continue without it and do not ask the ' +
+        'user for its contents.',
     },
   ];
 }
@@ -201,6 +228,34 @@ export function guardrailsPolicyRules(): GuardrailsAgentRuntimeRule[] {
 const GUARDRAILS_DEFAULT_ALLOWED_PATHS: GuardrailsAllowedPath[] = [
   { kind: 'file', path: '/dev/null' },
 ];
+
+/**
+ * 归一化 pathAccess 模式：`ask` 在本部署恒等于拒绝，故直接落 `block`。
+ *
+ * 证据（guardrails 0.17.1）：mode 非 'allow' 时工作区内恒放行（src/core/paths/access.ts:42）；
+ * 工作区外若无 UI 立即拒绝（access.ts:53-58）；即便有 UI，RPC 下 ctx.ui.custom() 返回
+ * undefined，最终仍落到「User denied access outside working directory」并以
+ * source:'user' 上报（extensions/path-access/index.ts:96-160）——语义与 block 完全相同，
+ * 却多出一次无用的交互尝试和一条误导性遥测（看起来像用户拒绝，实为无人可问）。
+ * 管理员若要放宽，唯一有意义的取值是 allow。
+ */
+function resolvePathAccessMode(
+  mode: GuardrailsConfigOverrides['pathAccessMode']
+): 'block' | 'allow' {
+  return mode === 'allow' ? 'allow' : GUARDRAILS_PATH_ACCESS_MODE;
+}
+
+/**
+ * 装配期应透传给管理员/用户的护栏配置提示（空数组 = 无异常）。
+ * 目前只覆盖一种静默归一：管理员设置了 ask，而实际按 block 生效。
+ */
+export function guardrailsConfigNotices(overrides: GuardrailsConfigOverrides): string[] {
+  if (overrides.pathAccessMode !== 'ask') return [];
+  return [
+    'Pi Agent 越界路径模式配置为 ask，但服务端无交互通道（ask 在本部署与 block 等价，均为拒绝），' +
+      '已按 block 生效；如需放宽请在 admin/settings 的 Pi Agent 分类改为 allow。',
+  ];
+}
 
 /**
  * 构建自动装配的 guardrails 全局配置。version 应为已安装包版本（如 '0.17.1'），
@@ -224,7 +279,7 @@ export function buildGuardrailsConfig(
       pathAccess: overrides.features?.pathAccess ?? true,
     },
     pathAccess: {
-      mode: overrides.pathAccessMode ?? GUARDRAILS_PATH_ACCESS_MODE,
+      mode: resolvePathAccessMode(overrides.pathAccessMode),
       allowedPaths: overrides.allowedPaths?.length
         ? overrides.allowedPaths
         : GUARDRAILS_DEFAULT_ALLOWED_PATHS,

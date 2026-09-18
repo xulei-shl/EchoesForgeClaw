@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 
 import {
   killPiProcess,
@@ -94,6 +94,8 @@ async function withPiExtensionsEnv(
 
 describe('runPiAgent 加载 pi-guardrails（RPC 冒烟）', () => {
   let mock: { server: Server; port: number };
+  // mock 在 prepare 之前就要拼出工作区路径（与 preparePiWorkspace 的落盘口径一致）
+  const wsDir = path.join(RUNTIME_ROOT, String(UID), 'workspace', WS_ID);
 
   beforeEach(async () => {
     // 常驻进程会在正常轮次后保留：先杀掉，避免与旧测试轮/文件锁冲突
@@ -153,6 +155,119 @@ describe('runPiAgent 加载 pi-guardrails（RPC 冒烟）', () => {
         expect(events.some((e) => e.type === 'content_delta' && e.delta.includes('pong'))).toBe(true);
         expect(events.some((e) => e.type === 'error')).toBe(false);
       });
+    },
+    90_000
+  );
+
+  it(
+    'agent-runtime 规则：read 技能正文放行、运行态放行，读到 .pi-agent 密钥文件被拦（画板助手卡死的根因回归）',
+    async () => {
+      // 四轮 mock：read 技能 → read models.json → read .pi-agent/run/* → done。判定依据是 messages 里 tool 轮数
+      const skillMock = await startMock();
+      skillMock.server.removeAllListeners('request');
+      skillMock.server.on('request', (req, res) => {
+        let body = '';
+        req.on('data', (c) => (body += c));
+        req.on('end', () => {
+          const parsed = JSON.parse(body || '{}') as { messages?: { role?: string }[] };
+          const toolTurns = (parsed.messages ?? []).filter((m) => m.role === 'tool').length;
+          res.writeHead(200, { 'content-type': 'text/event-stream' });
+          const chunk = (delta: unknown, finish?: string) =>
+            `data: ${JSON.stringify({
+              id: 'chatcmpl-mock',
+              object: 'chat.completion.chunk',
+              created: 0,
+              model: 'test-model',
+              choices: [{ index: 0, delta, finish_reason: finish ?? null }],
+            })}\n\n`;
+          const callRead = (filePath: string) =>
+            chunk(
+              {
+                role: 'assistant',
+                content: '',
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: `call_read_${toolTurns}`,
+                    type: 'function',
+                    function: { name: 'read', arguments: JSON.stringify({ path: filePath }) },
+                  },
+                ],
+              },
+              'tool_calls'
+            );
+          try {
+            if (toolTurns === 0) {
+              res.write(callRead(path.join(wsDir, '.pi-agent', 'skills', 'canvas-node-catalog', 'SKILL.md')));
+            } else if (toolTurns === 1) {
+              res.write(callRead(path.join(wsDir, '.pi-agent', 'models.json')));
+            } else if (toolTurns === 2) {
+              res.write(callRead(path.join(wsDir, '.pi-agent', 'run', 'marker.txt')));
+            } else {
+              res.write(chunk({ role: 'assistant', content: 'done' }));
+              res.write(chunk({}, 'stop'));
+            }
+          } finally {
+            res.write('data: [DONE]\n\n');
+            res.end();
+          }
+        });
+      });
+
+      try {
+        await withPiExtensionsEnv('@aliou/pi-guardrails', async () => {
+          const prepared = preparePiWorkspace(UID, WS_ID, {
+            agentId: 1,
+            chatModel: {
+              baseUrl: `http://127.0.0.1:${skillMock.port}/v1`,
+              apiKey: 'k',
+              modelName: 'test-model',
+              multimodal: false,
+            },
+            imageModel: null,
+            // 技能真实挂载：正是画板助手装配到 .pi-agent/skills 的那棵资源树
+            skillNames: ['canvas-node-catalog'],
+          });
+          expect(prepared.mountedSkills).toContain('canvas-node-catalog');
+          // 收窄校验：.pi-agent/run（Agent 自身不含密钥的运行态）应可读——
+          // 它不随装配被清理（仅 clearPiSession 清空对话时删），故此处写入的标记可稳定读到
+          const runDir = path.join(prepared.ws, '.pi-agent', 'run');
+          mkdirSync(runDir, { recursive: true });
+          writeFileSync(path.join(runDir, 'marker.txt'), 'RUN_MARKER_OK', 'utf-8');
+
+          const events = [];
+          for await (const evt of runPiAgent({
+            userId: UID,
+            workspaceId: WS_ID,
+            ws: prepared.ws,
+            hasPrompt: false,
+            chatModelName: 'test-model',
+            imageGenEnabled: false,
+            extensions: prepared.mountedExtensions,
+            message: 'read your skill, models.json, then run/marker.txt',
+          })) {
+            events.push(evt);
+            if (evt.type === 'extension_ui_request' && evt.method === 'select') {
+              sendExtensionUiResponse(UID, WS_ID, { id: evt.id, value: 'Allow once' });
+            }
+          }
+
+          const results = events.filter(
+            (e): e is typeof e & { result: string } => e.type === 'tool_result'
+          );
+          expect(results.length).toBeGreaterThanOrEqual(3);
+          // 1) 技能正文读到（这才是渐进式披露能工作的前提）
+          expect(results[0]!.result).toContain('画布节点类型目录');
+          // 2) 同一棵 .pi-agent 下的密钥文件被策略拦下
+          expect(results[1]!.result).toContain('is not allowed');
+          expect(results[1]!.result).toContain('models.json');
+          // 3) 收窄后运行态不再被封（曾使 Agent 找上下文时空转）
+          expect(results[2]!.result).toContain('RUN_MARKER_OK');
+          expect(results[2]!.result).not.toContain('is not allowed');
+        });
+      } finally {
+        await new Promise<void>((ok) => skillMock.server.close(() => ok()));
+      }
     },
     90_000
   );

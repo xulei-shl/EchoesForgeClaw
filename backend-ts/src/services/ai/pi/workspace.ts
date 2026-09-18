@@ -24,6 +24,7 @@ import {
 } from './config.js';
 import {
   buildGuardrailsConfig,
+  guardrailsConfigNotices,
   GUARDRAILS_CONFIG_REL,
   GUARDRAILS_PACKAGE_NAME,
   type GuardrailsConfigOverrides,
@@ -346,11 +347,15 @@ export function preparePiWorkspace(
       /* package.json 不可读：视为未装配 */
     }
     if (version) {
+      const guardrailsOverrides = opts.guardrailsOverrides ?? {};
       writeFileSync(
         guardrailsConfigPath,
-        JSON.stringify(buildGuardrailsConfig(version, opts.guardrailsOverrides), null, 2),
+        JSON.stringify(buildGuardrailsConfig(version, guardrailsOverrides), null, 2),
         'utf-8'
       );
+      // 静默归一（如 path_access.mode=ask → block）以装配期诊断透传，
+      // 避免「设置界面显示一套、实际生效另一套」
+      warnings.push(...guardrailsConfigNotices(guardrailsOverrides));
     } else {
       removePathSafe(guardrailsConfigPath);
     }

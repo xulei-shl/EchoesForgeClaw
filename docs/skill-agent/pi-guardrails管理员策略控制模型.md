@@ -75,9 +75,10 @@
 ## 6. 生效口径与注意事项
 
 - 策略变更一般不实时作用于已有对话进程；新 workspace 装配才会使用新策略。
-- 目前默认配置里已加入一条额外策略规则 `agent-runtime`，禁止工具访问 `.pi-agent`（含其子树），用来保护后端装配的真实密钥类文件（如 models.json / web-search.json）；同时经 `allowedPatterns` 显式放行 `.pi-agent/skills/**` 与 `.pi-agent/prompts/**`——技能/提示词是 pi 渐进式披露要求模型经 read tool 按需读取的可读资源，封死会导致装配的技能形同虚设（详见 `pi-extension-integration.md` 的 agent-runtime 规则说明）。
+- 目前默认配置里已加入一条额外策略规则 `agent-runtime`：`.pi-agent` 整棵默认全封（fail-closed），用来保护后端装配的真实密钥类文件（models.json / settings.json / web-search.json / auth.json / extensions）；同时经 `allowedPatterns` 显式放行两类可读资源——① `.pi-agent/skills/**` 与 `.pi-agent/prompts/**`（pi 渐进式披露要求模型经 read tool 按需读取，封死会导致装配的技能形同虚设，详见 `pi-extension-integration.md`）；② `.pi-agent/run/**` 与 `.pi-agent/sessions/**`（Agent 自身不含密钥的运行态，封禁无安全收益，只会让它在找上下文时被反复拒绝而空转——见第 9 节）。
 - 该规则的 `patterns` 同时包含首段模式（`.pi-agent`、`.pi-agent` 子树）与「任意前缀 + .pi-agent」两条通配，理由见第 8 节。
-- 如果后续打开 pathAccess 的交互语义（allow/ask），在 RPC 服务端场景需重新评估，不应默认引入用户对话确认。
+- 豁免是「字面首段」模式，只作用于本工作区：guardrails 的 `normalizeTarget`（`extensions/guardrails/rules.ts:62`）把工作区内目标归一为相对 cwd 路径，工作区外（含其它租户工作区）保留绝对路径形态，因此豁免命中不到，其它租户的 `.pi-agent` 仍被受保护模式封禁。
+- pathAccess 的 `ask` 已在装配期归一为 `block`：RPC 下 `ctx.ui.custom()` 返回 undefined，ask 与 block 同为拒绝，却会多出一次无用交互尝试和一条 `source:'user'` 的误导遥测（`extensions/path-access/index.ts:96-160`）。归一不静默——会以装配期 warning 透传（`guardrailsConfigNotices`）。若要主动放宽，唯一有意义的取值是 `allow`，需先重新评估跨租户隔离的代价。
 
 ---
 
@@ -104,5 +105,34 @@
 
 **因此真正的收敛手段是移除向量本身**：画板助手（canvas-assistant）的职责全部由 `canvas_*` 工具 + `read` 承担，不需要 shell，故在 `backend-ts/src/api/canvas/routes/canvas-agent.ts` 通过 `excludeTools: ['bash']` 经 `runPiAgent` → `--exclude-tools bash` 关闭该 Agent 的 bash 能力。
 需要 bash 的其它 Agent（如 Skill Agent 节点）仍暴露在剩余残差下，若有更强的隔离诉求，应优先考虑把密钥从子进程可见的文件系统移出（环境注入 / 独立凭据代理），而不是继续加路径模式。
+
+---
+
+## 9. 收窄保留：只留内核没有的能力，且不做无安全收益的封禁
+
+结论：guardrails **不冗余**，但只保留三项中真正承重的能力，并把封禁面收到「密钥 + 跨租户」这一真正需要守的边界上。
+
+### 9.1 为什么不能靠 pi 内核替代（逐项实测）
+
+| 能力 | pi 0.84.2 内核 | 验证方式 |
+| :--- | :--- | :--- |
+| 文件/路径保护策略 | **无**（无 `protectFile` / `blockedPaths` 等概念） | 内核 `dist/` 全量搜索 |
+| 工具审批门（RPC） | **无**（子进程模式无审批，仅 allowlist/denylist 可控） | `runner.ts` 注释 + 内核 `dist/` 搜索 |
+| 越界路径拦截 | **无**（那句 `outside working directory` 出自 guardrails 而非内核） | 文案定位：`src/core/paths/access.ts:49` |
+
+因此三项各自都是当前唯一手段：policies 是明文密钥进上下文的唯一屏障（`workspace.ts` 会把真实 `apiKey` 写入 `{ws}/.pi-agent/models.json`，而模型手里有 `read`）；permissionGate 是唯一危险命令确认；pathAccess 是文件工具层的跨租户隔离。
+
+### 9.2 本次收窄了什么
+
+1. **不再做无安全收益的封禁**：`.pi-agent/run`、`.pi-agent/sessions` 改为可读（密钥装配物仍全封），直接消除「Agent 找上下文被反复拒绝 → 空转」这一类摩擦。
+2. **`ask` 归一为 `block`**：去掉一个语义含糊、且会产出误导遥测的取值，并对存量 `app_settings` 给出装配期提示。
+3. **策略文案改为「继续，不要向用户索取」**：原 blockMessage 的 "ask the user" 会把被拦事件变成一次多余的提问。
+4. （上一轮已做）扩展包不再自带 `pi.skills`，技能只有 `.pi-agent/skills` 这一个来源——正是原事故的死锁（策略封 `.pi-agent/**` vs 技能被装配到该路径下）的根因。
+
+### 9.3 尚未收窄、留待决策
+
+- **pathAccess 整项**：它是当前唯一的跨租户文件隔离，去掉即等于允许 Agent 读其它用户工作区（含其 `.pi-agent` 之外的对话与产物）。真要撤掉，应同时给出替代隔离（如 OS 级/容器级）。
+- **内建危险命令模式**：`applyBuiltinDefaults` 带来 `rm -rf` / `sudo` / `chmod -R 777` 等默认确认项，无法按条覆盖；若确认对节点侧正常清理造成摩擦，再考虑改为自维护模式集。
+- **密钥落盘本身**：把密钥移出子进程可见文件系统（环境注入 / 凭据代理）才能让 policies 这一层失去对象——这是唯一能真正「消灭需求」的方向。
 
 附：提取器与模式语义属于上游包，本仓库只在 `guardrails.ts` 维护模式集，升级 `@aliou/pi-guardrails` 后需按本节的四行表格重跑一次验证。
