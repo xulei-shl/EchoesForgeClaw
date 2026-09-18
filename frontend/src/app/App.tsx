@@ -132,14 +132,23 @@ const AppRoutes = () => {
   );
 };
 
+// 仅登录用户可见的吉祥物动态小组件（全页面互动、自由拖拽、换装与反馈）
+const AuthenticatedMascotWidget: React.FC = () => {
+  const { user } = useAuth();
+  if (!user) {
+    return null;
+  }
+  return <MascotWidget />;
+};
+
 const App: React.FC = () => {
   return (
     <AuthProvider>
       <FeedbackProvider>
         <Router>
           <AppRoutes />
-          {/* 全局常驻吉祥物小组件（全页面互动、自由拖拽、换装与反馈） */}
-          <MascotWidget />
+          {/* 仅登录用户可见的吉祥物小组件 */}
+          <AuthenticatedMascotWidget />
         </Router>
       </FeedbackProvider>
     </AuthProvider>
