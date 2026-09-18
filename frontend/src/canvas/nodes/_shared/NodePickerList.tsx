@@ -85,7 +85,7 @@ function buildCategories(items: NodePickerItem[]): { categories: CategoryNav[]; 
   // 非可配置（基础）节点按模板类别分组（如「输入」「文本工具」），与可配置模板分组口径一致
   const baseGroupMap = new Map<string, { title: string; items: NodePickerItem[] }>();
   for (const t of NODE_TEMPLATES) {
-    if (t.configurable) continue;
+    if (t.hiddenFromPicker || t.configurable) continue;
     const list = ungrouped.filter((i) => i.nodeType === t.type);
     if (list.length === 0) continue;
     const cat = t.category;
@@ -107,7 +107,7 @@ function buildCategories(items: NodePickerItem[]): { categories: CategoryNav[]; 
   }
 
   // 可配置模板分组
-  for (const t of NODE_TEMPLATES.filter((t) => t.configurable)) {
+  for (const t of NODE_TEMPLATES.filter((t) => t.configurable && !t.hiddenFromPicker)) {
     const list = ungrouped.filter((i) => i.nodeType === t.type);
     if (list.length > 0) {
       const key = `template:${t.type}`;

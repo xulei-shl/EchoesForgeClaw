@@ -69,6 +69,7 @@ const NODE_TYPE_LABEL: Record<string, string> = {
   text_generation: 'AI 文本生成',
   image_generation: '图像生成',
   chat: 'AI 对话',
+  canvas_assistant: '画板智能助手',
   book_info: '图书元数据',
 };
 
@@ -165,14 +166,13 @@ export const NodeConfigsPage: React.FC = () => {
   );
 
   /**
-   * 提示词模板候选：非 AI 对话节点按所选节点模板类型过滤；
-   * AI 对话为通用多模态对话节点（文本/图片输入，system prompt 与具体模板类型无关），
-   * 展示全部类型提示词（与 Skill Agent 提示词可选口径一致）。
+   * 提示词模板候选：非 AI 对话/画板智能助手节点按所选节点模板类型过滤；
+   * AI 对话与画板智能助手为多模态/工具助手，展示全部类型提示词。
    * 已绑定提示词始终兜底显示，避免 select 为空。
    */
   const availablePrompts = useMemo(() => {
-    const filtered =
-      form.node_type === 'chat' ? prompts : prompts.filter((p) => p.node_type === form.node_type);
+    const isUniversal = form.node_type === 'chat' || form.node_type === 'canvas_assistant';
+    const filtered = isUniversal ? prompts : prompts.filter((p) => p.node_type === form.node_type);
     if (editing && form.prompt_id !== '') {
       const bound = prompts.find((p) => p.id === form.prompt_id);
       if (bound && !filtered.some((p) => p.id === bound.id)) {

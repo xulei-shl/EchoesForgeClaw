@@ -1,5 +1,5 @@
 import { getDb } from '../../config/database.js';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import {
   findNodeConfigById,
   findLLMConfigById,
@@ -7,8 +7,8 @@ import {
   findFastClawAgentConfigById,
   type LLMConfigRow,
 } from '../../repositories/index.js';
-import { llmConfigs, skillAgentConfigs } from '../../db/schema.js';
-import { ensureAgentMd } from '../ai/skill-agent-files.js';
+import { llmConfigs, nodeConfigs, skillAgentConfigs } from '../../db/schema.js';
+import { ensureAgentMd, writeAgentMd } from '../ai/skill-agent-files.js';
 import type { TextModelConfig, VisionModelConfig, ImageModelConfig } from '../../infrastructure/ai/types.js';
 import type { FastClawRuntimeConfig } from '../ai/fastclaw-service.js';
 
@@ -245,4 +245,101 @@ export function skillAgentConfigFrom(configId: number | null): SkillAgentRuntime
     chat,
     image: resolveImageModel(db, cfg.imageLlmConfigId),
   };
+}
+
+export const DEFAULT_CANVAS_ASSISTANT_SKILLS = [
+  'canvas-node-catalog',
+  'canvas-feedback-guide',
+  'canvas-multimodal-presets',
+  'canvas-workflow-patterns',
+];
+
+export interface CanvasAssistantRuntimeConfig {
+  configId: number | string;
+  agentId: number | string;
+  chatModel: {
+    baseUrl: string;
+    apiKey: string;
+    modelName: string;
+    multimodal: boolean;
+    apiFormat?: string | null;
+    thinkingFormat?: string | null;
+    contextWindow?: number | null;
+    maxTokens?: number | null;
+  };
+  skillNames: string[];
+}
+
+/**
+ * 解析画板智能助手（canvas_assistant）运行时配置。
+ * 优先从 nodeConfigs 查找 nodeType='canvas_assistant' 且 isActive=true 的配置；
+ * 若绑定 SkillAgent 则走 SkillAgent 解析并增量物化；若绑定 LLM+Prompt 则走对应解析并物化；
+ * 若未配置或模型不可用，返回 null（调用方优雅降级）。
+ */
+export function canvasAssistantConfigFrom(): CanvasAssistantRuntimeConfig | null {
+  const db = getDb();
+  const configs = db
+    .select()
+    .from(nodeConfigs)
+    .where(and(eq(nodeConfigs.nodeType, 'canvas_assistant'), eq(nodeConfigs.isActive, true)))
+    .orderBy(desc(nodeConfigs.id))
+    .all();
+  if (!configs.length) return null;
+
+  for (const nc of configs) {
+    // 1. Skill Agent 模式
+    if (nc.skillAgentConfigId != null) {
+      const cfg = db.select().from(skillAgentConfigs).where(eq(skillAgentConfigs.id, nc.skillAgentConfigId)).get();
+      if (!cfg || !cfg.isActive) continue;
+      ensureAgentMd(db, cfg);
+      const chat = skillAgentChatModel(db, cfg);
+      if (!chat || !chat.apiKey) continue;
+      return {
+        configId: nc.id,
+        agentId: cfg.id,
+        chatModel: {
+          baseUrl: chat.baseUrl,
+          apiKey: chat.apiKey,
+          modelName: chat.modelName,
+          multimodal: chat.kind === 'multimodal',
+          apiFormat: chat.apiFormat,
+          thinkingFormat: chat.thinkingFormat,
+          contextWindow: chat.contextWindow,
+          maxTokens: chat.maxTokens,
+        },
+        skillNames: [...DEFAULT_CANVAS_ASSISTANT_SKILLS],
+      };
+    }
+
+    // 2. 提示词 + 大模型 模式
+    if (nc.llmConfigId != null) {
+      const llm = findLLMConfigById(db, nc.llmConfigId);
+      if (!llm || !llm.isActive || !llm.apiKey) continue;
+
+      if (nc.promptId != null) {
+        const prompt = findPromptTemplateById(db, nc.promptId);
+        if (prompt && prompt.isActive && prompt.content?.trim()) {
+          writeAgentMd('canvas-assistant', prompt.content);
+        }
+      }
+
+      return {
+        configId: nc.id,
+        agentId: 'canvas-assistant',
+        chatModel: {
+          baseUrl: llm.baseUrl ?? '',
+          apiKey: llm.apiKey,
+          modelName: llm.modelName ?? '',
+          multimodal: llm.kind === 'multimodal',
+          apiFormat: llm.apiFormat ?? null,
+          thinkingFormat: llm.thinkingFormat ?? null,
+          contextWindow: llm.contextWindow ?? null,
+          maxTokens: llm.maxTokens ?? null,
+        },
+        skillNames: [...DEFAULT_CANVAS_ASSISTANT_SKILLS],
+      };
+    }
+  }
+
+  return null;
 }

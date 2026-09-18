@@ -15,6 +15,7 @@ import {
 import { guardrailsOverridesFromSettings } from '../../../services/ai/pi/guardrails.js';
 import { chatStreamToSseResponse, type ChatStreamEvent } from '../stream.js';
 import type { PiChatModelConfig } from '../../../services/ai/pi/workspace.js';
+import { canvasAssistantConfigFrom } from '../../../services/platform/node-config-service.js';
 
 interface CanvasAgentChatRequest {
   prompt: string;
@@ -55,51 +56,76 @@ export async function register(app: FastifyInstance): Promise<void> {
       }
 
       const db = getDb();
-      // 获取当前激活的对话大模型（文本优先，回退多模态）
-      const activeLlm =
-        db
-          .select()
-          .from(llmConfigs)
-          .where(and(eq(llmConfigs.isActive, true), eq(llmConfigs.kind, 'text')))
-          .orderBy(llmConfigs.id)
-          .get() ||
-        db
-          .select()
-          .from(llmConfigs)
-          .where(and(eq(llmConfigs.isActive, true), eq(llmConfigs.kind, 'multimodal')))
-          .orderBy(llmConfigs.id)
-          .get();
+      const assistantConfig = canvasAssistantConfigFrom();
 
-      if (!activeLlm || !activeLlm.apiKey) {
-        async function* noModelEvent(): AsyncGenerator<ChatStreamEvent, void, unknown> {
-          yield {
-            type: 'error',
-            message: '未检测到可用的对话大模型，请在管理后台「模型配置」中启用至少一个文本或多模态模型。',
-          };
-        }
-        return reply.send(chatStreamToSseResponse(noModelEvent()));
-      }
-
-      const chatModel: PiChatModelConfig = {
-        baseUrl: activeLlm.baseUrl ?? '',
-        apiKey: activeLlm.apiKey,
-        modelName: activeLlm.modelName,
-        multimodal: activeLlm.kind === 'multimodal',
-        apiFormat: activeLlm.apiFormat,
-        thinkingFormat: activeLlm.thinkingFormat,
-        contextWindow: activeLlm.contextWindow,
-        maxTokens: activeLlm.maxTokens,
-      };
-
-      const rawChatId = payload.chat_id?.trim();
-      const chatId = (rawChatId || String(Date.now())).replace(/[^a-zA-Z0-9_-]/g, '');
-      const workspaceId = payload.workspace_id?.trim() || `canvas-agent_${chatId}`;
-      const defaultSkills = [
+      let chatModel: PiChatModelConfig | null = null;
+      let agentId: string | number = 'canvas-assistant';
+      let activeSkills: string[] = [
         'canvas-node-catalog',
         'canvas-feedback-guide',
         'canvas-multimodal-presets',
         'canvas-workflow-patterns',
       ];
+
+      if (assistantConfig?.chatModel) {
+        chatModel = {
+          baseUrl: assistantConfig.chatModel.baseUrl ?? '',
+          apiKey: assistantConfig.chatModel.apiKey,
+          modelName: assistantConfig.chatModel.modelName,
+          multimodal: Boolean(assistantConfig.chatModel.multimodal),
+          apiFormat: assistantConfig.chatModel.apiFormat,
+          thinkingFormat: assistantConfig.chatModel.thinkingFormat,
+          contextWindow: assistantConfig.chatModel.contextWindow,
+          maxTokens: assistantConfig.chatModel.maxTokens,
+        };
+        agentId = assistantConfig.agentId;
+        if (assistantConfig.skillNames?.length) {
+          activeSkills = assistantConfig.skillNames;
+        }
+      } else {
+        // 优雅降级：获取当前激活的对话大模型（文本优先，回退多模态）
+        const activeLlm =
+          db
+            .select()
+            .from(llmConfigs)
+            .where(and(eq(llmConfigs.isActive, true), eq(llmConfigs.kind, 'text')))
+            .orderBy(llmConfigs.id)
+            .get() ||
+          db
+            .select()
+            .from(llmConfigs)
+            .where(and(eq(llmConfigs.isActive, true), eq(llmConfigs.kind, 'multimodal')))
+            .orderBy(llmConfigs.id)
+            .get();
+
+        if (activeLlm && activeLlm.apiKey) {
+          chatModel = {
+            baseUrl: activeLlm.baseUrl ?? '',
+            apiKey: activeLlm.apiKey,
+            modelName: activeLlm.modelName,
+            multimodal: activeLlm.kind === 'multimodal',
+            apiFormat: activeLlm.apiFormat,
+            thinkingFormat: activeLlm.thinkingFormat,
+            contextWindow: activeLlm.contextWindow,
+            maxTokens: activeLlm.maxTokens,
+          };
+        }
+      }
+
+      if (!chatModel || !chatModel.apiKey) {
+        async function* noModelEvent(): AsyncGenerator<ChatStreamEvent, void, unknown> {
+          yield {
+            type: 'error',
+            message: '未检测到可用的对话大模型，请在管理后台「节点管理」或「模型配置」中配置并启用画板助手的对话大模型。',
+          };
+        }
+        return reply.send(chatStreamToSseResponse(noModelEvent()));
+      }
+      const finalChatModel: PiChatModelConfig = chatModel;
+
+      const rawChatId = payload.chat_id?.trim();
+      const chatId = (rawChatId || String(Date.now())).replace(/[^a-zA-Z0-9_-]/g, '');
+      const workspaceId = payload.workspace_id?.trim() || `canvas-agent_${chatId}`;
 
       const settingsMap = getAppSettingsMap(db);
       // 装配 + 运行包在生成器里，把装配期诊断（技能未装 / 扩展未装配 / 模型配置退化）
@@ -108,10 +134,10 @@ export async function register(app: FastifyInstance): Promise<void> {
         let prepared;
         try {
           prepared = preparePiWorkspace(request.authUser!.id, workspaceId, {
-            agentId: 'canvas-assistant',
-            chatModel,
+            agentId,
+            chatModel: finalChatModel,
             imageModel: null,
-            skillNames: defaultSkills,
+            skillNames: activeSkills,
             extraExtensions: ['pi-canvas-tools'],
             webSearchConfig: buildWebSearchConfig(settingsMap),
             guardrailsOverrides: guardrailsOverridesFromSettings(settingsMap),
@@ -135,9 +161,9 @@ export async function register(app: FastifyInstance): Promise<void> {
 
         const generation = computeWorkspaceGeneration({
           userId: request.authUser!.id,
-          agentId: 'canvas-assistant',
-          skillNames: defaultSkills,
-          chatModel,
+          agentId,
+          skillNames: activeSkills,
+          chatModel: finalChatModel,
           imageModel: null,
           extensionNames: resolvePiExtensions(['pi-canvas-tools']).map((s) => s.name),
           guardrailsOverrides: guardrailsOverridesFromSettings(settingsMap),
@@ -149,14 +175,14 @@ export async function register(app: FastifyInstance): Promise<void> {
             workspaceId,
             ws: prepared.ws,
             hasPrompt: prepared.hasPrompt,
-            chatModelName: chatModel.modelName,
+            chatModelName: finalChatModel.modelName,
             imageGenEnabled: false,
             message: prompt,
             images: payload.images,
             extensions: prepared.mountedExtensions,
             excludeTools: [...CANVAS_AGENT_EXCLUDED_TOOLS],
             generation,
-            contextWindow: chatModel.contextWindow,
+            contextWindow: finalChatModel.contextWindow,
           });
           for await (const evt of stream) {
             yield evt;

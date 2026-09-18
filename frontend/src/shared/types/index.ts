@@ -302,7 +302,9 @@ export type CanvasNodeType =
   /** 水墨写意节点：流体动力学水墨晕染、笔触手绘与意境生成（多模态工具） */
   | 'ink_wash'
   /** VuFind 馆藏节点：根据 ISBN 获取索书号（GLAM 工具） */
-  | 'vufind_call_number';
+  | 'vufind_call_number'
+  /** 画板智能助手：画板吉祥物专属智能助手（全局单例配置） */
+  | 'canvas_assistant';
 
 /**
  * 节点端口类型（输入/输出）：text / image 为当前实际使用的类型，

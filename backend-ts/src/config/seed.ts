@@ -2,8 +2,28 @@ import { hashSync } from 'bcryptjs';
 import { eq } from 'drizzle-orm';
 import { env } from './env.js';
 import { getDb } from './database.js';
-import { appSettings, promptTemplates, users } from '../db/schema.js';
+import { appSettings, nodeConfigs, llmConfigs, promptTemplates, users } from '../db/schema.js';
 import { DEFAULT_SYSTEM_PROMPT, DEFAULT_COVER_SYSTEM_PROMPT } from '../services/ai/llm-service.js';
+import { writeAgentMd } from '../services/ai/skill-agent-files.js';
+import { now } from '../shared/datetime.js';
+
+export const DEFAULT_CANVAS_ASSISTANT_PROMPT = `# 画布助手 Canvas Assistant
+
+你是一个专业的画板助手，帮助用户理解需求并在画布上推荐创建节点和辅助接线。
+
+## 核心原则
+1. **单节点推荐优先**：深入理解用户当前最核心的需求，从 33 个默认节点中推荐 1 个最适合的节点，并给出合理的初始参数建议。
+2. **确认后执行**：在调用 \`canvas_create_node\` 之前，向用户用自然语言简述方案，获得用户同意后再执行。
+3. **渐进接线**：创建节点后，主动询问或建议连接上级/下级节点（调用 \`canvas_connect_nodes\`）。
+4. **全场景反馈通道**：
+   - 4 类受管 AI 节点（图像分析、图像生成、文本生成、AI对话）不能由普通用户直接在前端创建空白实例。遇到此类定制需求时，协助梳理参数并调用 \`canvas_send_feedback\` 推送到管理员企业微信；
+   - 只要用户提出产品建议、遇到 Bug、或需要新增系统暂未支持的节点/数据源，主动整理成专业结构并调用 \`canvas_send_feedback\` 直送企业微信。
+5. **按需阅读技能**：
+   - 了解 33 个节点及其端口契约阅读 \`canvas-node-catalog\`
+   - 了解多模态滤镜效果参数阅读 \`canvas-multimodal-presets\`
+   - 了解典型接线模式阅读 \`canvas-workflow-patterns\`
+   - 了解反馈与自定义节点提交规范阅读 \`canvas-feedback-guide\`
+`;
 
 /**
  * 启动种子（对应 Python `app/main.py::_startup_init`）：
@@ -240,6 +260,12 @@ export function seedStartup(): void {
       nodeType: 'image_analysis',
       content: DEFAULT_COVER_SYSTEM_PROMPT,
     },
+    {
+      key: 'bookplate.canvas_assistant.default',
+      name: '画板智能助手默认提示词',
+      nodeType: 'canvas_assistant',
+      content: DEFAULT_CANVAS_ASSISTANT_PROMPT,
+    },
   ];
   for (const seed of seeds) {
     const exists = db.select().from(promptTemplates).where(eq(promptTemplates.key, seed.key)).get();
@@ -249,4 +275,38 @@ export function seedStartup(): void {
         .run();
     }
   }
+
+  // 默认节点配置：若尚无 canvas_assistant 节点配置，自动创建一条默认激活的配置
+  const existingAssistantNode = db
+    .select()
+    .from(nodeConfigs)
+    .where(eq(nodeConfigs.nodeType, 'canvas_assistant'))
+    .get();
+  if (!existingAssistantNode) {
+    const promptRow = db
+      .select()
+      .from(promptTemplates)
+      .where(eq(promptTemplates.key, 'bookplate.canvas_assistant.default'))
+      .get();
+    const activeLlm = db
+      .select()
+      .from(llmConfigs)
+      .where(eq(llmConfigs.isActive, true))
+      .orderBy(llmConfigs.id)
+      .get();
+    db.insert(nodeConfigs)
+      .values({
+        nodeType: 'canvas_assistant',
+        name: '画板智能助手',
+        promptId: promptRow?.id ?? null,
+        llmConfigId: activeLlm?.id ?? null,
+        isActive: true,
+        createdAt: now(),
+        updatedAt: now(),
+      })
+      .run();
+  }
+
+  // 确保磁盘预置有 AGENTS.md（即便无 DB 配置也能兜底）
+  writeAgentMd('canvas-assistant', DEFAULT_CANVAS_ASSISTANT_PROMPT);
 }

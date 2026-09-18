@@ -43,6 +43,7 @@ export const NODE_COLORS: Record<CanvasNodeType, string> = {
   watercolor_brush: 'oklch(0.68 0.18 190)',
   ink_wash: 'oklch(0.38 0.04 260)',
   vufind_call_number: 'oklch(0.62 0.18 280)',
+  canvas_assistant: 'oklch(0.65 0.16 260)',
 };
 
 export interface NodeTemplateDef {
@@ -51,7 +52,9 @@ export interface NodeTemplateDef {
   description: string;
   category: 'input' | 'analysis' | 'generate' | 'output' | 'tool' | 'multimodal' | 'glam';
   configurable: boolean;
-  defaultSize: { width: number; height: number };
+  defaultSize?: { width: number; height: number };
+  /** 是否在画板节点拾取器（「+」菜单）中隐藏 */
+  hiddenFromPicker?: boolean;
 }
 
 /**
@@ -60,6 +63,14 @@ export interface NodeTemplateDef {
  * 前端以 NODE_PORT_TYPES 静态镜像兜底并做连线类型匹配校验。
  */
 export const NODE_TEMPLATES: NodeTemplateDef[] = [
+  {
+    type: 'canvas_assistant',
+    name: '画板智能助手',
+    description: '画板悬浮吉祥物专属智能助手，负责需求理解、节点推荐与辅助接线',
+    category: 'tool',
+    configurable: true,
+    hiddenFromPicker: true,
+  },
   {
     type: 'book_info',
     name: '图书元数据',
@@ -469,6 +480,8 @@ export const NODE_PORT_TYPES: Record<
   ink_wash: { output: 'image', inputs: ['image', 'text'] },
   // VuFind 馆藏：输出获取的索书号文本；可连线图书元数据/文本节点自动读取 ISBN（连线即输入）
   vufind_call_number: { output: 'text', inputs: ['text'] },
+  // 画板智能助手：画板吉祥物专属智能助手（全局单例配置）
+  canvas_assistant: { output: 'text', inputs: ['text', 'image', 'document'] },
 };
 
 /** 节点端口声明：主输出 + 全部输出类型 + 接受的上游输入类型列表 */

@@ -687,6 +687,7 @@ const CanvasPage: React.FC = () => {
   const pickerItems = useMemo<NodePickerItem[]>(() => {
     const items: NodePickerItem[] = [];
     for (const t of NODE_TEMPLATES) {
+      if (t.hiddenFromPicker) continue;
       if (!t.configurable) {
         items.push({ key: t.type, nodeType: t.type, label: t.name, description: t.description });
         continue;

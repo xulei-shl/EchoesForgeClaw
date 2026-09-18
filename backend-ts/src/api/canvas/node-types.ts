@@ -68,6 +68,8 @@ export const NODE_TYPES = {
   INK_WASH: 'ink_wash',
   /** VuFind 馆藏（GLAM 工具）：根据 ISBN 获取索书号 */
   VUFIND_CALL_NUMBER: 'vufind_call_number',
+  /** 画板智能助手（系统单例助手）：画板悬浮吉祥物专属智能助手，意图理解与节点连线推荐 */
+  CANVAS_ASSISTANT: 'canvas_assistant',
 } as const;
 
 export type NodeType = (typeof NODE_TYPES)[keyof typeof NODE_TYPES];
@@ -88,9 +90,21 @@ export interface NodeTemplate {
    */
   output_types?: NodeOutputPortType[];
   input_types?: string[];
+  /** 是否在画板节点拾取器中隐藏（如画板助手属于单例挂件，不作为普通拖拽节点展示） */
+  hiddenFromPicker?: boolean;
 }
 
 export const NODE_TEMPLATES: NodeTemplate[] = [
+  {
+    type: NODE_TYPES.CANVAS_ASSISTANT,
+    name: '画板智能助手',
+    description: '画板悬浮吉祥物专属智能助手，负责需求理解、节点推荐与辅助接线',
+    category: 'tool',
+    configurable: true,
+    output_type: 'text',
+    input_types: ['text', 'image', 'document'],
+    hiddenFromPicker: true,
+  },
   {
     type: NODE_TYPES.BOOK_INFO,
     name: '图书元数据',
