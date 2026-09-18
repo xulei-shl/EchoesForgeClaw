@@ -169,3 +169,64 @@
 - 2026-09-07（补充③）：按反馈把「全部文件」从「排除密钥」改为「**密钥名字可见、内容不可预览**」——列表层 `include_agent_runtime=1` 返回完整清单（.pi-agent 配置名 + 任意深度 .env*，敏感标 `previewable=false`）；下载层 `isWorkspaceFileServable` 改为**按文件拦截**（.env* / 密钥 json / run|sessions|extensions / .agents / .pi 拒；skills|prompts|snapshot.json 放行）。前端 `regularFiles` 拆源（排除 .pi-agent 且可预览 ⇒ AI 产物 / 我的上传；全量 ⇒ 全部文件），树叶子不可预览态用锁图标 + 禁点。后端 246 通过（仅 3 个预存在 fastclaw 失败），前端 tsc + build + lint 全过。
 - 2026-09-07（补充④）：软链显示——`snapshotWorkspace/walkWorkspace` 从 `statSync`（跟随）改为 `lstatSync`：目录软链不递归（防越界列名/成环/膨胀），文件软链按目标列出；新增 `walkEverything`（完整清单，lstat 识别三类软链：文件软链 realpath 落在工作区/共享允许根内才可预览，目录软链 `isDir=true` 占位节点仅展示目录名，悬空软链锁定）；清单分支「覆盖」默认条目以保留 link/previewable 标记。前端 `AgentFile.isDir/link` + `buildTree` 支持目录占位节点 + 目录行「链接」徽标。后端 247 通过（仅 3 个预存在 fastclaw 失败），前端 tsc + build + lint 全过。
 - 遗留：任务 5.2 浏览器实测（画布 pi 节点抽屉：树展开/缩起/预览/删除、⋮ 激活「全部文件」看到 .pi-agent 配置名、.env*/软链锁定图标不可点、AGENTS.md 以「链接」显示可预览、历史 Tab 回归、密钥直连 URL 404）。
+
+---
+
+# Mascot Agent 模块：智能画布助手
+
+## 背景
+
+- 在现有 mascots 组件（支持反馈表单填写）基础上增加 Agent 模块
+- 点击后在右侧弹出悬浮 pi-agent 对话框
+- 帮助用户识别需求，从众多节点中选择合适的参数构建连线上下文
+- 利用后端各节点 API，封装为 MCP tools 供 agent 调用
+
+## 核心功能
+
+- 多轮对话识别用户需求
+- 推荐合适的节点组合及参数
+- 用户确认后自动创建节点和连线
+- 支持提示词/Skill/预设的智能推荐
+
+## 任务清单
+
+### 阶段 1 — 后端：扩展事件白名单
+- [ ] 1.1 `backend-ts/src/services/ai/pi/events.ts`：添加 canvas 操作方法到白名单（canvas_create_node, canvas_connect_nodes, canvas_search_prompts, canvas_search_skills, canvas_get_presets, canvas_get_node_configs）
+
+### 阶段 2 — Pi-Agent 扩展包
+- [ ] 2.1 `runtime/.agent/extensions/canvas-tools/package.json`：扩展包配置
+- [ ] 2.2 `runtime/.agent/extensions/canvas-tools/index.js`：扩展包实现，注册 canvas 工具
+
+### 阶段 3 — 前端：Canvas Tool Handlers
+- [ ] 3.1 `frontend/src/canvas/components/mascot/canvasToolHandlers.ts`：实现 canvas 操作函数（createCanvasNode, connectCanvasNodes, searchPrompts, searchSkills, getNodePresets, getNodeConfigs）
+
+### 阶段 4 — 前端：流式事件扩展
+- [ ] 4.1 `frontend/src/canvas/nodes/ai/infra/piStream.ts`：添加 canvas_tool_request 事件类型
+- [ ] 4.2 `frontend/src/canvas/nodes/ai/infra/PiChatNodeHost.tsx`：添加 canvas tool handler
+
+### 阶段 5 — 前端：Agent Dialog 组件
+- [ ] 5.1 `frontend/src/canvas/components/mascot/AgentDialog.tsx`：创建 Agent 对话框组件（右侧悬浮）
+- [ ] 5.2 `frontend/src/canvas/components/mascot/MascotWidget.tsx`：添加 Agent 按钮
+
+### 阶段 6 — Agent 系统提示词
+- [ ] 6.1 `runtime/.agent/agents/canvas-assistant/AGENTS.md`：Agent 系统提示词（中文）
+
+### 阶段 7 — 验证
+- [ ] 7.1 单元测试：测试 canvas 操作函数
+- [ ] 7.2 集成测试：测试 Agent 对话 → tool call → canvas 更新
+- [ ] 7.3 手动测试：完整场景验证（制作藏书票、图书推荐卡片、AI 绘画、图片风格化等）
+
+## 设计要点
+
+- **通信机制**：通过 extension_ui_request 事件实现 pi-agent → 前端的工具调用
+- **节点覆盖**：包含所有核心节点类型（book_info, vufind_call_number, text_generation, image_generation, chat, glass_refract 等）
+- **预设支持**：玻璃折射（9种）、浮雕（8种）、水彩（12种）、水墨（8种）等预设自动推荐
+- **提示词/Skill**：支持从 Bifrost 库搜索并推荐
+
+## 详细方案
+
+见 `tasks/mascot-agent-plan.md`
+
+## 评审记录
+
+- 2026-09-18：方案设计完成，等待实施。

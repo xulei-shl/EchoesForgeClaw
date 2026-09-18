@@ -7,9 +7,11 @@ import {
   Check,
   Search,
   RotateCcw,
+  Bot,
 } from 'lucide-react';
 import { Mascot, type MascotRefHandle } from './Mascot';
 import { FeedbackModal } from './FeedbackModal';
+import { AgentChatPanel } from './AgentChatPanel';
 import {
   MASCOT_CHARACTERS,
   MASCOT_CATEGORIES,
@@ -86,6 +88,7 @@ export const MascotWidget: React.FC = () => {
   // 弹窗状态
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [isAgentOpen, setIsAgentOpen] = useState(false);
 
   // 换装弹窗过滤状态
   const [activeCategory, setActiveCategory] = useState<string>('all');
@@ -297,6 +300,24 @@ export const MascotWidget: React.FC = () => {
             {/* 极简轻柔间距点 */}
             <span className="w-0.5 h-3 bg-paper-grid/60 rounded-full shrink-0 select-none" />
 
+            {/* Agent 智能助手入口 */}
+            <button
+              type="button"
+              title="Canvas Agent - 智能画布助手"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsAgentOpen(true);
+              }}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-sans font-medium text-ink-light hover:text-accent hover:bg-accent/10 active:scale-[0.96] transition-[background-color,color,transform] duration-150 cursor-pointer"
+            >
+              <Bot size={13} strokeWidth={1.75} className="text-blue-500 shrink-0" />
+              <span>Agent</span>
+            </button>
+
+            {/* 极简轻柔间距点 */}
+            <span className="w-0.5 h-3 bg-paper-grid/60 rounded-full shrink-0 select-none" />
+
             {/* 换装形象选择入口 */}
             <button
               type="button"
@@ -497,6 +518,12 @@ export const MascotWidget: React.FC = () => {
         open={isFeedbackOpen}
         onClose={() => setIsFeedbackOpen(false)}
         mascotName={currentCharacter.name}
+      />
+
+      {/* 6. Agent 智能画布助手面板 */}
+      <AgentChatPanel
+        open={isAgentOpen}
+        onClose={() => setIsAgentOpen(false)}
       />
     </>
   );

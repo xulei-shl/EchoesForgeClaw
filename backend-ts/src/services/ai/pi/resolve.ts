@@ -100,11 +100,12 @@ export interface PiExtensionSpec {
  * 版本锁定：升级 = 固定包版本（pi install / npm 安装锁定版本） + 回归验证。
  * 解析顺序：backend-ts 依赖树 → 仓库根依赖树 → pi 全局 npm 目录（首个命中生效）。
  */
-export function resolvePiExtensions(): PiExtensionSpec[] {
-  const whitelist = (process.env.PI_EXTENSIONS ?? '')
+export function resolvePiExtensions(extraWhitelist?: string[]): PiExtensionSpec[] {
+  const envList = (process.env.PI_EXTENSIONS ?? '')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
+  const whitelist = Array.from(new Set([...envList, ...(extraWhitelist ?? [])]));
   const specs: PiExtensionSpec[] = [];
   for (const raw of whitelist) {
     const name = String(raw ?? '').trim();
@@ -115,6 +116,7 @@ export function resolvePiExtensions(): PiExtensionSpec[] {
     const dir = firstExisting([
       path.join(BACKEND_ROOT, rel),
       path.join(REPO_ROOT, rel),
+      path.join(REPO_ROOT, 'packages', ...segs),
       path.join(piNpmPackagesDir(), ...segs),
     ]);
     if (dir) specs.push({ name, dir });

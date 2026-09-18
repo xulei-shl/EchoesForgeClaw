@@ -19,7 +19,7 @@ import type { PiChatModelConfig, PiImageModelConfig } from './workspace.js';
 
 export interface WorkspaceGenerationInput {
   userId: number;
-  agentId: number;
+  agentId: number | string;
   skillNames: string[];
   chatModel: PiChatModelConfig;
   imageModel: PiImageModelConfig | null;

@@ -12,6 +12,7 @@ import { register as registerMapArt } from './routes/map-art.js';
 import { register as registerPatternSearch } from './routes/pattern-search.js';
 import { register as registerColorSearch } from './routes/color-search.js';
 import { register as registerVuFind } from './routes/vufind-call-number.js';
+import { register as registerCanvasAgent } from './routes/canvas-agent.js';
 
 /**
  * bookplate 模块路由（对应 Python `app/modules/bookplate/router.py`）。
@@ -39,4 +40,5 @@ export async function registerBookplateRouter(app: FastifyInstance): Promise<voi
   await registerPatternSearch(app);
   await registerColorSearch(app);
   await registerVuFind(app);
+  await registerCanvasAgent(app);
 }

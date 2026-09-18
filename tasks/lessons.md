@@ -44,3 +44,25 @@ asterizeRotatedGrid(source, ...)），各通道从同一干净源采样。
 **问题：** 优化 `runPiAgent` 出队循环时，把「终局判定（agent_settled/timeout/error）」直接用作 break 条件，在 killTree 后立即 break。两个后果：① settle/error 到达时若 finalize 块排在 break 之后会连 kill 都跳过（RPC 进程常驻不退出 → `await exitCode` 永久挂起、SSE 测试 120s 超时）；② 即使修正顺序，`settled`/`error` 立即 break 会让生成器在 Windows `taskkill` 文件句柄释放完成前返回（ci 下 rmSync 工作区撞 EPERM，拟合性测试失败）。
 **规则：** kill 型收尾的循环形态必须是——先 finalize(killTree)，再**保持等待** `childClosed && stdoutEnded` 后 break，而不是改了终局信号就同时改掉退出信号；「不等待 stdout end 防挂起」的担心是假设性的，Node 保证被杀进程的管道 end 必发。给 pi 子进程 stdio 补 error 监听（无监听时管道断裂会把整个后端 worker 带崩）；注册表注销做 identity 校验并顶替时先杀旧进程，防双进程共写会话文件与过期轮误删新条目。
 **修复：** 循环结构 = `isFinal()(settle|timeout|error) → finalize(killTree)` + `childClosed && stdoutEnded → break`；`registerPiProcess` 注销闭包校验 `=== entry`、顶替旧条目先 `prev.kill()`；`childStdin/stderr.on('error', ...)` + stdin 写入 try/catch + `sendExtensionUiResponse` 写防崩。
+
+## 2026-09-18: Pi-Agent 工具注册机制 — 扩展包 vs MCP
+
+**问题：** 设计 Mascot Agent 模块时，最初考虑使用 MCP (Model Context Protocol) 封装画布操作 API。经过深入探索发现，pi-coding-agent 的工具注册机制是通过扩展包（`-e` flag）在子进程内部完成的，而非后端直接注册。
+
+**关键发现：**
+1. **工具注册位置**：pi-coding-agent 子进程内部，通过扩展包的 `tools` 数组定义
+2. **工具执行位置**：100% 在 pi 子进程内部，后端/前端只是观察者
+3. **前端交互机制**：`extension_ui_request` 事件（pi stdout → 后端 → SSE → 前端 → POST response → 后端 → pi stdin）
+4. **白名单过滤**：后端 `events.ts` 的 `DIALOG_METHODS` 只允许 `select/confirm/input/editor` 通过
+
+**决策：**
+- 不使用 MCP（需要额外的 stdio JSON-RPC 通信，增加复杂度）
+- 使用扩展包 + `extension_ui_request` 机制（复用现有架构）
+- 在后端白名单中添加新的 canvas 操作方法
+
+**规则：**
+- 在设计新功能前，先深入理解现有架构的工具注册和执行机制
+- 复用现有机制比引入新协议更简单可靠
+- `extension_ui_request` 是 pi-agent 与前端通信的唯一桥梁
+
+**应用：** Mascot Agent 模块采用扩展包方案，通过 `extension_ui_request` 事件实现 canvas 工具调用。

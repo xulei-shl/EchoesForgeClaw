@@ -116,11 +116,13 @@ export interface PiImageModelConfig {
 }
 
 export interface PreparePiWorkspaceOptions {
-  agentId: number;
+  agentId: number | string;
   chatModel: PiChatModelConfig;
   imageModel: PiImageModelConfig | null;
   /** 上游 skill_search 选中的 skill 名（空 = 不装配任何技能）。 */
   skillNames: string[];
+  /** 额外的扩展包名白名单（如 ['pi-canvas-tools']，仅特定 Agent 装配） */
+  extraExtensions?: string[];
   /** pi-web-access 扩展配置（buildWebSearchConfig 产物；含 API Key，来自 app_settings 映射，仅受支持字段）。 */
   webSearchConfig?: Record<string, string>;
   /**
@@ -209,7 +211,15 @@ export function preparePiWorkspace(
         skippedSkills.push(String(raw ?? ''));
         continue;
       }
-      const source = path.join(registryRoot, name);
+      let source = path.join(registryRoot, name);
+      let isSystem = false;
+      if (!existsSync(source)) {
+        const sysSource = path.join(REAL_SKILLS_ROOT, name);
+        if (existsSync(sysSource)) {
+          source = sysSource;
+          isSystem = true;
+        }
+      }
       try {
         if (!statSync(source).isDirectory() || !existsSync(path.join(source, 'SKILL.md'))) {
           skippedSkills.push(name);
@@ -220,20 +230,25 @@ export function preparePiWorkspace(
         continue;
       }
       const dest = path.join(skillsDir, name);
-      let isLink = false;
-      try {
-        isLink = lstatSync(source).isSymbolicLink();
-      } catch {
-        isLink = false;
-      }
-      if (isLink) {
-        // Bifrost 检索装：软链共享区真实包（Windows 无权限时退化为复制的功能等价语义）
-        symlinkOrCopy(path.join(REAL_SKILLS_ROOT, name), dest);
+      if (isSystem) {
+        // 系统级技能包：软链/复制共享区真实包
+        symlinkOrCopy(source, dest);
       } else {
-        // 用户上传装：保持「工作区内真实目录」私有语义，强制复制
-        mkdirSync(path.dirname(dest), { recursive: true });
-        rmSync(dest, { recursive: true, force: true });
-        cpSync(source, dest, { recursive: true });
+        let isLink = false;
+        try {
+          isLink = lstatSync(source).isSymbolicLink();
+        } catch {
+          isLink = false;
+        }
+        if (isLink) {
+          // Bifrost 检索装：软链共享区真实包（Windows 无权限时退化为复制的功能等价语义）
+          symlinkOrCopy(path.join(REAL_SKILLS_ROOT, name), dest);
+        } else {
+          // 用户上传装：保持「工作区内真实目录」私有语义，强制复制
+          mkdirSync(path.dirname(dest), { recursive: true });
+          rmSync(dest, { recursive: true, force: true });
+          cpSync(source, dest, { recursive: true });
+        }
       }
       mountedSkills.push(name);
     }
@@ -248,7 +263,7 @@ export function preparePiWorkspace(
   const mountedExtensions: string[] = [];
   const extRoot = path.join(agentDir, 'extensions');
   rmSync(extRoot, { recursive: true, force: true });
-  const extSpecs = resolvePiExtensions();
+  const extSpecs = resolvePiExtensions(opts.extraExtensions);
   if (extSpecs.length) {
     mkdirSync(extRoot, { recursive: true });
     for (const spec of extSpecs) {

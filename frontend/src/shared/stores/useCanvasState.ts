@@ -151,9 +151,9 @@ function ensureHydrated(userId: string) {
 // setter 与 React setState 同签名（直接值或函数式更新），供组件与执行引擎共用；
 // 为稳定模块函数，可安全注入执行引擎（流回调在组件卸载后依然有效）。
 // 注意参数用 SetStateAction 而非 any：any 参数不会为回调参数提供上下文类型，会触发隐式 any 报错
-const setNodes = (updater: SetStateAction<any[]>) =>
+export const setNodes = (updater: SetStateAction<any[]>) =>
   apply({ nodes: typeof updater === 'function' ? updater(state.nodes) : updater });
-const setEdges = (updater: SetStateAction<any[]>) =>
+export const setEdges = (updater: SetStateAction<any[]>) =>
   apply({ edges: typeof updater === 'function' ? updater(state.edges) : updater });
 const setGroups = (updater: SetStateAction<any[]>) =>
   apply({ groups: typeof updater === 'function' ? updater(state.groups) : updater });
