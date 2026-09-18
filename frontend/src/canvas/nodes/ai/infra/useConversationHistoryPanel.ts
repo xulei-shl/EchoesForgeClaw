@@ -10,7 +10,11 @@ import { fetchConversationSessions, type ConversationSessionSummary } from './pi
  * - openOverride：外部受控展开态（对话历史与工作区文件合并为单一侧边抽屉时由宿主统一驱动）；
  *   缺省 = 内部自管理。返回的 open 恒为生效值（openOverride ?? 内部状态）。
  */
-export function useConversationHistoryPanel(openOverride?: boolean, mode?: 'pi' | 'llm' | 'agent') {
+export function useConversationHistoryPanel(
+  openOverride?: boolean,
+  mode?: 'pi' | 'llm' | 'agent',
+  nodeId?: string
+) {
   const [open, setOpen] = useState(false);
   const effectiveOpen = openOverride ?? open;
   const [sessions, setSessions] = useState<ConversationSessionSummary[]>([]);
@@ -23,13 +27,13 @@ export function useConversationHistoryPanel(openOverride?: boolean, mode?: 'pi' 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setSessions(await fetchConversationSessions(mode));
+      setSessions(await fetchConversationSessions(mode, nodeId));
     } catch {
       setSessions([]);
     } finally {
       setLoading(false);
     }
-  }, [mode]);
+  }, [mode, nodeId]);
 
   useEffect(() => {
     if (effectiveOpen) void load();

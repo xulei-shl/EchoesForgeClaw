@@ -225,8 +225,14 @@ async function postUiResponse(
  * mode='llm' 仅 LLM API 会话，mode='agent' 仅 FastClaw Agent 会话，互不混显。
  * 跨节点全局列表（不传 node_id 即不过滤；来源节点由前端按 workspaceId 前缀标注）。
  */
-async function fetchConversationSessions(mode?: 'pi' | 'llm' | 'agent'): Promise<ConversationSessionSummary[]> {
-  const qs = mode ? `?mode=${mode}` : '';
+async function fetchConversationSessions(
+  mode?: 'pi' | 'llm' | 'agent',
+  nodeId?: string
+): Promise<ConversationSessionSummary[]> {
+  const params = new URLSearchParams();
+  if (mode) params.set('mode', mode);
+  if (nodeId) params.set('node_id', nodeId);
+  const qs = params.toString() ? `?${params.toString()}` : '';
   const resp = await fetch(`/api/modules/bookplate/chat/sessions${qs}`, {
     headers: authHeaders(),
   });

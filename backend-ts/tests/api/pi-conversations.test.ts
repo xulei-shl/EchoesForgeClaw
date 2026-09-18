@@ -359,4 +359,30 @@ describe('chat 会话列表 / 置顶 / 删除路由（鉴权）', () => {
     });
     expect(del.statusCode).toBe(400);
   });
+
+  it('画板助手 canvas-agent 会话双向隔离：全局列表跳过，node_id=canvas-agent 精准匹配', async () => {
+    const canvasAgentWs = `canvas-agent_test_${Date.now()}`;
+    seedWorkspace(canvasAgentWs, ['帮我推荐一个天气节点']);
+
+    // 1. 未指定 node_id 的跨节点全局列表应跳过 canvas-agent
+    const globalList = listPiConversations(uid);
+    expect(globalList.some((s) => s.workspaceId === canvasAgentWs)).toBe(false);
+
+    // 2. 指定 node_id='canvas-agent' 精准收录
+    const agentList = listPiConversations(uid, 'canvas-agent');
+    expect(agentList.some((s) => s.workspaceId === canvasAgentWs)).toBe(true);
+
+    // 3. 通过 API GET /chat/sessions?node_id=canvas-agent 能够拉取到
+    const apiRes = await app.inject({
+      method: 'GET',
+      url: '/api/modules/bookplate/chat/sessions?node_id=canvas-agent',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(apiRes.statusCode).toBe(200);
+    const apiSessions = (apiRes.json() as { sessions: { workspaceId: string }[] }).sessions;
+    expect(apiSessions.some((s) => s.workspaceId === canvasAgentWs)).toBe(true);
+
+    // 清理
+    await deletePiConversation(uid, canvasAgentWs);
+  });
 });

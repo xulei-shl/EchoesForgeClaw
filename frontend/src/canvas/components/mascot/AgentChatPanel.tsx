@@ -9,6 +9,7 @@ import {
   Square,
   Maximize2,
   Minimize2,
+  History,
 } from 'lucide-react';
 import { PhotoProvider } from 'react-photo-view';
 import { useFeedback } from '../../../shared/components/ui/FeedbackProvider';
@@ -19,9 +20,16 @@ import {
   piStreamReducer,
   INITIAL_PI_STREAM,
 } from '../../nodes/ai/infra/piStream';
-import { fetchPiSession } from '../../nodes/ai/infra/piSessionApi';
+import {
+  fetchPiSession,
+  setConversationPinned,
+  renameConversation,
+  deleteConversationSession,
+} from '../../nodes/ai/infra/piSessionApi';
+import { useConversationHistoryPanel } from '../../nodes/ai/infra/useConversationHistoryPanel';
 import { copyTextToClipboard } from '../../../shared/utils/clipboard';
 import { executeCanvasOp } from './canvasExecutor';
+import { AgentHistoryDrawer } from './AgentHistoryDrawer';
 import { MASCOT_AGENT_WORKSPACE_STORAGE_KEY } from './constants';
 import type { ChatMessage } from '../../../shared/types';
 
@@ -86,7 +94,11 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
-  // 3. 乐观用户消息与在途请求控制
+  // 3. 对话历史侧边抽屉状态机（向左吸附，专属 canvas-agent 前缀隔离）
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const convPanel = useConversationHistoryPanel(historyOpen, 'pi', 'canvas-agent');
+
+  // 4. 乐观用户消息与在途请求控制
   const optimisticUserRef = useRef<ChatMessage | null>(null);
   const [optimisticUser, setOptimisticUser] = useState<ChatMessage | null>(null);
   const interruptedRef = useRef(false);
@@ -297,6 +309,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         const { messages: refreshedMsgs } = await fetchPiSession(currentWs);
         setSessionMsgs(refreshedMsgs);
         dispatchStream({ type: 'end' });
+        convPanel.bump();
         optimisticUserRef.current = null;
         setOptimisticUser(null);
       } catch {
@@ -314,6 +327,55 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
       dispatchStream({ type: 'settle' });
     }
   };
+
+  // 切换到指定历史会话
+  const handleSelectSession = useCallback((ws: string) => {
+    if (ws === activeWorkspaceId) return;
+    handleStop();
+    setOptimisticUser(null);
+    setActiveWorkspaceId(ws);
+    try {
+      localStorage.setItem(MASCOT_AGENT_WORKSPACE_STORAGE_KEY, ws);
+    } catch {
+      /* ignore */
+    }
+    dispatchStream({ type: 'end' });
+  }, [activeWorkspaceId]);
+
+  // 新建对话：置空当前活跃工作区并重置消息（历史列表完好保留）
+  const handleNewChat = useCallback(() => {
+    handleStop();
+    setOptimisticUser(null);
+    setActiveWorkspaceId(null);
+    setSessionMsgs([]);
+    try {
+      localStorage.removeItem(MASCOT_AGENT_WORKSPACE_STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+    dispatchStream({ type: 'end' });
+  }, []);
+
+  // 置顶 / 取消置顶
+  const handleTogglePin = useCallback(async (ws: string, pinned: boolean) => {
+    await setConversationPinned(ws, pinned);
+    convPanel.bump();
+  }, [convPanel]);
+
+  // 重命名会话
+  const handleRenameSession = useCallback(async (ws: string, title: string) => {
+    await renameConversation(ws, title);
+    convPanel.bump();
+  }, [convPanel]);
+
+  // 彻底删除会话
+  const handleDeleteSession = useCallback(async (ws: string) => {
+    await deleteConversationSession(ws);
+    if (ws === activeWorkspaceId) {
+      handleNewChat();
+    }
+    convPanel.bump();
+  }, [activeWorkspaceId, handleNewChat, convPanel]);
 
   // 响应普通扩展 UI 交互（select / confirm 等）
   const handleDialogAnswer = async (
@@ -363,6 +425,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         body: JSON.stringify({ workspace_id: oldWs }),
       }).catch(console.error);
     }
+    convPanel.bump();
   };
 
   // 复制正文
@@ -420,54 +483,89 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
 
   return (
     <div
-      className={`fixed right-4 bottom-4 ${panelSizeClass} z-[9985] flex flex-col bg-paper border border-paper-grid rounded-2xl shadow-2xl overflow-hidden animate-in slide-in-from-right-4 duration-200 transition-[width,height]`}
-      style={{ transformOrigin: 'bottom right' }}
+      className="fixed right-4 bottom-4 z-[9985] flex items-end gap-3 pointer-events-none"
       onClick={(e) => e.stopPropagation()}
     >
-      {/* 1. 顶栏：标题、状态、宽屏展开、清空与关闭 */}
-      <div className="px-4 py-3 border-b border-paper-grid bg-paper/90 backdrop-blur-sm flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-600">
-            <Bot size={17} />
-          </div>
-          <div>
-            <h3 className="text-sm font-serif font-bold text-ink leading-tight">Canvas Agent</h3>
-            <span className="text-[10px] text-ink-faint font-sans flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-              智能画布助手 · 连线与反馈
-            </span>
-          </div>
-        </div>
-        <div className="flex items-center gap-1">
-          {/* 尺寸展开 / 收缩切换 */}
-          <button
-            type="button"
-            onClick={() => setIsExpanded((prev) => !prev)}
-            title={isExpanded ? '还原标准宽度 (540px)' : '展开为宽屏模式 (720px)'}
-            className="p-1.5 rounded-lg text-ink-faint hover:text-ink hover:bg-paper-grid/30 active:scale-95 transition-colors"
-          >
-            {isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-          </button>
-          {/* 清空会话 */}
-          <button
-            type="button"
-            onClick={handleClear}
-            title="清空对话"
-            className="p-1.5 rounded-lg text-ink-faint hover:text-ink hover:bg-paper-grid/30 active:scale-95 transition-colors"
-          >
-            <Trash2 size={14} />
-          </button>
-          {/* 关闭面板 */}
-          <button
-            type="button"
-            onClick={onClose}
-            title="关闭面板"
-            className="p-1.5 rounded-lg text-ink-faint hover:text-ink hover:bg-paper-grid/30 active:scale-95 transition-colors"
-          >
-            <X size={15} />
-          </button>
-        </div>
+      {/* 对话历史侧边抽屉（向左吸附展示） */}
+      <div className="pointer-events-auto">
+        <AgentHistoryDrawer
+          open={historyOpen}
+          onClose={() => setHistoryOpen(false)}
+          sessions={convPanel.sessions}
+          loading={convPanel.loading}
+          currentWorkspaceId={activeWorkspaceId}
+          onRefresh={convPanel.refresh}
+          onSelectSession={handleSelectSession}
+          onNewChat={handleNewChat}
+          onTogglePin={handleTogglePin}
+          onRenameSession={handleRenameSession}
+          onDeleteSession={handleDeleteSession}
+        />
       </div>
+
+      {/* 主聊天对话面板 */}
+      <div
+        className={`pointer-events-auto ${panelSizeClass} flex flex-col bg-paper border border-paper-grid rounded-2xl shadow-2xl overflow-hidden animate-in slide-in-from-right-4 duration-200 transition-[width,height]`}
+        style={{ transformOrigin: 'bottom right' }}
+      >
+        {/* 1. 顶栏：标题、状态、历史抽屉、宽屏展开、清空与关闭 */}
+        <div className="px-4 py-3 border-b border-paper-grid bg-paper/90 backdrop-blur-sm flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-600">
+              <Bot size={17} />
+            </div>
+            <div>
+              <h3 className="text-sm font-serif font-bold text-ink leading-tight">Canvas Agent</h3>
+              <span className="text-[10px] text-ink-faint font-sans flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                智能画布助手 · 连线与反馈
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            {/* 对话历史侧边抽屉切换按钮 */}
+            <button
+              type="button"
+              onClick={() => setHistoryOpen((prev) => !prev)}
+              title={historyOpen ? '收起对话历史' : '展开对话历史'}
+              aria-label="对话历史"
+              className={`p-1.5 rounded-lg transition-colors active:scale-95 ${
+                historyOpen
+                  ? 'text-accent bg-accent/10 font-medium'
+                  : 'text-ink-faint hover:text-ink hover:bg-paper-grid/30'
+              }`}
+            >
+              <History size={15} />
+            </button>
+            {/* 尺寸展开 / 收缩切换 */}
+            <button
+              type="button"
+              onClick={() => setIsExpanded((prev) => !prev)}
+              title={isExpanded ? '还原标准宽度 (540px)' : '展开为宽屏模式 (720px)'}
+              className="p-1.5 rounded-lg text-ink-faint hover:text-ink hover:bg-paper-grid/30 active:scale-95 transition-colors"
+            >
+              {isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+            </button>
+            {/* 清空会话 */}
+            <button
+              type="button"
+              onClick={handleClear}
+              title="清空对话"
+              className="p-1.5 rounded-lg text-ink-faint hover:text-ink hover:bg-paper-grid/30 active:scale-95 transition-colors"
+            >
+              <Trash2 size={14} />
+            </button>
+            {/* 关闭面板 */}
+            <button
+              type="button"
+              onClick={onClose}
+              title="关闭面板"
+              className="p-1.5 rounded-lg text-ink-faint hover:text-ink hover:bg-paper-grid/30 active:scale-95 transition-colors"
+            >
+              <X size={15} />
+            </button>
+          </div>
+        </div>
 
       {/* 2. 消息流视口：完全复用 ChatMessageItem 呈现 */}
       <PhotoProvider maskOpacity={0.8} bannerVisible={false}>
@@ -639,5 +737,6 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
         </div>
       </div>
     </div>
-  );
+  </div>
+);
 };

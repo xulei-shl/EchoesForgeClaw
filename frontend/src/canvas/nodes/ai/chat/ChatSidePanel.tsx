@@ -854,11 +854,7 @@ const HistoryBody: React.FC<{
   );
 };
 
-/**
- * 单个会话行：标题 + 元信息（时间 · 轮次 · 来源节点）；行点击载入，行内提供重命名 / 置顶 / 删除。
- * 重命名为行内编辑态：铅笔进入，输入框回车 / 勾确认（空白 = 恢复自动标题），Esc / 取消退出。
- */
-const ConversationRow: React.FC<{
+export interface ConversationRowProps {
   session: ConversationSessionSummary;
   isCurrent: boolean;
   sourceTitle?: string | null;
@@ -874,7 +870,13 @@ const ConversationRow: React.FC<{
   selected?: boolean;
   busy?: boolean;
   onToggleSelect?: () => void;
-}> = ({
+}
+
+/**
+ * 单个会话行：标题 + 元信息（时间 · 轮次 · 来源节点）；行点击载入，行内提供重命名 / 置顶 / 删除。
+ * 重命名为行内编辑态：铅笔进入，输入框回车 / 勾确认（空白 = 恢复自动标题），Esc / 取消退出。
+ */
+export const ConversationRow: React.FC<ConversationRowProps> = ({
   session,
   isCurrent,
   sourceTitle,

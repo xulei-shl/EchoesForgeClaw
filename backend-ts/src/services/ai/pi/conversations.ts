@@ -218,6 +218,8 @@ export function listPiConversations(userId: number, nodeId?: string): Conversati
   }
   for (const dir of entries) {
     if (prefix && !dir.startsWith(prefix)) continue;
+    // 跨节点全局列表排除画板助手会话；画板助手通过 nodeId='canvas-agent' 专属拉取
+    if (!prefix && dir.startsWith('canvas-agent_')) continue;
     // 防御双保险：readdir 本身无穿越风险，此处再拦相对跳转目录名
     if (dir === '.' || dir === '..' || dir.includes('/') || dir.includes('\\')) continue;
     const ws = path.join(root, dir);
