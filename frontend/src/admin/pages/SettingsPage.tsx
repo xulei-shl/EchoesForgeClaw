@@ -68,7 +68,7 @@ const KNOWN_KEYS: { key: string; description: string }[] = [
   { key: 'pi.guardrails.features.policies', description: 'Pi Agent 文件保护策略（.env / 私钥等敏感文件禁止 Agent 读取与修改）' },
   { key: 'pi.guardrails.features.permission_gate', description: 'Pi Agent 危险命令确认（递归删除 / 提权 / 格式化等危险命令触发确认）' },
   { key: 'pi.guardrails.features.path_access', description: 'Pi Agent 越界路径访问控制（工作区外的文件访问拦截）' },
-  { key: 'pi.guardrails.path_access.mode', description: 'Pi Agent 越界路径访问模式：block/ask/allow' },
+  { key: 'pi.guardrails.path_access.mode', description: 'Pi Agent 越界路径访问模式：block = 越界一律拒绝（默认，headless 无询问通道）；allow = 放行并记录（放弃跨租户隔离，慎用）。ask 已不再支持，存量值按 block 生效并在装配期给出提示' },
   { key: 'pi.guardrails.path_access.allowed_paths', description: 'Pi Agent 越界路径放行白名单（JSON 数组，如 [{"kind":"file","path":"/data/x.txt"},{"kind":"directory","path":"/data/y"}]）' },
   { key: 'wechat.webhook_url', description: '企业微信群机器人 Webhook 地址（用于接收画板用户反馈通知；敏感，仅显示掩码）' },
 ];
@@ -236,7 +236,11 @@ function resolvePiGuardrails(items: AppSetting[]) {
   const policies = get(PI_GUARDRAILS_KEYS.policies, 'true') === 'true';
   const permissionGate = get(PI_GUARDRAILS_KEYS.permissionGate, 'true') === 'true';
   const pathAccess = get(PI_GUARDRAILS_KEYS.pathAccess, 'true') === 'true';
-  const mode = get(PI_GUARDRAILS_KEYS.accessMode, 'block');
+  const rawMode = get(PI_GUARDRAILS_KEYS.accessMode, 'block');
+  // 与后端 resolvePathAccessMode 对齐：ask 仅存量兼容（headless 下与 block 同为拒绝，
+  // 装配期已归一为 block 并给出提示），界面按实际生效值展示
+  const mode = rawMode === 'allow' ? 'allow' : 'block';
+  const legacyAsk = rawMode === 'ask';
   const raw = get(PI_GUARDRAILS_KEYS.allowedPaths, '[]');
   let allowedPaths: { kind: string; path: string }[] = [];
   try {
@@ -245,7 +249,16 @@ function resolvePiGuardrails(items: AppSetting[]) {
   } catch {
     /* 非法 JSON：视为空 */
   }
-  return { enabled, policies, permissionGate, pathAccess, mode, allowedPaths, rawAllowedPaths: raw };
+  return {
+    enabled,
+    policies,
+    permissionGate,
+    pathAccess,
+    mode,
+    legacyAsk,
+    allowedPaths,
+    rawAllowedPaths: raw,
+  };
 }
 
 interface AllowedPathRow {
@@ -254,9 +267,8 @@ interface AllowedPathRow {
 }
 
 const PI_PATHACCESS_MODE_OPTIONS = [
-  { label: 'block（一律拒绝，RPC 推荐）', value: 'block' },
-  { label: 'ask（询问用户）', value: 'ask' },
-  { label: 'allow（放行并记录）', value: 'allow' },
+  { label: 'block（越界一律拒绝，默认）', value: 'block' },
+  { label: 'allow（放行并记录，慎用）', value: 'allow' },
 ];
 
 /**
@@ -416,8 +428,14 @@ function PiGuardrailsConfigCard({
           />
         </div>
         <p className="mt-1.5 text-xs text-ink-faint font-sans">
-          RPC 模式下 ask 会退化为「一律拒绝」且语义含糊，block 确定性最高；模式变更需新装配工作区生效
+          服务端为 headless RPC，无询问通道：ask 已不再支持（存量值按 block 生效）；
+          如需放宽请改用 allow（放弃跨租户隔离，慎用）；模式变更需新装配工作区生效
         </p>
+        {g.legacyAsk && (
+          <p className="mt-1 text-xs text-warning font-sans">
+            检测到存量配置 ask：已按 block 生效（装配期有提示），可切换为 block 消除该提示
+          </p>
+        )}
       </div>
 
       <div className="mt-4 border-t border-dashed border-paper-grid pt-4">
