@@ -50,6 +50,7 @@ export default function (pi: ExtensionAPI) {
       '【参数格式】必传 type；data 为扁平键值对象（如 { isbn: "978..." }、{ text: "..." }、{ city: "北京" }）。',
       '【节点参考】33 种内置节点类型与 data 键名速查见 canvas-node-catalog 技能（按系统提示 available_skills 中的路径用 read 读取）。',
       '【自动连线】可选传入 parent_id（已存在的父节点 ID）自动建立数据流连线。',
+      '【现状核对】创建前先用 canvas_list_nodes 看画布现状，避免重复创建同类节点。',
     ],
     parameters: Type.Object({
       type: Type.String({
@@ -89,6 +90,7 @@ export default function (pi: ExtensionAPI) {
     promptSnippet: '连接两个画布节点创建数据流',
     promptGuidelines: [
       '使用 canvas_connect_nodes 时必须提供 source_id 和 target_id，确保两个节点已创建。',
+      '不确定节点 ID 时，先用 canvas_list_nodes 获取最新清单再连线，不要凭记忆引用可能已删除的 ID。',
     ],
     parameters: Type.Object({
       source_id: Type.String({ description: '源节点 ID' }),
@@ -96,6 +98,42 @@ export default function (pi: ExtensionAPI) {
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const result = await canvasOp(ctx, 'connect_nodes', params as Record<string, unknown>);
+      return { content: [{ type: 'text' as const, text: JSON.stringify(result) }], details: result };
+    },
+  });
+
+  // ==================== 画布只读工具（通过 UI 桥接读取前端画布状态） ====================
+
+  pi.registerTool({
+    name: 'canvas_list_nodes',
+    label: '列出画布节点',
+    description: '只读列出画布上全部节点（id/类型/标题/坐标/是否已产生输出），不返回输出正文。',
+    promptSnippet: '列出画布上的全部节点',
+    promptGuidelines: [
+      '本工具只返回节点清单（不含输出正文）；要读取某节点的内容请接着用 canvas_read_node_output。',
+      '为用户找「画布上已有什么」时先调本工具，再按需读取个别节点，避免一次拉取全部正文。',
+    ],
+    parameters: Type.Object({}),
+    async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+      const result = await canvasOp(ctx, 'list_nodes', {});
+      return { content: [{ type: 'text' as const, text: JSON.stringify(result) }], details: result };
+    },
+  });
+
+  pi.registerTool({
+    name: 'canvas_read_node_output',
+    label: '读取节点输出',
+    description: '只读读取画布上指定节点的当前输出内容（文本 / 图片引用列表 / 无输出状态）。',
+    promptSnippet: '读取画布上指定节点的输出内容',
+    promptGuidelines: [
+      'node_id 必须是画布上已存在的节点 ID；不确定 ID 时先用 canvas_list_nodes 查清单。',
+      '节点尚未运行或输出为空时返回 has_output=false，请提示用户先运行该节点，不要凭空编造内容。',
+    ],
+    parameters: Type.Object({
+      node_id: Type.String({ description: '要读取的节点 ID（canvas_list_nodes 返回的 id）' }),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const result = await canvasOp(ctx, 'read_node_output', params as Record<string, unknown>);
       return { content: [{ type: 'text' as const, text: JSON.stringify(result) }], details: result };
     },
   });
@@ -116,7 +154,8 @@ export default function (pi: ExtensionAPI) {
       const { query, limit = 10 } = params;
       const url = `${BACKEND_URL}/api/modules/bookplate/bifrost/prompts?q=${encodeURIComponent(query)}&limit=${limit}`;
       const resp = await fetch(url, { signal });
-      if (!resp.ok) return { content: [{ type: 'text' as const, text: `搜索失败: HTTP ${resp.status}` }] };
+      if (!resp.ok)
+        return { content: [{ type: 'text' as const, text: `搜索失败: HTTP ${resp.status}` }], details: { count: 0 } };
       const data = await resp.json();
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(data.prompts ?? data, null, 2) }],
@@ -139,7 +178,8 @@ export default function (pi: ExtensionAPI) {
       const { query, limit = 10 } = params;
       const url = `${BACKEND_URL}/api/modules/bookplate/skills/bifrost-search?q=${encodeURIComponent(query)}&limit=${limit}`;
       const resp = await fetch(url, { signal });
-      if (!resp.ok) return { content: [{ type: 'text' as const, text: `搜索失败: HTTP ${resp.status}` }] };
+      if (!resp.ok)
+        return { content: [{ type: 'text' as const, text: `搜索失败: HTTP ${resp.status}` }], details: { count: 0 } };
       const data = await resp.json();
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(data.skills ?? data, null, 2) }],
@@ -266,7 +306,11 @@ export default function (pi: ExtensionAPI) {
     async execute(_toolCallId, params, signal) {
       const url = `${BACKEND_URL}/api/admin/node-configs?node_type=${encodeURIComponent(params.node_type)}&is_active=true`;
       const resp = await fetch(url, { signal });
-      if (!resp.ok) return { content: [{ type: 'text' as const, text: `获取配置失败: HTTP ${resp.status}` }] };
+      if (!resp.ok)
+        return {
+          content: [{ type: 'text' as const, text: `获取配置失败: HTTP ${resp.status}` }],
+          details: { node_type: params.node_type, count: 0 },
+        };
       const data = await resp.json();
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }],
@@ -320,14 +364,14 @@ export default function (pi: ExtensionAPI) {
           const errText = await resp.text();
           return {
             content: [{ type: 'text' as const, text: `反馈提交失败(HTTP ${resp.status}): ${errText}` }],
-            details: { success: false, status: resp.status },
+            details: { success: false, error: `HTTP ${resp.status}` },
           };
         }
 
         const data = await resp.json();
         return {
           content: [{ type: 'text' as const, text: '反馈已成功推送至管理员企业微信！管理员将尽快查看与处理。' }],
-          details: { success: true, response: data },
+          details: { success: true, error: undefined },
         };
       } catch (err: any) {
         return {

@@ -83,6 +83,7 @@ description: "33 个默认内置节点与 4 类受管 AI 节点的类型、端�
 
 ## 三、端口匹配与接线规则
 
+0. **先读后连**：连线或引用节点内容前，用 `canvas_list_nodes` 确认节点 ID 与 `has_output` 状态；`canvas_read_node_output` 可读取文本类节点的当前输出（`has_output=false` 说明节点尚未运行或输出为空，先提示用户运行，不要编造内容）。
 1. **类型一致性原则**：
    - `text` 输出 → 连向接受 `text` 的输入端口；
    - `image` 输出 → 连向接受 `image` 的输入端口；

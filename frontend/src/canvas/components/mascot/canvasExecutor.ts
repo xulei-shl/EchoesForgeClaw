@@ -4,11 +4,29 @@
  * 供 Mascot Agent（Canvas Assistant）在接收到 extension_ui_request
  * （方法为 select 且 title 带有 "CANVAS_OP:" 前缀）时自动解析并执行。
  * 纯状态操作，零 React 组件上下文依赖，直接操作全局 useCanvasState。
+ * 操作分两类：写操作（create_node / connect_nodes）与只读操作
+ * （list_nodes / read_node_output，把画布节点内容回传给 Agent）。
  */
 import { nodesRef, edgesRef, setNodes, setEdges } from '../../../shared/stores/useCanvasState';
 import api from '../../../shared/services/api';
 import { seedDataFor } from '../../core/seedData';
+import { getNodeTitle, nodeOutputImages, nodeOutputText, type GraphNode } from '../../nodes/_shared/nodeTypes';
 import type { NodeType, NodeData } from '../../core/graphTypes';
+
+/** 单次读取节点输出的正文上限（防止超长产物撑爆模型上下文；超出部分明确标注截断） */
+const MAX_READ_TEXT_CHARS = 20000;
+
+/** data URL 收敛为占位符：内联 base64 对模型不可读，塞进工具结果纯属浪费上下文 */
+function collapseImageUrl(url: string): string {
+  if (!url.startsWith('data:')) return url;
+  const mime = /^data:([^;,]+)/.exec(url)?.[1] ?? 'image';
+  return `${mime} 内联图片（base64 已省略，长度 ${url.length}）`;
+}
+
+/** 节点当前是否有可消费的对外输出（文本或图片任一非空） */
+function nodeHasOutput(node: GraphNode): boolean {
+  return nodeOutputText(node).length > 0 || nodeOutputImages(node).length > 0;
+}
 
 export function executeCanvasOp(
   op: string,
@@ -189,6 +207,59 @@ export function executeCanvasOp(
           success: true,
           edge_id: edgeId,
           message: `已成功连接节点 ${source.type} → ${target.type}`,
+        };
+      }
+
+      case 'list_nodes': {
+        // 只读：返回节点清单（不含输出正文），供 Agent 先定位再按需读取
+        const nodes: NodeData[] = nodesRef.current || [];
+        const items = nodes.map((n) => ({
+          id: n.id,
+          type: n.type,
+          title: getNodeTitle(n),
+          x: n.x,
+          y: n.y,
+          has_output: nodeHasOutput(n),
+          is_generating: !!n.data?.isGenerating,
+        }));
+        return {
+          success: true,
+          count: items.length,
+          nodes: items,
+          ...(items.length ? {} : { message: '画布上暂无节点' }),
+        };
+      }
+
+      case 'read_node_output': {
+        // 只读：读取指定节点的当前输出（文本正文 + 图片引用列表）
+        const nodeId = (realParams.node_id || (params && (params as any).node_id)) as string;
+        if (!nodeId) {
+          return { success: false, error: '缺少必填的节点 ID (node_id)，可先用 list_nodes 查节点清单' };
+        }
+        const nodes: NodeData[] = nodesRef.current || [];
+        const target = nodes.find((n) => n.id === nodeId);
+        if (!target) {
+          return {
+            success: false,
+            error: `节点 ${nodeId} 不存在（可能已被删除），请用 list_nodes 获取最新节点清单`,
+          };
+        }
+        const text = nodeOutputText(target);
+        const images = nodeOutputImages(target);
+        const truncated = text.length > MAX_READ_TEXT_CHARS;
+        return {
+          success: true,
+          node_id: nodeId,
+          type: target.type,
+          title: getNodeTitle(target),
+          is_generating: !!target.data?.isGenerating,
+          has_output: nodeHasOutput(target),
+          text: truncated ? text.slice(0, MAX_READ_TEXT_CHARS) : text,
+          ...(truncated ? { truncated: true, total_chars: text.length } : {}),
+          images: images.map(collapseImageUrl),
+          ...(nodeHasOutput(target)
+            ? {}
+            : { message: '该节点当前没有可读取的输出（尚未运行或输出为空）' }),
         };
       }
 

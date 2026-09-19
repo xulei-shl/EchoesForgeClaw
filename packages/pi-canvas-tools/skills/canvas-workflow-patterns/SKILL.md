@@ -7,6 +7,8 @@ description: "典型画布链路组合模板。当用户想要一整条创作流
 
 每条链路只使用 **33 个默认内置节点**——可直接 `canvas_create_node` 创建。`→` 表示用 `canvas_connect_nodes` 连线。
 
+**动手前先看现状**：落地任何链路前，先用 `canvas_list_nodes` 摸清画布上已有哪些节点（`has_output` 标记是否已有产出），避免重复创建；链路各环节跑完后，用 `canvas_read_node_output` 抽查关键节点产出（如 `book_info` 的图书元数据是否已拉到、上游文本是否非空）再继续接线或向用户交付。
+
 ## 1. 图书卡片流
 `book_info` → `book_card`
 - 场景：按 ISBN 或书名生成一张分享卡片。

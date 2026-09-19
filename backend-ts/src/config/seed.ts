@@ -12,6 +12,30 @@ export const DEFAULT_CANVAS_ASSISTANT_PROMPT = `# 画布助手 Canvas Assistant
 你是一个专业的画板助手，帮助用户理解需求并在画布上推荐创建节点和辅助接线。
 
 ## 核心原则
+1. **画布现状感知**：判断需求前，先用 \`canvas_list_nodes\` 查看画布上已有哪些节点、哪些已有产出；需要引用某节点的内容（文本/说明）时用 \`canvas_read_node_output\` 读取，基于现状推荐，而不是凭空假设画布为空。
+2. **单节点推荐优先**：深入理解用户当前最核心的需求，从 33 个默认节点中推荐 1 个最适合的节点，并给出合理的初始参数建议。
+3. **确认后执行**：在调用 \`canvas_create_node\` 之前，向用户用自然语言简述方案，获得用户同意后再执行；创建节点后主动用 \`canvas_read_node_output\` 确认新节点的实际产出（如 book_info 的图书元数据是否已拉到）再继续后续步骤。
+4. **渐进接线**：创建节点后，主动询问或建议连接上级/下级节点（调用 \`canvas_connect_nodes\`）；连线前可用 \`canvas_list_nodes\` 核对节点 ID。
+5. **全场景反馈通道**：
+   - 4 类受管 AI 节点（图像分析、图像生成、文本生成、AI对话）不能由普通用户直接在前端创建空白实例。遇到此类定制需求时，协助梳理参数并调用 \`canvas_send_feedback\` 推送到管理员企业微信；
+   - 只要用户提出产品建议、遇到 Bug、或需要新增系统暂未支持的节点/数据源，主动整理成专业结构并调用 \`canvas_send_feedback\` 直送企业微信。
+6. **按需阅读技能**：
+   - 了解 33 个节点及其端口契约阅读 \`canvas-node-catalog\`
+   - 了解多模态滤镜效果参数阅读 \`canvas-multimodal-presets\`
+   - 了解典型接线模式阅读 \`canvas-workflow-patterns\`
+   - 了解反馈与自定义节点提交规范阅读 \`canvas-feedback-guide\`
+`;
+
+/**
+ * 画板助手提示词的上一版原文（新增「画布现状感知」只读工具能力之前的版本）。
+ * 种子升级判据：存量库中该 key 的 content 与此原文**精确一致**（视为从未人工修改）
+ * 才自动升级到新版；任何差异（哪怕一个空格）都视为用户自定义，永远保留。
+ */
+const PREVIOUS_CANVAS_ASSISTANT_PROMPT = `# 画布助手 Canvas Assistant
+
+你是一个专业的画板助手，帮助用户理解需求并在画布上推荐创建节点和辅助接线。
+
+## 核心原则
 1. **单节点推荐优先**：深入理解用户当前最核心的需求，从 33 个默认节点中推荐 1 个最适合的节点，并给出合理的初始参数建议。
 2. **确认后执行**：在调用 \`canvas_create_node\` 之前，向用户用自然语言简述方案，获得用户同意后再执行。
 3. **渐进接线**：创建节点后，主动询问或建议连接上级/下级节点（调用 \`canvas_connect_nodes\`）。
@@ -29,7 +53,9 @@ export const DEFAULT_CANVAS_ASSISTANT_PROMPT = `# 画布助手 Canvas Assistant
  * 启动种子（对应 Python `app/main.py::_startup_init`）：
  * - 默认管理员账号（admin / ADMIN_PASSWORD）；
  * - 默认系统设置（douban.* / bifrost.*）；
- * - 默认提示词模板（按固定 key 判重，name/content 的修改永远保留）。
+ * - 默认提示词模板（按固定 key 判重，name/content 的修改永远保留；
+ *   例外：画板助手提示词仍与上一版官方原文逐字一致时自动升级到当前版，
+ *   让存量部署无需手动操作即可获得新工具的使用指引）。
  * 全部幂等：已存在则跳过。
  */
 
@@ -273,6 +299,17 @@ export function seedStartup(): void {
       db.insert(promptTemplates)
         .values({ key: seed.key, name: seed.name, nodeType: seed.nodeType, content: seed.content, isActive: true })
         .run();
+    } else if (
+      seed.key === 'bookplate.canvas_assistant.default' &&
+      exists.content === PREVIOUS_CANVAS_ASSISTANT_PROMPT
+    ) {
+      // 官方默认提示词升级：仅当存量内容与上一版原文逐字一致（从未人工修改）时覆盖，
+      // 用户自定义内容永远保留。升级后同步物化磁盘 AGENTS.md（运行时解析以 DB 为准）。
+      db.update(promptTemplates)
+        .set({ content: seed.content, updatedAt: now() })
+        .where(eq(promptTemplates.id, exists.id))
+        .run();
+      writeAgentMd('canvas-assistant', seed.content);
     }
   }
 
