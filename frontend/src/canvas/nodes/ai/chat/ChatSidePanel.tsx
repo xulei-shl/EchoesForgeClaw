@@ -195,32 +195,29 @@ export const ChatSidePanelDrawer: React.FC<{
   const hasHistory = !!sessions;
   // 文件数据源（单请求 include_agent_runtime=1）：
   // - allFiles = 完整清单（含 .pi-agent 配置名与 .env* 名字，敏感文件 previewable=false）；「全部文件」Tab 用全量；
-  // - regularFiles = 排除 .pi-agent、根级装配/会话文件（AGENTS.md、conversation.jsonl）与不可预览密钥文件的可预览常规文件；AI 产物 / 我的上传 分桶用。
+  // - regularFiles = 排除纯目录、.pi-agent、.agents、.pi、inputs 目录本身、根级装配/会话文件（AGENTS.md、conversation.jsonl）与不可预览密钥文件的可预览常规文件；AI 产物 / 我的上传 分桶用。
   const allFiles = panel.files;
   const regularFiles = allFiles.filter(
     (f) =>
-      !f.path.startsWith('.pi-agent/') &&
+      !f.isDir &&
+      f.previewable !== false &&
       !isNonArtifactPath(f.path) &&
-      f.previewable !== false
+      f.path !== '.pi-agent' &&
+      !f.path.startsWith('.pi-agent/') &&
+      f.path !== '.agents' &&
+      !f.path.startsWith('.agents/') &&
+      f.path !== '.pi' &&
+      !f.path.startsWith('.pi/') &&
+      f.path !== 'inputs'
   );
   const fileTabs = WORKSPACE_FILE_CATEGORIES.map((category) => ({
     category,
     files: regularFiles.filter(category.matches),
   }));
-  // 激活 Tab = 用户所选且仍有效（全部文件非空 / 文件类别非空 / 对话历史可用），
-  // 否则回退：全部文件 → 第一个非空类别 → 对话历史，避免选中 Tab 随列表刷新后悬空
+  // 激活 Tab：保持用户当前选择的 activeTab；若当前不支持对话历史却选了 history，才回退到 artifacts
   const resolvedTab: SideTabId = (() => {
-    const activeValid =
-      (activeTab === 'all' && allFiles.length > 0) ||
-      (activeTab === 'history' && hasHistory) ||
-      (activeTab !== 'all' &&
-        activeTab !== 'history' &&
-        fileTabs.some((t) => t.category.id === activeTab && t.files.length > 0));
-    if (activeValid) return activeTab;
-    if (allFiles.length > 0) return 'all';
-    const firstNonEmpty = fileTabs.find((t) => t.files.length > 0);
-    if (firstNonEmpty) return firstNonEmpty.category.id;
-    return hasHistory ? 'history' : 'all';
+    if (activeTab === 'history' && !hasHistory) return 'artifacts';
+    return activeTab;
   })();
   // 激活文件 Tab 的叶子集（全部 / 类别分桶）
   const activeFiles =
@@ -234,15 +231,13 @@ export const ChatSidePanelDrawer: React.FC<{
   const showHistoryBatchBar = resolvedTab === 'history' && !!panel.onBatchDeleteSessions && sessionsAll.length > 0;
   const canDeleteFiles = isFileTab && !!panel.onDeleteFile;
 
-  // Tab 注册表：顶部三个常驻主 Tab（AI 产物 / 我的上传 / 对话历史）+ 「全部文件」折叠进「…」溢出下拉
-  // （用户视角：默认看到与旧版一致的三个 Tab；「全部文件」只读总览走竖向三点菜单）。
-  // 未来新增 Tab：追加条目（primary=false 即落溢出），无需改动 Tab 栏渲染逻辑。
+  // Tab 注册表：4 个平级常驻主 Tab（AI 产物 / 我的上传 / 对话历史 / 全部文件）
+  // 均可自由切换，若某 Tab 暂无内容则在下方展示空状态，绝不置灰禁用或自动跳走
   const tabDescs: SideTabDesc[] = [
     ...fileTabs.map(({ category, files }) => ({
       id: category.id as SideTabId,
       label: category.label,
       badge: files.length,
-      disabled: files.length === 0,
       primary: true,
     })),
     ...(hasHistory
@@ -252,7 +247,6 @@ export const ChatSidePanelDrawer: React.FC<{
       id: 'all' as const,
       label: '全部文件',
       badge: allFiles.length,
-      disabled: allFiles.length === 0,
       primary: false,
     },
   ];
@@ -458,7 +452,7 @@ export const ChatSidePanelDrawer: React.FC<{
         className={className}
       >
         <div className="flex flex-col min-h-0">
-          {/* Tab 栏：常驻主 Tab（文件类别空桶置灰禁用 / 对话历史始终可点）+ 「…」溢出下拉承载未来新增 Tab */}
+          {/* Tab 栏：3 个常驻主 Tab（AI 产物 / 我的上传 / 对话历史）+ 「…」溢出下拉收纳「全部文件」 */}
           <div className="shrink-0 flex items-center gap-1 p-0.5 rounded-lg bg-paper-grid/30 border border-paper-grid/50 mb-2.5">
             {primaryTabs.map((tab) => {
               const isActive = tab.id === resolvedTab;
@@ -466,15 +460,11 @@ export const ChatSidePanelDrawer: React.FC<{
                 <button
                   key={tab.id}
                   type="button"
-                  disabled={tab.disabled}
                   onClick={() => setActiveTab(tab.id)}
-                  title={tab.disabled ? `${tab.label}暂无文件` : undefined}
-                  className={`group flex-1 min-w-0 px-2 py-1 rounded-md text-[11px] font-sans select-none flex items-center justify-center gap-1 whitespace-nowrap transition-[color,background-color,box-shadow,transform] duration-150 ease-out motion-reduce:transition-none ${
+                  className={`group flex-1 min-w-0 px-2 py-1 rounded-md text-[11px] font-sans select-none flex items-center justify-center gap-1 whitespace-nowrap transition-[color,background-color,box-shadow,transform] duration-150 ease-out motion-reduce:transition-none cursor-pointer ${
                     isActive
                       ? 'bg-paper text-accent shadow-2xs font-medium'
-                      : tab.disabled
-                        ? 'text-ink-faint/50 cursor-not-allowed'
-                        : 'text-ink-light hover:text-ink hover:bg-paper-grid/30 active:scale-[0.98] cursor-pointer'
+                      : 'text-ink-light hover:text-ink hover:bg-paper-grid/30 active:scale-[0.98]'
                   }`}
                 >
                   <span className="truncate">{tab.label}</span>
@@ -482,9 +472,7 @@ export const ChatSidePanelDrawer: React.FC<{
                     className={`inline-flex items-center justify-center px-1 min-w-[14px] h-[14px] rounded-full text-[10px] font-mono tabular-nums leading-none transition-colors duration-150 ${
                       isActive
                         ? 'bg-accent/12 text-accent font-semibold'
-                        : tab.disabled
-                          ? 'bg-transparent text-ink-faint/40'
-                          : 'bg-paper-grid/60 text-ink-faint group-hover:text-ink-light'
+                        : 'bg-paper-grid/60 text-ink-faint group-hover:text-ink-light'
                     }`}
                   >
                     {tab.badge}
@@ -605,6 +593,13 @@ export const ChatSidePanelDrawer: React.FC<{
                 onPreview={setPreviewFile}
                 onDelete={canDeleteFiles ? handleDeleteFile : undefined}
                 defaultCollapsed={resolvedTab === 'all'}
+                emptyText={
+                  resolvedTab === 'uploads'
+                    ? '暂无上传文件'
+                    : resolvedTab === 'all'
+                      ? '工作区暂无文件'
+                      : '暂无 AI 产物'
+                }
                 selectMode={selectMode}
                 selectedKeys={selectedKeys}
                 busy={batchBusy}
@@ -731,6 +726,7 @@ const FilesBody: React.FC<{
   onDelete?: (file: AgentFile) => void;
   /** 「全部文件」Tab：初始收起全部目录（缺省 = 全展开） */
   defaultCollapsed?: boolean;
+  emptyText?: string;
   selectMode?: boolean;
   selectedKeys?: ReadonlySet<string>;
   busy?: boolean;
@@ -742,6 +738,7 @@ const FilesBody: React.FC<{
   onPreview,
   onDelete,
   defaultCollapsed = false,
+  emptyText = '暂无文件',
   selectMode = false,
   selectedKeys,
   busy = false,
@@ -759,7 +756,7 @@ const FilesBody: React.FC<{
   if (files.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center text-center py-6 px-3">
-        <p className="text-[11px] font-sans text-ink-faint">暂无文件</p>
+        <p className="text-[11px] font-sans text-ink-faint">{emptyText}</p>
       </div>
     );
   }

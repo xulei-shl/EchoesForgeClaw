@@ -185,9 +185,9 @@ export interface WorkspaceFileCategory<ID extends string = string> {
   matches: (file: AgentFile) => boolean;
 }
 
-/** 工作区相对路径是否属于用户上传（inputs/ 前缀；上传文件不是 agent 产物）。 */
-function isUploadedPath(path: unknown): path is string {
-  return typeof path === 'string' && path.startsWith('inputs/');
+/** 工作区相对路径是否属于用户上传（inputs 目录或 inputs/ 前缀；上传文件不是 agent 产物）。 */
+export function isUploadedPath(path: unknown): path is string {
+  return typeof path === 'string' && (path === 'inputs' || path.startsWith('inputs/'));
 }
 
 /** 工作区根级装配/会话文件（如 AGENTS.md 系统提示词软链、conversation.jsonl 会话记录）：非 agent 产物。 */

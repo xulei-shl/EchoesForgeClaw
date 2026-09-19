@@ -602,7 +602,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
       className="fixed right-4 bottom-4 z-[9985] flex items-end pointer-events-none"
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="relative">
+      <div className="relative pointer-events-auto">
         {/* 侧边面板抽屉（向左吸附展示，完全复用 ChatSidePanelDrawer，支持 4 个 Tab） */}
         <ChatSidePanelDrawer panel={sidePanelProp} side="left" />
 

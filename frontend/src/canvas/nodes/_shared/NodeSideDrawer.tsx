@@ -92,7 +92,7 @@ export const NodeSideDrawer: React.FC<NodeSideDrawerProps> = ({
         width: `${width}px`,
         ...(isRight ? { left: 'calc(100% + 12px)' } : { right: 'calc(100% + 12px)' }),
       }}
-      className={`absolute top-0 bottom-0 min-h-[480px] z-40 bg-paper/95 backdrop-blur-md border border-paper-grid/80 rounded-xl shadow-2xl flex flex-col overflow-hidden text-ink select-none transition-[transform,opacity] duration-150 ease-out motion-reduce:transition-none ${
+      className={`absolute top-0 bottom-0 min-h-[480px] z-40 pointer-events-auto bg-paper/95 backdrop-blur-md border border-paper-grid/80 rounded-xl shadow-2xl flex flex-col overflow-hidden text-ink select-none transition-[transform,opacity] duration-150 ease-out motion-reduce:transition-none ${
         isVisible
           ? 'opacity-100 translate-x-0'
           : isRight

@@ -924,8 +924,8 @@ describe('listWorkspaceArtifacts includeAgentRuntime（「全部文件」完整�
     expect(byPath.get('.pi-agent/snapshot.json')!.previewable).toBeUndefined();
     expect(byPath.get('.pi-agent/skills/sk.txt')!.previewable).toBeUndefined();
     expect(byPath.get('inputs/up.txt')!.previewable).toBeUndefined();
-    // 运行态会话 jsonl（run/）不进入「全部文件」清单
-    expect(byPath.has('.pi-agent/run/chat.jsonl')).toBe(false);
+    // 运行态会话 jsonl（run/）全量无过滤列入「全部文件」清单
+    expect(byPath.has('.pi-agent/run/chat.jsonl')).toBe(true);
   });
 
   it('默认模式（不传 includeAgentRuntime）：.pi-agent 与 .env* 仍整体隐藏（AI 产物 / 我的上传 视图不变）', () => {
@@ -937,7 +937,7 @@ describe('listWorkspaceArtifacts includeAgentRuntime（「全部文件」完整�
     expect(rels).toContain('inputs/up.txt');
   });
 
-  it('完整清单识别符号链接：文件软链/目录软链占位/悬空软链（无软链权限时降级仅断言名字可见）', () => {
+  it('完整清单识别符号链接：文件软链/目录软链节点与穿透子文件/悬空软链（无软链权限时降级仅断言名字可见）', () => {
     const ws = wsPath();
     const ext = mkdtempSync(path.join(tmpdir(), 'pi-link-'));
     let madeLinks = false;
@@ -959,9 +959,9 @@ describe('listWorkspaceArtifacts includeAgentRuntime（「全部文件」完整�
       if (madeLinks) {
         // 文件软链指向工作区外：名字可见、不可预览
         expect(byPath.get('link-out.txt')).toMatchObject({ link: true, previewable: false });
-        // 目录软链：占位节点，不穿透目标内容
-        expect(byPath.get('link-dir')).toMatchObject({ isDir: true, link: true, previewable: false });
-        expect(byPath.has('link-dir/x.txt')).toBe(false);
+        // 目录软链：目录节点可见，且穿透递归其目标内容
+        expect(byPath.get('link-dir')).toMatchObject({ isDir: true, link: true });
+        expect(byPath.has('link-dir/x.txt')).toBe(true);
         // 悬空软链：名字可见、不可预览
         expect(byPath.get('link-dangling.txt')).toMatchObject({ link: true, previewable: false });
       } else {

@@ -70,8 +70,7 @@ interface TreeNode {
 }
 
 /** 由相对路径列表构建目录树（目录在前、文件在后，同级按名称字典序）。
- *  支持「目录软链占位」条目（file.isDir=true）：该条目自身成为目录节点（无子项），
- *  让符号链接目录名在树中可见而不穿透目标内容。 */
+ *  支持目录条目（file.isDir=true，包含空目录与穿透软链目录），确保所有目录及层级在树中完整可见。 */
 function buildTree(files: AgentFile[]): TreeNode[] {
   const root: TreeNode[] = [];
   const index = new Map<string, TreeNode>();
@@ -183,11 +182,9 @@ export const WorkspaceFileTree: React.FC<{
           onClick={() => toggle(node.path)}
           aria-expanded={!isCollapsed}
           title={
-            node.isLink
-              ? `符号链接目录「${node.name}」：仅展示目录名，不穿透目标内容`
-              : isCollapsed
-                ? `展开 ${node.name}`
-                : `收起 ${node.name}`
+            isCollapsed
+              ? (node.isLink ? `展开符号链接目录 ${node.name}` : `展开 ${node.name}`)
+              : (node.isLink ? `收起符号链接目录 ${node.name}` : `收起 ${node.name}`)
           }
           className="group flex items-center gap-1 w-full py-1 pr-2 rounded-md text-[11px] font-sans transition-[background-color,color] duration-150 ease-out motion-reduce:transition-none select-none cursor-pointer hover:bg-accent/5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
           style={pad}
@@ -206,7 +203,18 @@ export const WorkspaceFileTree: React.FC<{
           {node.isLink && <span className="shrink-0 text-[9px] text-ink-faint font-sans">链接</span>}
         </button>
         {!isCollapsed && node.children && (
-          <div className="flex flex-col">{node.children.map((c) => (c.isDir ? renderDir(c, depth + 1) : renderFile(c, depth + 1)))}</div>
+          <div className="flex flex-col">
+            {node.children.length === 0 ? (
+              <div
+                className="py-1 pr-2 text-[10px] text-ink-faint italic select-none"
+                style={{ paddingLeft: `${(depth + 1) * 14 + 6}px` }}
+              >
+                (空文件夹)
+              </div>
+            ) : (
+              node.children.map((c) => (c.isDir ? renderDir(c, depth + 1) : renderFile(c, depth + 1)))
+            )}
+          </div>
         )}
       </div>
     );
