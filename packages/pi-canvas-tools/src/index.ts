@@ -2,8 +2,9 @@
  * Pi-Agent Canvas Tools Extension
  *
  * 注册画布操作工具，通过 extension_ui_request 机制与前端通信。
- * 画布操作类工具通过 ctx.ui.select 桥接到前端执行；
- * 搜索/查询类工具直接 HTTP 调用后端 API。
+ * 所有需要用户数据的工具均通过 ctx.ui.select 桥接到前端执行：画布读写由前端画布状态
+ * 承接，检索类由前端已登录凭据调后端（pi 子进程内 fetch 无凭据，直连已鉴权路由会 401）。
+ * 仅反馈工具直连后端（POST /api/feedback 为公开路由）。
  */
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
@@ -138,28 +139,33 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // ==================== 搜索/查询工具（直接 HTTP 调用后端 API） ====================
+  // ==================== 检索类工具（经 UI 桥接，由前端携带用户凭据调后端） ====================
 
   pi.registerTool({
     name: 'canvas_search_prompts',
     label: '搜索提示词',
     description: '从 Bifrost 提示词库搜索提示词，返回提示词列表供选择。',
     promptSnippet: '搜索 Bifrost 提示词库',
-    promptGuidelines: ['使用 canvas_search_prompts 搜索提示词时，用简洁的中文关键词效果最好。'],
+    promptGuidelines: [
+      '使用 canvas_search_prompts 搜索提示词时，用简洁的中文关键词效果最好。',
+      '返回的是提示词清单（名称与正文）供用户挑选，不是你自己的创作内容；检索失败会返回明确错误，如实转述即可，不要编造结果。',
+    ],
     parameters: Type.Object({
       query: Type.String({ description: '搜索关键词' }),
       limit: Type.Optional(Type.Number({ description: '返回数量，默认 10' })),
     }),
-    async execute(_toolCallId, params, signal) {
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const { query, limit = 10 } = params;
-      const url = `${BACKEND_URL}/api/modules/bookplate/bifrost/prompts?q=${encodeURIComponent(query)}&limit=${limit}`;
-      const resp = await fetch(url, { signal });
-      if (!resp.ok)
-        return { content: [{ type: 'text' as const, text: `搜索失败: HTTP ${resp.status}` }], details: { count: 0 } };
-      const data = await resp.json();
+      const result = await canvasOp(ctx, 'search_prompts', { query, limit });
+      if (result.success === false) {
+        return {
+          content: [{ type: 'text' as const, text: `提示词检索失败: ${result.error ?? '前端未响应'}` }],
+          details: { count: 0 },
+        };
+      }
       return {
-        content: [{ type: 'text' as const, text: JSON.stringify(data.prompts ?? data, null, 2) }],
-        details: { count: Array.isArray(data.prompts) ? data.prompts.length : 0 },
+        content: [{ type: 'text' as const, text: JSON.stringify(result) }],
+        details: { count: Number(result.count) || 0 },
       };
     },
   });
@@ -169,21 +175,26 @@ export default function (pi: ExtensionAPI) {
     label: '搜索 Skill',
     description: '从 Bifrost Skill 库搜索 Skill，返回 Skill 列表供选择。',
     promptSnippet: '搜索 Bifrost Skill 库',
-    promptGuidelines: ['使用 canvas_search_skills 搜索 Skill 时，用简洁的中文关键词效果最好。'],
+    promptGuidelines: [
+      '使用 canvas_search_skills 搜索 Skill 时，用简洁的中文关键词效果最好。',
+      '返回的是技能元数据清单（名称/描述/版本），不含 SKILL.md 正文——引用技能时以返回的 name 为准，不要凭印象补全技能内容。',
+    ],
     parameters: Type.Object({
       query: Type.String({ description: '搜索关键词' }),
       limit: Type.Optional(Type.Number({ description: '返回数量，默认 10' })),
     }),
-    async execute(_toolCallId, params, signal) {
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const { query, limit = 10 } = params;
-      const url = `${BACKEND_URL}/api/modules/bookplate/skills/bifrost-search?q=${encodeURIComponent(query)}&limit=${limit}`;
-      const resp = await fetch(url, { signal });
-      if (!resp.ok)
-        return { content: [{ type: 'text' as const, text: `搜索失败: HTTP ${resp.status}` }], details: { count: 0 } };
-      const data = await resp.json();
+      const result = await canvasOp(ctx, 'search_skills', { query, limit });
+      if (result.success === false) {
+        return {
+          content: [{ type: 'text' as const, text: `Skill 检索失败: ${result.error ?? '前端未响应'}` }],
+          details: { count: 0 },
+        };
+      }
       return {
-        content: [{ type: 'text' as const, text: JSON.stringify(data.skills ?? data, null, 2) }],
-        details: { count: Array.isArray(data.skills) ? data.skills.length : 0 },
+        content: [{ type: 'text' as const, text: JSON.stringify(result) }],
+        details: { count: Number(result.count) || 0 },
       };
     },
   });

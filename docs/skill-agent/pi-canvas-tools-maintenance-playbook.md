@@ -11,8 +11,8 @@
 | 组件 | 位置 | 加载方式 | 备注 |
 |---|---|---|---|
 | 扩展包 `pi-canvas-tools` | `packages/pi-canvas-tools/src/index.ts` | **TS 源码直接加载**（package.json `pi.extensions: ["./src/index.ts"]`） | 无需构建产物；pi 侧加载不做类型检查 |
-| 工具清单（9 个） | 同上 | `canvasOp` 桥接 | 只读：`canvas_list_nodes` / `canvas_read_node_output`；写操作：`canvas_create_node` / `canvas_connect_nodes`；检索：`canvas_search_prompts` / `canvas_search_skills` / `canvas_get_presets` / `canvas_get_node_configs`；反馈：`canvas_send_feedback` |
-| 前端执行器 | `frontend/src/canvas/components/mascot/canvasExecutor.ts` | 每个 op 一个 case | 复用 `nodeOutputText` / `nodeOutputImages` / `getNodeTitle` 纯函数（与 chat 节点上下文注入同口径） |
+| 工具清单（9 个） | 同上 | `canvasOp` 桥接 | 只读：`canvas_list_nodes` / `canvas_read_node_output`；写操作：`canvas_create_node` / `canvas_connect_nodes`；检索：`canvas_search_prompts` / `canvas_search_skills`（均经桥接，前端带用户凭据调后端 Bifrost 接口）/ `canvas_get_presets`（扩展内静态预设）/ `canvas_get_node_configs`（仍直连 admin 路由，见 §6.7）；反馈：`canvas_send_feedback`（直连公开路由 `/api/feedback`） |
+| 前端执行器 | `frontend/src/canvas/components/mascot/canvasExecutor.ts` | 每个 op 一个 case，`executeCanvasOp` 为 async | 复用 `nodeOutputText` / `nodeOutputImages` / `getNodeTitle` 纯函数（与 chat 节点上下文注入同口径）；检索 case 复用 `bifrostService`（与提示词/Skill 检索节点同口径） |
 | 同捆技能 | `packages/pi-canvas-tools/skills/*/SKILL.md` | 装配回退（见 §2） | `canvas-workflow-patterns` / `canvas-node-catalog` |
 | 系统提示词种子 | `backend-ts/src/config/seed.ts`（`DEFAULT_CANVAS_ASSISTANT_PROMPT`） | 启动时物化 AGENTS.md | 运行时以 DB `promptTemplates` 行为准（见 §5） |
 | 工具排除名单 | `backend-ts/src/services/ai/pi/config.ts`（`CANVAS_AGENT_EXCLUDED_TOOLS`） | 仅排除 bash | 新增只读工具无需变更 |
@@ -40,6 +40,7 @@ canvasExecutor.ts：按 op 分发 case，从 nodesRef/edgesRef 读数据
 
 **关键推论**：
 - 新增工具 = 扩展端一个 `canvasOp()` 调用 + 前端一个 case，**两端各一处**，传输层零改动；
+- 需要「当前登录用户」凭据的后端路由（提示词/Skill 检索等）**必须走桥接**：子进程内 `fetch` 不带 Authorization，直连只会拿到 401（§2.5）；
 - 前端 `AgentChatPanel` 对 `CANVAS_OP:` 前缀是通用拦截，不需要注册表；
 - 操作回执要自带数据（如只读工具返回节点内容）——写操作只回 `{ success, message }` 时，agent 下一轮依然「看不见」自己创建的东西，这正是本次补只读工具的根因。
 
@@ -88,7 +89,18 @@ canvasExecutor.ts：按 op 分发 case，从 nodesRef/edgesRef 读数据
 
 改默认提示词的操作顺序：`PREVIOUS_CANVAS_ASSISTANT_PROMPT ← 当前 DEFAULT 全文`，再写新的 `DEFAULT`。升级逻辑自动覆盖存量库。
 
-### 2.5 同捆技能的装配回退
+### 2.5 扩展侧直连后端：只能打公开路由
+
+`pi` 子进程内没有任何用户凭据（env 里只有 `PI_BACKEND_URL`），所以扩展里 `fetch(BACKEND_URL + ...)` 只在**公开路由**上成立：
+
+- ✅ `POST /api/feedback`（无 `preHandler`）；
+- ❌ `GET /api/modules/bookplate/bifrost/prompts`、`.../skills/bifrost-search`（`preHandler: app.authenticate`）→ **恒 401**；同理 `/api/admin/*`（`requireAdmin`）恒 401/403。
+
+正确做法（本次采纳）：检索类能力也走 `canvasOp` 桥接，由前端 `bifrostService`（axios 已注入 `Bearer`）代调后端，结果经 `ui-response` 回传给工具。桥接通道无 dialog 超时（`ctx.ui.select` 未传 `timeout`），Bifrost 检索的 20~30s 不会被中断；代价是**前端未连接时检索不可用**（Agent 只在前端对话中运行，实际影响可接受）。
+
+若要脱离前端直连，需另设凭据通道（进程级用户 JWT 注入，或仿 `chat/inherit-file` 的 HMAC 签名 URL）——都属扩大鉴权面，需单独评审，勿顺手为之。
+
+### 2.6 同捆技能的装配回退
 
 `workspace.ts` 装配技能时的三级回退：用户技能区 → 系统技能区（`REAL_SKILLS_ROOT`）→ **`packages/pi-canvas-tools/skills/<name>`**。在扩展包里新增 `skills/<name>/SKILL.md` 目录即自动获得装配资格，是否启用取决于 agent 配置的技能清单。技能文档随源码软链实时生效（工作区装配用 symlinkOrCopy），无需重启即可被新一轮对话读到。
 
@@ -97,7 +109,7 @@ canvasExecutor.ts：按 op 分发 case，从 nodesRef/edgesRef 读数据
 ## 3. 新增画布工具 Checklist（标准闭环）
 
 1. **扩展端**（`packages/pi-canvas-tools/src/index.ts`）：用 `canvasOp()` 定义工具；参数用 typebox 声明；`promptGuidelines` 写清使用时机与协作工具交叉引用；所有 return 分支 `details` 同形状；
-2. **前端执行器**（`canvasExecutor.ts`）：新增对应 case；复用 `nodeOutputText` / `nodeOutputImages` / `getNodeTitle` 纯函数（跨节点类型零枚举，与 chat 节点同口径）；大文本截断 + data URL 占位符（§2.2）；
+2. **前端执行器**（`canvasExecutor.ts`）：新增对应 case；复用 `nodeOutputText` / `nodeOutputImages` / `getNodeTitle` 纯函数（跨节点类型零枚举，与 chat 节点同口径）；大文本截断 + data URL 占位符（§2.2）；需用户凭据的后端调用复用既有 service（如 `bifrostService`），**不要在扩展端直连已鉴权路由**（§2.5）；
 3. **提示词三层同步**（§2.1）：DEFAULT 提示词 + 相关 SKILL.md + 工具 promptGuidelines；
 4. **验证**：§6 全绿；
 5. **生效**：重启后端（重新装配工作区扩展与 AGENTS.md）+ 刷新前端；无需 npm install（`packages/` 源码直接加载）。
@@ -140,10 +152,20 @@ canvasExecutor.ts：按 op 分发 case，从 nodesRef/edgesRef 读数据
 4. **对话后设置锁定**：chat 节点开始对话后运行设置会被锁定（上下文继承通道开关等），画板助手侧无此问题，但测试上下文注入口径时注意区分两类 agent。
 5. **Windows 软链退化**：工作区装配用 symlinkOrCopy，无软链权限时退化为复制（见 `pi-extension-integration.md` 坑 3）——pi-canvas-tools 无非 alias 依赖，复制退化场景可正常工作，但新增第三方依赖前先确认 jiti alias 解析范围。
 6. **`details` 只进日志/UI，不进模型上下文**（模型看的是 `content`）——error 信息放 `details` 模型看不到，要给模型看的错误说明必须写在 `content` 里。
+7. **`canvas_get_node_configs` 仍不可用（存量缺陷，未修）**：它直连 `/api/admin/node-configs`，该路由 `preHandler: app.requireAdmin` 且子进程无凭据——普通用户调用必然 401。若要让画板助手查配置，需改成桥接 + 面向普通用户的只读配置接口（属产品/权限决策，需单独确认）。
 
 ---
 
-## 7. 本次改动记录（2026-09-20）
+## 7. 改动记录
+
+### 2026-09-20（第二轮）：修复 Bifrost 检索 401
+
+- **根因**：`canvas_search_prompts` / `canvas_search_skills` 在子进程内直连已鉴权路由（`preHandler: app.authenticate`），请求无 `Authorization` → 两次调用均 HTTP 401，检索不可用（`canvas_send_feedback` 之所以正常，是因为 `/api/feedback` 是公开路由）。
+- **修复**：两个检索工具改走 `canvasOp` 桥接（新增 `search_prompts` / `search_skills` 两个前端 case，复用 `bifrostService` 携带已登录用户凭据）；`executeCanvasOp` 改为 async，`AgentChatPanel` 相应 `await`。零新增凭据、零鉴权面变化（§2.5）。
+- **顺带收敛**：技能检索结果剥掉 `body`（SKILL.md 正文，单条数千字符）只回元数据，避免一次检索撑爆模型上下文；两个工具的 `promptGuidelines` 补「结果口径与失败如实转述」。
+- **未修存量**：`canvas_get_node_configs` 直连 admin 路由恒 401（§6.7），已在文档记录，未纳入本次范围。
+
+### 2026-09-20（第一轮）
 
 - **新增只读工具** `canvas_list_nodes`（节点清单，不含正文）/ `canvas_read_node_output`（单节点输出，截断 + 占位符防护）——补齐「agent 只能创建节点却看不见节点内容」的能力缺口；
 - **提示词三层同步**：DEFAULT 提示词新增「画布现状感知」原则；两个同捆 SKILL.md 补只读工具指引；create/connect 工具 promptGuidelines 交叉引用；

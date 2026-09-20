@@ -283,7 +283,7 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
               } catch {
                 /* ignore */
               }
-              const result = executeCanvasOp(op, params);
+              const result = await executeCanvasOp(op, params);
 
               // 自动写回 UI 响应
               fetch('/api/modules/bookplate/canvas-agent/ui-response', {

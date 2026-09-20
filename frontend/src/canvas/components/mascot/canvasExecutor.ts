@@ -3,12 +3,15 @@
  *
  * 供 Mascot Agent（Canvas Assistant）在接收到 extension_ui_request
  * （方法为 select 且 title 带有 "CANVAS_OP:" 前缀）时自动解析并执行。
- * 纯状态操作，零 React 组件上下文依赖，直接操作全局 useCanvasState。
- * 操作分两类：写操作（create_node / connect_nodes）与只读操作
- * （list_nodes / read_node_output，把画布节点内容回传给 Agent）。
+ * 零 React 组件上下文依赖：画布状态操作直接操作全局 useCanvasState，
+ * 检索类操作（search_prompts / search_skills）经前端 api 客户端携带已登录用户凭据
+ * 调后端（pi 子进程内 fetch 无凭据，直连已鉴权路由会 401）。
+ * 操作分三类：写操作（create_node / connect_nodes）、只读操作
+ * （list_nodes / read_node_output，把画布节点内容回传给 Agent）、检索操作。
  */
 import { nodesRef, edgesRef, setNodes, setEdges } from '../../../shared/stores/useCanvasState';
 import api from '../../../shared/services/api';
+import { bifrostService } from '../../../shared/services/bifrost';
 import { seedDataFor } from '../../core/seedData';
 import { getNodeTitle, nodeOutputImages, nodeOutputText, type GraphNode } from '../../nodes/_shared/nodeTypes';
 import type { NodeType, NodeData } from '../../core/graphTypes';
@@ -28,10 +31,10 @@ function nodeHasOutput(node: GraphNode): boolean {
   return nodeOutputText(node).length > 0 || nodeOutputImages(node).length > 0;
 }
 
-export function executeCanvasOp(
+export async function executeCanvasOp(
   op: string,
   params: Record<string, unknown>
-): Record<string, unknown> {
+): Promise<Record<string, unknown>> {
   try {
     // 1. 参数解包防御：若参数被外层 params 对象包裹，解出内层真正参数
     let realParams = params;
@@ -261,6 +264,49 @@ export function executeCanvasOp(
             ? {}
             : { message: '该节点当前没有可读取的输出（尚未运行或输出为空）' }),
         };
+      }
+
+      // ---- 检索类操作（走前端已登录凭据调后端 Bifrost 接口） ----
+
+      case 'search_prompts': {
+        const query = String(realParams.query ?? '').trim();
+        const limit = Number(realParams.limit) > 0 ? Number(realParams.limit) : 10;
+        try {
+          const res = await bifrostService.listPrompts({ q: query, limit });
+          return {
+            success: true,
+            total: res.total,
+            count: res.prompts.length,
+            prompts: res.prompts,
+          };
+        } catch (err: any) {
+          return { success: false, error: `提示词检索失败: ${err?.message || err?.detail || err}` };
+        }
+      }
+
+      case 'search_skills': {
+        const query = String(realParams.query ?? '').trim();
+        const limit = Number(realParams.limit) > 0 ? Number(realParams.limit) : 10;
+        try {
+          const res = await bifrostService.listSkills({ q: query, limit });
+          return {
+            success: true,
+            total: res.total,
+            remote_available: res.remote_available,
+            count: res.skills.length,
+            // SKILL.md 正文（body）单条可达数千字符，对「找技能」无帮助——列表只回元数据，
+            // 避免一次检索撑爆模型上下文（正文在用户安装后于工作区读取）。
+            skills: res.skills.map((s) => ({
+              name: s.name,
+              description: s.description,
+              cached: !!s.cached,
+              latest_version: s.latest_version ?? '',
+              file_count: s.file_count ?? 0,
+            })),
+          };
+        } catch (err: any) {
+          return { success: false, error: `Skill 检索失败: ${err?.message || err?.detail || err}` };
+        }
       }
 
       default:
