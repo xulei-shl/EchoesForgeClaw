@@ -183,8 +183,10 @@ export const Drawer: React.FC<DrawerProps> = ({
           </div>
         </div>
 
-        {/* 内容区 */}
-        <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-5 relative focus-visible:outline-none custom-scrollbar">
+        {/* 内容区：列向 flex 滚动容器，子元素一律 shrink-0，
+            避免折叠块展开后内容超高时默认的 flex-shrink 压缩已有元素（如图片预览被压小、文字重叠），
+            保证「展开只追加内容并滚动」，不改变已有元素布局 */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-5 relative focus-visible:outline-none custom-scrollbar [&>*]:shrink-0">
           {children}
         </div>
 

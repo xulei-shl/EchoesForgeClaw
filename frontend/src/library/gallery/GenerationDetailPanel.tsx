@@ -53,6 +53,7 @@ export const GenerationDetailPanel: React.FC<GenerationDetailPanelProps> = ({
 }) => {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [summaryOpen, setSummaryOpen] = useState(false);
 
   const meta = gen ? generationMeta(gen) : null;
 
@@ -371,26 +372,44 @@ export const GenerationDetailPanel: React.FC<GenerationDetailPanelProps> = ({
             </div>
 
             {meta.summary && (
-              <details className="mt-4 group border border-paper-grid/50 rounded-md p-2.5 bg-paper/50">
-                <summary className="list-none [&::-webkit-details-marker]:hidden text-xs text-ink-faint cursor-pointer hover:text-ink transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent rounded flex items-center justify-between select-none">
+              <div className="mt-4 border border-paper-grid/50 rounded-md bg-paper/50 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setSummaryOpen((v) => !v)}
+                  aria-expanded={summaryOpen}
+                  title={summaryOpen ? '收起内容摘要' : '展开内容摘要'}
+                  className="w-full flex items-center justify-between gap-2 px-2.5 py-2 text-xs text-ink-faint hover:bg-paper-grid/25 transition-colors select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent"
+                >
                   <span className="font-medium text-ink-light">内容摘要</span>
                   <ChevronRight
                     size={14}
                     strokeWidth={1.75}
-                    className="transition-transform group-open:rotate-90 text-ink-faint"
+                    className={`shrink-0 text-ink-faint transition-transform duration-300 ease-out ${
+                      summaryOpen ? 'rotate-90' : ''
+                    }`}
                   />
-                </summary>
+                </button>
+
+                {/* grid-rows 0fr/1fr 过渡：折叠/展开平滑动画，不挤压面板内已有元素 */}
                 <div
-                  className="mt-2.5 pt-2 border-t border-paper-grid/30 text-[13px] leading-relaxed text-ink-light font-sans"
-                  style={{ textWrap: 'pretty' }}
+                  className={`grid transition-[grid-template-rows] duration-300 ease-out ${
+                    summaryOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+                  }`}
                 >
-                  {meta.summary.split('\n').map((line, i) => (
-                    <p key={i} className="mb-1.5 last:mb-0">
-                      {line}
-                    </p>
-                  ))}
+                  <div className="overflow-hidden">
+                    <div
+                      className="mx-2.5 pt-2 pb-2.5 border-t border-paper-grid/30 text-[13px] leading-relaxed text-ink-light font-sans max-h-52 overflow-y-auto custom-scrollbar"
+                      style={{ textWrap: 'pretty' }}
+                    >
+                      {meta.summary.split('\n').map((line, i) => (
+                        <p key={i} className="mb-1.5 last:mb-0">
+                          {line}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-              </details>
+              </div>
             )}
           </div>
 
