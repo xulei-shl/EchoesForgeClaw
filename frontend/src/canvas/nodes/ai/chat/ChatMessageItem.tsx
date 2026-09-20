@@ -1,8 +1,7 @@
 import React, { memo, useMemo, useState } from 'react';
 import { PhotoView } from 'react-photo-view';
 import { Check, Copy, Pencil, RefreshCw, Square, Trash2 } from 'lucide-react';
-import { Streamdown, cjk, code } from '../../../../shared/utils/markdown';
-import { normalizeMarkdown } from '../../../../shared/utils/normalizeMarkdown';
+import { MarkdownContent } from '../../../../shared/components/ui/MarkdownContent';
 import { SkillFileCard } from './SkillFileCard';
 import { StepActivityCard } from './StepActivityCard';
 import { SubagentRunBlock } from '../common/SubagentRunBlock';
@@ -86,12 +85,6 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
   const [kaomoji] = useState(() => getRandomKaomoji());
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState('');
-
-  // 流式代码块降级：流式期间仅启用 cjk 插件，暂缓昂贵的 Shiki 语法高亮；待本轮流式结束后一次性高亮渲染
-  const streamPlugins = useMemo(
-    () => (msg.streaming ? { cjk } : { cjk, code }),
-    [msg.streaming]
-  );
 
   // 提取 ask_user_question 问答交互卡片数据（提问与用户选择）
   const questionnaireInteractions = useMemo(
@@ -275,16 +268,12 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = memo(({
                 </div>
               </div>
             ) : (
-              <Streamdown
-                plugins={streamPlugins}
+              /* 流式渲染：正文随 text-delta 增量增长，Streamdown streaming 模式逐块渲染；
+                 流式代码块降级（先 cjk、静默后升级 Shiki）由 MarkdownContent 统一处理 */
+              <MarkdownContent
+                content={stripUnrenderableImages(msg.content, workspaceId) || (msg.interrupted ? '已中断' : '')}
                 isAnimating={!!msg.streaming}
-                caret="block"
-                linkSafety={{ enabled: false }}
-              >
-                {/* 流式渲染：正文随 text-delta 增量增长，Streamdown streaming 模式逐块渲染 */}
-                {normalizeMarkdown(stripUnrenderableImages(msg.content, workspaceId)) ||
-                  (msg.interrupted ? '已中断' : '')}
-              </Streamdown>
+              />
             )}
           </div>
         </div>

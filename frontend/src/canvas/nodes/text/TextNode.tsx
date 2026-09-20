@@ -1,8 +1,7 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
 import { Pencil } from 'lucide-react';
-import { Streamdown, cjk, code } from '../../../shared/utils/markdown';
-import { normalizeMarkdown } from '../../../shared/utils/normalizeMarkdown';
 import { CanvasNode } from '../_shared/CanvasNode';
+import { MarkdownContent } from '../../../shared/components/ui/MarkdownContent';
 import { NodeActionBar } from '../_shared/NodeActionBar';
 import { Textarea } from '../../../shared/components/ui/Textarea';
 import { NODE_COLORS } from '../_shared/nodeTypes';
@@ -147,19 +146,10 @@ const TextNodeInner: React.FC<TextNodeProps> = ({
             />
           </div>
         ) : (
-          /* 查看态：复用公共 Markdown 渲染组件（与图片分析 / 提示词节点一致） */
+          /* 查看态：复用 canvas 公共 Markdown 渲染组件（与图片分析 / 文本生成节点一致） */
           <div className="w-full min-w-0 flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
             {content.trim() ? (
-              <div className="w-full min-w-0 font-sans text-sm leading-relaxed">
-                <Streamdown
-                  plugins={{ cjk, code }}
-                  isAnimating={false}
-                  caret="block"
-                  linkSafety={{ enabled: false }}
-                >
-                  {normalizeMarkdown(content)}
-                </Streamdown>
-              </div>
+              <MarkdownContent content={content} className="w-full min-w-0 font-sans text-sm leading-relaxed" />
             ) : (
               <div className="h-full flex flex-col items-center justify-center gap-2 text-center min-h-[120px]">
                 <p className="text-xs text-ink-faint font-sans">暂无内容</p>

@@ -14,8 +14,7 @@ import { CanvasNode } from '../_shared/CanvasNode';
 import { BeamGlow } from '../_shared/BeamGlow';
 import { NodeActionBar } from '../_shared/NodeActionBar';
 import { Select, type SelectOption } from '../../../shared/components/ui/Select';
-import { Streamdown, cjk, code } from '../../../shared/utils/markdown';
-import { normalizeMarkdown } from '../../../shared/utils/normalizeMarkdown';
+import { MarkdownContent } from '../../../shared/components/ui/MarkdownContent';
 import { NODE_COLORS } from '../_shared/nodeTypes';
 import { UpstreamLinkCard } from '../_shared/SearchNodeScaffold';
 
@@ -426,16 +425,10 @@ const WikipediaSearchNodeInner: React.FC<WikipediaSearchNodeProps> = ({
                     {articleTitle}
                   </span>
                 </div>
-                <div className="font-mono text-xs leading-relaxed p-3 rounded-lg bg-paper/60 border border-dashed border-paper-grid">
-                  <Streamdown
-                    plugins={{ cjk, code }}
-                    isAnimating={false}
-                    caret="block"
-                    linkSafety={{ enabled: false }}
-                  >
-                    {normalizeMarkdown(output)}
-                  </Streamdown>
-                </div>
+                <MarkdownContent
+                  content={output}
+                  className="font-mono text-xs leading-relaxed p-3 rounded-lg bg-paper/60 border border-dashed border-paper-grid"
+                />
               </motion.div>
             ) : results.length > 0 ? (
               /* 检索结果列表：点击条目拉取全文 */

@@ -1,7 +1,6 @@
 import React, { memo } from 'react';
 import { Link2, Search, Loader2, AlertTriangle } from 'lucide-react';
-import { Streamdown, cjk, code } from '../../../shared/utils/markdown';
-import { normalizeMarkdown } from '../../../shared/utils/normalizeMarkdown';
+import { MarkdownContent } from '../../../shared/components/ui/MarkdownContent';
 
 /** 上级连线输入高光卡片 */
 export interface UpstreamLinkCardProps {
@@ -167,16 +166,11 @@ export const SearchNodeContentView: React.FC<SearchNodeContentViewProps> = memo(
 }) => {
   if (!content.trim()) return null;
   return (
-    <div className={`w-full min-w-0 font-sans text-sm leading-relaxed p-3 rounded-md bg-paper/60 border border-dashed border-paper-grid overflow-hidden ${className}`}>
-      <Streamdown
-        plugins={{ cjk, code }}
-        isAnimating={isGenerating}
-        caret="block"
-        linkSafety={{ enabled: false }}
-      >
-        {normalizeMarkdown(content)}
-      </Streamdown>
-    </div>
+    <MarkdownContent
+      content={content}
+      isAnimating={isGenerating}
+      className={`w-full min-w-0 font-sans text-sm leading-relaxed p-3 rounded-md bg-paper/60 border border-dashed border-paper-grid overflow-hidden ${className}`}
+    />
   );
 });
 SearchNodeContentView.displayName = 'SearchNodeContentView';

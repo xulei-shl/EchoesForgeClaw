@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { FileText, Image as ImageIcon, Loader2, Music, Video, X, Download } from 'lucide-react';
-import { Streamdown, cjk, code } from '../../../../shared/utils/markdown';
-import { normalizeMarkdown } from '../../../../shared/utils/normalizeMarkdown';
+import { MarkdownContent } from '../../../../shared/components/ui/MarkdownContent';
 import type { AgentFile } from '../../../../shared/types';
 import { authHeaders } from '../infra/authUtils';
 
@@ -246,14 +245,7 @@ export const FilePreviewModal: React.FC<{
           ) : kind === 'markdown' ? (
             <div className="h-full overflow-y-auto custom-scrollbar">
               <div className="p-3 text-sm leading-relaxed font-sans text-ink select-text min-h-full">
-                <Streamdown
-                  plugins={{ cjk, code }}
-                  isAnimating={false}
-                  caret="block"
-                  linkSafety={{ enabled: false }}
-                >
-                  {normalizeMarkdown(text)}
-                </Streamdown>
+                <MarkdownContent content={text} />
                 {truncated && (
                   <span className="block mt-2 text-[10px] text-ink-faint border-t border-dashed border-paper-grid pt-2">
                     内容过长，仅展示前 {MAX_PREVIEW_CHARS.toLocaleString()} 字符，请下载查看完整文件

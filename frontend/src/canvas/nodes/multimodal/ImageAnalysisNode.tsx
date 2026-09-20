@@ -13,8 +13,7 @@ import { AgentActivity } from '../../../shared/components/agent/AgentActivity';
 import { NodeActionBar } from '../_shared/NodeActionBar';
 import { useFeedback } from '../../../shared/components/ui/FeedbackProvider';
 import type { AgentStep, InjectedContextBlock, NodeRunSettings } from '../../../shared/types';
-import { Streamdown, cjk, code } from '../../../shared/utils/markdown';
-import { normalizeMarkdown } from '../../../shared/utils/normalizeMarkdown';
+import { MarkdownContent } from '../../../shared/components/ui/MarkdownContent';
 import { NodeRunPlaceholder } from '../_shared/NodeRunPlaceholder';
 import { NODE_COLORS } from '../_shared/nodeTypes';
 import { NodeSettingsPopover } from '../_shared/NodeSettingsPopover';
@@ -223,16 +222,11 @@ const ImageAnalysisNodeInner: React.FC<ImageAnalysisNodeProps> = ({
           ) : analysis ? (
             <div className="flex-1 min-h-0 flex flex-col">
               <div className="w-full min-w-0 flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
-                <div className="w-full min-w-0 font-sans text-[12px] leading-relaxed">
-                  <Streamdown
-                    plugins={{ cjk, code }}
-                    isAnimating={isGenerating}
-                    caret="block"
-                    linkSafety={{ enabled: false }}
-                  >
-                    {normalizeMarkdown(analysis)}
-                  </Streamdown>
-                </div>
+                <MarkdownContent
+                  content={analysis}
+                  isAnimating={isGenerating}
+                  className="w-full min-w-0 font-sans text-[12px] leading-relaxed"
+                />
               </div>
             </div>
           ) : (

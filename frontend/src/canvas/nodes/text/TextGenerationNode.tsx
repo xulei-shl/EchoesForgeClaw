@@ -1,8 +1,7 @@
 import React, { memo, useState, useRef, useEffect } from 'react';
 import { AlertTriangle, Sparkles } from 'lucide-react';
-import { Streamdown, cjk, code } from '../../../shared/utils/markdown';
-import { normalizeMarkdown } from '../../../shared/utils/normalizeMarkdown';
 import { CanvasNode } from '../_shared/CanvasNode';
+import { MarkdownContent } from '../../../shared/components/ui/MarkdownContent';
 import { BeamGlow } from '../_shared/BeamGlow';
 import { Textarea } from '../../../shared/components/ui/Textarea';
 import { AgentActivity } from '../../../shared/components/agent/AgentActivity';
@@ -251,14 +250,7 @@ const TextGenerationNodeInner: React.FC<TextGenerationNodeProps> = ({
                     </div>
                   </div>
                 )}
-                <Streamdown
-                  plugins={{ cjk, code }}
-                  isAnimating={isGenerating}
-                  caret="block"
-                  linkSafety={{ enabled: false }}
-                >
-                  {normalizeMarkdown(content)}
-                </Streamdown>
+                <MarkdownContent content={content} isAnimating={isGenerating} />
               </div>
             </div>
           )}

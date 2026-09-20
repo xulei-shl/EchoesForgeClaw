@@ -4,8 +4,7 @@ import { CanvasNode } from '../_shared/CanvasNode';
 import { BeamGlow } from '../_shared/BeamGlow';
 import { NodeActionBar } from '../_shared/NodeActionBar';
 import { Select } from '../../../shared/components/ui/Select';
-import { Streamdown, cjk, code } from '../../../shared/utils/markdown';
-import { normalizeMarkdown } from '../../../shared/utils/normalizeMarkdown';
+import { MarkdownContent } from '../../../shared/components/ui/MarkdownContent';
 import { NODE_COLORS } from '../_shared/nodeTypes';
 import {
   SearchNodeLoadingView,
@@ -365,11 +364,10 @@ const TextTranslationNodeInner: React.FC<TextTranslationNodeProps> = ({
               <div className="text-[11px] text-ink-faint font-sans">
                 翻译源：{SOURCE_LABEL[currentTab.usedSource] ?? currentTab.usedSource}
               </div>
-              <div className="w-full min-w-0 font-mono text-sm leading-relaxed p-3 rounded-md bg-paper/60 border border-dashed border-paper-grid">
-                <Streamdown plugins={{ cjk, code }} isAnimating={false} caret="block" linkSafety={{ enabled: false }}>
-                  {normalizeMarkdown(currentTab.output)}
-                </Streamdown>
-              </div>
+              <MarkdownContent
+                content={currentTab.output}
+                className="w-full min-w-0 font-mono text-sm leading-relaxed p-3 rounded-md bg-paper/60 border border-dashed border-paper-grid"
+              />
             </div>
           ) : (
             <SearchNodeEmptyView

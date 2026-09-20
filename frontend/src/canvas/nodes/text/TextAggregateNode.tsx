@@ -1,8 +1,7 @@
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { Eye, Pencil } from 'lucide-react';
-import { Streamdown, cjk, code } from '../../../shared/utils/markdown';
-import { normalizeMarkdown } from '../../../shared/utils/normalizeMarkdown';
 import { CanvasNode } from '../_shared/CanvasNode';
+import { MarkdownContent } from '../../../shared/components/ui/MarkdownContent';
 import { NODE_COLORS } from '../_shared/nodeTypes';
 import { extractPlaceholderNames, toPlaceholderSources } from '../../core/textTemplate';
 import { PlaceholderPanel } from '../ai/common/PlaceholderPanel';
@@ -192,16 +191,7 @@ const TextAggregateNodeInner: React.FC<TextAggregateNodeProps> = ({
           /* 预览：实时聚合结果（Markdown 渲染） */
           <div className="w-full min-w-0 flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-3 pb-2">
             {output.trim() ? (
-              <div className="w-full min-w-0 font-sans text-sm leading-relaxed">
-                <Streamdown
-                  plugins={{ cjk, code }}
-                  isAnimating={false}
-                  caret="block"
-                  linkSafety={{ enabled: false }}
-                >
-                  {normalizeMarkdown(output)}
-                </Streamdown>
-              </div>
+              <MarkdownContent content={output} className="w-full min-w-0 font-sans text-sm leading-relaxed" />
             ) : (
               <div className="h-full flex flex-col items-center justify-center gap-1 text-center min-h-[120px]">
                 <p className="text-xs text-ink-faint font-sans">暂无聚合结果</p>

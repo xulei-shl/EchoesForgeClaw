@@ -13,8 +13,7 @@ import { BeamGlow } from '../_shared/BeamGlow';
 import { NodeActionBar } from '../_shared/NodeActionBar';
 import { Select, type SelectOption } from '../../../shared/components/ui/Select';
 import { useFeedback } from '../../../shared/components/ui/FeedbackProvider';
-import { Streamdown, cjk, code } from '../../../shared/utils/markdown';
-import { normalizeMarkdown } from '../../../shared/utils/normalizeMarkdown';
+import { MarkdownContent } from '../../../shared/components/ui/MarkdownContent';
 import { NODE_COLORS } from '../_shared/nodeTypes';
 import { UpstreamLinkCard } from '../_shared/SearchNodeScaffold';
 
@@ -633,14 +632,7 @@ const ZhihuSearchNodeInner: React.FC<ZhihuSearchNodeProps> = ({
                 transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
                 className="w-full min-w-0 font-mono text-xs leading-relaxed p-3 rounded-lg bg-paper/60 border border-dashed border-paper-grid"
               >
-                <Streamdown
-                  plugins={{ cjk, code }}
-                  isAnimating={false}
-                  caret="block"
-                  linkSafety={{ enabled: false }}
-                >
-                  {normalizeMarkdown(currentTab.output)}
-                </Streamdown>
+                <MarkdownContent content={currentTab.output} />
               </motion.div>
             ) : (
               /* 针对当前 Tab 定制的空状态 */
