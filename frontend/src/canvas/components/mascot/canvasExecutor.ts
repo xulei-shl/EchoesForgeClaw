@@ -6,18 +6,84 @@
  * 零 React 组件上下文依赖：画布状态操作直接操作全局 useCanvasState，
  * 检索类操作（search_prompts / search_skills）经前端 api 客户端携带已登录用户凭据
  * 调后端（pi 子进程内 fetch 无凭据，直连已鉴权路由会 401）。
- * 操作分三类：写操作（create_node / connect_nodes）、只读操作
- * （list_nodes / read_node_output，把画布节点内容回传给 Agent）、检索操作。
+ * 操作分四类：写操作（create_node / connect_nodes / update_node / disconnect_nodes /
+ * delete_node，一律经 canvasCommands 命令层，保证可撤销）、只读操作
+ * （list_nodes / read_node_output / get_node_details / get_node_params）、检索操作。
  */
 import { nodesRef, edgesRef, setNodes, setEdges } from '../../../shared/stores/useCanvasState';
 import api from '../../../shared/services/api';
 import { bifrostService } from '../../../shared/services/bifrost';
 import { seedDataFor } from '../../core/seedData';
-import { getNodeTitle, nodeOutputImages, nodeOutputText, type GraphNode } from '../../nodes/_shared/nodeTypes';
+import { collectDescendantIds } from '../../core/nodeGraph';
+import { getCanvasCommands } from '../../core/canvasCommands';
+import {
+  NODE_PORT_TYPES,
+  getNodeTitle,
+  nodeOutputImages,
+  nodeOutputText,
+  type GraphNode,
+} from '../../nodes/_shared/nodeTypes';
 import type { NodeType, NodeData } from '../../core/graphTypes';
 
 /** 单次读取节点输出的正文上限（防止超长产物撑爆模型上下文；超出部分明确标注截断） */
 const MAX_READ_TEXT_CHARS = 20000;
+
+/** 单字段回执预览上限（写入回执 / 节点详情共用） */
+const MAX_FIELD_CHARS = 200;
+
+/** 画布页未挂载时命令层不可用：明确报错，不降级直改 store（否则产生不可撤销的变更） */
+const CANVAS_NOT_MOUNTED = '画布未挂载，无法执行变更操作（请在画板页重试）';
+
+/**
+ * 拒绝由 Agent 写入的字段：
+ * - `isGenerating` / `error` / `output` / `imageUrl`：生成状态与产物只能由节点自身运行产生，
+ *   否则 Agent 可凭空伪造生成结果（含 base64 图片）；
+ * - `configId`：受管节点的后台模型/提示词绑定，属管理员权限，需要时走 canvas_send_feedback。
+ */
+const WRITE_DENYLIST: ReadonlySet<string> = new Set([
+  'isGenerating',
+  'error',
+  'output',
+  'imageUrl',
+  'configId',
+]);
+
+/** 字段值回执预览：长文本截断、data URL 收敛占位符、长对象序列化截断 */
+function previewValue(value: unknown): unknown {
+  if (typeof value === 'string') {
+    if (value.startsWith('data:')) return collapseImageUrl(value);
+    if (value.length > MAX_FIELD_CHARS) {
+      return `${value.slice(0, MAX_FIELD_CHARS)}…（共 ${value.length} 字符，已截断）`;
+    }
+    return value;
+  }
+  if (Array.isArray(value) || (value !== null && typeof value === 'object')) {
+    const json = JSON.stringify(value);
+    if (json.length > MAX_FIELD_CHARS) {
+      return `${json.slice(0, MAX_FIELD_CHARS)}…（共 ${json.length} 字符，已截断）`;
+    }
+    return value;
+  }
+  return value;
+}
+
+/** data 入参归一：支持扁平对象或 JSON 字符串（模型偶尔把对象序列化成字符串传参） */
+function parseDataParam(raw: unknown): Record<string, unknown> {
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    return raw as Record<string, unknown>;
+  }
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      /* ignore bad json */
+    }
+  }
+  return {};
+}
 
 /** data URL 收敛为占位符：内联 base64 对模型不可读，塞进工具结果纯属浪费上下文 */
 function collapseImageUrl(url: string): string {
@@ -84,6 +150,12 @@ export async function executeCanvasOp(
           return { success: false, error: '缺少必填的节点类型 (type)' };
         }
 
+        // 命令层缺失（画布页未挂载）时直接报错：写操作必须走画布自身的历史/清理路径
+        const cmds = getCanvasCommands();
+        if (!cmds) {
+          return { success: false, error: CANVAS_NOT_MOUNTED };
+        }
+
         const parentId = realParams.parent_id as string | undefined;
         const nodes: NodeData[] = nodesRef.current || [];
         const edges = edgesRef.current || [];
@@ -96,19 +168,7 @@ export async function executeCanvasOp(
         const defaultSeed = seedDataFor(type, parent);
 
         // 处理自定义 data：支持对象或 JSON 字符串安全解析
-        let customData: Record<string, unknown> = {};
-        if (realParams.data && typeof realParams.data === 'object' && !Array.isArray(realParams.data)) {
-          customData = realParams.data as Record<string, unknown>;
-        } else if (typeof realParams.data === 'string') {
-          try {
-            const parsed = JSON.parse(realParams.data);
-            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-              customData = parsed;
-            }
-          } catch {
-            /* ignore bad json */
-          }
-        }
+        const customData = parseDataParam(realParams.data);
 
         // 键名归一（如文本类节点的 text → content），并记录见闻供回执提醒模型
         const { data: normalizedData, aliased } = normalizeDataKeys(type, customData);
@@ -128,6 +188,8 @@ export async function executeCanvasOp(
         };
 
         // 业务增强：若创建 book_info 且提供了 ISBN，自动异步抓取豆瓣图书元数据并水合填充
+        // （异步水合不是用户编辑：经命令层 updateNodeData 写回，但不记撤销历史）
+        const updateNode = cmds.updateNodeData;
         if (type === 'book_info' && customData.isbn) {
           const isbnStr = String(customData.isbn).trim();
           if (isbnStr) {
@@ -137,43 +199,24 @@ export async function executeCanvasOp(
                 `/modules/bookplate/isbn/${encodeURIComponent(isbnStr)}`
               )
               .then((bookMeta) => {
-                setNodes((prev: NodeData[]) =>
-                  prev.map((n) =>
-                    n.id === nodeId
-                      ? {
-                          ...n,
-                          data: {
-                            ...n.data,
-                            ...bookMeta,
-                            isbn: isbnStr,
-                            isGenerating: false,
-                            error: null,
-                          },
-                        }
-                      : n
-                  )
-                );
+                updateNode(nodeId, {
+                  ...bookMeta,
+                  isbn: isbnStr,
+                  isGenerating: false,
+                  error: null,
+                });
               })
               .catch((err: any) => {
-                setNodes((prev: NodeData[]) =>
-                  prev.map((n) =>
-                    n.id === nodeId
-                      ? {
-                          ...n,
-                          data: {
-                            ...n.data,
-                            isGenerating: false,
-                            error: err.message || err.detail || '获取图书元数据失败',
-                          },
-                        }
-                      : n
-                  )
-                );
+                updateNode(nodeId, {
+                  isGenerating: false,
+                  error: err.message || err.detail || '获取图书元数据失败',
+                });
               });
           }
         }
 
-        // 写入全局画布节点
+        // 写入全局画布节点（先记历史：与画布 UI 交互同口径，Agent 建节点后可 Ctrl+Z 撤销）
+        cmds.recordHistory();
         setNodes((prev: NodeData[]) => [...prev, newNode]);
 
         // 若指定了父节点，自动建立连线
@@ -201,6 +244,11 @@ export async function executeCanvasOp(
 
         if (sourceId === targetId) {
           return { success: false, error: '无法自连接同一节点' };
+        }
+
+        const cmds = getCanvasCommands();
+        if (!cmds) {
+          return { success: false, error: CANVAS_NOT_MOUNTED };
         }
 
         const nodes: NodeData[] = nodesRef.current || [];
@@ -239,6 +287,8 @@ export async function executeCanvasOp(
         }
 
         const edgeId = `edge-${sourceId}-${targetId}`;
+        // 先记历史：与画布 UI 手动连线同口径（可 Ctrl+Z 撤销）
+        cmds.recordHistory();
         setEdges((prev: any[]) => [...prev, { id: edgeId, source: sourceId, target: targetId }]);
 
         return {
@@ -298,6 +348,243 @@ export async function executeCanvasOp(
           ...(nodeHasOutput(target)
             ? {}
             : { message: '该节点当前没有可读取的输出（尚未运行或输出为空）' }),
+        };
+      }
+
+      // ---- 就地修正类操作（改内容 / 调参 / 断线 / 删节点） ----
+
+      case 'update_node': {
+        // 浅合并写入节点 data（复用画布命令层：先记历史再写入，可撤销）
+        const nodeId = String(realParams.node_id ?? '');
+        if (!nodeId) {
+          return { success: false, error: '缺少必填的节点 ID (node_id)，可先用 list_nodes 查节点清单' };
+        }
+        const cmds = getCanvasCommands();
+        if (!cmds) {
+          return { success: false, error: CANVAS_NOT_MOUNTED };
+        }
+        const nodes: NodeData[] = nodesRef.current || [];
+        const target = nodes.find((n) => n.id === nodeId);
+        if (!target) {
+          return {
+            success: false,
+            error: `节点 ${nodeId} 不存在（可能已被删除），请用 list_nodes 获取最新节点清单`,
+          };
+        }
+
+        const patch = parseDataParam(realParams.data);
+        if (Object.keys(patch).length === 0) {
+          return {
+            success: false,
+            error: '缺少要修改的 data（需为扁平键值对象），可先用 get_node_details 读取该节点当前字段',
+          };
+        }
+
+        // 键名归一（文本类节点 text → content），与 create_node 同口径
+        const { data: normalized, aliased } = normalizeDataKeys(target.type, patch);
+
+        // 拒绝伪造生成结果 / 越权改受管节点后台配置
+        const denied = Object.keys(normalized).filter((k) => WRITE_DENYLIST.has(k));
+        if (denied.length > 0) {
+          const hint = denied.includes('configId')
+            ? '受管节点的后台配置（configId）不可由助手修改，需要调整请用 canvas_send_feedback 提交需求。'
+            : '生成状态与产物字段只能由节点自身运行产生，不能手工写入。';
+          return {
+            success: false,
+            error: `不允许通过本工具修改字段：${denied.join('、')}。${hint}`,
+          };
+        }
+
+        cmds.recordHistory();
+        cmds.updateNodeData(nodeId, normalized);
+
+        const merged: GraphNode = { ...target, data: { ...target.data, ...normalized } };
+        const values: Record<string, unknown> = {};
+        for (const key of Object.keys(normalized)) values[key] = previewValue(normalized[key]);
+
+        return {
+          success: true,
+          node_id: nodeId,
+          type: target.type,
+          updated_keys: Object.keys(normalized),
+          values,
+          has_output: nodeHasOutput(merged),
+          message: `已更新节点「${getNodeTitle(merged)}」的 ${Object.keys(normalized).length} 个字段（可用撤销恢复）`,
+          ...(aliased.length
+            ? { warnings: [`data 键名已归一：${aliased.join('、')}（请直接使用目标键名）`] }
+            : {}),
+        };
+      }
+
+      case 'get_node_params': {
+        // 只读：返回某类型节点的可配置字段与默认值（数据源＝seedDataFor，不新建第二份真相）
+        const type = String(realParams.node_type ?? '').trim() as NodeType;
+        if (!type) {
+          return { success: false, error: '缺少必填的节点类型 (node_type)' };
+        }
+        const seed = (seedDataFor(type, undefined) ?? {}) as Record<string, unknown>;
+        const keys = Object.keys(seed);
+        if (keys.length === 0) {
+          return {
+            success: false,
+            error: `未知或不支持查询参数的节点类型：${type}。完整类型清单见 canvas-node-catalog 技能`,
+          };
+        }
+        return {
+          success: true,
+          node_type: type,
+          fields: keys.map((key) => ({ key, default: previewValue(seed[key]) })),
+          note:
+            'default 即该类型节点的初始值。多模态视觉/排版类节点的预设 ID（presetId / mode / effectId / templateId 等）用 canvas_get_presets 查询，不要凭记忆填写；写入用 canvas_update_node。',
+        };
+      }
+
+      case 'get_node_details': {
+        // 只读：读取单节点当前完整字段现状 + 端口声明，让模型「先读再改」而非猜字段名
+        const nodeId = String(realParams.node_id ?? '');
+        if (!nodeId) {
+          return { success: false, error: '缺少必填的节点 ID (node_id)，可先用 list_nodes 查节点清单' };
+        }
+        const nodes: NodeData[] = nodesRef.current || [];
+        const target = nodes.find((n) => n.id === nodeId);
+        if (!target) {
+          return {
+            success: false,
+            error: `节点 ${nodeId} 不存在（可能已被删除），请用 list_nodes 获取最新节点清单`,
+          };
+        }
+        const ports = NODE_PORT_TYPES[target.type];
+        const data: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(target.data ?? {})) {
+          data[key] = previewValue(value);
+        }
+        return {
+          success: true,
+          node_id: nodeId,
+          type: target.type,
+          title: getNodeTitle(target),
+          x: target.x,
+          y: target.y,
+          is_generating: !!target.data?.isGenerating,
+          has_output: nodeHasOutput(target),
+          ports: {
+            inputs: ports?.inputs ?? [],
+            outputs: ports?.outputs ?? (ports ? [ports.output] : []),
+          },
+          data,
+          ...(target.configId
+            ? { config_id: target.configId, config_name: target.configName ?? '' }
+            : {}),
+          note: 'configId / isGenerating / error / output / imageUrl 不可通过 canvas_update_node 修改。',
+        };
+      }
+
+      case 'disconnect_nodes': {
+        // 断开连线：复用命令层 removeEdge（记历史、可撤销）；非破坏操作不弹确认
+        const cmds = getCanvasCommands();
+        if (!cmds) {
+          return { success: false, error: CANVAS_NOT_MOUNTED };
+        }
+        const edges = edgesRef.current || [];
+        const nodes: NodeData[] = nodesRef.current || [];
+        const edgeId = realParams.edge_id ? String(realParams.edge_id) : '';
+        const sourceId = realParams.source_id ? String(realParams.source_id) : '';
+        const targetId = realParams.target_id ? String(realParams.target_id) : '';
+
+        let edge = edgeId ? edges.find((e: any) => e.id === edgeId) : undefined;
+        if (!edge) {
+          if (!sourceId || !targetId) {
+            return {
+              success: false,
+              error:
+                '请提供 edge_id，或同时提供 source_id 与 target_id。不确定节点 ID 时先用 canvas_list_nodes 获取清单',
+            };
+          }
+          edge = edges.find((e: any) => e.source === sourceId && e.target === targetId);
+        }
+        if (!edge) {
+          return {
+            success: false,
+            error: `未找到匹配的连线（${edgeId || `${sourceId} → ${targetId}`}），请用 canvas_list_nodes 核对节点 ID`,
+          };
+        }
+
+        const src = nodes.find((n) => n.id === edge.source);
+        const tgt = nodes.find((n) => n.id === edge.target);
+        const removed = cmds.removeEdge(edge.id);
+        if (!removed) {
+          return { success: false, error: `连线 ${edge.id} 删除失败（可能已被移除）` };
+        }
+        return {
+          success: true,
+          edge_id: edge.id,
+          source_id: edge.source,
+          target_id: edge.target,
+          message: `已断开「${src ? getNodeTitle(src) : edge.source}」→「${tgt ? getNodeTitle(tgt) : edge.target}」的连线（下游将不再继承该上游输入，可用撤销恢复）`,
+        };
+      }
+
+      case 'delete_node': {
+        // 删除节点：两段式（先取影响范围供扩展侧确认，再执行），删除一律走命令层的级联+流中止+关联清理
+        const cmds = getCanvasCommands();
+        if (!cmds) {
+          return { success: false, error: CANVAS_NOT_MOUNTED };
+        }
+        const nodeId = String(realParams.node_id ?? '');
+        if (!nodeId) {
+          return { success: false, error: '缺少必填的节点 ID (node_id)，可先用 list_nodes 查节点清单' };
+        }
+        const nodes: NodeData[] = nodesRef.current || [];
+        const edges = edgesRef.current || [];
+        const target = nodes.find((n) => n.id === nodeId);
+        if (!target) {
+          return {
+            success: false,
+            error: `节点 ${nodeId} 不存在（可能已被删除），请用 canvas_list_nodes 获取最新节点清单`,
+          };
+        }
+
+        const cascade = realParams.cascade !== false;
+        const allIds = cascade ? collectDescendantIds(nodeId, edges) : [nodeId];
+        const descendants = allIds
+          .filter((id) => id !== nodeId)
+          .map((id) => {
+            const node = nodes.find((n) => n.id === id);
+            return { id, title: node ? getNodeTitle(node) : '', type: node?.type ?? '' };
+          });
+
+        // 未确认：只回影响范围，不产生任何变更（由扩展侧 ctx.ui.confirm 陈述后二次调用）
+        if (realParams.confirmed !== true) {
+          return {
+            success: true,
+            requires_confirmation: true,
+            node_id: nodeId,
+            title: getNodeTitle(target),
+            type: target.type,
+            cascade,
+            descendant_count: descendants.length,
+            descendants,
+            affected_edges: edges.filter(
+              (e: any) => allIds.includes(e.source) || allIds.includes(e.target)
+            ).length,
+            is_generating: !!target.data?.isGenerating,
+          };
+        }
+
+        const { deletedIds, deletedEdges } = await cmds.removeNode(nodeId, {
+          cascade,
+          confirmed: true,
+        });
+        if (deletedIds.length === 0) {
+          return { success: false, error: `删除未执行：节点 ${nodeId} 已不存在` };
+        }
+        return {
+          success: true,
+          deleted_ids: deletedIds,
+          deleted_count: deletedIds.length,
+          deleted_edge_ids: deletedEdges,
+          cascade,
+          message: `已删除节点「${getNodeTitle(target)}」${descendants.length ? `及其下游 ${descendants.length} 个节点` : ''}（可用画布撤销恢复）`,
         };
       }
 

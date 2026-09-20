@@ -65,6 +65,7 @@ import { seedDataFor } from '../../canvas/core/seedData';
 import { hydrateGraphSnapshot } from '../../canvas/core/graphSnapshotImport';
 import { useFavoritesSync } from '../../library/favorites/useFavoritesSync';
 import { useNodeHandlers } from '../../canvas/core/useNodeHandlers';
+import { registerCanvasCommands } from '../../canvas/core/canvasCommands';
 import { NodeEdge, type NodeEdgeHandle } from '../../canvas/nodes/_shared/NodeEdge';
 import { useFeedback } from '../../shared/components/ui/FeedbackProvider';
 import api from '../../shared/services/api';
@@ -1161,12 +1162,32 @@ const CanvasPage: React.FC = () => {
     handleUpdateRunSettingsFor,
     handleNodeContextMenu,
     closeContextMenu,
+    removeNode,
   } = useNodeHandlers({
     nodesRef, edgesRef, portTypesRef, streamControllers, analysisUploads, generationIds,
     setNodes, setEdges, setNodeSizes, setFavoritedState, setPublishedState,
     setSelectedImageId, setStaleRecordIds, updateNodeData, recordHistory,
     runNode, runImageGeneration, addChildNode, toggleFavoriteForImage, togglePublicForImage,
     showToast, dialog, fetchBookInfo, uploadBookCover, removingRef, setCtxMenu, autoSaveGeneration
+  });
+
+  // ---------- 模块级画布命令层注册（供画板助手工具执行器调用） ----------
+  // 画板助手的工具执行器挂在 App 级的 MascotWidget 上，不会随画布页卸载而停止：
+  // 写操作必须回到画布自己的 recordHistory / 关联清理路径（否则 Agent 的操作不可撤销）。
+  // updateNodeData 每次渲染重建，故不写依赖数组、每次渲染重新注入最新闭包；
+  // 卸载时清空，执行器拿不到命令层会明确报错，不降级直改 store。
+  useEffect(() => {
+    registerCanvasCommands({
+      recordHistory,
+      updateNodeData,
+      removeNode,
+      removeEdge: (edgeId: string) => {
+        if (!edgesRef.current.some((e) => e.id === edgeId)) return false;
+        handleRemoveEdge(edgeId);
+        return true;
+      },
+    });
+    return () => registerCanvasCommands(null);
   });
 
   // ---------- 侧边操作栏 ----------

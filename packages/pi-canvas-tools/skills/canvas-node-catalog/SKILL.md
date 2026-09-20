@@ -118,3 +118,47 @@ description: "33 个默认内置节点与 4 类受管 AI 节点的类型、端�
 | `image_process` | 滤镜处理 | `{ "type": "image_process", "data": { "effectId": "crt" } }` |
 | `book_card` | 图书卡片排版 | `{ "type": "book_card", "data": { "templateId": "默认" } }` |
 | `receipt_printer` | 图书小票排版 | `{ "type": "receipt_printer", "data": { "templateId": "book_recommend" } }` |
+
+---
+
+## 五、就地修正已有节点（改内容 / 断线 / 删节点）
+
+> [!IMPORTANT]
+> **改优先于建、改优先于删**：用户说「换成 / 改成 / 补上 / 去掉」时，先在原节点上改正，**不要新建节点绕过**——新节点会与旧节点并存，画布越改越乱。
+
+| 意图 | 工具 | 要点 |
+| :--- | :--- | :--- |
+| 改内容 / 换预设 / 调参数 | `canvas_update_node` | `data` 为**浅合并** patch；动手前先用 `canvas_get_node_details` 读现状（避免猜错键名、避免覆盖已有内容）；不确定字段名时用 `canvas_get_node_params` |
+| 查某类节点可配哪些字段 | `canvas_get_node_params` | 返回字段名 + 默认值（与节点初始值同源）；预设 ID 的取值域用 `canvas_get_presets` |
+| 读某节点的字段现状 | `canvas_get_node_details` | 返回当前 `data`（长文本截断）+ 输入/输出端口 + `has_output` + `config_id` |
+| 断开一条连线 | `canvas_disconnect_nodes` | 用 `edge_id`，或用 `source_id` + `target_id` 定位；非破坏、可撤销，无需先向用户确认 |
+| 删除节点 | `canvas_delete_node` | 默认 `cascade=true`（连同全部下游子孙一起删，与画布 UI 一致）；工具会**先弹确认框**（含级联数量），用户确认后才执行 |
+
+**不可写的字段**（写入会被拒绝并返回原因）：`isGenerating` / `error` / `output` / `imageUrl`——生成状态与产物只能由节点自身运行产生（防止伪造生成结果）；受管 4 类节点的 `configId` 也不可由助手修改，需要调整请走 `canvas_send_feedback`。
+
+**可撤销**：以上写操作都进入画布撤销栈，改错了用户可以 Ctrl+Z 回退——这一点可以明确告诉用户。
+
+### 常用可写字段速查
+
+完整字段列表（含默认值）以 `canvas_get_node_params(node_type)` 为准，下表只列高频字段：
+
+| 节点类型 | 可写字段 | 取值域 / 说明 |
+| :--- | :--- | :--- |
+| `text` / `text_generation` | `content` | 正文键就是 `content`（不是 `text`） |
+| `text_aggregate` | `template`、`placeholders` | 模板用 `{别名}` 引用各上级 |
+| `book_info` | `isbn` | 改 ISBN 会重新拉取书名/作者/封面 |
+| `weather` | `city` | 城市名 |
+| `calendar` | `date` | `YYYY-MM-DD`，可留空 |
+| `zhihu_search` / `wikipedia_search` | `query`、`mode`/`language`、`limit` | 检索关键词与模式 |
+| `web_search` | `source`、`tabData` | `source`: random / zhihu_global / tavily / exa / anysearch / doubao |
+| `image_search` / `art_image_search` | `provider` | `image_search`: unsplash / pixabay / nasa-image 等；`art_image_search`: all 或具体博物馆 |
+| `map_art` | `query`、`preset`、`radius`、`circle` | 地点与样式 |
+| `glass_refract` | `presetId`、`scale`、`relief`、`thickness`、`angle`、`dispersion`、`specular` | 预设 ID 见 `canvas_get_presets('glass_refract')` |
+| `emboss_foil` | `presetId`、`reliefStyle`、`depth`、`brightness`、`radius`、`lightAngle` | 预设见 `canvas_get_presets('emboss_foil')` |
+| `watercolor_brush` | `mode`、`paletteId`、`wiggle`、`bleedStrength`、`textureStrength` | 构图（mode）见 `canvas_get_presets('watercolor_brush')` |
+| `ink_wash` | `mode`、`size`、`flow`、`bleed`、`dry`、`color` | 预设见 `canvas_get_presets('ink_wash')` |
+| `image_process` | `effectId`、`fxParams` | 滤镜见 `canvas_get_presets('image_process')` |
+| `book_card` | `templateId`、`decorIndex` | 模板见 `canvas_get_presets('book_card')` |
+| `receipt_printer` | `templateId`、`themeId`、`ditherEnabled` | 模板见 `canvas_get_presets('receipt_printer')` |
+
+**删除的定位纪律**：`node_id` 必须来自 `canvas_list_nodes` 的返回清单，不要凭记忆引用可能已删除的 ID；级联范围由工具在确认框中列出，不要自行推断「删了会少什么」。

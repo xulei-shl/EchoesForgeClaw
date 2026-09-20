@@ -53,6 +53,7 @@ export default function (pi: ExtensionAPI) {
       '【节点参考】33 种内置节点类型与 data 键名速查见 canvas-node-catalog 技能（按系统提示 available_skills 中的路径用 read 读取）。',
       '【自动连线】可选传入 parent_id（已存在的父节点 ID）自动建立数据流连线。',
       '【现状核对】创建前先用 canvas_list_nodes 看画布现状，避免重复创建同类节点。',
+      '【改优先于建】画布上已有同类节点且用户只是想调整时，用 canvas_update_node 就地修改，不要重复创建。',
     ],
     parameters: Type.Object({
       type: Type.String({
@@ -93,6 +94,7 @@ export default function (pi: ExtensionAPI) {
     promptGuidelines: [
       '使用 canvas_connect_nodes 时必须提供 source_id 和 target_id，确保两个节点已创建。',
       '不确定节点 ID 时，先用 canvas_list_nodes 获取最新清单再连线，不要凭记忆引用可能已删除的 ID。',
+      '要取消一条已有连线用 canvas_disconnect_nodes（可撤销），不要靠新建节点绕过。',
     ],
     parameters: Type.Object({
       source_id: Type.String({ description: '源节点 ID' }),
@@ -137,6 +139,250 @@ export default function (pi: ExtensionAPI) {
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const result = await canvasOp(ctx, 'read_node_output', params as Record<string, unknown>);
       return { content: [{ type: 'text' as const, text: JSON.stringify(result) }], details: result };
+    },
+  });
+
+  // ==================== 就地修正类工具（改内容 / 调参 / 断线 / 删节点） ====================
+
+  /**
+   * 写操作工具的 details 统一形状（`AgentToolResult` 要求所有 return 分支同形状，
+   * 见 pi-canvas-tools 维护手册 §2.3）。
+   */
+  interface NodeWriteDetails {
+    success: boolean;
+    node_id: string | null;
+    error: string | null;
+  }
+
+  pi.registerTool({
+    name: 'canvas_update_node',
+    label: '修改画布节点',
+    description: '就地修改已有画布节点的 data 字段（浅合并），如写入文本正文、切换多模态预设/参数。',
+    promptSnippet: '就地修改已有画布节点的字段',
+    promptGuidelines: [
+      '【先读再改】动手前先用 canvas_get_node_details 读该节点当前字段名与值，不要凭记忆猜键名；不确定某类型该改哪些字段时用 canvas_get_node_params 查默认字段。',
+      '【就地修正优先】用户要求「改一下 / 换成 / 补上」已有节点时优先用本工具原地修改，不要新建节点绕过（新建会留下重复的旧节点）。',
+      '【不可写字段】isGenerating / error / output / imageUrl 由节点运行产生，禁止写入；受管节点（image_analysis / text_generation / image_generation / chat）的 configId 也不可改，需要调整请用 canvas_send_feedback 提交需求。',
+      '【文本键名】文本类节点（text / text_generation）的正文键是 content。',
+      '【可撤销】写入会进入画布撤销栈，改错了用户可以 Ctrl+Z 回退。',
+    ],
+    parameters: Type.Object({
+      node_id: Type.String({ description: '要修改的节点 ID（canvas_list_nodes 返回的 id）' }),
+      data: Type.Record(Type.String(), Type.Unknown(), {
+        description:
+          '要写入的扁平键值对象（浅合并）。如 text: { content: "正文" }、glass_refract: { presetId: "vintage_cross" }、weather: { city: "北京" }',
+      }),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx): Promise<AgentToolResult<NodeWriteDetails>> {
+      const result = await canvasOp(ctx, 'update_node', params as Record<string, unknown>);
+      if (result.success === false) {
+        const errMsg = String(result.error ?? result.message ?? '未知错误');
+        return {
+          content: [{ type: 'text' as const, text: `修改节点失败：${errMsg}` }],
+          details: { success: false, node_id: params.node_id ?? null, error: errMsg },
+        };
+      }
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(result) }],
+        details: { success: true, node_id: String(result.node_id ?? params.node_id), error: null },
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: 'canvas_get_node_params',
+    label: '查询节点参数',
+    description: '只读查询某类型节点的可配置字段与默认值，用于确认 canvas_update_node / canvas_create_node 该写哪些键。',
+    promptSnippet: '查询某类节点的可配置字段与默认值',
+    promptGuidelines: [
+      '返回该类型的字段名与默认值（数据源与节点初始值一致）；不确定字段名时先查再写，不要猜键名。',
+      '多模态视觉/排版类节点的预设 ID（presetId / mode / effectId / templateId 等）用 canvas_get_presets 查询取值域。',
+    ],
+    parameters: Type.Object({
+      node_type: Type.String({ description: '节点类型（如 text / weather / glass_refract）' }),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const result = await canvasOp(ctx, 'get_node_params', { node_type: params.node_type });
+      if (result.success === false) {
+        return {
+          content: [{ type: 'text' as const, text: `查询节点参数失败：${result.error ?? '未知错误'}` }],
+          details: { success: false, node_type: params.node_type, count: 0, error: String(result.error ?? '') },
+        };
+      }
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(result) }],
+        details: {
+          success: true,
+          node_type: params.node_type,
+          count: Array.isArray(result.fields) ? result.fields.length : 0,
+          error: null,
+        },
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: 'canvas_get_node_details',
+    label: '读取节点详情',
+    description: '只读读取指定节点的完整字段现状（长文本截断）+ 端口声明 + 是否已有产出，供修改前核对。',
+    promptSnippet: '读取指定节点的字段现状与端口',
+    promptGuidelines: [
+      '调用 canvas_update_node 前先用本工具读现状，避免猜错字段名或覆盖已有内容。',
+      '本工具回执中的 data 是节点当前实际值；要读节点对外输出正文用 canvas_read_node_output。',
+    ],
+    parameters: Type.Object({
+      node_id: Type.String({ description: '要读取的节点 ID（canvas_list_nodes 返回的 id）' }),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const result = await canvasOp(ctx, 'get_node_details', { node_id: params.node_id });
+      if (result.success === false) {
+        return {
+          content: [{ type: 'text' as const, text: `读取节点详情失败：${result.error ?? '未知错误'}` }],
+          details: { success: false, node_id: params.node_id, error: String(result.error ?? '') },
+        };
+      }
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(result) }],
+        details: { success: true, node_id: params.node_id, error: null },
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: 'canvas_disconnect_nodes',
+    label: '断开画布连线',
+    description: '断开画布上一条已有连线（按 edge_id，或 source_id + target_id 定位），可撤销。',
+    promptSnippet: '断开画布节点之间的一条连线',
+    promptGuidelines: [
+      '断线是非破坏且可撤销的操作，无需事先向用户确认；但必须定位到真实存在的连线——不确定节点 ID 时先用 canvas_list_nodes 查清单。',
+      '只断开用户明确要去掉的那一条连线；若要调整上下游关系，建议随后用 canvas_connect_nodes 补上正确的连线。',
+    ],
+    parameters: Type.Object({
+      edge_id: Type.Optional(Type.String({ description: '连线 ID（优先使用）' })),
+      source_id: Type.Optional(Type.String({ description: '源节点 ID（未给 edge_id 时与 target_id 配合定位）' })),
+      target_id: Type.Optional(Type.String({ description: '目标节点 ID' })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx): Promise<AgentToolResult<{ success: boolean; edge_id: string | null; error: string | null }>> {
+      const result = await canvasOp(ctx, 'disconnect_nodes', params as Record<string, unknown>);
+      if (result.success === false) {
+        const errMsg = String(result.error ?? result.message ?? '未知错误');
+        return {
+          content: [{ type: 'text' as const, text: `断开连线失败：${errMsg}` }],
+          details: { success: false, edge_id: params.edge_id ?? null, error: errMsg },
+        };
+      }
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(result) }],
+        details: { success: true, edge_id: String(result.edge_id ?? ''), error: null },
+      };
+    },
+  });
+
+  /** 删除工具的 details 统一形状：删/取消/失败三态都可表达 */
+  interface DeleteNodeDetails {
+    success: boolean;
+    deleted: boolean;
+    cancelled: boolean;
+    deleted_count: number;
+    error: string | null;
+  }
+
+  pi.registerTool({
+    name: 'canvas_delete_node',
+    label: '删除画布节点',
+    description:
+      '删除画布上的节点（默认级联删除其全部下游子孙节点）。调用后会先弹确认框，用户确认后才真正删除，可撤销。',
+    promptSnippet: '删除画布节点（含级联，需用户确认）',
+    promptGuidelines: [
+      '【改优先于删】用户说「换成 / 改成」时先用 canvas_update_node 就地修改；只有用户明确要求删除、或节点确实多余时才删除。',
+      '【确认通道】本工具会自行弹出确认框（含节点名与级联数量）；不要为了删除先去调用 canvas_send_feedback 或反复向用户追问，也不要向用户宣称「已删除」——以用户是否确认与工具回执为准。',
+      '【级联语义】cascade 默认 true（与画布 UI 一致，连同全部下游一起删）；cascade=false 只删该节点，下游节点会保留但失去输入，此时需向用户说明这一后果。',
+      '【定位】node_id 必须来自 canvas_list_nodes 返回的清单，不要凭记忆引用可能已删除的 ID。',
+    ],
+    parameters: Type.Object({
+      node_id: Type.String({ description: '要删除的节点 ID（canvas_list_nodes 返回的 id）' }),
+      cascade: Type.Optional(
+        Type.Boolean({ description: '是否级联删除其全部下游子孙节点，默认 true（与画布 UI 一致）' })
+      ),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx): Promise<AgentToolResult<DeleteNodeDetails>> {
+      const nodeId = params.node_id;
+      const cascade = params.cascade !== false;
+
+      // 1) 先向前端取「删除影响范围」（前端不产生任何变更），用于组织可读的确认文案
+      const preview = await canvasOp(ctx, 'delete_node', { node_id: nodeId, cascade, confirmed: false });
+      if (preview.success === false) {
+        const errMsg = String(preview.error ?? preview.message ?? '未知错误');
+        return {
+          content: [{ type: 'text' as const, text: `删除节点失败：${errMsg}` }],
+          details: { success: false, deleted: false, cancelled: false, deleted_count: 0, error: errMsg },
+        };
+      }
+
+      const title = String(preview.title ?? nodeId);
+      const descendants = Array.isArray(preview.descendants) ? preview.descendants : [];
+      const count = Number(preview.descendant_count ?? 0) || 0;
+      const names = descendants
+        .map((d) => String((d as { title?: unknown }).title ?? ''))
+        .filter((name) => name.length > 0);
+
+      const lines = [`节点：「${title}」（id: ${nodeId}）`];
+      if (count > 0) {
+        lines.push(
+          `级联删除：其下游 ${count} 个节点将一并删除（${names.slice(0, 10).join('、')}${names.length > 10 ? ' 等' : ''}）`
+        );
+      } else if (!cascade) {
+        lines.push('仅删除该节点自身：下游节点会保留，但将失去此上游输入。');
+      } else {
+        lines.push('该节点没有下游子节点，仅删除自身。');
+      }
+      lines.push('删除后可在画布上撤销（Ctrl+Z）恢复。确定要删除吗？');
+
+      if (!ctx?.ui?.confirm) {
+        const errMsg = '当前环境缺少 ctx.ui.confirm 支持，删除已取消（画布未发生任何变更）';
+        return {
+          content: [{ type: 'text' as const, text: errMsg }],
+          details: { success: false, deleted: false, cancelled: true, deleted_count: 0, error: errMsg },
+        };
+      }
+
+      let confirmed = false;
+      try {
+        confirmed = await ctx.ui.confirm('删除画布节点', lines.join('\n'));
+      } catch (err: any) {
+        const errMsg = `确认请求失败：${err?.message || String(err)}`;
+        return {
+          content: [{ type: 'text' as const, text: `删除节点失败：${errMsg}` }],
+          details: { success: false, deleted: false, cancelled: true, deleted_count: 0, error: errMsg },
+        };
+      }
+
+      if (!confirmed) {
+        return {
+          content: [{ type: 'text' as const, text: `已取消删除节点「${title}」，画布未发生任何变更。` }],
+          details: { success: true, deleted: false, cancelled: true, deleted_count: 0, error: null },
+        };
+      }
+
+      // 2) 用户已确认：执行删除（前端跳过自家确认框，避免双重弹窗）
+      const result = await canvasOp(ctx, 'delete_node', { node_id: nodeId, cascade, confirmed: true });
+      if (result.success === false) {
+        const errMsg = String(result.error ?? result.message ?? '未知错误');
+        return {
+          content: [{ type: 'text' as const, text: `删除节点失败：${errMsg}` }],
+          details: { success: false, deleted: false, cancelled: false, deleted_count: 0, error: errMsg },
+        };
+      }
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(result) }],
+        details: {
+          success: true,
+          deleted: true,
+          cancelled: false,
+          deleted_count: Number(result.deleted_count ?? 0) || 0,
+          error: null,
+        },
+      };
     },
   });
 

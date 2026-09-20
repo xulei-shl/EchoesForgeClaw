@@ -11,8 +11,8 @@
 | 组件 | 位置 | 加载方式 | 备注 |
 |---|---|---|---|
 | 扩展包 `pi-canvas-tools` | `packages/pi-canvas-tools/src/index.ts` | **TS 源码直接加载**（package.json `pi.extensions: ["./src/index.ts"]`） | 无需构建产物；pi 侧加载不做类型检查 |
-| 工具清单（9 个） | 同上 | `canvasOp` 桥接 | 只读：`canvas_list_nodes` / `canvas_read_node_output`；写操作：`canvas_create_node` / `canvas_connect_nodes`；检索：`canvas_search_prompts` / `canvas_search_skills`（均经桥接，前端带用户凭据调后端 Bifrost 接口）/ `canvas_get_presets`（扩展内静态预设）/ `canvas_get_node_configs`（仍直连 admin 路由，见 §6.7）；反馈：`canvas_send_feedback`（直连公开路由 `/api/feedback`；**回执以响应体 `delivered` 为准**，HTTP 200 仅代表已受理，见 §6.8） |
-| 前端执行器 | `frontend/src/canvas/components/mascot/canvasExecutor.ts` | 每个 op 一个 case，`executeCanvasOp` 为 async | 复用 `nodeOutputText` / `nodeOutputImages` / `getNodeTitle` 纯函数（与 chat 节点上下文注入同口径）；检索 case 复用 `bifrostService`（与提示词/Skill 检索节点同口径） |
+| 工具清单（14 个） | 同上 | `canvasOp` 桥接 | 只读：`canvas_list_nodes` / `canvas_read_node_output` / `canvas_get_node_details`（单节点字段现状）/ `canvas_get_node_params`（某类型可配字段与默认值）；写操作：`canvas_create_node` / `canvas_connect_nodes` / `canvas_update_node` / `canvas_disconnect_nodes` / `canvas_delete_node`；检索：`canvas_search_prompts` / `canvas_search_skills`（均经桥接，前端带用户凭据调后端 Bifrost 接口）/ `canvas_get_presets`（扩展内静态预设）/ `canvas_get_node_configs`（仍直连 admin 路由，见 §6.7）；反馈：`canvas_send_feedback`（直连公开路由 `/api/feedback`；**回执以响应体 `delivered` 为准**，HTTP 200 仅代表已受理，见 §6.8） |
+| 前端执行器 | `frontend/src/canvas/components/mascot/canvasExecutor.ts` | 每个 op 一个 case，`executeCanvasOp` 为 async | 复用 `nodeOutputText` / `nodeOutputImages` / `getNodeTitle` 纯函数（与 chat 节点上下文注入同口径）；检索 case 复用 `bifrostService`（与提示词/Skill 检索节点同口径）；**写操作经 `frontend/src/canvas/core/canvasCommands.ts` 命令层**（见 §6.10） |
 | 同捆技能 | `packages/pi-canvas-tools/skills/*/SKILL.md` | 装配回退（见 §2） | `canvas-workflow-patterns` / `canvas-node-catalog` |
 | 系统提示词种子 | `backend-ts/src/config/seed.ts`（`DEFAULT_CANVAS_ASSISTANT_PROMPT`） | 启动时物化 AGENTS.md | 运行时以 DB `promptTemplates` 行为准（见 §5） |
 | 工具排除名单 | `backend-ts/src/services/ai/pi/config.ts`（`CANVAS_AGENT_EXCLUDED_TOOLS`） | 仅排除 bash | 新增只读工具无需变更 |
@@ -111,7 +111,7 @@ canvasExecutor.ts：按 op 分发 case，从 nodesRef/edgesRef 读数据
 ## 3. 新增画布工具 Checklist（标准闭环）
 
 1. **扩展端**（`packages/pi-canvas-tools/src/index.ts`）：用 `canvasOp()` 定义工具；参数用 typebox 声明；`promptGuidelines` 写清使用时机与协作工具交叉引用；所有 return 分支 `details` 同形状；
-2. **前端执行器**（`canvasExecutor.ts`）：新增对应 case；复用 `nodeOutputText` / `nodeOutputImages` / `getNodeTitle` 纯函数（跨节点类型零枚举，与 chat 节点同口径）；大文本截断 + data URL 占位符（§2.2）；需用户凭据的后端调用复用既有 service（如 `bifrostService`），**不要在扩展端直连已鉴权路由**（§2.5）；
+2. **前端执行器**（`canvasExecutor.ts`）：新增对应 case；复用 `nodeOutputText` / `nodeOutputImages` / `getNodeTitle` 纯函数（跨节点类型零枚举，与 chat 节点同口径）；大文本截断 + data URL 占位符（§2.2）；需用户凭据的后端调用复用既有 service（如 `bifrostService`），**不要在扩展端直连已鉴权路由**（§2.5）；**任何写操作（建/改/断线/删）必须经 `canvasCommands` 命令层**，先 `recordHistory()` 再改 store，且命令层不可用时明确报错（§6.10）；
 3. **提示词三层同步**（§2.1）：DEFAULT 提示词 + 相关 SKILL.md + 工具 promptGuidelines；
 4. **验证**：§6 全绿；
 5. **生效**：重启后端（重新装配工作区扩展与 AGENTS.md）+ 刷新前端；无需 npm install（`packages/` 源码直接加载）。
@@ -129,7 +129,7 @@ canvasExecutor.ts：按 op 分发 case，从 nodesRef/edgesRef 读数据
 | 5 | 提示词物化回归 | `cd backend-ts && npx vitest run tests/api/canvas-agent.test.ts` | 全绿（当前 5/5；只断言物化存在、不断言内容，改提示词安全） |
 | 6 | 反馈通道回归 | `cd backend-ts && npx vitest run tests/api/feedback.test.ts` | 全绿（当前 7/7；覆盖 errcode 非 0 / 未配置 webhook / 网络异常 / 超长自动分片 / 分片中途失败） |
 
-端到端（真实对话链路需起后端+前端+模型，按需做）：画板助手能主动调 `canvas_list_nodes` 查现状、`canvas_read_node_output` 读内容，且输出为空时如实告知。
+端到端（真实对话链路需起后端+前端+模型，按需做）：画板助手能主动调 `canvas_list_nodes` 查现状、`canvas_read_node_output` 读内容，且输出为空时如实告知；能就地改节点（`canvas_update_node`）、断开连线（`canvas_disconnect_nodes`）、删节点（`canvas_delete_node`，删除前必定弹确认且取消时不产生任何变更）；且 Agent 的建/改/删/断线**都能 Ctrl+Z 撤销**（§6.10 的口径修复）。另需验证反路径：离开画板页后对画布下写指令 → 明确报错「画布未挂载」而**不是**静默改坏画布。
 
 文本节点 / VuFind 写入回归（手工，必须卡这几个动作，只看当前会话会误判）：① Agent 写入（或手输）正文后**刷新页面**，内容仍在（不被上游顶掉）；② 把 `book_info` 连到已有内容的节点，内容不被覆盖；③ 新建**空**节点并连线上游 → 正常继承；④ 继承后**手动清空 → 刷新** → 保持空（不被上游「复活」）；⑤ 断开上游再重新连回同一来源 → 可再次继承（断开已抹除继承记录）。
 
@@ -160,10 +160,22 @@ canvasExecutor.ts：按 op 分发 case，从 nodesRef/edgesRef 读数据
 7. **`canvas_get_node_configs` 仍不可用（存量缺陷，未修）**：它直连 `/api/admin/node-configs`，该路由 `preHandler: app.requireAdmin` 且子进程无凭据——普通用户调用必然 401。若要让画板助手查配置，需改成桥接 + 面向普通用户的只读配置接口（属产品/权限决策，需单独确认）。
 8. **文本类节点正文键是 `data.content`（不是 `text`），且文本节点的「连线即输入」只填充空节点**——两个坑会造成「Agent 建了节点但内容为空/丢内容」：① 历史 SKILL.md 速查表与工具 promptGuidelines 误教 `text` 键（模型照文档执行必然写错），现已修正文档并在 `canvasExecutor` 加键名归一（回执带 `warnings`，不静默吞掉）；② `TextNode` 原实现是「上游文本 ≠ 本地内容就写入」，而该注入 effect 依赖 `[upstreamText]`、**每次挂载都会重跑**（`lastUpstreamRef` 为组件内 ref），所以刷新页面/切页返回就会把 Agent 或用户写入的正文换成上游文本；现已改为「本地非空则不注入」。新建的空文本节点连线上游仍需继承，故保留空节点注入。**继承判定已从组件内 ref 换成 `node.data.inheritedFrom`（已继承过的上游值）**：ref 方案下「手动清空 → 保持空」但「清空后刷新 → 上游复活」自相矛盾，落进 node.data 后刷新/切页/清空三个动作判定一致；上游断开时抹除该记录，重连可再次继承（继承写入走 `useEditorPatchHandler(['text'])` / `handleUpdateVuFindEditorFor`，不记撤销历史）。同类写法见 `VuFindCallNumberNode`（`onUpdateEditor(id, { isbn })`，同样会把上游 ISBN 落盘覆盖手输值）——**已按同口径修**：仅在本节点无 ISBN（草稿与已落盘值都为空）时注入。注意该节点的 `upstreamIsbn` 优先级里含「画布根 `book_info` 兜底」，**没有连线也可能有上游值**，所以「本地非空不覆盖」在这里尤其重要；提示语也只在输入框的值确实等于上游值时展示（原文案无条件声称「已从上级连线自动填入」）。
 9. **企业微信群机器人 webhook 恒返回 HTTP 200**——真实结果在响应体 `errcode`（`0` 成功 / `93000` webhook 无效或机器人被移出群 / `40058` 内容超 4096 字节 / `45009` 超频 20 条每分钟）。只判 `resp.ok` 会把「被拒收」记成「推送成功」。`/api/feedback` 现已解析 errcode 并在响应中回传 `delivered`，工具文案与前端提示都必须以此为准，不得用 HTTP 200 当送达证据。markdown 正文上限 4096 **字节**（UTF-8，中文约 1365 字），路由发送前按字节预算**自动分片**为多条消息（不截断、不丢内容），首个分片失败即停并回传 `parts_delivered` / `parts_total`。注：手动弹窗表单 `maxLength={1000}`（≈3000 字节）永远不会触发分片，Agent 的长文才会——这是「手动正常、Agent 异常」的常见差异来源。
+10. **Agent 写操作必须经模块级画布命令层（`frontend/src/canvas/core/canvasCommands.ts`）**：画板助手的执行器挂在 App 级 `MascotWidget` 上，生命周期与画布页解耦；历史上执行器直接调模块级 `setNodes` / `setEdges`，绕开画布自己的 `recordHistory` → **Agent 建的节点/连线撤销不了**（UI 手改却可以），同一操作两条路径两种可撤销性。现 `CanvasPage` 挂载时注入实现、卸载时清空，全部写操作（`create_node` / `connect_nodes` / `update_node` / `disconnect_nodes` / `delete_node`）经该层；命令层为 null（画布页未挂载，如用户停留在历史/画廊页对画布下指令）时执行器**明确报错**，不降级直改 store——这个失败是预期行为，不要为了「顺手能跑」加回降级路径。另：
+    - `canvas_update_node` 的写入 denylist 除 `isGenerating` / `error` / `output` / `configId` 外还含 `imageUrl`（图像类节点的产物同样是产物，写入即可伪造图片）；文本键名仍走既有归一（`text` → `content`）；
+    - `canvas_delete_node` 采两段式：`confirmed: false` 只回影响范围（节点名、子孙清单、受影响连线数）**不做任何变更** → 扩展侧 `ctx.ui.confirm` 陈述 → `confirmed: true` 才执行（前端跳过自家 dialog，避免双重弹窗）。即使没有子孙也弹确认：Agent 是自动化来源，静默删除的风险高于手动点击；
+    - `canvas_disconnect_nodes` 非破坏、可撤销，不弹确认；`canvas_delete_node(node_id)` 一次只接受 1 个节点，级联范围仅由 `cascade` 决定（默认 true，与画布 UI 一致）。
 
 ---
 
 ## 7. 改动记录
+
+### 2026-09-20（第五轮）：节点编辑工具化（改 / 调参 / 断线 / 删）
+
+- **新增 5 个工具**（工具清单 9 → 14）：`canvas_update_node`（浅合并改字段，denylist 拒 `isGenerating` / `error` / `output` / `imageUrl` / `configId`）、`canvas_get_node_params`（某类型字段名 + 默认值，数据源＝`seedDataFor`，不新建第二份真相）、`canvas_get_node_details`（单节点字段现状 + 端口 + `has_output`，长文本截断 / data URL 收敛占位符）、`canvas_disconnect_nodes`（`edge_id` 或 `source_id`+`target_id`，非破坏、可撤销、不弹确认）、`canvas_delete_node`（两段式：取影响范围 → `ctx.ui.confirm` → 执行；默认 `cascade=true`）。
+- **修复存量缺陷（根因）**：`canvasExecutor` 的写操作直接调模块级 `setNodes` / `setEdges`，绕开画布 `recordHistory` → Agent 建的节点/连线撤销不了。新增模块级命令层 `frontend/src/canvas/core/canvasCommands.ts`（`CanvasPage` 挂载注入 / 卸载清空），全部写操作经该层，命令层缺失时明确报错、不降级（§6.10）；`useNodeHandlers` 的删除重构为 `removeNode(id, { cascade, confirmed })`，UI 入口行为不变。
+- **提示词三层同步**：DEFAULT 提示词新增「就地修正优先」原则（并按 §2.4 把旧版全文存入 `PREVIOUS_*` 精确匹配升级，覆盖存量库）；`canvas-node-catalog` 新增「五、就地修正已有节点」章节 + 常用可写字段速查；`canvas-workflow-patterns` 补「先改后建」；create/connect 工具的 `promptGuidelines` 交叉引用新工具。
+- **验证**：扩展包 strict 0 error；前端 `tsc -b` 0 error + `oxlint`（改动文件）0 新增问题；后端 `tsc --noEmit` 0 error；`canvas-agent.test.ts` 5/5 + `feedback.test.ts` 7/7。存量无关失败：`tests/api/pi-agent-reuse.test.ts` 的「手动暂停后上下文延续」用例（`mock.userCounts` 期望 `[1,2]` 得 `[1,1]`）——已用 `git stash` 单独回退本轮后端改动复现，**与本次改动无关**，未修。端到端（浏览器 + 真实对话 + 撤销）未验证，按 §4 手工回归。
+- **偏差说明**（与 `tasks/canvas-node-edit-tools-plan.md` 的差异）：① 写入 denylist 除计划中的 4 个键外增加 `imageUrl`（图像类节点产物同样是产物）；② 计划写「工具表 9 → 13」，实际 9 + 5 = **14**；③ `canvas_update_node` / `disconnect_nodes` / `delete_node` 均实现了计划要求，未做 `canvas_run_node` / `canvas_move_node`（与计划一致）。
 
 ### 2026-09-20（第四轮）：修复文本节点写入契约与上游覆盖
 

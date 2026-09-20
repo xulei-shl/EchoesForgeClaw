@@ -9,6 +9,8 @@ description: "典型画布链路组合模板。当用户想要一整条创作流
 
 **动手前先看现状**：落地任何链路前，先用 `canvas_list_nodes` 摸清画布上已有哪些节点（`has_output` 标记是否已有产出），避免重复创建；链路各环节跑完后，用 `canvas_read_node_output` 抽查关键节点产出（如 `book_info` 的图书元数据是否已拉到、上游文本是否非空）再继续接线或向用户交付。
 
+**已有链路要调整时先改后建**：链路跑通后，用户要改内容/换预设用 `canvas_update_node`（先 `canvas_get_node_details` 读现状）、断开某条连线用 `canvas_disconnect_nodes`、删掉多余节点用 `canvas_delete_node`（会先弹确认框）。不要把「改一下」做成「再建一个」，否则画布上会留下重复节点与冗余连线。
+
 ## 1. 图书卡片流
 `book_info` → `book_card`
 - 场景：按 ISBN 或书名生成一张分享卡片。

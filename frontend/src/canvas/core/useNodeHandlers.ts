@@ -58,10 +58,14 @@ export function useNodeHandlers({
   showToast, dialog, fetchBookInfo, uploadBookCover, removingRef, setCtxMenu, autoSaveGeneration
 }: NodeHandlersDeps) {
   // ---------- 删除节点（含级联） ----------
-  /** 批量删除节点（含子孙）：中止进行中请求，清理连线/尺寸/收藏/公开/generation 关联 */
-  const removeNodesByIds = (ids: string[]) => {
+  /** 批量删除节点（含子孙）：中止进行中请求，清理连线/尺寸/收藏/公开/generation 关联。
+   *  返回随删除一并移除的连线 id（供调用方回执）。 */
+  const removeNodesByIds = (ids: string[]): string[] => {
     recordHistory();
     const idSet = new Set(ids);
+    const removedEdgeIds = edgesRef.current
+      .filter((e) => idSet.has(e.source) || idSet.has(e.target))
+      .map((e) => e.id);
     idSet.forEach((nid) => {
       streamControllers.current.get(nid)?.abort();
       streamControllers.current.delete(nid);
@@ -86,29 +90,46 @@ export function useNodeHandlers({
       return next;
     });
     setSelectedImageId((prev) => (prev && idSet.has(prev) ? null : prev));
+    return removedEdgeIds;
   };
 
-  const handleRemoveNode = (id: string) => {
-    const ids = collectDescendantIds(id, edgesRef.current);
-    if (ids.length > 1) {
-      if (removingRef.current) return;
-      removingRef.current = true;
-      void (async () => {
-        try {
-          const ok = await dialog.confirm({
-            title: '级联删除',
-            message: `该节点下还有 ${ids.length - 1} 个子节点（含后续分支）。删除将同时移除它们，是否继续？`,
-            confirmText: '删除',
-            danger: true,
-          });
-          if (ok) removeNodesByIds(ids);
-        } finally {
-          removingRef.current = false;
-        }
-      })();
-      return;
+  /**
+   * 删除节点（画布 UI 与模块级画布命令层共用）：
+   * - `cascade`（默认 true）与画布 UI 一致：连同全部下游子孙节点一起删除；
+   * - `confirmed` 为 true 表示确认已在调用方完成（如画板助手扩展侧），前端不再弹自家确认框；
+   * - 有子孙且未确认时弹确认框，用户取消则返回空结果、不产生任何变更。
+   */
+  const removeNode = async (
+    id: string,
+    opts?: { cascade?: boolean; confirmed?: boolean }
+  ): Promise<{ deletedIds: string[]; deletedEdges: string[] }> => {
+    if (!nodesRef.current.some((n) => n.id === id)) {
+      return { deletedIds: [], deletedEdges: [] };
     }
-    removeNodesByIds(ids);
+    const cascade = opts?.cascade !== false;
+    const ids = cascade ? collectDescendantIds(id, edgesRef.current) : [id];
+    if (ids.length > 1 && !opts?.confirmed) {
+      if (removingRef.current) return { deletedIds: [], deletedEdges: [] };
+      removingRef.current = true;
+      try {
+        const ok = await dialog.confirm({
+          title: '级联删除',
+          message: `该节点下还有 ${ids.length - 1} 个子节点（含后续分支）。删除将同时移除它们，是否继续？`,
+          confirmText: '删除',
+          danger: true,
+        });
+        if (!ok) return { deletedIds: [], deletedEdges: [] };
+      } finally {
+        removingRef.current = false;
+      }
+    }
+    const deletedEdges = removeNodesByIds(ids);
+    return { deletedIds: ids, deletedEdges };
+  };
+
+  /** 画布 UI 单节点删除入口：默认级联、有子孙时弹确认（行为与改造前一致） */
+  const handleRemoveNode = (id: string) => {
+    void removeNode(id);
   };
 
   // ---------- 节点右键菜单 ----------
@@ -671,6 +692,7 @@ export function useNodeHandlers({
 
   return {
     handleRemove,
+    removeNode,
     handleRetryBookFor,
     handleFetchBookFor,
     handleForceRefreshBookFor,
