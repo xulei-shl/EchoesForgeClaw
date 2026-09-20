@@ -8,7 +8,6 @@ import {
   runPiAgent,
   resolvePiExtensions,
   computeWorkspaceGeneration,
-  clearPiSession,
   buildWebSearchConfig,
   sendExtensionUiResponse,
 } from '../../../services/ai/pi-agent-service.js';
@@ -41,7 +40,11 @@ const CANVAS_AGENT_EXCLUDED_TOOLS = ['bash'] as const;
  *
  * - POST /api/modules/bookplate/canvas-agent/chat（多轮对话流式，挂载 canvas-assistant 提示词与专用技能）
  * - POST /api/modules/bookplate/canvas-agent/ui-response（前端 dialog 作答 / 画布操作执行结果写回）
- * - POST /api/modules/bookplate/canvas-agent/clear（清空助手工作区会话）
+ *
+ * 刻意不提供「清空会话」接口：开启新会话 = 前端置空活跃工作区（下一轮用新的
+ * `canvas-agent_<ts>`），旧对话必须留在盘上继续被「对话历史」收录。写操作只有两条——
+ * 删除整个对话走 DELETE /chat/session（显式确认），没有任何接口只删会话文件（那会造出
+ * 「列表里消失但目录还在」的空壳工作区，正是历史上「点清空对话 → 历史清空」的根因）。
  */
 export async function register(app: FastifyInstance): Promise<void> {
   // 1) Canvas Assistant 对话流
@@ -234,18 +237,4 @@ export async function register(app: FastifyInstance): Promise<void> {
     }
   );
 
-  // 3) 清空助手会话
-  app.post(
-    '/api/modules/bookplate/canvas-agent/clear',
-    { preHandler: app.authenticate },
-    async (request, reply) => {
-      const payload = (request.body ?? {}) as { workspace_id?: string };
-      const workspaceId = payload.workspace_id?.trim();
-      if (!workspaceId) {
-        return { cleared: false };
-      }
-      const cleared = await clearPiSession(request.authUser!.id, workspaceId);
-      return { cleared };
-    }
-  );
 }

@@ -62,6 +62,12 @@ export interface ChatSidePanel {
    * 缺省 = 不展示对话历史 Tab 的批量入口。
    */
   onBatchDeleteSessions?: (workspaceIds: string[]) => Promise<{ ok: number; failed: number }>;
+  /**
+   * 「对话历史」批量删除确认框内的范围说明（缺省 = 跨节点全局列表口径：含其它画布节点的对话）。
+   * 列表范围与节点无关的宿主（如画板助手按 `canvas-agent_` 前缀隔离）必须覆盖，
+   * 否则用户会误判「会删到画布节点的对话」。
+   */
+  sessionsScopeNote?: string;
   /** 来源节点解析（全局列表时按 workspaceId 前缀找画布节点标题；缺省 = 不标注） */
   sourceNodeOf?: (workspaceId: string) => { title: string } | null;
 }
@@ -384,11 +390,15 @@ export const ChatSidePanelDrawer: React.FC<{
   const runSessionBatchDelete = async (workspaceIds: string[], all: boolean) => {
     const ids = workspaceIds.filter(Boolean);
     if (!ids.length || !panel.onBatchDeleteSessions) return;
+    // 范围说明按宿主实际列表口径给出（缺省 = 画布节点跨节点全局列表）
+    const scopeNote =
+      panel.sessionsScopeNote ??
+      (all ? '含其它画布节点与当前节点的对话' : '含其它画布节点的对话');
     const ok = await dialog.confirm({
       title: all ? '清空对话历史' : '删除对话',
       message: all
-        ? `将清空「对话历史」中的全部 ${ids.length} 个对话（含其它画布节点与当前节点的对话）。每个对话的完整数据（会话历史、产物文件与上传附件）将被永久删除，无法恢复；若其中存在正在进行的对话，其进程将被终止。`
-        : `将删除选中的 ${ids.length} 个对话（含其它画布节点的对话）。每个对话的完整数据（会话历史、产物文件与上传附件）将被永久删除，无法恢复。`,
+        ? `将清空「对话历史」中的全部 ${ids.length} 个对话（${scopeNote}）。每个对话的完整数据（会话历史、产物文件与上传附件）将被永久删除，无法恢复；若其中存在正在进行的对话，其进程将被终止。`
+        : `将删除选中的 ${ids.length} 个对话（${scopeNote}）。每个对话的完整数据（会话历史、产物文件与上传附件）将被永久删除，无法恢复。`,
       confirmText: '删除',
       danger: true,
     });

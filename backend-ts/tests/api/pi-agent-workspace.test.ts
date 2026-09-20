@@ -21,7 +21,6 @@ import {
 } from '../../src/services/ai/skill-agent-service.js';
 import {
   buildWebSearchConfig,
-  clearPiSession,
   listWorkspaceArtifacts,
   preparePiWorkspace,
   resolveImageGenExtension,
@@ -78,6 +77,18 @@ const AGENT_RUNTIME_EXPECTED_ALLOWED = [
   { pattern: '.pi-agent/skills/**' },
   { pattern: '.pi-agent/prompts' },
   { pattern: '.pi-agent/prompts/**' },
+  { pattern: '.pi-agent/run' },
+  { pattern: '.pi-agent/run/**' },
+  { pattern: '.pi-agent/sessions' },
+  { pattern: '.pi-agent/sessions/**' },
+];
+
+/**
+ * agent-session-readonly 规则期望的受保护模式（会话文件：可读不可写）。
+ * 与 agent-runtime 的豁免是一对：豁免保证 read 不被拒（避免 Agent 找上下文空转），
+ * 本条只挡 write / edit / bash，保证会话文件不被覆盖成空壳（对话历史收录凭据）。
+ */
+const AGENT_SESSION_EXPECTED_PATTERNS = [
   { pattern: '.pi-agent/run' },
   { pattern: '.pi-agent/run/**' },
   { pattern: '.pi-agent/sessions' },
@@ -687,7 +698,18 @@ describe('pi-guardrails 管理员设置映射（admin/settings Pi Agent 分类 �
       patterns: AGENT_RUNTIME_EXPECTED_PATTERNS,
       allowedPatterns: AGENT_RUNTIME_EXPECTED_ALLOWED,
     });
-    expect(cfg.policies.rules).toHaveLength(1);
+    // 会话运行态只读规则：readOnly + 空豁免（写入会话文件 = 绕过对话历史删除语义）
+    const sessionRule = cfg.policies.rules.find(
+      (r: { id: string }) => r.id === 'agent-session-readonly'
+    );
+    expect(sessionRule).toMatchObject({
+      patterns: AGENT_SESSION_EXPECTED_PATTERNS,
+      allowedPatterns: [],
+      protection: 'readOnly',
+      // fail-closed：目标不存在也拦（否则「向 run/ 新建文件」成口子）
+      onlyIfExists: false,
+    });
+    expect(cfg.policies.rules).toHaveLength(2);
   });
 
   it('pathAccess mode 归一：ask → block（headless 下两者同为拒绝），allow 原样保留', () => {
@@ -726,6 +748,31 @@ describe('pi-guardrails 管理员设置映射（admin/settings Pi Agent 分类 �
     // 而密钥装配物不在豁免内：仍受受保护模式约束
     expect(exempt('.pi-agent/models.json')).toBe(false);
     expect(exempt('.pi-agent/extensions/guardrails.json')).toBe(false);
+  });
+
+  it('会话运行态读写口径：read 命中豁免不空转，write/edit/bash 命中只读规则不可改写历史', () => {
+    // guardrails 先按工具筛规则（BLOCKED_TOOLS）：read 只受 noAccess 规则约束，命中豁免即放行；
+    // write/edit/bash 额外受 readOnly 规则约束，命中即拦。两条规则合起来 = 「会话文件可读不可写」。
+    const allowed = AGENT_RUNTIME_EXPECTED_ALLOWED.map((p) => p.pattern);
+    const readonly = AGENT_SESSION_EXPECTED_PATTERNS.map((p) => p.pattern);
+    const readAllowed = (rel: string) => allowed.some((p) => matchesGlob(rel, p));
+    const writeBlocked = (rel: string) => readonly.some((p) => matchesGlob(rel, p));
+
+    for (const rel of [
+      '.pi-agent/run/chat.jsonl',
+      '.pi-agent/run',
+      '.pi-agent/sessions',
+      '.pi-agent/sessions/--opt-enc--/chat.jsonl',
+    ]) {
+      expect(readAllowed(rel)).toBe(true);
+      expect(writeBlocked(rel)).toBe(true);
+    }
+
+    // 密钥装配物不受只读规则影响：它们本就被 agent-runtime 全封（连 read 一起拒）
+    for (const rel of ['.pi-agent/models.json', '.pi-agent/extensions/guardrails.json']) {
+      expect(writeBlocked(rel)).toBe(false);
+      expect(readAllowed(rel)).toBe(false);
+    }
   });
 
   it('豁免只作用于本工作区：其它租户的 .pi-agent 归一为绝对路径，命不中豁免', () => {
@@ -794,37 +841,6 @@ describe('resolveThinkingArgs（节点思考开关 → pi CLI 参数）', () => 
     expect(resolveThinkingArgs(null)).toEqual([]);
     expect(resolveThinkingArgs('')).toEqual([]);
     expect(resolveThinkingArgs('ultra')).toEqual([]);
-  });
-});
-
-describe('clearPiSession（清空对话语义）', () => {
-  it('清除 run/、根级残留 chat.jsonl 与 sessions/，保留装配物与产物；幂等', async () => {
-    preparePiWorkspace(UID, WS_ID, {
-      agentId: 1,
-      chatModel: CHAT_MODEL,
-      imageModel: null,
-      skillNames: [],
-    });
-    const agentDir = path.join(wsPath(), '.pi-agent');
-    // 三处会话历史：当前落点 + 历史版本根级文件 + pi 迁移/自管目录
-    mkdirSync(path.join(agentDir, 'run'), { recursive: true });
-    writeFileSync(path.join(agentDir, 'run', 'chat.jsonl'), '{"type":"session"}\n');
-    writeFileSync(path.join(agentDir, 'chat.jsonl'), '{"type":"session"}\n');
-    mkdirSync(path.join(agentDir, 'sessions', '--opt-enc--'), { recursive: true });
-    writeFileSync(path.join(agentDir, 'sessions', '--opt-enc--', 'chat.jsonl'), '{"type":"session"}\n');
-    // 装配物与产物必须保留
-    mkdirSync(path.join(wsPath(), 'outputs'), { recursive: true });
-    writeFileSync(path.join(wsPath(), 'outputs', 'art.txt'), 'x');
-
-    expect(await clearPiSession(UID, WS_ID)).toBe(true);
-    expect(existsSync(path.join(agentDir, 'run'))).toBe(false);
-    expect(existsSync(path.join(agentDir, 'chat.jsonl'))).toBe(false);
-    expect(existsSync(path.join(agentDir, 'sessions'))).toBe(false);
-    expect(existsSync(path.join(wsPath(), '.pi-agent', 'models.json'))).toBe(true);
-    expect(existsSync(path.join(wsPath(), 'outputs', 'art.txt'))).toBe(true);
-
-    // 幂等：无残留时返回 false
-    expect(await clearPiSession(UID, WS_ID)).toBe(false);
   });
 });
 

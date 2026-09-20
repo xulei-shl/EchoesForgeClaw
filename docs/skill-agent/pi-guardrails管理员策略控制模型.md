@@ -75,7 +75,9 @@
 ## 6. 生效口径与注意事项
 
 - 策略变更一般不实时作用于已有对话进程；新 workspace 装配才会使用新策略。
-- 目前默认配置里已加入一条额外策略规则 `agent-runtime`：`.pi-agent` 整棵默认全封（fail-closed），用来保护后端装配的真实密钥类文件（models.json / settings.json / web-search.json / auth.json / extensions）；同时经 `allowedPatterns` 显式放行两类可读资源——① `.pi-agent/skills/**` 与 `.pi-agent/prompts/**`（pi 渐进式披露要求模型经 read tool 按需读取，封死会导致装配的技能形同虚设，详见 `pi-extension-integration.md`）；② `.pi-agent/run/**` 与 `.pi-agent/sessions/**`（Agent 自身不含密钥的运行态，封禁无安全收益，只会让它在找上下文时被反复拒绝而空转——见第 9 节）。
+- 目前默认配置里已加入两条额外策略规则：
+  - `agent-runtime`（`noAccess`）：`.pi-agent` 整棵默认全封（fail-closed），用来保护后端装配的真实密钥类文件（models.json / settings.json / web-search.json / auth.json / extensions）；同时经 `allowedPatterns` 显式放行两类可读资源——① `.pi-agent/skills/**` 与 `.pi-agent/prompts/**`（pi 渐进式披露要求模型经 read tool 按需读取，封死会导致装配的技能形同虚设，详见 `pi-extension-integration.md`）；② `.pi-agent/run/**` 与 `.pi-agent/sessions/**`（Agent 自身不含密钥的运行态，封禁无安全收益，只会让它在找上下文时被反复拒绝而空转——见第 9 节）。
+  - `agent-session-readonly`（`readOnly` + `onlyIfExists: false`）：把 `.pi-agent/run`、`.pi-agent/sessions` 钉成**可读不可写**。理由：`{ws}/.pi-agent/run/chat.jsonl` 是「对话历史」列表的收录凭据，而 `noAccess` 的拦截工具集含 write/edit/bash——只靠 `agent-runtime` 的读豁免会让 Agent 能把会话文件覆盖成空壳（绕过删除语义毁掉用户对话）。只拦写不封读，是为了不把上面那条「找上下文被拒而空转」的老问题打回来；`onlyIfExists: false` 则堵住「向会话目录新建文件」这类目标不存在就不拦的口子。密钥仍由 `agent-runtime` 全封（连 read 一起拒）。
 - 该规则的 `patterns` 同时包含首段模式（`.pi-agent`、`.pi-agent` 子树）与「任意前缀 + .pi-agent」两条通配，理由见第 8 节。
 - 豁免是「字面首段」模式，只作用于本工作区：guardrails 的 `normalizeTarget`（`extensions/guardrails/rules.ts:62`）把工作区内目标归一为相对 cwd 路径，工作区外（含其它租户工作区）保留绝对路径形态，因此豁免命中不到，其它租户的 `.pi-agent` 仍被受保护模式封禁。
 - pathAccess 的 `ask` 已在装配期归一为 `block`：RPC 下 `ctx.ui.custom()` 返回 undefined，ask 与 block 同为拒绝，却会多出一次无用交互尝试和一条 `source:'user'` 的误导遥测（`extensions/path-access/index.ts:96-160`）。归一不静默——会以装配期 warning 透传（`guardrailsConfigNotices`）。若要主动放宽，唯一有意义的取值是 `allow`，需先重新评估跨租户隔离的代价。
@@ -124,7 +126,7 @@
 
 ### 9.2 本次收窄了什么
 
-1. **不再做无安全收益的封禁**：`.pi-agent/run`、`.pi-agent/sessions` 改为可读（密钥装配物仍全封），直接消除「Agent 找上下文被反复拒绝 → 空转」这一类摩擦。
+1. **不再做无安全收益的封禁**：`.pi-agent/run`、`.pi-agent/sessions` 改为可读（密钥装配物仍全封），直接消除「Agent 找上下文被反复拒绝 → 空转」这一类摩擦。**后续补正（重要）**：可读≠可写——这两处是「对话历史」的收录凭据，写入口径另由 `agent-session-readonly`（readOnly，fail-closed）封住，见第 6 节。
 2. **`ask` 归一为 `block`**：去掉一个语义含糊、且会产出误导遥测的取值，并对存量 `app_settings` 给出装配期提示。
 3. **策略文案改为「继续，不要向用户索取」**：原 blockMessage 的 "ask the user" 会把被拦事件变成一次多余的提问。
 4. （上一轮已做）扩展包不再自带 `pi.skills`，技能只有 `.pi-agent/skills` 这一个来源——正是原事故的死锁（策略封 `.pi-agent/**` vs 技能被装配到该路径下）的根因。

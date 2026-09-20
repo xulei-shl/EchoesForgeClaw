@@ -16,9 +16,10 @@ import path from 'node:path';
  *   规则禁止工具访问 .pi-agent 下的密钥装配物（models.json / settings.json /
  *   web-search.json / auth.json / extensions，含真实 API Key）。
  *   保留理由：pi 内核完全没有文件保护概念（dist/ 内无任何等价机制），且 Agent 手里
- *   就有 read 工具——不拦就等于把明文密钥送进模型上下文。这是三项里最硬的一项。
- *   收窄：整棵 .pi-agent 仍默认全封（fail-closed），仅显式豁免 skills/prompts
- *   与不含密钥的 run/sessions，不做无安全收益的封禁。
+ *   就有 read 工具——不拦就等于把明文密钥送进模型上下文。这是三项里最硬的一项。 *   收窄：整棵 .pi-agent 仍默认全封（fail-closed），仅显式豁免 skills/prompts
+ *   与不含密钥的 run/sessions，不做无安全收益的封禁；另加 agent-session-readonly
+ *   （protection=readOnly）把 run/sessions 钉成只读——会话文件是「对话历史」的收录凭据，
+ *   允许写入即等于给 Agent 一条绕过删除语义、把用户对话改成空壳的路径。
  * - permissionGate（危险命令）：开启 + requireConfirmation=true（内置默认）。
  *   RPC 模式下 `ctx.ui.custom()` 返回 undefined，permission-gate 自带
  *   `ctx.ui.select(...)` 回退（Allow once / session / Deny / Stop），走后端
@@ -142,7 +143,7 @@ export interface GuardrailsAutoConfig {
   onboarding: { completed: true; version: string };
   features: { policies: boolean; permissionGate: boolean; pathAccess: boolean };
   pathAccess: { mode: 'block' | 'ask' | 'allow'; allowedPaths: GuardrailsAllowedPath[] };
-  policies: { rules: GuardrailsAgentRuntimeRule[] };
+  policies: { rules: GuardrailsPolicyRule[] };
 }
 
 /**
@@ -176,6 +177,25 @@ export interface GuardrailsAgentRuntimeRule {
   blockMessage: string;
 }
 
+/**
+ * 会话运行态只读规则：guardrails 的 protection 单档——noAccess 连 read 一起封
+ * （会被 Agent 当成「找上下文被拒」而空转），故运行态用独立规则表达「可读不可写」：
+ * readOnly 只拦 write / edit / bash（BLOCKED_TOOLS，见扩展 rules.ts）。
+ */
+export interface GuardrailsSessionReadonlyRule {
+  id: 'agent-session-readonly';
+  description: string;
+  patterns: { pattern: string }[];
+  allowedPatterns: { pattern: string }[];
+  protection: 'readOnly';
+  /**
+   * false = fail-closed：会话目录不接受任何工具写入，目标不存在也拦
+   * （onlyIfExists=true 会放行「向 run/ 新建文件」，等于留个可写白名单外的口子）。
+   */
+  onlyIfExists: false;
+  blockMessage: string;
+}
+
 /** 受保护路径模式（fail-closed；前后两种形态都封，防变量拼接绕过）。 */
 const AGENT_RUNTIME_PATTERNS: GuardrailsAgentRuntimeRule['patterns'] = [
   { pattern: '.pi-agent' },
@@ -192,6 +212,23 @@ const AGENT_RUNTIME_PATTERNS: GuardrailsAgentRuntimeRule['patterns'] = [
  * （extensions/guardrails/rules.ts:62），故只有本工作区的路径能命中豁免——
  * 其它租户的 .pi-agent 仍被 AGENT_RUNTIME_PATTERNS 的任意前缀形态封禁。
  */
+/**
+ * 会话文件（当前会话 run/、历史版本 sessions/）：可读不可写。
+ *
+ * 为什么要单独一条只读规则：`.pi-agent/run/chat.jsonl` 就是该对话在「对话历史」里的收录凭据
+ * （见 pi/conversations.ts 的 resolvePiSessionFile）；被 write/edit/bash 覆盖即等于绕过删除语义，
+ * 把用户对话悄悄改成空壳。read 保持放行（沿用 agent-runtime 的豁免）——封读只会让 Agent 找
+ * 上下文时空转，且这些文件不含密钥。
+ * 只作用于路径本身，不动 allowedPatterns（豁免只对 agent-runtime 生效）；onlyIfExists=false
+ * （fail-closed）使「向会话目录新建文件」同样被拦，不给可写口子。
+ */
+const SESSION_RUNTIME_PATTERNS: GuardrailsSessionReadonlyRule['patterns'] = [
+  { pattern: '.pi-agent/run' },
+  { pattern: '.pi-agent/run/**' },
+  { pattern: '.pi-agent/sessions' },
+  { pattern: '.pi-agent/sessions/**' },
+];
+
 const AGENT_RUNTIME_ALLOWED_PATTERNS: GuardrailsAgentRuntimeRule['allowedPatterns'] = [
   { pattern: '.pi-agent/skills' },
   { pattern: '.pi-agent/skills/**' },
@@ -203,8 +240,11 @@ const AGENT_RUNTIME_ALLOWED_PATTERNS: GuardrailsAgentRuntimeRule['allowedPattern
   { pattern: '.pi-agent/sessions/**' },
 ];
 
+/** 装配期注入的策略规则联合类型（密钥保护 + 会话运行态只读）。 */
+export type GuardrailsPolicyRule = GuardrailsAgentRuntimeRule | GuardrailsSessionReadonlyRule;
+
 /** 装配期注入的策略规则（按 id 与扩展内置/用户规则去重合并，见 loader afterMerge）。 */
-export function guardrailsPolicyRules(): GuardrailsAgentRuntimeRule[] {
+export function guardrailsPolicyRules(): GuardrailsPolicyRule[] {
   return [
     {
       id: 'agent-runtime',
@@ -218,6 +258,21 @@ export function guardrailsPolicyRules(): GuardrailsAgentRuntimeRule[] {
         'Accessing {file} is not allowed. This file holds agent runtime credentials ' +
         '(API keys), so it stays unreadable. Continue without it and do not ask the ' +
         'user for its contents.',
+    },
+    {
+      id: 'agent-session-readonly',
+      description:
+        'Conversation session files ({ws}/.pi-agent/run|sessions) are append-managed by pi ' +
+        'and back the conversation-history list; agent tools may read but never overwrite them',
+      patterns: SESSION_RUNTIME_PATTERNS.map((p) => ({ ...p })),
+      allowedPatterns: [],
+      protection: 'readOnly',
+      onlyIfExists: false,
+      blockMessage:
+        'Writing to {file} is not allowed. Conversation session files are append-managed by ' +
+        'the runtime; modifying them would corrupt or erase this conversation history. ' +
+        'Use the read tool if you need to inspect it, and continue the conversation normally ' +
+        'instead of editing session files.',
     },
   ];
 }

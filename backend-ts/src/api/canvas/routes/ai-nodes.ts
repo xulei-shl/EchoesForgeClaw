@@ -31,7 +31,6 @@ import {
 import {
   appendArtifactManifest,
   buildWebSearchConfig,
-  clearPiSession,
   computeWorkspaceGeneration,
   listWorkspaceArtifacts,
   preparePiWorkspace,
@@ -668,20 +667,6 @@ export async function register(app: FastifyInstance): Promise<void> {
         files.push({ name, path: rel, mime: mimeOf(name), size: decoded.data.length });
       }
       return { files };
-    }
-  );
-
-  // ---- AI 对话节点：清空会话（Skill Agent 模式删除 pi 会话历史，下次对话从零开始）----
-  app.post(
-    '/api/modules/bookplate/chat/clear',
-    { preHandler: app.authenticate },
-    async (request, reply) => {
-      const payload = (request.body ?? {}) as ChatRequest;
-      const workspaceId = sanitizeWorkspaceId(payload.workspace_id ?? '');
-      if (!workspaceId) {
-        return reply.code(400).send({ detail: 'workspace_id 不能为空' });
-      }
-      return { cleared: await clearPiSession(request.authUser!.id, workspaceId) };
     }
   );
 

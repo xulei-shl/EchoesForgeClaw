@@ -475,18 +475,19 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
     }).catch(console.error);
   };
 
-  // 清空会话：对齐全站统一的藏书票风格弹窗
+  // 清空会话 = 开启全新会话（对齐全站 AI 对话节点「清空对话」的口径，见 useNodeHandlers.handleClearChatFor）：
+  // 仅置空当前活跃工作区（下一轮发送时延迟分配 canvas-agent_<ts>），旧对话的会话文件
+  // （{ws}/.pi-agent/run/chat.jsonl）与产物留在原工作区 → 「对话历史」Tab 仍能识别 / 载入 / 删除。
+  // 绝不调用后端 /canvas-agent/clear：那会删除会话文件，使该对话从历史列表（按 session 文件收录）中消失。
   const handleClear = async () => {
     const ok = await dialog.confirm({
-      title: '清空会话',
-      message: '确定要清空与画板助手的对话历史吗？此操作将开启全新会话。',
-      confirmText: '清空',
+      title: '开启新会话',
+      message: '确定开启全新会话吗？当前对话会保留在「对话历史」中，可随时载入或删除。',
+      confirmText: '开启新会话',
       cancelText: '取消',
-      danger: true,
     });
     if (!ok) return;
 
-    const oldWs = activeWorkspaceId;
     handleStop();
     setSessionMsgs([]);
     setOptimisticUser(null);
@@ -498,14 +499,6 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
       /* ignore */
     }
     dispatchStream({ type: 'end' });
-
-    if (oldWs) {
-      await fetch('/api/modules/bookplate/canvas-agent/clear', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify({ workspace_id: oldWs }),
-      }).catch(console.error);
-    }
     convPanel.bump();
   };
 
@@ -569,6 +562,8 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
     onDeleteFile: handleDeleteFile,
     onBatchDeleteSessions: handleBatchDeleteSessions,
     onBatchDeleteFiles: handleBatchDeleteFiles,
+    // 本抽屉的列表按 `canvas-agent_` 前缀隔离，不含其它画布节点的对话（勿用跨节点全局文案）
+    sessionsScopeNote: '仅画板助手自身的对话',
   }), [
     sideOpen,
     filesPanel.loading,
@@ -663,11 +658,11 @@ export const AgentChatPanel: React.FC<AgentChatPanelProps> = ({
               >
                 {isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
               </button>
-              {/* 清空会话 */}
+              {/* 开启新会话（旧对话保留在「对话历史」中） */}
               <button
                 type="button"
                 onClick={handleClear}
-                title="清空对话"
+                title="开启新会话（旧对话保留在对话历史中）"
                 className="p-1.5 rounded-lg text-ink-faint hover:text-ink hover:bg-paper-grid/30 active:scale-95 transition-colors"
               >
                 <Trash2 size={14} />

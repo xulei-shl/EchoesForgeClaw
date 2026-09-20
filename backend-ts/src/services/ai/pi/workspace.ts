@@ -30,8 +30,6 @@ import {
   type GuardrailsConfigOverrides,
 } from './guardrails.js';
 import { resolvePiExtensions, extensionDirName, REPO_ROOT } from './resolve.js';
-import { killPiProcess } from './registry.js';
-import { cleanupSubagentAsyncRuns } from './subagents/cleanup.js';
 import { removePathSafe } from '../../platform/file-utils.js';
 
 /**
@@ -486,45 +484,4 @@ export function preparePiWorkspace(
     warnings,
     mountedExtensions,
   };
-}
-
-/**
- * 清空 Skill Agent 节点会话（「清空对话」语义）：删除全部会话历史，下次对话从零开始；
- * 保留 skills/models/settings 等装配物与 outputs/inputs 产物。
- * 覆盖三处：当前会话（.pi-agent/run/）、历史版本落在 agentDir 根的 chat.jsonl、
- * pi 自管/启动迁移产生的 .pi-agent/sessions/。幂等；无任何会话残留时返回 false。
- */
-export async function clearPiSession(userId: number, workspaceId: string): Promise<boolean> {
-  const ws = nodeWorkspace(userId, workspaceId);
-  const agentDir = path.join(ws, '.pi-agent');
-  let cleared = false;
-  // 清空对话 = 作废本轮交互：先终止活跃 RPC 子进程（问卷等待中 / 流式中），
-  // 并等其真正退出（Windows taskkill 异步），避免后续删除会话目录撞文件锁
-  if (await killPiProcess(userId, workspaceId)) cleared = true;
-  const targets = [path.join(agentDir, 'run'), path.join(agentDir, 'sessions')];
-  for (const dir of targets) {
-    if (existsSync(dir)) {
-      rmSync(dir, { recursive: true, force: true });
-      cleared = true;
-    }
-  }
-  const legacyRootSession = path.join(agentDir, 'chat.jsonl');
-  if (existsSync(legacyRootSession)) {
-    removePathSafe(legacyRootSession);
-    cleared = true;
-  }
-  // 扩展 widget 快照随会话一并清除（跨轮真相源，清空对话即清空）
-  const widgetsFile = path.join(agentDir, 'widgets.json');
-  if (existsSync(widgetsFile)) {
-    removePathSafe(widgetsFile);
-    cleared = true;
-  }
-  // pi-subagents 后台（分离）子代理残留：父 RPC 进程已杀，这里按 temp 根终止残留 runner
-  // 并删除该工作区专属产物（归属按 userId:workspaceId 收敛，见 subagents/cleanup.ts）
-  try {
-    cleanupSubagentAsyncRuns(userId, workspaceId);
-  } catch {
-    /* 清理失败不阻塞清会话主流程 */
-  }
-  return cleared;
 }

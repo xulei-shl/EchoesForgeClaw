@@ -136,6 +136,7 @@
   列表接口务必按 `authUser.id` 收敛 + sanitize 输入（多租户安全）。
 - **孤儿 workspace 目录**：清空对话后旧目录永不清理（已在磁盘证实）。
   建议抽屉里顺带提供「删除会话」（复用/加强 `clearPiSession`），必要时加清理任务。
+  **后续落地（2026-09-20）**：抽屉已提供单条 / 批量「删除对话」（`DELETE /chat/session`：杀进程 + 整目录删除），孤儿目录因此可自助清理；而 `clearPiSession` 与两个「只删会话文件」的 clear 接口已删除——它们会让对话在「对话历史」列表里静默消失且不可恢复（见 `pi-canvas-tools-maintenance-playbook.md` §6.11），**勿照本文旧表述复刻**。
 - **回归防线**（遵循项目约束）：`npx tsc --noEmit` + `npx vitest run tests/api/pi-*.test.ts`
   （现有测试已覆盖工作区装配、水合、清空会话）。
 

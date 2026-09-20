@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 
 import {
   killPiProcess,
@@ -229,8 +229,9 @@ describe('runPiAgent 加载 pi-guardrails（RPC 冒烟）', () => {
             skillNames: ['canvas-node-catalog'],
           });
           expect(prepared.mountedSkills).toContain('canvas-node-catalog');
-          // 收窄校验：.pi-agent/run（Agent 自身不含密钥的运行态）应可读——
-          // 它不随装配被清理（仅 clearPiSession 清空对话时删），故此处写入的标记可稳定读到
+          // 收窄校验：.pi-agent/run（Agent 自身不含密钥的运行态）对 read 恒放行——
+          // 它不随装配被清理（仅整目录删除对话时一并删），故此处写入的标记可稳定读到；
+          // 写入口径另由 agent-session-readonly 规则挡住（见 pi-agent-workspace 策略单测）
           const runDir = path.join(prepared.ws, '.pi-agent', 'run');
           mkdirSync(runDir, { recursive: true });
           writeFileSync(path.join(runDir, 'marker.txt'), 'RUN_MARKER_OK', 'utf-8');
@@ -267,6 +268,113 @@ describe('runPiAgent 加载 pi-guardrails（RPC 冒烟）', () => {
         });
       } finally {
         await new Promise<void>((ok) => skillMock.server.close(() => ok()));
+      }
+    },
+    90_000
+  );
+
+  it(
+    'agent-session-readonly 规则：write 写 .pi-agent/run/** 被拦（会话文件不可被 Agent 改写）',
+    async () => {
+      // 会话文件（run/chat.jsonl）是「对话历史」的收录凭据：删/清空文件就能让对话从列表
+      // 静默消失，故写路径必须被策略挡住。用 run/ 下的探针文件验证「覆写已有文件被拦」+
+      // 「新建文件也被拦」，不拿真实 chat.jsonl 冒险。
+      const probePath = path.join(wsDir, '.pi-agent', 'run', 'probe.txt');
+      const probeNewPath = path.join(wsDir, '.pi-agent', 'run', 'probe-new.txt');
+      mkdirSync(path.dirname(probePath), { recursive: true });
+      writeFileSync(probePath, 'ORIGINAL_SESSION_MARKER', 'utf-8');
+      const writeMock = await startMock();
+      writeMock.server.removeAllListeners('request');
+      writeMock.server.on('request', (req, res) => {
+        let body = '';
+        req.on('data', (c) => (body += c));
+        req.on('end', () => {
+          const parsed = JSON.parse(body || '{}') as { messages?: { role?: string }[] };
+          const toolTurns = (parsed.messages ?? []).filter((m) => m.role === 'tool').length;
+          res.writeHead(200, { 'content-type': 'text/event-stream' });
+          const chunk = (delta: unknown, finish?: string) =>
+            `data: ${JSON.stringify({
+              id: 'chatcmpl-mock',
+              object: 'chat.completion.chunk',
+              created: 0,
+              model: 'test-model',
+              choices: [{ index: 0, delta, finish_reason: finish ?? null }],
+            })}\n\n`;
+          const callWrite = (id: string, filePath: string) =>
+            chunk(
+              {
+                role: 'assistant',
+                content: '',
+                tool_calls: [
+                  {
+                    index: 0,
+                    id,
+                    type: 'function',
+                    function: {
+                      name: 'write',
+                      arguments: JSON.stringify({ path: filePath, content: 'SHOULD_NOT_LAND' }),
+                    },
+                  },
+                ],
+              },
+              'tool_calls'
+            );
+          if (toolTurns === 0) {
+            res.write(callWrite('call_write_existing', probePath));
+          } else if (toolTurns === 1) {
+            res.write(callWrite('call_write_new', probeNewPath));
+          } else {
+            res.write(chunk({ role: 'assistant', content: 'done' }));
+            res.write(chunk({}, 'stop'));
+          }
+          res.write('data: [DONE]\n\n');
+          res.end();
+        });
+      });
+
+      try {
+        await withPiExtensionsEnv('@aliou/pi-guardrails', async () => {
+          const prepared = preparePiWorkspace(UID, WS_ID, {
+            agentId: 1,
+            chatModel: {
+              baseUrl: `http://127.0.0.1:${writeMock.port}/v1`,
+              apiKey: 'k',
+              modelName: 'test-model',
+              multimodal: false,
+            },
+            imageModel: null,
+            skillNames: [],
+          });
+          const events = [];
+          for await (const evt of runPiAgent({
+            userId: UID,
+            workspaceId: WS_ID,
+            ws: prepared.ws,
+            hasPrompt: false,
+            chatModelName: 'test-model',
+            imageGenEnabled: false,
+            extensions: prepared.mountedExtensions,
+            message: 'overwrite your session file',
+          })) {
+            events.push(evt);
+          }
+
+          const results = events.filter(
+            (e): e is typeof e & { result: string } => e.type === 'tool_result'
+          );
+          expect(results.length).toBeGreaterThanOrEqual(2);
+          // 1) 覆写已存在的会话运行态文件：被策略拦下，原内容不得被改写
+          expect(results[0]!.result).toContain('is not allowed');
+          expect(results[0]!.result).toContain('Conversation session files');
+          expect(readFileSync(probePath, 'utf-8')).toBe('ORIGINAL_SESSION_MARKER');
+          // 2) 向会话目录新建文件：onlyIfExists=false（fail-closed）同样拦下，什么都没落盘
+          expect(results[1]!.result).toContain('is not allowed');
+          expect(existsSync(probeNewPath)).toBe(false);
+          // 3) 会话文件本身仍在（对话历史收录不受损）
+          expect(existsSync(path.join(prepared.ws, '.pi-agent', 'run', 'chat.jsonl'))).toBe(true);
+        });
+      } finally {
+        await new Promise<void>((ok) => writeMock.server.close(() => ok()));
       }
     },
     90_000

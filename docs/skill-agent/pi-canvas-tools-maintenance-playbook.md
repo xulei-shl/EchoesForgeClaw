@@ -164,10 +164,24 @@ canvasExecutor.ts：按 op 分发 case，从 nodesRef/edgesRef 读数据
     - `canvas_update_node` 的写入 denylist 除 `isGenerating` / `error` / `output` / `configId` 外还含 `imageUrl`（图像类节点的产物同样是产物，写入即可伪造图片）；文本键名仍走既有归一（`text` → `content`）；
     - `canvas_delete_node` 采两段式：`confirmed: false` 只回影响范围（节点名、子孙清单、受影响连线数）**不做任何变更** → 扩展侧 `ctx.ui.confirm` 陈述 → `confirmed: true` 才执行（前端跳过自家 dialog，避免双重弹窗）。即使没有子孙也弹确认：Agent 是自动化来源，静默删除的风险高于手动点击；
     - `canvas_disconnect_nodes` 非破坏、可撤销，不弹确认；`canvas_delete_node(node_id)` 一次只接受 1 个节点，级联范围仅由 `cascade` 决定（默认 true，与画布 UI 一致）。
+11. **画板助手「清空会话」= 开启新会话，绝不等价于删除会话**：面板顶栏按钮（`AgentChatPanel.handleClear`）曾额外调用 `/api/modules/bookplate/canvas-agent/clear` → `clearPiSession`，把当前工作区 `.pi-agent/run`（会话文件）删掉——「对话历史」的收录条件正是「工作区内存在 pi 会话文件」（`resolvePiSessionFile`），于是刚聊过的对话立刻从列表消失且不可恢复。正确口径与全站 AI 对话节点的「清空对话」一致（`useNodeHandlers.handleClearChatFor`）：**只置空当前活跃工作区（下一轮发送延迟分配 `canvas-agent_<ts>`），完全不触碰服务端会话**；旧对话留在原工作区，列表仍可识别 / 载入，需要真正删除时走抽屉里的「删除对话」（DELETE `/chat/session`，整目录删除）。随后（第七轮）已把两个「只删会话文件」的接口与 `clearPiSession` 一并删除，**全站再无可删会话文件的代码路径**；canvas-agent 路由上另加回归测试守住「不能再长回一个只删会话文件的接口」（两条路径均 404）。
 
 ---
 
 ## 7. 改动记录
+
+### 2026-09-20（第七轮）：封堵「删会话文件」的旁路（接口 / 权限 / 文案）
+
+- **删除两个已无调用者的破坏性接口**：`POST /api/modules/bookplate/canvas-agent/clear`（canvas-agent 路由）与 `POST /api/modules/bookplate/chat/clear`（ai-nodes 路由，且无测试覆盖）都只做 `clearPiSession`（删 `.pi-agent/run|sessions` 会话文件 + widgets 快照），前端零调用者但任何登录用户仍可 curl 触发——正是第六轮那个 bug 的可复发面。随后失去调用者的 `clearPiSession`（`pi/workspace.ts`）与 barrel 导出一并删除，**「删除会话」只剩一条显式链路：DELETE `/chat/session`（杀进程 + 清子代理残留 + 整目录删除）**；canvas-agent 路由新增回归测试断言这两条 clear 路径恒 404。
+- **guardrails 新增 `agent-session-readonly` 规则（可读不可写）**：原先只为「保护密钥」而设计的 `agent-runtime` 规则把 `.pi-agent/run|sessions` 列为可读豁免，而 `noAccess` 的拦截工具集含 write/edit/bash → Agent 可用 `write` 把 `{ws}/.pi-agent/run/chat.jsonl` 覆盖成空壳，绕过删除语义毁掉用户对话。修法不是封读（那会把「找上下文被拒而空转」的老问题打回来），而是**加一条 `protection: 'readOnly'` 的独立规则**（只拦 write/edit/bash，read 仍走原豁免），并取 `onlyIfExists: false`（fail-closed：向会话目录新建文件同样拦下，否则留出一个可写口子）。密钥仍由 `agent-runtime` 全封（连 read 一起拒）。
+- **批量删除文案按宿主实际范围**：`ChatSidePanel` 新增 `sessionsScopeNote` 可选 prop（缺省＝画布节点跨节点全局口径），画板助手传「仅画板助手自身的对话」——此前共用文案写「含其它画布节点与当前节点的对话」，与它按 `canvas-agent_` 前缀隔离的实际范围不符，用户会误判影响面。
+- **验证**：后端 `tsc --noEmit` 0 error；`npx vitest run tests/api --no-file-parallelism` → 290 passed / 3 failed（3 条全在 `tests/api/fastclaw-artifacts.test.ts`，**存量环境性失败**：`resolveFastclawArtifact` 要求候选以 `/` 开头，而本机 `os.tmpdir()` 为 `E:\Temp`，与本次改动无关）；`tests/api/pi-*.test.ts` 159/159；新增真实 RPC 回归「agent-session-readonly 规则：write 写 `.pi-agent/run/**` 被拦」——覆写已存在文件被拦且原内容不变、新建文件被拦且未落盘、会话文件本身仍在；前端 `tsc -b` 0 error、`oxlint` 两个改动文件 0 新增问题；浏览器端到端复核「开启新会话保留历史」与批量删除新文案。
+
+### 2026-09-20（第六轮）：修复画板助手「清空对话」误删会话历史
+
+- **根因**：面板「清空会话」在置空活跃工作区后又调 `/canvas-agent/clear` → `clearPiSession` 删除该工作区会话文件，而「对话历史」按「存在 pi 会话文件」收录 → 该对话从列表消失且数据不可恢复（§6.11）。节点的「清空对话」只做「清空展示态 + `workspaceId=''` 延迟分配」，从不删服务端会话。
+- **修复**：`frontend/src/canvas/components/mascot/AgentChatPanel.tsx` 的 `handleClear` 对齐节点口径——仅作废当前活跃工作区并清 localStorage（下次发送自动开新工作区），不再调用 `/canvas-agent/clear`；按钮 tooltip 与确认弹窗文案改为「开启新会话」语义（旧对话保留在历史中，故去掉 `danger` 样式）。后端与扩展包零改动。
+- **验证**：浏览器端到端（起后端 + vite dev，注入登录态）：把活跃工作区设为已存在会话 → 点按钮确认 → 面板未发出任何 `/canvas-agent/clear` 请求、localStorage 活跃工作区被清空、「对话历史」Tab 仍列出该对话（title / 轮次数正常，可载入）；`cd frontend && npx tsc -b` 0 error；`npx oxlint src/canvas/components/mascot/AgentChatPanel.tsx` 12 条存量 hook-deps 警告（与改动前一致，0 新增）。
 
 ### 2026-09-20（第五轮）：节点编辑工具化（改 / 调参 / 断线 / 删）
 

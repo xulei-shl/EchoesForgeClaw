@@ -28,7 +28,6 @@ export {
   type PreparePiWorkspaceOptions,
   type PreparedWorkspaceInfo,
   preparePiWorkspace,
-  clearPiSession,
   buildWebSearchConfig,
 } from './pi/workspace.js';
 export {

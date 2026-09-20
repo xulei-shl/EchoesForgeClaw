@@ -174,7 +174,7 @@ json 模式是「spawn → 出结果 → 进程退出」一次性；**RPC 模式
 - **widget 内容白名单**：只下发生产者精挑的安全字段，`applyCap` 顺带剥除 ANSI/控制字符；前端 `<pre>` React 转义，无注入面。
 - **交互字段白名单**：`extension_ui_request` 只透传 `select/confirm/input/editor` 且限字段（`id/method/title/options/...`）；前端 React 转义渲染，无注入面。
 - **多租户并发隔离**：RPC 进程注册表 key = `${userId}:${workspaceId}`；ui-response 路由从鉴权态取 userId（非查询参数），与 `nodeWorkspace` 防穿越同一口径。
-- **跨轮一致性**：widget 以服务端 per-workspace 快照（`{ws}/.pi-agent/widgets.json`）为真相源，随 `/chat/session` 水合恢复；`clearPiSession`（清空对话）会一并清除**且先杀活跃 RPC 子进程**（问卷等待中/流式中）。
+- **跨轮一致性**：widget 以服务端 per-workspace 快照（`{ws}/.pi-agent/widgets.json`）为真相源，随 `/chat/session` 水合恢复。注：「清空对话／开启新会话」现在是**前端换工作区**（旧工作区与其 widget 快照原样保留，列表里仍可载入），widget 快照随会话目录在**显式删除对话**（DELETE `/chat/session`）时一并删除；历史上那个会单独清快照与杀进程的 `clearPiSession` 及两个「只删会话文件」的 clear 接口已删除（见 `pi-canvas-tools-maintenance-playbook.md` §7 第七轮）。
 - **key 稳定性**：widget `key`（如 `rpiv-todos`）是跨轮持久化标识，改动会导致旧快照残留，勿随意改名。
 - **进程担保**：`runPiAgent` 在 `finally` 中注销注册表 + killTree（防御遗留）；总超时 `PI_RPC_TIMEOUT_MS`（默认 10 分钟）兜底「永不落定」的死等。
 

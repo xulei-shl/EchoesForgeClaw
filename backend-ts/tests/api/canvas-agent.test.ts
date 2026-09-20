@@ -1,11 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { hashSync } from 'bcryptjs';
-import { existsSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { initDb, setDb, type DB } from '../../src/config/database.js';
 import { buildApp } from '../../src/server.js';
-import { nodeWorkspace, workspaceRoot } from '../../src/services/ai/skill-agent-service.js';
+import { workspaceRoot } from '../../src/services/ai/skill-agent-service.js';
 import { canvasAssistantConfigFrom } from '../../src/services/platform/node-config-service.js';
 
 const RUNTIME_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../runtime');
@@ -50,30 +50,22 @@ describe('Canvas Agent API 路由与工作区生命周期', () => {
     await app.close();
   });
 
-  it('POST /canvas-agent/clear 缺少 workspace_id 时返回 { cleared: false }，不再盲目默认 canvas-agent_default', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/modules/bookplate/canvas-agent/clear',
-      headers: { authorization: `Bearer ${token}` },
-      payload: {},
-    });
-    expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ cleared: false });
-  });
-
-  it('POST /canvas-agent/clear 指定工作区可安全清空', async () => {
-    const testWs = `canvas-agent_test_${Date.now()}`;
-    const wsDir = nodeWorkspace(uid, testWs);
-    mkdirSync(path.join(wsDir, '.pi-agent', 'run'), { recursive: true });
-
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/modules/bookplate/canvas-agent/clear',
-      headers: { authorization: `Bearer ${token}` },
-      payload: { workspace_id: testWs },
-    });
-    expect(res.statusCode).toBe(200);
-    expect(res.json().cleared).toBe(true);
+  it('不存在只删会话文件的「清空会话」接口（/canvas-agent/clear 与 /chat/clear 均为 404）', async () => {
+    // 会话文件（.pi-agent/run/chat.jsonl）是「对话历史」的收录凭据：只删文件会让对话从列表
+    // 静默消失且不可恢复。删除对话只能整目录删（DELETE /chat/session），开启新会话由前端
+    // 置空活跃工作区完成——这里守住「不能再长回一个只删会话文件的接口」。
+    for (const url of [
+      '/api/modules/bookplate/canvas-agent/clear',
+      '/api/modules/bookplate/chat/clear',
+    ]) {
+      const res = await app.inject({
+        method: 'POST',
+        url,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { workspace_id: `canvas-agent_probe_${Date.now()}` },
+      });
+      expect(res.statusCode).toBe(404);
+    }
   });
 
   it('POST /canvas-agent/chat 缺少 prompt 时返回 400', async () => {

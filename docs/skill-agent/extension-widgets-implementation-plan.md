@@ -336,7 +336,7 @@ export interface WidgetStore {
 { "exists": true, "messages": [...], "widgets": [ { "key": "rpiv-todos", "lines": [...], "placement": "aboveEditor", "data": {...}, "updatedAt": 172... } ] }
 ```
 
-**清理**：`POST /chat/clear`（清空对话）时随会话一起清除 widgets（`clearPiSession` 或该路由内顺带删除）。
+**清理**：widget 快照随工作区目录生命周期存亡——「开启新会话」换新工作区（旧快照原样保留、可随旧对话载入），**显式删除对话**（DELETE `/chat/session` 整目录删除）时一并清除。注：本计划原定的 `POST /chat/clear` + `clearPiSession` 已在 2026-09-20 删除（只删会话文件会让对话从「对话历史」静默消失，见 `pi-canvas-tools-maintenance-playbook.md` §6.11 / §7 第七轮）。
 
 ### 4.3 扩展包装配与安全（多租户重点）
 
