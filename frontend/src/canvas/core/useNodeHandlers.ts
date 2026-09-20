@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import type { NodeData, EdgeData, NodeSize } from './graphTypes';
 import type { PortTypesLookup } from './execution';
-import { resolveReferenceImage, collectNodeInputs } from './execution';
+import { resolveReferenceImage, collectNodeInputs, firstUpstreamText } from './execution';
 import { collectDescendantIds, hasChildOfType } from './nodeGraph';
 import { useEditorPatchHandler, type EditorPatchFns } from './editorPatch';
 import { useToolHandlers, type ToolRequestCtx } from '../nodes/ai/infra/useToolHandlers';
@@ -10,6 +10,29 @@ import {
   type ImageOutputCtx,
 } from './useImageOutputHandlers';
 import type { ChatNodeSettings, NodeRunSettings, PromptSelection, SkillSelection } from '../../shared/types';
+import type { WikipediaSearchRequest } from '../nodes/general/WikipediaSearchNode';
+import type { ZhihuSearchMode, ZhihuSearchRequest } from '../nodes/general/ZhihuSearchNode';
+import type { WebSearchRequest, WebSearchSource } from '../nodes/general/WebSearchNode';
+import type { TranslationRequest, TranslationSource } from '../nodes/text/TextTranslationNode';
+import { findConnectedBookInfoUpstream, findRootBookInfo } from '../nodes/_shared/nodeTypes';
+import { getNodeProducer, getNodeCandidateOps } from './nodeProducers';
+import type { CanvasRunOutcome } from './canvasCommands';
+
+/** 纯 ISBN 文本（与 VuFind 节点的上级文本兜底同口径） */
+const PURE_ISBN_TEXT = /^[\dXx-]{10,17}$/;
+
+/** 知乎检索各模式数量上限（与 ZhihuSearchNode 的 MAX_COUNT 同口径） */
+const ZHIHU_MAX_COUNT: Record<ZhihuSearchMode, number> = { zhihu: 10, zhida: 10 };
+
+/** 网络搜索的合法检索源（与 WebSearchNode 的 SOURCE_OPTIONS 同口径） */
+const WEB_SEARCH_SOURCES: readonly WebSearchSource[] = [
+  'random',
+  'zhihu_global',
+  'tavily',
+  'exa',
+  'anysearch',
+  'doubao',
+];
 
 export interface NodeHandlersDeps {
   nodesRef: React.MutableRefObject<NodeData[]>;
@@ -603,6 +626,223 @@ export function useNodeHandlers({
     handleFetchVuFindCallNumberFor,
   } = useToolHandlers(toolRequestCtx);
 
+  // ---------- 运行节点（画板助手命令层 runNodeById 的实现） ----------
+  /**
+   * 按节点类型分派到既有运行入口，与画布 UI 手点「运行 / 检索 / 生成 / 选中」完全同口径
+   * （检索类 handler 内部自会把连线上游文本并入输入）。
+   * 返回 `CanvasRunOutcome`：`ran` ＝已发起/完成；`candidates` ＝候选就绪等调用方选定；
+   * `not_started` ＝未发起（原因须原样回传，不得静默）。
+   *
+   * 三类节点的内部能力由组件自己注册（nodeProducers.ts）：
+   * - 渲染产物类（16 个）→ `getNodeProducer`；
+   * - 候选检索类（image_search / art_image_search / pattern_search / color_search）→ `getNodeCandidateOps`。
+   */
+  const runNodeById = useCallback(
+    async (id: string, selectIndex?: number): Promise<CanvasRunOutcome> => {
+      const node = nodesRef.current.find((n) => n.id === id);
+      if (!node) return { kind: 'not_started', reason: `节点 ${id} 不存在（可先用 canvas_list_nodes 查清单）` };
+      if (node.data?.isGenerating) {
+        return { kind: 'not_started', reason: `节点「${node.type}」正在运行中，请稍候再试` };
+      }
+
+      // 候选检索类（图片 / 艺术图 / 纹样 / 配色）：候选只存在组件本地 state，故由组件暴露
+      // 「列候选 + 确保已检索 + 选中」；未传 selectIndex 时先回候选清单（供 Agent 判断），
+      // 传了则选中并核对产物真的落盘。
+      const candidateOps = getNodeCandidateOps(id);
+      if (candidateOps) {
+        if (selectIndex === undefined) {
+          if (candidateOps.list().length === 0) await candidateOps.ensure();
+          const candidates = candidateOps.list();
+          if (candidates.length === 0) {
+            return {
+              kind: 'not_started',
+              reason:
+                '该节点当前没有候选（检索无结果、仍在加载，或关键词为空）；可先改上游文本/关键词后重试',
+            };
+          }
+          // 候选可用但不完整时（如聚合检索部分来源失败）一并回传，不阻断选定
+          return { kind: 'candidates', candidates, warnings: candidateOps.warnings?.() ?? [] };
+        }
+        const reason = await candidateOps.select(selectIndex);
+        if (reason) return { kind: 'not_started', reason };
+        const selected = nodesRef.current.find((n) => n.id === id);
+        if (!selected?.data?.imageUrl) {
+          const detail = selected?.data?.error ? `（节点报错：${selected.data.error}）` : '';
+          return {
+            kind: 'not_started',
+            reason: `已提交选中但产物未落盘${detail}——通常是候选已被清空或保存失败，请重试`,
+          };
+        }
+        // 选定时也带上「候选不完整」的提示：Agent 可能直接带 select_index 调用（没先取候选）
+        return { kind: 'ran', warnings: candidateOps.warnings?.() ?? [] };
+      }
+
+      // 渲染类节点（图书卡片 / 小票 / 水彩 / 地图海报…）：调用组件注册的生成入口，
+      // 等它把产物渲染并写入 data.imageUrl；未注册（组件未挂载）时如实报错，不伪造产物。
+      const produce = getNodeProducer(id);
+      if (produce) {
+        try {
+          await produce();
+        } catch (err: any) {
+          return { kind: 'not_started', reason: `生成失败：${err?.message || err?.detail || err}` };
+        }
+        const produced = nodesRef.current.find((n) => n.id === id);
+        if (!produced?.data?.imageUrl) {
+          // 组件的生成函数失败时只 toast + 写 data.error（不抛），故把节点错误一并转述，不静默
+          const detail = produced?.data?.error ? `（节点报错：${produced.data.error}）` : '';
+          return {
+            kind: 'not_started',
+            reason: `生成已执行但没有产出图片${detail}——通常是缺少上游图片/图书元数据或关键参数未填，请先核对输入再重试`,
+          };
+        }
+        return { kind: 'ran', warnings: [] };
+      }
+      const d = node.data ?? {};
+      const upstream = firstUpstreamText(
+        node,
+        nodesRef.current,
+        edgesRef.current,
+        portTypesRef.current
+      ).trim();
+
+      // 分派本体：返回空串＝已发起运行，非空＝未发起的原因（下面统一包成 CanvasRunOutcome）
+      const dispatchRun = (): string => {
+        switch (node.type) {
+          // AI 三类：与「运行」按钮同一入口（内部已含输入收集与待运行原因）
+          case 'image_analysis':
+          case 'text_generation':
+          case 'image_generation':
+            return runNode(node) ?? '';
+          // 图书元数据：按当前 ISBN 重新拉取（改 ISBN 后可用它重新获取）
+          case 'book_info': {
+            const isbn = typeof d.isbn === 'string' ? d.isbn.trim() : '';
+            if (!isbn) return '图书元数据节点缺少 ISBN（先写入 data.isbn 再运行）';
+            handleRetryBookFor(id);
+            return '';
+          }
+          case 'weather': {
+            const city = typeof d.city === 'string' ? d.city.trim() : '';
+            if (!upstream && !city) return '天气查询缺少城市（连线文本节点或写入 data.city）';
+            handleFetchWeatherFor(id, city);
+            return '';
+          }
+          case 'calendar':
+            handleFetchCalendarFor(id, typeof d.date === 'string' ? d.date : '');
+            return '';
+          case 'wikipedia_search': {
+            const query = typeof d.query === 'string' ? d.query : '';
+            if (!upstream && !query.trim()) {
+              return 'Wikipedia 检索缺少关键词（连线文本节点或写入 data.query）';
+            }
+            const payload: WikipediaSearchRequest = {
+              query,
+              language: typeof d.language === 'string' ? d.language : 'zh',
+              limit: typeof d.limit === 'number' ? d.limit : 10,
+            };
+            handleSearchWikipediaFor(id, payload);
+            return '';
+          }
+          case 'zhihu_search': {
+            const mode: ZhihuSearchMode = d.mode === 'zhida' ? 'zhida' : 'zhihu';
+            const query = typeof d.query === 'string' ? d.query : '';
+            if (!upstream && !query.trim()) {
+              return '知乎检索缺少关键词（连线文本节点或写入 data.query）';
+            }
+          const tab = (d.tabData ?? {})[mode];
+          // 与节点内 handleQuery 同口径：模式 tab 里的 count/model 优先（model 兼容顶层旧字段），
+          // 直答模式后端不使用 count（节点传 0），站内模式数量上限与节点一致（MAX_COUNT）
+          const payload: ZhihuSearchRequest = {
+            mode,
+            query,
+            count:
+              mode === 'zhida'
+                ? 0
+                : Math.min(
+                    typeof tab?.count === 'number'
+                      ? tab.count
+                      : typeof d.count === 'number'
+                        ? d.count
+                        : 5,
+                    ZHIHU_MAX_COUNT[mode]
+                  ),
+            model:
+              typeof tab?.model === 'string'
+                ? tab.model
+                : typeof d.model === 'string'
+                  ? d.model
+                  : 'zhida-fast-1p5',
+          };
+            handleFetchZhihuFor(id, payload);
+            return '';
+          }
+          case 'web_search': {
+            const query = typeof d.query === 'string' ? d.query : '';
+            if (!upstream && !query.trim()) {
+              return '网络搜索缺少关键词（连线文本节点或写入 data.query）';
+            }
+            const source: WebSearchSource = WEB_SEARCH_SOURCES.includes(d.source as WebSearchSource)
+              ? (d.source as WebSearchSource)
+              : 'random';
+            const tab = (d.tabData ?? {})[source];
+            const payload: WebSearchRequest = {
+              query,
+              count: typeof tab?.count === 'number' ? tab.count : 5,
+              source,
+            };
+            handleFetchWebSearchFor(id, payload);
+            return '';
+          }
+          case 'text_translation': {
+            const text = typeof d.inputText === 'string' ? d.inputText : '';
+            if (!text.trim() && !upstream) {
+              return '文本翻译缺少待翻译文本（连线文本节点或写入 data.inputText）';
+            }
+            const source: TranslationSource =
+              d.source === 'google' || d.source === 'deeplx' ? d.source : 'random';
+            const payload: TranslationRequest = {
+              text,
+              from: typeof d.from === 'string' ? d.from : 'auto',
+              to: typeof d.to === 'string' ? d.to : 'en',
+              source,
+            };
+            handleFetchTranslationFor(id, payload);
+            return '';
+          }
+          case 'vufind_call_number': {
+            // ISBN 解析与 VuFind 节点同口径（上游继承会写入 data.isbn，故本地值优先）：
+            // ① 本节点已落盘的 isbn；② 沿连线向上追溯的 book_info；③ 画布根 book_info 兜底；
+            // ④ 上级文本恰好是纯 ISBN。
+            const ownIsbn = typeof d.isbn === 'string' ? d.isbn.trim() : '';
+            const connectedBook = findConnectedBookInfoUpstream(id, nodesRef.current, edgesRef.current);
+            const connectedIsbn =
+              typeof connectedBook?.data?.isbn === 'string' ? connectedBook.data.isbn.trim() : '';
+            const rootBook = findRootBookInfo(nodesRef.current, edgesRef.current);
+            const rootIsbn = typeof rootBook?.data?.isbn === 'string' ? rootBook.data.isbn.trim() : '';
+            const isbn =
+              ownIsbn || connectedIsbn || rootIsbn || (PURE_ISBN_TEXT.test(upstream) ? upstream : '');
+            if (!isbn) return 'VuFind 馆藏缺少 ISBN（连线图书元数据节点，或写入 data.isbn）';
+            handleFetchVuFindCallNumberFor(id, isbn);
+            return '';
+          }
+          // 候选检索类的候选能力未注册（数据只在组件内部）时的兜底说明；正常情况已在上面处理
+          case 'image_search':
+          case 'art_image_search':
+          case 'pattern_search':
+          case 'color_search':
+            return '该类型节点正在自动检索或候选数据尚未就绪（候选由节点组件维护）；请稍后重试，或先确认关键词/上游文本已存在';
+          default:
+            return `节点类型 ${node.type} 没有可由助手触发的运行入口（交互选择类节点请按画布上的操作方式使用）`;
+        }
+      };
+
+      const reason = dispatchRun();
+      return reason ? { kind: 'not_started', reason } : { kind: 'ran', warnings: [] };
+      // 稳定回调：仅读取 refs / 稳定 handler，闭包不会过期
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
   // ---------- 图片输出（选中保存/导出落盘） ----------
   const imageOutputCtx: ImageOutputCtx = {
     nodesRef, edgesRef, generationIds,
@@ -693,6 +933,7 @@ export function useNodeHandlers({
   return {
     handleRemove,
     removeNode,
+    runNodeById,
     handleRetryBookFor,
     handleFetchBookFor,
     handleForceRefreshBookFor,

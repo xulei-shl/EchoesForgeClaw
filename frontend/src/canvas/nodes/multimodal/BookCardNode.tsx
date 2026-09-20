@@ -3,6 +3,7 @@ import { Image as ImageIcon, Loader2, Heart, Globe, Shuffle, Pencil } from 'luci
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
 import { CanvasNode } from '../_shared/CanvasNode';
+import { useNodeProducer } from '../../core/nodeProducers';
 import { NodeActionBar } from '../_shared/NodeActionBar';
 import { Select } from '../../../shared/components/ui/Select';
 import { useFeedback } from '../../../shared/components/ui/FeedbackProvider';
@@ -410,6 +411,9 @@ const BookCardNodeInner: React.FC<BookCardNodeProps> = ({
       </div>
     </div>
   );
+
+  // 画板助手触发：注册本节点的「生成产物」入口（见 canvas/core/nodeProducers.ts）
+  useNodeProducer(id, handleGenerateAndSave);
 
   return (
     <CanvasNode

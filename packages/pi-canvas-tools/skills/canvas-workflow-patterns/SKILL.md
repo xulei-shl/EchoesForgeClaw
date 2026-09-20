@@ -11,6 +11,10 @@ description: "典型画布链路组合模板。当用户想要一整条创作流
 
 **已有链路要调整时先改后建**：链路跑通后，用户要改内容/换预设用 `canvas_update_node`（先 `canvas_get_node_details` 读现状）、断开某条连线用 `canvas_disconnect_nodes`、删掉多余节点用 `canvas_delete_node`（会先弹确认框）。不要把「改一下」做成「再建一个」，否则画布上会留下重复节点与冗余连线。
 
+**链路跑之前先把节点跑起来**：除 `book_info`（创建即拉元数据）与 4 个自动检索类节点（`image_search` / `art_image_search` / `pattern_search` / `color_search`）的**检索部分**外，检索类（`web_search` / `zhihu_search` / `wikipedia_search` / `weather` / `calendar` / `text_translation` / `vufind_call_number`）、AI 类（`image_analysis` / `text_generation` / `image_generation`）与 16 个「需渲染出图」的产物类节点（`book_card` / `receipt_printer` / `watercolor_brush` / `map_poster` 等）**创建与连线都不会自动运行**，必须调用 `canvas_run_node` 触发，再用 `canvas_read_node_output` 读产出；输入已就绪时也可以 `canvas_create_node(..., run: true)` 一次到位。`status=not_started` 表示缺少输入（补关键词/上游图片后重试），`status=timeout` 只是还没跑完、**不是失败**。链路下游依赖上游产出：先让上游跑完再接线或向用户交付，不要拿空输出继续往下做（产物类节点不生成就没有图，下游排版节点会一直是空的）。
+
+**候选类节点要「选定」才有产物**：`image_search` / `art_image_search` / `pattern_search` / `color_search` 自动检索出的只是候选列表，`imageUrl` 仍为空——先 `canvas_run_node`（不传 `select_index`）拿回候选清单，选定后带上 `select_index` 再调一次，图/色板才落盘；没选定的图**不能**接给下游排版节点。
+
 ## 1. 图书卡片流
 `book_info` → `book_card`
 - 场景：按 ISBN 或书名生成一张分享卡片。
@@ -35,6 +39,7 @@ description: "典型画布链路组合模板。当用户想要一整条创作流
 `pattern_search`（或 `color_search`）→ `editorial_layout`
 - 场景：用传统纹样或传统色做杂志感海报。
 - 要点：这两个节点输出 `image + text` 复合结果，下游是图片节点时自动取图、是文本节点时自动取说明文本。
+- 要点：**先选定一个纹样/配色再排版**（`canvas_run_node` 取候选 → 带 `select_index` 再调一次），否则 `editorial_layout` 拿到的是空图。
 
 ## 需要受管 AI 节点时
 

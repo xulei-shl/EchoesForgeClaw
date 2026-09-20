@@ -116,6 +116,15 @@ export interface GlamSearchResult {
   nextOffset: number;
   /** 聚合模式（provider='all'）下逐来源推进信息 */
   perSource?: Record<string, GlamPerSourceInfo>;
+  /** 聚合模式下失败的来源（单源失败不影响其余，但不能静默丢掉失败事实） */
+  failedSources?: GlamFailedSource[];
+}
+
+/** 聚合检索里某个来源的失败（来源名 + 可读原因）：前端提示与 Agent 回执都用它 */
+export interface GlamFailedSource {
+  provider: GlamProvider;
+  label: string;
+  reason: string;
 }
 
 /** 无可靠分页的来源：Rijks（单批上限 24、检索接口无分页）、Paris（GraphQL 不支持 offset），
@@ -803,8 +812,24 @@ function sourceHasMore(
   return items.length > 0;
 }
 
+/** 按源轮转交错合并（各源第 1 条 → 各源第 2 条…）：避免「全部来源」的候选清单被第一个来源占满 */
+function interleaveBySource(groups: readonly GlamSearchItem[][]): GlamSearchItem[] {
+  const max = groups.reduce((m, g) => Math.max(m, g.length), 0);
+  const out: GlamSearchItem[] = [];
+  for (let i = 0; i < max; i++) {
+    for (const group of groups) {
+      const item = group[i];
+      if (item) out.push(item);
+    }
+  }
+  return out;
+}
+
 /** 统一入口：按源分发检索（无关键词 = 随机；未配置凭据给出明确指引）。
- *  provider='all' 时并发聚合全部已配置来源，跳过未配置 Key 的源，单源失败不影响其余。
+ *  provider='all' 时并发聚合全部已配置来源，跳过未配置 Key 的源，单源失败不影响其余；
+ *  聚合结果按源**轮转交错**（各源第 1 条 → 各源第 2 条…），避免候选清单被单一来源占满；
+ *  若最终 0 条结果且至少一个源失败，则抛错而不是返回空列表（不把信源故障伪装成「没有结果」）；
+ *  部分来源失败时结果照常返回，但通过 `failedSources` 把失败的来源与原因回传。
  *  关键词检索支持按 offset 继续拉取（「加载更多」）：
  *  - 单源：hasMore 用官方 total 精确判断（无 total 时回退启发式）；返回 nextOffset 供前端回传。
  *  - 聚合：各来源使用各自维护的 offset（params.offsets）推进，避免共用一个全局偏移跳过中间结果，
@@ -826,25 +851,52 @@ export async function searchGlamImages(
     const settled = await Promise.allSettled(
       included.map((p) => searchSingleSource(p, creds, query, perSource, offsets[p] ?? 0))
     );
-    const items: GlamSearchItem[] = [];
+    const perSourceItems: GlamSearchItem[][] = [];
     const perSourceInfo: Record<string, GlamPerSourceInfo> = {};
+    const failures: GlamFailedSource[] = [];
     included.forEach((p, i) => {
       const r = settled[i];
-      if (r?.status !== 'fulfilled') return;
+      if (r?.status !== 'fulfilled') {
+        // 单源失败不影响其余源，但必须把原因记下来并回传（不能静默丢掉失败事实）
+        const reason = r?.status === 'rejected' ? r.reason : undefined;
+        failures.push({
+          provider: p,
+          label: GLAM_PROVIDER_LABELS[p],
+          reason: reason instanceof Error ? reason.message : String(reason ?? '未知错误'),
+        });
+        return;
+      }
       perSourceInfo[p] = {
         count: r.value.items.length,
         hasMore: sourceHasMore(query, r.value.total, r.value.nextOffset, p, r.value.items),
         total: r.value.total,
         nextOffset: r.value.nextOffset,
       };
-      items.push(...r.value.items);
+      perSourceItems.push(r.value.items);
     });
+    const items = interleaveBySource(perSourceItems);
+    // 可读的失败清单（抛错文案与成功回执的 failedSources 共用）
+    const failureText = failures.map((f) => `${f.label}：${f.reason}`).join('；');
+    // 一条结果都没有、却有来源失败时，不能断言「没有结果」（可能是信源故障而非真的无匹配）：
+    // 明确报错（路由映射为 502）并带上各源原因，不静默返回空列表。
+    // 注意：部分源内部会自己 allSettled（如 Rijks 的子请求），网络全挂时它们会「成功返回空数组」，
+    // 所以这里不能只根据 rejected 判断，必须结合「确实取到 0 条结果」判定。
+    if (items.length === 0 && failures.length > 0) {
+      const allFailed = perSourceItems.length === 0;
+      throw new GlamSearchError(
+        allFailed
+          ? `全部博物馆检索均失败：${failureText}`
+          : `未检索到任何结果，且以下来源失败：${failureText}（可换关键词或稍后重试）`
+      );
+    }
     return {
       items,
       hasMore: Object.values(perSourceInfo).some((s) => s.hasMore),
       total: null,
       nextOffset: 0,
       perSource: perSourceInfo,
+      // 部分来源失败：结果仍然可用，但要把「哪些没取到」一并回传（前端提示 + Agent 回执）
+      ...(failures.length > 0 ? { failedSources: failures } : {}),
     };
   }
 

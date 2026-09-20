@@ -4,6 +4,7 @@ import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
 import api from '../../../shared/services/api';
 import { CanvasNode } from '../_shared/CanvasNode';
+import { useNodeCandidateOps } from '../../core/nodeProducers';
 import { NodeActionBar } from '../_shared/NodeActionBar';
 import { Tooltip } from '../../../shared/components/ui/Tooltip';
 import { useFeedback } from '../../../shared/components/ui/FeedbackProvider';
@@ -64,7 +65,8 @@ export interface ImageSearchNodeProps {
   onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
 }
 
-const PROVIDERS: { value: string; label: string; title?: string }[] = [
+/** 免版权图库列表（下拉展示 + `data.provider` 取值域；画布层 canvas_get_node_params 的 options 同源引用） */
+export const PROVIDERS: { value: string; label: string; title?: string }[] = [
   { value: 'unsplash', label: 'Unsplash', title: 'Unsplash 免版权图库' },
   { value: 'pixabay', label: 'Pixabay', title: 'Pixabay 免版权图库' },
   { value: 'nasa-image', label: 'NASA', title: 'NASA 图片库' },
@@ -282,6 +284,29 @@ const ImageSearchNodeInner: React.FC<ImageSearchNodeProps> = ({
 
   const activeProviderMeta = PROVIDERS.find((p) => p.value === activeProvider);
   const providerLabel = activeProviderMeta?.label ?? activeProvider;
+
+  // 画板助手触发：把候选清单与「选中一个」的能力注册出去（见 canvas/core/nodeProducers.ts）。
+  // 候选只存在本组件的 providerCache 里，画布层读不到，所以必须由组件自己暴露。
+  useNodeCandidateOps(id, {
+    list: () =>
+      currentCache.items.map((item, index) => ({
+        index,
+        title: item.description || item.photographer || item.id,
+        subtitle: `${item.source}${item.width && item.height ? ` · ${item.width}×${item.height}` : ''}`,
+      })),
+    ensure: async () => {
+      if (currentCache.items.length === 0) {
+        await load(activeProvider, effectiveQuery, 1, true, 'auto');
+      }
+    },
+    select: async (index) => {
+      const item = currentCache.items[index];
+      if (!item) return `候选序号 ${index} 超出范围（当前 ${currentCache.items.length} 个候选）`;
+      if (savingId) return '正在保存上一张图片，请稍候再试';
+      await handleSelect(item);
+      return '';
+    },
+  });
 
   return (
     <CanvasNode

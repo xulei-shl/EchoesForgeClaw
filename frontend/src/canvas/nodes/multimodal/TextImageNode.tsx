@@ -22,6 +22,7 @@ import {
   Edit3,
 } from 'lucide-react';
 import { CanvasNode } from '../_shared/CanvasNode';
+import { useNodeProducer } from '../../core/nodeProducers';
 import { NodeActionBar } from '../_shared/NodeActionBar';
 import { Tooltip } from '../../../shared/components/ui/Tooltip';
 import { useFeedback } from '../../../shared/components/ui/FeedbackProvider';
@@ -731,6 +732,9 @@ const TextImageNodeInner: React.FC<TextImageNodeProps> = ({
   const isSaved = Boolean(data?.isSaved);
   const busy = isWorking || isExporting;
   const locked = false;
+
+  // 画板助手触发：注册本节点的「生成产物」入口（见 canvas/core/nodeProducers.ts）
+  useNodeProducer(id, handleGenerate);
 
   return (
     <CanvasNode

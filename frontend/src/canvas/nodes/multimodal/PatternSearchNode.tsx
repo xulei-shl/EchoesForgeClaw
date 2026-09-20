@@ -4,6 +4,7 @@ import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
 import api from '../../../shared/services/api';
 import { CanvasNode } from '../_shared/CanvasNode';
+import { useNodeCandidateOps } from '../../core/nodeProducers';
 import { NodeActionBar } from '../_shared/NodeActionBar';
 import { Tooltip } from '../../../shared/components/ui/Tooltip';
 import { Select } from '../../../shared/components/ui/Select';
@@ -257,6 +258,29 @@ const PatternSearchNodeInner: React.FC<PatternSearchNodeProps> = ({
     a.download = `chinese-pattern-${patternName}-${Date.now()}.${ext}`;
     a.click();
   };
+
+  // 画板助手触发：注册候选纹样清单与「选中一个」（候选只存在组件本地 state，见 core/nodeProducers.ts）
+  useNodeCandidateOps(id, {
+    list: () =>
+      items.map((item, index) => ({
+        index,
+        title: item.name_cn || item.name_en || item.id,
+        subtitle: [item.category, item.name_en].filter(Boolean).join(' · '),
+      })),
+    ensure: async () => {
+      if (items.length === 0) {
+        await load(activeCategory, effectiveQuery, 'auto', !effectiveQuery && !activeCategory);
+      }
+    },
+    select: async (index) => {
+      const item = items[index];
+      if (!item) return `候选序号 ${index} 超出范围（当前 ${items.length} 个候选）`;
+      if (imageUrl) return '该节点已选定纹样（选择已锁定）；如需更换请先清空当前结果或新建节点';
+      if (savingId) return '正在保存上一个纹样，请稍候再试';
+      await handleSelect(item);
+      return '';
+    },
+  });
 
   return (
     <CanvasNode

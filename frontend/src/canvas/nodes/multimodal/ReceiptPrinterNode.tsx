@@ -3,6 +3,7 @@ import { Printer, Loader2, Heart, Globe, Sparkles, Maximize2 } from 'lucide-reac
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
 import { CanvasNode } from '../_shared/CanvasNode';
+import { useNodeProducer } from '../../core/nodeProducers';
 import { NodeActionBar } from '../_shared/NodeActionBar';
 import { useFeedback } from '../../../shared/components/ui/FeedbackProvider';
 import { NODE_COLORS } from '../_shared/nodeTypes';
@@ -274,6 +275,9 @@ const ReceiptPrinterNodeInner: React.FC<ReceiptPrinterNodeProps> = ({
   }, [localState, showToast]);
 
   const hasGeneratedImage = Boolean(data?.imageUrl);
+
+  // 画板助手触发：注册本节点的「生成产物」入口（见 canvas/core/nodeProducers.ts）
+  useNodeProducer(id, handleExportAndSave);
 
   return (
     <CanvasNode

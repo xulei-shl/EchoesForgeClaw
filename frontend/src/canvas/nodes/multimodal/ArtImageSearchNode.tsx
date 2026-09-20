@@ -4,6 +4,7 @@ import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
 import api from '../../../shared/services/api';
 import { CanvasNode } from '../_shared/CanvasNode';
+import { useNodeCandidateOps } from '../../core/nodeProducers';
 import { NodeActionBar } from '../_shared/NodeActionBar';
 import { Tooltip } from '../../../shared/components/ui/Tooltip';
 import { Select } from '../../../shared/components/ui/Select';
@@ -73,7 +74,9 @@ const HIDDEN_GLAM_SOURCES = ['ai-chicago', 'harvard'];
 
 /** 13 家博物馆来源（与后端 glam-search-service 的 GlamProvider 一致）；'all' = 全部来源聚合检索。
  *  ai-chicago / harvard 因图片不可达被屏蔽（见 HIDDEN_GLAM_SOURCES），不在此列出。 */
-const PROVIDERS: { value: string; label: string; title: string }[] = [
+/** 博物馆来源清单（下拉展示 + `data.provider` 取值域；画布层 canvas_get_node_params 的 options 同源引用，
+ *  未配置 Key 的来源由 `/glam-providers` 过滤后不在下拉展示） */
+export const PROVIDERS: { value: string; label: string; title: string }[] = [
   { value: 'all', label: '全部来源', title: '同时检索全部已配置博物馆（未配置 Key 的源自动跳过）' },
   { value: 'met', label: 'MET', title: '大都会艺术博物馆（无需配置）' },
   { value: 'rijks', label: 'Rijksmuseum', title: '荷兰国立博物馆（无需配置）' },
@@ -105,6 +108,8 @@ interface ProviderCacheState {
   total: number | null;
   /** 各来源分页游标（key=来源名）：单源模式仅用本来源一项，聚合模式用于逐源推进 offset */
   cursors: Record<string, number>;
+  /** 聚合模式（provider='all'）下未取到结果的来源与原因（结果仍可用，但要说清少了谁） */
+  sourceWarnings: string[];
 }
 
 const initialProviderCache = (): Record<string, ProviderCacheState> =>
@@ -120,6 +125,7 @@ const initialProviderCache = (): Record<string, ProviderCacheState> =>
         lastLoadedQuery: '',
         total: null,
         cursors: {},
+        sourceWarnings: [],
       },
     ])
   );
@@ -162,6 +168,7 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
 
   const currentCache = providerCache[activeProvider];
   const items = currentCache.items;
+  const sourceWarnings = currentCache.sourceWarnings;
   const searchError = currentCache.searchError;
   const hasMore = currentCache.hasMore;
 
@@ -207,6 +214,7 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
           total?: number | null;
           next_offset?: number;
           per_source?: Record<string, { nextOffset?: number; total?: number | null }>;
+          failed_sources?: Array<{ provider?: string; label?: string; reason?: string }>;
         } = await api.post('/modules/bookplate/glam-search', body, { timeout: SMALL_TOOL_TIMEOUT_MS });
         if (seq !== requestSeq.current) return false;
         // 聚合模式：过滤掉被屏蔽来源（AIC / Harvard）的条目，避免展示无法加载的破图；单源模式不在此列，不会命中
@@ -242,6 +250,10 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
               lastLoadedQuery: queryText,
               total: targetProvider === 'all' ? null : typeof res.total === 'number' ? res.total : null,
               cursors: nextCursors,
+              // 聚合模式：部分博物馆失败时结果仍显示，但把「少了谁、为什么」一并留下来
+              sourceWarnings: (Array.isArray(res.failed_sources) ? res.failed_sources : [])
+                .map((f) => `${f?.label || f?.provider || '未知来源'}：${f?.reason || '未返回结果'}`)
+                .filter(Boolean),
             },
           };
         });
@@ -256,6 +268,8 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
             items: replace ? [] : prev[targetProvider].items,
             loaded: true,
             lastLoadedQuery: queryText,
+            // 整体失败时错误已由 searchError 说明，不再重复列失败来源
+            sourceWarnings: [],
           },
         }));
         return false;
@@ -382,6 +396,28 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
   /** 来源短名（全部来源模式下每个结果项标注来源用） */
   const sourceShortLabel = (source: string) => PROVIDERS.find((p) => p.value === source)?.label || source;
 
+  // 画板助手触发：注册候选清单与「选中一个」（候选只存在组件本地缓存，见 core/nodeProducers.ts）
+  useNodeCandidateOps(id, {
+    list: () =>
+      items.map((item, index) => ({
+        index,
+        title: item.description || item.photographer || item.id,
+        subtitle: `${activeProvider === 'all' ? sourceShortLabel(item.source) : currentCache.sourceLabel || item.source}`,
+      })),
+    // 聚合模式下部分博物馆失败：候选仍然可用，但要让助手知道「这批结果少了哪些来源」
+    warnings: () => currentCache.sourceWarnings,
+    ensure: async () => {
+      if (items.length === 0) await load(activeProvider, effectiveQuery, true, 'auto', {});
+    },
+    select: async (index) => {
+      const item = items[index];
+      if (!item) return `候选序号 ${index} 超出范围（当前 ${items.length} 个候选）`;
+      if (savingId) return '正在保存上一张作品，请稍候再试';
+      await handleSelect(item);
+      return '';
+    },
+  });
+
   return (
     <CanvasNode
       id={id}
@@ -507,6 +543,16 @@ const ArtImageSearchNodeInner: React.FC<ArtImageSearchNodeProps> = ({
                   <ImageOff size={24} strokeWidth={1.5} className="text-ink-faint" />
                   <p className="text-xs text-ink-light font-sans">
                     {effectiveQuery ? `没有匹配「${effectiveQuery}」的作品` : '暂无作品，点击「换一批」试试'}
+                  </p>
+                </div>
+              )}
+              {!loading && sourceWarnings.length > 0 && (
+                <div className="mb-1.5 rounded-md border border-dashed border-paper-grid bg-paper/40 px-2 py-1.5">
+                  <p
+                    className="text-[11px] text-ink-light font-sans leading-snug break-words"
+                    title={sourceWarnings.join('；')}
+                  >
+                    部分来源未取到结果（{sourceWarnings.length}）：{sourceWarnings.join('；')}
                   </p>
                 </div>
               )}

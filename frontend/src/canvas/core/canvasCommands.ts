@@ -10,7 +10,28 @@
  * - `CanvasPage` 挂载时注入实现（复用 `recordHistory` / `updateNodeData` / 节点删除 /
  *   连线删除），卸载时传 `null` 清空；
  * - 执行器拿不到命令层时**明确报错**，绝不降级直改 store（否则会产生不可撤销的变更）。
+ *
+ * 另含一项「运行节点」命令（`runNodeById`）：节点的运行入口分散在画布页的各个
+ * handler（AI 三类走 `runNode`，检索/工具类走各自的 fetch handler，渲染类节点走
+ * 组件自己注册的生成入口 —— 见 `nodeProducers.ts`），只有画布页能拿到这些闭包，
+ * 故同样由画布页注入。它不是写操作、不记撤销历史。
  */
+import type { NodeCandidate } from './nodeProducers';
+
+/**
+ * 运行节点的结果：用可识别联合编码三种情况，避免用 `started + 可选字段` 拼出一个每个调用方
+ * 都要猜形状的对象。
+ * - `ran`：已发起/完成一次真正的运行（产物由节点自身产生或渲染）；`warnings` 为运行成功但
+ *   需要被告知的提示（如聚合检索部分来源失败），通常为空数组。
+ * - `candidates`：候选类节点已备好候选清单，**等调用方用 `select_index` 选定一个**；
+ *   `warnings` 为「候选可用但不完整」的提示（如聚合检索部分来源失败），须原样回传。
+ * - `not_started`：未运行，`reason` 必须原样回传给 Agent（不得静默）。
+ */
+export type CanvasRunOutcome =
+  | { kind: 'ran'; warnings: string[] }
+  | { kind: 'candidates'; candidates: NodeCandidate[]; warnings: string[] }
+  | { kind: 'not_started'; reason: string };
+
 export interface CanvasRemoveNodeOptions {
   /** 是否级联删除其全部下游子孙节点（默认 true，与画布 UI 一致） */
   cascade?: boolean;
@@ -34,6 +55,14 @@ export interface CanvasCommands {
   removeNode: (id: string, opts?: CanvasRemoveNodeOptions) => Promise<CanvasRemoveNodeResult>;
   /** 删除一条连线（记历史）；返回该连线是否存在并被删除 */
   removeEdge: (edgeId: string) => boolean;
+  /**
+   * 运行一个节点（与画布 UI 手点「运行 / 检索 / 生成 / 选中」同口径）。
+   * - 渲染类节点（16 个产物节点）的生成是异步的，故本方法为 async（见 nodeProducers.ts）；
+   * - 候选类节点（检索结果类）：不传 `selectIndex` 时回 `candidates`（清单供 Agent 判断），
+   *   传 `selectIndex` 时选中该候选并落盘为产物；
+   * - 未发起时回 `not_started` 与原因，调用方必须原样回传，不得静默。
+   */
+  runNodeById: (id: string, selectIndex?: number) => Promise<CanvasRunOutcome>;
 }
 
 let commands: CanvasCommands | null = null;

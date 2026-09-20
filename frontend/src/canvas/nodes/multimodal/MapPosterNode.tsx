@@ -3,6 +3,7 @@ import { ImageDown, Loader2, Map as MapIcon, MapPin, Search, X } from 'lucide-re
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
 import { CanvasNode } from '../_shared/CanvasNode';
+import { useNodeProducer } from '../../core/nodeProducers';
 import { BeamGlow } from '../_shared/BeamGlow';
 import { NodeActionBar } from '../_shared/NodeActionBar';
 import { Select, type SelectOption } from '../../../shared/components/ui/Select';
@@ -205,6 +206,9 @@ const MapPosterNodeInner: React.FC<MapPosterNodeProps> = ({
 
   /** 离散编辑器字段变更 → 持久化 + 记撤销历史 */
   const edit = (patch: Record<string, any>) => onUpdateEditor?.(id, patch, true);
+
+  // 画板助手触发：注册本节点的「生成产物」入口（见 canvas/core/nodeProducers.ts）
+  useNodeProducer(id, handleGenerate);
 
   return (
     <CanvasNode

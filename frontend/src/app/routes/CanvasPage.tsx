@@ -1163,6 +1163,7 @@ const CanvasPage: React.FC = () => {
     handleNodeContextMenu,
     closeContextMenu,
     removeNode,
+    runNodeById,
   } = useNodeHandlers({
     nodesRef, edgesRef, portTypesRef, streamControllers, analysisUploads, generationIds,
     setNodes, setEdges, setNodeSizes, setFavoritedState, setPublishedState,
@@ -1186,6 +1187,7 @@ const CanvasPage: React.FC = () => {
         handleRemoveEdge(edgeId);
         return true;
       },
+      runNodeById,
     });
     return () => registerCanvasCommands(null);
   });

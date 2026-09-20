@@ -63,7 +63,7 @@ description: "33 个默认内置节点与 4 类受管 AI 节点的类型、端�
 ### 4. GLAM 工具类节点（2 个）
 | 节点类型 (`type`) | 中文名称 | 输入端口 | 输出端口 | 关键配置与说明 |
 | :--- | :--- | :---: | :---: | :--- |
-| `art_image_search`| 艺术图片检索 | `text` (关键词) | `image` | 聚合 13 家国际知名博物馆（MET / 大都会 / 荷兰国立等）开放藏品 |
+| `art_image_search`| 艺术图片检索 | `text` (关键词) | `image` | 聚合 13 家国际知名博物馆（MET / 荷兰国立 / 克利夫兰等）开放藏品；`all` 聚合全部已配置来源，`provider` 可指定其中 11 家（`ai-chicago` / `harvard` 只出现在聚合结果里，不在来源下拉里） |
 | `vufind_call_number`| VuFind 馆藏 | `text` (ISBN) | `text` | 根据图书 ISBN 获取中图法分类索书号与馆藏信息 |
 
 ---
@@ -83,7 +83,7 @@ description: "33 个默认内置节点与 4 类受管 AI 节点的类型、端�
 
 ## 三、端口匹配与接线规则
 
-0. **先读后连**：连线或引用节点内容前，用 `canvas_list_nodes` 确认节点 ID 与 `has_output` 状态；`canvas_read_node_output` 可读取文本类节点的当前输出（`has_output=false` 说明节点尚未运行或输出为空，先提示用户运行，不要编造内容）。
+0. **先读后连**：连线或引用节点内容前，用 `canvas_list_nodes` 确认节点 ID 与 `has_output` 状态；`canvas_read_node_output` 可读取文本类节点的当前输出。`has_output=false` 时先按本文件第六节判断该类型是否需要 `canvas_run_node` 触发运行；仍为空则如实告知用户节点没有产出，不要编造内容。
 1. **类型一致性原则**：
    - `text` 输出 → 连向接受 `text` 的输入端口；
    - `image` 输出 → 连向接受 `image` 的输入端口；
@@ -150,8 +150,13 @@ description: "33 个默认内置节点与 4 类受管 AI 节点的类型、端�
 | `weather` | `city` | 城市名 |
 | `calendar` | `date` | `YYYY-MM-DD`，可留空 |
 | `zhihu_search` / `wikipedia_search` | `query`、`mode`/`language`、`limit` | 检索关键词与模式 |
-| `web_search` | `source`、`tabData` | `source`: random / zhihu_global / tavily / exa / anysearch / doubao |
-| `image_search` / `art_image_search` | `provider` | `image_search`: unsplash / pixabay / nasa-image 等；`art_image_search`: all 或具体博物馆 |
+| `web_search` | `source`、`count` | `source`: `random`（默认；从后端已配置凭据的源里随机挑一个）/ `zhihu_global` 知乎全网 / `tavily` / `exa` / `anysearch` / `doubao`。**每源结果分开缓存**（`tabData[源]`），切源只换输出不会重检 |
+| `text_translation` | `source`、`from`、`to` | `source`: `random` / `google` / `deeplx` |
+| `image_search` | `provider` | `provider`: `unsplash`（默认）/ `pixabay` / `nasa-image` |
+| `art_image_search` | `provider` | `provider`: `all`（默认，聚合全部已配置博物馆，结果按源轮转交错）/ 单馆：`met` / `rijks` / `artsmia` / `cleveland` / `smk` / `wellcome` / `nypl` / `smithsonian` / `paris` / `europeana` / `loc`（`nypl` / `smithsonian` / `paris` / `europeana` 需配置 Key，未配置选了会报 503） |
+
+> [!IMPORTANT]
+> **有固定取值域的字段不要猜**：这些字段的当前可选值用 `canvas_get_node_params(node_type)` 查（返回 `options`）——`art_image_search` 的 `provider` 选项由后端现查（只列已配置凭据、且前端来源下拉支持的博物馆）。写错取值会**静默回退默认源**（`web_search` 非法 `source` → `random`；`image_search` 非法 `provider` → `unsplash`），排查时先核对一次。
 | `map_art` | `query`、`preset`、`radius`、`circle` | 地点与样式 |
 | `glass_refract` | `presetId`、`scale`、`relief`、`thickness`、`angle`、`dispersion`、`specular` | 预设 ID 见 `canvas_get_presets('glass_refract')` |
 | `emboss_foil` | `presetId`、`reliefStyle`、`depth`、`brightness`、`radius`、`lightAngle` | 预设见 `canvas_get_presets('emboss_foil')` |
@@ -162,3 +167,27 @@ description: "33 个默认内置节点与 4 类受管 AI 节点的类型、端�
 | `receipt_printer` | `templateId`、`themeId`、`ditherEnabled` | 模板见 `canvas_get_presets('receipt_printer')` |
 
 **删除的定位纪律**：`node_id` 必须来自 `canvas_list_nodes` 的返回清单，不要凭记忆引用可能已删除的 ID；级联范围由工具在确认框中列出，不要自行推断「删了会少什么」。
+
+---
+
+## 六、运行节点（创建与连线都不会自动运行）
+
+> [!IMPORTANT]
+> **除了 `book_info` 与 4 个自动检索类节点的「检索」部分，节点不会自己跑**：创建与连线都不会触发运行，必须调用 `canvas_run_node`。漏掉这一步，节点会一直是 `has_output=false`，用户会以为检索失败。
+
+| 节点类型 | 需要 `canvas_run_node` 吗 | 说明 |
+| :--- | :---: | :--- |
+| `book_info` | 否 | 创建（或改 `isbn` 后重跑）时自动拉取豆瓣元数据 |
+| `image_search` / `art_image_search` / `pattern_search` / `color_search` | **是（选定候选）** | 检索会自动跑（挂载或上游关键词变化时），但**候选只是列表、不是产物**：必须先 `canvas_run_node`（不带 `select_index`）拿到候选清单，选定后**再调一次并传 `select_index`**，图/色板才落到 `imageUrl`；不选就一直没图，下游取不到 |
+| `web_search` / `zhihu_search` / `wikipedia_search` / `weather` / `calendar` / `text_translation` / `vufind_call_number` | **是** | 与画布上点「检索 / 查询」按钮同口径 |
+| `image_analysis` / `text_generation` / `image_generation` | **是** | 与画布上点「运行」按钮同口径（这 3 类是受管节点，普通用户建不了） |
+| `book_card` / `receipt_printer` / `stamp_cutter` / `image_bg_remove` / `sticker_maker` / `journal_maker` / `text_image` / `oil_paint` / `image_process` / `emboss_foil` / `glass_refract` / `watercolor_brush` / `ink_wash` / `editorial_layout` / `map_poster` / `map_art`（16 类） | **是** | 与画布上点「生成 / 导出」同口径：图靠前端渲染或后端生成，**不触发就一直是 `imageUrl=null`**（下游拿不到图）；生成较慢（抠图/水彩/地图尤其），可能回 `status=timeout`——那不是失败 |
+
+调用要点：
+- **候选类要先选一个才出图**：`canvas_run_node` 不传 `select_index` 时返回 `status=candidates_ready` 与候选清单（含 `index` / `title` / `subtitle`，供你挑），**此时 `has_output` 仍为 `false`**；挑好后带上 `select_index`（从 0 开始）再调一次，才算选定。挑候选时不要编造：以清单里的标题为依据，必要时把候选描述给用户看。
+- **候选可能「不完整」**：`art_image_search` 的 `all` 聚合下，若部分地区性博物馆没取到，回执会带 `warnings`（哪些来源失败、为什么）——候选仍然可用，但这批结果**不是全部来源的**：交付时如实说明，必要时改用单个博物馆（`provider`）或重试；全部来源都失败时工具直接报错（不会返回空候选让你误以为「没有结果」）。
+- **创建时一次到位**：输入已就绪（如带 `parent_id` 一起创建检索节点）时，直接 `canvas_create_node(..., run: true)` 一次完成「建 + 跑 + 等产物」；先建后连的场景不传 `run`（会回 warnings「已创建但未运行」），连好上游再 `canvas_run_node`。注意 `run: true` 对候选类节点只完成「检索出候选」，仍要再调 `canvas_run_node(select_index)` 才算定稿。
+- **先连后跑**：先确认上游已连线且有产出（`canvas_list_nodes` 看 `has_output`、`canvas_read_node_output` 读上游内容），再运行；缺少输入时工具回 `status=not_started` 与具体原因（如「缺少关键词」），先补输入（`canvas_update_node` 写 `query`，或连线文本节点）再重试，不要空跑。
+- **默认等 60 秒**：`status=completed` ＝运行已结束，接着用 `canvas_read_node_output` 读正文；`status=timeout` ＝还没跑完（**不是失败**），稍后直接读输出即可；传 `timeout_ms: 0` 只触发不等待。
+- **不要重复触发**：节点 `is_generating=true` 或刚触发过的不要再调。
+- 运行结束但没有输出时，如实告知用户「该节点没有产出」，不要编造检索结果。

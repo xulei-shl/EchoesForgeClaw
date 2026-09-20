@@ -14,6 +14,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { CanvasNode } from '../_shared/CanvasNode';
+import { useNodeProducer } from '../../core/nodeProducers';
 import { NodeActionBar } from '../_shared/NodeActionBar';
 import { useFeedback } from '../../../shared/components/ui/FeedbackProvider';
 import { DEFAULT_SIZES } from '../../core/graphTypes';
@@ -329,6 +330,9 @@ export const ImageBgRemoveNode: React.FC<ImageBgRemoveNodeProps> = ({
   const hasResult = Boolean(previewDataUrl || rawCutoutUrl);
   const isSaved = Boolean(data?.isSaved);
   const busy = isProcessing || isExporting;
+
+  // 画板助手触发：注册本节点的「生成产物」入口（见 canvas/core/nodeProducers.ts）
+  useNodeProducer(id, () => handleRemoveBg());
 
   return (
     <CanvasNode

@@ -165,6 +165,8 @@ export async function register(app: FastifyInstance): Promise<void> {
           total: result.total,
           next_offset: result.nextOffset,
           ...(result.perSource ? { per_source: result.perSource } : {}),
+          // 聚合模式下部分来源失败：结果仍 200，但把失败清单回传（前端提示 + 助手回执）
+          ...(result.failedSources?.length ? { failed_sources: result.failedSources } : {}),
         };
       } catch (err) {
         if (err instanceof GlamSearchError) {

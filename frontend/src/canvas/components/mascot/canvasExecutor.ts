@@ -6,8 +6,9 @@
  * 零 React 组件上下文依赖：画布状态操作直接操作全局 useCanvasState，
  * 检索类操作（search_prompts / search_skills）经前端 api 客户端携带已登录用户凭据
  * 调后端（pi 子进程内 fetch 无凭据，直连已鉴权路由会 401）。
- * 操作分四类：写操作（create_node / connect_nodes / update_node / disconnect_nodes /
- * delete_node，一律经 canvasCommands 命令层，保证可撤销）、只读操作
+ * 操作分五类：写操作（create_node / connect_nodes / update_node / disconnect_nodes /
+ * delete_node，一律经 canvasCommands 命令层，保证可撤销）、运行操作（run_node，经命令层
+ * 分派到画布 UI 同款运行入口并等待产出）、只读操作
  * （list_nodes / read_node_output / get_node_details / get_node_params）、检索操作。
  */
 import { nodesRef, edgesRef, setNodes, setEdges } from '../../../shared/stores/useCanvasState';
@@ -23,6 +24,11 @@ import {
   nodeOutputText,
   type GraphNode,
 } from '../../nodes/_shared/nodeTypes';
+// 可枚举字段的取值域直接引用节点组件里的同一份常量（不另建第二份清单，避免漂移）
+import { SOURCE_OPTIONS as WEB_SEARCH_SOURCE_OPTIONS } from '../../nodes/general/WebSearchNode';
+import { SOURCE_OPTIONS as TRANSLATION_SOURCE_OPTIONS } from '../../nodes/text/TextTranslationNode';
+import { PROVIDERS as IMAGE_SEARCH_PROVIDERS } from '../../nodes/multimodal/ImageSearchNode';
+import { PROVIDERS as GLAM_PROVIDERS } from '../../nodes/multimodal/ArtImageSearchNode';
 import type { NodeType, NodeData } from '../../core/graphTypes';
 
 /** 单次读取节点输出的正文上限（防止超长产物撑爆模型上下文；超出部分明确标注截断） */
@@ -30,6 +36,33 @@ const MAX_READ_TEXT_CHARS = 20000;
 
 /** 单字段回执预览上限（写入回执 / 节点详情共用） */
 const MAX_FIELD_CHARS = 200;
+
+/**
+ * 各节点「有固定取值域」的字段（`canvas_get_node_params` 的 fields[].options），
+ * 让 Agent 不必猜检索源 / 图库 ID；GLAM 艺术图检索的博物馆清单依赖后端已配置的 Key，
+ * 故不在此处写死，改由 `glam-providers` 接口现查（见 get_node_params）。
+ */
+const STATIC_FIELD_OPTIONS: Partial<Record<NodeType, Record<string, readonly string[]>>> = {
+  web_search: { source: WEB_SEARCH_SOURCE_OPTIONS.map((o) => o.value) },
+  text_translation: { source: TRANSLATION_SOURCE_OPTIONS.map((o) => o.value) },
+  zhihu_search: { mode: ['zhihu', 'zhida'] },
+  image_search: { provider: IMAGE_SEARCH_PROVIDERS.map((p) => p.value) },
+};
+
+/** run_node 默认等待运行结束的时长（检索类节点常见 10~40s；超时后运行仍在继续） */
+const DEFAULT_RUN_TIMEOUT_MS = 60000;
+
+/** run_node 等待上限（防止一次工具调用挂死太久） */
+const MAX_RUN_TIMEOUT_MS = 180000;
+
+/** run_node 运行状态轮询间隔 */
+const RUN_POLL_INTERVAL_MS = 400;
+
+/** run_node 进入运行态的宽限窗口（handler 同步置 isGenerating；窗口内始终未置位视为已结束） */
+const RUN_START_GRACE_MS = 3000;
+
+/** run_node 回执里候选清单的条数上限（只用于 Agent 判断，避免一次撑爆上下文） */
+const MAX_CANDIDATES = 24;
 
 /** 画布页未挂载时命令层不可用：明确报错，不降级直改 store（否则产生不可撤销的变更） */
 const CANVAS_NOT_MOUNTED = '画布未挂载，无法执行变更操作（请在画板页重试）';
@@ -124,6 +157,41 @@ function normalizeDataKeys(
     aliased.push(`${from} → ${to}`);
   }
   return { data: normalized, aliased };
+}
+
+/** 解析 run_node 的等待时长：缺省用默认值，显式 ≤0 表示只触发不等待，上限收敛到 MAX_RUN_TIMEOUT_MS */
+function resolveRunTimeout(raw: unknown): number {
+  if (raw === undefined || raw === null || raw === '') return DEFAULT_RUN_TIMEOUT_MS;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return DEFAULT_RUN_TIMEOUT_MS;
+  if (n <= 0) return 0;
+  return Math.min(n, MAX_RUN_TIMEOUT_MS);
+}
+
+/** 轮询等待节点运行结束：先等进入运行态（isGenerating=true），再等其结束 */
+async function waitForNodeRun(
+  nodeId: string,
+  timeoutMs: number
+): Promise<'completed' | 'timeout'> {
+  const deadline = Date.now() + timeoutMs;
+  const graceDeadline = Date.now() + RUN_START_GRACE_MS;
+  let started = false;
+  for (;;) {
+    const node = (nodesRef.current || []).find((n) => n.id === nodeId);
+    // 节点在运行中被删除：没有可继续等待的状态，交由调用方按「已不存在」处理
+    if (!node) return 'completed';
+    if (node.data?.isGenerating) {
+      started = true;
+    } else if (!started && nodeHasOutput(node)) {
+      // 无在跑的运行但产物已就绪（如渲染类节点在触发时已写完 data.imageUrl）：直接结束，
+      // 不必等宽限窗口（触发类 handler 都是同步置 isGenerating，走到这里说明确实不在跑）
+      return 'completed';
+    } else if (started || Date.now() >= graceDeadline) {
+      return 'completed';
+    }
+    if (Date.now() >= deadline) return 'timeout';
+    await new Promise((resolve) => setTimeout(resolve, RUN_POLL_INTERVAL_MS));
+  }
 }
 
 export async function executeCanvasOp(
@@ -225,13 +293,52 @@ export async function executeCanvasOp(
           setEdges((prev: any[]) => [...prev, { id: edgeId, source: parentId, target: nodeId }]);
         }
 
+        // 可选：创建后立即运行（仅 Agent 传 run: true 时；画布手动创建不经过本执行器）。
+        // 输入必须先就绪（如与 parent_id 同时创建）——未就绪时如实回执 not_started，不假装跑过。
+        let runReceipt: Record<string, unknown> | undefined;
+        if (realParams.run === true) {
+          const runOutcome = await cmds.runNodeById(nodeId);
+          if (runOutcome.kind === 'candidates') {
+            runReceipt = {
+              started: false,
+              reason: `该节点需先选定候选（已检索到 ${runOutcome.candidates.length} 个）：用 canvas_run_node 传 select_index 选定`,
+              ...(runOutcome.warnings.length ? { warnings: runOutcome.warnings } : {}),
+            };
+          } else if (runOutcome.kind === 'not_started') {
+            runReceipt = { started: false, reason: runOutcome.reason };
+          } else {
+            const runTimeoutMs = resolveRunTimeout(realParams.timeout_ms);
+            const runStatus =
+              runTimeoutMs > 0 ? await waitForNodeRun(nodeId, runTimeoutMs) : 'started';
+            const latestRun = (nodesRef.current || []).find((n) => n.id === nodeId);
+            runReceipt = {
+              started: true,
+              status: runStatus,
+              has_output: latestRun ? nodeHasOutput(latestRun) : false,
+              ...(latestRun?.data?.error ? { error: String(latestRun.data.error) } : {}),
+              ...(runOutcome.warnings.length ? { warnings: runOutcome.warnings } : {}),
+            };
+          }
+        }
+
+        const warnings: string[] = [];
+        if (runReceipt && runReceipt.started === false) {
+          warnings.push(`节点已创建但未运行：${String(runReceipt.reason)}`);
+        }
+        if (Array.isArray(runReceipt?.warnings)) {
+          // 候选已就绪但部分来源失败（如 GLAM 聚合）：不阻断，但要说清少了谁
+          warnings.push(...(runReceipt.warnings as string[]));
+        }
+        if (aliased.length) {
+          warnings.push(`data 键名已归一：${aliased.join('、')}（请直接使用目标键名）`);
+        }
+
         return {
           success: true,
           node_id: nodeId,
           message: `节点「${type}」已在画布创建${parentId ? '并完成连线' : ''}`,
-          ...(aliased.length
-            ? { warnings: [`data 键名已归一：${aliased.join('、')}（请直接使用目标键名）`] }
-            : {}),
+          ...(runReceipt ? { run: runReceipt } : {}),
+          ...(warnings.length ? { warnings } : {}),
         };
       }
 
@@ -430,12 +537,42 @@ export async function executeCanvasOp(
             error: `未知或不支持查询参数的节点类型：${type}。完整类型清单见 canvas-node-catalog 技能`,
           };
         }
+        // 可枚举字段的取值域：静态的取自节点组件同一份常量；GLAM 博物馆需現查（可用性取决于后端已配置的 Key/代理）
+        const optionsByField = { ...(STATIC_FIELD_OPTIONS[type] ?? {}) } as Record<
+          string,
+          readonly string[]
+        >;
+        let glamNote = '';
+        if (type === 'art_image_search') {
+          // 可选的来源以「前端来源下拉认识的取值域」为准（后端可用清单里含前端未列出的源，
+          // 写进去会被节点的可用性回退逻辑改成别的源），再按已配置 Key 过滤。
+          const known = GLAM_PROVIDERS.map((p) => p.value);
+          try {
+            const res: any = await api.get('/modules/bookplate/glam-providers');
+            const available = Array.isArray(res?.providers) ? (res.providers as string[]) : null;
+            optionsByField.provider = available
+              ? ['all', ...known.filter((v) => v !== 'all' && available.includes(v))]
+              : known;
+          } catch {
+            // 与节点保持一致：拉取失败时回退为完整来源清单（节点此时也会展示全部来源）
+            optionsByField.provider = known;
+            glamNote = '（可用博物馆清单拉取失败，options 为完整清单；未配置 Key 的来源选中后会报 503）';
+          }
+        }
         return {
           success: true,
           node_type: type,
-          fields: keys.map((key) => ({ key, default: previewValue(seed[key]) })),
+          fields: keys.map((key) => {
+            const options = optionsByField[key];
+            return {
+              key,
+              default: previewValue(seed[key]),
+              ...(options ? { options: [...options] } : {}),
+            };
+          }),
           note:
-            'default 即该类型节点的初始值。多模态视觉/排版类节点的预设 ID（presetId / mode / effectId / templateId 等）用 canvas_get_presets 查询，不要凭记忆填写；写入用 canvas_update_node。',
+            'default 即该类型节点的初始值；options 即该字段的取值域（写入时只能用其中的值）。多模态视觉/排版类节点的预设 ID（presetId / mode / effectId / templateId 等）用 canvas_get_presets 查询，不要凭记忆填写；写入用 canvas_update_node。' +
+            glamNote,
         };
       }
 
@@ -585,6 +722,127 @@ export async function executeCanvasOp(
           deleted_edge_ids: deletedEdges,
           cascade,
           message: `已删除节点「${getNodeTitle(target)}」${descendants.length ? `及其下游 ${descendants.length} 个节点` : ''}（可用画布撤销恢复）`,
+        };
+      }
+
+      // ---- 运行节点（创建/连线本身不会让节点运行，由 Agent 显式触发） ----
+
+      case 'run_node': {
+        const nodeId = String(realParams.node_id ?? '');
+        if (!nodeId) {
+          return { success: false, error: '缺少必填的节点 ID (node_id)，可先用 list_nodes 查节点清单' };
+        }
+        const cmds = getCanvasCommands();
+        if (!cmds) {
+          return { success: false, error: CANVAS_NOT_MOUNTED };
+        }
+        const nodes: NodeData[] = nodesRef.current || [];
+        const target = nodes.find((n) => n.id === nodeId);
+        if (!target) {
+          return {
+            success: false,
+            error: `节点 ${nodeId} 不存在（可能已被删除），请用 canvas_list_nodes 获取最新节点清单`,
+          };
+        }
+
+        // 候选类节点（图片 / 艺术图 / 纹样 / 配色）：传入 select_index 才是「选定一个候选并落盘」
+        const rawSelectIndex = realParams.select_index;
+        let selectIndex: number | undefined;
+        if (rawSelectIndex !== undefined && rawSelectIndex !== null && rawSelectIndex !== '') {
+          const n = Number(rawSelectIndex);
+          if (!Number.isInteger(n) || n < 0) {
+            return {
+              success: false,
+              node_id: nodeId,
+              type: target.type,
+              status: 'not_started',
+              error: 'select_index 必须是从 0 开始的整数（对应候选清单里的 index）',
+            };
+          }
+          selectIndex = n;
+        }
+
+        // 触发运行：与画布 UI 手点「运行 / 检索 / 生成 / 选中」同口径
+        const outcome = await cmds.runNodeById(nodeId, selectIndex);
+        if (outcome.kind === 'not_started') {
+          return {
+            success: false,
+            node_id: nodeId,
+            type: target.type,
+            status: 'not_started',
+            error: outcome.reason,
+          };
+        }
+        if (outcome.kind === 'candidates') {
+          // 候选就绪：交回清单让 Agent 判断（不替它盲选），选定后再调用一次并传 select_index
+          const candidates = outcome.candidates.slice(0, MAX_CANDIDATES);
+          const warnings = outcome.warnings.length
+            ? [
+                `部分来源未取到结果（候选仍可用）：${outcome.warnings.join('；')}`,
+              ]
+            : [];
+          return {
+            success: true,
+            node_id: nodeId,
+            type: target.type,
+            status: 'candidates_ready',
+            candidate_count: outcome.candidates.length,
+            candidates,
+            has_output: false,
+            ...(warnings.length ? { warnings } : {}),
+            message:
+              `节点已检索到 ${outcome.candidates.length} 个候选（上方 candidates 为前 ${candidates.length} 个）：请挑一个再调用 run_node 并传 select_index，图片才会落盘为节点产物（下游才能取图）。` +
+              (warnings.length
+                ? '注意：本次检索有部分来源失败（见 warnings），候选并非全部来源的结果，需要时可重试或改用单个来源。'
+                : ''),
+          };
+        }
+
+        // 运行已发起，但可能存在「产物可用、来源不完整」的情况（如聚合检索部分博物馆失败）
+        const runWarnings = outcome.warnings.length
+          ? [`部分来源未取到结果：${outcome.warnings.join('；')}`]
+          : [];
+
+        const timeoutMs = resolveRunTimeout(realParams.timeout_ms);
+        const status: 'completed' | 'timeout' | 'started' =
+          timeoutMs > 0 ? await waitForNodeRun(nodeId, timeoutMs) : 'started';
+
+        const latest = (nodesRef.current || []).find((n) => n.id === nodeId);
+        if (!latest) {
+          return {
+            success: false,
+            error: `节点 ${nodeId} 在运行过程中被删除，请用 canvas_list_nodes 核对画布现状`,
+          };
+        }
+        const isGenerating = !!latest.data?.isGenerating;
+        const hasOutput = nodeHasOutput(latest);
+        const runError = latest.data?.error ? String(latest.data.error) : '';
+
+        let message: string;
+        if (runError) {
+          message = `运行失败：${runError}。如实告知用户失败原因，不要编造结果；必要时可重试（再次调用 run_node）。`;
+        } else if (status === 'started') {
+          message =
+            '已触发运行（未等待结束）：稍后用 canvas_read_node_output 读取输出。';
+        } else if (isGenerating) {
+          message =
+            '运行仍在进行中（等待超时，不是失败）：稍后用 canvas_read_node_output 读取输出。';
+        } else if (hasOutput) {
+          message = '运行已完成，输出已就绪：用 canvas_read_node_output 读取正文。';
+        } else {
+          message = '运行已结束但没有输出（该检索可能没有匹配结果）：如实告知用户，不要编造内容。';
+        }
+
+        return {
+          success: true,
+          node_id: nodeId,
+          type: latest.type,
+          status,
+          is_generating: isGenerating,
+          has_output: hasOutput,
+          ...(runError ? { error: runError } : {}),
+          ...(runWarnings.length ? { warnings: runWarnings } : {}),
+          message,
         };
       }
 

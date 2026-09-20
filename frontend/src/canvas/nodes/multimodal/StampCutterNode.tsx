@@ -11,6 +11,7 @@ import {
   Type,
 } from 'lucide-react';
 import { CanvasNode } from '../_shared/CanvasNode';
+import { useNodeProducer } from '../../core/nodeProducers';
 import { NodeActionBar } from '../_shared/NodeActionBar';
 import { useFeedback } from '../../../shared/components/ui/FeedbackProvider';
 import { NODE_COLORS } from '../_shared/nodeTypes';
@@ -632,6 +633,9 @@ const StampCutterNodeInner: React.FC<StampCutterNodeProps> = ({
     () => textItems.find((it) => it.id === selectedTextId),
     [textItems, selectedTextId]
   );
+
+  // 画板助手触发：注册本节点的「生成产物」入口（见 canvas/core/nodeProducers.ts）
+  useNodeProducer(id, handleExecuteCrop);
 
   return (
     <CanvasNode

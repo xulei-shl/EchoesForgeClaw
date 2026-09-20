@@ -11,6 +11,7 @@ import {
 import { SearchImageThumbnail } from './SearchImageThumbnail';
 import api from '../../../shared/services/api';
 import { CanvasNode } from '../_shared/CanvasNode';
+import { useNodeCandidateOps } from '../../core/nodeProducers';
 import { NodeActionBar } from '../_shared/NodeActionBar';
 import { useFeedback } from '../../../shared/components/ui/FeedbackProvider';
 import { Select } from '../../../shared/components/ui/Select';
@@ -753,6 +754,28 @@ const ColorSearchNodeInner: React.FC<ColorSearchNodeProps> = ({
     a.download = `chinese-color-${colorName}-${Date.now()}.${ext}`;
     a.click();
   };
+
+  // 画板助手触发：注册候选传统色清单与「选中一个」（候选只存在组件本地 state，见 core/nodeProducers.ts）
+  useNodeCandidateOps(id, {
+    list: () =>
+      items.map((item, index) => ({
+        index,
+        title: `${item.name} ${item.hex}`,
+        subtitle: [item.hue_category, item.temperature].filter(Boolean).join(' · '),
+      })),
+    ensure: async () => {
+      if (items.length === 0) {
+        await loadColors(activeCategory, activeTemp, effectiveQuery, 'auto', !effectiveQuery);
+      }
+    },
+    select: async (index) => {
+      const item = items[index];
+      if (!item) return `候选序号 ${index} 超出范围（当前 ${items.length} 个候选）`;
+      if (savingId) return '正在保存上一个颜色，请稍候再试';
+      await handleSelect(item);
+      return '';
+    },
+  });
 
   return (
     <CanvasNode

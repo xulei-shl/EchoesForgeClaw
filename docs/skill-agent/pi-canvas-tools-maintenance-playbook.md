@@ -11,8 +11,8 @@
 | 组件 | 位置 | 加载方式 | 备注 |
 |---|---|---|---|
 | 扩展包 `pi-canvas-tools` | `packages/pi-canvas-tools/src/index.ts` | **TS 源码直接加载**（package.json `pi.extensions: ["./src/index.ts"]`） | 无需构建产物；pi 侧加载不做类型检查 |
-| 工具清单（14 个） | 同上 | `canvasOp` 桥接 | 只读：`canvas_list_nodes` / `canvas_read_node_output` / `canvas_get_node_details`（单节点字段现状）/ `canvas_get_node_params`（某类型可配字段与默认值）；写操作：`canvas_create_node` / `canvas_connect_nodes` / `canvas_update_node` / `canvas_disconnect_nodes` / `canvas_delete_node`；检索：`canvas_search_prompts` / `canvas_search_skills`（均经桥接，前端带用户凭据调后端 Bifrost 接口）/ `canvas_get_presets`（扩展内静态预设）/ `canvas_get_node_configs`（仍直连 admin 路由，见 §6.7）；反馈：`canvas_send_feedback`（直连公开路由 `/api/feedback`；**回执以响应体 `delivered` 为准**，HTTP 200 仅代表已受理，见 §6.8） |
-| 前端执行器 | `frontend/src/canvas/components/mascot/canvasExecutor.ts` | 每个 op 一个 case，`executeCanvasOp` 为 async | 复用 `nodeOutputText` / `nodeOutputImages` / `getNodeTitle` 纯函数（与 chat 节点上下文注入同口径）；检索 case 复用 `bifrostService`（与提示词/Skill 检索节点同口径）；**写操作经 `frontend/src/canvas/core/canvasCommands.ts` 命令层**（见 §6.10） |
+| 工具清单（15 个） | 同上 | `canvasOp` 桥接 | 只读：`canvas_list_nodes` / `canvas_read_node_output` / `canvas_get_node_details`（单节点字段现状）/ `canvas_get_node_params`（某类型可配字段、默认值与枚举字段的 `options`，见 §6.16）；写操作：`canvas_create_node`（可传 `run: true` 建即跑，见 §6.14）/ `canvas_connect_nodes` / `canvas_update_node` / `canvas_disconnect_nodes` / `canvas_delete_node`；运行：`canvas_run_node`（触发检索/AI/产物类节点运行并等待产出，候选类节点可传 `select_index` 选定候选并落盘；**创建与连线都不会让节点运行**，见 §6.12 / §6.13 / §6.15）；检索：`canvas_search_prompts` / `canvas_search_skills`（均经桥接，前端带用户凭据调后端 Bifrost 接口）/ `canvas_get_presets`（扩展内静态预设）/ `canvas_get_node_configs`（仍直连 admin 路由，见 §6.7）；反馈：`canvas_send_feedback`（直连公开路由 `/api/feedback`；**回执以响应体 `delivered` 为准**，HTTP 200 仅代表已受理，见 §6.8） |
+| 前端执行器 | `frontend/src/canvas/components/mascot/canvasExecutor.ts` | 每个 op 一个 case，`executeCanvasOp` 为 async | 复用 `nodeOutputText` / `nodeOutputImages` / `getNodeTitle` 纯函数（与 chat 节点上下文注入同口径）；检索 case 复用 `bifrostService`（与提示词/Skill 检索节点同口径）；**写操作与运行操作经 `frontend/src/canvas/core/canvasCommands.ts` 命令层**（写操作见 §6.10，`runNodeById` 见 §6.12）；渲染类节点的产物入口与候选类节点的候选能力都由 `frontend/src/canvas/core/nodeProducers.ts` 注册（见 §6.13 / §6.15） |
 | 同捆技能 | `packages/pi-canvas-tools/skills/*/SKILL.md` | 装配回退（见 §2） | `canvas-workflow-patterns` / `canvas-node-catalog` |
 | 系统提示词种子 | `backend-ts/src/config/seed.ts`（`DEFAULT_CANVAS_ASSISTANT_PROMPT`） | 启动时物化 AGENTS.md | 运行时以 DB `promptTemplates` 行为准（见 §5） |
 | 工具排除名单 | `backend-ts/src/services/ai/pi/config.ts`（`CANVAS_AGENT_EXCLUDED_TOOLS`） | 仅排除 bash | 新增只读工具无需变更 |
@@ -89,6 +89,9 @@ canvasExecutor.ts：按 op 分发 case，从 nodesRef/edgesRef 读数据
 
 改默认提示词的操作顺序：`PREVIOUS_CANVAS_ASSISTANT_PROMPT ← 当前 DEFAULT 全文`，再写新的 `DEFAULT`。升级逻辑自动覆盖存量库。
 
+> [!IMPORTANT]
+> **只有一个历旧槽位**：同一发版周期内连改两版（如第九、十轮都动了提示词但未发布），把中间版放进 `PREVIOUS_*` 会让「存在于线上库里的是**上一个已发布版**」的存量部署永远升不上来。因此 `PREVIOUS_*` 应当始终存放**上一版对外发布过的原文**；发版前可用 `git show HEAD:backend-ts/src/config/seed.ts` 取出出厂版逐字校准（本轮就是这么校的：`PREVIOUS` 与 HEAD 的 `DEFAULT_CANVAS_ASSISTANT_PROMPT` 逐字相等）。若不希望手工校准，可把该常量改为「历史版本数组 + `includes` 匹配」，但会永久膨胀提示词文本，需权衡。
+
 ### 2.5 扩展侧直连后端：只能打公开路由
 
 `PI_BACKEND_URL` 的端口取自 `config/env.ts` 的 `serverPort`（与 `server.ts` 的 listen 同源，**勿在任何位置再写死端口默认值**——历史上 runner 写死 8010、server 默认 8000，PORT 未设时会指向错误端口）。
@@ -111,8 +114,8 @@ canvasExecutor.ts：按 op 分发 case，从 nodesRef/edgesRef 读数据
 ## 3. 新增画布工具 Checklist（标准闭环）
 
 1. **扩展端**（`packages/pi-canvas-tools/src/index.ts`）：用 `canvasOp()` 定义工具；参数用 typebox 声明；`promptGuidelines` 写清使用时机与协作工具交叉引用；所有 return 分支 `details` 同形状；
-2. **前端执行器**（`canvasExecutor.ts`）：新增对应 case；复用 `nodeOutputText` / `nodeOutputImages` / `getNodeTitle` 纯函数（跨节点类型零枚举，与 chat 节点同口径）；大文本截断 + data URL 占位符（§2.2）；需用户凭据的后端调用复用既有 service（如 `bifrostService`），**不要在扩展端直连已鉴权路由**（§2.5）；**任何写操作（建/改/断线/删）必须经 `canvasCommands` 命令层**，先 `recordHistory()` 再改 store，且命令层不可用时明确报错（§6.10）；
-3. **提示词三层同步**（§2.1）：DEFAULT 提示词 + 相关 SKILL.md + 工具 promptGuidelines；
+2. **前端执行器**（`canvasExecutor.ts`）：新增对应 case；复用 `nodeOutputText` / `nodeOutputImages` / `getNodeTitle` 纯函数（跨节点类型零枚举，与 chat 节点同口径）；大文本截断 + data URL 占位符（§2.2）；需用户凭据的后端调用复用既有 service（如 `bifrostService`），**不要在扩展端直连已鉴权路由**（§2.5）；**任何写操作（建/改/断线/删）必须经 `canvasCommands` 命令层**，先 `recordHistory()` 再改 store，且命令层不可用时明确报错（§6.10）；**需要触发节点运行的操作用 `runNodeById` 分派到画布 UI 同款入口**（§6.12）；
+3. **提示词三层同步**（§2.1）：DEFAULT 提示词 + 相关 SKILL.md + 工具 promptGuidelines；新增**产物类节点**（渲染出图）还需在组件里 `useNodeProducer(id, 生成函数)` 注册生成入口（§6.13）；新增**候选类节点**（检索出多个候选项、需选定一个）还要 `useNodeCandidateOps(id, { list, ensure, select })`（§6.15）；
 4. **验证**：§6 全绿；
 5. **生效**：重启后端（重新装配工作区扩展与 AGENTS.md）+ 刷新前端；无需 npm install（`packages/` 源码直接加载）。
 
@@ -129,7 +132,7 @@ canvasExecutor.ts：按 op 分发 case，从 nodesRef/edgesRef 读数据
 | 5 | 提示词物化回归 | `cd backend-ts && npx vitest run tests/api/canvas-agent.test.ts` | 全绿（当前 5/5；只断言物化存在、不断言内容，改提示词安全） |
 | 6 | 反馈通道回归 | `cd backend-ts && npx vitest run tests/api/feedback.test.ts` | 全绿（当前 7/7；覆盖 errcode 非 0 / 未配置 webhook / 网络异常 / 超长自动分片 / 分片中途失败） |
 
-端到端（真实对话链路需起后端+前端+模型，按需做）：画板助手能主动调 `canvas_list_nodes` 查现状、`canvas_read_node_output` 读内容，且输出为空时如实告知；能就地改节点（`canvas_update_node`）、断开连线（`canvas_disconnect_nodes`）、删节点（`canvas_delete_node`，删除前必定弹确认且取消时不产生任何变更）；且 Agent 的建/改/删/断线**都能 Ctrl+Z 撤销**（§6.10 的口径修复）。另需验证反路径：离开画板页后对画布下写指令 → 明确报错「画布未挂载」而**不是**静默改坏画布。
+端到端（真实对话链路需起后端+前端+模型，按需做）：画板助手能主动调 `canvas_list_nodes` 查现状、`canvas_read_node_output` 读内容，且输出为空时如实告知；能就地改节点（`canvas_update_node`）、断开连线（`canvas_disconnect_nodes`）、删节点（`canvas_delete_node`，删除前必定弹确认且取消时不产生任何变更）；且 Agent 的建/改/删/断线**都能 Ctrl+Z 撤销**（§6.10 的口径修复）。另需验证运行闭环（§6.12 / §6.13）：对 `web_search` 等检索类与 AI 类节点调 `canvas_run_node` 能真正触发运行（结束后 `canvas_read_node_output` 读到产出，`status=completed`）；缺少输入（如无关键词、无上游）时回 `status=not_started` 与具体原因且节点确实未发起；自动检索类返回说明（不谎称已运行）；`timeout_ms: 0` 只触发不等待。**候选类节点**：`canvas_run_node`（不传 `select_index`）回 `status=candidates_ready` + 候选清单且 `has_output=false`；带 `select_index` 再调一次后 `data.imageUrl` 真的落盘、下游能取到图；`select_index` 越界回 `not_started` 与范围原因；已锁定的 `pattern_search` 回「已选定/需先清空」而不是静默失败；负值/小数回参数错误。**产物类节点**（如 `book_info` → `watercolor_brush` → `receipt_printer`）调 `canvas_run_node` 后 `data.imageUrl` 真的出现且下游能取到图，缺上游图片的节点返回「生成已执行但没有产出图片」；`canvas_create_node(..., run: true)` 在输入就绪时一次到位（回执带 `run.started=true`），输入未就绪时回 `warnings`「已创建但未运行」且节点确实未跑；**画布上手动创建任何节点都不会因为本次改动而自动运行**（回归 §6.14）。另需验证反路径：离开画板页后对画布下写指令 → 明确报错「画布未挂载」而**不是**静默改坏画布。多源检索（§6.16）：`canvas_get_node_params('web_search' / 'image_search' / 'text_translation' / 'zhihu_search')` 回 `options`；`art_image_search` 的 options 为「`all` + 当前可用博物馆」（未配置 Key 的不出现）；对 GLAM `all` 检索，候选应跨多个博物馆交错出现（不是前几条全部同一家），后端全部源失败时回 502 而不是空候选；**单源失败**（如故意不配 `loc.proxy`）时节点上应出现「部分来源未取到结果」提示条，`canvas_run_node` / `canvas_create_node(run: true)` 的回执应带 `warnings`（带 `select_index` 直接调用也要能看到）。
 
 文本节点 / VuFind 写入回归（手工，必须卡这几个动作，只看当前会话会误判）：① Agent 写入（或手输）正文后**刷新页面**，内容仍在（不被上游顶掉）；② 把 `book_info` 连到已有内容的节点，内容不被覆盖；③ 新建**空**节点并连线上游 → 正常继承；④ 继承后**手动清空 → 刷新** → 保持空（不被上游「复活」）；⑤ 断开上游再重新连回同一来源 → 可再次继承（断开已抹除继承记录）。
 
@@ -166,9 +169,69 @@ canvasExecutor.ts：按 op 分发 case，从 nodesRef/edgesRef 读数据
     - `canvas_disconnect_nodes` 非破坏、可撤销，不弹确认；`canvas_delete_node(node_id)` 一次只接受 1 个节点，级联范围仅由 `cascade` 决定（默认 true，与画布 UI 一致）。
 11. **画板助手「清空会话」= 开启新会话，绝不等价于删除会话**：面板顶栏按钮（`AgentChatPanel.handleClear`）曾额外调用 `/api/modules/bookplate/canvas-agent/clear` → `clearPiSession`，把当前工作区 `.pi-agent/run`（会话文件）删掉——「对话历史」的收录条件正是「工作区内存在 pi 会话文件」（`resolvePiSessionFile`），于是刚聊过的对话立刻从列表消失且不可恢复。正确口径与全站 AI 对话节点的「清空对话」一致（`useNodeHandlers.handleClearChatFor`）：**只置空当前活跃工作区（下一轮发送延迟分配 `canvas-agent_<ts>`），完全不触碰服务端会话**；旧对话留在原工作区，列表仍可识别 / 载入，需要真正删除时走抽屉里的「删除对话」（DELETE `/chat/session`，整目录删除）。随后（第七轮）已把两个「只删会话文件」的接口与 `clearPiSession` 一并删除，**全站再无可删会话文件的代码路径**；canvas-agent 路由上另加回归测试守住「不能再长回一个只删会话文件的接口」（两条路径均 404）。
 
+12. **节点不会自己运行：除 `book_info` 与 4 个自动检索类节点外，Agent 必须显式调 `canvas_run_node`**（第八轮新增，正是「web_search 建了一直空输出」上报的根因）。运行入口原本只在画布页内、按类型分散成三套：AI 三类（`image_analysis` / `text_generation` / `image_generation`）走 `useNodeExecution.runNode`；检索/工具类（`web_search` / `zhihu_search` / `wikipedia_search` / `weather` / `calendar` / `text_translation` / `vufind_call_number`）走 `useToolHandlers` 的各 fetch handler，**只由按钮点击触发**；图片/艺术图/纹样/配色类（`image_search` / `art_image_search` / `pattern_search` / `color_search`）由组件在挂载与上游关键词变化时自动检索（无需运行）。修法是把分派收敛为 `useNodeHandlers.runNodeById(id)`（返回空串＝已发起，非空＝未发起的原因），经 `canvasCommands.runNodeById` 注入给执行器；执行器 `run_node` case 触发后轮询状态（先等 `isGenerating=true`，再等其结束；默认 60s，超时回 `status=timeout` 并提示「稍后再读」而不是「失败」）。两个容易踩的点：① **不要为了「顺手能跑」让 create_node 无条件自动运行**——用户没确认的节点不应产生真实检索请求与成本（第九轮改为：**Agent 显式传 `run: true` 才建即跑**，画布手动创建路径不经过执行器、行为不变）；② 自动检索类的检索逻辑在组件内部（`load` / `loadColors`），外部无法触发，对它们**不要伪造「已运行」**；第十轮把它们的「选定候选」做成了 `select_index`（见 §6.15）。
+
+13. **16 个产物类节点必须由组件自己出图：注册表 `nodeProducers.ts` + `runNodeById` 调用**（第九轮补齐）。`book_card` / `receipt_printer` / `stamp_cutter` / `image_bg_remove` / `sticker_maker` / `journal_maker` / `text_image` / `oil_paint` / `image_process` / `emboss_foil` / `glass_refract` / `watercolor_brush` / `ink_wash` / `editorial_layout` / `map_poster` / `map_art` 的产物靠组件内渲染（html2canvas / WebGL / 离屏模板 → dataUrl → `onExport(id, dataUrl, state)`）或组件内调后端生成接口写回 `data.imageUrl`；画布层拿不到组件内的 DOM 引用与本地编辑态，所以**Agent 建好节点、配好预设、连好上游也永远没有图**，下游排版节点跟着空。修法：组件挂载时用 `useNodeProducer(id, 自家生成函数)` 注册——注册的是**生成产物**的那个入口（`handleGenerate` / `handleExecuteCrop` / `handleRemoveBg` / `handleGenerateAndSave`），**不是** `handleSaveToDatabase`（后者只写历史记录/收藏，对下游取图无意义）；`runNodeById` 先查注册表，命中就 `await` 它并**核对 `data.imageUrl` 是否真的产出来判定成败**（未产出即回原因，不伪造产物）。两点注意：① `setNodes` → store `apply()` 会**同步**更新 `nodesRef.current`，所以 `await` 之后读 `imageUrl` 是可靠的；② **新增产物类节点时必须注册**，否则 Agent 侧只能得到「没有可由助手触发的运行入口」。
+14. **「节点是 Agent 建的还是人建的」靠参数区分，不靠来源标记**：第九轮没有引入「创建者」字段（会与快照/撤销/复制粘贴的语义纠缠），而是把「建即跑」做成 `canvas_create_node` 的 `run: true` 参数（带 `timeout_ms`）。画布自己的调色板/拖拽创建不经过执行器，因此手动创建永远是「只建不跑」；Agent 只在输入已就绪（如与 `parent_id` 同时创建）时传 `run`，未就绪时回 warnings「已创建但未运行」而不是假装跑过。
+15. **候选类节点的「选定一个」必须由组件暴露：候选清单只存在组件本地 state**（第十轮补齐）。`image_search` / `art_image_search` / `pattern_search` / `color_search` 的检索结果（候选图 / 纹样 / 传统色）存在组件内（`providerCache` / `items`），`node.data` 里只有「已选中的那一个」——所以画布层既列不出候选、也调不到选中，Agent 建完节点后**永远没有图**（下游排版拿不到素材）。修法：在 `nodeProducers.ts` 里加第二份能力注册 `useNodeCandidateOps(id, { list, ensure, select })`，四个组件各注册一次；`useNodeHandlers.runNodeById(id, selectIndex?)` 的返回改为**可识别联合** `CanvasRunOutcome`（`ran` / `candidates` / `not_started`），执行器据此回 `status=candidates_ready` + 候选清单（`index`/`title`/`subtitle`），Agent 挑好后带 `select_index` 再调一次（同一次调用里 `select` → 核对 `data.imageUrl` 真的落盘）。四个要点：① `ensure()` 只在**无候选时**触发一次检索（已有候选立即返回），避免重复打接口；② `list()` 的顺序必须与界面候选网格一致，`index` 就是网格序号；③ `select()` 返回**空串＝成功、非空＝原因**，并要与 UI 同口径——`PatternSearchNode` 的界面本身就锁（`isLocked = Boolean(imageUrl)`，有输出后不可换），Agent 也必须拿到同样原因；其余三个界面允许改选（无锁），Agent 同样允许（只有 `savingId` 时拒绝），**不要自行加严或放宽**；④ 不要在 `canvas_run_node` 里直接写 `imageUrl` 绕过组件（产物写入在 denylist，防伪造）。
+16. **多源检索节点（网络搜索 / 知乎 / 图片 / GLAM）不是一套统一机制**（第十一轮梳理，详见 §7 第十一轮）：
+    - **状态存放不同**：`web_search` / `text_translation` / `zhihu_search` 是「每源（每 tab）一份缓存」存在 `data.tabData[源]`，`data.output` 只镜像当前激活源（切源 = 换下游拿到的料，不会自动重检）；`image_search` / `art_image_search` 的多源缓存只在组件本地（`providerCache`），只有 `data.provider` 落盘；`pattern_search` / `color_search` **没有多源**（只有分类 / 配色算法）。
+    - **后端失败语义不同**：显式指定源但缺凭据 → 503 + 可读文案；`web_search: random` → 只在**已配置凭据**的源里洗牌逐个试、第一个成功即返回、全失败才 502 并带上每源原因；`art_image_search: 'all'` → `Promise.allSettled` 并发聚合（现已改为**轮转交错**合并，且 0 条结果 + 有源失败时抛错而不是返回空列表）。非法取值一律**静默回退默认源**（`web_search`→`random`、`image_search`→`unsplash`、`art_image_search`→`all`）——排查「设了源却没生效」时先看这里。
+    - **Agent 侧的坑**（本轮已补）：① 枚举字段以前只能靠 SKILL.md 猜，现在 `canvas_get_node_params` 回 `options`（静态枚举取自节点组件的同一份常量；GLAM 博物馆清单现查 `/glam-providers` 并与**前端来源下拉**取交集——后端可用清单含前端未列出的馆，写进去会被节点的可用性回退逻辑改成别的源）；② `zhihu_search` 的运行口径以前与节点内 `handleQuery` 不一致（顶层 `model` / 未按 `MAX_COUNT` 裁切 / 直答未传 `count: 0`），现已对齐。
+    - **部分源失败的回传链路**（第十二轮补齐）：后端 `GlamSearchResult.failedSources`（`{ provider, label, reason }`）→ 路由 `failed_sources` → 节点写入**本地** `providerCache[provider].sourceWarnings`（在节点上渲染一条虚线提示条，不落 node.data）→ `NodeCandidateOps.warnings()` → `CanvasRunOutcome.warnings` → 执行器 `run_node` / `create_node` 回执的 `warnings`。注意：`ran` 与 `candidates` **两种结果都带 warnings**（Agent 可能直接带 `select_index` 调用、不会先列候选）；全部源失败仍走 502 抛错，不进入这条链路。
+    - **未修（有意留白）**：`image_search` 非法 `provider` 的静默回退未收紧；候选可能过期（`ensure()` 只在候选为空时重检，改关键词后应重新检索）；`web_search: random` 的「实际用了哪个源」只在输出正文首行与 `tabData.usedSource` 里，未写进运行回执。
+17. **改了 `seed.ts` 里 DEFAULT 提示词后要重新跑一次「与出厂版逐字比对」**（第十一轮踩到）：同一发版周期内可反复改 `DEFAULT`，`PREVIOUS` 必须始终等于**上一版对外发布过的原文**（本轮＝HEAD 的 `DEFAULT_CANVAS_ASSISTANT_PROMPT`）；编辑 `DEFAULT` 时注意模板字符串里的反引号必须写成 `\``，否则整个常量会被截断（`tsc` 会报 `TS1005`）。校验命令见 §2.4 的提示。
+
 ---
 
 ## 7. 改动记录
+
+### 2026-09-20（第十二轮）：GLAM 聚合的「部分来源失败」回传前端与 Agent
+
+- **背景**：第十一轮只修了「全部源失败」的静默，但 `all` 聚合里单个来源失败（典型：`loc` 未配 `loc.proxy`、某馆限流/瞬时 500）仍然完全不可见——用户与 Agent 都以为拿到的是全量结果。
+- **后端**：`GlamSearchResult` 新增 `failedSources: { provider, label, reason }[]`（`all` 模式部分失败时返回）；路由 `/glam-search` 透传为 `failed_sources`；抛错文案与回传清单共用同一份结构化失败信息。
+- **前端**（`ArtImageSearchNode`）：失败清单存入该来源的本地缓存 `sourceWarnings`，在节点上渲染一条虚线提示条（「部分来源未取到结果（N）：…」），**不写 `node.data`**（属于当前这批结果的元信息，不是节点配置，也不必进撤销栈）。
+- **Agent**：`NodeCandidateOps` 新增可选 `warnings()`；`CanvasRunOutcome` 的 `ran` 与 `candidates` 都带 `warnings`；执行器 `run_node`（候选就绪 / 运行完成）与 `create_node(run: true)` 的回执均带 `warnings`，并在文案里提醒「候选不是全部来源的结果」。
+- **新增断言**：`glam-search-aggregate.test.ts` 第一例补上「部分失败时 `failedSources` 带来源名与原因」。
+- **验证**：后端 `tsc --noEmit` 0 error；`glam-search-aggregate` 2/2；前端 `tsc -b` 0 error；`oxlint` 无新增问题。端到端（真实多源检索 + 节点提示条渲染）未验证。
+
+### 2026-09-20（第十一轮）：多源检索的取值域暴露 + GLAM 聚合失败/顺序修正
+
+- **背景**：审计「网络搜索 / 知乎 / 图片 / GLAM 艺术图」的多源处理（结论沉淀在 §6.16）。发现 4 个问题，本轮修其中 3 个（用户选定）。
+- **GLAM 「全部来源」不再静默**（`backend-ts/src/services/multimodal/glam-search-service.ts`）：以前 `allSettled` 吞掉全部源错误、仍返回 200 + `items: []`，看起来像「没有结果」；现在 0 条结果且有源失败 → 抛 `GlamSearchError`（路由映射 502）并带上每源原因。判定必须结合「确实取到 0 条」（Rijks / MET 等源内部自己也 `allSettled`，网络全挂时会「成功返回空数组」）。
+- **GLAM 「全部来源」改为轮转交错**：以前各源整块拼接，候选前 4 条恒为 MET；现在按源轮流输出（各源第 1 条 → 各源第 2 条…），`per_source` 分页信息不变。
+- **枚举字段对 Agent 可见**：`canvas_get_node_params` 的 `fields[]` 新增 `options`——静态枚举（`web_search` / `text_translation` 的 `source`、`image_search` 的 `provider`、`zhihu_search` 的 `mode`）直接引用节点组件里同一份常量（`SOURCE_OPTIONS` / `PROVIDERS`，不另建清单）；GLAM 的博物馆清单通过桥接现查 `/glam-providers` 并与**前端来源下拉**取交集（后端可用清单含前端未列出的 `ai-chicago` / `harvard`，写进去会被节点的可用性回退改成别的源）。工具 description / guidelines 与 SKILL.md、DEFAULT 提示词同步。
+- **`zhihu_search` 运行口径对齐**：`runNodeById` 以前读顶层 `data.model`、不按 `MAX_COUNT` 裁切、直答模式未传 `count: 0`，与节点内 `handleQuery` 不一致；现改为同口径（count 按模式 tab 取并裁切到 10，直答传 0，model 优先 tab 再兜顶层旧字段）。
+- **新增回归测试**：`backend-ts/tests/services/glam-search-aggregate.test.ts`（2 例：多源成功时轮转交错顺序；全部失败时抛 `GlamSearchError` 并带失败原因）。两例均能复现修改前行为（整块拼接 / 返回空列表）。
+- **验证**：后端 `tsc --noEmit` 0 error；`glam-search-aggregate` 2/2；`canvas-agent` 4/4 + `pi-agent-workspace` 42/42 + `tests/api/pi-*.test.ts` 159/159；前端 `tsc -b` 0 error；`oxlint` 新增 2 条 `only-export-components`（为导出 `PROVIDERS` 供执行器引用；同目录已有 4 条同类警告，改为在扩展器里复制一份清单会造成静默漂移，故选择导出）。端到端（真实检索）未验证。
+- **未做**：`all` 聚合的「部分源失败」仍不可见；`image_search` 非法 `provider` 的静默回退未收紧；候选可能过期（§6.16 末条）。
+
+### 2026-09-20（第十轮）：候选类检索节点的「选定候选」能力（图片 / 艺术图 / 纹样 / 配色）
+
+- **根因**：4 个检索节点的候选清单只存在组件本地 state（`providerCache` / `items`），`node.data` 里只有已选中的那个——Agent 既列不出候选也调不到选中，于是「建节点 + 连线 + `canvas_run_node`」后节点仍 `imageUrl=null`，下游排版节点拿不到图（见 §6.15）。
+- **新增第二份注册表**（`frontend/src/canvas/core/nodeProducers.ts`）：`NodeCandidateOps { list, ensure, select }` + `useNodeCandidateOps(id, ops)`；四个节点组件各注册一次（顺序与界面候选网格一致，`select` 与 `handleSelect` 同口径、锁定时回同样的原因）。
+- **命令层契约改为可识别联合**：`CanvasCommands.runNodeById(id, selectIndex?)` → `CanvasRunOutcome`（`ran` / `candidates` / `not_started`），`select` 后仍核对 `data.imageUrl` 真的落盘才算成功（不伪造产物）。
+- **扩展工具**：`canvas_run_node` 新增 `select_index`（不传＝只列候选，传＝选定并落盘）；`description` 与 `promptGuidelines` 同步；`canvas_create_node` 的 `run: true` 对候选类只完成「检索出候选」，仍要再调一次带 `select_index`（已在 SKILL.md 与提示词里写明）。
+- **提示词三层同步**：DEFAULT 提示词原则 6 补入「候选只是列表、不是产物」口径（`PREVIOUS_*` 校准为**上一版出厂原文**，见 §2.4 的重要提醒）；`canvas-node-catalog` 对照表把 4 类节点改为「**是（选定候选）**」并新增调用要点；`canvas-workflow-patterns` 链路 5 与开篇口径同步。
+- **验证**：前端 `tsc -b` 0 error + `oxlint`（改动文件）0 新增问题；扩展包 strict 0 error；后端 `tsc --noEmit` 0 error；`canvas-agent` / `pi-agent-*` 回归全绿；端到端（浏览器 + 真实检索/渲染）未验证，按 §4 手工回归。
+- **仍留白**：`image_upload` 的选图/上传（与产物写入 denylist 的防伪造设计冲突，需产品决策）。
+
+### 2026-09-20（第九轮）：补齐 16 个产物类节点的出图能力 + 创建即可运行
+
+- **根因（审计 33 个内置节点得出）**：除检索/AI 类外，有 16 个节点的产物必须在组件内渲染（html2canvas / WebGL / 离屏模板 / 组件内调后端接口）后才能写回 `data.imageUrl`——`useImageExportHandler(id, dataUrl, state)` 需要组件内部的 dataUrl 与本地编辑态，外部无法代劳。于是 Agent 建好节点、配好预设、连好上游后节点仍 `imageUrl=null`，下游排版拿不到图（见 §6.13）。
+- **新增注册表** `frontend/src/canvas/core/nodeProducers.ts`：`useNodeProducer(id, produce)` + `getNodeProducer(id)`；16 个产物节点各加一处注册（注册**生成**入口，不是 `handleSaveToDatabase`）。
+- **`runNodeById` 改为 async**（`canvasCommands` 契约同步）：先查注册表，命中则 `await` 生成入口，然后**核对 `data.imageUrl` 真的产出来**判定成败（未产出回原因）；否则按类型分派（检索 / AI / book_info / 自动检索类说明）。执行器 `run_node` 相应 `await`，并在等待循环里加「无在跑运行但产物已就绪 → 立即结束」的短路（省掉产物类的 3s 宽限）。
+- **创建即可运行（区分 Agent 与人）**：`canvas_create_node` 新增 `run?: boolean` 与 `timeout_ms?: number`；执行器在建（含可选连线）之后，`run === true` 时调 `runNodeById` 并等产物，回执带 `run: { started, status, has_output }`；输入未就绪时回 `warnings`「已创建但未运行」，**不伪装已跑**。画布手动创建不经过执行器，行为零变化（见 §6.14）。
+- **提示词三层同步**：DEFAULT 提示词「运行节点再读产出」补入 16 个产物类节点与 `run: true` 建即跑口径（并按 §2.4 把旧版全文存入 `PREVIOUS_*`）；`canvas-node-catalog` §六新增产物类一行 + 「创建时一次到位」要点；`canvas-workflow-patterns` 同步；`canvas_create_node` / `canvas_run_node` 的 promptGuidelines 补参数与适用面。
+- **未做（有意留白）**：① 4 个检索类节点（`image_search` / `art_image_search` / `pattern_search` / `color_search`）的「选中候选」——候选只存在组件本地 state（如 `providerCache`），`node.data` 里没有可定位的候选数组，需先落盘候选或让组件暴露 `select(index)`，属单独设计；② `image_upload` 的选图/上传（与「产物字段不可由 Agent 写入」的防伪造设计冲突，需产品决策）；③ 收藏/公开/入库等运营动作。
+
+### 2026-09-20（第八轮）：新增 `canvas_run_node`，补齐「Agent 只能建、不能跑」的能力缺口
+
+- **根因（上报：web_search 建完一直空输出）**：工具清单里从来没有运行工具（第五轮计划里明确「未做 `canvas_run_node`」），而节点运行入口只在画布页内、并按类型分散成三套（见 §6.12）；唯一「创建即运行」的节点是 `book_info`（`canvasExecutor.create_node` 里硬编码的 ISBN 抓取）。于是 Agent 建 + 连 `web_search` 后没人点「检索」，节点永远 `has_output=false`，用户会误以为检索失败。
+- **新增工具**（14 → 15 个）：`canvas_run_node`（`node_id` 必填 + 可选 `timeout_ms`）。执行器新增 `run_node` case：经命令层触发 → 轮询运行状态（宽限 3s 内未进入运行态视为已结束；默认等 60s、上限 180s、`0` ＝只触发不等待）→ 回执 `status` / `has_output` / `is_generating` / `error` 与下一步指引（去读输出 / 缺少输入 / 如实告知空输出）。
+- **命令层扩展**：`CanvasCommands` 新增 `runNodeById`（`CanvasPage` 注入 `useNodeHandlers.runNodeById`）；分派按类型复用既有 UI 入口（AI 三类走 `runNode`、检索/工具类走各自 fetch handler、`book_info` 走重拉元数据），**自动检索类返回明确说明而不是伪造运行**，命令层缺失时仍报「画布未挂载」。
+- **提示词三层同步**：DEFAULT 提示词新增「运行节点再读产出」原则（并按 §2.4 把旧版全文存入 `PREVIOUS_*` 精确匹配升级，覆盖存量库）；`canvas-node-catalog` 新增「六、运行节点（创建与连线都不会自动运行）」章节（类型对照表 + 先连后跑 / 超时口径 / 不重复触发）；`canvas-workflow-patterns` 补「链路跑之前先把节点跑起来」；`canvas_create_node` / `canvas_connect_nodes` / `canvas_read_node_output` 的 promptGuidelines 交叉引用新工具。
+- **验证**：扩展包 strict 0 error（§5 临时环境，用完即删）；前端 `tsc -b` 0 error + `oxlint`（4 个改动文件）0 新增问题（仅存量 `useNodeHandlers.ts` 的 hook-deps 警告 1 条）；后端 `tsc --noEmit` 0 error；`canvas-agent.test.ts` + `feedback.test.ts` 全绿；`tests/api/pi-*.test.ts` 158/159（唯一失败为**存量** `pi-agent-reuse.test.ts`「手动暂停后上下文延续」，与本次改动无关，第五轮已记录在案）。端到端（浏览器 + 真实对话 + 真实检索）未验证，按 §4 手工回归。
 
 ### 2026-09-20（第七轮）：封堵「删会话文件」的旁路（接口 / 权限 / 文案）
 

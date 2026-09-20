@@ -44,7 +44,8 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: 'canvas_create_node',
     label: '创建画布节点',
-    description: '在画布上创建新节点。支持所有33种内置节点类型，可指定父节点自动连线。',
+    description:
+      '在画布上创建新节点。支持所有33种内置节点类型，可指定父节点自动连线；传 run: true 可创建后立即运行并等产物。',
     promptSnippet: '在画布上创建指定类型的节点',
     promptGuidelines: [
       '【图书录入】录入图书或按 ISBN 取元数据：type 用 "book_info"，data 为 { isbn: "..." }；"book_card" 是末端排版节点，只接在已有上游图文之后。',
@@ -53,6 +54,8 @@ export default function (pi: ExtensionAPI) {
       '【节点参考】33 种内置节点类型与 data 键名速查见 canvas-node-catalog 技能（按系统提示 available_skills 中的路径用 read 读取）。',
       '【自动连线】可选传入 parent_id（已存在的父节点 ID）自动建立数据流连线。',
       '【现状核对】创建前先用 canvas_list_nodes 看画布现状，避免重复创建同类节点。',
+      '【创建后要运行】除 book_info（创建时自动拉元数据）与自动检索类（image_search / art_image_search / pattern_search / color_search）外，节点创建不会自动运行：连线上游后用 canvas_run_node 触发（检索类 / AI 类 / 16 个需渲染出图的产物类），再用 canvas_read_node_output 读产出。',
+      '【一次到位】输入已就绪时（例如带 parent_id 创建检索节点）可直接传 run: true，创建的同时就触发运行并等产物（默认等 60 秒，timeout_ms 可调，0 ＝只触发不等待），省一次 canvas_run_node；输入未就绪（先建后连）时不要传，否则会回 warnings「已创建但未运行」，再连线上游后调 canvas_run_node 即可。',
       '【改优先于建】画布上已有同类节点且用户只是想调整时，用 canvas_update_node 就地修改，不要重复创建。',
     ],
     parameters: Type.Object({
@@ -67,6 +70,17 @@ export default function (pi: ExtensionAPI) {
         })
       ),
       config_id: Type.Optional(Type.Number({ description: '受管节点的后台配置 ID' })),
+      run: Type.Optional(
+        Type.Boolean({
+          description:
+            '创建后立即运行（仅在输入已就绪时传，如与 parent_id 同时创建）；默认 false＝只建不跑',
+        })
+      ),
+      timeout_ms: Type.Optional(
+        Type.Number({
+          description: 'run: true 时等待运行/生成结束的最长毫秒数（默认 60000，上限 180000；0 ＝只触发不等待）',
+        })
+      ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const result = await canvasOp(ctx, 'create_node', params as Record<string, unknown>);
@@ -95,6 +109,7 @@ export default function (pi: ExtensionAPI) {
       '使用 canvas_connect_nodes 时必须提供 source_id 和 target_id，确保两个节点已创建。',
       '不确定节点 ID 时，先用 canvas_list_nodes 获取最新清单再连线，不要凭记忆引用可能已删除的 ID。',
       '要取消一条已有连线用 canvas_disconnect_nodes（可撤销），不要靠新建节点绕过。',
+      '【连完记得跑】连线本身不会触发运行：连线上游后用 canvas_run_node 触发下游（检索类 / AI 类），再用 canvas_read_node_output 确认上游输入真的到位。',
     ],
     parameters: Type.Object({
       source_id: Type.String({ description: '源节点 ID' }),
@@ -131,7 +146,7 @@ export default function (pi: ExtensionAPI) {
     promptSnippet: '读取画布上指定节点的输出内容',
     promptGuidelines: [
       'node_id 必须是画布上已存在的节点 ID；不确定 ID 时先用 canvas_list_nodes 查清单。',
-      '节点尚未运行或输出为空时返回 has_output=false，请提示用户先运行该节点，不要凭空编造内容。',
+      '节点尚未运行或输出为空时返回 has_output=false：该节点类型需要运行（检索类 / AI 类）时先用 canvas_run_node 触发再读；仍为空则如实告知用户节点没有产出，不要凭空编造内容。',
     ],
     parameters: Type.Object({
       node_id: Type.String({ description: '要读取的节点 ID（canvas_list_nodes 返回的 id）' }),
@@ -139,6 +154,77 @@ export default function (pi: ExtensionAPI) {
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const result = await canvasOp(ctx, 'read_node_output', params as Record<string, unknown>);
       return { content: [{ type: 'text' as const, text: JSON.stringify(result) }], details: result };
+    },
+  });
+
+  // ==================== 运行节点工具（经 UI 桥接触发前端运行入口并等待产出） ====================
+
+  /**
+   * 运行工具 details 的统一形状（`AgentToolResult` 要求所有 return 分支同形状，
+   * 见 pi-canvas-tools 维护手册 §2.3）。
+   */
+  interface RunNodeDetails {
+    success: boolean;
+    node_id: string | null;
+    status: string;
+    has_output: boolean;
+    error: string | null;
+  }
+
+  pi.registerTool({
+    name: 'canvas_run_node',
+    label: '运行画布节点',
+    description:
+      '触发画布上已有节点运行（检索类 / AI 类 / 需渲染出图的产物类），等待运行结束后回报状态（completed / timeout / not_started / candidates_ready），供随后用 canvas_read_node_output 读取输出；检索类节点可传 select_index 选定候选并落盘。',
+    promptSnippet: '触发画布节点运行并等待其产出',
+    promptGuidelines: [
+      '【创建后必须运行】除 book_info（创建时自动拉元数据）与自动检索类节点外，节点创建/连线上游后**不会自动运行**：检索类（web_search / zhihu_search / wikipedia_search / weather / calendar / text_translation / vufind_call_number）与 AI 类（image_analysis / text_generation / image_generation）都要用本工具显式触发，否则节点会一直是空输出，用户会误以为检索失败。',
+      '【候选类节点要选一个】image_search / art_image_search / pattern_search / color_search 会自动检索，但**候选只是列表、不是产物**：不带 select_index 调用本工具会回 status=candidates_ready 与候选清单（title/subtitle 供判断）；挑好后**再调一次并传 select_index**（从 0 开始），图片才会落盘为节点产物（下游才能取图）。不选就一直没图；若节点已选定且被锁定，选定会返回原因，需先清空或新建节点。',
+      '【产物类节点】图书卡片 / 小票 / 邮票 / 抠图 / 贴纸 / 手账 / 文本成图 / 油画 / 滤镜 / 浮雕 / 玻璃 / 水彩 / 水墨 / 杂志排版 / 地图海报 / 艺术地图这 16 类节点的图必须由本工具触发「生成」才能落到 imageUrl（它们靠前端渲染出图，不跑就一直是空的）；生成需要上游图片或图书元数据，缺输入时返回 not_started 与原因。',
+      '【先连后跑】运行前确认上游已连线且有产出（可用 canvas_list_nodes 看 has_output、canvas_read_node_output 读上游内容）。缺少输入时本工具返回 not_started 与具体原因（如「缺少关键词」）：先补输入（canvas_update_node 写入关键词，或连线文本节点）再重试，不要空跑或反复重试。',
+      '【读结果】运行结束后用 canvas_read_node_output 读取正文；has_output=false 时如实告知用户该节点没有产出，不要编造检索结果。',
+      '【等待与超时】默认等待 60 秒；检索较慢时返回 status=timeout（运行仍在继续，不是失败），稍后直接读输出即可，或传 timeout_ms: 0 只触发不等待。',
+      '【不要重复触发】节点运行中（is_generating=true）或刚触发过时不要连续调用本工具。',
+    ],
+    parameters: Type.Object({
+      node_id: Type.String({ description: '要运行的节点 ID（canvas_list_nodes 返回的 id）' }),
+      timeout_ms: Type.Optional(
+        Type.Number({
+          description: '等待运行结束的最长毫秒数（默认 60000，上限 180000；传 0 表示只触发不等待）',
+        })
+      ),
+      select_index: Type.Optional(
+        Type.Number({
+          description:
+            '候选类节点（图片/艺术图片/纹样/配色检索）：选中第 N 个候选（从 0 开始）并落盘为产物；不传则只返回候选清单',
+        })
+      ),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx): Promise<AgentToolResult<RunNodeDetails>> {
+      const result = await canvasOp(ctx, 'run_node', params as Record<string, unknown>);
+      if (result.success === false) {
+        const errMsg = String(result.error ?? result.message ?? '未知错误');
+        return {
+          content: [{ type: 'text' as const, text: `未运行节点：${errMsg}` }],
+          details: {
+            success: false,
+            node_id: params.node_id ?? null,
+            status: String(result.status ?? 'not_started'),
+            has_output: false,
+            error: errMsg,
+          },
+        };
+      }
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(result) }],
+        details: {
+          success: true,
+          node_id: String(result.node_id ?? params.node_id),
+          status: String(result.status ?? 'completed'),
+          has_output: result.has_output === true,
+          error: result.error === undefined || result.error === null ? null : String(result.error),
+        },
+      };
     },
   });
 
@@ -192,10 +278,13 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: 'canvas_get_node_params',
     label: '查询节点参数',
-    description: '只读查询某类型节点的可配置字段与默认值，用于确认 canvas_update_node / canvas_create_node 该写哪些键。',
-    promptSnippet: '查询某类节点的可配置字段与默认值',
+    description:
+      '只读查询某类型节点的可配置字段、默认值与（有固定取值域字段的）可选值，用于确认 canvas_update_node / canvas_create_node 该写哪些键与什么值。',
+    promptSnippet: '查询某类节点的可配置字段、默认值与可选值',
     promptGuidelines: [
       '返回该类型的字段名与默认值（数据源与节点初始值一致）；不确定字段名时先查再写，不要猜键名。',
+      '【有 options 的字段不要猜】返回里带 `options` 的字段（如 web_search / text_translation 的 source、image_search / art_image_search 的 provider、zhihu_search 的 mode）**只能填 options 里的值**：检索源写错会静默回退默认源（如 web_search 非法 source → random、image_search 非法 provider → unsplash），图库/博物馆写错会被节点改回默认——想指定某个检索源时先查一次 options。',
+      'art_image_search 的 provider options 由后端现查：**只列当前已配置凭据、且节点来源下拉认识的博物馆**（未配置 Key 的源不返回）；options 里没有的就不要写。',
       '多模态视觉/排版类节点的预设 ID（presetId / mode / effectId / templateId 等）用 canvas_get_presets 查询取值域。',
     ],
     parameters: Type.Object({

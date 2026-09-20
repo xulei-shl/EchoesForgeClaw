@@ -12,6 +12,7 @@ import {
   SlidersHorizontal,
 } from 'lucide-react';
 import { CanvasNode } from '../_shared/CanvasNode';
+import { useNodeProducer } from '../../core/nodeProducers';
 import { NodeActionBar } from '../_shared/NodeActionBar';
 import { Tooltip } from '../../../shared/components/ui/Tooltip';
 import { useFeedback } from '../../../shared/components/ui/FeedbackProvider';
@@ -511,6 +512,9 @@ const GlassRefractNodeInner: React.FC<GlassRefractNodeProps> = ({
       showToast('操作失败，请重试', { type: 'error' });
     }
   };
+
+  // 画板助手触发：注册本节点的「生成产物」入口（见 canvas/core/nodeProducers.ts）
+  useNodeProducer(id, handleGenerate);
 
   return (
     <CanvasNode

@@ -16,6 +16,7 @@ import {
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
 import { CanvasNode } from '../_shared/CanvasNode';
+import { useNodeProducer } from '../../core/nodeProducers';
 import { NodeActionBar } from '../_shared/NodeActionBar';
 import { Select, type SelectOption } from '../../../shared/components/ui/Select';
 import { Tooltip } from '../../../shared/components/ui/Tooltip';
@@ -694,6 +695,9 @@ const InkWashNodeInner: React.FC<InkWashNodeProps> = ({
     if (paperStyle === 'pure_white') return { backgroundColor: '#FFFFFF' };
     return { backgroundColor: '#F5F3ED' }; // raw_xuan 生宣暖白
   }, [paperStyle]);
+
+  // 画板助手触发：注册本节点的「生成产物」入口（见 canvas/core/nodeProducers.ts）
+  useNodeProducer(id, handleGenerate);
 
   return (
     <CanvasNode
