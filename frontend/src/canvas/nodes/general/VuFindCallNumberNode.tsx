@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useRef, useState, useCallback } from 'react';
+import React, { memo, useEffect, useState, useCallback } from 'react';
 import { BookOpen, Link2, X, MapPin, Barcode, BookMarked, CircleDot } from 'lucide-react';
 import { CanvasNode } from '../_shared/CanvasNode';
 import { BeamGlow } from '../_shared/BeamGlow';
@@ -40,8 +40,13 @@ export interface VuFindCallNumberNodeProps {
   title?: string;
   /** 手动输入的 ISBN（写入 data.isbn） */
   isbn?: string;
-  /** 连线继承的 ISBN（到达时自动填入输入框一次，仍可手动编辑） */
+  /**
+   * 连线继承的 ISBN（**仅在本节点尚无 ISBN、且该上游值未继承过时**自动填入），
+   * 手动输入/清除后的值不会被上游覆盖。
+   */
   upstreamIsbn?: string;
+  /** 已继承过的上游 ISBN（存在 node.data，跨刷新/切页生效）；为空表示尚未继承任何上游 */
+  inheritedFrom?: string;
   /** 获取的索书号结果（写入 data.callNumber，对外输出为 data.output = JSON） */
   callNumber?: string;
   /** 书目信息（题名/著者/其他责任者/出版社/出版年） */
@@ -79,6 +84,7 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
   title,
   isbn = '',
   upstreamIsbn = '',
+  inheritedFrom = '',
   callNumber = '',
   bibliographic = null,
   recordUrl = '',
@@ -103,21 +109,27 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
     setIsbnInput(isbn);
   }, [isbn]);
 
-  // 上级连线 ISBN 到达时写入输入框；仅在上游 ISBN 本身变化时注入一次，
-  // 手动编辑后的内容不被覆盖（与文本节点同口径）
-  const lastUpstreamRef = useRef<string | null>(null);
+  // 上游 ISBN 继承（本地优先语义，与文本节点同口径）：
+  // - 本地已有 ISBN（输入框草稿或已落盘）→ 本地优先，永不覆盖；
+  // - 本地为空且该上游值未继承过 → 填入并记 inheritedFrom 到 node.data；
+  // - 上游断开 → 抹掉 inheritedFrom（ISBN 不动），重连后可再次继承。
+  // 注意 upstreamIsbn 还包含「画布根 book_info」兜底，未必真有连线。
   useEffect(() => {
-    const up = upstreamIsbn.trim();
-    if (!up || lastUpstreamRef.current === up) return;
-    lastUpstreamRef.current = up;
-    if (up !== isbn) {
-      setIsbnInput(up);
-      onUpdateEditor?.(id, { isbn: up });
+    const upstream = upstreamIsbn.trim();
+    if (!upstream) {
+      if (inheritedFrom) onUpdateEditor?.(id, { inheritedFrom: null });
+      return;
     }
+    if (inheritedFrom === upstream) return;
+    if (isbn.trim() || isbnInput.trim()) return;
+    setIsbnInput(upstream);
+    onUpdateEditor?.(id, { isbn: upstream, inheritedFrom: upstream });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [upstreamIsbn]);
 
   const hasUpstream = upstreamIsbn.trim().length > 0;
+  /** 当前输入框里的值确实来自上游（未被手动输入覆盖）——用于提示语不说谎 */
+  const inheritedUpstream = hasUpstream && isbnInput.trim() === upstreamIsbn.trim();
 
   /** 持久化手动输入（失焦 / 清空时落盘，避免每次击键写 node.data） */
   const persistIsbn = (value: string) => {
@@ -245,10 +257,10 @@ const VuFindCallNumberNodeInner: React.FC<VuFindCallNumberNodeProps> = ({
               )}
             </div>
           </form>
-          {hasUpstream && (
+          {inheritedUpstream && (
             <div className="flex items-center gap-1 px-0.5 text-xs font-sans text-accent">
               <Link2 size={12} strokeWidth={2} />
-              ISBN 已从上级连线自动填入，可手动修改
+              ISBN 已从上级自动填入，可手动修改
             </div>
           )}
         </div>

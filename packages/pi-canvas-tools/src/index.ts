@@ -6,7 +6,7 @@
  * 承接，检索类由前端已登录凭据调后端（pi 子进程内 fetch 无凭据，直连已鉴权路由会 401）。
  * 仅反馈工具直连后端（POST /api/feedback 为公开路由）。
  */
-import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
+import type { AgentToolResult, ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
 
 /** 后端地址（通过环境变量注入 pi-agent 子进程） */
@@ -48,7 +48,8 @@ export default function (pi: ExtensionAPI) {
     promptSnippet: '在画布上创建指定类型的节点',
     promptGuidelines: [
       '【图书录入】录入图书或按 ISBN 取元数据：type 用 "book_info"，data 为 { isbn: "..." }；"book_card" 是末端排版节点，只接在已有上游图文之后。',
-      '【参数格式】必传 type；data 为扁平键值对象（如 { isbn: "978..." }、{ text: "..." }、{ city: "北京" }）。',
+      '【参数格式】必传 type；data 为扁平键值对象，键名以 canvas-node-catalog 速查表为准（如 book_info: { isbn: "978..." }、text: { content: "正文" }、weather: { city: "北京" }）。',
+      '【文本键名】文本类节点（text / text_generation）的正文键是 content（不是 text）；传错键会被归一并在回执 warnings 里提示，但仍请直接用 content。',
       '【节点参考】33 种内置节点类型与 data 键名速查见 canvas-node-catalog 技能（按系统提示 available_skills 中的路径用 read 读取）。',
       '【自动连线】可选传入 parent_id（已存在的父节点 ID）自动建立数据流连线。',
       '【现状核对】创建前先用 canvas_list_nodes 看画布现状，避免重复创建同类节点。',
@@ -332,6 +333,17 @@ export default function (pi: ExtensionAPI) {
 
   // ==================== 全场景反馈直达企业微信 ====================
 
+  /**
+   * 反馈工具 details 的统一形状：`AgentToolResult` 要求所有 return 分支同形状
+   * （见 pi-canvas-tools 维护手册 §2.3），故显式标注而不依赖分支推断。
+   */
+  interface FeedbackDetails {
+    success: boolean;
+    delivered: boolean;
+    errcode: number | null;
+    error: string | null;
+  }
+
   pi.registerTool({
     name: 'canvas_send_feedback',
     label: '发送反馈与需求直达企业微信',
@@ -343,6 +355,8 @@ export default function (pi: ExtensionAPI) {
       '一句话请求（如「帮我把这个消息推送微信」「帮我提个建议」）直接用对话中已有内容组稿并调用，不再发确认问卷；只在内容确实无从获取时追问一句。',
       'category 四选一：custom_ai_node（4类受管 AI 节点定制申请）| feature_request（新功能/新节点/新数据源）| bug_report（报错与故障）| user_suggestion（体验建议）。',
       'title 用「[类别前缀] 一句话概要」，如 [节点定制申请] 七言绝句生成器；content 用 Markdown 分四段：概述 / 背景与场景 / 建议方案（模型、提示词、输入输出端口）/ 用户原话。',
+      '回执分两档：delivered=true 才是「已送达管理员企业微信」；delivered=false 表示未送达（返回内容含原因），必须如实告知用户未送达并转述原因，不得声称已推送。',
+      'content 上限 4000 字符，写足上下文即可，不必自行截断：后端会在超过企业微信单条上限时自动分多条推送。',
     ],
     parameters: Type.Object({
       category: Type.String({
@@ -353,7 +367,7 @@ export default function (pi: ExtensionAPI) {
       user_name: Type.Optional(Type.String({ description: '用户昵称或标识' })),
       user_email: Type.Optional(Type.String({ description: '联系邮箱（可选）' })),
     }),
-    async execute(_toolCallId, params, signal) {
+    async execute(_toolCallId, params, signal): Promise<AgentToolResult<FeedbackDetails>> {
       const { category, title, content, user_name, user_email } = params;
       const formattedContent = `【${title}】\n类别: ${category}\n\n${content}`;
       const payload = {
@@ -375,19 +389,54 @@ export default function (pi: ExtensionAPI) {
           const errText = await resp.text();
           return {
             content: [{ type: 'text' as const, text: `反馈提交失败(HTTP ${resp.status}): ${errText}` }],
-            details: { success: false, error: `HTTP ${resp.status}` },
+            details: {
+              success: false,
+              delivered: false,
+              errcode: resp.status,
+              error: `HTTP ${resp.status}`,
+            },
           };
         }
 
-        const data = await resp.json();
+        // 后端回执区分「请求已受理（success）」与「真实送达（delivered）」：
+        // 企业微信 webhook 无论成败都返回 HTTP 200，只有 delivered=true 才算送达。
+        const data = (await resp.json().catch(() => null)) as {
+          delivered?: boolean;
+          errcode?: number | null;
+          message?: string;
+        } | null;
+
+        if (data?.delivered !== true) {
+          const reason = data?.message || `HTTP ${resp.status}`;
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: `反馈未送达企业微信：${reason}。请如实告知用户未送达，不要声称已推送。`,
+              },
+            ],
+            details: {
+              success: false,
+              delivered: false,
+              errcode: data?.errcode ?? resp.status,
+              error: reason,
+            },
+          };
+        }
+
         return {
           content: [{ type: 'text' as const, text: '反馈已成功推送至管理员企业微信！管理员将尽快查看与处理。' }],
-          details: { success: true, error: undefined },
+          details: { success: true, delivered: true, errcode: 0, error: null },
         };
       } catch (err: any) {
         return {
-          content: [{ type: 'text' as const, text: `发送反馈异常: ${err.message}` }],
-          details: { success: false, error: err.message },
+          content: [
+            {
+              type: 'text' as const,
+              text: `发送反馈异常（未送达）: ${err.message}。请如实告知用户未送达，不要声称已推送。`,
+            },
+          ],
+          details: { success: false, delivered: false, errcode: null, error: err.message },
         };
       }
     },

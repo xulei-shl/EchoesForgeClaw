@@ -33,6 +33,13 @@ export interface EnvConfig {
   inheritAttachBaseUrl: string;
 }
 
+/**
+ * 后端监听端口（默认值唯一来源）：`server.ts` 用它 listen，`pi` 子进程用它拼
+ * `PI_BACKEND_URL`，`inheritAttachBaseUrl` 用它拼本端地址——三处必须同源，
+ * 否则扩展直连后端（如画板反馈工具）会打到错误端口。
+ */
+export const serverPort = Number(process.env.PORT ?? 8000);
+
 export const env: EnvConfig = {
   projectName: process.env.PROJECT_NAME ?? 'BookForge',
   secretKey: process.env.SECRET_KEY ?? 'default-secret-key',
@@ -54,6 +61,5 @@ export const env: EnvConfig = {
     .map((s) => s.trim())
     .filter(Boolean),
   inheritAttachBaseUrl:
-    process.env.INHERIT_ATTACH_BASE_URL ??
-    `http://127.0.0.1:${process.env.PORT ?? 8000}`,
+    process.env.INHERIT_ATTACH_BASE_URL ?? `http://127.0.0.1:${serverPort}`,
 };

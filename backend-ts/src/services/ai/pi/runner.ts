@@ -34,6 +34,7 @@ import { endgameDiagnostic } from './errors.js';
 import { mapPiJsonEvent, type PiJsonEvent } from './events.js';
 import { rpcEventSchema } from './schema.js';
 import { resolveSubagentsTempRoot } from './subagents/cleanup.js';
+import { serverPort } from '../../../config/env.js';
 
 /**
  * runPiAgent 运行器（RPC 模式编排，进程常驻复用）。
@@ -211,8 +212,8 @@ function spawnPiProcess(opts: RunPiAgentOptions): PiProcessEntry {
       PI_SUBAGENTS_TEMP_ROOT: resolveSubagentsTempRoot(opts.userId, opts.workspaceId),
       // v1 关闭 wait 工具（其轮询/订阅增加后台驻留面；subagent_wait 不作为默认能力）
       PI_SUBAGENT_WAIT_TOOL_ENABLED: 'false',
-      // pi-canvas-tools 等扩展回调后端需要的服务基地址
-      PI_BACKEND_URL: process.env.PI_BACKEND_URL || `http://localhost:${process.env.PORT || 8010}`,
+      // pi-canvas-tools 等扩展回调后端需要的服务基地址（端口与 server.ts 同源，勿写死）
+      PI_BACKEND_URL: process.env.PI_BACKEND_URL || `http://localhost:${serverPort}`,
     },
   });
   const childStdin = child.stdin;

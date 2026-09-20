@@ -21,7 +21,7 @@ description: "33 个默认内置节点与 4 类受管 AI 节点的类型、端�
 | 节点类型 (`type`) | 中文名称 | 输入端口 | 输出端口 | 关键配置与说明 |
 | :--- | :--- | :---: | :---: | :--- |
 | `book_info` | 图书元数据 | 无（上游直接输入） | `text` | 豆瓣图书元数据，输入 ISBN 后获取书名/作者/出版社/封面等 |
-| `text` | 文本输入 | 无 | `text` | 手动输入或编辑 Markdown 多行文本 |
+| `text` | 文本输入 | `text`（仅本节点为空时继承） | `text` | 手动输入或编辑 Markdown 多行文本；正文写入 `data.content` |
 | `image_upload` | 图片加载 | `image` (继承) | `image` | 用户上传图片、继承上级图片或选择 AI 产物 |
 | `prompt_search` | 提示词检索 | 无 | `text` | 从 Bifrost 提示词库检索选用提示词后供下游使用 |
 | `skill_search` | Skill 检索 | 无 | `document` | 从 Bifrost 检索或上传本地 Skill 压缩包传入 Agent |
@@ -98,10 +98,13 @@ description: "33 个默认内置节点与 4 类受管 AI 节点的类型、端�
 
 `canvas_create_node` 的 `data` 参数是扁平 JSON 对象，键名以下表为准：
 
+> [!IMPORTANT]
+> **文本类节点的正文键是 `content`，不是 `text`**：`text` / `text_generation` 的正文一律写入 `data.content`。服务端对历史文档误写的 `text` 键做了归一（并在工具回执里返回 `warnings`），但请直接使用 `content`。
+
 | 节点类型 (`type`) | 典型场景 | `canvas_create_node` 标准入参示例 |
 | :--- | :--- | :--- |
 | `book_info` | 录入图书/ISBN查书 | `{ "type": "book_info", "data": { "isbn": "9787556130979" } }` |
-| `text` | 录入自定义文本 | `{ "type": "text", "data": { "text": "欢迎阅读本书" } }` |
+| `text` | 录入自定义文本 | `{ "type": "text", "data": { "content": "欢迎阅读本书" } }` |
 | `weather` | 查询指定城市天气 | `{ "type": "weather", "data": { "city": "北京" } }` |
 | `calendar` | 万年历/黄历查询 | `{ "type": "calendar", "data": { "date": "2026-09-18" } }` (date可选) |
 | `zhihu_search` | 知乎检索 | `{ "type": "zhihu_search", "data": { "query": "藏书票设计" } }` |

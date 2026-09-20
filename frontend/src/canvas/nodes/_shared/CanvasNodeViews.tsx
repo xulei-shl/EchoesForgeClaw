@@ -105,6 +105,8 @@ export interface NodeViewHelpers {
   handleToggleFavoriteFor: (id: string) => Promise<boolean>;
   handleTogglePublicFor: (id: string) => Promise<boolean>;
   handleEditTextFor: (id: string, content: string) => void;
+  /** 文本节点：直接 patch node.data（上游继承写内容 + inheritedFrom 记录，见 editorPatch.ts） */
+  handleUpdateTextEditorFor: (id: string, patch: Record<string, any>, undoable?: boolean) => void;
   handleImageChangeFor: (id: string, imageUrl: string | null, imageName: string) => void;
   /** AI 对话节点宿主依赖（useChat 迁移：state setter + 端口类型查找） */
   chatDeps: ChatHostDeps;
@@ -590,15 +592,17 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
       );
     }
     case 'text': {
-      // 连线即输入：文本输出上级内容写入本节点（连线后仍可手动编辑，与翻译节点同口径）
+      // 连线即输入：文本输出上级内容写入本节点，但仅在该节点内容为空、且该上游值未继承过时注入
       const upstreamText = firstUpstreamText(node, h.nodes, h.edges, h.portTypesOf);
       return (
         <TextNode
           key={node.id}
           {...common}
           content={node.data.content ?? ''}
+          inheritedFrom={typeof node.data.inheritedFrom === 'string' ? node.data.inheritedFrom : ''}
           upstreamText={upstreamText}
           onEditContent={h.handleEditTextFor}
+          onUpdateEditor={h.handleUpdateTextEditorFor}
         />
       );
     }
@@ -1287,6 +1291,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           key={node.id}
           {...common}
           isbn={typeof d.isbn === 'string' ? d.isbn : ''}
+          inheritedFrom={typeof d.inheritedFrom === 'string' ? d.inheritedFrom : ''}
           upstreamIsbn={upstreamIsbn}
           callNumber={typeof d.callNumber === 'string' ? d.callNumber : ''}
           bibliographic={

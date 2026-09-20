@@ -31,6 +31,35 @@ function nodeHasOutput(node: GraphNode): boolean {
   return nodeOutputText(node).length > 0 || nodeOutputImages(node).length > 0;
 }
 
+/**
+ * data 键名别名：文本类节点的正文实际写入 `data.content`，但历史文档（SKILL.md 速查表、
+ * 工具 promptGuidelines）示范成了 `text` 键，模型照此传参会写出一个无人读取的旁键。
+ * 此处统一归一，并回传 warnings 让模型自我纠正（不静默吞掉，否则键名错误会一直复现）。
+ */
+const DATA_KEY_ALIASES: Partial<Record<NodeType, Record<string, string>>> = {
+  text: { text: 'content' },
+  text_generation: { text: 'content' },
+};
+
+/** data 键名归一：已显式提供目标键时不覆盖；返回新对象，不修改入参 */
+function normalizeDataKeys(
+  type: NodeType,
+  data: Record<string, unknown>
+): { data: Record<string, unknown>; aliased: string[] } {
+  const aliases = DATA_KEY_ALIASES[type];
+  if (!aliases) return { data, aliased: [] };
+  const normalized = { ...data };
+  const aliased: string[] = [];
+  for (const [from, to] of Object.entries(aliases)) {
+    if (!(from in normalized)) continue;
+    const target = normalized[to];
+    if (target === undefined || target === '') normalized[to] = normalized[from];
+    delete normalized[from];
+    aliased.push(`${from} → ${to}`);
+  }
+  return { data: normalized, aliased };
+}
+
 export async function executeCanvasOp(
   op: string,
   params: Record<string, unknown>
@@ -81,6 +110,9 @@ export async function executeCanvasOp(
           }
         }
 
+        // 键名归一（如文本类节点的 text → content），并记录见闻供回执提醒模型
+        const { data: normalizedData, aliased } = normalizeDataKeys(type, customData);
+
         // 计算新节点摆放坐标（标准卡片宽约 380~440px，横向偏移 460px 彻底避免与父节点重叠；同一父节点下多子节点 Y 轴错位）
         const siblingEdges = parentId ? edges.filter((e: any) => e.source === parentId) : [];
         const x = parent ? parent.x + 460 : 360 + (nodes.length % 5) * 40;
@@ -91,7 +123,7 @@ export async function executeCanvasOp(
           type,
           x,
           y,
-          data: { ...defaultSeed, ...customData },
+          data: { ...defaultSeed, ...normalizedData },
           ...(realParams.config_id ? { configId: Number(realParams.config_id) } : {}),
         };
 
@@ -154,6 +186,9 @@ export async function executeCanvasOp(
           success: true,
           node_id: nodeId,
           message: `节点「${type}」已在画布创建${parentId ? '并完成连线' : ''}`,
+          ...(aliased.length
+            ? { warnings: [`data 键名已归一：${aliased.join('、')}（请直接使用目标键名）`] }
+            : {}),
         };
       }
 

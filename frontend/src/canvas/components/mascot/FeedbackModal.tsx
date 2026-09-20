@@ -99,9 +99,12 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ open, onClose, mas
         email: email.trim(),
         module,
         content: content.trim(),
-      })) as { success?: boolean; message?: string };
+      })) as { success?: boolean; delivered?: boolean; message?: string };
 
-      showToast(res.message || '反馈已发送，感谢您的宝贵建议！', { type: 'success' });
+      // 后端口径：delivered=false 表示未送达企业微信（仅表示请求已受理），不能按成功提示
+      showToast(res.message || '反馈已发送，感谢您的宝贵建议！', {
+        type: res.delivered === false ? 'warning' : 'success',
+      });
       setContent('');
       setModule('画板节点');
       onClose();

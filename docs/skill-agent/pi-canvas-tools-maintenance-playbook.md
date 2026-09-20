@@ -11,7 +11,7 @@
 | 组件 | 位置 | 加载方式 | 备注 |
 |---|---|---|---|
 | 扩展包 `pi-canvas-tools` | `packages/pi-canvas-tools/src/index.ts` | **TS 源码直接加载**（package.json `pi.extensions: ["./src/index.ts"]`） | 无需构建产物；pi 侧加载不做类型检查 |
-| 工具清单（9 个） | 同上 | `canvasOp` 桥接 | 只读：`canvas_list_nodes` / `canvas_read_node_output`；写操作：`canvas_create_node` / `canvas_connect_nodes`；检索：`canvas_search_prompts` / `canvas_search_skills`（均经桥接，前端带用户凭据调后端 Bifrost 接口）/ `canvas_get_presets`（扩展内静态预设）/ `canvas_get_node_configs`（仍直连 admin 路由，见 §6.7）；反馈：`canvas_send_feedback`（直连公开路由 `/api/feedback`） |
+| 工具清单（9 个） | 同上 | `canvasOp` 桥接 | 只读：`canvas_list_nodes` / `canvas_read_node_output`；写操作：`canvas_create_node` / `canvas_connect_nodes`；检索：`canvas_search_prompts` / `canvas_search_skills`（均经桥接，前端带用户凭据调后端 Bifrost 接口）/ `canvas_get_presets`（扩展内静态预设）/ `canvas_get_node_configs`（仍直连 admin 路由，见 §6.7）；反馈：`canvas_send_feedback`（直连公开路由 `/api/feedback`；**回执以响应体 `delivered` 为准**，HTTP 200 仅代表已受理，见 §6.8） |
 | 前端执行器 | `frontend/src/canvas/components/mascot/canvasExecutor.ts` | 每个 op 一个 case，`executeCanvasOp` 为 async | 复用 `nodeOutputText` / `nodeOutputImages` / `getNodeTitle` 纯函数（与 chat 节点上下文注入同口径）；检索 case 复用 `bifrostService`（与提示词/Skill 检索节点同口径） |
 | 同捆技能 | `packages/pi-canvas-tools/skills/*/SKILL.md` | 装配回退（见 §2） | `canvas-workflow-patterns` / `canvas-node-catalog` |
 | 系统提示词种子 | `backend-ts/src/config/seed.ts`（`DEFAULT_CANVAS_ASSISTANT_PROMPT`） | 启动时物化 AGENTS.md | 运行时以 DB `promptTemplates` 行为准（见 §5） |
@@ -91,6 +91,8 @@ canvasExecutor.ts：按 op 分发 case，从 nodesRef/edgesRef 读数据
 
 ### 2.5 扩展侧直连后端：只能打公开路由
 
+`PI_BACKEND_URL` 的端口取自 `config/env.ts` 的 `serverPort`（与 `server.ts` 的 listen 同源，**勿在任何位置再写死端口默认值**——历史上 runner 写死 8010、server 默认 8000，PORT 未设时会指向错误端口）。
+
 `pi` 子进程内没有任何用户凭据（env 里只有 `PI_BACKEND_URL`），所以扩展里 `fetch(BACKEND_URL + ...)` 只在**公开路由**上成立：
 
 - ✅ `POST /api/feedback`（无 `preHandler`）；
@@ -125,8 +127,11 @@ canvasExecutor.ts：按 op 分发 case，从 nodesRef/edgesRef 读数据
 | 3 | 前端 lint | `cd frontend && npx oxlint src/canvas/components/mascot/canvasExecutor.ts` | 0 警告 |
 | 4 | 后端类型检查 | `cd backend-ts && npx tsc --noEmit` | 0 error（存量问题除外，逐条报告不静修） |
 | 5 | 提示词物化回归 | `cd backend-ts && npx vitest run tests/api/canvas-agent.test.ts` | 全绿（当前 5/5；只断言物化存在、不断言内容，改提示词安全） |
+| 6 | 反馈通道回归 | `cd backend-ts && npx vitest run tests/api/feedback.test.ts` | 全绿（当前 7/7；覆盖 errcode 非 0 / 未配置 webhook / 网络异常 / 超长自动分片 / 分片中途失败） |
 
 端到端（真实对话链路需起后端+前端+模型，按需做）：画板助手能主动调 `canvas_list_nodes` 查现状、`canvas_read_node_output` 读内容，且输出为空时如实告知。
+
+文本节点 / VuFind 写入回归（手工，必须卡这几个动作，只看当前会话会误判）：① Agent 写入（或手输）正文后**刷新页面**，内容仍在（不被上游顶掉）；② 把 `book_info` 连到已有内容的节点，内容不被覆盖；③ 新建**空**节点并连线上游 → 正常继承；④ 继承后**手动清空 → 刷新** → 保持空（不被上游「复活」）；⑤ 断开上游再重新连回同一来源 → 可再次继承（断开已抹除继承记录）。
 
 ---
 
@@ -153,10 +158,31 @@ canvasExecutor.ts：按 op 分发 case，从 nodesRef/edgesRef 读数据
 5. **Windows 软链退化**：工作区装配用 symlinkOrCopy，无软链权限时退化为复制（见 `pi-extension-integration.md` 坑 3）——pi-canvas-tools 无非 alias 依赖，复制退化场景可正常工作，但新增第三方依赖前先确认 jiti alias 解析范围。
 6. **`details` 只进日志/UI，不进模型上下文**（模型看的是 `content`）——error 信息放 `details` 模型看不到，要给模型看的错误说明必须写在 `content` 里。
 7. **`canvas_get_node_configs` 仍不可用（存量缺陷，未修）**：它直连 `/api/admin/node-configs`，该路由 `preHandler: app.requireAdmin` 且子进程无凭据——普通用户调用必然 401。若要让画板助手查配置，需改成桥接 + 面向普通用户的只读配置接口（属产品/权限决策，需单独确认）。
+8. **文本类节点正文键是 `data.content`（不是 `text`），且文本节点的「连线即输入」只填充空节点**——两个坑会造成「Agent 建了节点但内容为空/丢内容」：① 历史 SKILL.md 速查表与工具 promptGuidelines 误教 `text` 键（模型照文档执行必然写错），现已修正文档并在 `canvasExecutor` 加键名归一（回执带 `warnings`，不静默吞掉）；② `TextNode` 原实现是「上游文本 ≠ 本地内容就写入」，而该注入 effect 依赖 `[upstreamText]`、**每次挂载都会重跑**（`lastUpstreamRef` 为组件内 ref），所以刷新页面/切页返回就会把 Agent 或用户写入的正文换成上游文本；现已改为「本地非空则不注入」。新建的空文本节点连线上游仍需继承，故保留空节点注入。**继承判定已从组件内 ref 换成 `node.data.inheritedFrom`（已继承过的上游值）**：ref 方案下「手动清空 → 保持空」但「清空后刷新 → 上游复活」自相矛盾，落进 node.data 后刷新/切页/清空三个动作判定一致；上游断开时抹除该记录，重连可再次继承（继承写入走 `useEditorPatchHandler(['text'])` / `handleUpdateVuFindEditorFor`，不记撤销历史）。同类写法见 `VuFindCallNumberNode`（`onUpdateEditor(id, { isbn })`，同样会把上游 ISBN 落盘覆盖手输值）——**已按同口径修**：仅在本节点无 ISBN（草稿与已落盘值都为空）时注入。注意该节点的 `upstreamIsbn` 优先级里含「画布根 `book_info` 兜底」，**没有连线也可能有上游值**，所以「本地非空不覆盖」在这里尤其重要；提示语也只在输入框的值确实等于上游值时展示（原文案无条件声称「已从上级连线自动填入」）。
+9. **企业微信群机器人 webhook 恒返回 HTTP 200**——真实结果在响应体 `errcode`（`0` 成功 / `93000` webhook 无效或机器人被移出群 / `40058` 内容超 4096 字节 / `45009` 超频 20 条每分钟）。只判 `resp.ok` 会把「被拒收」记成「推送成功」。`/api/feedback` 现已解析 errcode 并在响应中回传 `delivered`，工具文案与前端提示都必须以此为准，不得用 HTTP 200 当送达证据。markdown 正文上限 4096 **字节**（UTF-8，中文约 1365 字），路由发送前按字节预算**自动分片**为多条消息（不截断、不丢内容），首个分片失败即停并回传 `parts_delivered` / `parts_total`。注：手动弹窗表单 `maxLength={1000}`（≈3000 字节）永远不会触发分片，Agent 的长文才会——这是「手动正常、Agent 异常」的常见差异来源。
 
 ---
 
 ## 7. 改动记录
+
+### 2026-09-20（第四轮）：修复文本节点写入契约与上游覆盖
+
+- **根因 1（写入契约不一致）**：`text` / `text_generation` 节点正文实际读 `data.content`，但 `skills/canvas-node-catalog/SKILL.md` 速查表与 `canvas_create_node.promptGuidelines` 的示例教的是 `text` 键 → 模型严格按文档传参，正文落在无人读取的旁键，节点显示空、`has_output=false`。
+- **根因 2（上游注入越界）**：`TextNode` 的注入 effect 只以「上游文本是否变化」作门槛（`lastUpstreamRef` 为组件内 ref、每次挂载重置），本地内容非空时也会被上游文本覆盖 → 刷新页面/切页返回即丢内容（用户手输与 Agent 写入同样受影响）。
+- **同类修复（VuFind 馆藏节点）**：`VuFindCallNumberNode` 的上游 ISBN 注入改为同口径（草稿 `isbnInput` 与已落盘 `isbn` 都为空才注入），并把「已从上级连线自动填入」提示改为仅在值确实来自上游时展示。
+- **修复**：SKILL.md 速查表与文本节点端口行改为 `content` 键（并加「正文键就是 content」的 IMPORTANT 提示）；扩展工具 `promptGuidelines` 去掉错误的 `{ text: "..." }` 示例并新增「文本键名」条；`canvasExecutor.create_node` 新增 `normalizeDataKeys()`（`text` → `content`，已显式给 `content` 时不覆盖）并在回执里返回 `warnings` 提醒模型直接用目标键；`TextNode` 注入改为**仅在本节点内容为空时**填充一次。
+- **验证**：前端 `tsc -b` 0 error；`oxlint`（TextNode / canvasExecutor / CanvasNodeViews）0 warning；扩展包 strict 0 error。端到端（浏览器 + 真实对话）未验证，按 §4 的三个动作手工回归。
+- **注入前提的细节**：文本节点空态会自动进入编辑态，故「本地为空」判断同时看草稿（`editContent` / `isbnInput`）与已落盘值，避免上游数据到达时冲掉用户正在输入的文字。
+- **继承语义定稿（用户选择 A）**：本地为空才继承、非空则本地优先（人/Agent 的显式写入胜）；「已继承过的上游值」记入 `node.data.inheritedFrom`：同一上游值不再重复注入（清空后刷新不复活），上游**换源**（值变化）仍可重新继承，上游断开则抹除记录以便重连再继承。新增节点类型时的规范：上游是「默认值」而非「真相源」，自动注入只能填空，不得覆盖显式写入。
+- **未做**：`canvas_update_node` / `canvas_delete_node` / `canvas_disconnect_nodes` 仍缺（§6.7 的配置工具亦然）。
+
+### 2026-09-20（第三轮）：修复反馈通道「假成功」
+
+- **根因**：四处独立地把失败伪装成成功——① 路由只判 `resp.ok`，而企业微信 webhook 恒返回 HTTP 200（真实结果在 `errcode`）；② `!resp.ok` 与网络异常分支仍回 `success: true`；③ 未配置 `wechat.webhook_url`（seed 默认空串）时直接返回成功，且反馈不落库、直接丢失；④ 工具只要 `resp.ok` 就硬编码「已成功推送至管理员企业微信」。
+- **修复**：`/api/feedback` 解析 `errcode`，响应新增 `delivered` / `errcode` / `parts_total` / `parts_delivered` 字段（HTTP 200 = 已受理，不代表已送达），失败时 message 明确「未送达 + 可执行原因」，日志改用掩码 webhook（`key=***`）；正文超 4096 字节时**自动分片**成多条消息顺序发送（不截断；邮箱 ≤254、模块 ≤100 限长以约束头部与分片数），首个分片失败即停止并如实回传已送达条数；`canvas_send_feedback` 读 `delivered` 决定文案，未送达时明确要求「如实告知用户、不得声称已推送」，并补两条 promptGuidelines（回执两档、正文上限 4000 字符）；前端反馈弹窗 `delivered=false` 改用 warning 提示（不再一律 success）。
+- **顺带修复（端口同源）**：`PI_BACKEND_URL` 原先写死 8010（`runner.ts`），而 `server.ts` 默认 8000——PORT 未设置时扩展直连会指向错误端口。现统一到 `config/env.ts` 的 `serverPort`（server / runner / `inheritAttachBaseUrl` 三处同源）。
+- **验证**：`tests/api/feedback.test.ts` 7/7（errcode 非 0 / 未配置 / 网络异常 / 超长自动分片 / 分片中途失败）；backend-ts `tsc --noEmit` 0 error；`tests/api/pi-*.test.ts` 158/158（端口同源改动未破坏 pi RPC 回归）（顺带修掉本文件 `mock.calls[0]` 的存量 TS2488，即旧记录里的 `feedback.test.ts:113`）；扩展包 strict 检查 0 error；前端 `tsc -b` 0 error。
+- **未做**：反馈落库（需新增 `feedback_tickets` 表，属 schema 变更待确认）——**投递失败时反馈正文仍会丢失**；`canvas_get_node_configs` 恒 401（§6.7）仍未修。
 
 ### 2026-09-20（第二轮）：修复 Bifrost 检索 401
 

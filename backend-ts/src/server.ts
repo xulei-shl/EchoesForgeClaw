@@ -6,7 +6,7 @@ import multipart from '@fastify/multipart';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { env } from './config/env.js';
+import { env, serverPort } from './config/env.js';
 import { seedStartup } from './config/seed.js';
 import { registerAuth } from './shared/security.js';
 import { registerAuthRouter } from './api/auth.js';
@@ -214,7 +214,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const app = await buildApp();
   // 运行时图片 GC：启动后延迟首跑 + 每日清扫（runtime/{userId} 下四个受管目录，DB 引用文件受保护）
   scheduleRuntimeGc();
-  const port = Number(process.env.PORT ?? 8000);
+  const port = serverPort;
   // 退出钩子统一回收常驻 RPC 子进程：后端崩溃/重启/部署死亡后，registry 的空闲回收器
   // 随父进程一起消亡，不回收则所有 pi RPC 子进程变孤儿永久驻留（pi CLI RPC 模式一直等 stdin）。
   // exit 钩子内只能做同步 fire（taskkill /T /F 是异步子进程但无需等待，够用）。

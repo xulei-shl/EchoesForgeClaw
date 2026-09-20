@@ -13,8 +13,15 @@ export interface TextNodeProps {
   title?: string;
   /** Markdown 文本内容 */
   content?: string;
-  /** 连线上级文本节点传入的内容（连线即输入，写入后仍可手动编辑，与文本翻译节点同口径） */
+  /**
+   * 连线上级文本节点传入的内容（连线即输入）：**仅在本节点内容为空、且该上游值未继承过时注入**，
+   * 已有内容（用户手输 / Agent 写入）永不被覆盖。
+   */
   upstreamText?: string;
+  /** 已继承过的上游文本值（存在 node.data，跨刷新/切页生效）；为空表示尚未继承任何上游 */
+  inheritedFrom?: string;
+  /** 直接 patch node.data（上游继承写内容 + inheritedFrom 记录） */
+  onUpdateEditor?: (id: string, patch: Record<string, any>, undoable?: boolean) => void;
   onRemove?: (id: string) => void;
   /** 保存编辑后的文本 */
   onEditContent?: (id: string, content: string) => void;
@@ -34,6 +41,8 @@ const TextNodeInner: React.FC<TextNodeProps> = ({
   title,
   content = '',
   upstreamText = '',
+  inheritedFrom = '',
+  onUpdateEditor,
   onRemove,
   onEditContent,
   onPositionChange,
@@ -52,15 +61,22 @@ const TextNodeInner: React.FC<TextNodeProps> = ({
     setEditContent(content);
   }, [content]);
 
-  // 上级连线文本到达时写入内容；仅在上游文本本身变化时注入一次，
-  // 手动编辑保存后的内容不被覆盖（与文本翻译节点同口径）
-  const lastUpstreamRef = useRef<string | null>(null);
+  // 上游继承（本地优先语义）：
+  // - 本地已有内容（含正在编辑的草稿）→ 本地优先，永不覆盖；
+  // - 本地为空且该上游值未继承过 → 注入，并把 inheritedFrom 记入 node.data；
+  // - 上游断开 → 抹掉 inheritedFrom（内容不动），以便重新连回同一来源时能再次继承。
+  // 记录放在 node.data 而非组件内 ref：刷新 / 切页 / 手动清空三个动作判定一致——
+  // 清空后刷新不会把上游内容「复活」（清空 = 明确不要该内容）。
   useEffect(() => {
-    if (!upstreamText.trim() || lastUpstreamRef.current === upstreamText) return;
-    lastUpstreamRef.current = upstreamText;
-    if (upstreamText !== content) {
-      onEditContent?.(id, upstreamText);
+    const upstream = upstreamText.trim();
+    if (!upstream) {
+      if (inheritedFrom) onUpdateEditor?.(id, { inheritedFrom: null });
+      return;
     }
+    if (inheritedFrom === upstream) return;
+    // 空节点会自动进入编辑态：草稿也算「已有内容」，否则上游到达会冲掉用户正在输入的文字
+    if (content.trim() || editContent.trim()) return;
+    onUpdateEditor?.(id, { content: upstream, inheritedFrom: upstream });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [upstreamText]);
 
