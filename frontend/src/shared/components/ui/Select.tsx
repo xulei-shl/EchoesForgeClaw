@@ -112,7 +112,7 @@ export const Select: React.FC<SelectProps> = ({
         <div
           ref={menuRef}
           style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, width: menuPos.width }}
-          className="bg-paper border border-dashed border-paper-grid rounded-md shadow-md z-[9999] overflow-hidden max-h-60 origin-top animate-in fade-in zoom-in-95 duration-100 ease-out flex flex-col"
+          className="bg-paper border border-dashed border-paper-grid rounded-md shadow-md z-[10005] overflow-hidden max-h-60 origin-top animate-in fade-in zoom-in-95 duration-100 ease-out flex flex-col"
           onPointerDown={(e) => e.stopPropagation()}
         >
           {isSearchEnabled && (
