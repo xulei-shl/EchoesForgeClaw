@@ -1,0 +1,156 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1150" width="1600" height="1150" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Noto Sans SC, sans-serif">
+  <defs>
+    <marker id="mA" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#2563eb"/></marker>
+    <marker id="mB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#0d9488"/></marker>
+    <marker id="mW" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#94a3b8"/></marker>
+    <marker id="mR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#d97706"/></marker>
+    <linearGradient id="bridge" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#2563eb" stop-opacity="0.3"/>
+      <stop offset="1" stop-color="#2563eb" stop-opacity="1"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1600" height="1150" fill="#f7f4ee"/>
+  <rect x="20" y="20" width="1560" height="1110" rx="18" fill="#ffffff" stroke="#e7e1d3"/>
+
+  <text x="800" y="66" text-anchor="middle" font-size="30" font-weight="700" fill="#1f2430">画板 Agent 助手 · 全链路架构</text>
+  <text x="800" y="94" text-anchor="middle" font-size="15" fill="#6b7280">33 种节点 × 14 个工具 —— 让子进程里的 Agent 通过 UI 桥接"摸到"前端画布</text>
+
+  <!-- ================= Band 1: 前端 ================= -->
+  <rect x="40" y="120" width="1520" height="240" rx="14" fill="#eef4fb" stroke="#c9daf0"/>
+  <text x="64" y="150" font-size="16" font-weight="700" fill="#2563eb">前端 · React</text>
+  <text x="210" y="150" font-size="13" fill="#64748b">MascotWidget / AgentChatPanel / canvasExecutor</text>
+
+  <rect x="70" y="175" width="200" height="110" rx="10" fill="#ffffff" stroke="#c9daf0"/>
+  <text x="170" y="212" text-anchor="middle" font-size="15" font-weight="700" fill="#1f2430">吉祥物挂件</text>
+  <text x="170" y="234" text-anchor="middle" font-size="12" fill="#6b7280">MascotWidget</text>
+  <text x="170" y="254" text-anchor="middle" font-size="12" fill="#6b7280">点击 → 右侧对话面板</text>
+
+  <rect x="315" y="175" width="220" height="110" rx="10" fill="#ffffff" stroke="#c9daf0"/>
+  <text x="425" y="205" text-anchor="middle" font-size="15" font-weight="700" fill="#1f2430">Agent 对话面板</text>
+  <text x="425" y="227" text-anchor="middle" font-size="12" fill="#6b7280">AgentChatPanel</text>
+  <text x="425" y="247" text-anchor="middle" font-size="12" fill="#6b7280">SSE 流式 · 会话历史</text>
+  <text x="425" y="266" text-anchor="middle" font-size="12" fill="#2563eb" font-weight="600">拦截 CANVAS_OP: 前缀</text>
+
+  <rect x="570" y="175" width="260" height="110" rx="10" fill="#ffffff" stroke="#94b6e4" stroke-width="2"/>
+  <text x="700" y="205" text-anchor="middle" font-size="15" font-weight="700" fill="#1f2430">画布执行器</text>
+  <text x="700" y="227" text-anchor="middle" font-size="12" fill="#6b7280">canvasExecutor · 14 种 op</text>
+  <text x="700" y="247" text-anchor="middle" font-size="12" fill="#6b7280">只读 / 写 / 检索 分发</text>
+  <text x="700" y="266" text-anchor="middle" font-size="12" fill="#2563eb" font-weight="600">写入 denylist 保护</text>
+
+  <rect x="875" y="175" width="240" height="110" rx="10" fill="#ffffff" stroke="#c9daf0"/>
+  <text x="995" y="205" text-anchor="middle" font-size="15" font-weight="700" fill="#1f2430">React Flow 画布</text>
+  <text x="995" y="227" text-anchor="middle" font-size="12" fill="#6b7280">nodesRef / edgesRef</text>
+  <text x="995" y="247" text-anchor="middle" font-size="12" fill="#6b7280">33 默认 + 4 受管 AI 节点</text>
+  <text x="995" y="266" text-anchor="middle" font-size="12" fill="#6b7280">仅存在于前端 state</text>
+
+  <rect x="1160" y="175" width="230" height="110" rx="10" fill="#ffffff" stroke="#c9daf0"/>
+  <text x="1275" y="205" text-anchor="middle" font-size="15" font-weight="700" fill="#1f2430">画布命令层</text>
+  <text x="1275" y="227" text-anchor="middle" font-size="12" fill="#6b7280">canvasCommands</text>
+  <text x="1275" y="247" text-anchor="middle" font-size="12" fill="#6b7280">先记撤销历史再变更</text>
+  <text x="1275" y="266" text-anchor="middle" font-size="12" fill="#0d9488" font-weight="600">Agent 操作可 Ctrl+Z</text>
+
+  <line x1="270" y1="230" x2="308" y2="230" stroke="#94a3b8" stroke-width="2" marker-end="url(#mW)"/>
+  <line x1="535" y1="230" x2="563" y2="230" stroke="#94a3b8" stroke-width="2" marker-end="url(#mW)"/>
+  <line x1="830" y1="212" x2="868" y2="212" stroke="#94a3b8" stroke-width="2" marker-end="url(#mW)"/>
+  <text x="849" y="203" text-anchor="middle" font-size="11" fill="#64748b">只读直查</text>
+  <line x1="830" y1="250" x2="1153" y2="250" stroke="#0d9488" stroke-width="2" marker-end="url(#mB)"/>
+  <text x="995" y="300" text-anchor="middle" font-size="12" fill="#0d9488" font-weight="600">写操作必经命令层（不可用时明确报错，不静默降级）</text>
+
+  <!-- ================= Band 2: 后端 ================= -->
+  <rect x="40" y="425" width="1520" height="255" rx="14" fill="#f4f1fa" stroke="#ddd2ef"/>
+  <text x="64" y="455" font-size="16" font-weight="700" fill="#7c3aed">后端 · Fastify</text>
+  <text x="205" y="455" font-size="13" fill="#64748b">canvas-agent 路由 / 工作区装配 / 进程池</text>
+
+  <rect x="320" y="480" width="210" height="90" rx="10" fill="#ffffff" stroke="#ddd2ef"/>
+  <text x="425" y="514" text-anchor="middle" font-size="14" font-weight="700" fill="#1f2430">/canvas-agent/chat</text>
+  <text x="425" y="536" text-anchor="middle" font-size="12" fill="#6b7280">SSE 流式端点 · JWT</text>
+  <text x="425" y="555" text-anchor="middle" font-size="12" fill="#6b7280">事件 schema 校验</text>
+
+  <rect x="320" y="590" width="210" height="70" rx="10" fill="#ffffff" stroke="#ddd2ef"/>
+  <text x="425" y="618" text-anchor="middle" font-size="14" font-weight="700" fill="#1f2430">/ui-response</text>
+  <text x="425" y="640" text-anchor="middle" font-size="12" fill="#6b7280">桥接作答 → 写回 stdin</text>
+
+  <rect x="580" y="480" width="230" height="90" rx="10" fill="#ffffff" stroke="#ddd2ef"/>
+  <text x="695" y="514" text-anchor="middle" font-size="14" font-weight="700" fill="#1f2430">preparePiWorkspace</text>
+  <text x="695" y="536" text-anchor="middle" font-size="12" fill="#6b7280">AGENTS.md + 4 技能</text>
+  <text x="695" y="555" text-anchor="middle" font-size="12" fill="#6b7280">+ 扩展白名单 + guardrails</text>
+
+  <rect x="875" y="480" width="270" height="90" rx="10" fill="#ffffff" stroke="#ddd2ef"/>
+  <text x="1010" y="514" text-anchor="middle" font-size="14" font-weight="700" fill="#1f2430">pi registry 进程池</text>
+  <text x="1010" y="536" text-anchor="middle" font-size="12" fill="#6b7280">userId:workspaceId 复用 · 跳过冷启动</text>
+  <text x="1010" y="555" text-anchor="middle" font-size="12" fill="#6b7280">空闲回收 5min · LRU ≤ 20</text>
+
+  <rect x="1210" y="480" width="250" height="90" rx="10" fill="#fff9ef" stroke="#eeceb0"/>
+  <text x="1335" y="514" text-anchor="middle" font-size="14" font-weight="700" fill="#9a3412">/api/feedback</text>
+  <text x="1335" y="536" text-anchor="middle" font-size="12" fill="#6b7280">公开路由 · delivered 判真送达</text>
+  <text x="1335" y="555" text-anchor="middle" font-size="12" fill="#6b7280">超 4096 字节自动分片</text>
+
+  <line x1="425" y1="285" x2="425" y2="473" stroke="#2563eb" stroke-width="2" marker-end="url(#mA)"/>
+  <text x="447" y="330" font-size="12" fill="#2563eb" font-weight="600">① 用户一句话</text>
+  <text x="447" y="348" font-size="11" fill="#64748b">SSE 请求</text>
+  <line x1="534" y1="525" x2="573" y2="525" stroke="#94a3b8" stroke-width="2" marker-end="url(#mW)"/>
+  <line x1="810" y1="525" x2="868" y2="525" stroke="#94a3b8" stroke-width="2" marker-end="url(#mW)"/>
+  <line x1="1010" y1="570" x2="1010" y2="743" stroke="#2563eb" stroke-width="2" marker-end="url(#mA)"/>
+  <text x="988" y="640" text-anchor="end" font-size="12" fill="#2563eb" font-weight="600">② spawn / 复用</text>
+  <text x="988" y="658" text-anchor="end" font-size="11" fill="#64748b">stdio RPC 常驻子进程</text>
+  <line x1="1145" y1="525" x2="1203" y2="525" stroke="#d97706" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#mR)"/>
+
+  <!-- ================= Band 3: Agent 子进程 ================= -->
+  <rect x="40" y="745" width="1520" height="260" rx="14" fill="#f0f7f4" stroke="#cfe6da"/>
+  <text x="64" y="775" font-size="16" font-weight="700" fill="#0d9488">Agent 子进程 · pi --mode rpc</text>
+  <text x="355" y="775" font-size="13" fill="#64748b">每 用户×工作区 常驻复用，会话 jsonl 落盘</text>
+
+  <rect x="300" y="800" width="220" height="110" rx="10" fill="#ffffff" stroke="#cfe6da"/>
+  <text x="410" y="832" text-anchor="middle" font-size="15" font-weight="700" fill="#1f2430">Agent 推理核心</text>
+  <text x="410" y="854" text-anchor="middle" font-size="12" fill="#6b7280">AGENTS.md 7 条原则</text>
+  <text x="410" y="874" text-anchor="middle" font-size="12" fill="#6b7280">现状感知 · 确认后执行</text>
+  <text x="410" y="894" text-anchor="middle" font-size="12" fill="#6b7280">就地修正优先</text>
+
+  <rect x="575" y="800" width="250" height="110" rx="10" fill="#ffffff" stroke="#2563eb" stroke-width="2"/>
+  <text x="700" y="830" text-anchor="middle" font-size="15" font-weight="700" fill="#1f2430">pi-canvas-tools 扩展包</text>
+  <text x="700" y="852" text-anchor="middle" font-size="12" fill="#6b7280">14 个工具（TS 源码直载）</text>
+  <text x="700" y="872" text-anchor="middle" font-size="12" fill="#2563eb" font-weight="600">写 5 · 只读 4 · 检索 4 · 反馈 1</text>
+  <text x="700" y="892" text-anchor="middle" font-size="12" fill="#6b7280">工具级 promptGuidelines</text>
+
+  <rect x="880" y="800" width="230" height="110" rx="10" fill="#ffffff" stroke="#cfe6da"/>
+  <text x="995" y="830" text-anchor="middle" font-size="15" font-weight="700" fill="#1f2430">技能库 × 4</text>
+  <text x="995" y="852" text-anchor="middle" font-size="12" fill="#6b7280">节点目录 / 视觉预设</text>
+  <text x="995" y="872" text-anchor="middle" font-size="12" fill="#6b7280">接线模式 / 反馈规范</text>
+  <text x="995" y="892" text-anchor="middle" font-size="12" fill="#0d9488" font-weight="600">渐进式按需阅读</text>
+
+  <rect x="1165" y="800" width="230" height="110" rx="10" fill="#ffffff" stroke="#cfe6da"/>
+  <text x="1280" y="830" text-anchor="middle" font-size="15" font-weight="700" fill="#1f2430">安全护栏</text>
+  <text x="1280" y="852" text-anchor="middle" font-size="12" fill="#6b7280">guardrails 配置</text>
+  <text x="1280" y="872" text-anchor="middle" font-size="12" fill="#dc2626" font-weight="600">排除 bash 工具</text>
+  <text x="1280" y="892" text-anchor="middle" font-size="12" fill="#6b7280">子进程零用户凭据</text>
+
+  <line x1="520" y1="855" x2="568" y2="855" stroke="#94a3b8" stroke-width="2" marker-end="url(#mW)"/>
+  <line x1="825" y1="855" x2="873" y2="855" stroke="#94a3b8" stroke-width="2" marker-end="url(#mW)"/>
+  <line x1="1110" y1="855" x2="1158" y2="855" stroke="#94a3b8" stroke-width="2" marker-end="url(#mW)"/>
+
+  <!-- ============ 核心：UI 桥接 ============ -->
+  <line x1="740" y1="800" x2="740" y2="291" stroke="url(#bridge)" stroke-width="5" marker-end="url(#mA)"/>
+
+  <rect x="775" y="366" width="360" height="56" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="955" y="391" text-anchor="middle" font-size="14" font-weight="700" fill="#1d4ed8">③ UI 桥接 · 反向通道</text>
+  <text x="955" y="412" text-anchor="middle" font-size="12" fill="#374151">ctx.ui.select('CANVAS_OP:…') → extension_ui_request</text>
+  <path d="M 775 394 L 740 394" fill="none" stroke="#2563eb" stroke-width="1.6" stroke-dasharray="4 4"/>
+
+  <text x="758" y="700" font-size="13" font-weight="700" fill="#1d4ed8">③ CANVAS_OP: 指令上行</text>
+  <text x="758" y="718" font-size="11" fill="#64748b">前端通用拦截 → canvasExecutor 执行</text>
+
+  <!-- ⑤⑥ 结果写回：前端 POST /ui-response → 后端 → stdin -->
+  <path d="M 315 245 L 282 245 L 282 625 L 313 625" fill="none" stroke="#0d9488" stroke-width="2" marker-end="url(#mB)"/>
+  <text x="425" y="690" text-anchor="middle" font-size="12" fill="#0d9488" font-weight="600">⑤ 前端 POST 执行结果</text>
+  <path d="M 425 660 L 425 712 L 670 712 L 670 793" fill="none" stroke="#0d9488" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#mB)"/>
+  <text x="547" y="703" text-anchor="middle" font-size="12" fill="#0d9488" font-weight="600">⑥ 结果写回 stdin，Agent 继续推理</text>
+
+  <!-- ============ 反馈通道：子进程直连公开路由 → 企业微信 ============ -->
+  <path d="M 700 910 L 700 955 L 1060 955 L 1060 615 L 1280 615 L 1280 576" fill="none" stroke="#d97706" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#mR)"/>
+  <text x="880" y="978" text-anchor="middle" font-size="12" fill="#b45309" font-weight="600">canvas_send_feedback：定制申请 / Bug / 新节点诉求 → 管理员企业微信群（直连公开路由，无需用户凭据）</text>
+
+  <!-- ============ 底部数据点 ============ -->
+  <line x1="40" y1="1040" x2="1560" y2="1040" stroke="#e7e1d3" stroke-width="2"/>
+  <text x="800" y="1075" text-anchor="middle" font-size="14" fill="#475569" font-weight="600">33 默认节点 · 4 类受管 AI 节点 · 14 工具 · 4 技能 · 写操作全程可撤销 · 多租户进程池复用 · 反馈直达企业微信</text>
+</svg>
