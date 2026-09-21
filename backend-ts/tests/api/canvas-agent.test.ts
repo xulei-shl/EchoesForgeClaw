@@ -21,8 +21,9 @@ describe('Canvas Agent API 路由与工作区生命周期', () => {
     db = initDb(':memory:');
     setDb(db);
     const schema = await import('../../src/db/schema.js');
+    // 固定为独占测试 id：本文件 afterAll 会清该用户的工作区目录，绝不能落到真实用户（admin=1）
     db.insert(schema.users)
-      .values({ username: 'admin', passwordHash: hashSync('admin123', 10), role: 'admin', isActive: true })
+      .values({ id: UID, username: 'admin', passwordHash: hashSync('admin123', 10), role: 'admin', isActive: true })
       .run();
     app = await buildApp();
     await app.ready();
@@ -39,10 +40,13 @@ describe('Canvas Agent API 路由与工作区生命周期', () => {
   });
 
   afterAll(async () => {
+    // 只清理本文件独占的测试用户工作区。历史上这里无条件删除 workspaceRoot(uid) 而 uid 来自
+    // 登录响应（种子用户 id 未固定时即真实 admin=1）→ 跑一次测试就把开发环境 runtime/1/workspace
+    // 下的全部真实对话与产物清空。uid 不是本文件独占 id 时一律不删。
     try {
-      const root = workspaceRoot(uid);
-      if (existsSync(root)) {
-        rmSync(root, { recursive: true, force: true });
+      if (uid === UID) {
+        const root = workspaceRoot(UID);
+        if (existsSync(root)) rmSync(root, { recursive: true, force: true });
       }
     } catch {
       /* ignore */
