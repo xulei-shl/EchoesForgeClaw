@@ -1,6 +1,11 @@
 import { chromium } from 'playwright-core';
+import { getDb } from '../../config/database.js';
+import { getAppSettingsMap, getServiceProxy } from '../../repositories/index.js';
+import { connectCdpOverProxy } from '../platform/cdp-websocket.js';
+import { fetchWithProxy } from '../platform/http-proxy.js';
 
-const LIGHTPANDA_WS_URL = process.env.BROWSER_ADDRESS || 'ws://127.0.0.1:9222';
+/** 本地 Lightpanda CDP 默认地址（可经 BROWSER_ADDRESS 环境变量覆盖） */
+const DEFAULT_LOCAL_WS_URL = 'ws://127.0.0.1:9222';
 const VUFIND_BASE_URL = 'https://vufind.library.sh.cn';
 /** 单页导航超时：检索页 + 详情页两步，需控制在前端 30s 总超时内 */
 const PAGE_TIMEOUT_MS = 15_000;
@@ -114,6 +119,51 @@ export function extractBibliographic(html: string): VuFindBiblio {
   };
 }
 
+/** Lightpanda 浏览器接入点：CDP WebSocket 地址 + 有效 HTTP 代理（空 = 直连） */
+export interface LightpandaEndpoint {
+  url: string;
+  proxy: string;
+}
+
+/** 回环地址（本机部署的 Lightpanda）：本身不出网，无需也不应经代理连接 */
+export function isLoopbackWsUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.replace(/^\[|\]$/g, '').toLowerCase();
+    return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host.endsWith('.localhost');
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 按系统设置解析 Lightpanda 接入点（admin「系统设置 → Lightpanda 浏览器」）：
+ * - `lightpanda.mode` = `cloud` 时连接云端，地址取 `lightpanda.cloud_wss_url`，凭据取
+ *   `lightpanda.cloud_api_key`（拼为 `?token=` 查询参数，与官方 CDP 端点约定一致）；
+ * - 其余（含未配置）走本机 CDP：`BROWSER_ADDRESS` 环境变量，缺省 ws://127.0.0.1:9222；
+ * - 代理取 `lightpanda.use_proxy` + 全局 `http.proxy`，仅对外部端点生效（回环地址直连）。
+ * 云端模式缺地址 / 密钥时抛出配置错误（调用方降级为 HTTP 兜底并留日志）。
+ */
+export function resolveLightpandaEndpoint(settings: Record<string, string>): LightpandaEndpoint {
+  const proxy = getServiceProxy(settings, 'lightpanda');
+  if ((settings['lightpanda.mode'] ?? 'local').trim().toLowerCase() === 'cloud') {
+    const base = (settings['lightpanda.cloud_wss_url'] ?? '').trim();
+    const token = (settings['lightpanda.cloud_api_key'] ?? '').trim();
+    if (!base) throw new Error('云端 Lightpanda 未配置：请在「系统设置 → Lightpanda 浏览器」填写 lightpanda.cloud_wss_url');
+    if (!token) throw new Error('云端 Lightpanda 未配置：请在「系统设置 → Lightpanda 浏览器」填写 lightpanda.cloud_api_key');
+    const url = `${base}${base.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`;
+    return { url, proxy: isLoopbackWsUrl(url) ? '' : proxy };
+  }
+  const url = (process.env.BROWSER_ADDRESS || '').trim() || DEFAULT_LOCAL_WS_URL;
+  return { url, proxy: isLoopbackWsUrl(url) ? '' : proxy };
+}
+
+/** 按设置连接 Lightpanda（云端 / 本地，必要时经全局 HTTP 代理） */
+async function connectLightpanda(settings: Record<string, string>) {
+  const { url, proxy } = resolveLightpandaEndpoint(settings);
+  if (!proxy) return chromium.connectOverCDP(url);
+  return chromium.connectOverCDP(await connectCdpOverProxy(url, proxy));
+}
+
 /**
  * 连接 Lightpanda 浏览器实例，两步抓取：
  * 1. 导航至 vufind 检索页，提取索书号 + 首条结果的详情页链接；
@@ -124,18 +174,22 @@ export function extractBibliographic(html: string): VuFindBiblio {
 export async function fetchVuFindRecord(isbn: string): Promise<VuFindRecord> {
   const url = `${VUFIND_BASE_URL}/Search/Results?searchtype=vague&lookfor=${encodeURIComponent(isbn)}&type=AllFields&limit=20`;
 
+  const settings = getAppSettingsMap(getDb());
   try {
-    return await fetchViaLightpanda(url);
+    return await fetchViaLightpanda(url, settings);
   } catch (err) {
     // 索书号都没拿到（检索无结果等）才是真失败
     if (err instanceof VuFindError) throw err;
-    const callNumber = await fetchCallNumberViaHttp(url);
+    console.warn(
+      `[vufind] Lightpanda 抓取不可用，降级为 HTTP 兜底（仅索书号）: ${err instanceof Error ? err.message : String(err)}`
+    );
+    const callNumber = await fetchCallNumberViaHttp(url, getServiceProxy(settings, 'lightpanda'));
     return { callNumber, bibliographic: EMPTY_BIBLIO, recordUrl: '', holdings: [] };
   }
 }
 
-async function fetchViaLightpanda(searchUrl: string): Promise<VuFindRecord> {
-  const browser = await chromium.connectOverCDP(LIGHTPANDA_WS_URL);
+async function fetchViaLightpanda(searchUrl: string, settings: Record<string, string>): Promise<VuFindRecord> {
+  const browser = await connectLightpanda(settings);
   try {
     const page = await browser.newPage({
       extraHTTPHeaders: { 'Accept-Language': 'zh-CN,zh;q=0.9' },
@@ -299,21 +353,25 @@ export function parseHoldingsFromHtml(html: string): VuFindHoldingGroup[] {
   return groups;
 }
 
-async function fetchViaHttp(url: string): Promise<string> {
-  const res = await fetch(url, {
-    signal: AbortSignal.timeout(30_000),
-    headers: {
-      'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept-Language': 'zh-CN,zh;q=0.9',
+async function fetchViaHttp(url: string, proxy: string): Promise<string> {
+  const res = await fetchWithProxy(
+    url,
+    {
+      signal: AbortSignal.timeout(30_000),
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
+      },
     },
-  });
+    proxy
+  );
   const html = await res.text();
   return html;
 }
 
 /** HTTP 兜底：只能拿检索页静态 HTML 的索书号（馆藏为 AJAX 加载时拿不到，属已知限制） */
-async function fetchCallNumberViaHttp(url: string): Promise<string> {
-  const html = await fetchViaHttp(url);
+async function fetchCallNumberViaHttp(url: string, proxy: string): Promise<string> {
+  const html = await fetchViaHttp(url, proxy);
   return extractCallNumber(html);
 }

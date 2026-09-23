@@ -70,6 +70,10 @@ const KNOWN_KEYS: { key: string; description: string }[] = [
   { key: 'pi.guardrails.features.path_access', description: 'Pi Agent 越界路径访问控制（工作区外的文件访问拦截）' },
   { key: 'pi.guardrails.path_access.mode', description: 'Pi Agent 越界路径访问模式：block = 越界一律拒绝（默认，headless 无询问通道）；allow = 放行并记录（放弃跨租户隔离，慎用）。ask 已不再支持，存量值按 block 生效并在装配期给出提示' },
   { key: 'pi.guardrails.path_access.allowed_paths', description: 'Pi Agent 越界路径放行白名单（JSON 数组，如 [{"kind":"file","path":"/data/x.txt"},{"kind":"directory","path":"/data/y"}]）' },
+  { key: 'lightpanda.mode', description: 'VuFind 馆藏检索节点 Lightpanda 接入模式：local = 本机 CDP（默认 ws://127.0.0.1:9222）；cloud = Lightpanda 云端' },
+  { key: 'lightpanda.cloud_wss_url', description: 'Lightpanda 云端 CDP 地址（如 wss://euwest.cloud.lightpanda.io/ws）' },
+  { key: 'lightpanda.cloud_api_key', description: 'Lightpanda 云端 API Token（https://lightpanda.io 控制台获取；敏感，仅显示掩码）' },
+  { key: 'lightpanda.use_proxy', description: 'Lightpanda 出网是否走全局 http.proxy（云端 CDP 连接与 VuFind HTTP 兜底请求；本机回环地址始终直连）' },
   { key: 'wechat.webhook_url', description: '企业微信群机器人 Webhook 地址（用于接收画板用户反馈通知；敏感，仅显示掩码）' },
 ];
 
@@ -154,6 +158,13 @@ const CATEGORY_DEFS: CategoryDef[] = [
       key.startsWith('serper.') ||
       key.startsWith('brave.') ||
       key.startsWith('bocha.'),
+  },
+  {
+    id: 'lightpanda',
+    name: 'Lightpanda 浏览器',
+    icon: Globe,
+    description: 'VuFind 馆藏检索节点使用的 Lightpanda 浏览器接入配置：本机 CDP 或云端 CDP（区域端点 + API Token），以及出网是否走全局代理',
+    match: (key) => key.startsWith('lightpanda.'),
   },
   {
     id: 'pi',
@@ -915,7 +926,17 @@ export const SettingsPage: React.FC = () => {
           </div>
           <div className="space-y-1.5">
             <FieldLabel>值（value）</FieldLabel>
-            {edit.key.endsWith('.use_proxy') ? (
+            {edit.key === 'lightpanda.mode' ? (
+              <Select
+                value={edit.value || 'local'}
+                onChange={(value) => setEdit({ ...edit, value })}
+                options={[
+                  { label: 'local（本机 Lightpanda 实例）', value: 'local' },
+                  { label: 'cloud（Lightpanda 云端浏览器）', value: 'cloud' },
+                ]}
+                searchable={false}
+              />
+            ) : edit.key.endsWith('.use_proxy') ? (
               <div className="flex items-center gap-3 pt-1">
                 <button
                   type="button"

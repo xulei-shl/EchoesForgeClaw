@@ -234,6 +234,26 @@ const DEFAULT_SETTINGS: Array<[string, string, string]> = [
     'Pi Agent 越界路径放行白名单（JSON 数组，如 [{"kind":"file","path":"/data/x.txt"},{"kind":"directory","path":"/data/y"}]；仅 mode=allow 时有意义；留空 = 不放行任何越界路径）',
   ],
   [
+    'lightpanda.mode',
+    'local',
+    'VuFind 馆藏检索节点的 Lightpanda 浏览器接入模式：local = 连接本机 CDP 实例（BROWSER_ADDRESS，默认 ws://127.0.0.1:9222）；cloud = 连接 Lightpanda 云端（需配置 lightpanda.cloud_wss_url 与 lightpanda.cloud_api_key）',
+  ],
+  [
+    'lightpanda.cloud_wss_url',
+    'wss://euwest.cloud.lightpanda.io/ws',
+    'Lightpanda 云端 CDP 地址（区域端点：欧洲西部 wss://euwest.cloud.lightpanda.io/ws ｜ 美国西部 wss://uswest.cloud.lightpanda.io/ws）',
+  ],
+  [
+    'lightpanda.cloud_api_key',
+    '',
+    'Lightpanda 云端 API Token（https://lightpanda.io 控制台获取；敏感，仅显示掩码）',
+  ],
+  [
+    'lightpanda.use_proxy',
+    'false',
+    'Lightpanda 出网是否走全局 http.proxy（true = 启用；作用于云端 CDP 连接与 VuFind HTTP 兜底请求；本机回环地址始终直连）',
+  ],
+  [
     'wechat.webhook_url',
     '',
     '企业微信群机器人 Webhook 地址（用于接收画板用户反馈通知，敏感，仅显示掩码）',
