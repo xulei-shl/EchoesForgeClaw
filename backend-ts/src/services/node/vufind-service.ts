@@ -72,8 +72,6 @@ export interface VuFindRecord {
   holdings: VuFindHoldingGroup[];
 }
 
-const EMPTY_BIBLIO: VuFindBiblio = { title: '', author: '', contributor: '', publisher: '', pubYear: '' };
-
 /**
  * 识别 VuFind 站点 WAF 的「权限验证」人机验证页（被拦截时 302 到 /verification，标题「权限验证」）。
  * 实测：本机 Lightpanda（可信出口 IP）直连正常；云端 Lightpanda（境外数据中心出口 IP，
@@ -132,6 +130,23 @@ export function extractBibliographic(html: string): VuFindBiblio {
   };
 }
 
+/** 从检索结果 HTML 取首条结果的详情页链接（与浏览器路径的 a.title.getFull 同源） */
+export function extractRecordPath(html: string): string {
+  const href = html.match(/href="([^"]*\/Record\/[^"]+)"/)?.[1] ?? '';
+  return href.replace(/&amp;/g, '&');
+}
+
+/**
+ * 详情页 URL → 馆藏 tab 片段 URL。`/Record/{id}/AjaxTab?tab=holdings` 由 VuFind 服务端
+ * 渲染（详情页主体里只有空壳 tab，馆藏靠前端异步填充），因此纯 HTTP 也能取到完整馆藏。
+ */
+export function holdingsTabUrl(recordUrl: string): string {
+  const [path] = recordUrl.split('?');
+  const id = (path ?? '').replace(/\/+$/, '').split('/').pop() ?? '';
+  if (!id) return '';
+  return withZhLang(`${VUFIND_BASE_URL}/Record/${encodeURIComponent(id)}/AjaxTab?tab=holdings`);
+}
+
 /** Lightpanda 浏览器接入点：CDP WebSocket 地址 + 有效 HTTP 代理（空 = 直连） */
 export interface LightpandaEndpoint {
   url: string;
@@ -182,7 +197,7 @@ async function connectLightpanda(settings: Record<string, string>) {
  * 1. 导航至 vufind 检索页，提取索书号 + 首条结果的详情页链接；
  * 2. 打开详情页，解析馆藏地 / 条码 / 借阅类型 / 状态。
  * 详情页无馆藏时不视为失败，返回仅含索书号的部分结果。
- * 若浏览器不可用，降级为 HTTP fetch 仅取索书号。
+ * 若浏览器不可用，降级为 HTTP fetch（检索页 + 馆藏 tab 片段，同样能取到馆藏）。
  */
 export async function fetchVuFindRecord(isbn: string): Promise<VuFindRecord> {
   const url = `${VUFIND_BASE_URL}/Search/Results?searchtype=vague&lookfor=${encodeURIComponent(isbn)}&type=AllFields&limit=20`;
@@ -194,10 +209,9 @@ export async function fetchVuFindRecord(isbn: string): Promise<VuFindRecord> {
     // 索书号都没拿到（检索无结果等）才是真失败
     if (err instanceof VuFindError) throw err;
     console.warn(
-      `[vufind] Lightpanda 抓取不可用，降级为 HTTP 兜底（仅索书号）: ${err instanceof Error ? err.message : String(err)}`
+      `[vufind] Lightpanda 抓取不可用，降级为 HTTP 兜底: ${err instanceof Error ? err.message : String(err)}`
     );
-    const callNumber = await fetchCallNumberViaHttp(url, getServiceProxy(settings, 'lightpanda'));
-    return { callNumber, bibliographic: EMPTY_BIBLIO, recordUrl: '', holdings: [] };
+    return fetchRecordViaHttp(url, getServiceProxy(settings, 'lightpanda'));
   }
 }
 
@@ -387,8 +401,12 @@ async function fetchViaHttp(url: string, proxy: string): Promise<string> {
   return html;
 }
 
-/** HTTP 兜底：只能拿检索页静态 HTML 的索书号（馆藏为 AJAX 加载时拿不到，属已知限制） */
-async function fetchCallNumberViaHttp(url: string, proxy: string): Promise<string> {
+/**
+ * HTTP 兜底（不依赖浏览器）：检索页静态 HTML 取索书号 + 书目 + 详情页链接，
+ * 再请求详情页馆藏 tab 片段（服务端渲染的 `AjaxTab?tab=holdings`）解析馆藏。
+ * 详情页主体 HTML 里没有馆藏标记，仅有空壳 tab，所以必须走该片段端点。
+ */
+export async function fetchRecordViaHttp(url: string, proxy: string): Promise<VuFindRecord> {
   const html = await fetchViaHttp(url, proxy);
   if (isVufindChallengePage(url, html)) {
     // 服务端出口 IP 也被拦截：如实报出真实原因，避免误报成「藏书不存在」
@@ -396,5 +414,33 @@ async function fetchCallNumberViaHttp(url: string, proxy: string): Promise<strin
       'VuFind 站点要求人机验证（权限验证页），当前出口 IP 被拦截，未能获取索书号；云端 Lightpanda 与境外服务器 IP 无法访问该站点，请改用本机 Lightpanda（lightpanda.mode=local）'
     );
   }
-  return extractCallNumber(html);
+  const callNumber = extractCallNumber(html);
+  const bibliographic = extractBibliographic(html);
+
+  const recordPath = extractRecordPath(html);
+  const recordUrl = recordPath
+    ? recordPath.startsWith('http')
+      ? recordPath
+      : `${VUFIND_BASE_URL}${recordPath}`
+    : '';
+
+  let holdings: VuFindHoldingGroup[] = [];
+  if (recordUrl) {
+    const tabUrl = holdingsTabUrl(recordUrl);
+    try {
+      const tabHtml = await fetchViaHttp(tabUrl, proxy);
+      if (isVufindChallengePage(tabUrl, tabHtml)) {
+        console.warn(`[vufind] 馆藏 tab 返回人机验证页（出口 IP 被拦截），保留索书号与书目: ${tabUrl}`);
+      } else {
+        holdings = parseHoldingsFromHtml(tabHtml);
+      }
+    } catch (err) {
+      // 馆藏抓取失败不影响索书号（与浏览器路径同一策略：部分结果优于整体报错）
+      console.warn(
+        `[vufind] HTTP 兜底抓取馆藏失败（保留索书号部分结果）: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  }
+
+  return { callNumber, bibliographic, recordUrl, holdings };
 }

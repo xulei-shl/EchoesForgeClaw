@@ -1,8 +1,47 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   extractBibliographic,
+  extractRecordPath,
+  fetchRecordViaHttp,
+  holdingsTabUrl,
   parseHoldingsFromHtml,
+  VuFindError,
 } from '../../src/services/node/vufind-service.js';
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+/** 依据 vufind 检索结果页真实结构精简的样例（含详情页链接、书目与索书号） */
+const SEARCH_PAGE_HTML = `<!DOCTYPE html><html lang="zh-cn"><head><title>检索结果 - 9787576056075</title></head>
+<body>
+  <div class="result-body">
+    <div>
+      <a href="/Record/5c47909a-4c25-489c-b4ab-06d2154cc25a?ids=5c47909a-4c25-489c-b4ab-06d2154cc25a&amp;lng=zh-cn" class="title getFull" data-view="full">
+        但丁 = Dante</a>
+    </div>
+    <div>
+      著者:
+      <span class="author-data" property="author">
+        <a href="/Search/Results?lookfor=x&amp;type=Author">
+          (意) 巴尔贝罗 Barbero, Alessandro</a>
+        <span class="author-property-role">(著)</span></span>
+      <br>
+      其他责任者:
+      <span class="author-data" property="contributor">
+        <a href="/Search/Results?lookfor=y&amp;type=Author">
+          梁慈恩</a>
+        <span class="author-property-role">(译)</span></span>
+      <br>
+      出版社: 译林出版社<br>
+      出版时间: 2024<br>
+      索书号: K835.465.6/2212-11<br>
+    </div>
+  </div>
+</body></html>`;
+
+const CHALLENGE_PAGE_HTML = `<!DOCTYPE html><html><head><title>权限验证</title>
+<script src="/verification/js/tac.min.js"></script></head><body></body></html>`;
 
 /** 依据 vufind 检索结果项（result-body）真实结构精简的样例 */
 const SEARCH_ITEM_HTML = `
@@ -128,5 +167,78 @@ describe('parseHoldingsFromHtml', () => {
       publisher: '译林出版社',
       pubYear: '2024',
     });
+  });
+});
+
+describe('HTTP 兜底抓取（无浏览器）', () => {
+  it('extractRecordPath 取首条结果链接并解码实体', () => {
+    expect(extractRecordPath(SEARCH_PAGE_HTML)).toBe(
+      '/Record/5c47909a-4c25-489c-b4ab-06d2154cc25a?ids=5c47909a-4c25-489c-b4ab-06d2154cc25a&lng=zh-cn'
+    );
+    expect(extractRecordPath('<html><body>无结果</body></html>')).toBe('');
+  });
+
+  it('holdingsTabUrl 从详情页 URL 取记录 id 并拼馆藏片段端点', () => {
+    expect(
+      holdingsTabUrl('https://vufind.library.sh.cn/Record/5c47909a-4c25-489c-b4ab-06d2154cc25a?ids=5c47909a')
+    ).toBe('https://vufind.library.sh.cn/Record/5c47909a-4c25-489c-b4ab-06d2154cc25a/AjaxTab?tab=holdings&lng=zh-cn');
+    expect(holdingsTabUrl('')).toBe('');
+  });
+
+  it('检索页 + 馆藏片段纯 HTTP 即可拿到索书号与馆藏', async () => {
+    const fetchMock = vi.fn(async (url: string) =>
+      new Response(url.includes('/AjaxTab') ? SAMPLE_HTML : SEARCH_PAGE_HTML)
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const record = await fetchRecordViaHttp('https://vufind.library.sh.cn/Search/Results?lookfor=x', '');
+
+    expect(String(fetchMock.mock.calls[1]?.[0])).toBe(
+      'https://vufind.library.sh.cn/Record/5c47909a-4c25-489c-b4ab-06d2154cc25a/AjaxTab?tab=holdings&lng=zh-cn'
+    );
+    expect(record.callNumber).toBe('K835.465.6/2212-11');
+    // 书目与浏览器路径同源同解析（都用 extractBibliographic 读检索页）
+    expect(record.bibliographic).toEqual({
+      title: '但丁 = Dante',
+      author: '(意) 巴尔贝罗 Barbero, Alessandro (著)',
+      contributor: '梁慈恩 (译)',
+      publisher: '译林出版社',
+      pubYear: '2024',
+    });
+    expect(record.recordUrl).toBe(
+      'https://vufind.library.sh.cn/Record/5c47909a-4c25-489c-b4ab-06d2154cc25a?ids=5c47909a-4c25-489c-b4ab-06d2154cc25a&lng=zh-cn'
+    );
+    expect(record.holdings.map((g) => g.location)).toEqual([
+      '上海图书馆保存本书库',
+      '上海图书馆( 淮海路馆 ) 中文书刊外借室（2楼普通借阅区）',
+    ]);
+    expect(record.holdings.flatMap((g) => g.items).map((i) => i.barcode)).toEqual([
+      '54121111408051',
+      '54121111844368',
+    ]);
+  });
+
+  it('馆藏片段无复本行时仅返回索书号部分结果，不整体报错', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        new Response(url.includes('/AjaxTab') ? '<div class="branch"></div>' : SEARCH_PAGE_HTML)
+      )
+    );
+
+    const record = await fetchRecordViaHttp('https://vufind.library.sh.cn/Search/Results?lookfor=x', '');
+
+    expect(record.callNumber).toBe('K835.465.6/2212-11');
+    expect(record.holdings).toEqual([]);
+  });
+
+  it('检索页被 WAF 拦截时抛 VuFindError（如实报出人机验证）', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(CHALLENGE_PAGE_HTML)));
+
+    const err = await fetchRecordViaHttp('https://vufind.library.sh.cn/Search/Results?lookfor=x', '').catch(
+      (e: unknown) => e
+    );
+    expect(err).toBeInstanceOf(VuFindError);
+    expect((err as Error).message).toMatch(/人机验证/);
   });
 });
