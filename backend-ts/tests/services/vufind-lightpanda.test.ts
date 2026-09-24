@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { isLoopbackWsUrl, resolveLightpandaEndpoint } from '../../src/services/node/vufind-service.js';
+import {
+  isLoopbackWsUrl,
+  isVufindChallengePage,
+  resolveLightpandaEndpoint,
+} from '../../src/services/node/vufind-service.js';
 import { safeWsLabel } from '../../src/services/platform/cdp-websocket.js';
 
 const ORIGINAL_BROWSER_ADDRESS = process.env.BROWSER_ADDRESS;
@@ -83,6 +87,29 @@ describe('isLoopbackWsUrl', () => {
     expect(isLoopbackWsUrl('ws://127.0.0.1:9222')).toBe(true);
     expect(isLoopbackWsUrl('ws://localhost:9222')).toBe(true);
     expect(isLoopbackWsUrl('wss://euwest.cloud.lightpanda.io/ws?token=x')).toBe(false);
+  });
+});
+
+describe('isVufindChallengePage', () => {
+  const CHALLENGE_HTML = `<!DOCTYPE html><html lang="en"><head><title>权限验证</title>
+    <script src="/verification/js/tac.min.js"></script></head><body></body></html>`;
+  const SEARCH_HTML = `<!DOCTYPE html><html lang="zh-cn"><head><title>馆藏书目查询系统 - 上海图书馆</title></head>
+    <body>索书号: K835.465.6/2212-11<br></body></html>`;
+
+  it('识别站点 WAF 的权限验证页（重定向 URL / 页面标记 / 标题）', () => {
+    expect(
+      isVufindChallengePage(
+        'https://vufind.library.sh.cn/verification?callback=https%3A%2F%2Fvufind%2Elibrary%2Esh%2Ecn%2FSearch',
+        CHALLENGE_HTML
+      )
+    ).toBe(true);
+    expect(isVufindChallengePage('https://vufind.library.sh.cn/Search/Results', CHALLENGE_HTML)).toBe(true);
+  });
+
+  it('正常检索结果页不误判', () => {
+    expect(
+      isVufindChallengePage('https://vufind.library.sh.cn/Search/Results?lookfor=9787544799317', SEARCH_HTML)
+    ).toBe(false);
   });
 });
 

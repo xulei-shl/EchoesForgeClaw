@@ -74,6 +74,19 @@ export interface VuFindRecord {
 
 const EMPTY_BIBLIO: VuFindBiblio = { title: '', author: '', contributor: '', publisher: '', pubYear: '' };
 
+/**
+ * 识别 VuFind 站点 WAF 的「权限验证」人机验证页（被拦截时 302 到 /verification，标题「权限验证」）。
+ * 实测：本机 Lightpanda（可信出口 IP）直连正常；云端 Lightpanda（境外数据中心出口 IP，
+ * `proxy=datacenter&country=cn` 与 `browser=chrome` 均无效）会被拦截，检索页 HTML 拿不到索书号。
+ */
+export function isVufindChallengePage(url: string, html: string): boolean {
+  return (
+    url.includes('/verification') ||
+    html.includes('/verification/js/tac.min.js') ||
+    /<title>\s*权限验证\s*<\/title>/.test(html)
+  );
+}
+
 /** 从 vufind 检索结果 HTML 中提取索书号（中文页「索书号: K835.465.6/2212-11」或英文页「Call Number: ...」） */
 function extractCallNumber(html: string): string {
   const match = html.match(/(?:索书号|Call Number)\s*[:：]\s*([^<\n]+)/);
@@ -198,6 +211,10 @@ async function fetchViaLightpanda(searchUrl: string, settings: Record<string, st
     // 第一步：检索页 → 索书号 + 详情页链接
     await page.goto(withZhLang(searchUrl), { waitUntil: 'networkidle', timeout: PAGE_TIMEOUT_MS });
     const searchHtml = await page.content();
+    if (isVufindChallengePage(page.url(), searchHtml)) {
+      // 出口 IP 被站点 WAF 拦截（云端 Lightpanda 的境外数据中心 IP 必然触发）：交给 HTTP 兜底路径重试
+      throw new Error(`VuFind 站点返回人机验证页（出口 IP 被拦截）: ${page.url()}`);
+    }
     const callNumber = extractCallNumber(searchHtml);
     const bibliographic = extractBibliographic(searchHtml);
 
@@ -373,5 +390,11 @@ async function fetchViaHttp(url: string, proxy: string): Promise<string> {
 /** HTTP 兜底：只能拿检索页静态 HTML 的索书号（馆藏为 AJAX 加载时拿不到，属已知限制） */
 async function fetchCallNumberViaHttp(url: string, proxy: string): Promise<string> {
   const html = await fetchViaHttp(url, proxy);
+  if (isVufindChallengePage(url, html)) {
+    // 服务端出口 IP 也被拦截：如实报出真实原因，避免误报成「藏书不存在」
+    throw new VuFindError(
+      'VuFind 站点要求人机验证（权限验证页），当前出口 IP 被拦截，未能获取索书号；云端 Lightpanda 与境外服务器 IP 无法访问该站点，请改用本机 Lightpanda（lightpanda.mode=local）'
+    );
+  }
   return extractCallNumber(html);
 }
