@@ -235,15 +235,14 @@ export const BifrostPromptsPage: React.FC = () => {
       {loading && prompts.length === 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 animate-pulse" aria-busy="true" aria-label="正在加载提示词">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="p-4 rounded-2xl border border-dashed border-paper-grid bg-node-bg space-y-3">
-              <div className="flex justify-between items-start">
-                <div className="h-5 w-32 bg-paper-grid/50 rounded" />
-                <div className="h-4 w-16 bg-paper-grid/35 rounded" />
+            <div key={i} className="p-2.5 rounded-2xl border border-dashed border-paper-grid bg-node-bg space-y-2.5">
+              <div className="aspect-[4/3] w-full rounded-md bg-paper-grid/30" />
+              <div className="flex justify-between items-center px-1">
+                <div className="h-4 w-32 bg-paper-grid/50 rounded" />
+                <div className="h-3.5 w-16 bg-paper-grid/35 rounded" />
               </div>
-              <div className="h-4 w-full bg-paper-grid/30 rounded" />
-              <div className="h-4 w-4/5 bg-paper-grid/25 rounded" />
-              <div className="flex justify-between items-center pt-2">
-                <div className="h-5 w-16 bg-paper-grid/40 rounded" />
+              <div className="flex justify-between items-center px-1 pt-1">
+                <div className="h-4 w-20 bg-paper-grid/40 rounded" />
                 <div className="h-3 w-16 bg-paper-grid/20 rounded" />
               </div>
             </div>
@@ -298,7 +297,7 @@ export const BifrostPromptsPage: React.FC = () => {
                   }
                   onMouseLeave={() => setHoverPreview(null)}
                 >
-                  <div className={`h-32 relative rounded-md overflow-hidden bg-paper flex items-center justify-center ${p.preview_image ? 'after:absolute after:inset-0 after:rounded-md after:ring-1 after:ring-inset after:ring-black/5 dark:after:ring-white/5' : 'border border-dashed border-paper-grid'}`}>
+                  <div className={`aspect-[4/3] w-full relative rounded-md overflow-hidden bg-paper flex items-center justify-center ${p.preview_image ? 'after:absolute after:inset-0 after:rounded-md after:ring-1 after:ring-inset after:ring-black/5 dark:after:ring-white/5' : 'border border-dashed border-paper-grid'}`}>
                     {p.preview_image ? (
                       <img
                         src={p.preview_image}
@@ -312,7 +311,7 @@ export const BifrostPromptsPage: React.FC = () => {
                   </div>
                   <div className="px-1 pt-2 pb-1 antialiased flex-1 flex flex-col">
                     <div className="flex items-start justify-between gap-2">
-                      <p className="font-serif text-sm font-semibold text-ink truncate flex-1" title={p.name}>
+                      <p className="font-serif text-sm font-semibold text-ink truncate flex-1" title={p.content ? `${p.name}\n\n${p.content}` : p.name}>
                         {p.name}
                       </p>
                       {Boolean(p.user_rating && p.user_rating > 0) && (
@@ -325,9 +324,6 @@ export const BifrostPromptsPage: React.FC = () => {
                         </div>
                       )}
                     </div>
-                    <p className="mt-0.5 text-xs text-ink-light font-sans line-clamp-2">
-                      {p.content || '（空内容）'}
-                    </p>
                     {p.user_tags && p.user_tags.length > 0 && (
                       <div className="flex items-center gap-1 mt-1.5 flex-wrap" onClick={(e) => e.stopPropagation()}>
                         {p.user_tags.slice(0, 3).map((tag) => (

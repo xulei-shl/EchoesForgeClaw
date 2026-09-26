@@ -271,9 +271,9 @@ export const BifrostPromptsPage: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4.5">
               {Array.from({ length: 8 }).map((_, i) => (
                 <div key={i} className="p-3 rounded-[20px] border border-dashed border-paper-grid bg-node-bg space-y-3 animate-pulse">
-                  <div className="h-32 rounded-[10px] bg-paper-grid/30" />
+                  <div className="aspect-[4/3] w-full rounded-[10px] bg-paper-grid/30" />
                   <div className="h-4 w-3/5 bg-paper-grid/50 rounded" />
-                  <div className="h-3 w-4/5 bg-paper-grid/25 rounded" />
+                  <div className="h-3 w-2/5 bg-paper-grid/25 rounded" />
                 </div>
               ))}
             </div>
@@ -322,8 +322,8 @@ export const BifrostPromptsPage: React.FC = () => {
                     className="p-3 rounded-[20px] cursor-pointer transition-[border-color,box-shadow,transform] duration-200 ease-out hover:border-accent/40 hover:shadow-md hover:-translate-y-0.5 flex flex-col group relative"
                     onClick={() => setDetail(p)}
                   >
-                    {/* 封面缩略图 */}
-                    <div className="h-36 relative rounded-[10px] overflow-hidden bg-paper border border-paper-grid flex items-center justify-center shrink-0">
+                    {/* 封面缩略图（4:3 比例） */}
+                    <div className="aspect-[4/3] w-full relative rounded-[10px] overflow-hidden bg-paper border border-paper-grid flex items-center justify-center shrink-0">
                       {p.preview_image ? (
                         <img
                           src={p.preview_image}
@@ -338,10 +338,10 @@ export const BifrostPromptsPage: React.FC = () => {
 
                     {/* 卡片主体 */}
                     <div className="pt-2.5 flex-1 flex flex-col min-w-0">
-                      {/* 第 1 行：主标题纯享行（名称单行截断，不换行） */}
+                      {/* 第 1 行：主标题纯享行（名称单行截断，悬停显示正文摘要） */}
                       <p
                         className="font-serif text-sm font-semibold text-ink truncate group-hover:text-accent transition-colors"
-                        title={p.name}
+                        title={p.content ? `${p.name}\n\n${p.content}` : p.name}
                       >
                         {p.name}
                       </p>
@@ -366,12 +366,7 @@ export const BifrostPromptsPage: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* 第 3 区：正文预览（固定两行基准槽位高度，保持严格等高对齐） */}
-                      <p className="mt-2 text-xs text-ink-light font-sans line-clamp-2 leading-relaxed h-9 overflow-hidden">
-                        {p.content || '（暂无正文内容）'}
-                      </p>
-
-                      {/* 第 4 区：微标签与私有备注轻量微聚合行 */}
+                      {/* 第 3 区：微标签与私有备注轻量微聚合行 */}
                       <div className="mt-2 flex items-center justify-between gap-1.5 min-h-[1.5rem]" onClick={(e) => e.stopPropagation()}>
                         {/* 微标签 */}
                         <div className="flex items-center gap-1 min-w-0 flex-wrap">
