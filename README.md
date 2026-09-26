@@ -93,6 +93,8 @@ npm run dev
 
 前端通过 Vite 代理将 `/api` 与 `/static` 请求转发到 `http://localhost:8000`（后端地址）。
 
+> bifrost win11 本地启动命令：npx -y @maximhq/bifrost
+
 ---
 
 ## 环境变量（后端）
