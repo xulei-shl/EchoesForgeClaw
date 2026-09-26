@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Sparkles,
   MessageSquareHeart,
@@ -8,6 +9,8 @@ import {
   Search,
   RotateCcw,
   Bot,
+  Settings,
+  LayoutDashboard,
 } from 'lucide-react';
 import { Mascot, type MascotRefHandle } from './Mascot';
 import { FeedbackModal } from './FeedbackModal';
@@ -57,6 +60,22 @@ function getDefaultPosition(size: number): WidgetPosition {
 
 export const MascotWidget: React.FC = () => {
   const mascotRef = useRef<MascotRefHandle>(null);
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // 当前是否处于后台管理路由
+  const isAdminPage = location.pathname.startsWith('/admin');
+
+  // 点击“设置/画板”的上下文切换逻辑
+  const handleContextNavigation = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isAdminPage) {
+      navigate('/bookplate');
+    } else {
+      navigate('/admin/settings');
+    }
+  };
+
   const [characterId, setCharacterId] = useState<string>(() => {
     try {
       const saved = localStorage.getItem(MASCOT_CHARACTER_STORAGE_KEY);
@@ -264,7 +283,7 @@ export const MascotWidget: React.FC = () => {
   const toolbarShift = useMemo(() => {
     if (typeof window === 'undefined') return 0;
     const centerX = position.x + WIDGET_SIZE / 2;
-    const estimatedHalfWidth = 125; // 预估胶囊工具栏半宽（全宽约 250px）
+    const estimatedHalfWidth = 115; // 预估胶囊工具栏半宽（主次紧凑排版，全宽约 230px）
     const minX = 14; // 屏幕左边缘安全边距
     const maxX = window.innerWidth - 14; // 屏幕右边缘安全边距
     if (centerX - estimatedHalfWidth < minX) {
@@ -290,7 +309,7 @@ export const MascotWidget: React.FC = () => {
         onPointerDown={handlePointerDown}
       >
         <div className="relative group flex flex-col items-center">
-          {/* 1. 顶部悬浮胶囊工具栏：重构排版，防边缘裁切，充裕呼吸感与物理出场动效 */}
+          {/* 1. 顶部悬浮胶囊工具栏：方案1主次分明紧凑排版（依据 better-layout: Group with space），防边缘裁切 */}
           <div
             style={{
               transformOrigin: 'bottom center',
@@ -302,27 +321,28 @@ export const MascotWidget: React.FC = () => {
                 : 'opacity-0 translate-y-1 scale-95 group-hover:opacity-100 group-hover:translate-y-0 group-hover:scale-100'
             }`}
           >
-            {/* 反馈入口按钮 */}
+            {/* 核心操作组 1：设置 / 画板 上下文跳转入口 */}
             <button
               type="button"
+              title={isAdminPage ? '前往画板创作台' : '前往系统设置'}
+              aria-label={isAdminPage ? '前往画板创作台' : '前往系统设置'}
               onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsFeedbackOpen(true);
-              }}
+              onClick={handleContextNavigation}
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-sans font-medium text-ink-light hover:text-accent hover:bg-accent/10 active:scale-[0.96] transition-[background-color,color,transform] duration-150 cursor-pointer"
             >
-              <MessageSquareHeart size={13} strokeWidth={1.75} className="text-accent shrink-0" />
-              <span>反馈</span>
+              {isAdminPage ? (
+                <LayoutDashboard size={13} strokeWidth={1.75} className="text-emerald-500 shrink-0" />
+              ) : (
+                <Settings size={13} strokeWidth={1.75} className="text-slate-500 shrink-0" />
+              )}
+              <span>{isAdminPage ? '画板' : '设置'}</span>
             </button>
 
-            {/* 极简轻柔间距点 */}
-            <span className="w-0.5 h-3 bg-paper-grid/60 rounded-full shrink-0 select-none" />
-
-            {/* Agent 智能助手入口 */}
+            {/* 核心操作组 2：Agent 智能助手入口 */}
             <button
               type="button"
               title="Canvas Agent - 智能画布助手"
+              aria-label="Canvas Agent - 智能画布助手"
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
@@ -334,13 +354,11 @@ export const MascotWidget: React.FC = () => {
               <span>Agent</span>
             </button>
 
-            {/* 极简轻柔间距点 */}
-            <span className="w-0.5 h-3 bg-paper-grid/60 rounded-full shrink-0 select-none" />
-
-            {/* 换装形象选择入口 */}
+            {/* 核心操作组 3：换装形象选择入口 */}
             <button
               type="button"
               title="切换吉祥物形象"
+              aria-label="切换吉祥物形象"
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
@@ -352,13 +370,29 @@ export const MascotWidget: React.FC = () => {
               <span>换装</span>
             </button>
 
-            {/* 极简轻柔间距点 */}
-            <span className="w-0.5 h-3 bg-paper-grid/60 rounded-full shrink-0 select-none" />
+            {/* 依据 better-layout 原则（Group with space）：留出微小呼吸间隔，区隔核心操作区与辅助工具区 */}
+            <span className="w-1 shrink-0 select-none" />
 
-            {/* 复位到默认左下角 */}
+            {/* 辅助工具组 1：反馈入口（紧凑图标化） */}
+            <button
+              type="button"
+              title="意见反馈"
+              aria-label="意见反馈"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsFeedbackOpen(true);
+              }}
+              className="p-1 rounded-full text-ink-light hover:text-accent hover:bg-accent/10 active:scale-[0.96] transition-[background-color,color,transform] duration-150 cursor-pointer"
+            >
+              <MessageSquareHeart size={13} strokeWidth={1.75} className="text-accent shrink-0" />
+            </button>
+
+            {/* 辅助工具组 2：复位到默认停靠区（紧凑图标化） */}
             <button
               type="button"
               title="重置到左下角"
+              aria-label="重置吉祥物位置"
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
