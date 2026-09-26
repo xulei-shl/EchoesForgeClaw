@@ -10,7 +10,7 @@ import { Input } from '../../shared/components/ui/Input';
 import { Select } from '../../shared/components/ui/Select';
 import { RatingStars } from '../../shared/components/ui/RatingStars';
 import { MarkdownViewer } from '../../shared/components/ui/MarkdownViewer';
-import { PageHeader, FieldLabel } from '../components/AdminBits';
+import { PageHeader } from '../components/AdminBits';
 import { useFeedback } from '../../shared/components/ui/FeedbackProvider';
 import { SkillFileTree } from '../../shared/components/ui/SkillFileTree';
 import { useBifrostSkills } from '../../library/bifrost/useBifrostSkills';
@@ -43,12 +43,14 @@ export const BifrostSkillsPage: React.FC = () => {
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [syncingAll, setSyncingAll] = useState(false);
   const [detail, setDetail] = useState<CachedBifrostSkill | null>(null);
+  const [detailTab, setDetailTab] = useState<'doc' | 'files'>('doc');
   const { dialog, showToast } = useFeedback();
 
   /** 打开详情：先用列表信息即时渲染，再按需拉取完整详情（body/files）补齐 */
   const openDetail = useCallback(
     async (s: CachedBifrostSkill) => {
       setDetail(s);
+      setDetailTab('doc');
       try {
         const full = await adminService.getBifrostSkillDetail(s.name);
         setDetail((prev) => (prev && prev.name === s.name ? { ...prev, ...full } : prev));
@@ -412,7 +414,7 @@ export const BifrostSkillsPage: React.FC = () => {
         open={!!detail}
         onClose={() => setDetail(null)}
         title={detail ? detail.name : ''}
-        panelClassName="max-w-2xl"
+        panelClassName="max-w-2xl h-[800px] max-h-[88vh] flex flex-col"
         footer={
           <Button size="sm" onClick={() => setDetail(null)}>
             关闭
@@ -481,23 +483,48 @@ export const BifrostSkillsPage: React.FC = () => {
               </div>
             )}
 
-            <div className="space-y-1.5">
-              <FieldLabel>
-                <FileText size={14} className="inline mr-1" />
-                SKILL.md 内容
-              </FieldLabel>
-              <MarkdownViewer content={detail.body} emptyText="（无内容）" copyable className="max-h-56" />
-            </div>
-
-            {Array.isArray(detail.files) && detail.files.length > 0 && (
-              <div className="space-y-1.5">
-                <FieldLabel>
-                  <FolderTree size={14} className="inline mr-1" />
-                  文件结构（<span className="tabular-nums">{detail.files.length}</span> 个）
-                </FieldLabel>
-                <SkillFileTree files={detail.files} maxHeightClass="max-h-56" />
+            {/* 详情选项卡：文档预览 vs 文件列表 */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 border-b border-paper-grid">
+                <button
+                  type="button"
+                  onClick={() => setDetailTab('doc')}
+                  className={`pb-2 px-1 text-xs font-medium border-b-2 transition-colors flex items-center gap-1.5 ${
+                    detailTab === 'doc'
+                      ? 'border-accent text-accent'
+                      : 'border-transparent text-ink-light hover:text-ink'
+                  }`}
+                >
+                  <FileText size={14} /> SKILL.md
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDetailTab('files')}
+                  className={`pb-2 px-1 text-xs font-medium border-b-2 transition-colors flex items-center gap-1.5 ${
+                    detailTab === 'files'
+                      ? 'border-accent text-accent'
+                      : 'border-transparent text-ink-light hover:text-ink'
+                  }`}
+                >
+                  <FolderTree size={14} /> 文件列表 ({detail.files?.length ?? detail.file_count ?? 0})
+                </button>
               </div>
-            )}
+
+              {/* SKILL.md 文档区 */}
+              {detailTab === 'doc' && (
+                <MarkdownViewer
+                  content={detail.body}
+                  emptyText="（暂无 SKILL.md 文档）"
+                  copyable
+                  className="max-h-[500px]"
+                />
+              )}
+
+              {/* 文件树列表区 */}
+              {detailTab === 'files' && (
+                <SkillFileTree files={detail.files} maxHeightClass="max-h-[500px]" />
+              )}
+            </div>
           </div>
         )}
       </Dialog>
