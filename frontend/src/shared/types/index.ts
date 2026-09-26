@@ -667,6 +667,8 @@ export interface CachedBifrostSkill {
   license?: string;
   compatibility?: string;
   remote_updated_at?: string | null;
+  /** 本地示例图访问路径（未上传时为 null） */
+  preview_image?: string | null;
   /** 用户私有备注 / 全局兼容备注 */
   note?: string;
   user_rating?: number;
@@ -688,6 +690,8 @@ export interface BifrostSkill {
   files?: { path: string }[];
   created_at?: string;
   updated_at?: string;
+  /** 本地示例图访问路径（未上传时为 null） */
+  preview_image?: string | null;
   /** 用户私有备注 / 全局兼容备注 */
   note?: string;
   user_rating?: number;

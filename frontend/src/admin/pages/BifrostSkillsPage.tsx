@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { Boxes, FolderSync, Loader2, RefreshCw, Search, StickyNote, Trash2, FileText, FolderTree } from 'lucide-react';
+import { Boxes, FolderSync, Loader2, RefreshCw, Search, StickyNote, Trash2, FileText, FolderTree, Image as ImageIcon } from 'lucide-react';
 import { adminService } from '../../shared/services/admin';
 import type { CachedBifrostSkill } from '../../shared/types';
 import { Button } from '../../shared/components/ui/Button';
@@ -13,6 +13,7 @@ import { MarkdownViewer } from '../../shared/components/ui/MarkdownViewer';
 import { PageHeader } from '../components/AdminBits';
 import { useFeedback } from '../../shared/components/ui/FeedbackProvider';
 import { SkillFileTree } from '../../shared/components/ui/SkillFileTree';
+import { SkillPreviewPanel } from '../../shared/components/ui/SkillPreviewPanel';
 import { useBifrostSkills } from '../../library/bifrost/useBifrostSkills';
 
 export const BifrostSkillsPage: React.FC = () => {
@@ -43,14 +44,15 @@ export const BifrostSkillsPage: React.FC = () => {
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [syncingAll, setSyncingAll] = useState(false);
   const [detail, setDetail] = useState<CachedBifrostSkill | null>(null);
-  const [detailTab, setDetailTab] = useState<'doc' | 'files'>('doc');
+  const [detailTab, setDetailTab] = useState<'preview' | 'doc' | 'files'>('preview');
+  const [uploadingPreview, setUploadingPreview] = useState(false);
   const { dialog, showToast } = useFeedback();
 
   /** 打开详情：先用列表信息即时渲染，再按需拉取完整详情（body/files）补齐 */
   const openDetail = useCallback(
     async (s: CachedBifrostSkill) => {
       setDetail(s);
-      setDetailTab('doc');
+      setDetailTab('preview');
       try {
         const full = await adminService.getBifrostSkillDetail(s.name);
         setDetail((prev) => (prev && prev.name === s.name ? { ...prev, ...full } : prev));
@@ -60,6 +62,42 @@ export const BifrostSkillsPage: React.FC = () => {
     },
     [showToast]
   );
+
+  /** 上传/更换示例图 */
+  const handleUploadPreview = async (file: File) => {
+    if (!detail) return;
+    setUploadingPreview(true);
+    try {
+      const res = await adminService.uploadBifrostSkillPreview(detail.name, file);
+      showToast('示例图已更新', { type: 'success' });
+      setDetail((prev) => (prev && prev.name === detail.name ? { ...prev, preview_image: res.preview_image } : prev));
+      await load(true);
+    } catch (e: any) {
+      showToast(e?.message || '上传失败，请重试', { type: 'error' });
+    } finally {
+      setUploadingPreview(false);
+    }
+  };
+
+  /** 删除示例图 */
+  const handleDeletePreview = async () => {
+    if (!detail) return;
+    const ok = await dialog.confirm({
+      title: '删除示例图',
+      message: `确定删除「${detail.name}」的示例图吗？`,
+      confirmText: '删除',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await adminService.deleteBifrostSkillPreview(detail.name);
+      showToast('示例图已删除', { type: 'success' });
+      setDetail((prev) => (prev && prev.name === detail.name ? { ...prev, preview_image: null } : prev));
+      await load(true);
+    } catch (e: any) {
+      showToast(e?.message || '删除失败，请重试', { type: 'error' });
+    }
+  };
 
   const markBusy = useCallback((name: string, on: boolean) => {
     setBusy((prev) => {
@@ -483,9 +521,20 @@ export const BifrostSkillsPage: React.FC = () => {
               </div>
             )}
 
-            {/* 详情选项卡：文档预览 vs 文件列表 */}
+            {/* 详情选项卡：示例图 vs 文档预览 vs 文件列表 */}
             <div className="space-y-2">
               <div className="flex items-center gap-2 border-b border-paper-grid">
+                <button
+                  type="button"
+                  onClick={() => setDetailTab('preview')}
+                  className={`pb-2 px-1 text-xs font-medium border-b-2 transition-colors flex items-center gap-1.5 ${
+                    detailTab === 'preview'
+                      ? 'border-accent text-accent'
+                      : 'border-transparent text-ink-light hover:text-ink'
+                  }`}
+                >
+                  <ImageIcon size={14} /> 示例图
+                </button>
                 <button
                   type="button"
                   onClick={() => setDetailTab('doc')}
@@ -509,6 +558,18 @@ export const BifrostSkillsPage: React.FC = () => {
                   <FolderTree size={14} /> 文件列表 ({detail.files?.length ?? detail.file_count ?? 0})
                 </button>
               </div>
+
+              {/* 示例图展示与管理区 */}
+              {detailTab === 'preview' && (
+                <SkillPreviewPanel
+                  skillName={detail.name}
+                  previewImage={detail.preview_image}
+                  readOnly={false}
+                  onUpload={handleUploadPreview}
+                  onDelete={handleDeletePreview}
+                  isUploading={uploadingPreview}
+                />
+              )}
 
               {/* SKILL.md 文档区 */}
               {detailTab === 'doc' && (

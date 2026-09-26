@@ -184,6 +184,19 @@ export const adminService = {
   /** 从共享区删除 skill 包（并清理指向它的用户登记软链） */
   deleteBifrostSkill: (name: string): Promise<{ message: string; cleaned_registries: number }> =>
     api.delete(`/admin/bifrost-skills/${encodeURIComponent(name)}`),
+  /** 上传 / 更换 Skill 示例图（multipart，axios 自动设置 boundary） */
+  uploadBifrostSkillPreview: (name: string, file: File): Promise<{ preview_image: string }> => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api.post<{ preview_image: string }, { preview_image: string }>(
+      `/admin/bifrost-skills/${encodeURIComponent(name)}/preview`,
+      fd,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    );
+  },
+  /** 删除 Skill 示例图 */
+  deleteBifrostSkillPreview: (name: string): Promise<{ preview_image: null }> =>
+    api.delete(`/admin/bifrost-skills/${encodeURIComponent(name)}/preview`),
   /* ---------------- 用户通用标注（打标与备注） ---------------- */
 
   setUserAnnotation: (payload: UserAnnotationPayload): Promise<UserAnnotation> =>

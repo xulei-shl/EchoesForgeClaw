@@ -225,6 +225,12 @@ const INITIAL_DDL: string[] = [
     created_at DATETIME,
     updated_at DATETIME
   )`,
+  `CREATE TABLE IF NOT EXISTS skill_metadata (
+    skill_name VARCHAR(128) PRIMARY KEY,
+    preview_image VARCHAR(512) NOT NULL DEFAULT '',
+    created_at DATETIME,
+    updated_at DATETIME
+  )`,
   `CREATE TABLE IF NOT EXISTS user_annotations (
     id INTEGER PRIMARY KEY,
     user_id INTEGER NOT NULL,

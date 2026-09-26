@@ -13,7 +13,7 @@ import { registerAuthRouter } from './api/auth.js';
 import { registerBookplateRouter } from './api/canvas/router.js';
 import { userGeneratedDir, userMapPosterDir, userSearchImageDir, userMapArtDir } from './services/multimodal/image-service.js';
 import { COVERS_DIR } from './api/canvas/covers.js';
-import { PREVIEW_DIR, migrateLegacyPreviewFiles } from './services/ai/bifrost-service.js';
+import { PREVIEW_DIR, SKILL_PREVIEW_DIR, migrateLegacyPreviewFiles } from './services/ai/bifrost-service.js';
 import { scheduleRuntimeGc } from './services/platform/runtime-gc.js';
 import { registerUsersRouter } from './api/users.js';
 import { registerGenerationsRouter } from './api/library/generations.js';
@@ -114,6 +114,15 @@ export async function buildApp() {
     const { file } = request.params as { file: string };
     if (!file || file.includes('..')) return reply.code(404).send();
     if (sendPublicImage(reply, safeJoin(PREVIEW_DIR, file), false)) return reply;
+    return reply.code(404).send();
+  });
+
+  // Bifrost Skill 示例图：/static/skill-previews/{file} → runtime/skill-previews/{file}
+  // 文件名固定为 {safe_skill_name}{ext}，协商缓存
+  app.get('/static/skill-previews/:file', async (request, reply) => {
+    const { file } = request.params as { file: string };
+    if (!file || file.includes('..')) return reply.code(404).send();
+    if (sendPublicImage(reply, safeJoin(SKILL_PREVIEW_DIR, file), false)) return reply;
     return reply.code(404).send();
   });
 

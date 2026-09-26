@@ -798,5 +798,96 @@ describe('install：本地共享缓存优先（registerExistingBifrostSkill）',
     const entries = zip.getEntries().map((e) => e.entryName);
     expect(entries).toContain('SKILL.md');
   });
+
+  it('admin bifrost-skills 示例图管理：上传、详情富化、静态路由读取、删除', async () => {
+    const skillName = 'preview-test-skill';
+    const zipBytes = makeSkillZip(skillName);
+    updateSharedBifrostSkill(zipBytes, '1.0.0');
+
+    // 1. 初始详情：无示例图
+    const initialDetail = await app.inject({
+      method: 'GET',
+      url: `/api/admin/bifrost-skills/${skillName}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(initialDetail.statusCode).toBe(200);
+    expect((initialDetail.json() as { preview_image: unknown }).preview_image).toBeNull();
+
+    // 2. 上传合法 PNG 示例图
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+      'base64'
+    );
+    const boundary = '----skillpreviewtest';
+    const body =
+      `--${boundary}\r\n` +
+      `Content-Disposition: form-data; name="file"; filename="preview.png"\r\n` +
+      `Content-Type: image/png\r\n\r\n` +
+      png.toString('binary') +
+      `\r\n--${boundary}--\r\n`;
+
+    const uploadRes = await app.inject({
+      method: 'POST',
+      url: `/api/admin/bifrost-skills/${skillName}/preview`,
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': `multipart/form-data; boundary=${boundary}`,
+      },
+      payload: Buffer.from(body, 'binary'),
+    });
+    expect(uploadRes.statusCode).toBe(200);
+    const uploadJson = uploadRes.json() as { preview_image: string };
+    expect(uploadJson.preview_image).toBe(`/static/skill-previews/${skillName}.png`);
+
+    // 3. 详情与列表富化：均应带出 preview_image
+    const detailAfter = await app.inject({
+      method: 'GET',
+      url: `/api/admin/bifrost-skills/${skillName}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(detailAfter.statusCode).toBe(200);
+    expect((detailAfter.json() as { preview_image: string }).preview_image).toBe(uploadJson.preview_image);
+
+    const listResp = await app.inject({
+      method: 'GET',
+      url: '/api/admin/bifrost-skills',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const foundInList = (listResp.json() as { skills: Array<{ name: string; preview_image?: string }> }).skills.find(
+      (s) => s.name === skillName
+    );
+    expect(foundInList?.preview_image).toBe(uploadJson.preview_image);
+
+    // 4. 静态路由访问
+    const staticRes = await app.inject({
+      method: 'GET',
+      url: uploadJson.preview_image,
+    });
+    expect(staticRes.statusCode).toBe(200);
+    expect(staticRes.rawPayload.length).toBeGreaterThan(0);
+
+    // 5. 删除示例图
+    const delRes = await app.inject({
+      method: 'DELETE',
+      url: `/api/admin/bifrost-skills/${skillName}/preview`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(delRes.statusCode).toBe(200);
+    expect((delRes.json() as { preview_image: unknown }).preview_image).toBeNull();
+
+    // 6. 再次查询详情与静态路由
+    const detailFinal = await app.inject({
+      method: 'GET',
+      url: `/api/admin/bifrost-skills/${skillName}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect((detailFinal.json() as { preview_image: unknown }).preview_image).toBeNull();
+
+    const staticAfterDel = await app.inject({
+      method: 'GET',
+      url: uploadJson.preview_image,
+    });
+    expect(staticAfterDel.statusCode).toBe(404);
+  });
 });
 

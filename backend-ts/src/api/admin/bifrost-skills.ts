@@ -1,9 +1,18 @@
+import { existsSync, mkdirSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
+import { eq } from 'drizzle-orm';
 import { getDb } from '../../config/database.js';
+import { now } from '../../shared/datetime.js';
+import { skillMetadata } from '../../db/schema.js';
 import {
   BifrostError,
   BifrostNotConfiguredError,
   BifrostNotFoundError,
+  PREVIEW_MAX_BYTES,
+  SKILL_PREVIEW_DIR,
+  SKILL_PREVIEW_PREFIX,
+  detectImageExt,
   downloadBifrostSkillZip,
   getBifrostSkillDetail,
   getMergedBifrostSkills,
@@ -137,12 +146,84 @@ export async function registerBifrostSkillsAdminRouter(app: FastifyInstance): Pr
     }
   });
 
-  // 从共享区删除 skill 包（并清理指向它的用户登记软链）
+  // 从共享区删除 skill 包（并清理指向它的用户登记软链及示例图）
   app.delete('/api/admin/bifrost-skills/:name', admin, async (request, reply) => {
     try {
       const skillName = checkSkillName((request.params as { name: string }).name);
       const cleaned = removeSharedBifrostSkill(skillName);
+      // 清理关联示例图文件与元数据
+      const db = getDb();
+      const row = db.select().from(skillMetadata).where(eq(skillMetadata.skillName, skillName)).get();
+      if (row) {
+        if (row.previewImage?.startsWith(SKILL_PREVIEW_PREFIX)) {
+          const filename = row.previewImage.split('/').pop();
+          if (filename && existsSync(path.join(SKILL_PREVIEW_DIR, filename))) {
+            unlinkSync(path.join(SKILL_PREVIEW_DIR, filename));
+          }
+        }
+        db.delete(skillMetadata).where(eq(skillMetadata.skillName, skillName)).run();
+      }
       return { message: `已删除 skill：${skillName}`, cleaned_registries: cleaned };
+    } catch (err) {
+      if (err instanceof SkillValidationError) return reply.code(400).send({ detail: err.message });
+      return reply.code(502).send({ detail: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // 上传 / 更换示例图（multipart，字段名 file；魔数校验确为图片）
+  app.post('/api/admin/bifrost-skills/:name/preview', admin, async (request, reply) => {
+    try {
+      const skillName = checkSkillName((request.params as { name: string }).name);
+      const data = await request.file();
+      if (!data) return reply.code(400).send({ detail: '缺少上传文件（字段名 file）' });
+      const bytes = new Uint8Array(await data.toBuffer());
+      const ext = detectImageExt(bytes);
+      if (!ext) return reply.code(400).send({ detail: '仅支持 JPG / PNG / GIF / WebP 图片' });
+      if (bytes.length > PREVIEW_MAX_BYTES) {
+        return reply.code(400).send({ detail: '图片大小不能超过 5MB' });
+      }
+      const safe = skillName.replace(/[^a-zA-Z0-9_-]/g, '_');
+      mkdirSync(SKILL_PREVIEW_DIR, { recursive: true });
+      // 覆盖同 skill 的旧图（扩展名可能变化，按基名清掉所有历史扩展）
+      for (const old of readdirSync(SKILL_PREVIEW_DIR)) {
+        const base = old.split('.')[0];
+        if (base === safe) unlinkSync(path.join(SKILL_PREVIEW_DIR, old));
+      }
+      const filename = `${safe}${ext}`;
+      writeFileSync(path.join(SKILL_PREVIEW_DIR, filename), bytes);
+      const previewImage = `${SKILL_PREVIEW_PREFIX}/${filename}`;
+
+      const db = getDb();
+      const row = db.select().from(skillMetadata).where(eq(skillMetadata.skillName, skillName)).get();
+      if (row) {
+        db.update(skillMetadata).set({ previewImage, updatedAt: now() }).where(eq(skillMetadata.skillName, skillName)).run();
+      } else {
+        db.insert(skillMetadata).values({ skillName, previewImage, createdAt: now(), updatedAt: now() }).run();
+      }
+      return { preview_image: previewImage };
+    } catch (err) {
+      if (err instanceof SkillValidationError) return reply.code(400).send({ detail: err.message });
+      const e = bifrostErrorHttp(err);
+      return reply.code(e.code).send(e.body);
+    }
+  });
+
+  // 删除示例图
+  app.delete('/api/admin/bifrost-skills/:name/preview', admin, async (request, reply) => {
+    try {
+      const skillName = checkSkillName((request.params as { name: string }).name);
+      const db = getDb();
+      const row = db.select().from(skillMetadata).where(eq(skillMetadata.skillName, skillName)).get();
+      if (row) {
+        if (row.previewImage?.startsWith(SKILL_PREVIEW_PREFIX)) {
+          const filename = row.previewImage.split('/').pop();
+          if (filename && existsSync(path.join(SKILL_PREVIEW_DIR, filename))) {
+            unlinkSync(path.join(SKILL_PREVIEW_DIR, filename));
+          }
+        }
+        db.delete(skillMetadata).where(eq(skillMetadata.skillName, skillName)).run();
+      }
+      return { preview_image: null };
     } catch (err) {
       if (err instanceof SkillValidationError) return reply.code(400).send({ detail: err.message });
       return reply.code(502).send({ detail: err instanceof Error ? err.message : String(err) });

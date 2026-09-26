@@ -2,7 +2,7 @@ import path from 'node:path';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, rmdirSync, statSync, unlinkSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { DB } from '../../config/database.js';
-import { appSettings, promptMetadata } from '../../db/schema.js';
+import { appSettings, promptMetadata, skillMetadata } from '../../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { RUNTIME_ROOT, listSharedBifrostSkills } from './skill-agent-service.js';
 import {
@@ -37,6 +37,8 @@ const LEGACY_PREVIEW_DIR = path.resolve(
 );
 export const PREVIEW_DIR = path.join(RUNTIME_ROOT, 'prompt-previews');
 export const PREVIEW_PREFIX = '/static/prompt-previews';
+export const SKILL_PREVIEW_DIR = path.join(RUNTIME_ROOT, 'skill-previews');
+export const SKILL_PREVIEW_PREFIX = '/static/skill-previews';
 export const PREVIEW_MAX_BYTES = 5 * 1024 * 1024;
 
 const IMAGE_MAGIC_PREFIXES: Array<[Uint8Array, string]> = [
@@ -246,6 +248,28 @@ function previewMap(db: DB, promptIds: string[]): Map<string, string> {
     }
   }
   return out;
+}
+
+function skillPreviewMap(db: DB, skillNames: string[]): Map<string, string> {
+  const out = new Map<string, string>();
+  if (!skillNames.length) return out;
+  for (const name of skillNames) {
+    const row = db.select().from(skillMetadata).where(eq(skillMetadata.skillName, name)).get();
+    if (row?.previewImage) {
+      const filename = row.previewImage.split('/').pop();
+      if (filename && existsSync(path.join(SKILL_PREVIEW_DIR, filename))) out.set(name, row.previewImage);
+    }
+  }
+  return out;
+}
+
+export function getSkillPreview(db: DB, skillName: string): string | null {
+  const row = db.select().from(skillMetadata).where(eq(skillMetadata.skillName, skillName)).get();
+  if (row?.previewImage) {
+    const filename = row.previewImage.split('/').pop();
+    if (filename && existsSync(path.join(SKILL_PREVIEW_DIR, filename))) return row.previewImage;
+  }
+  return null;
 }
 
 /**
@@ -543,7 +567,11 @@ export async function getBifrostSkillDetail(db: DB, skillName: string): Promise<
   if (!name) return null;
   const local = listSharedBifrostSkills().find((s) => String(s.name) === name);
   if (local) {
-    const detail: Record<string, any> = { ...local, cached: true };
+    const detail: Record<string, any> = {
+      ...local,
+      cached: true,
+      preview_image: getSkillPreview(db, name),
+    };
     if (typeof detail.file_count !== 'number') {
       detail.file_count = Array.isArray(detail.files) ? (detail.files as unknown[]).length : 0;
     }
@@ -591,6 +619,7 @@ export async function getBifrostSkillDetail(db: DB, skillName: string): Promise<
     ...compact,
     body: compact.skill_md_body ?? '',
     cached: false,
+    preview_image: getSkillPreview(db, name),
     // 详情弹窗按路径字符串渲染，与管理端列表（本地缓存）口径一致
     files: (Array.isArray(raw.files) ? raw.files : []).map((f) => String((f as { path?: unknown })?.path ?? '')),
   };
@@ -719,16 +748,24 @@ export async function getMergedBifrostSkills(
     });
   }
 
-  // 5. 富化当前用户的打标与备注
-  if (userId && merged.length) {
+  // 5. 富化当前用户的打标与备注及示例图
+  if (merged.length) {
     const skillNames = merged.map((s) => String(s.name ?? '')).filter(Boolean);
-    const annotations = getUserAnnotationMap(db, userId, RESOURCE_TYPE_BIFROST_SKILL, skillNames);
-    for (const s of merged) {
-      const ann = annotations.get(String(s.name ?? ''));
-      s.user_rating = ann?.rating ?? 0;
-      s.user_note = ann?.note ?? '';
-      s.user_tags = ann?.tags ?? [];
-      s.note = ann?.note ?? '';
+    const previews = skillPreviewMap(db, skillNames);
+    if (userId) {
+      const annotations = getUserAnnotationMap(db, userId, RESOURCE_TYPE_BIFROST_SKILL, skillNames);
+      for (const s of merged) {
+        const ann = annotations.get(String(s.name ?? ''));
+        s.user_rating = ann?.rating ?? 0;
+        s.user_note = ann?.note ?? '';
+        s.user_tags = ann?.tags ?? [];
+        s.note = ann?.note ?? '';
+        s.preview_image = previews.get(String(s.name ?? '')) ?? null;
+      }
+    } else {
+      for (const s of merged) {
+        s.preview_image = previews.get(String(s.name ?? '')) ?? null;
+      }
     }
   }
 

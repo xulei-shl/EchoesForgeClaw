@@ -149,6 +149,13 @@ export const promptMetadata = sqliteTable("prompt_metadata", {
 	updatedAt: numeric("updated_at"),
 });
 
+export const skillMetadata = sqliteTable("skill_metadata", {
+	skillName: text("skill_name", { length: 128 }).primaryKey().notNull(),
+	previewImage: text("preview_image", { length: 512 }).default("").notNull(),
+	createdAt: numeric("created_at"),
+	updatedAt: numeric("updated_at"),
+});
+
 export const generations = sqliteTable("generations", {
 	id: integer().primaryKey().notNull(),
 	userId: integer("user_id").notNull().references(() => users.id),

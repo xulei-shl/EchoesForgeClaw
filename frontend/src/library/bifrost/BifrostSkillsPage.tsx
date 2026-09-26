@@ -6,6 +6,7 @@ import {
   Download,
   FileText,
   FolderTree,
+  Image as ImageIcon,
   Loader2,
   PlusCircle,
   RefreshCw,
@@ -27,6 +28,7 @@ import { NoteEditModal } from '../../shared/components/ui/NoteEditModal';
 import { MarkdownViewer } from '../../shared/components/ui/MarkdownViewer';
 import { useFeedback } from '../../shared/components/ui/FeedbackProvider';
 import { SkillFileTree } from '../../shared/components/ui/SkillFileTree';
+import { SkillPreviewPanel } from '../../shared/components/ui/SkillPreviewPanel';
 import { ViewToggle, type ViewMode } from '../../shared/components/ui/ViewToggle';
 import { useBifrostSkills } from './useBifrostSkills';
 
@@ -73,14 +75,14 @@ export const BifrostSkillsPage: React.FC = () => {
   const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set());
 
   const [detail, setDetail] = useState<CachedBifrostSkill | null>(null);
-  const [detailTab, setDetailTab] = useState<'doc' | 'files'>('doc');
+  const [detailTab, setDetailTab] = useState<'preview' | 'doc' | 'files'>('preview');
   const [editingNoteTarget, setEditingNoteTarget] = useState<CachedBifrostSkill | null>(null);
 
   /** 打开详情弹窗并补齐完整 SKILL.md 与文件树 */
   const openDetail = useCallback(
     async (s: CachedBifrostSkill) => {
       setDetail(s);
-      setDetailTab('doc');
+      setDetailTab('preview');
       try {
         const full = await bifrostService.getSkillDetail(s.name);
         setDetail((prev) => (prev && prev.name === s.name ? { ...prev, ...full } : prev));
@@ -888,9 +890,20 @@ export const BifrostSkillsPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* 详情选项卡：文档预览 vs 文件列表 */}
+              {/* 详情选项卡：示例图 vs 文档预览 vs 文件列表 */}
               <div className="space-y-2">
                 <div className="flex items-center gap-2 border-b border-paper-grid">
+                  <button
+                    type="button"
+                    onClick={() => setDetailTab('preview')}
+                    className={`pb-2 px-1 text-xs font-medium border-b-2 transition-colors flex items-center gap-1.5 ${
+                      detailTab === 'preview'
+                        ? 'border-accent text-accent'
+                        : 'border-transparent text-ink-light hover:text-ink'
+                    }`}
+                  >
+                    <ImageIcon size={14} /> 示例图
+                  </button>
                   <button
                     type="button"
                     onClick={() => setDetailTab('doc')}
@@ -914,6 +927,15 @@ export const BifrostSkillsPage: React.FC = () => {
                     <FolderTree size={14} /> 文件列表 ({detail.files?.length ?? detail.file_count ?? 0})
                   </button>
                 </div>
+
+                {/* 示例图展示区（只读查看 + 点击全屏放大） */}
+                {detailTab === 'preview' && (
+                  <SkillPreviewPanel
+                    skillName={detail.name}
+                    previewImage={detail.preview_image}
+                    readOnly
+                  />
+                )}
 
                 {/* SKILL.md 文档区（内置双速渐进高亮，毫秒级即刻挂载，无需多余延迟） */}
                 {detailTab === 'doc' && (
