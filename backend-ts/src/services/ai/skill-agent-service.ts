@@ -289,6 +289,7 @@ function extractSkillZip(zipBytes: Uint8Array, dest: string, info: { root: strin
     for (const entry of zip.getEntries()) {
       if (entry.isDirectory || !entry.entryName.startsWith(rootPrefix)) continue;
       const rel = entry.entryName.slice(rootPrefix.length);
+      if (path.basename(rel) === '.env') continue;
       const target = path.resolve(dest, rel);
       // zip-slip 防护：解压目标必须落在 skill 目录内
       if (target !== dest && !target.startsWith(dest + path.sep)) {
