@@ -40,7 +40,7 @@ export function initDb(filePath: string): DB {
 /** 幂等建表：执行初始迁移 DDL（表与索引均带 IF NOT EXISTS），并为存量库补列。 */
 export function applyInitialSchema(db: DB): void {
   const sqlite = (db as unknown as { $client?: Database.Database }).$client;
-  for (const ddl of INITIAL_DDL) sqlite?.exec(ddl);
+  // 先为存量库补列，再执行 DDL（CREATE INDEX 依赖 is_public 等新列）
   ensureColumn(sqlite, 'skill_agent_configs', 'image_llm_config_id', 'INTEGER');
   ensureColumn(sqlite, 'llm_configs', 'api_format', 'VARCHAR');
   ensureColumn(sqlite, 'llm_configs', 'thinking_format', 'VARCHAR');
@@ -48,6 +48,7 @@ export function applyInitialSchema(db: DB): void {
   ensureColumn(sqlite, 'llm_configs', 'max_tokens', 'INTEGER');
   ensureColumn(sqlite, 'user_annotations', 'tags', "TEXT NOT NULL DEFAULT '[]'");
   ensureColumn(sqlite, 'user_annotations', 'is_public', 'BOOLEAN NOT NULL DEFAULT 0');
+  for (const ddl of INITIAL_DDL) sqlite?.exec(ddl);
 }
 
 /** 存量库补列：PRAGMA 检查缺失时 ALTER TABLE ADD COLUMN（SQLite 无 ADD COLUMN IF NOT EXISTS）。 */
@@ -58,6 +59,10 @@ function ensureColumn(
   decl: string
 ): void {
   if (!sqlite) return;
+  const hasTable = sqlite
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?")
+    .get(table);
+  if (!hasTable) return;
   const cols = sqlite.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
   if (!cols.some((c) => c.name === column)) {
     sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`);
