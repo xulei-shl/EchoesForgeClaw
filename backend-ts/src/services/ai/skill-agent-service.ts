@@ -289,7 +289,8 @@ function extractSkillZip(zipBytes: Uint8Array, dest: string, info: { root: strin
     for (const entry of zip.getEntries()) {
       if (entry.isDirectory || !entry.entryName.startsWith(rootPrefix)) continue;
       const rel = entry.entryName.slice(rootPrefix.length);
-      if (path.basename(rel) === '.env') continue;
+      // .env 不在此过滤：Bifrost 安装/同步与用户上传的 skill 要原样进入 pi agent 运行目录；
+      // 仅「打包下载到本地 zip」出口过滤（见 api/canvas/routes/skills.ts 的 download 路由）
       const target = path.resolve(dest, rel);
       // zip-slip 防护：解压目标必须落在 skill 目录内
       if (target !== dest && !target.startsWith(dest + path.sep)) {

@@ -28,7 +28,7 @@ import {
   removeSkill,
   resolveSkillAbs,
 } from '../../../services/ai/skill-agent-service.js';
-import { isWorkspaceFileServable, mimeOf } from '../../../services/platform/file-utils.js';
+import { isSecretFileRel, isWorkspaceFileServable, mimeOf } from '../../../services/platform/file-utils.js';
 
 function checkSkillName(raw: string): string {
   const name = (raw ?? '').trim();
@@ -36,6 +36,15 @@ function checkSkillName(raw: string): string {
     throw new SkillValidationError('非法 skill 名称');
   }
   return name;
+}
+
+/** 打包下载出口守卫（与 skill-files 下载同口径）：剔除 zip 内任意路径的密钥文件（.env*）。 */
+function stripSecretZipEntries(zip: AdmZip): Buffer {
+  for (const entry of zip.getEntries()) {
+    const name = entry.isDirectory ? entry.entryName.replace(/\/+$/, '') : entry.entryName;
+    if (isSecretFileRel(name)) zip.deleteEntry(entry.entryName);
+  }
+  return zip.toBuffer();
 }
 
 export async function register(app: FastifyInstance): Promise<void> {
@@ -112,10 +121,10 @@ export async function register(app: FastifyInstance): Promise<void> {
           // 本地共享缓存存在：直接用 AdmZip 压缩该目录
           const zip = new AdmZip();
           zip.addLocalFolder(localDir);
-          zipBytes = zip.toBuffer();
+          zipBytes = stripSecretZipEntries(zip);
         } else {
-          // 否则从 Bifrost 远端获取原始 ZIP
-          zipBytes = await downloadBifrostSkillZip(getDb(), skillName);
+          // 否则从 Bifrost 远端获取原始 ZIP（下载出口同样剔除 .env*）
+          zipBytes = stripSecretZipEntries(new AdmZip(Buffer.from(await downloadBifrostSkillZip(getDb(), skillName))));
         }
         if (!zipBytes.length) {
           return reply.code(404).send({ detail: 'skill 文件为空或不存在' });
