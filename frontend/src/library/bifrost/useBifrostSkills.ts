@@ -12,6 +12,7 @@ export interface UseBifrostSkillsOptions {
     skills: CachedBifrostSkill[];
     total: number;
     remote_available?: boolean;
+    available_tags?: string[];
   }>;
 }
 
@@ -26,6 +27,7 @@ export function useBifrostSkills(options: UseBifrostSkillsOptions = {}) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
   const [remoteAvailable, setRemoteAvailable] = useState(true);
+  const [backendTags, setBackendTags] = useState<string[]>([]);
 
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
@@ -75,6 +77,9 @@ export function useBifrostSkills(options: UseBifrostSkillsOptions = {}) {
         setItems(res.skills ?? []);
         setTotal(res.total ?? 0);
         setRemoteAvailable(res.remote_available !== false);
+        if (Array.isArray(res.available_tags)) {
+          setBackendTags(res.available_tags);
+        }
         nextSkipRef.current = (res.skills ?? []).length;
       } catch (e: any) {
         if (seq !== requestSeq.current) return;
@@ -109,6 +114,9 @@ export function useBifrostSkills(options: UseBifrostSkillsOptions = {}) {
         return [...prev, ...append];
       });
       setTotal(res.total ?? 0);
+      if (Array.isArray(res.available_tags) && res.available_tags.length > 0) {
+        setBackendTags((prev) => Array.from(new Set([...prev, ...res.available_tags!])).sort());
+      }
       nextSkipRef.current = skip + (res.skills ?? []).length;
     } catch (e: any) {
       showToast(e?.message || '加载更多失败，请重试', { type: 'error' });
@@ -135,30 +143,30 @@ export function useBifrostSkills(options: UseBifrostSkillsOptions = {}) {
     return () => observer.disconnect();
   }, [loadMore, loading, items.length, total]);
 
-  // 收集当前加载技能的所有唯一标签列表
+  // 聚合全局标准标签池（后端全量下发优先，合并已加载条目中的 tags 兜底）
   const availableTags = useMemo(() => {
-    const set = new Set<string>();
+    const set = new Set<string>(backendTags);
     for (const item of items) {
-      if (Array.isArray(item.user_tags)) {
-        for (const t of item.user_tags) {
+      if (Array.isArray(item.tags)) {
+        for (const t of item.tags) {
           if (t && t.trim()) set.add(t.trim());
         }
       }
     }
-    return Array.from(set).sort();
-  }, [items]);
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [backendTags, items]);
 
   // 快捷更新星级评分（乐观更新 + 失败回滚）
   const updateRating = async (
     skillName: string,
     nextRating: number,
     currentNote?: string,
-    currentTags?: string[]
+    isPublic?: boolean
   ): Promise<boolean> => {
     const target = items.find((s) => s.name === skillName);
     const prevRating = target?.user_rating ?? 0;
     const prevNote = target?.user_note ?? target?.note ?? '';
-    const prevTags = target?.user_tags ?? [];
+    const prevPublic = target?.is_public ?? false;
 
     // 1. 立即乐观更新
     setItems((prev) =>
@@ -173,12 +181,18 @@ export function useBifrostSkills(options: UseBifrostSkillsOptions = {}) {
         resource_id: skillName,
         rating: nextRating,
         note: currentNote !== undefined ? currentNote : prevNote,
-        tags: currentTags !== undefined ? currentTags : prevTags,
+        is_public: isPublic !== undefined ? isPublic : prevPublic,
       });
       setItems((prev) =>
         prev.map((s) =>
           s.name === skillName
-            ? { ...s, user_rating: res.rating, user_note: res.note, note: res.note, user_tags: res.tags }
+            ? {
+                ...s,
+                user_rating: res.rating,
+                user_note: res.note,
+                note: res.note,
+                is_public: res.is_public,
+              }
             : s
         )
       );
@@ -196,23 +210,28 @@ export function useBifrostSkills(options: UseBifrostSkillsOptions = {}) {
     }
   };
 
-  // 快捷保存私有备注与标签（乐观更新 + 失败回滚）
+  // 快捷保存私有备注与公开状态（乐观更新 + 失败回滚）
   const saveNote = async (
     skillName: string,
     nextRating: number,
     nextNote: string,
-    nextTags?: string[]
+    isPublic: boolean = false
   ): Promise<boolean> => {
     const target = items.find((s) => s.name === skillName);
     const prevRating = target?.user_rating ?? 0;
     const prevNote = target?.user_note ?? target?.note ?? '';
-    const prevTags = target?.user_tags ?? [];
-    const resolvedTags = nextTags !== undefined ? nextTags : prevTags;
+    const prevPublic = target?.is_public ?? false;
 
     setItems((prev) =>
       prev.map((s) =>
         s.name === skillName
-          ? { ...s, user_rating: nextRating, user_note: nextNote.trim(), note: nextNote.trim(), user_tags: resolvedTags }
+          ? {
+              ...s,
+              user_rating: nextRating,
+              user_note: nextNote.trim(),
+              note: nextNote.trim(),
+              is_public: isPublic,
+            }
           : s
       )
     );
@@ -223,22 +242,34 @@ export function useBifrostSkills(options: UseBifrostSkillsOptions = {}) {
         resource_id: skillName,
         rating: nextRating,
         note: nextNote.trim(),
-        tags: resolvedTags,
+        is_public: isPublic,
       });
       setItems((prev) =>
         prev.map((s) =>
           s.name === skillName
-            ? { ...s, user_rating: res.rating, user_note: res.note, note: res.note, user_tags: res.tags }
+            ? {
+                ...s,
+                user_rating: res.rating,
+                user_note: res.note,
+                note: res.note,
+                is_public: res.is_public,
+              }
             : s
         )
       );
-      showToast('标注已保存', { type: 'success' });
+      showToast('标注与心得已保存', { type: 'success' });
       return true;
     } catch (e: any) {
       setItems((prev) =>
         prev.map((s) =>
           s.name === skillName
-            ? { ...s, user_rating: prevRating, user_note: prevNote, note: prevNote, user_tags: prevTags }
+            ? {
+                ...s,
+                user_rating: prevRating,
+                user_note: prevNote,
+                note: prevNote,
+                is_public: prevPublic,
+              }
             : s
         )
       );
@@ -247,7 +278,7 @@ export function useBifrostSkills(options: UseBifrostSkillsOptions = {}) {
     }
   };
 
-  // 客户端过滤（基于星级/备注/标签）
+  // 客户端过滤（基于星级/备注/全局统一标签）
   const filteredItems = useMemo(() => {
     return items.filter((s) => {
       if (ratingFilter === '5' && (s.user_rating ?? 0) !== 5) return false;
@@ -256,7 +287,8 @@ export function useBifrostSkills(options: UseBifrostSkillsOptions = {}) {
       if (ratingFilter === 'rated' && !(s.user_rating && s.user_rating > 0)) return false;
       if (ratingFilter === 'unrated' && (s.user_rating && s.user_rating > 0)) return false;
       if (ratingFilter === 'noted' && !s.user_note?.trim() && !s.note?.trim()) return false;
-      if (tagFilter && (!s.user_tags || !s.user_tags.includes(tagFilter))) return false;
+      // 全局业务分类过滤
+      if (tagFilter && (!s.tags || !s.tags.includes(tagFilter))) return false;
       return true;
     });
   }, [items, ratingFilter, tagFilter]);

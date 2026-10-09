@@ -78,12 +78,17 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
   /** 已选 skill 名称集合（按 name 判等去重） */
   const selectedNames = useMemo(() => new Set(selections.map((s) => s.name)), [selections]);
 
-  /** 聚合当前列表中所有的标签供筛选和输入推荐 */
+  const [backendTags, setBackendTags] = useState<string[]>([]);
+
+  /** 聚合当前列表中所有的全局业务标签与推荐候选 */
   const availableTags = useMemo(() => {
-    const set = new Set<string>();
-    skills.forEach((s) => s.user_tags?.forEach((t) => set.add(t)));
+    const set = new Set<string>(backendTags);
+    skills.forEach((s) => {
+      s.tags?.forEach((t) => set.add(t));
+      s.user_tags?.forEach((t) => set.add(t));
+    });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [skills]);
+  }, [backendTags, skills]);
 
   const loadSkills = useCallback(async (keyword?: string) => {
     const seq = ++requestSeq.current;
@@ -91,7 +96,7 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
     setError('');
     nextSkipRef.current = 0;
     try {
-      const res: { skills: BifrostSkill[]; total: number } = await api.get(
+      const res: { skills: BifrostSkill[]; total: number; available_tags?: string[] } = await api.get(
         '/modules/bookplate/skills/bifrost-search',
         {
           params: {
@@ -105,6 +110,9 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
       if (seq !== requestSeq.current) return;
       setSkills(res.skills ?? []);
       setTotal(res.total ?? 0);
+      if (Array.isArray(res.available_tags)) {
+        setBackendTags(res.available_tags);
+      }
       nextSkipRef.current = (res.skills ?? []).length;
     } catch (e: any) {
       if (seq !== requestSeq.current) return;
@@ -162,8 +170,8 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
     }
   };
 
-  /** 保存打标与备注 */
-  const handleSaveAnnotation = async (rating: number, note: string, tags?: string[]) => {
+  /** 保存打标、备注与公开共享 */
+  const handleSaveAnnotation = async (rating: number, note: string, tags?: string[], isPublic?: boolean) => {
     if (!editingTarget) return;
     try {
       const res = await annotationService.setAnnotation({
@@ -172,11 +180,19 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
         rating,
         note,
         tags,
+        is_public: isPublic,
       });
       setSkills((prev) =>
         prev.map((item) =>
           item.name === editingTarget.name
-            ? { ...item, user_rating: res.rating, user_note: res.note, note: res.note, user_tags: res.tags }
+            ? {
+                ...item,
+                user_rating: res.rating,
+                user_note: res.note,
+                note: res.note,
+                user_tags: res.tags,
+                is_public: res.is_public,
+              }
             : item
         )
       );
@@ -185,7 +201,14 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
           id,
           selections.map((item) =>
             item.name === editingTarget.name
-              ? { ...item, userRating: res.rating, userNote: res.note, note: res.note, userTags: res.tags }
+              ? {
+                  ...item,
+                  userRating: res.rating,
+                  userNote: res.note,
+                  note: res.note,
+                  userTags: res.tags,
+                  is_public: res.is_public,
+                }
               : item
           )
         );
@@ -210,7 +233,10 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
   // 客户端星级与标签过滤
   const filteredSkills = useMemo(() => {
     return skills.filter((s) => {
-      if (tagFilter && !s.user_tags?.includes(tagFilter)) return false;
+      if (tagFilter) {
+        const hasTag = (s.tags && s.tags.includes(tagFilter)) || (s.user_tags && s.user_tags.includes(tagFilter));
+        if (!hasTag) return false;
+      }
       if (ratingFilter === '5' && (s.user_rating ?? 0) !== 5) return false;
       if (ratingFilter === '4+' && (s.user_rating ?? 0) < 4) return false;
       if (ratingFilter === '3+' && (s.user_rating ?? 0) < 3) return false;
@@ -301,7 +327,11 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
         note: meta.user_note ?? meta.note,
         userRating: meta.user_rating ?? s.user_rating,
         userNote: meta.user_note ?? s.user_note,
-        userTags: meta.user_tags ?? s.user_tags,
+        userTags: s.tags ?? meta.user_tags ?? s.user_tags,
+        tags: s.tags,
+        star_count: s.star_count,
+        is_public: s.is_public,
+        public_notes: s.public_notes,
       });
     } catch (e: any) {
       setError(e?.message || '安装失败，请重试');
@@ -421,6 +451,14 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
                       {s.file_count} 文件
                     </span>
                   )}
+                  {Boolean(s.star_count && s.star_count > 0) && (
+                    <span
+                      className="shrink-0 text-[10px] text-accent font-medium flex items-center gap-0.5"
+                      title={`共 ${s.star_count} 人评星`}
+                    >
+                      ★ {s.star_count}人
+                    </span>
+                  )}
                   <div onClick={(e) => e.stopPropagation()} className="ml-auto flex items-center gap-2">
                     <RatingStars
                       value={s.user_rating || 0}
@@ -440,9 +478,9 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
                   </div>
                 </div>
                 <p className="text-xs text-ink-light line-clamp-2 leading-relaxed mt-1">{s.description || '（无描述）'}</p>
-                {s.user_tags && s.user_tags.length > 0 && (
+                {((s.tags && s.tags.length > 0) || (s.user_tags && s.user_tags.length > 0)) && (
                   <div className="flex items-center gap-1 mt-1.5 flex-wrap" onClick={(e) => e.stopPropagation()}>
-                    {s.user_tags.slice(0, 3).map((tag) => (
+                    {(s.tags || s.user_tags || []).slice(0, 3).map((tag) => (
                       <button
                         key={tag}
                         type="button"
@@ -452,14 +490,14 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
                             ? 'bg-accent text-paper border-accent font-medium'
                             : 'bg-paper-grid/20 border-dashed border-paper-grid text-ink-light hover:border-accent/40 hover:text-accent'
                         }`}
-                        title={`按标签「${tag}」过滤`}
+                        title={`按分类「${tag}」过滤`}
                       >
                         #{tag}
                       </button>
                     ))}
-                    {s.user_tags.length > 3 && (
+                    {(s.tags || s.user_tags || []).length > 3 && (
                       <span className="text-[10px] text-ink-faint border border-dashed border-paper-grid px-1 rounded">
-                        +{s.user_tags.length - 3}
+                        +{(s.tags || s.user_tags || []).length - 3}
                       </span>
                     )}
                   </div>
@@ -467,6 +505,7 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
                 {noteText && (
                   <p className="text-[11px] text-accent font-sans mt-1 line-clamp-1 italic bg-accent-surface/50 px-1.5 py-0.5 rounded border border-accent/20">
                     备注：{noteText}
+                    {s.is_public && <span className="text-[10px] text-ink-faint font-normal ml-1">（公开）</span>}
                   </p>
                 )}
                 {s.compatibility && (
@@ -737,15 +776,19 @@ const SkillSearchNodeInner: React.FC<SkillSearchNodeProps> = ({
               </div>
             </Dialog>
 
-            {/* 独立备注与标签编辑弹窗 */}
+            {/* 独立评星、备忘与公开共享弹窗 */}
             <NoteEditModal
               open={Boolean(editingTarget)}
               onClose={() => setEditingTarget(null)}
+              title="评星、备忘与公开共享"
               resourceName={editingTarget?.name || ''}
               initialRating={editingTarget?.user_rating || 0}
               initialNote={editingTarget?.user_note || editingTarget?.note || ''}
-              initialTags={editingTarget?.user_tags || []}
+              initialTags={editingTarget?.tags || editingTarget?.user_tags || []}
               suggestedTags={availableTags}
+              showPublicToggle={true}
+              initialIsPublic={editingTarget?.is_public ?? false}
+              publicNotes={editingTarget?.public_notes ?? []}
               onSave={handleSaveAnnotation}
             />
           </>,

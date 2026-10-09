@@ -47,6 +47,7 @@ export function applyInitialSchema(db: DB): void {
   ensureColumn(sqlite, 'llm_configs', 'context_window', 'INTEGER');
   ensureColumn(sqlite, 'llm_configs', 'max_tokens', 'INTEGER');
   ensureColumn(sqlite, 'user_annotations', 'tags', "TEXT NOT NULL DEFAULT '[]'");
+  ensureColumn(sqlite, 'user_annotations', 'is_public', 'BOOLEAN NOT NULL DEFAULT 0');
 }
 
 /** 存量库补列：PRAGMA 检查缺失时 ALTER TABLE ADD COLUMN（SQLite 无 ADD COLUMN IF NOT EXISTS）。 */
@@ -238,6 +239,7 @@ const INITIAL_DDL: string[] = [
     resource_id VARCHAR(128) NOT NULL,
     rating INTEGER NOT NULL DEFAULT 0,
     note TEXT NOT NULL DEFAULT '',
+    is_public BOOLEAN NOT NULL DEFAULT 0,
     tags TEXT NOT NULL DEFAULT '[]',
     created_at DATETIME,
     updated_at DATETIME,
@@ -245,4 +247,10 @@ const INITIAL_DDL: string[] = [
   )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS ix_user_annotations_unique ON user_annotations (user_id, resource_type, resource_id)`,
   `CREATE INDEX IF NOT EXISTS ix_user_annotations_user_type ON user_annotations (user_id, resource_type)`,
+  `CREATE INDEX IF NOT EXISTS idx_ua_public_notes ON user_annotations (resource_type, resource_id, is_public)`,
+  `CREATE TABLE IF NOT EXISTS skill_tags (
+    skill_name VARCHAR(128) PRIMARY KEY,
+    tags TEXT NOT NULL DEFAULT '[]',
+    updated_at DATETIME
+  )`,
 ];

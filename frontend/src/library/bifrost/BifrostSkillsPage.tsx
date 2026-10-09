@@ -31,6 +31,7 @@ import { SkillFileTree } from '../../shared/components/ui/SkillFileTree';
 import { SkillPreviewPanel } from '../../shared/components/ui/SkillPreviewPanel';
 import { ViewToggle, type ViewMode } from '../../shared/components/ui/ViewToggle';
 import { useBifrostSkills } from './useBifrostSkills';
+import { SkillAnnotationPanel } from './SkillAnnotationPanel';
 
 export const BifrostSkillsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -38,6 +39,7 @@ export const BifrostSkillsPage: React.FC = () => {
 
   const {
     items: skills,
+    setItems: setSkills,
     filteredItems,
     total,
     loading,
@@ -118,26 +120,17 @@ export const BifrostSkillsPage: React.FC = () => {
     });
   };
 
-  /** 详情抽屉打星同步 */
-  const onUpdateRating = useCallback(
-    async (skillName: string, rating: number, currentNote?: string, currentTags?: string[]) => {
-      setDetail((prev) => (prev && prev.name === skillName ? { ...prev, user_rating: rating } : prev));
-      await handleUpdateRating(skillName, rating, currentNote, currentTags);
-    },
-    [handleUpdateRating]
-  );
-
-  /** 模态框保存打标、备注与标签 */
+  /** 模态框保存打标、备注与公开状态 */
   const onSaveNoteModal = useCallback(
-    async (rating: number, note: string, tags: string[]) => {
+    async (rating: number, note: string, _tags: string[], isPublic?: boolean) => {
       if (!editingNoteTarget) return;
       const targetName = editingNoteTarget.name;
       setDetail((prev) =>
         prev && prev.name === targetName
-          ? { ...prev, user_rating: rating, user_note: note, note, user_tags: tags }
+          ? { ...prev, user_rating: rating, user_note: note, note, is_public: isPublic }
           : prev
       );
-      await handleSaveNote(targetName, rating, note, tags);
+      await handleSaveNote(targetName, rating, note, isPublic);
       setEditingNoteTarget(null);
     },
     [editingNoteTarget, handleSaveNote]
@@ -198,7 +191,11 @@ export const BifrostSkillsPage: React.FC = () => {
         note: s.user_note || s.note,
         userRating: s.user_rating,
         userNote: s.user_note || s.note,
-        userTags: s.user_tags,
+        userTags: s.tags || s.user_tags,
+        tags: s.tags,
+        star_count: s.star_count,
+        is_public: s.is_public,
+        public_notes: s.public_notes,
       }));
 
       const payload = {
@@ -487,10 +484,15 @@ export const BifrostSkillsPage: React.FC = () => {
                           )}
                         </div>
 
-                        <div onClick={(e) => e.stopPropagation()} className="shrink-0">
+                        <div onClick={(e) => e.stopPropagation()} className="shrink-0 flex items-center gap-1.5">
+                          {typeof s.star_count === 'number' && s.star_count > 0 && (
+                            <span className="text-[10px] text-ink-faint font-sans tabular-nums" title={`全站共 ${s.star_count} 人评星`}>
+                              {s.star_count}人
+                            </span>
+                          )}
                           <RatingStars
                             value={s.user_rating || 0}
-                            onChange={(r) => void handleUpdateRating(s.name, r, noteText)}
+                            onChange={(r) => void handleUpdateRating(s.name, r, noteText, s.is_public)}
                             size="xs"
                           />
                         </div>
@@ -506,11 +508,11 @@ export const BifrostSkillsPage: React.FC = () => {
 
                       {/* 第 4 区：微标签与私有备注轻量微聚合行 */}
                       <div className="mt-2 flex items-center justify-between gap-1.5 min-h-[1.5rem]" onClick={(e) => e.stopPropagation()}>
-                        {/* 微标签 */}
+                        {/* 全局标准分类微标签 */}
                         <div className="flex items-center gap-1 min-w-0 flex-wrap">
-                          {s.user_tags && s.user_tags.length > 0 ? (
+                          {s.tags && s.tags.length > 0 ? (
                             <>
-                              {s.user_tags.slice(0, 2).map((tag) => (
+                              {s.tags.slice(0, 2).map((tag) => (
                                 <button
                                   key={tag}
                                   type="button"
@@ -520,17 +522,17 @@ export const BifrostSkillsPage: React.FC = () => {
                                       ? 'bg-accent text-paper border-accent font-medium'
                                       : 'bg-paper-grid/20 border-dashed border-paper-grid text-ink-light hover:border-accent/40 hover:text-accent'
                                   }`}
-                                  title={`按标签「${tag}」过滤`}
+                                  title={`按全局分类「${tag}」过滤`}
                                 >
                                   #{tag}
                                 </button>
                               ))}
-                              {s.user_tags.length > 2 && (
+                              {s.tags.length > 2 && (
                                 <span
                                   className="text-[10px] text-ink-faint border border-dashed border-paper-grid px-1 rounded"
-                                  title={s.user_tags.slice(2).map((t) => `#${t}`).join(', ')}
+                                  title={s.tags.slice(2).map((t) => `#${t}`).join(', ')}
                                 >
-                                  +{s.user_tags.length - 2}
+                                  +{s.tags.length - 2}
                                 </span>
                               )}
                             </>
@@ -544,10 +546,15 @@ export const BifrostSkillsPage: React.FC = () => {
                               type="button"
                               onClick={() => setEditingNoteTarget(s)}
                               className="h-5 text-[10px] text-accent font-sans italic bg-accent-surface/50 px-2 rounded border border-accent/20 hover:border-accent/40 transition-colors flex items-center gap-1 max-w-full group/note truncate"
-                              title={`备注：${noteText}`}
+                              title={`备注：${noteText}${s.is_public ? '（已公开）' : ''}`}
                             >
                               <StickyNote size={10} className="shrink-0 opacity-70 group-hover/note:opacity-100" />
                               <span className="truncate">{noteText}</span>
+                              {s.is_public && (
+                                <span className="text-[9px] px-1 py-px rounded bg-accent/20 text-accent font-medium shrink-0">
+                                  公开
+                                </span>
+                              )}
                             </button>
                           ) : (
                             <button
@@ -681,16 +688,23 @@ export const BifrostSkillsPage: React.FC = () => {
                         )}
                       </div>
 
-                      {/* 用户标注列：上行打星评价，下行微标签（聚合为同一列上下展示） */}
+                      {/* 用户标注列：上行打星评价与人数，下行全局微标签（聚合为同一列上下展示） */}
                       <div className="w-28 shrink-0 hidden sm:flex flex-col justify-center items-start gap-1" onClick={(e) => e.stopPropagation()}>
-                        <RatingStars
-                          value={s.user_rating || 0}
-                          onChange={(r) => void handleUpdateRating(s.name, r, noteText)}
-                          size="xs"
-                        />
-                        {s.user_tags && s.user_tags.length > 0 && (
+                        <div className="flex items-center gap-1.5">
+                          <RatingStars
+                            value={s.user_rating || 0}
+                            onChange={(r) => void handleUpdateRating(s.name, r, noteText, s.is_public)}
+                            size="xs"
+                          />
+                          {typeof s.star_count === 'number' && s.star_count > 0 && (
+                            <span className="text-[10px] text-ink-faint font-sans tabular-nums" title={`全站共 ${s.star_count} 人评星`}>
+                              {s.star_count}人
+                            </span>
+                          )}
+                        </div>
+                        {s.tags && s.tags.length > 0 && (
                           <div className="flex items-center gap-1 flex-wrap">
-                            {s.user_tags.slice(0, 2).map((tag) => (
+                            {s.tags.slice(0, 2).map((tag) => (
                               <button
                                 key={tag}
                                 type="button"
@@ -700,17 +714,17 @@ export const BifrostSkillsPage: React.FC = () => {
                                     ? 'bg-accent text-paper border-accent font-medium'
                                     : 'bg-paper-grid/20 border-dashed border-paper-grid text-ink-light hover:border-accent/40 hover:text-accent'
                                 }`}
-                                title={`按标签「${tag}」过滤`}
+                                title={`按全局分类「${tag}」过滤`}
                               >
                                 #{tag}
                               </button>
                             ))}
-                            {s.user_tags.length > 2 && (
+                            {s.tags.length > 2 && (
                               <span
                                 className="text-[10px] text-ink-faint border border-dashed border-paper-grid px-1 rounded"
-                                title={s.user_tags.slice(2).map((t) => `#${t}`).join(', ')}
+                                title={s.tags.slice(2).map((t) => `#${t}`).join(', ')}
                               >
-                                +{s.user_tags.length - 2}
+                                +{s.tags.length - 2}
                               </span>
                             )}
                           </div>
@@ -839,56 +853,53 @@ export const BifrostSkillsPage: React.FC = () => {
                   <p className="text-xs text-ink-light font-sans">{detail.description || '（无描述）'}</p>
                 </div>
 
-                <div className="flex items-center justify-between gap-2 pt-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-ink-light">评分：</span>
-                    <RatingStars
-                      value={detail.user_rating || 0}
-                      onChange={(r) => void onUpdateRating(detail.name, r, detail.user_note || detail.note, detail.user_tags)}
-                      size="sm"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setEditingNoteTarget(detail)}
-                    className="text-xs text-accent hover:text-accent-hover flex items-center gap-1 font-sans transition-colors"
-                  >
-                    <StickyNote size={13} />
-                    编辑标注
-                  </button>
-                </div>
+                {typeof detail.star_count === 'number' && detail.star_count > 0 && (
+                  <span className="text-xs text-ink-light font-sans flex items-center gap-1 self-start sm:self-auto">
+                    共 <span className="font-mono text-ink font-semibold">{detail.star_count}</span> 人评星
+                  </span>
+                )}
               </div>
 
-              {/* 私有备注区域 */}
-              <div className="space-y-1.5 bg-paper/50 p-3 rounded-xl border border-paper-grid">
-                <label className="text-xs font-semibold text-ink font-serif block">我的备注</label>
-                <div className="text-xs text-ink font-sans">
-                  {detail.user_note || detail.note ? (
-                    <span className="text-accent italic">{detail.user_note || detail.note}</span>
-                  ) : (
-                    <span className="text-ink-faint">暂无备注（可在画板节点与此页面同步管理）</span>
-                  )}
-                </div>
-              </div>
-
-              {/* 标签展示区域 */}
-              <div className="space-y-1.5 bg-paper/50 p-3 rounded-xl border border-paper-grid">
-                <label className="text-xs font-semibold text-ink font-serif block">我的标签</label>
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {detail.user_tags && detail.user_tags.length > 0 ? (
-                    detail.user_tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="text-xs px-2 py-0.5 rounded-pill bg-accent-surface text-accent border border-accent/25"
-                      >
-                        #{tag}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="text-xs text-ink-faint">暂无标签（可在编辑标注中添加）</span>
-                  )}
-                </div>
-              </div>
+              {/* 独立模块化：全局标准分类 + 个人私有评星备忘 + 团队公开经验交流面板 */}
+              <SkillAnnotationPanel
+                skill={detail}
+                candidateTags={availableTags}
+                onAnnotationChange={(annot) => {
+                  setDetail((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          user_rating: annot.rating,
+                          user_note: annot.note,
+                          note: annot.note,
+                          is_public: annot.isPublic,
+                        }
+                      : prev
+                  );
+                  setSkills((prev) =>
+                    prev.map((s) =>
+                      s.name === detail.name
+                        ? {
+                            ...s,
+                            user_rating: annot.rating,
+                            user_note: annot.note,
+                            note: annot.note,
+                            is_public: annot.isPublic,
+                          }
+                        : s
+                    )
+                  );
+                }}
+                onTagsChange={(newTags) => {
+                  setDetail((prev) => (prev ? { ...prev, tags: newTags } : prev));
+                  setSkills((prev) =>
+                    prev.map((s) => (s.name === detail.name ? { ...s, tags: newTags } : s))
+                  );
+                }}
+                onPublicNotesChange={(notes) => {
+                  setDetail((prev) => (prev ? { ...prev, public_notes: notes } : prev));
+                }}
+              />
 
               {/* 详情选项卡：示例图 vs 文档预览 vs 文件列表 */}
               <div className="space-y-2">
@@ -961,12 +972,15 @@ export const BifrostSkillsPage: React.FC = () => {
           <NoteEditModal
             open={!!editingNoteTarget}
             onClose={() => setEditingNoteTarget(null)}
-            title="打标与备注"
+            title="评星、备忘与公开共享"
             resourceName={editingNoteTarget.name}
             initialRating={editingNoteTarget.user_rating ?? 0}
             initialNote={editingNoteTarget.user_note ?? editingNoteTarget.note ?? ''}
-            initialTags={editingNoteTarget.user_tags ?? []}
+            initialTags={editingNoteTarget.tags ?? editingNoteTarget.user_tags ?? []}
             suggestedTags={availableTags}
+            showPublicToggle={true}
+            initialIsPublic={editingNoteTarget.is_public ?? false}
+            publicNotes={editingNoteTarget.public_notes ?? []}
             onSave={onSaveNoteModal}
           />
         )}

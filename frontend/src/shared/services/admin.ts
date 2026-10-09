@@ -165,8 +165,8 @@ export const adminService = {
     skip?: number;
     limit?: number;
     force?: boolean;
-  }): Promise<{ skills: CachedBifrostSkill[]; total: number; remote_available: boolean }> =>
-    api.get<{ skills: CachedBifrostSkill[]; total: number; remote_available: boolean }, { skills: CachedBifrostSkill[]; total: number; remote_available: boolean }>(
+  }): Promise<{ skills: CachedBifrostSkill[]; total: number; remote_available: boolean; available_tags?: string[] }> =>
+    api.get<{ skills: CachedBifrostSkill[]; total: number; remote_available: boolean; available_tags?: string[] }, { skills: CachedBifrostSkill[]; total: number; remote_available: boolean; available_tags?: string[] }>(
       '/admin/bifrost-skills',
       { params, timeout: 30000 }
     ),
@@ -197,6 +197,12 @@ export const adminService = {
   /** 删除 Skill 示例图 */
   deleteBifrostSkillPreview: (name: string): Promise<{ preview_image: null }> =>
     api.delete(`/admin/bifrost-skills/${encodeURIComponent(name)}/preview`),
+  /** 管理员设置 Skill 全局统一业务分类标签 */
+  setBifrostSkillTags: (name: string, tags: string[]): Promise<{ name: string; tags: string[] }> =>
+    api.put(`/admin/bifrost-skills/${encodeURIComponent(name)}/tags`, { tags }),
+  /** 管理员清退某用户的违规公开备忘 */
+  deleteBifrostSkillPublicNote: (name: string, userId: number): Promise<{ ok: boolean; message: string }> =>
+    api.delete(`/admin/bifrost-skills/${encodeURIComponent(name)}/public-notes/${userId}`),
   /* ---------------- 用户通用标注（打标与备注） ---------------- */
 
   setUserAnnotation: (payload: UserAnnotationPayload): Promise<UserAnnotation> =>
@@ -225,6 +231,10 @@ export const annotationService = {
     api.get<UserAnnotation, UserAnnotation>(
       `/annotations/${encodeURIComponent(resourceType)}/${encodeURIComponent(resourceId)}`
     ),
+  getPublicNotes: (resourceType: string, resourceId: string): Promise<{ public_notes: import('../types').PublicNote[] }> =>
+    api.get(`/annotations/${encodeURIComponent(resourceType)}/${encodeURIComponent(resourceId)}/public-notes`),
+  revokePublicNote: (resourceType: string, resourceId: string): Promise<{ ok: boolean; message: string }> =>
+    api.delete(`/annotations/${encodeURIComponent(resourceType)}/${encodeURIComponent(resourceId)}/public-note`),
 };
 
 

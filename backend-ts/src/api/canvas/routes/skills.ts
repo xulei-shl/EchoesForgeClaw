@@ -42,7 +42,7 @@ function checkSkillName(raw: string): string {
 function stripSecretZipEntries(zip: AdmZip): Buffer {
   for (const entry of zip.getEntries()) {
     const name = entry.isDirectory ? entry.entryName.replace(/\/+$/, '') : entry.entryName;
-    if (isSecretFileRel(name)) zip.deleteEntry(entry.entryName);
+    if (isSecretFileRel(name)) zip.deleteFile(entry.entryName);
   }
   return zip.toBuffer();
 }
@@ -95,6 +95,7 @@ export async function register(app: FastifyInstance): Promise<void> {
           const ann = getUserAnnotation(getDb(), userId, RESOURCE_TYPE_BIFROST_SKILL, skillName);
           detail.user_rating = ann.rating;
           detail.user_note = ann.note;
+          detail.is_public = ann.isPublic;
           detail.note = ann.note;
         }
         return detail;

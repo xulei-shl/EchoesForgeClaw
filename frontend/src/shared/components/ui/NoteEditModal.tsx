@@ -4,7 +4,9 @@ import { Button } from './Button';
 import { Textarea } from './Textarea';
 import { RatingStars } from './RatingStars';
 import { TagInput } from './TagInput';
-import { Sparkles, Trash2 } from 'lucide-react';
+import { Toggle } from './Toggle';
+import { Sparkles, Trash2, Users } from 'lucide-react';
+import type { PublicNote } from '../../types';
 
 export interface NoteEditModalProps {
   open: boolean;
@@ -14,8 +16,11 @@ export interface NoteEditModalProps {
   initialRating?: number;
   initialNote?: string;
   initialTags?: string[];
+  initialIsPublic?: boolean;
   suggestedTags?: string[];
-  onSave: (rating: number, note: string, tags: string[]) => Promise<void> | void;
+  showPublicToggle?: boolean;
+  publicNotes?: PublicNote[];
+  onSave: (rating: number, note: string, tags: string[], isPublic?: boolean) => Promise<void> | void;
   saving?: boolean;
 }
 
@@ -27,25 +32,30 @@ export const NoteEditModal: React.FC<NoteEditModalProps> = ({
   initialRating = 0,
   initialNote = '',
   initialTags = [],
+  initialIsPublic = false,
   suggestedTags = [],
+  showPublicToggle = false,
+  publicNotes = [],
   onSave,
   saving = false,
 }) => {
   const [rating, setRating] = useState(initialRating);
   const [note, setNote] = useState(initialNote);
   const [tags, setTags] = useState<string[]>(initialTags);
+  const [isPublic, setIsPublic] = useState(initialIsPublic);
 
   useEffect(() => {
     if (open) {
       setRating(initialRating || 0);
       setNote(initialNote || '');
       setTags(initialTags || []);
+      setIsPublic(Boolean(initialIsPublic && initialNote.trim()));
     }
-  }, [open, initialRating, initialNote, initialTags]);
+  }, [open, initialRating, initialNote, initialTags, initialIsPublic]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await onSave(rating, note.trim(), tags);
+    await onSave(rating, note.trim(), tags, Boolean(note.trim() && isPublic));
     onClose();
   };
 
@@ -53,6 +63,7 @@ export const NoteEditModal: React.FC<NoteEditModalProps> = ({
     setRating(0);
     setNote('');
     setTags([]);
+    setIsPublic(false);
   };
 
   return (
@@ -87,7 +98,7 @@ export const NoteEditModal: React.FC<NoteEditModalProps> = ({
 
         <div>
           <div className="flex items-center justify-between mb-1.5">
-            <label className="block text-xs font-medium text-ink">我的备注</label>
+            <label className="block text-xs font-medium text-ink">我的备注与经验</label>
             {(rating > 0 || note.trim() || tags.length > 0) && (
               <button
                 type="button"
@@ -101,13 +112,59 @@ export const NoteEditModal: React.FC<NoteEditModalProps> = ({
           </div>
           <Textarea
             value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="仅自己可见的私有心得/使用场景说明…"
-            rows={4}
+            onChange={(e) => {
+              const val = e.target.value;
+              setNote(val);
+              if (!val.trim()) setIsPublic(false);
+            }}
+            placeholder="心得体会/模型调用建议/避坑指南…"
+            rows={3}
             className="text-xs font-sans"
             autoFocus
           />
         </div>
+
+        {/* 公开共享开关 */}
+        {showPublicToggle && (
+          <div className="flex items-center justify-between p-2.5 rounded border border-paper-grid bg-paper-grid/10">
+            <div className="space-y-0.5">
+              <p className="text-xs font-medium text-ink">公开至团队</p>
+              <p className="text-[10px] text-ink-faint font-sans">
+                开启后沉淀为团队公共经验，同事查阅可见
+              </p>
+            </div>
+            <Toggle
+              checked={isPublic}
+              onChange={(next) => {
+                if (!note.trim()) return;
+                setIsPublic(next);
+              }}
+              disabled={!note.trim()}
+              label="公开至团队"
+            />
+          </div>
+        )}
+
+        {/* 同事公开经验列表 */}
+        {publicNotes.length > 0 && (
+          <div className="space-y-2 pt-2 border-t border-dashed border-paper-grid">
+            <p className="text-xs font-serif font-semibold text-ink flex items-center gap-1.5">
+              <Users size={13} className="text-accent" />
+              同事公开经验交流（{publicNotes.length}）
+            </p>
+            <div className="space-y-2 max-h-36 overflow-y-auto custom-scrollbar pr-1">
+              {publicNotes.map((pn, i) => (
+                <div key={i} className="p-2 rounded bg-paper-grid/15 border border-paper-grid text-[11px] space-y-1">
+                  <div className="flex items-center justify-between text-ink-faint">
+                    <span className="font-medium text-ink">{pn.display_name || pn.username}</span>
+                    {pn.updated_at && <span>{pn.updated_at.slice(0, 10)}</span>}
+                  </div>
+                  <p className="text-ink leading-relaxed whitespace-pre-wrap">{pn.note}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="flex items-center justify-end gap-2 pt-2 border-t border-dashed border-paper-grid">
           <Button type="button" variant="ghost" size="sm" onClick={onClose} disabled={saving}>

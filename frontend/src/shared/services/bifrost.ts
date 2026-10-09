@@ -34,8 +34,8 @@ export const bifrostService = {
     skip?: number;
     limit?: number;
     force?: boolean;
-  }): Promise<{ skills: CachedBifrostSkill[]; total: number; remote_available: boolean }> =>
-    api.get<{ skills: CachedBifrostSkill[]; total: number; remote_available: boolean }, { skills: CachedBifrostSkill[]; total: number; remote_available: boolean }>(
+  }): Promise<{ skills: CachedBifrostSkill[]; total: number; remote_available: boolean; available_tags?: string[] }> =>
+    api.get<{ skills: CachedBifrostSkill[]; total: number; remote_available: boolean; available_tags?: string[] }, { skills: CachedBifrostSkill[]; total: number; remote_available: boolean; available_tags?: string[] }>(
       '/modules/bookplate/skills/bifrost-search',
       { params, timeout: 30000 }
     ),

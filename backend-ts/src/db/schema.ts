@@ -219,6 +219,7 @@ export const userAnnotations = sqliteTable(
 		resourceId: text("resource_id", { length: 128 }).notNull(),
 		rating: integer().default(0).notNull(),
 		note: text().default("").notNull(),
+		isPublic: integer("is_public", { mode: "boolean" }).default(false).notNull(),
 		tags: text().default("[]").notNull(),
 		createdAt: numeric("created_at"),
 		updatedAt: numeric("updated_at"),
@@ -226,7 +227,17 @@ export const userAnnotations = sqliteTable(
 	(table) => [
 		uniqueIndex("ix_user_annotations_unique").on(table.userId, table.resourceType, table.resourceId),
 		index("ix_user_annotations_user_type").on(table.userId, table.resourceType),
+		index("idx_ua_public_notes").on(table.resourceType, table.resourceId, table.isPublic),
 	]
+);
+
+export const skillTags = sqliteTable(
+	"skill_tags",
+	{
+		skillName: text("skill_name", { length: 128 }).primaryKey().notNull(),
+		tags: text().default("[]").notNull(),
+		updatedAt: numeric("updated_at"),
+	}
 );
 
 

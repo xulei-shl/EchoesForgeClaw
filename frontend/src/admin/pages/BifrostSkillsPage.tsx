@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { Boxes, FolderSync, Loader2, RefreshCw, Search, StickyNote, Trash2, FileText, FolderTree, Image as ImageIcon } from 'lucide-react';
+import { Boxes, FolderSync, Loader2, RefreshCw, Search, StickyNote, Trash2, FileText, FolderTree, Image as ImageIcon, Tags } from 'lucide-react';
 import { adminService } from '../../shared/services/admin';
 import type { CachedBifrostSkill } from '../../shared/types';
 import { Button } from '../../shared/components/ui/Button';
@@ -14,11 +14,13 @@ import { PageHeader } from '../components/AdminBits';
 import { useFeedback } from '../../shared/components/ui/FeedbackProvider';
 import { SkillFileTree } from '../../shared/components/ui/SkillFileTree';
 import { SkillPreviewPanel } from '../../shared/components/ui/SkillPreviewPanel';
+import { SkillAnnotationPanel } from '../../library/bifrost/SkillAnnotationPanel';
 import { useBifrostSkills } from '../../library/bifrost/useBifrostSkills';
 
 export const BifrostSkillsPage: React.FC = () => {
   const {
     items: skills,
+    setItems,
     filteredItems: filteredSkills,
     total,
     loading,
@@ -44,7 +46,7 @@ export const BifrostSkillsPage: React.FC = () => {
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [syncingAll, setSyncingAll] = useState(false);
   const [detail, setDetail] = useState<CachedBifrostSkill | null>(null);
-  const [detailTab, setDetailTab] = useState<'preview' | 'doc' | 'files'>('preview');
+  const [detailTab, setDetailTab] = useState<'preview' | 'annotation' | 'doc' | 'files'>('preview');
   const [uploadingPreview, setUploadingPreview] = useState(false);
   const { dialog, showToast } = useFeedback();
 
@@ -348,8 +350,16 @@ export const BifrostSkillsPage: React.FC = () => {
                             : <Badge>未缓存</Badge>}
                           {s.latest_version && <Badge>远端 v{s.latest_version}</Badge>}
                           {s.license && <Badge>{s.license}</Badge>}
+                          {Boolean(s.star_count && s.star_count > 0) && (
+                            <span
+                              className="text-[11px] text-accent font-medium flex items-center gap-0.5 ml-1"
+                              title={`共 ${s.star_count} 人评星`}
+                            >
+                              ★ {s.star_count}人
+                            </span>
+                          )}
                           {Boolean(s.user_rating && s.user_rating > 0) && (
-                            <div onClick={(e) => e.stopPropagation()} className="ml-1">
+                            <div onClick={(e) => e.stopPropagation()} className="ml-1" title={`我的评分: ${s.user_rating} 星`}>
                               <RatingStars
                                 value={s.user_rating}
                                 readonly
@@ -361,9 +371,9 @@ export const BifrostSkillsPage: React.FC = () => {
                         <p className="mt-1 text-xs text-ink-light font-sans line-clamp-2">
                           {s.description || '（无描述）'}
                         </p>
-                        {s.user_tags && s.user_tags.length > 0 && (
+                        {((s.tags && s.tags.length > 0) || (s.user_tags && s.user_tags.length > 0)) && (
                           <div className="flex items-center gap-1 mt-1.5 flex-wrap" onClick={(e) => e.stopPropagation()}>
-                            {s.user_tags.slice(0, 3).map((tag) => (
+                            {(s.tags || s.user_tags || []).slice(0, 3).map((tag) => (
                               <button
                                 key={tag}
                                 type="button"
@@ -373,14 +383,14 @@ export const BifrostSkillsPage: React.FC = () => {
                                     ? 'bg-accent text-paper border-accent font-medium'
                                     : 'bg-paper-grid/20 border-dashed border-paper-grid text-ink-light hover:border-accent/40 hover:text-accent'
                                 }`}
-                                title={`按标签「${tag}」过滤`}
+                                title={`按分类「${tag}」过滤`}
                               >
                                 #{tag}
                               </button>
                             ))}
-                            {s.user_tags.length > 3 && (
+                            {(s.tags || s.user_tags || []).length > 3 && (
                               <span className="text-[10px] text-ink-faint border border-dashed border-paper-grid px-1 rounded">
-                                +{s.user_tags.length - 3}
+                                +{(s.tags || s.user_tags || []).length - 3}
                               </span>
                             )}
                           </div>
@@ -389,6 +399,7 @@ export const BifrostSkillsPage: React.FC = () => {
                           <p className="mt-1.5 text-[11px] text-accent font-sans line-clamp-1 italic bg-accent-surface/50 px-2 py-0.5 rounded border border-accent/20 flex items-center gap-1 inline-flex">
                             <StickyNote size={11} strokeWidth={1.5} className="shrink-0" />
                             备注：{noteText}
+                            {s.is_public && <span className="text-[10px] text-ink-faint font-normal">（公开）</span>}
                           </p>
                         )}
                         <div className="flex items-center gap-3 mt-2 text-[10px] text-ink-faint font-sans tabular-nums flex-wrap">
@@ -471,10 +482,19 @@ export const BifrostSkillsPage: React.FC = () => {
               )}
               {detail.latest_version && <Badge>远端 v{detail.latest_version}</Badge>}
               {detail.license && <Badge>{detail.license}</Badge>}
-              {detail.cached !== false ? (
-                <span className="tabular-nums">本地更新于 {formatDate(detail.updated_at) || '—'}</span>
-              ) : (
-                detail.remote_updated_at && <span className="tabular-nums">远端更新于 {formatDate(detail.remote_updated_at)}</span>
+              {Boolean(detail.star_count && detail.star_count > 0) && (
+                <Badge className="border-accent/30 text-accent">
+                  ★ 共 {detail.star_count} 人评星
+                </Badge>
+              )}
+              {detail.tags && detail.tags.length > 0 && (
+                <div className="flex items-center gap-1 flex-wrap">
+                  {detail.tags.map((t) => (
+                    <span key={t} className="text-[10px] px-1.5 py-0.5 rounded bg-accent/10 text-accent font-mono border border-accent/20">
+                      #{t}
+                    </span>
+                  ))}
+                </div>
               )}
             </div>
             
@@ -482,48 +502,9 @@ export const BifrostSkillsPage: React.FC = () => {
               <p className="text-sm text-ink leading-relaxed">{detail.description}</p>
             )}
 
-            {/* 个人标注信息（只读展示，在 Library 资源库中可编辑管理） */}
-            {(Boolean(detail.user_rating) || (detail.user_tags && detail.user_tags.length > 0) || Boolean(detail.user_note || detail.note)) && (
-              <div className="rounded-lg border border-dashed border-paper-grid bg-paper-grid/15 p-3 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-serif font-semibold text-ink flex items-center gap-1.5">
-                    <StickyNote size={13} className="text-accent" />
-                    个人标注
-                    <span className="text-[10px] font-sans text-ink-faint font-normal">（只读，在 Library 库中可编辑）</span>
-                  </span>
-                  {Boolean(detail.user_rating && detail.user_rating > 0) && (
-                    <RatingStars
-                      value={detail.user_rating}
-                      readonly
-                      size="sm"
-                    />
-                  )}
-                </div>
-
-                {detail.user_tags && detail.user_tags.length > 0 && (
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {detail.user_tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="text-[11px] px-2 py-0.5 rounded-pill bg-accent-surface text-accent border border-accent/20 font-sans"
-                      >
-                        #{tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                {(detail.user_note || detail.note) && (
-                  <p className="text-xs text-ink-light font-sans italic bg-paper/60 p-2 rounded border border-paper-grid/50">
-                    {detail.user_note || detail.note}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* 详情选项卡：示例图 vs 文档预览 vs 文件列表 */}
+            {/* 详情选项卡：示例图 vs 标签与备忘 vs 文档预览 vs 文件列表 */}
             <div className="space-y-2">
-              <div className="flex items-center gap-2 border-b border-paper-grid">
+              <div className="flex items-center gap-2 border-b border-paper-grid flex-wrap">
                 <button
                   type="button"
                   onClick={() => setDetailTab('preview')}
@@ -534,6 +515,22 @@ export const BifrostSkillsPage: React.FC = () => {
                   }`}
                 >
                   <ImageIcon size={14} /> 示例图
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDetailTab('annotation')}
+                  className={`pb-2 px-1 text-xs font-medium border-b-2 transition-colors flex items-center gap-1.5 ${
+                    detailTab === 'annotation'
+                      ? 'border-accent text-accent'
+                      : 'border-transparent text-ink-light hover:text-ink'
+                  }`}
+                >
+                  <Tags size={14} /> 标签与备忘
+                  {detail.public_notes && detail.public_notes.length > 0 && (
+                    <span className="text-[10px] px-1.5 py-px bg-accent/15 text-accent rounded-pill font-mono">
+                      {detail.public_notes.length}
+                    </span>
+                  )}
                 </button>
                 <button
                   type="button"
@@ -569,6 +566,37 @@ export const BifrostSkillsPage: React.FC = () => {
                   onDelete={handleDeletePreview}
                   isUploading={uploadingPreview}
                 />
+              )}
+
+              {/* 标准分类、个人评星与团队公开经验区（高内聚模块） */}
+              {detailTab === 'annotation' && (
+                <div className="max-h-[500px] overflow-y-auto pr-1">
+                  <SkillAnnotationPanel
+                    skill={detail}
+                    candidateTags={availableTags}
+                    onTagsChange={(newTags) => {
+                      setDetail((prev) => (prev && prev.name === detail.name ? { ...prev, tags: newTags } : prev));
+                      setItems((prev) => prev.map((s) => (s.name === detail.name ? { ...s, tags: newTags } : s)));
+                    }}
+                    onAnnotationChange={({ rating, note, isPublic }) => {
+                      setDetail((prev) =>
+                        prev && prev.name === detail.name
+                          ? { ...prev, user_rating: rating, user_note: note, note, is_public: isPublic }
+                          : prev
+                      );
+                      setItems((prev) =>
+                        prev.map((s) =>
+                          s.name === detail.name
+                            ? { ...s, user_rating: rating, user_note: note, note, is_public: isPublic }
+                            : s
+                        )
+                      );
+                    }}
+                    onPublicNotesChange={(notes) => {
+                      setDetail((prev) => (prev && prev.name === detail.name ? { ...prev, public_notes: notes } : prev));
+                    }}
+                  />
+                </div>
               )}
 
               {/* SKILL.md 文档区 */}

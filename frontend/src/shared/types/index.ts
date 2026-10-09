@@ -567,7 +567,8 @@ export interface UserAnnotation {
   resource_id: string;
   rating: number;
   note: string;
-  tags: string[];
+  tags?: string[];
+  is_public?: boolean;
 }
 
 export interface UserAnnotationPayload {
@@ -576,6 +577,16 @@ export interface UserAnnotationPayload {
   rating?: number;
   note?: string;
   tags?: string[];
+  is_public?: boolean;
+}
+
+/** 团队公开经验与备忘 */
+export interface PublicNote {
+  user_id: number;
+  username: string;
+  display_name: string;
+  note: string;
+  updated_at: string | null;
 }
 
 /* ===================================================================== */
@@ -674,6 +685,14 @@ export interface CachedBifrostSkill {
   user_rating?: number;
   user_note?: string;
   user_tags?: string[];
+  /** 全局统一标准分类（Admin 管控） */
+  tags?: string[];
+  /** 全局标星总人数 */
+  star_count?: number;
+  /** 个人备忘公开状态 */
+  is_public?: boolean;
+  /** 团队公开经验与备忘列表 */
+  public_notes?: PublicNote[];
 }
 
 /** Bifrost Skills 仓库中的 skill（检索结果） */
@@ -697,6 +716,14 @@ export interface BifrostSkill {
   user_rating?: number;
   user_note?: string;
   user_tags?: string[];
+  /** 全局统一标准分类（Admin 管控） */
+  tags?: string[];
+  /** 全局标星总人数 */
+  star_count?: number;
+  /** 个人备忘公开状态 */
+  is_public?: boolean;
+  /** 团队公开经验与备忘列表 */
+  public_notes?: PublicNote[];
 }
 
 /** Skill 检索节点：选用一个 skill 后写入节点的数据 */
@@ -717,6 +744,12 @@ export interface SkillSelection {
   userRating?: number;
   userNote?: string;
   userTags?: string[];
+  tags?: string[];
+  starCount?: number;
+  star_count?: number;
+  isPublic?: boolean;
+  is_public?: boolean;
+  public_notes?: PublicNote[];
 }
 
 /** Skill Agent 执行产生的文件（agent_file 事件） */

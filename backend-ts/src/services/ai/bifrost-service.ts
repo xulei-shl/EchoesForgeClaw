@@ -8,6 +8,12 @@ import { RUNTIME_ROOT, listSharedBifrostSkills } from './skill-agent-service.js'
 import {
   RESOURCE_TYPE_BIFROST_SKILL,
   getUserAnnotationMap,
+  getGlobalTags,
+  getGlobalTagsMap,
+  getAllAvailableTags,
+  getStarCount,
+  getStarCountMap,
+  getPublicNotes,
 } from '../platform/annotation-service.js';
 
 /**
@@ -575,6 +581,9 @@ export async function getBifrostSkillDetail(db: DB, skillName: string): Promise<
     if (typeof detail.file_count !== 'number') {
       detail.file_count = Array.isArray(detail.files) ? (detail.files as unknown[]).length : 0;
     }
+    detail.tags = getGlobalTags(db, name);
+    detail.star_count = getStarCount(db, RESOURCE_TYPE_BIFROST_SKILL, name);
+    detail.public_notes = getPublicNotes(db, RESOURCE_TYPE_BIFROST_SKILL, name);
     return detail;
   }
 
@@ -622,6 +631,9 @@ export async function getBifrostSkillDetail(db: DB, skillName: string): Promise<
     preview_image: getSkillPreview(db, name),
     // 详情弹窗按路径字符串渲染，与管理端列表（本地缓存）口径一致
     files: (Array.isArray(raw.files) ? raw.files : []).map((f) => String((f as { path?: unknown })?.path ?? '')),
+    tags: getGlobalTags(db, name),
+    star_count: getStarCount(db, RESOURCE_TYPE_BIFROST_SKILL, name),
+    public_notes: getPublicNotes(db, RESOURCE_TYPE_BIFROST_SKILL, name),
   };
 }
 
@@ -665,6 +677,7 @@ export interface MergedBifrostSkillsResult {
   skills: Record<string, any>[];
   total: number;
   remote_available: boolean;
+  available_tags?: string[];
 }
 
 /**
@@ -748,23 +761,28 @@ export async function getMergedBifrostSkills(
     });
   }
 
-  // 5. 富化当前用户的打标与备注及示例图
+  // 5. 富化全局标准标签、全员评星人数、当前用户个人标注及示例图
   if (merged.length) {
     const skillNames = merged.map((s) => String(s.name ?? '')).filter(Boolean);
     const previews = skillPreviewMap(db, skillNames);
-    if (userId) {
-      const annotations = getUserAnnotationMap(db, userId, RESOURCE_TYPE_BIFROST_SKILL, skillNames);
-      for (const s of merged) {
-        const ann = annotations.get(String(s.name ?? ''));
+    const globalTagsMap = getGlobalTagsMap(db, skillNames);
+    const starCountMap = getStarCountMap(db, RESOURCE_TYPE_BIFROST_SKILL, skillNames);
+    const annotations = userId
+      ? getUserAnnotationMap(db, userId, RESOURCE_TYPE_BIFROST_SKILL, skillNames)
+      : null;
+
+    for (const s of merged) {
+      const name = String(s.name ?? '');
+      s.tags = globalTagsMap.get(name) ?? [];
+      s.star_count = starCountMap.get(name) ?? 0;
+      s.preview_image = previews.get(name) ?? null;
+      if (annotations) {
+        const ann = annotations.get(name);
         s.user_rating = ann?.rating ?? 0;
         s.user_note = ann?.note ?? '';
         s.user_tags = ann?.tags ?? [];
+        s.is_public = ann?.isPublic ?? false;
         s.note = ann?.note ?? '';
-        s.preview_image = previews.get(String(s.name ?? '')) ?? null;
-      }
-    } else {
-      for (const s of merged) {
-        s.preview_image = previews.get(String(s.name ?? '')) ?? null;
       }
     }
   }
@@ -777,8 +795,9 @@ export async function getMergedBifrostSkills(
     delete s.files;
   }
 
+  const allAvailableTags = getAllAvailableTags(db);
   const total = merged.length;
   const sliced = limit > 0 ? merged.slice(skip, skip + limit) : merged.slice(skip);
-  return { skills: sliced, total, remote_available: remoteAvailable };
+  return { skills: sliced, total, remote_available: remoteAvailable, available_tags: allAvailableTags };
 }
 

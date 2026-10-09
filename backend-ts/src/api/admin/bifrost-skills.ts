@@ -22,6 +22,8 @@ import {
   RESOURCE_TYPE_BIFROST_SKILL,
   getUserAnnotation,
   setUserAnnotation,
+  setGlobalTags,
+  revokePublicNote,
 } from '../../services/platform/annotation-service.js';
 import {
   SkillValidationError,
@@ -92,6 +94,7 @@ export async function registerBifrostSkillsAdminRouter(app: FastifyInstance): Pr
         const ann = getUserAnnotation(getDb(), userId, RESOURCE_TYPE_BIFROST_SKILL, skillName);
         detail.user_rating = ann.rating;
         detail.user_note = ann.note;
+        detail.is_public = ann.isPublic;
         detail.note = ann.note;
       }
       return detail;
@@ -140,6 +143,36 @@ export async function registerBifrostSkillsAdminRouter(app: FastifyInstance): Pr
         note: body.note ?? '',
       });
       return { name: skillName, note: res.note, rating: res.rating };
+    } catch (err) {
+      if (err instanceof SkillValidationError) return reply.code(400).send({ detail: err.message });
+      return reply.code(502).send({ detail: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // 管理员设置资源的全局统一业务分类标签
+  app.put('/api/admin/bifrost-skills/:name/tags', admin, async (request, reply) => {
+    try {
+      const skillName = checkSkillName((request.params as { name: string }).name);
+      const body = (request.body ?? {}) as { tags?: string[] };
+      const tags = Array.isArray(body.tags) ? body.tags : [];
+      const cleaned = setGlobalTags(getDb(), skillName, tags);
+      return { name: skillName, tags: cleaned };
+    } catch (err) {
+      if (err instanceof SkillValidationError) return reply.code(400).send({ detail: err.message });
+      return reply.code(502).send({ detail: err instanceof Error ? err.message : String(err) });
+    }
+  });
+
+  // 管理员清退/撤回某用户的违规公开备忘（重置为私有）
+  app.delete('/api/admin/bifrost-skills/:name/public-notes/:user_id', admin, async (request, reply) => {
+    try {
+      const skillName = checkSkillName((request.params as { name: string }).name);
+      const targetUserId = Number((request.params as { user_id: string }).user_id);
+      if (!targetUserId || Number.isNaN(targetUserId)) {
+        return reply.code(400).send({ detail: '非法 user_id' });
+      }
+      const ok = revokePublicNote(getDb(), RESOURCE_TYPE_BIFROST_SKILL, skillName, targetUserId);
+      return { ok, message: ok ? '已清理公开备忘' : '未找到对应公开备忘' };
     } catch (err) {
       if (err instanceof SkillValidationError) return reply.code(400).send({ detail: err.message });
       return reply.code(502).send({ detail: err instanceof Error ? err.message : String(err) });
