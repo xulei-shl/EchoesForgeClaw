@@ -374,6 +374,32 @@ sudo bash scripts/deploy.sh
 
 ---
 
+## 15. 实战部署更新要点（2026-11-04）
+
+本次全量部署（主服务 + 4 个 FastAPI 微服务）暴露并修复了以下问题，后续部署按此执行：
+
+### 15.1 前端依赖安装
+- `npm install` 可能在 `onnxruntime-node` postinstall 阶段因网络/代理失败；使用 `npm install --ignore-scripts`。
+- `@chenglou/pretext` 为本地包（`docs/设计/pretext-main`），需先构建 `dist/`（`tsc -p tsconfig.build.json`）并复制到 `frontend/node_modules/@chenglou/pretext`，否则 `npm run build` 报 `Cannot find module '@chenglou/pretext'`。
+
+### 15.2 Python 微服务 venv
+- Ubuntu 需先 `apt install -y python3-venv`（Python 3.14 无 ensurepip）。
+- `prettymaps` 的 `vsketch>=1.0.0` 在 Python 3.14 无兼容版本，安装时从 requirements 中移除（`grep -v vsketch`）。
+- `maptoposter`、`prettymaps` 的 requirements 遗漏 `fastapi`/`uvicorn`，需额外 `pip install fastapi uvicorn`。
+
+### 15.3 全部服务 systemd 自启动
+- 需为 6 个服务分别创建并 `enable --now`：
+  - `bookforge-backend`、`bookforge-frontend`
+  - `bookforge-maptoposter` (8100)、`bookforge-prettymaps` (8101)、`chinese-traditional-patterns` (8102)、`zhongguo-traditional-colors` (8103)
+- `scripts/deploy.sh` 仅覆盖 backend/frontend/prettymaps，且 prettymaps 使用系统 Python；生产应使用各服务独立 venv 的 uvicorn 路径。
+- 后端 `.env` 必须包含 `MAPTOPoster_API` / `PRETTYMAPS_API` / `PATTERNS_API` / `COLORS_API`（默认 `http://127.0.0.1:810x`）。
+
+### 15.4 端口与验证
+- 部署前用 `ss -tuln` 确认 8010/5180/8100-8103 空闲；被占用时顺延并同步 `.env`、`vite.config.ts`、systemd、ufw。
+- 验证：`systemctl is-active` 全部 active；各 `/health` 返回 ok；前端 `/` 返回 200。
+
+---
+
 ## 14. 字体部署与最佳实践
 
 项目内置 **24 款本地中文字体**（含上图东观体、又又意宋、汇文明朝体、寒蝉活宋体/仿宋、仓耳玉楷、青柳隶书等，合计约 159 MB），全部已转换为 `.woff2` 格式存放于 `frontend/public/fonts/`。字体通过 `@font-face` 声明（`frontend/src/index.css`）以 `local()` 优先 + `url()` 回退的方式加载，确保已安装字体的客户端零延迟渲染，未安装的客户端从服务器下载字体文件。
