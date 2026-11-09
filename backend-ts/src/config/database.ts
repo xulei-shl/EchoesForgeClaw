@@ -48,6 +48,7 @@ export function applyInitialSchema(db: DB): void {
   ensureColumn(sqlite, 'llm_configs', 'max_tokens', 'INTEGER');
   ensureColumn(sqlite, 'user_annotations', 'tags', "TEXT NOT NULL DEFAULT '[]'");
   ensureColumn(sqlite, 'user_annotations', 'is_public', 'BOOLEAN NOT NULL DEFAULT 0');
+  ensureColumn(sqlite, 'fastclaw_agent_configs', 'skills', "TEXT NOT NULL DEFAULT '[]'");
   for (const ddl of INITIAL_DDL) sqlite?.exec(ddl);
 }
 
@@ -139,7 +140,8 @@ const INITIAL_DDL: string[] = [
     agent_name VARCHAR,
     is_active BOOLEAN,
     created_at DATETIME,
-    updated_at DATETIME
+    updated_at DATETIME,
+    skills TEXT NOT NULL DEFAULT '[]'
   )`,
   `CREATE TABLE IF NOT EXISTS skill_agent_configs (
     id INTEGER PRIMARY KEY,

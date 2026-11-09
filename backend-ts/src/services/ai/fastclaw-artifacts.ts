@@ -18,7 +18,10 @@ import { env } from '../../config/env.js';
 import { mimeOf } from '../platform/file-utils.js';
 import { readArtifactManifest } from './pi/snapshot.js';
 
-/** FastClaw 数据根目录：env 可覆盖，默认官方安装布局（gateway cwd）。 */
+/** admin/settings「其他」分类的 FastClaw 数据根目录设置键。 */
+export const FASTCLAW_DATA_ROOT_SETTING_KEY = 'fastclaw.data_root';
+
+/** FastClaw 数据根目录：admin/settings 可覆盖；留空时 env 可覆盖，默认官方安装布局（gateway cwd）。 */
 const FASTCLAW_DATA_ROOT_ENV = 'FASTCLAW_DATA_ROOT';
 const DEFAULT_FASTCLAW_DATA_ROOT = '/var/lib/fastclaw';
 
@@ -26,9 +29,18 @@ const DEFAULT_FASTCLAW_DATA_ROOT = '/var/lib/fastclaw';
 const MAX_ARTIFACT_BYTES = 50 * 1024 * 1024;
 const MAX_ARTIFACTS_PER_TURN = 12;
 
-/** FastClaw 数据根目录；目录不存在返回 null（未部署 / 路径配置错误时不启用桥接）。 */
-export function fastclawDataRoot(): string | null {
-  const root = path.resolve(process.env[FASTCLAW_DATA_ROOT_ENV]?.trim() || DEFAULT_FASTCLAW_DATA_ROOT);
+/**
+ * FastClaw 数据根目录；目录不存在返回 null（未部署 / 路径配置错误时不启用桥接）。
+ * @param configured admin/settings 的 fastclaw.data_root（调用方从 app_settings 读取）；
+ *   非空时优先，留空则回退 env FASTCLAW_DATA_ROOT，最后回退内置默认。
+ *   保持本模块不直接依赖 DB：调用方均为已持有 db 的路由，也便于单测只传字符串。
+ */
+export function fastclawDataRoot(configured?: string | null): string | null {
+  const chosen =
+    (configured ?? '').trim() ||
+    process.env[FASTCLAW_DATA_ROOT_ENV]?.trim() ||
+    DEFAULT_FASTCLAW_DATA_ROOT;
+  const root = path.resolve(chosen);
   try {
     return statSync(root).isDirectory() ? root : null;
   } catch {

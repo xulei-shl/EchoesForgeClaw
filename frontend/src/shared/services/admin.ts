@@ -7,6 +7,8 @@ import type {
   CachedBifrostSkill,
   FastClawAgentConfig,
   FastClawAgentConfigPayload,
+  FastClawSkillCatalogItem,
+  FastClawSkillSyncResult,
   LLMConfig,
   LLMConfigPayload,
   LLMKind,
@@ -84,6 +86,14 @@ export const adminService = {
     api.delete(`/admin/fastclaw-agents/${id}`),
   duplicateFastClawAgent: (id: number): Promise<FastClawAgentConfig> =>
     api.post<FastClawAgentConfig, FastClawAgentConfig>(`/admin/fastclaw-agents/${id}/duplicate`),
+  listFastClawSkillCatalog: (): Promise<{ skills: FastClawSkillCatalogItem[] }> =>
+    api.get<{ skills: FastClawSkillCatalogItem[] }, { skills: FastClawSkillCatalogItem[] }>(
+      '/admin/fastclaw-agents/skills'
+    ),
+  syncFastClawAgentSkills: (id: number): Promise<FastClawSkillSyncResult> =>
+    api.post<FastClawSkillSyncResult, FastClawSkillSyncResult>(
+      `/admin/fastclaw-agents/${id}/sync-skills`
+    ),
 
   /* ---------------- Skill Agent 配置 ---------------- */
 

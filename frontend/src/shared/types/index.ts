@@ -186,6 +186,8 @@ export interface FastClawAgentConfig {
   /** 是否已配置 api_key（api_key 本身永不回传） */
   has_api_key: boolean;
   created_at: string;
+  /** 管理端绑定的共享 skill 名（agent 级共享，所有会话共用，不由画布节点决定） */
+  skills: string[];
 }
 
 export interface FastClawAgentConfigPayload {
@@ -195,6 +197,25 @@ export interface FastClawAgentConfigPayload {
   api_key?: string;
   agent_id?: string;
   is_active?: boolean;
+  skills?: string[];
+}
+
+/** 管理端可选的 FastClaw Agent 技能（来自共享区 / 同捆包）。 */
+export interface FastClawSkillCatalogItem {
+  name: string;
+  description: string;
+  source: 'shared' | 'bundled';
+}
+
+/** 保存配置 / 手动重推后返回的落盘结果。 */
+export interface FastClawSkillSyncResult {
+  root: string | null;
+  target_dir: string;
+  synced: string[];
+  skipped: string[];
+  removed: string[];
+  unchanged: number;
+  warning?: string;
 }
 
 export interface SkillAgentConfig {

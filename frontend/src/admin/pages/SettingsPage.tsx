@@ -75,6 +75,7 @@ const KNOWN_KEYS: { key: string; description: string }[] = [
   { key: 'lightpanda.cloud_api_key', description: 'Lightpanda 云端 API Token（https://lightpanda.io 控制台获取；敏感，仅显示掩码）' },
   { key: 'lightpanda.use_proxy', description: 'Lightpanda 出网是否走全局 http.proxy（云端 CDP 连接与 VuFind HTTP 兜底请求；本机回环地址始终直连）' },
   { key: 'wechat.webhook_url', description: '企业微信群机器人 Webhook 地址（用于接收画板用户反馈通知；敏感，仅显示掩码）' },
+  { key: 'fastclaw.data_root', description: 'FastClaw 服务数据根目录（如 /opt/fastclaw-data）；管理端同步的 Agent 技能落在 {根}/agents/{agent_id}/agent/skills，留空回退 env FASTCLAW_DATA_ROOT' },
 ];
 
 /** 业务分类配置定义 */

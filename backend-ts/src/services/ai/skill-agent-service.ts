@@ -29,13 +29,26 @@ import AdmZip from 'adm-zip';
  */
 
 // 仓库根 = 本文件（backend-ts/src/services/）向上三层；runtime/ 在仓库根下，不在 backend-ts/ 下
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
+export const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 export const RUNTIME_ROOT = path.join(REPO_ROOT, 'runtime');
 export const REAL_SKILLS_ROOT = path.join(RUNTIME_ROOT, '.agent', 'skills');
 export const REAL_AGENTS_ROOT = path.join(RUNTIME_ROOT, '.agent', 'agents');
 
 /** skill 名称长度上限（目录名）。 */
 const MAX_SKILL_NAME_LEN = 100;
+
+/** skill 名合法性（与 pi/workspace.ts 装配口径一致）：拒绝路径分隔符/相对跳转/控制字符。 */
+export function isValidSkillName(name: string): boolean {
+  return (
+    !!name &&
+    name.length <= MAX_SKILL_NAME_LEN &&
+    !name.includes('/') &&
+    !name.includes('\\') &&
+    name !== '.' &&
+    name !== '..' &&
+    ![...name].some((ch) => ch.charCodeAt(0) < 32)
+  );
+}
 /** skill 解压总大小上限（字节，防 zip 炸弹）。 */
 const MAX_EXTRACT_BYTES = 100 * 1024 * 1024;
 /** skill 解压文件数上限。 */

@@ -120,4 +120,19 @@ describe('fastclawDataRoot', () => {
     expect(fastclawDataRoot()).toBeNull();
     delete process.env.FASTCLAW_DATA_ROOT;
   });
+
+  it('admin/settings 配置值优先；留空回退 env', () => {
+    const configured = mkdtempSync(path.join(os.tmpdir(), 'fc-configured-'));
+    const previous = process.env.FASTCLAW_DATA_ROOT;
+    try {
+      process.env.FASTCLAW_DATA_ROOT = root;
+      expect(fastclawDataRoot(configured)).toBe(path.resolve(configured));
+      expect(fastclawDataRoot('')).toBe(root);
+      expect(fastclawDataRoot(undefined)).toBe(root);
+    } finally {
+      if (previous === undefined) delete process.env.FASTCLAW_DATA_ROOT;
+      else process.env.FASTCLAW_DATA_ROOT = previous;
+      rmSync(configured, { recursive: true, force: true });
+    }
+  });
 });

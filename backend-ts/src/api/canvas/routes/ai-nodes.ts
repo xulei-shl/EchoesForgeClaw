@@ -73,6 +73,7 @@ import {
 } from '../../../services/ai/skill-agent-service.js';
 import {
   buildInheritAttachments,
+  FASTCLAW_DATA_ROOT_SETTING_KEY,
   fastclawDataRoot,
   harvestFastclawArtifacts,
   inheritFilePath,
@@ -403,7 +404,7 @@ export async function register(app: FastifyInstance): Promise<void> {
           // 产物桥接（同机部署）：FastClaw 引用的本机文件拷入节点工作区 → 以
           // skill-files URL 发 agent_file，前端预览/下载与 Skill Agent 模式同构。
           // best-effort：任何失败不影响已完成的对话流。
-          const fcRoot = fastclawDataRoot();
+          const fcRoot = fastclawDataRoot(getAppSettingsMap(getDb())[FASTCLAW_DATA_ROOT_SETTING_KEY]);
           if (fcRoot) {
             turnTexts.push(finalText);
             try {

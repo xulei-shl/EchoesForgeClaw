@@ -258,6 +258,11 @@ const DEFAULT_SETTINGS: Array<[string, string, string]> = [
     '',
     '企业微信群机器人 Webhook 地址（用于接收画板用户反馈通知，敏感，仅显示掩码）',
   ],
+  [
+    'fastclaw.data_root',
+    '/opt/fastclaw-data',
+    'FastClaw 服务数据根目录（FASTCLAW_HOME 的宿主机挂载路径）；管理端为 Agent 选中的 skill 会同步到 {根}/agents/{agent_id}/agent/skills。留空则回退环境变量 FASTCLAW_DATA_ROOT 或 /var/lib/fastclaw',
+  ],
 ];
 
 /** 废弃/已删除的系统设置键（启动时自动彻底清理存量历史数据） */

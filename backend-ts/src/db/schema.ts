@@ -89,6 +89,8 @@ export const fastclawAgentConfigs = sqliteTable("fastclaw_agent_configs", {
 	createdAt: numeric("created_at"),
 	updatedAt: numeric("updated_at"),
 	agentName: text("agent_name"),
+	/** 管理端为该 Agent 选中的共享 skill 名（JSON 数组，agent 级共享，非按会话隔离）。 */
+	skills: text("skills").default("[]").notNull(),
 },
 (table) => [
 	index("ix_fastclaw_agent_configs_id").on(table.id),

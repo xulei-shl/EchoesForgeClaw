@@ -15,6 +15,7 @@ import {
   userSkillsRoot,
   nodeWorkspace,
   symlinkOrCopy,
+  isValidSkillName,
 } from '../skill-agent-service.js';
 import {
   COMPACTION_KEEP_RECENT_TOKENS,
@@ -141,19 +142,6 @@ export interface PreparedWorkspaceInfo {
   warnings: string[];
   /** 白名单内已装配到 {ws}/.pi-agent/extensions/ 的扩展目录（runPiAgent 据此追加 -e）。 */
   mountedExtensions: string[];
-}
-
-/** skill 名合法性（与 skill-agent-service 校验口径一致）：拒绝路径分隔符/相对跳转/控制字符。 */
-function isValidSkillName(name: string): boolean {
-  return (
-    !!name &&
-    name.length <= 100 &&
-    !name.includes('/') &&
-    !name.includes('\\') &&
-    name !== '.' &&
-    name !== '..' &&
-    ![...name].some((ch) => ch.charCodeAt(0) < 32)
-  );
 }
 
 /**

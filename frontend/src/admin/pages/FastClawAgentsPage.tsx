@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Bot,
+  Check,
   Copy,
   KeyRound,
   Link2,
@@ -12,7 +13,11 @@ import {
 } from 'lucide-react';
 import { adminService } from '../../shared/services/admin';
 import api from '../../shared/services/api';
-import type { FastClawAgentConfig } from '../../shared/types';
+import type {
+  FastClawAgentConfig,
+  FastClawSkillCatalogItem,
+  FastClawSkillSyncResult,
+} from '../../shared/types';
 import { Button } from '../../shared/components/ui/Button';
 import { Dialog } from '../../shared/components/ui/Dialog';
 import { Input } from '../../shared/components/ui/Input';
@@ -30,6 +35,8 @@ interface FormState {
   /** FastClaw agent 真实名字（拉取选择时记录，随保存落库） */
   agent_name: string;
   is_active: boolean;
+  /** 绑定的共享 skill 名（agent 级共享，不由画布节点注入） */
+  skills: string[];
 }
 
 const EMPTY_FORM: FormState = {
@@ -39,6 +46,7 @@ const EMPTY_FORM: FormState = {
   agent_id: '',
   agent_name: '',
   is_active: true,
+  skills: [],
 };
 
 /** 「拉取」返回的 FastClaw agent（id 必填；name 为真实名字，无名字时与 id 相同） */
@@ -67,6 +75,11 @@ export const FastClawAgentsPage: React.FC = () => {
   const [pickedAgentId, setPickedAgentId] = useState('');
   /** 拉取列表的搜索关键词（匹配名字 / ID / 模型） */
   const [pullSearch, setPullSearch] = useState('');
+  /** 可同步的共享 skill 候选（本地共享区 + 同捆包，与用户已安装列表无关） */
+  const [skillCatalog, setSkillCatalog] = useState<FastClawSkillCatalogItem[]>([]);
+  const [skillCatalogError, setSkillCatalogError] = useState('');
+  const [skillQuery, setSkillQuery] = useState('');
+  const [syncingId, setSyncingId] = useState<number | null>(null);
   const { dialog, showToast } = useFeedback();
 
   const load = useCallback(async (force = false) => {
@@ -88,6 +101,41 @@ export const FastClawAgentsPage: React.FC = () => {
     void load();
   }, [load]);
 
+  // 技能候选只在管理端加载一次；失败不阻断配置表单（仍可保存其它字段）
+  useEffect(() => {
+    let alive = true;
+    adminService
+      .listFastClawSkillCatalog()
+      .then((res) => {
+        if (alive) setSkillCatalog(Array.isArray(res?.skills) ? res.skills : []);
+      })
+      .catch((e: any) => {
+        if (alive) setSkillCatalogError(e?.message || '技能候选加载失败');
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const filteredSkills = useMemo(() => {
+    const q = skillQuery.trim().toLowerCase();
+    if (!q) return skillCatalog;
+    return skillCatalog.filter(
+      (s) =>
+        s.name.toLowerCase().includes(q) ||
+        (s.description || '').toLowerCase().includes(q)
+    );
+  }, [skillCatalog, skillQuery]);
+
+  const toggleFormSkill = (name: string) => {
+    setForm((prev) => ({
+      ...prev,
+      skills: prev.skills.includes(name)
+        ? prev.skills.filter((n) => n !== name)
+        : [...prev.skills, name],
+    }));
+  };
+
   const resetForm = () => {
     setForm(EMPTY_FORM);
     setFormError('');
@@ -96,6 +144,7 @@ export const FastClawAgentsPage: React.FC = () => {
     setPullAgents(null);
     setPickedAgentId('');
     setPullSearch('');
+    setSkillQuery('');
   };
 
   const openCreate = () => {
@@ -113,6 +162,7 @@ export const FastClawAgentsPage: React.FC = () => {
       agent_id: c.agent_id,
       agent_name: c.agent_name || '',
       is_active: c.is_active,
+      skills: Array.isArray(c.skills) ? [...c.skills] : [],
     });
     setFormError('');
   };
@@ -199,15 +249,34 @@ export const FastClawAgentsPage: React.FC = () => {
     setSaving(true);
     setFormError('');
     try {
-      const base = { name: form.name.trim(), agent_name: form.agent_name.trim(), base_url: form.base_url.trim(), agent_id: form.agent_id.trim(), is_active: form.is_active };
+      const wasEditing = !!editing;
+      const base = {
+        name: form.name.trim(),
+        agent_name: form.agent_name.trim(),
+        base_url: form.base_url.trim(),
+        agent_id: form.agent_id.trim(),
+        is_active: form.is_active,
+        skills: form.skills,
+      };
+      let sync: FastClawSkillSyncResult | undefined;
       if (editing) {
         const payload: Record<string, any> = { ...base };
         if (form.api_key) payload.api_key = form.api_key.trim();
-        await adminService.updateFastClawAgent(editing.id, payload);
-        showToast('Agent 配置已更新', { type: 'success' });
+        const res = await adminService.updateFastClawAgent(editing.id, payload);
+        sync = (res as FastClawAgentConfig & { skill_sync?: FastClawSkillSyncResult })?.skill_sync;
       } else {
-        await adminService.createFastClawAgent({ ...base, api_key: form.api_key.trim() });
-        showToast('Agent 配置已创建', { type: 'success' });
+        const res = await adminService.createFastClawAgent({ ...base, api_key: form.api_key.trim() });
+        sync = (res as FastClawAgentConfig & { skill_sync?: FastClawSkillSyncResult })?.skill_sync;
+      }
+      if (sync?.warning) {
+        showToast(`配置已保存，但技能同步未完成：${sync.warning}`, { type: 'error' });
+      } else if (sync) {
+        showToast(
+          `配置已保存，同步 ${sync.synced.length} 个技能（${sync.unchanged} 个无变化，移除 ${sync.removed.length} 个）`,
+          { type: 'success' }
+        );
+      } else {
+        showToast(wasEditing ? 'Agent 配置已更新' : 'Agent 配置已创建', { type: 'success' });
       }
       resetForm();
       load();
@@ -260,11 +329,31 @@ export const FastClawAgentsPage: React.FC = () => {
     }
   };
 
+  /** 按当前 DB 配置重推技能到 FastClaw 数据目录（skill 包更新 / 目录被外部清理后使用）。 */
+  const handleSyncSkills = async (c: FastClawAgentConfig) => {
+    setSyncingId(c.id);
+    try {
+      const res = await adminService.syncFastClawAgentSkills(c.id);
+      if (res.warning) {
+        showToast(`技能同步未完成：${res.warning}`, { type: 'error' });
+      } else {
+        showToast(
+          `已同步 ${res.synced.length} 个技能（${res.unchanged} 个无变化，移除 ${res.removed.length} 个）`,
+          { type: 'success' }
+        );
+      }
+    } catch (e: any) {
+      showToast(e?.message || '技能同步失败，请重试', { type: 'error' });
+    } finally {
+      setSyncingId(null);
+    }
+  };
+
   return (
     <div>
       <PageHeader
         title="FastClaw Agent"
-        subtitle="FastClaw Agent 接入参数（Base URL + API Key + Agent ID）"
+        subtitle="FastClaw Agent 接入参数（Base URL + API Key + Agent ID）与 Agent 级共享技能"
         actions={
           !showCreate && !editing && (
             <Button size="sm" onClick={openCreate}>
@@ -429,6 +518,94 @@ export const FastClawAgentsPage: React.FC = () => {
                 <p className="text-xs text-ink-light font-sans">已识别 Agent：{form.agent_name}</p>
               )}
             </div>
+
+            {/* Agent 级共享技能：由管理端统一选定，不开放给画布用户按节点注入 */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <FieldLabel>Agent 技能</FieldLabel>
+                <span className="text-[11px] text-ink-faint font-mono tabular-nums">
+                  已选 {form.skills.length}
+                </span>
+              </div>
+              <p className="text-xs text-ink-faint font-sans leading-relaxed">
+                技能是 Agent 级共享配置，对该 Agent 的所有会话生效（会话只隔离对话历史）。保存后同步到 FastClaw 数据目录，不由画布 Skill 节点注入。
+              </p>
+              <div className="relative">
+                <Search
+                  size={14}
+                  strokeWidth={1.5}
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-faint pointer-events-none"
+                />
+                <Input
+                  value={skillQuery}
+                  onChange={(e) => setSkillQuery(e.target.value)}
+                  placeholder="搜索可同步的共享技能"
+                  className="pl-8"
+                />
+              </div>
+              {skillCatalogError && (
+                <p className="text-xs text-error font-sans">{skillCatalogError}</p>
+              )}
+              <div className="max-h-40 overflow-y-auto custom-scrollbar rounded-md border border-dashed border-paper-grid divide-y divide-paper-grid/60">
+                {filteredSkills.length === 0 ? (
+                  <p className="text-xs text-ink-faint font-sans text-center py-4">
+                    {skillCatalog.length === 0
+                      ? '共享区暂无已安装技能（请先到 Bifrost Skills 安装）'
+                      : '没有匹配的技能'}
+                  </p>
+                ) : (
+                  filteredSkills.map((s) => {
+                    const checked = form.skills.includes(s.name);
+                    return (
+                      <button
+                        key={s.name}
+                        type="button"
+                        onClick={() => toggleFormSkill(s.name)}
+                        className={`w-full flex items-start gap-2.5 px-2.5 py-2 text-left transition-colors ${
+                          checked ? 'bg-accent-surface/60' : 'hover:bg-paper-grid/20'
+                        }`}
+                      >
+                        <span
+                          className={`mt-0.5 w-3.5 h-3.5 rounded-sm border shrink-0 flex items-center justify-center ${
+                            checked ? 'border-accent bg-accent text-paper' : 'border-paper-grid'
+                          }`}
+                        >
+                          {checked && <Check size={10} strokeWidth={3} />}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-xs font-medium text-ink font-mono truncate">
+                            {s.name}
+                          </span>
+                          {s.description && (
+                            <span className="block text-[11px] text-ink-faint font-sans truncate mt-0.5">
+                              {s.description}
+                            </span>
+                          )}
+                        </span>
+                        <span className="shrink-0 text-[10px] text-ink-faint font-sans">
+                          {s.source === 'shared' ? '共享' : '同捆'}
+                        </span>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+              {form.skills.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {form.skills.map((name) => (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => toggleFormSkill(name)}
+                      title={`移除 ${name}`}
+                      className="text-[11px] font-mono text-accent bg-accent-surface border border-accent/30 rounded-pill px-2 py-0.5 hover:border-accent/60 transition-colors"
+                    >
+                      {name} ×
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2.5 pt-2">
             <Toggle checked={form.is_active} onChange={(v) => setForm({ ...form, is_active: v })} label="启用状态" />
@@ -497,10 +674,25 @@ export const FastClawAgentsPage: React.FC = () => {
                       <KeyRound size={11} strokeWidth={1.5} />
                       {c.has_api_key ? '已配置 Key' : '未配置 Key'}
                     </span>
+                    <span title="Agent 级共享技能，所有会话生效">
+                      skills: {c.skills?.length ?? 0}
+                    </span>
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                   <Toggle checked={c.is_active} onChange={(v) => handleToggleActive(c, v)} label={c.is_active ? '停用' : '启用'} />
+                  <button
+                    onClick={() => void handleSyncSkills(c)}
+                    disabled={syncingId === c.id}
+                    title="按当前配置重新同步技能到 FastClaw 数据目录"
+                    className="p-1.5 rounded-md text-ink-light hover:text-accent hover:bg-accent-surface transition-colors active:scale-[0.96] disabled:opacity-50"
+                  >
+                    <RefreshCw
+                      size={15}
+                      strokeWidth={1.5}
+                      className={syncingId === c.id ? 'animate-spin' : ''}
+                    />
+                  </button>
                   <button
                     onClick={() => handleDuplicate(c)}
                     title="复制（沿用 Base URL / API Key / Agent ID）"
