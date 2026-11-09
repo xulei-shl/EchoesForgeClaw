@@ -17,6 +17,12 @@ interface DialogProps {
   initialFocusRef?: React.RefObject<HTMLElement | null>;
   /** 弹窗面板的自定义类名，可用于覆盖默认宽度（如 max-w-lg） */
   panelClassName?: string;
+  /**
+   * 内容区滚动方式的自定义类名，默认 `overflow-y-auto`。
+   * 双栏 / 固定高度弹窗内部已有独立滚动区时传 `overflow-hidden`（可搭配响应式前缀），
+   * 避免「外层 + 内层」双层滚动条。
+   */
+  contentClassName?: string;
 }
 
 /**
@@ -32,6 +38,7 @@ export const Dialog: React.FC<DialogProps> = ({
   dismissible = true,
   initialFocusRef,
   panelClassName = 'max-w-md',
+  contentClassName = 'overflow-y-auto',
 }) => {
   // Esc 关闭
   useEffect(() => {
@@ -81,7 +88,7 @@ export const Dialog: React.FC<DialogProps> = ({
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto min-h-0 px-5 py-4">{children}</div>
+        <div className={`flex-1 min-h-0 px-5 py-4 ${contentClassName}`}>{children}</div>
 
         {footer != null && (
           <div className="shrink-0 px-5 py-3 border-t border-dashed border-paper-grid flex items-center justify-end gap-2">
