@@ -26,12 +26,15 @@ import { NoteEditModal } from '../../shared/components/ui/NoteEditModal';
 import { MarkdownViewer } from '../../shared/components/ui/MarkdownViewer';
 import { useFeedback } from '../../shared/components/ui/FeedbackProvider';
 import { ViewToggle, type ViewMode } from '../../shared/components/ui/ViewToggle';
+import { useAuth } from '../../shared/stores/authStore';
 import { useBifrostPrompts } from './useBifrostPrompts';
 import { copyTextToClipboard } from '../../shared/utils/clipboard';
 
 export const BifrostPromptsPage: React.FC = () => {
   const navigate = useNavigate();
   const { showToast } = useFeedback();
+  const { user } = useAuth();
+  const isLoggedIn = Boolean(user);
 
   const {
     folders,
@@ -220,20 +223,22 @@ export const BifrostPromptsPage: React.FC = () => {
             className="w-44"
             options={[{ label: '全部文件夹', value: '' }, ...folders.map((f) => ({ label: f.name, value: f.id }))]}
           />
-          <Select
-            value={ratingFilter}
-            onChange={(val) => setRatingFilter(val)}
-            className="w-36"
-            options={[
-              { label: '全部打标', value: '' },
-              { label: '★ 5 星', value: '5' },
-              { label: '★ 4 星及以上', value: '4+' },
-              { label: '★ 3 星及以上', value: '3+' },
-              { label: '已打标', value: 'rated' },
-              { label: '未打标', value: 'unrated' },
-              { label: '仅有备注', value: 'noted' },
-            ]}
-          />
+          {isLoggedIn && (
+            <Select
+              value={ratingFilter}
+              onChange={(val) => setRatingFilter(val)}
+              className="w-36"
+              options={[
+                { label: '全部打标', value: '' },
+                { label: '★ 5 星', value: '5' },
+                { label: '★ 4 星及以上', value: '4+' },
+                { label: '★ 3 星及以上', value: '3+' },
+                { label: '已打标', value: 'rated' },
+                { label: '未打标', value: 'unrated' },
+                { label: '仅有备注', value: 'noted' },
+              ]}
+            />
+          )}
           <Select
             value={tagFilter}
             onChange={(val) => setTagFilter(val)}
@@ -244,7 +249,7 @@ export const BifrostPromptsPage: React.FC = () => {
               ...availableTags.map((t) => ({ label: `#${t}`, value: t })),
             ]}
           />
-          {(q || folderId || ratingFilter || tagFilter) && (
+          {(q || folderId || (isLoggedIn && ratingFilter) || tagFilter) && (
             <button
               onClick={() => {
                 setQ('');
@@ -360,7 +365,8 @@ export const BifrostPromptsPage: React.FC = () => {
                         <div onClick={(e) => e.stopPropagation()} className="shrink-0">
                           <RatingStars
                             value={p.user_rating || 0}
-                            onChange={(r) => void handleUpdateRating(p.id, r, p.user_note)}
+                            onChange={isLoggedIn ? (r) => void handleUpdateRating(p.id, r, p.user_note) : undefined}
+                            readonly={!isLoggedIn}
                             size="xs"
                           />
                         </div>
@@ -399,30 +405,32 @@ export const BifrostPromptsPage: React.FC = () => {
                           ) : null}
                         </div>
 
-                        {/* 私有备注触发与展示 */}
-                        <div className="shrink-0 max-w-[55%]">
-                          {p.user_note ? (
-                            <button
-                              type="button"
-                              onClick={() => setEditingNoteTarget(p)}
-                              className="h-5 text-[10px] text-accent font-sans italic bg-accent-surface/50 px-2 rounded border border-accent/20 hover:border-accent/40 transition-colors flex items-center gap-1 max-w-full group/note truncate"
-                              title={`备注：${p.user_note}`}
-                            >
-                              <StickyNote size={10} className="shrink-0 opacity-70 group-hover/note:opacity-100" />
-                              <span className="truncate">{p.user_note}</span>
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => setEditingNoteTarget(p)}
-                              className="h-5 text-[10px] text-ink-faint hover:text-accent font-sans px-1.5 rounded hover:bg-paper-grid/40 transition-colors flex items-center gap-1 opacity-60 hover:opacity-100"
-                              title="添加私有备注"
-                            >
-                              <StickyNote size={11} />
-                              <span>备注</span>
-                            </button>
-                          )}
-                        </div>
+                        {/* 私有备注触发与展示（仅登录用户） */}
+                        {isLoggedIn && (
+                          <div className="shrink-0 max-w-[55%]">
+                            {p.user_note ? (
+                              <button
+                                type="button"
+                                onClick={() => setEditingNoteTarget(p)}
+                                className="h-5 text-[10px] text-accent font-sans italic bg-accent-surface/50 px-2 rounded border border-accent/20 hover:border-accent/40 transition-colors flex items-center gap-1 max-w-full group/note truncate"
+                                title={`备注：${p.user_note}`}
+                              >
+                                <StickyNote size={10} className="shrink-0 opacity-70 group-hover/note:opacity-100" />
+                                <span className="truncate">{p.user_note}</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setEditingNoteTarget(p)}
+                                className="h-5 text-[10px] text-ink-faint hover:text-accent font-sans px-1.5 rounded hover:bg-paper-grid/40 transition-colors flex items-center gap-1 opacity-60 hover:opacity-100"
+                                title="添加私有备注"
+                              >
+                                <StickyNote size={11} />
+                                <span>备注</span>
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       {/* 第 5 区：底部信息与动作按钮（mt-auto 绝对沉底） */}
@@ -441,16 +449,18 @@ export const BifrostPromptsPage: React.FC = () => {
                           >
                             <Copy size={14} />
                           </button>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => handleLoadToCanvas(p)}
-                            className="text-xs px-2.5 py-1 h-7 flex items-center gap-1"
-                            title="在画板中创建该提示词检索节点"
-                          >
-                            <PlusCircle size={13} className="text-accent" />
-                            载入画板
-                          </Button>
+                          {isLoggedIn && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => handleLoadToCanvas(p)}
+                              className="text-xs px-2.5 py-1 h-7 flex items-center gap-1"
+                              title="在画板中创建该提示词检索节点"
+                            >
+                              <PlusCircle size={13} className="text-accent" />
+                              载入画板
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -507,7 +517,7 @@ export const BifrostPromptsPage: React.FC = () => {
                       <p className="text-xs text-ink-light font-sans truncate">
                         {p.content}
                       </p>
-                      {p.user_note && (
+                      {isLoggedIn && p.user_note && (
                         <p className="text-[11px] text-accent font-sans italic truncate mt-0.5 flex items-center gap-1" title={`备注：${p.user_note}`}>
                           <StickyNote size={11} className="shrink-0 opacity-70" />
                           <span className="truncate">{p.user_note}</span>
@@ -519,7 +529,8 @@ export const BifrostPromptsPage: React.FC = () => {
                     <div className="w-28 shrink-0 hidden sm:flex flex-col justify-center items-start gap-1" onClick={(e) => e.stopPropagation()}>
                       <RatingStars
                         value={p.user_rating || 0}
-                        onChange={(r) => void handleUpdateRating(p.id, r, p.user_note)}
+                        onChange={isLoggedIn ? (r) => void handleUpdateRating(p.id, r, p.user_note) : undefined}
+                        readonly={!isLoggedIn}
                         size="xs"
                       />
                       {p.user_tags && p.user_tags.length > 0 && (
@@ -561,16 +572,18 @@ export const BifrostPromptsPage: React.FC = () => {
                       >
                         <Copy size={14} />
                       </button>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => handleLoadToCanvas(p)}
-                        className="text-xs px-2.5 py-1 h-7 flex items-center gap-1"
-                        title="在画板中创建该提示词检索节点"
-                      >
-                        <PlusCircle size={13} className="text-accent" />
-                        <span className="hidden md:inline">载入画板</span>
-                      </Button>
+                      {isLoggedIn && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => handleLoadToCanvas(p)}
+                          className="text-xs px-2.5 py-1 h-7 flex items-center gap-1"
+                          title="在画板中创建该提示词检索节点"
+                        >
+                          <PlusCircle size={13} className="text-accent" />
+                          <span className="hidden md:inline">载入画板</span>
+                        </Button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -618,17 +631,19 @@ export const BifrostPromptsPage: React.FC = () => {
                   <Copy size={14} />
                   复制正文
                 </Button>
-                <Button
-                  variant="primary"
-                  onClick={() => {
-                    handleLoadToCanvas(detail);
-                    setDetail(null);
-                  }}
-                  className="flex items-center gap-1.5"
-                >
-                  <PlusCircle size={14} />
-                  载入画板
-                </Button>
+                {isLoggedIn && (
+                  <Button
+                    variant="primary"
+                    onClick={() => {
+                      handleLoadToCanvas(detail);
+                      setDetail(null);
+                    }}
+                    className="flex items-center gap-1.5"
+                  >
+                    <PlusCircle size={14} />
+                    载入画板
+                  </Button>
+                )}
               </>
             ) : null
           }
@@ -657,18 +672,21 @@ export const BifrostPromptsPage: React.FC = () => {
                       <span className="text-xs text-ink-light">评分：</span>
                       <RatingStars
                         value={detail.user_rating || 0}
-                        onChange={(r) => void onUpdateRating(detail.id, r, detail.user_note, detail.user_tags)}
+                        onChange={isLoggedIn ? (r) => void onUpdateRating(detail.id, r, detail.user_note, detail.user_tags) : undefined}
+                        readonly={!isLoggedIn}
                         size="sm"
                       />
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setEditingNoteTarget(detail)}
-                      className="text-xs text-accent hover:text-accent-hover flex items-center gap-1 font-sans transition-colors"
-                    >
-                      <StickyNote size={13} />
-                      编辑标注
-                    </button>
+                    {isLoggedIn && (
+                      <button
+                        type="button"
+                        onClick={() => setEditingNoteTarget(detail)}
+                        className="text-xs text-accent hover:text-accent-hover flex items-center gap-1 font-sans transition-colors"
+                      >
+                        <StickyNote size={13} />
+                        编辑标注
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -711,36 +729,40 @@ export const BifrostPromptsPage: React.FC = () => {
                 />
               </div>
 
-              {/* 私有备注区域 */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-ink font-serif block">我的备注</label>
-                <div className="p-3 rounded-xl border border-paper-grid bg-paper/40 text-xs text-ink font-sans">
-                  {detail.user_note ? (
-                    <span className="text-accent italic">{detail.user_note}</span>
-                  ) : (
-                    <span className="text-ink-faint">暂无备注（可在节点和此页面同步记录私有见解）</span>
-                  )}
+              {/* 私有备注区域（仅登录用户） */}
+              {isLoggedIn && (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-ink font-serif block">我的备注</label>
+                  <div className="p-3 rounded-xl border border-paper-grid bg-paper/40 text-xs text-ink font-sans">
+                    {detail.user_note ? (
+                      <span className="text-accent italic">{detail.user_note}</span>
+                    ) : (
+                      <span className="text-ink-faint">暂无备注（可在节点和此页面同步记录私有见解）</span>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
 
-              {/* 标签展示区域 */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-ink font-serif block">我的标签</label>
-                <div className="flex items-center gap-1.5 flex-wrap p-3 rounded-xl border border-paper-grid bg-paper/40">
-                  {detail.user_tags && detail.user_tags.length > 0 ? (
-                    detail.user_tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="text-xs px-2 py-0.5 rounded-pill bg-accent-surface text-accent border border-accent/25"
-                      >
-                        #{tag}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="text-xs text-ink-faint">暂无标签（可在编辑标注中添加）</span>
-                  )}
+              {/* 标签展示区域（仅登录用户） */}
+              {isLoggedIn && (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-ink font-serif block">我的标签</label>
+                  <div className="flex items-center gap-1.5 flex-wrap p-3 rounded-xl border border-paper-grid bg-paper/40">
+                    {detail.user_tags && detail.user_tags.length > 0 ? (
+                      detail.user_tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="text-xs px-2 py-0.5 rounded-pill bg-accent-surface text-accent border border-accent/25"
+                        >
+                          #{tag}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-xs text-ink-faint">暂无标签（可在编辑标注中添加）</span>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
         </Drawer>

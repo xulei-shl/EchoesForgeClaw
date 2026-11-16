@@ -17,10 +17,10 @@ import {
 export async function register(app: FastifyInstance): Promise<void> {
   // ---- Bifrost 提示词检索（供「提示词检索」PromptSearchNode 节点与提示词库页面使用） ----
 
-  // 文件夹列表（受管理员白名单过滤；普通登录用户可用；支持 force=1 绕过 TTL）
+  // 文件夹列表（受管理员白名单过滤；普通登录与匿名访客可用；支持 force=1 绕过 TTL）
   app.get(
     '/api/modules/bookplate/bifrost/folders',
-    { preHandler: app.authenticate },
+    { preHandler: app.optionalAuth },
     async (request, reply) => {
       const q = (request.query ?? {}) as { force?: string };
       try {
@@ -35,10 +35,10 @@ export async function register(app: FastifyInstance): Promise<void> {
     }
   );
 
-  // 提示词列表（支持 q 搜索与 folder_id 过滤；富化当前用户的 user_rating 与 user_note）
+  // 提示词列表（支持 q 搜索与 folder_id 过滤；登录态下富化当前用户的 user_rating 与 user_note）
   app.get(
     '/api/modules/bookplate/bifrost/prompts',
-    { preHandler: app.authenticate },
+    { preHandler: app.optionalAuth },
     async (request, reply) => {
       const q = (request.query ?? {}) as { folder_id?: string; q?: string; skip?: string; limit?: string; force?: string };
       const skip = Math.max(0, Number(q.skip ?? 0) || 0);
@@ -73,10 +73,10 @@ export async function register(app: FastifyInstance): Promise<void> {
     }
   );
 
-  // 提示词详情（提取正文文本与本地预览图，富化当前用户的 user_rating 与 user_note）
+  // 提示词详情（提取正文文本与本地预览图，登录态下富化当前用户的 user_rating 与 user_note）
   app.get(
     '/api/modules/bookplate/bifrost/prompts/:prompt_id',
-    { preHandler: app.authenticate },
+    { preHandler: app.optionalAuth },
     async (request, reply) => {
       const promptId = (request.params as { prompt_id: string }).prompt_id;
       try {

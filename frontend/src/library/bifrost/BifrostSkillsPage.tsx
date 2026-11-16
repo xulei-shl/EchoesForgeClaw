@@ -30,12 +30,15 @@ import { useFeedback } from '../../shared/components/ui/FeedbackProvider';
 import { SkillFileTree } from '../../shared/components/ui/SkillFileTree';
 import { SkillPreviewPanel } from '../../shared/components/ui/SkillPreviewPanel';
 import { ViewToggle, type ViewMode } from '../../shared/components/ui/ViewToggle';
+import { useAuth } from '../../shared/stores/authStore';
 import { useBifrostSkills } from './useBifrostSkills';
 import { SkillAnnotationPanel } from './SkillAnnotationPanel';
 
 export const BifrostSkillsPage: React.FC = () => {
   const navigate = useNavigate();
   const { showToast } = useFeedback();
+  const { user } = useAuth();
+  const isLoggedIn = Boolean(user);
 
   const {
     items: skills,
@@ -247,8 +250,8 @@ export const BifrostSkillsPage: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* 批量载入画板按钮 */}
-            {selectedNames.size > 0 && (
+            {/* 批量载入画板按钮（仅登录用户可用） */}
+            {isLoggedIn && selectedNames.size > 0 && (
               <Button
                 variant="primary"
                 size="sm"
@@ -289,20 +292,23 @@ export const BifrostSkillsPage: React.FC = () => {
             />
           </div>
 
-          <Select
-            value={ratingFilter}
-            onChange={(val) => setRatingFilter(val)}
-            className="w-36"
-            options={[
-              { label: '全部打标', value: '' },
-              { label: '★ 5 星', value: '5' },
-              { label: '★ 4 星及以上', value: '4+' },
-              { label: '★ 3 星及以上', value: '3+' },
-              { label: '已打标', value: 'rated' },
-              { label: '未打标', value: 'unrated' },
-              { label: '仅有备注', value: 'noted' },
-            ]}
-          />
+          {/* 打标筛选（按星级/备注，仅登录用户有个人标注时展示） */}
+          {isLoggedIn && (
+            <Select
+              value={ratingFilter}
+              onChange={(val) => setRatingFilter(val)}
+              className="w-36"
+              options={[
+                { label: '全部打标', value: '' },
+                { label: '★ 5 星', value: '5' },
+                { label: '★ 4 星及以上', value: '4+' },
+                { label: '★ 3 星及以上', value: '3+' },
+                { label: '已打标', value: 'rated' },
+                { label: '未打标', value: 'unrated' },
+                { label: '仅有备注', value: 'noted' },
+              ]}
+            />
+          )}
 
           <Select
             value={tagFilter}
@@ -315,7 +321,7 @@ export const BifrostSkillsPage: React.FC = () => {
             ]}
           />
 
-          {(q || ratingFilter || tagFilter) && (
+          {(q || (isLoggedIn && ratingFilter) || tagFilter) && (
             <button
               onClick={() => {
                 setQ('');
@@ -331,35 +337,39 @@ export const BifrostSkillsPage: React.FC = () => {
           {/* 页面多选控制与视图切换 */}
           <div className="flex items-center gap-3 ms-auto flex-wrap">
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                disabled={filteredItems.length === 0}
-                onClick={handleToggleSelectAll}
-                className={`text-xs font-sans flex items-center gap-1 transition-all ${
-                  filteredItems.length === 0
-                    ? 'text-ink-faint/50 cursor-not-allowed'
-                    : 'text-ink-light hover:text-accent active:scale-[0.96]'
-                }`}
-              >
-                {filteredItems.length > 0 && filteredItems.every((s) => selectedNames.has(s.name)) ? (
-                  <>
-                    <CheckSquare size={14} className="text-accent" /> 取消全选
-                  </>
-                ) : (
-                  <>
-                    <Square size={14} /> 全选已载入
-                  </>
-                )}
-              </button>
+              {isLoggedIn && (
+                <>
+                  <button
+                    type="button"
+                    disabled={filteredItems.length === 0}
+                    onClick={handleToggleSelectAll}
+                    className={`text-xs font-sans flex items-center gap-1 transition-all ${
+                      filteredItems.length === 0
+                        ? 'text-ink-faint/50 cursor-not-allowed'
+                        : 'text-ink-light hover:text-accent active:scale-[0.96]'
+                    }`}
+                  >
+                    {filteredItems.length > 0 && filteredItems.every((s) => selectedNames.has(s.name)) ? (
+                      <>
+                        <CheckSquare size={14} className="text-accent" /> 取消全选
+                      </>
+                    ) : (
+                      <>
+                        <Square size={14} /> 全选已载入
+                      </>
+                    )}
+                  </button>
 
-              {selectedNames.size > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setSelectedNames(new Set())}
-                  className="text-xs text-ink-faint hover:text-error font-sans active:scale-[0.96] transition-colors ml-1"
-                >
-                  清空已选
-                </button>
+                  {selectedNames.size > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedNames(new Set())}
+                      className="text-xs text-ink-faint hover:text-error font-sans active:scale-[0.96] transition-colors ml-1"
+                    >
+                      清空已选
+                    </button>
+                  )}
+                </>
               )}
 
               <span className="text-xs text-ink-faint font-sans ml-1">
@@ -441,18 +451,20 @@ export const BifrostSkillsPage: React.FC = () => {
                     >
                       {/* 第 1 行：主标题纯享行（复选框 + 名称，单行截断，不换行） */}
                       <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => toggleSelect(s.name)}
-                          className="h-6 w-6 -ml-0.5 flex items-center justify-center rounded-md hover:bg-paper-grid/40 text-ink-light hover:text-accent active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out shrink-0"
-                          title={isChecked ? '取消选择' : '勾选此项'}
-                        >
-                          {isChecked ? (
-                            <CheckSquare size={16} className="text-accent" />
-                          ) : (
-                            <Square size={16} className="text-ink-faint group-hover:text-ink-light" />
-                          )}
-                        </button>
+                        {isLoggedIn && (
+                          <button
+                            type="button"
+                            onClick={() => toggleSelect(s.name)}
+                            className="h-6 w-6 -ml-0.5 flex items-center justify-center rounded-md hover:bg-paper-grid/40 text-ink-light hover:text-accent active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out shrink-0"
+                            title={isChecked ? '取消选择' : '勾选此项'}
+                          >
+                            {isChecked ? (
+                              <CheckSquare size={16} className="text-accent" />
+                            ) : (
+                              <Square size={16} className="text-ink-faint group-hover:text-ink-light" />
+                            )}
+                          </button>
+                        )}
 
                         <div
                           className="flex-1 min-w-0 cursor-pointer"
@@ -492,7 +504,8 @@ export const BifrostSkillsPage: React.FC = () => {
                           )}
                           <RatingStars
                             value={s.user_rating || 0}
-                            onChange={(r) => void handleUpdateRating(s.name, r, noteText, s.is_public)}
+                            onChange={isLoggedIn ? (r) => void handleUpdateRating(s.name, r, noteText, s.is_public) : undefined}
+                            readonly={!isLoggedIn}
                             size="xs"
                           />
                         </div>
@@ -539,35 +552,37 @@ export const BifrostSkillsPage: React.FC = () => {
                           ) : null}
                         </div>
 
-                        {/* 私有备注触发与展示 */}
-                        <div className="shrink-0 max-w-[55%]">
-                          {noteText ? (
-                            <button
-                              type="button"
-                              onClick={() => setEditingNoteTarget(s)}
-                              className="h-5 text-[10px] text-accent font-sans italic bg-accent-surface/50 px-2 rounded border border-accent/20 hover:border-accent/40 transition-colors flex items-center gap-1 max-w-full group/note truncate"
-                              title={`备注：${noteText}${s.is_public ? '（已公开）' : ''}`}
-                            >
-                              <StickyNote size={10} className="shrink-0 opacity-70 group-hover/note:opacity-100" />
-                              <span className="truncate">{noteText}</span>
-                              {s.is_public && (
-                                <span className="text-[9px] px-1 py-px rounded bg-accent/20 text-accent font-medium shrink-0">
-                                  公开
-                                </span>
-                              )}
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => setEditingNoteTarget(s)}
-                              className="h-5 text-[10px] text-ink-faint hover:text-accent font-sans px-1.5 rounded hover:bg-paper-grid/40 transition-colors flex items-center gap-1 opacity-60 hover:opacity-100"
-                              title="添加私有备注"
-                            >
-                              <StickyNote size={11} />
-                              <span>备注</span>
-                            </button>
-                          )}
-                        </div>
+                        {/* 私有备注触发与展示（仅登录用户） */}
+                        {isLoggedIn && (
+                          <div className="shrink-0 max-w-[55%]">
+                            {noteText ? (
+                              <button
+                                type="button"
+                                onClick={() => setEditingNoteTarget(s)}
+                                className="h-5 text-[10px] text-accent font-sans italic bg-accent-surface/50 px-2 rounded border border-accent/20 hover:border-accent/40 transition-colors flex items-center gap-1 max-w-full group/note truncate"
+                                title={`备注：${noteText}${s.is_public ? '（已公开）' : ''}`}
+                              >
+                                <StickyNote size={10} className="shrink-0 opacity-70 group-hover/note:opacity-100" />
+                                <span className="truncate">{noteText}</span>
+                                {s.is_public && (
+                                  <span className="text-[9px] px-1 py-px rounded bg-accent/20 text-accent font-medium shrink-0">
+                                    公开
+                                  </span>
+                                )}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setEditingNoteTarget(s)}
+                                className="h-5 text-[10px] text-ink-faint hover:text-accent font-sans px-1.5 rounded hover:bg-paper-grid/40 transition-colors flex items-center gap-1 opacity-60 hover:opacity-100"
+                                title="添加私有备注"
+                              >
+                                <StickyNote size={11} />
+                                <span>备注</span>
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       {/* 第 5 区：底部信息与动作按钮（mt-auto 绝对沉底，单行零折叠） */}
@@ -596,16 +611,18 @@ export const BifrostSkillsPage: React.FC = () => {
                             )}
                           </button>
 
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => handleLoadSkillsToCanvas([s])}
-                            className="text-xs px-2.5 py-1 h-7 flex items-center gap-1"
-                            title="在画板中创建包含此 Skill 的检索节点"
-                          >
-                            <PlusCircle size={13} className="text-accent" />
-                            载入画板
-                          </Button>
+                          {isLoggedIn && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => handleLoadSkillsToCanvas([s])}
+                              className="text-xs px-2.5 py-1 h-7 flex items-center gap-1"
+                              title="在画板中创建包含此 Skill 的检索节点"
+                            >
+                              <PlusCircle size={13} className="text-accent" />
+                              载入画板
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </Card>
@@ -631,21 +648,23 @@ export const BifrostSkillsPage: React.FC = () => {
                           : 'bg-node-bg hover:border-accent/40 hover:shadow-xs'
                       }`}
                     >
-                      {/* 复选框 */}
-                      <div onClick={(e) => e.stopPropagation()} className="shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => toggleSelect(s.name)}
-                          className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-paper-grid/50 text-ink-light hover:text-accent active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out"
-                          title={isChecked ? '取消选择' : '勾选此项'}
-                        >
-                          {isChecked ? (
-                            <CheckSquare size={17} className="text-accent" />
-                          ) : (
-                            <Square size={17} className="text-ink-faint group-hover:text-ink-light" />
-                          )}
-                        </button>
-                      </div>
+                      {/* 复选框（仅登录用户） */}
+                      {isLoggedIn && (
+                        <div onClick={(e) => e.stopPropagation()} className="shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => toggleSelect(s.name)}
+                            className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-paper-grid/50 text-ink-light hover:text-accent active:scale-[0.96] transition-[background-color,color,transform] duration-150 ease-out"
+                            title={isChecked ? '取消选择' : '勾选此项'}
+                          >
+                            {isChecked ? (
+                              <CheckSquare size={17} className="text-accent" />
+                            ) : (
+                              <Square size={17} className="text-ink-faint group-hover:text-ink-light" />
+                            )}
+                          </button>
+                        </div>
+                      )}
 
                       {/* 技能名称与状态徽标（纯粹双行：1行名称单行截断，2行状态徽标；时间移至右侧详情面板） */}
                       <div className="w-44 sm:w-52 shrink-0 min-w-0 flex flex-col justify-center gap-1">
@@ -677,7 +696,7 @@ export const BifrostSkillsPage: React.FC = () => {
                         <p className="text-xs text-ink-light font-sans truncate">
                           {s.description || '（暂无详细功能描述）'}
                         </p>
-                        {noteText && (
+                        {isLoggedIn && noteText && (
                           <p
                             className="text-[11px] text-accent font-sans italic truncate mt-0.5 flex items-center gap-1"
                             title={`备注：${noteText}`}
@@ -693,7 +712,8 @@ export const BifrostSkillsPage: React.FC = () => {
                         <div className="flex items-center gap-1.5">
                           <RatingStars
                             value={s.user_rating || 0}
-                            onChange={(r) => void handleUpdateRating(s.name, r, noteText, s.is_public)}
+                            onChange={isLoggedIn ? (r) => void handleUpdateRating(s.name, r, noteText, s.is_public) : undefined}
+                            readonly={!isLoggedIn}
                             size="xs"
                           />
                           {typeof s.star_count === 'number' && s.star_count > 0 && (
@@ -747,16 +767,18 @@ export const BifrostSkillsPage: React.FC = () => {
                           )}
                         </button>
 
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => handleLoadSkillsToCanvas([s])}
-                          className="text-xs px-2.5 py-1 h-7 flex items-center gap-1"
-                          title="在画板中创建包含此 Skill 的检索节点"
-                        >
-                          <PlusCircle size={13} className="text-accent" />
-                          <span className="hidden sm:inline">载入画板</span>
-                        </Button>
+                        {isLoggedIn && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => handleLoadSkillsToCanvas([s])}
+                            className="text-xs px-2.5 py-1 h-7 flex items-center gap-1"
+                            title="在画板中创建包含此 Skill 的检索节点"
+                          >
+                            <PlusCircle size={13} className="text-accent" />
+                            <span className="hidden sm:inline">载入画板</span>
+                          </Button>
+                        )}
                       </div>
                     </div>
                   );
@@ -810,17 +832,19 @@ export const BifrostSkillsPage: React.FC = () => {
                   )}
                   打包下载 (.zip)
                 </Button>
-                <Button
-                  variant="primary"
-                  onClick={() => {
-                    handleLoadSkillsToCanvas([detail]);
-                    setDetail(null);
-                  }}
-                  className="flex items-center gap-1.5"
-                >
-                  <PlusCircle size={14} />
-                  载入画板
-                </Button>
+                {isLoggedIn && (
+                  <Button
+                    variant="primary"
+                    onClick={() => {
+                      handleLoadSkillsToCanvas([detail]);
+                      setDetail(null);
+                    }}
+                    className="flex items-center gap-1.5"
+                  >
+                    <PlusCircle size={14} />
+                    载入画板
+                  </Button>
+                )}
               </>
             ) : null
           }

@@ -59,10 +59,10 @@ export async function register(app: FastifyInstance): Promise<void> {
     }
   );
 
-  // 检索 Bifrost Skills 仓库（共享区本地缓存优先 + 远端合并浏览，普通用户可用）
+  // 检索 Bifrost Skills 仓库（共享区本地缓存优先 + 远端合并浏览，普通登录与匿名访客可用）
   app.get(
     '/api/modules/bookplate/skills/bifrost-search',
-    { preHandler: app.authenticate },
+    { preHandler: app.optionalAuth },
     async (request) => {
       const q = (request.query ?? {}) as { q?: string; skip?: string; limit?: string; force?: string };
       const skip = Math.max(0, Number(q.skip ?? 0) || 0);
@@ -70,7 +70,7 @@ export async function register(app: FastifyInstance): Promise<void> {
       const force = q.force === '1' || q.force === 'true';
       return getMergedBifrostSkills({
         db: getDb(),
-        userId: request.authUser!.id,
+        userId: request.authUser?.id,
         q: q.q,
         skip,
         limit,
@@ -79,10 +79,10 @@ export async function register(app: FastifyInstance): Promise<void> {
     }
   );
 
-  // 获取单个 Bifrost Skill 详情（SKILL.md 正文 + 文件树 + 用户打标备注）
+  // 获取单个 Bifrost Skill 详情（SKILL.md 正文 + 文件树 + 登录态用户打标备注）
   app.get(
     '/api/modules/bookplate/skills/bifrost/:name',
-    { preHandler: app.authenticate },
+    { preHandler: app.optionalAuth },
     async (request, reply) => {
       try {
         const skillName = checkSkillName((request.params as { name: string }).name);
@@ -109,10 +109,10 @@ export async function register(app: FastifyInstance): Promise<void> {
     }
   );
 
-  // 打包下载单个 Bifrost Skill（ZIP 压缩包）
+  // 打包下载单个 Bifrost Skill（ZIP 压缩包，登录与访客均可用）
   app.get(
     '/api/modules/bookplate/skills/bifrost/:name/download',
-    { preHandler: app.authenticate },
+    { preHandler: app.optionalAuth },
     async (request, reply) => {
       try {
         const skillName = checkSkillName((request.params as { name: string }).name);

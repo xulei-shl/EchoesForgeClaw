@@ -92,19 +92,11 @@ const AppRoutes = () => {
       />
       <Route
         path="/prompts"
-        element={
-          <PrivateRoute>
-            <UserBifrostPromptsPage />
-          </PrivateRoute>
-        }
+        element={<UserBifrostPromptsPage />}
       />
       <Route
         path="/skills"
-        element={
-          <PrivateRoute>
-            <UserBifrostSkillsPage />
-          </PrivateRoute>
-        }
+        element={<UserBifrostSkillsPage />}
       />
       {/* 管理后台（仅管理员） */}
       <Route

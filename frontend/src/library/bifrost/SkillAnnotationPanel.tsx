@@ -44,6 +44,7 @@ export const SkillAnnotationPanel: React.FC<SkillAnnotationPanelProps> = ({
   const { user } = useAuth();
   const { showToast, dialog } = useFeedback();
   const isAdmin = user?.role === 'admin';
+  const isLoggedIn = Boolean(user);
 
   // --- 全局标签管理状态 ---
   const [globalTags, setGlobalTags] = useState<string[]>(skill.tags || []);
@@ -329,71 +330,77 @@ export const SkillAnnotationPanel: React.FC<SkillAnnotationPanelProps> = ({
       </div>
 
       {/* ======================================================== */}
-      {/* 区块 2：我的评星与备忘（私有 + 可选公开）                    */}
+      {/* 区块 2：我的评星与备忘（仅登录用户可用）                    */}
       {/* ======================================================== */}
-      <div className="rounded-lg border border-paper-grid bg-node-bg p-4 space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <StickyNote size={14} className="text-accent" />
-            <span className="text-xs font-serif font-semibold text-ink">我的评星与备忘</span>
+      {isLoggedIn ? (
+        <div className="rounded-lg border border-paper-grid bg-node-bg p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <StickyNote size={14} className="text-accent" />
+              <span className="text-xs font-serif font-semibold text-ink">我的评星与备忘</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <RatingStars value={rating} onChange={setRating} size="sm" />
+              <span className="text-xs font-sans text-ink-light">
+                {rating > 0 ? `${rating} 星` : '未评分'}
+              </span>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <RatingStars value={rating} onChange={setRating} size="sm" />
-            <span className="text-xs font-sans text-ink-light">
-              {rating > 0 ? `${rating} 星` : '未评分'}
-            </span>
-          </div>
-        </div>
 
-        <div className="space-y-1.5">
-          <Textarea
-            value={note}
-            onChange={(e) => {
-              const val = e.target.value;
-              setNote(val);
-              if (!val.trim()) setIsPublic(false);
-            }}
-            placeholder="记录针对此 Skill 的使用心得、避坑指南等…"
-            rows={3}
-            className="text-xs font-sans"
-          />
-        </div>
-
-        <div className="flex items-center justify-between pt-1">
-          <div className="flex items-center gap-2">
-            <Toggle
-              checked={isPublic}
-              onChange={(next) => {
-                if (!note.trim()) return;
-                setIsPublic(next);
+          <div className="space-y-1.5">
+            <Textarea
+              value={note}
+              onChange={(e) => {
+                const val = e.target.value;
+                setNote(val);
+                if (!val.trim()) setIsPublic(false);
               }}
-              disabled={!note.trim()}
-              label="公开至团队"
+              placeholder="记录针对此 Skill 的使用心得、避坑指南等…"
+              rows={3}
+              className="text-xs font-sans"
             />
-            <span
-              className={`text-xs font-sans ${
-                !note.trim()
-                  ? 'text-ink-faint cursor-not-allowed'
-                  : isPublic
-                  ? 'text-accent font-medium'
-                  : 'text-ink-light'
-              }`}
-            >
-              公开至团队
-            </span>
           </div>
 
-          <Button
-            size="sm"
-            variant="primary"
-            onClick={() => void handleSaveAnnotation()}
-            isLoading={savingAnnotation}
-          >
-            <Sparkles size={13} className="mr-1" />
-            保存标注
-          </Button>
+          <div className="flex items-center justify-between pt-1">
+            <div className="flex items-center gap-2">
+              <Toggle
+                checked={isPublic}
+                onChange={(next) => {
+                  if (!note.trim()) return;
+                  setIsPublic(next);
+                }}
+                disabled={!note.trim()}
+                label="公开至团队"
+              />
+              <span
+                className={`text-xs font-sans ${
+                  !note.trim()
+                    ? 'text-ink-faint cursor-not-allowed'
+                    : isPublic
+                    ? 'text-accent font-medium'
+                    : 'text-ink-light'
+                }`}
+              >
+                公开至团队
+              </span>
+            </div>
+
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={() => void handleSaveAnnotation()}
+              isLoading={savingAnnotation}
+            >
+              <Sparkles size={13} className="mr-1" />
+              保存标注
+            </Button>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="rounded-lg border border-dashed border-paper-grid bg-node-bg/50 p-3 text-center text-xs font-sans text-ink-light">
+          <span>登录后可为技能评星并记录私有心得与团队经验</span>
+        </div>
+      )}
 
       {/* ======================================================== */}
       {/* 区块 3：团队公开经验与备忘交流区                            */}
@@ -417,7 +424,7 @@ export const SkillAnnotationPanel: React.FC<SkillAnnotationPanelProps> = ({
         {publicNotes.length === 0 ? (
           <div className="py-6 text-center text-xs text-ink-faint font-sans space-y-1">
             <p>暂无公开分享的备忘</p>
-            <p className="text-[11px]">在上方撰写备忘记录并开启「公开至团队」，为团队提供第一份使用经验吧！</p>
+            <p className="text-[11px]">{isLoggedIn ? '在上方撰写备忘记录并开启「公开至团队」，为团队提供第一份使用经验吧！' : '团队同事暂未公开该技能的使用经验'}</p>
           </div>
         ) : (
           <div className="space-y-3 max-h-72 overflow-y-auto custom-scrollbar pr-1">

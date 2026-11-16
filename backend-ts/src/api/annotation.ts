@@ -93,9 +93,9 @@ export async function registerAnnotationRouter(app: FastifyInstance): Promise<vo
   });
 
   /**
-   * 获取特定资源的团队公开经验与备忘列表。
+   * 获取特定资源的团队公开经验与备忘列表（登录与访客均可只读浏览）。
    */
-  app.get('/api/annotations/:resource_type/:resource_id/public-notes', auth, async (request, reply) => {
+  app.get('/api/annotations/:resource_type/:resource_id/public-notes', { preHandler: app.optionalAuth }, async (request, reply) => {
     const params = request.params as { resource_type: string; resource_id: string };
     const resourceType = (params.resource_type ?? '').trim();
     const resourceId = (params.resource_id ?? '').trim();

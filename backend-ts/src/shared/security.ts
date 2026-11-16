@@ -60,6 +60,8 @@ declare module 'fastify' {
   interface FastifyInstance {
     /** 鉴权 preHandler：校验 Bearer token 并挂载 req.authUser（对应 get_current_active_user）。 */
     authenticate: (req: FastifyRequest, reply: FastifyReply) => Promise<void>;
+    /** 可选鉴权 preHandler：若携带有效 Bearer token 则挂载 req.authUser，否则作为匿名访客放行。 */
+    optionalAuth: (req: FastifyRequest, reply: FastifyReply) => Promise<void>;
     /** 管理员鉴权（对应 get_current_admin_user）。 */
     requireAdmin: (req: FastifyRequest, reply: FastifyReply) => Promise<void>;
   }
@@ -84,6 +86,21 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
       return reply.code(401).send({ detail: 'Could not validate credentials' });
     }
     req.authUser = toAuthUser(row);
+  });
+
+  app.decorate('optionalAuth', async (req: FastifyRequest) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return;
+    try {
+      await req.jwtVerify();
+      const username = req.user?.sub;
+      const row = username ? findUserByUsername(getDb(), username) : undefined;
+      if (row && row.isActive) {
+        req.authUser = toAuthUser(row);
+      }
+    } catch {
+      // 匿名访客或 Token 过期，不阻断请求，req.authUser 保持 undefined
+    }
   });
 
   app.decorate('requireAdmin', async (req: FastifyRequest, reply: FastifyReply) => {

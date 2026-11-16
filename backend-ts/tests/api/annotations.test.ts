@@ -108,6 +108,7 @@ describe('用户通用标注（打标 1-5 星与私有备注）API 测试', () =
       rating: 5,
       note: '测试提示词备注',
       tags: [],
+      is_public: false,
     });
 
     // 单个读取
@@ -123,6 +124,7 @@ describe('用户通用标注（打标 1-5 星与私有备注）API 测试', () =
       rating: 5,
       note: '测试提示词备注',
       tags: [],
+      is_public: false,
     });
 
     // 单独更新 rating（保留已有 note 与 tags）
@@ -143,6 +145,7 @@ describe('用户通用标注（打标 1-5 星与私有备注）API 测试', () =
       rating: 3,
       note: '测试提示词备注',
       tags: [],
+      is_public: false,
     });
   });
 
@@ -166,6 +169,7 @@ describe('用户通用标注（打标 1-5 星与私有备注）API 测试', () =
       rating: 4,
       note: '带标签的技能',
       tags: ['代码', '工作流'],
+      is_public: false,
     });
 
     // 读取验证
@@ -219,6 +223,7 @@ describe('用户通用标注（打标 1-5 星与私有备注）API 测试', () =
       rating: 0,
       note: '',
       tags: [],
+      is_public: false,
     });
 
     // 验证数据库行已删除
@@ -273,6 +278,7 @@ describe('用户通用标注（打标 1-5 星与私有备注）API 测试', () =
       rating: 5,
       note: 'Admin 专享超棒提示词',
       tags: ['精选', '推荐'],
+      is_public: false,
     });
 
     // 4. User 读取自己视角
@@ -287,6 +293,7 @@ describe('用户通用标注（打标 1-5 星与私有备注）API 测试', () =
       rating: 2,
       note: 'User 觉得效果一般',
       tags: ['草稿'],
+      is_public: false,
     });
   });
 });

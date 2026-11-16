@@ -33,13 +33,13 @@ export const Navbar: React.FC = () => {
             <div className="hidden md:flex ml-10 space-x-1">
               <NavLink to="/" end className={getNavLinkClass}>首页</NavLink>
               <NavLink to="/bookplate" className={getNavLinkClass}>画板</NavLink>
+              <NavLink to="/prompts" className={getNavLinkClass}>提示词</NavLink>
+              <NavLink to="/skills" className={getNavLinkClass}>技能</NavLink>
               {user && (
                 <>
                   <NavLink to="/history" className={getNavLinkClass}>历史</NavLink>
                   <NavLink to="/favorites" className={getNavLinkClass}>收藏</NavLink>
                   <NavLink to="/gallery" className={getNavLinkClass}>画廊</NavLink>
-                  <NavLink to="/prompts" className={getNavLinkClass}>提示词</NavLink>
-                  <NavLink to="/skills" className={getNavLinkClass}>技能</NavLink>
                   {user.role === 'admin' && (
                     <NavLink to="/admin/users" className={getAdminLinkClass}>
                       <Settings size={16} strokeWidth={2} />
