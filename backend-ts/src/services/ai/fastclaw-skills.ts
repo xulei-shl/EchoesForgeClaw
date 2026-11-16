@@ -40,6 +40,7 @@ import {
   REAL_SKILLS_ROOT,
   REPO_ROOT,
 } from './skill-agent-service.js';
+import { isSecretFileRel } from '../platform/file-utils.js';
 
 /** 本系统托管的同步清单文件名（隐藏文件，FastClaw 的 scanSkillsDir 只认目录，不会误加载）。 */
 const MANIFEST_NAME = '.bf-skills.json';
@@ -95,9 +96,9 @@ function isWithin(target: string, root: string): boolean {
   return p === r || p.startsWith(r + path.sep);
 }
 
-/** 与画布 skill 下载链路一致：不把 .env* 之类的密钥文件带进 FastClaw 数据目录。 */
+/** 与画布 skill 下载链路一致：不把 .env* 之类的密钥文件带进 FastClaw 数据目录（保留 .env.example）。 */
 function includeSkillFile(absPath: string): boolean {
-  return !/^\.env(\.|$)/i.test(path.basename(absPath));
+  return !isSecretFileRel(absPath);
 }
 
 /** 列出可同步到 FastClaw Agent 的 skill（共享区优先，其次同捆包；按目录名去重）。 */

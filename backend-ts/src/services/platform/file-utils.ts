@@ -179,9 +179,20 @@ export function removePathSafe(p: string): void {
   }
 }
 
-/** 密钥文件判定：任何深度的 .env / .env.*（.env.local / .env.production 等）一律不可预览/下载。 */
+/** 密钥文件判定：任何深度的 .env / .env.*（.env.local / .env.production 等）一律不可预览/下载。
+ *  注意：.env.example / .env.sample 等模板示例文件不含真实凭据，不视为密钥文件，必须在打包下载与文件服务中完整保留。
+ */
 export function isSecretFileRel(rel: string): boolean {
-  const base = rel.slice(rel.lastIndexOf('/') + 1);
+  const normalized = rel.replace(/\\/g, '/');
+  const base = normalized.slice(normalized.lastIndexOf('/') + 1);
+  if (
+    base === '.env.example' ||
+    base.startsWith('.env.example.') ||
+    base === '.env.sample' ||
+    base.startsWith('.env.sample.')
+  ) {
+    return false;
+  }
   return base === '.env' || base.startsWith('.env.');
 }
 

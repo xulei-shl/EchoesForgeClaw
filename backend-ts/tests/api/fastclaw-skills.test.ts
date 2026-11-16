@@ -103,13 +103,18 @@ describe('syncFastClawAgentSkills', () => {
     expect(existsSync(path.join(first.target_dir, 'alpha', 'SKILL.md'))).toBe(true);
   });
 
-  it('不把 .env 密钥文件带进 FastClaw 数据目录，并清理暂存目录', () => {
-    makeSkill('gamma', '带密钥的技能', { '.env': 'SECRET=1', 'scripts/run.sh': 'echo hi' });
+  it('不把 .env 密钥文件带进 FastClaw 数据目录，但保留 .env.example，并清理暂存目录', () => {
+    makeSkill('gamma', '带密钥的技能', {
+      '.env': 'SECRET=1',
+      '.env.example': 'SECRET=demo',
+      'scripts/run.sh': 'echo hi',
+    });
     const result = sync(['gamma']);
     expect(result.synced).toEqual(['gamma']);
     const dest = path.join(result.target_dir, 'gamma');
     expect(existsSync(path.join(dest, 'scripts', 'run.sh'))).toBe(true);
     expect(existsSync(path.join(dest, '.env'))).toBe(false);
+    expect(existsSync(path.join(dest, '.env.example'))).toBe(true);
     const agentDir = path.dirname(result.target_dir);
     expect(readdirSync(agentDir).some((n) => n.startsWith('.bf-skills-tmp-'))).toBe(false);
   });

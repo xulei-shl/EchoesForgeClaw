@@ -891,14 +891,15 @@ describe('listWorkspaceArtifacts 排除口径（.env* 密钥文件任意深度�
     expect(rels).not.toContain('inputs/.env');
   });
 
-  it('isDiffExcluded / isSecretFileRel：任意深度 .env* 命中，正常产物不误伤', () => {
+  it('isDiffExcluded / isSecretFileRel：任意深度 .env* 命中，.env.example 模板文件与正常产物不误伤', () => {
     expect(isDiffExcluded('.env')).toBe(true);
     expect(isDiffExcluded('outputs/.env.local')).toBe(true);
     expect(isDiffExcluded('deep/sub/.env.production')).toBe(true);
     expect(isDiffExcluded('.pi-agent/models.json')).toBe(true);
     expect(isDiffExcluded('outputs/art.png')).toBe(false);
+    expect(isDiffExcluded('a/b/.env.example')).toBe(false);
     expect(isSecretFileRel('.env')).toBe(true);
-    expect(isSecretFileRel('a/b/.env.example')).toBe(true);
+    expect(isSecretFileRel('a/b/.env.example')).toBe(false);
     expect(isSecretFileRel('a/b/notes.env')).toBe(false);
   });
 });

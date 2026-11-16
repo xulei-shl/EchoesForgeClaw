@@ -772,6 +772,8 @@ describe('install：本地共享缓存优先（registerExistingBifrostSkill）',
       'README.md': '额外文档',
       '.env': 'SECRET=1',
       'config/.env.local': 'NESTED=1',
+      '.env.example': 'SECRET=example_secret',
+      'config/.env.example': 'NESTED=example_nested',
     });
     updateSharedBifrostSkill(zipBytes, '1.0.0');
 
@@ -797,11 +799,13 @@ describe('install：本地共享缓存优先（registerExistingBifrostSkill）',
     expect(downloadResp.headers['content-disposition']).toContain('download-skill.zip');
     expect(downloadResp.rawPayload.length).toBeGreaterThan(0);
 
-    // 3. 校验下载返回的 zip 能被正常解包，且打包下载出口剔除 .env*
+    // 3. 校验下载返回的 zip 能被正常解包，且打包下载出口剔除 .env* 但保留 .env.example
     const zip = new AdmZip(downloadResp.rawPayload);
     const entries = zip.getEntries().map((e) => e.entryName);
     expect(entries).toContain('SKILL.md');
     expect(entries).toContain('README.md');
+    expect(entries).toContain('.env.example');
+    expect(entries).toContain('config/.env.example');
     expect(entries).not.toContain('.env');
     expect(entries).not.toContain('config/.env.local');
 
@@ -809,6 +813,8 @@ describe('install：本地共享缓存优先（registerExistingBifrostSkill）',
     const sharedDir = path.join(RUNTIME_ROOT, '.agent', 'skills', 'download-skill');
     expect(existsSync(path.join(sharedDir, '.env'))).toBe(true);
     expect(existsSync(path.join(sharedDir, 'config', '.env.local'))).toBe(true);
+    expect(existsSync(path.join(sharedDir, '.env.example'))).toBe(true);
+    expect(existsSync(path.join(sharedDir, 'config', '.env.example'))).toBe(true);
   });
 
   it('admin bifrost-skills 示例图管理：上传、详情富化、静态路由读取、删除', async () => {

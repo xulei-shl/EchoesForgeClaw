@@ -38,7 +38,7 @@ function checkSkillName(raw: string): string {
   return name;
 }
 
-/** 打包下载出口守卫（与 skill-files 下载同口径）：剔除 zip 内任意路径的密钥文件（.env*）。 */
+/** 打包下载出口守卫（与 skill-files 下载同口径）：剔除 zip 内任意路径的密钥文件（.env*，保留 .env.example）。 */
 function stripSecretZipEntries(zip: AdmZip): Buffer {
   for (const entry of zip.getEntries()) {
     const name = entry.isDirectory ? entry.entryName.replace(/\/+$/, '') : entry.entryName;
