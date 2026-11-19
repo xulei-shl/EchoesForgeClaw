@@ -101,8 +101,10 @@ export function seedDataFor(type: NodeType, parent?: NodeData): any {
       return {
         from: 'auto',
         to: 'en',
-        source: 'random',
+        source: 'bilibili',
         tabData: {
+          bilibili: { output: '', usedSource: '', error: null, isGenerating: false },
+          // 备用历史 tabData
           random: { output: '', usedSource: '', error: null, isGenerating: false },
           google: { output: '', usedSource: '', error: null, isGenerating: false },
           deeplx: { output: '', usedSource: '', error: null, isGenerating: false },

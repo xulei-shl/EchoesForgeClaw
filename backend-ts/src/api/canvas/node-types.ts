@@ -28,7 +28,7 @@ export const NODE_TYPES = {
   ZHIHU_SEARCH: 'zhihu_search',
   /** Wikipedia 检索（文本工具）：Wikipedia 官方公开 MediaWiki API 关键词检索 → 文章全文，结果以文本输出（匿名、无需密钥） */
   WIKIPEDIA_SEARCH: 'wikipedia_search',
-  /** 文本翻译（文本工具）：Google 翻译 / DeepLX 翻译引擎，支持随机源与自动降级 */
+  /** 文本翻译（文本工具）：哔哩翻译（Index-Translate）多模态大模型翻译引擎 */
   TEXT_TRANSLATION: 'text_translation',
   /** 网络搜索（文本工具）：知乎全网 / Tavily / Exa / 豆包等多源网络检索 */
   WEB_SEARCH: 'web_search',
@@ -264,7 +264,7 @@ export const NODE_TEMPLATES: NodeTemplate[] = [
   {
     type: NODE_TYPES.TEXT_TRANSLATION,
     name: '文本翻译',
-    description: 'Google 翻译 / DeepLX 多引擎翻译，支持随机源与自动降级',
+    description: '哔哩翻译（Index-Translate）大模型翻译引擎',
     category: 'tool',
     configurable: false,
     output_type: 'text',

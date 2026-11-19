@@ -798,7 +798,7 @@ export function useNodeHandlers({
               return '文本翻译缺少待翻译文本（连线文本节点或写入 data.inputText）';
             }
             const source: TranslationSource =
-              d.source === 'google' || d.source === 'deeplx' ? d.source : 'random';
+              d.source === 'bilibili' ? 'bilibili' : 'bilibili';
             const payload: TranslationRequest = {
               text,
               from: typeof d.from === 'string' ? d.from : 'auto',

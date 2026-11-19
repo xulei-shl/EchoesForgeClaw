@@ -314,17 +314,33 @@ export async function register(app: FastifyInstance): Promise<void> {
         return reply.code(400).send({ detail: '目标语言不能为空' });
       }
       const source: TranslationSource =
-        payload.source === 'google' || payload.source === 'deeplx' ? payload.source : 'random';
+        payload.source === 'google' || payload.source === 'deeplx' || payload.source === 'bilibili'
+          ? (payload.source as TranslationSource)
+          : 'bilibili';
 
       const s = getAppSettingsMap(getDb());
       const deeplxUrl = (s['deeplx.url'] ?? '').trim();
+      const bilibiliBaseUrl = (s['bilibili_translate.base_url'] ?? '').trim();
+      const bilibiliApiKey = (s['bilibili_translate.api_key'] ?? '').trim();
+      const bilibiliModel = (s['bilibili_translate.model'] ?? '').trim();
       const proxies: Partial<Record<TranslationSource, string>> = {
+        bilibili: getServiceProxy(s, 'bilibili_translate'),
         google: getServiceProxy(s, 'google_translate'),
         deeplx: getServiceProxy(s, 'deeplx'),
       };
 
       try {
-        const result = await translateText({ text, from, to, source, deeplxUrl, proxies });
+        const result = await translateText({
+          text,
+          from,
+          to,
+          source,
+          deeplxUrl,
+          bilibiliBaseUrl,
+          bilibiliApiKey,
+          bilibiliModel,
+          proxies,
+        });
         return { output: result.output, source: result.source };
       } catch (err) {
         if (err instanceof TranslationError) {

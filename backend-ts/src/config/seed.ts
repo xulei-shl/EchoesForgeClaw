@@ -171,7 +171,27 @@ const DEFAULT_SETTINGS: Array<[string, string, string]> = [
   [
     'deeplx.url',
     '',
-    '文本翻译节点（DeepLX）服务器 URL，如 http://localhost:1188/translate（留空则仅使用 Google 免费翻译）',
+    '文本翻译节点（DeepLX）服务器 URL，如 http://localhost:1188/translate（备用翻译源）',
+  ],
+  [
+    'bilibili_translate.base_url',
+    'https://index-translate.bilibili.com/v1',
+    '文本翻译节点（哔哩翻译 Index-Translate）API 基础地址，兼容 OpenAI /v1 规范',
+  ],
+  [
+    'bilibili_translate.api_key',
+    '',
+    '文本翻译节点（哔哩翻译）API Key（公开免密接口留空即可；敏感，仅显示掩码）',
+  ],
+  [
+    'bilibili_translate.model',
+    'Index-Translate-35B-A3B',
+    '文本翻译节点（哔哩翻译）模型名称（默认 Index-Translate-35B-A3B，可选 Index-Translate-9B / Index-Translate-2B）',
+  ],
+  [
+    'bilibili_translate.use_proxy',
+    'false',
+    '哔哩翻译是否使用全局代理（true = 启用，false = 直连；未配置默认直连）',
   ],
   [
     'google_translate.use_proxy',

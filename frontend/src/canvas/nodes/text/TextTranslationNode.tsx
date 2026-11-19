@@ -12,7 +12,7 @@ import {
   SearchNodeEmptyView,
 } from '../_shared/SearchNodeScaffold';
 
-export type TranslationSource = 'random' | 'google' | 'deeplx';
+export type TranslationSource = 'bilibili' | 'random' | 'google' | 'deeplx';
 
 export interface TranslationRequest {
   text: string;
@@ -29,12 +29,15 @@ export interface TranslationTabData {
 }
 
 export const SOURCE_OPTIONS: { value: TranslationSource; label: string }[] = [
-  { value: 'random', label: '随机' },
-  { value: 'google', label: 'Google 翻译' },
-  { value: 'deeplx', label: 'DeepLX' },
+  { value: 'bilibili', label: '哔哩翻译 (Index-Translate)' },
+  // 原 Google 翻译与 DeepLX 备用选项（暂时隐藏注释，保留备用）
+  // { value: 'google', label: 'Google 翻译' },
+  // { value: 'deeplx', label: 'DeepLX' },
+  // { value: 'random', label: '随机' },
 ];
 
 export const SOURCE_LABEL: Record<string, string> = {
+  bilibili: '哔哩翻译 (Index-Translate)',
   google: 'Google 翻译',
   deeplx: 'DeepLX',
 };
@@ -106,19 +109,23 @@ export interface TextTranslationNodeProps {
 
 const TextTranslationNodeInner: React.FC<TextTranslationNodeProps> = ({
   id, initialX, initialY, title,
-  upstreamText = '', inputText: inputTextProp = '', from = 'auto', to = 'en', source = 'random',
+  upstreamText = '', inputText: inputTextProp = '', from = 'auto', to = 'en', source = 'bilibili',
   tabData = {},
   onFetch, onUpdateEditor, onRemove, onPositionChange, onSizeChange, onDrag,
   footer, onContextMenu,
 }) => {
   const [fromLan, setFromLan] = useState(from);
   const [toLan, setToLan] = useState(to);
-  const [activeSource, setActiveSource] = useState<TranslationSource>(source);
+  const effectiveSource = source === 'google' || source === 'deeplx' || source === 'random' ? 'bilibili' : source;
+  const [activeSource, setActiveSource] = useState<TranslationSource>(effectiveSource);
   const [inputText, setInputText] = useState(inputTextProp);
 
   useEffect(() => { setFromLan(from); }, [from]);
   useEffect(() => { setToLan(to); }, [to]);
-  useEffect(() => { setActiveSource(source); }, [source]);
+  useEffect(() => {
+    const nextSrc = source === 'google' || source === 'deeplx' || source === 'random' ? 'bilibili' : source;
+    setActiveSource(nextSrc);
+  }, [source]);
   // 撤销 / 重做 / 历史恢复时同步草稿
   useEffect(() => { setInputText(inputTextProp); }, [inputTextProp]);
   // 上级连线文本到达时写入输入框，仍可手动编辑
@@ -127,7 +134,10 @@ const TextTranslationNodeInner: React.FC<TextTranslationNodeProps> = ({
   }, [upstreamText]);
 
   const currentTab = useMemo<TranslationTabData>(
-    () => ({ ...TAB_INITIAL, ...tabData[activeSource] }),
+    () => ({
+      ...TAB_INITIAL,
+      ...(tabData[activeSource] ?? tabData.bilibili ?? tabData.google ?? tabData.deeplx),
+    }),
     [tabData, activeSource],
   );
 

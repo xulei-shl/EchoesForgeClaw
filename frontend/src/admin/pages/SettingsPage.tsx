@@ -7,6 +7,7 @@ import {
   HelpCircle,
   Image as ImageIcon,
   Landmark,
+  Languages,
   Layers,
   Loader2,
   Globe,
@@ -64,6 +65,11 @@ const KNOWN_KEYS: { key: string; description: string }[] = [
   { key: 'loc.use_proxy', description: 'LoC 国会图书馆检索/图片是否使用全局代理（true = 启用，false = 直连）' },
   { key: 'google_translate.use_proxy', description: 'Google 翻译是否使用全局代理（true = 启用，false = 直连）' },
   { key: 'deeplx.use_proxy', description: 'DeepLX 翻译是否使用全局代理（true = 启用，false = 直连；未配置默认直连）' },
+  { key: 'bilibili_translate.use_proxy', description: '哔哩翻译是否使用全局代理（true = 启用，false = 直连；未配置默认直连）' },
+  { key: 'bilibili_translate.base_url', description: '哔哩翻译（Index-Translate）API 基础地址（默认 https://index-translate.bilibili.com/v1）' },
+  { key: 'bilibili_translate.api_key', description: '哔哩翻译 API Key（公开免密接口留空即可；敏感，仅显示掩码）' },
+  { key: 'bilibili_translate.model', description: '哔哩翻译模型名称（默认 Index-Translate-35B-A3B，可选 Index-Translate-9B / Index-Translate-2B）' },
+  { key: 'deeplx.url', description: 'DeepLX 翻译服务器 URL，如 http://localhost:1188/translate' },
   { key: 'pi.guardrails.enabled', description: 'Pi Agent 安全护栏总开关（false = 关闭全部 Guardrails 检查，不建议）' },
   { key: 'pi.guardrails.features.policies', description: 'Pi Agent 文件保护策略（.env / 私钥等敏感文件禁止 Agent 读取与修改）' },
   { key: 'pi.guardrails.features.permission_gate', description: 'Pi Agent 危险命令确认（递归删除 / 提权 / 格式化等危险命令触发确认）' },
@@ -159,6 +165,16 @@ const CATEGORY_DEFS: CategoryDef[] = [
       key.startsWith('serper.') ||
       key.startsWith('brave.') ||
       key.startsWith('bocha.'),
+  },
+  {
+    id: 'translation',
+    name: '文本翻译',
+    icon: Languages,
+    description: '文本翻译节点（哔哩翻译 Index-Translate / DeepLX）的接口地址、模型名称与访问凭据配置',
+    match: (key) =>
+      key.startsWith('bilibili_translate.') ||
+      key.startsWith('deeplx.') ||
+      key.startsWith('translation.'),
   },
   {
     id: 'lightpanda',

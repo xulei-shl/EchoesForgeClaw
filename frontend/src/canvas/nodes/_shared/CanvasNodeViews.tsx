@@ -768,7 +768,7 @@ export function renderCanvasNode(node: NodeData, h: NodeViewHelpers): React.Reac
           inputText={typeof d.inputText === 'string' ? d.inputText : ''}
           from={typeof d.from === 'string' ? d.from : 'auto'}
           to={typeof d.to === 'string' ? d.to : 'en'}
-          source={d.source === 'google' || d.source === 'deeplx' ? d.source : 'random'}
+          source={d.source === 'bilibili' ? 'bilibili' : 'bilibili'}
           tabData={d.tabData ?? {}}
           output={typeof d.output === 'string' ? d.output : ''}
           isGenerating={!!d.isGenerating}

@@ -287,7 +287,7 @@ const TRANSLATION_CONFIG: TabbedToolConfig<TranslationRequest> = {
   nodeType: 'text_translation',
   endpoint: '/modules/bookplate/translate',
   tabKeyField: 'source',
-  activeDefault: 'random',
+  activeDefault: 'bilibili',
   // 翻译输入以节点输入框实际文本为准（继承后可手动编辑），上游文本仅作兜底
   resolveInput: (payload, upstream) => payload.text.trim() || upstream,
   startTabExtras: () => ({}),
