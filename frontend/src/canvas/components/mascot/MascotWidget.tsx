@@ -11,6 +11,7 @@ import {
   Bot,
   Settings,
   LayoutDashboard,
+  Shirt,
 } from 'lucide-react';
 import { Mascot, type MascotRefHandle } from './Mascot';
 import { FeedbackModal } from './FeedbackModal';
@@ -366,7 +367,7 @@ export const MascotWidget: React.FC = () => {
               }}
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-sans font-medium text-ink-light hover:text-accent hover:bg-accent/10 active:scale-[0.96] transition-[background-color,color,transform] duration-150 cursor-pointer"
             >
-              <Sparkles size={13} strokeWidth={1.75} className="text-amber-500 shrink-0" />
+              <Shirt size={13} strokeWidth={1.75} className="text-amber-500 shrink-0" />
               <span>换装</span>
             </button>
 
