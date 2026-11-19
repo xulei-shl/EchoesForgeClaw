@@ -211,7 +211,7 @@ export const NODE_TEMPLATES: NodeTemplateDef[] = [
   {
     type: 'text_translation',
     name: '文本翻译',
-    description: '哔哩翻译（Index-Translate）大模型翻译',
+    description: '哔哩大模型翻译',
     category: 'tool',
     configurable: false,
     defaultSize: DEFAULT_SIZES.text_translation,

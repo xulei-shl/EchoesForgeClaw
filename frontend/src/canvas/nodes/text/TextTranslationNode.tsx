@@ -29,7 +29,7 @@ export interface TranslationTabData {
 }
 
 export const SOURCE_OPTIONS: { value: TranslationSource; label: string }[] = [
-  { value: 'bilibili', label: '哔哩翻译 (Index-Translate)' },
+  { value: 'bilibili', label: '哔哩翻译' },
   // 原 Google 翻译与 DeepLX 备用选项（暂时隐藏注释，保留备用）
   // { value: 'google', label: 'Google 翻译' },
   // { value: 'deeplx', label: 'DeepLX' },
@@ -37,7 +37,7 @@ export const SOURCE_OPTIONS: { value: TranslationSource; label: string }[] = [
 ];
 
 export const SOURCE_LABEL: Record<string, string> = {
-  bilibili: '哔哩翻译 (Index-Translate)',
+  bilibili: '哔哩翻译',
   google: 'Google 翻译',
   deeplx: 'DeepLX',
 };
